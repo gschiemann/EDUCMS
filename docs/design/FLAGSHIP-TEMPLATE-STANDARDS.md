@@ -86,6 +86,41 @@ Expose: every palette color, all font families, and the scale.
   scrolls visibly under a colored block.
 - **Verify before delivery** — zero overflow / no clipping in BOTH orientations.
 
+### Astra review acceptance checks (2026-10-11)
+
+Apply these to every new or redesigned board. The review and its bounded fix
+verification are in `docs/research/2026-10-11-astra-template-review/`.
+
+- **Check actual rendered text bounds.** A field can have no internal scroll overflow
+  while its text crosses a row rule or overlaps its neighbor. Measure text with a
+  DOM Range after fonts load, compare it with the containing row/tile, and check
+  neighboring fields. Exercise the longest authored row and an active status badge.
+  Put primary copy and room/location metadata in separate columns when stacking
+  would require shrinking below the body/support floors. Allocate real heading height.
+- **Give every composition a clear reading order.** One primary action or event leads;
+  supporting details have deliberately quieter groups. Large type alone does not
+  establish hierarchy. Preserve variety in loaded, editable font pairings and avoid
+  thin supporting type that loses presence at signage distance.
+- **Author image framing for each orientation.** Inspect complete faces and the
+  meaningful subject, not only whether an image loaded. Keep the source, frame and
+  crop editable; verify Replace/Fit/Rotate, save/reopen, and clearing overrides back
+  to the authored orientation-specific framing. Do not flatten text into photographs.
+  Shared Crop/Reposition remains an editor follow-up; a good default crop does not
+  complete that feature.
+- **Declare and verify repeating-list capacity.** Use `data-repeat-max` for the
+  count actually supported at readable sizes. Test authored capacity, reduced lists,
+  restoration and longer plausible edits. Never silently add overflowing rows or
+  shrink below 60px body / 50px support. Inline capacity/overflow feedback remains
+  a shared editor follow-up until implemented and tested.
+- **Prove both orientations in Chromium and WebKit.** Review individual full-board
+  renders as well as geometry measurements. Include saved text/image overrides,
+  click-to-edit and reset behavior. An aggregate contact sheet or poster cannot
+  establish containment, motion quality or live integration behavior.
+- **Keep operational copy honest.** Publish only capabilities the board actually
+  supports. Operator-authored hours, policies and guidance must not imply a live
+  order queue, PMS, appointment feed or clinical advice. Real links/QR uploads are
+  editable; never invent connected data or a decorative nonfunctional QR.
+
 ### Layout gotcha (cost us real time — don't repeat)
 If the stage uses a blanket `.stage > * { position: relative }` (common, to lift content
 above decorative layers), it **overrides `position:absolute` on decorative children by

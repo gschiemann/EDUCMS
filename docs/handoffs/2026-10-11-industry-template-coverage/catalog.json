@@ -1,0 +1,5488 @@
+{
+  "sourceCommit": "36aea68995458289c1c83913e6612f7b58de93dc",
+  "catalogTotal": 488,
+  "offered": 453,
+  "retired": 19,
+  "quarantined": 16,
+  "note": "Per-industry counts overlap for multi-tagged presets. Native sports contrast and holiday source work are reported separately; these columns count EXTERNAL_HTML source designs only. Dedicated means exactly one vertical tag, not a design-quality verdict.",
+  "rows": [
+    {
+      "industry": "K12",
+      "offeredPresets": 201,
+      "dedicatedPresets": 144,
+      "uniqueHtmlSources": 77,
+      "refreshedHtmlSources": 8,
+      "refreshedDedicatedHtmlSources": 7,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait",
+        "preset-school-commencement-guide",
+        "preset-school-commencement-guide-portrait"
+      ],
+      "newDedicatedPresets": [
+        "preset-school-commencement-guide",
+        "preset-school-commencement-guide-portrait"
+      ],
+      "offeredNames": [
+        {
+          "id": "preset-lobby-animated-rainbow",
+          "name": "\ud83c\udf89 Animated Rainbow \u00b7 Welcome",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-lobby-animated-rainbow-portrait",
+          "name": "\ud83c\udf08 Animated Rainbow \u00b7 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-lobby-animated-middle",
+          "name": "\ud83c\udfdf\ufe0f Animated Middle School \u00b7 Welcome",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-lobby-animated-high",
+          "name": "\ud83c\udf93 Animated High School \u00b7 Welcome",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-elementary",
+          "name": "\ud83d\ude9a Animated Cafeteria \u00b7 Food Truck",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-middle",
+          "name": "\ud83d\ude8f Cafeteria \u00b7 Campus Lineup \u2014 Route Split",
+          "url": "/templates/school/ms-lunch-campus-lineup.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-high",
+          "name": "\u2615 Animated Cafeteria \u00b7 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-varsity",
+          "name": "\ud83c\udfdf\ufe0f Varsity \u2014 Athletic Department",
+          "url": "/templates/hs/varsity.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-broadcast",
+          "name": "\ud83d\udcfa Broadcast \u2014 Campus News Desk",
+          "url": "/templates/hs/broadcast.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-yearbook",
+          "name": "\ud83d\udcf0 Yearbook \u2014 Editorial Magazine",
+          "url": "/templates/hs/yearbook.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-terminal",
+          "name": "\ud83d\udcbb Terminal \u2014 CRT / Phosphor",
+          "url": "/templates/hs/terminal.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-01",
+          "name": "Campus Pulse \u00b7 Campus Magazine",
+          "url": "/templates/school/campus-pulse/01-campus-magazine.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-02",
+          "name": "Campus Pulse \u00b7 Digital Signal",
+          "url": "/templates/school/campus-pulse/02-digital-signal.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-03",
+          "name": "Campus Pulse \u00b7 Neo Yearbook",
+          "url": "/templates/school/campus-pulse/03-neo-yearbook.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-04",
+          "name": "Campus Pulse \u00b7 Varsity Broadcast",
+          "url": "/templates/school/campus-pulse/04-varsity-broadcast.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-05",
+          "name": "Campus Pulse \u00b7 Metro Wayfinding",
+          "url": "/templates/school/campus-pulse/05-metro-wayfinding.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-06",
+          "name": "Campus Pulse \u00b7 Aurora Fold",
+          "url": "/templates/school/campus-pulse/06-aurora-fold.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-01-portrait",
+          "name": "Campus Pulse \u00b7 Campus Magazine \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/01-campus-magazine.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-02-portrait",
+          "name": "Campus Pulse \u00b7 Digital Signal \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/02-digital-signal.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-03-portrait",
+          "name": "Campus Pulse \u00b7 Neo Yearbook \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/03-neo-yearbook.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-04-portrait",
+          "name": "Campus Pulse \u00b7 Varsity Broadcast \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/04-varsity-broadcast.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-05-portrait",
+          "name": "Campus Pulse \u00b7 Metro Wayfinding \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/05-metro-wayfinding.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-hs-campus-pulse-06-portrait",
+          "name": "Campus Pulse \u00b7 Aurora Fold \u2014 Portrait",
+          "url": "/templates/school/campus-pulse/06-aurora-fold.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-transit",
+          "name": "\ud83e\udded Wayfinder \u2014 Campus Grid",
+          "url": "/templates/hs/hall-wayfinder-campus-grid.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-gallery",
+          "name": "\ud83c\udfdb\ufe0f Gallery \u2014 Museum Wall Labels",
+          "url": "/templates/hs/gallery.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-blueprint",
+          "name": "\ud83d\udcd0 Blueprint \u2014 Technical Drawing",
+          "url": "/templates/hs/blueprint.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-zine",
+          "name": "\u2702\ufe0f Zine \u2014 Cut & Paste Student Rag",
+          "url": "/templates/hs/zine.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-ath-gameday",
+          "name": "\ud83c\udfdf\ufe0f Athletics \u2014 Game Day Hub",
+          "url": "/templates/hs/ath-gameday.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-ath-standings",
+          "name": "\ud83c\udfc6 Athletics \u2014 Standings & AOTW",
+          "url": "/templates/hs/ath-standings.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-ath-biggame",
+          "name": "\ud83c\udfdf\ufe0f Athletics \u2014 Big Game",
+          "url": "/templates/hs/ath-biggame.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-ath-broadcast",
+          "name": "\ud83d\udcfa Athletics \u2014 Broadcast Desk",
+          "url": "/templates/hs/ath-broadcast.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-main",
+          "name": "\ud83c\udfdf\ufe0f Main Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-quick",
+          "name": "\u26a1 Quick Scoreboard (one-piece)",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-ribbon",
+          "name": "\ud83c\udf97\ufe0f Main Ribbon",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-scorebug",
+          "name": "\ud83d\udcfa Main Scorebug",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-hs",
+          "name": "\ud83c\udfc0 Scoreboard \u00b7 High School",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-college",
+          "name": "\ud83c\udf93 Scoreboard \u00b7 College",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-pro",
+          "name": "\ud83c\udfc6 Scoreboard \u00b7 Pro",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-caf-today",
+          "name": "\ud83c\udf74 Cafeteria \u2014 Today + Tomorrow",
+          "url": "/templates/hs/caf-today.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-caf-counter",
+          "name": "\ud83c\udf7d\ufe0f Cafeteria \u2014 Counter Plate",
+          "url": "/templates/hs/caf-counter.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-caf-week",
+          "name": "\ud83c\udf71 Cafeteria \u2014 This Week",
+          "url": "/templates/hs/caf-week.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-caf-market",
+          "name": "\ud83e\udd57 Cafeteria \u2014 Food-Hall Market",
+          "url": "/templates/hs/caf-market.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-class-nownext",
+          "name": "\ud83d\udcda Classroom \u2014 Now / Next Agenda",
+          "url": "/templates/hs/class-nownext.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-class-subday",
+          "name": "\ud83e\uddd1\u200d\ud83c\udfeb Classroom \u2014 Substitute Self-Running Plan",
+          "url": "/templates/hs/class-subday.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-hall-bulletin",
+          "name": "\ud83d\udccc Bulletin Board \u00b7 Hallway",
+          "url": "/templates/hs/hall-bulletin.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-hall-wayfinder",
+          "name": "\ud83e\udded Wayfinder \u2014 Colorline",
+          "url": "/templates/hs/hall-wayfinder.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-wayfinder-signal-stack",
+          "name": "\ud83d\udea6 Wayfinder \u2014 Signal Stack",
+          "url": "/templates/hs/hall-wayfinder-signal-stack.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-ms-playlist",
+          "name": "\ud83c\udfa7 Playlist \u2014 Spotify-Style Now Playing",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-ms-studio",
+          "name": "\ud83c\udf99\ufe0f Studio \u2014 On-Air Radio Booth",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-ms-playlist-portrait",
+          "name": "\ud83c\udfa7 Playlist \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-ms-studio-portrait",
+          "name": "\ud83c\udf99\ufe0f Studio \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-chalkboard",
+          "name": "\ud83c\udf3f Animated Cafeteria \u00b7 Chalkboard",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bus-board",
+          "name": "\ud83d\ude8c Animated Bus Route Board",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-entrance",
+          "name": "\ud83c\udfdb\ufe0f Animated Main Entrance Welcome",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bell-schedule",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Pulse Rail",
+          "url": "/templates/hs/bell-schedule.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-morning-news",
+          "name": "\ud83d\udcfa Morning News \u2014 Headline Split",
+          "url": "/templates/hs/morning-news.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-news-rundown-desk",
+          "name": "\ud83d\uddde\ufe0f Morning News \u2014 Rundown Desk",
+          "url": "/templates/hs/morning-news-rundown-desk.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-news-daily-cut",
+          "name": "\ud83c\udfac Morning News \u2014 Daily Cut",
+          "url": "/templates/hs/morning-news-daily-cut.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-achievement-showcase",
+          "name": "\ud83c\udfc6 Achievement Showcase \u2014 Honor Cover",
+          "url": "/templates/hs/achievement.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bulletin-hallway",
+          "name": "\ud83d\udccc Bulletin Board \u00b7 Hallway",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bulletin-cafeteria",
+          "name": "\ud83d\udccc Bulletin Board \u00b7 Cafeteria",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-achievement-showcase-portrait",
+          "name": "\ud83c\udfc6 Achievement Showcase \u2014 Honor Cover \u2014 Portrait",
+          "url": "/templates/hs/achievement.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bell-schedule-portrait",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Pulse Rail \u2014 Portrait",
+          "url": "/templates/hs/bell-schedule.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bulletin-cafeteria-portrait",
+          "name": "\ud83d\udccc Bulletin Board \u00b7 Cafeteria \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bulletin-hallway-portrait",
+          "name": "\ud83d\udccc Bulletin Board \u00b7 Hallway \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-bus-board-portrait",
+          "name": "\ud83d\ude8c Animated Bus Route Board \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-high-portrait",
+          "name": "\u2615 Animated Cafeteria \u00b7 High School \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-middle-portrait",
+          "name": "\ud83d\ude8f Cafeteria \u00b7 Campus Lineup \u2014 Route Split \u2014 Portrait",
+          "url": "/templates/school/ms-lunch-campus-lineup.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-chalkboard-portrait",
+          "name": "\ud83c\udf3f Animated Cafeteria \u00b7 Chalkboard \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-blueprint-portrait",
+          "name": "\ud83d\udcd0 Blueprint \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-broadcast-portrait",
+          "name": "\ud83d\udcfa Broadcast \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-gallery-portrait",
+          "name": "\ud83c\udfdb\ufe0f Gallery \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-terminal-portrait",
+          "name": "\ud83d\udcbb Terminal \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-transit-portrait",
+          "name": "\ud83e\udded Wayfinder \u2014 Campus Grid \u2014 Portrait",
+          "url": "/templates/hs/hall-wayfinder-campus-grid.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-varsity-portrait",
+          "name": "\ud83c\udfdf\ufe0f Varsity \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-yearbook-portrait",
+          "name": "\ud83d\udcf0 Yearbook \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-zine-portrait",
+          "name": "\u2702\ufe0f Zine \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-entrance-portrait",
+          "name": "\ud83c\udfdb\ufe0f Animated Main Entrance Welcome \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-morning-news-portrait",
+          "name": "\ud83d\udcfa Morning News \u2014 Headline Split \u2014 Portrait",
+          "url": "/templates/hs/morning-news.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-lobby-animated-middle-portrait",
+          "name": "\ud83c\udfdf\ufe0f Animated Middle School \u00b7 Welcome \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-lobby-animated-high-portrait",
+          "name": "\ud83c\udf93 Animated High School \u00b7 Welcome \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-cafeteria-animated-elementary-portrait",
+          "name": "\ud83c\udf7d\ufe0f Animated Cafeteria \u00b7 Elementary \u2014 Portrait",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-es",
+          "name": "\ud83c\udf83 Halloween \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-es-moonlight",
+          "name": "\ud83c\udf83 Halloween \u2014 Elementary \u00b7 Friendly Moonlight",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-es-parade",
+          "name": "\ud83c\udf83 Halloween \u2014 Elementary \u00b7 Costume Parade",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-es-storybook",
+          "name": "\ud83c\udf83 Halloween \u2014 Elementary \u00b7 Storybook Night",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-ms",
+          "name": "\ud83c\udf83 Halloween \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-ms-neon-circuit",
+          "name": "\ud83c\udf83 Halloween \u2014 Middle School \u00b7 Neon Circuit",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-ms-spirit-zine",
+          "name": "\ud83c\udf83 Halloween \u2014 Middle School \u00b7 Spirit Zine",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-ms-midnight-broadcast",
+          "name": "\ud83c\udf83 Halloween \u2014 Middle School \u00b7 Midnight Broadcast",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-hs",
+          "name": "\ud83c\udf83 Halloween \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-hs-fright-night-cinema",
+          "name": "\ud83c\udf83 Halloween \u2014 High School \u00b7 Fright Night Cinema",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-hs-midnight-gallery",
+          "name": "\ud83c\udf83 Halloween \u2014 High School \u00b7 Midnight Gallery",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-halloween-hs-editorial-after-dark",
+          "name": "\ud83c\udf83 Halloween \u2014 High School \u00b7 Editorial After Dark",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-thanksgiving-es",
+          "name": "\ud83e\udd83 Thanksgiving \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-thanksgiving-ms",
+          "name": "\ud83e\udd83 Thanksgiving \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-thanksgiving-hs",
+          "name": "\ud83e\udd83 Thanksgiving \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-christmas-es",
+          "name": "\ud83c\udf84 Christmas \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-christmas-ms",
+          "name": "\ud83c\udf84 Christmas \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-christmas-hs",
+          "name": "\ud83c\udf84 Christmas \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-valentines-es",
+          "name": "\ud83d\udc9d Valentine's Day \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-valentines-ms",
+          "name": "\ud83d\udc9d Valentine's Day \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-valentines-hs",
+          "name": "\ud83d\udc9d Valentine's Day \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-stpatricks-es",
+          "name": "\u2618\ufe0f St. Patrick's Day \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-stpatricks-ms",
+          "name": "\u2618\ufe0f St. Patrick's Day \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-stpatricks-hs",
+          "name": "\u2618\ufe0f St. Patrick's Day \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-easter-es",
+          "name": "\ud83d\udc30 Easter \u2014 Elementary",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-easter-ms",
+          "name": "\ud83d\udc30 Easter \u2014 Middle School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-holiday-easter-hs",
+          "name": "\ud83d\udc30 Easter \u2014 High School",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sandbox-rainbow",
+          "name": "\ud83e\uddea Sandbox \u00b7 Rainbow Welcome (test)",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum",
+          "name": "\ud83c\udfdb\ufe0f Touch Kiosk \u2014 Museum / Exhibits",
+          "url": "/templates/kiosk/museum.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-school",
+          "name": "\ud83c\udf93 Touch Kiosk \u2014 Campus Hub",
+          "url": "/templates/kiosk/school.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-food-nutrition",
+          "name": "\ud83e\udd57 Touch Kiosk \u2014 Nutrition & Allergens",
+          "url": "/templates/kiosk/food-nutrition.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum-quest",
+          "name": "\ud83e\udded Touch Kiosk \u2014 Explorer Quest",
+          "url": "/templates/kiosk/museum-quest.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-school-frontoffice",
+          "name": "\ud83c\udfeb Touch Kiosk \u2014 Front Office Check-In",
+          "url": "/templates/kiosk/school-front-office.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-schedule-1",
+          "name": "\ud83d\udcc5 Daily Schedule \u2014 Color Blocks",
+          "url": "/templates/school/elem-schedule-v1.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-schedule-2",
+          "name": "\ud83d\udcc5 Daily Schedule \u2014 Soft Cards",
+          "url": "/templates/school/elem-schedule-v2.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-schedule-3",
+          "name": "\ud83d\udcc5 Daily Schedule \u2014 Editorial Rail",
+          "url": "/templates/school/elem-schedule-v3.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-1",
+          "name": "\ud83c\udf71 Today's Lunch \u2014 Confetti Pop 2.0",
+          "url": "/templates/school/elem-lunch-v1.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-2",
+          "name": "\ud83c\udf7d\ufe0f Today's Lunch \u2014 Color Route",
+          "url": "/templates/school/elem-lunch-v2.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-3",
+          "name": "\ud83d\udcf0 Today's Lunch \u2014 Lunch Edition",
+          "url": "/templates/school/elem-lunch-v3.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-4",
+          "name": "\ud83c\udf7d\ufe0f Today's Lunch \u2014 Service Ticket",
+          "url": "/templates/school/elem-lunch-v4-service-ticket.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-5",
+          "name": "\ud83e\udd57 Today's Lunch \u2014 Fresh Counter",
+          "url": "/templates/school/elem-lunch-v5-fresh-counter.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-6",
+          "name": "\ud83c\udfac Today's Lunch \u2014 Menu Lab",
+          "url": "/templates/school/elem-lunch-v6-menu-lab.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-lunch-7",
+          "name": "\ud83c\udfeb Today's Lunch \u2014 Counter Windows",
+          "url": "/templates/school/elem-lunch-v7-counter-windows.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-lobby-1",
+          "name": "\ud83c\udf92 Lobby Welcome \u2014 Campus Rally",
+          "url": "/templates/school/ms-lobby-v1.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-lobby-2",
+          "name": "\ud83c\udf92 Lobby Welcome \u2014 Campus Journal",
+          "url": "/templates/school/ms-lobby-v2.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-bell-ledger",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Bell Ledger",
+          "url": "/templates/hs/bell-schedule-ledger.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-bell-orbit",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Signal Orbit",
+          "url": "/templates/hs/bell-schedule-orbit.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-bell-1",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Locker Line",
+          "url": "/templates/school/ms-bell-locker-line.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-bell-2",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Agenda Flip",
+          "url": "/templates/school/ms-bell-agenda-flip.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-bell-3",
+          "name": "\ud83d\udd14 Bell Schedule \u2014 Rotation Radar",
+          "url": "/templates/school/ms-bell-rotation-radar.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-bell-1",
+          "name": "\ud83d\udd14 Daily Schedule \u2014 Color Hop",
+          "url": "/templates/school/elem-bell-color-hop.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-bell-2",
+          "name": "\ud83d\udd14 Daily Schedule \u2014 Classroom Daybook",
+          "url": "/templates/school/elem-bell-daybook.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-bell-3",
+          "name": "\ud83d\udd14 Daily Schedule \u2014 Sun Clock",
+          "url": "/templates/school/elem-bell-sun-clock.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-achievement-victory-wall",
+          "name": "\ud83c\udfc6 Achievement Showcase \u2014 Victory Wall",
+          "url": "/templates/hs/achievement-victory-wall.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-hs-achievement-stage-call",
+          "name": "\ud83c\udfc6 Achievement Showcase \u2014 Stage Call",
+          "url": "/templates/hs/achievement-stage-call.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-news-1",
+          "name": "\ud83d\udcfa Morning News \u2014 Storybook Broadcast",
+          "url": "/templates/school/elem-news-storybook.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-news-2",
+          "name": "\ud83d\udcfa Morning News \u2014 Classroom TV Cart",
+          "url": "/templates/school/elem-news-tv-cart.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-news-3",
+          "name": "\ud83d\udcfa Morning News \u2014 Morning Mailroom",
+          "url": "/templates/school/elem-news-mailroom.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-news-1",
+          "name": "\ud83d\udcfa Morning News \u2014 Locker Channel",
+          "url": "/templates/school/ms-news-locker-channel.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-news-2",
+          "name": "\ud83d\udcfa Morning News \u2014 Studio Switcher",
+          "url": "/templates/school/ms-news-studio-switcher.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-news-3",
+          "name": "\ud83d\udcfa Morning News \u2014 Notebook Cut",
+          "url": "/templates/school/ms-news-notebook-cut.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-wayfinder-1",
+          "name": "\ud83e\udded Wayfinder \u2014 Color Trail",
+          "url": "/templates/school/elem-wayfinder-color-trail.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-wayfinder-2",
+          "name": "\ud83e\udded Wayfinder \u2014 Schoolhouse Neighborhood",
+          "url": "/templates/school/elem-wayfinder-neighborhood.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-elem-wayfinder-3",
+          "name": "\ud83e\udded Wayfinder \u2014 Mascot Signpost",
+          "url": "/templates/school/elem-wayfinder-mascot-signpost.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-wayfinder-1",
+          "name": "\ud83e\udded Wayfinder \u2014 Locker Compass",
+          "url": "/templates/school/ms-wayfinder-locker-compass.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-wayfinder-2",
+          "name": "\ud83e\udded Wayfinder \u2014 Campus Patchboard",
+          "url": "/templates/school/ms-wayfinder-patchboard.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-wayfinder-3",
+          "name": "\ud83e\udded Wayfinder \u2014 Courtline Routes",
+          "url": "/templates/school/ms-wayfinder-courtline.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-lunch-signal-deck",
+          "name": "\ud83d\udcdf Cafeteria \u00b7 Campus Lineup \u2014 Signal Deck",
+          "url": "/templates/school/ms-lunch-signal-deck.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-lunch-poster-loop",
+          "name": "\ud83c\udf9e\ufe0f Cafeteria \u00b7 Campus Lineup \u2014 Poster Loop",
+          "url": "/templates/school/ms-lunch-poster-loop.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-ms-lobby-3",
+          "name": "\ud83c\udf92 Lobby Welcome \u2014 Campus Terminal",
+          "url": "/templates/school/ms-lobby-v3.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-school-commencement-guide",
+          "name": "Graduation \u00b7 Ceremony Guest Guide",
+          "url": "/templates/school/commencement-guest-guide.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-school-commencement-guide-portrait",
+          "name": "Graduation \u00b7 Ceremony Guest Guide \u2014 Portrait",
+          "url": "/templates/school/commencement-guest-guide.html",
+          "tags": [
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cts-water-polo-ribbon",
+          "name": "CTS Water Polo Ribbon (cinematic celebrations)",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-hs",
+          "name": "High School Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-college",
+          "name": "College Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-pro",
+          "name": "Pro Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-touchdown",
+          "name": "Touchdown",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-field-goal",
+          "name": "Field Goal",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-slam-dunk",
+          "name": "Slam Dunk",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-buzzer-beater",
+          "name": "Buzzer Beater",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-three-pointer",
+          "name": "Three-Pointer",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-home-run",
+          "name": "Home Run",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-grand-slam",
+          "name": "Grand Slam",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-strikeout",
+          "name": "Strikeout",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-hockey-goal",
+          "name": "Hockey Goal",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-hat-trick",
+          "name": "Hat Trick",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-soccer-goal",
+          "name": "Soccer GOOOOAL",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-golazo",
+          "name": "Golazo",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-wrestling-pin",
+          "name": "Wrestling Pin",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-tennis-matchpoint",
+          "name": "Match Point",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-swim-record",
+          "name": "Swim Record",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-track-record",
+          "name": "Track Record",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-football",
+          "name": "\ud83c\udfc8 Football Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-baseball",
+          "name": "\u26be Baseball / Softball Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-volleyball",
+          "name": "\ud83c\udfd0 Volleyball Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-soccer",
+          "name": "\u26bd Soccer Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-hockey",
+          "name": "\ud83c\udfd2 Hockey / Lacrosse Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-wrestling",
+          "name": "\ud83e\udd3c Wrestling Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-leaderboard-meet",
+          "name": "\ud83c\udfc5 Meet Leaderboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-swim-lane-board",
+          "name": "\ud83c\udfca Swimming Lane Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-track-lane-board",
+          "name": "\ud83c\udfc3 Track Lane Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-dive-leaderboard",
+          "name": "\ud83e\udd3f Diving Leaderboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-swim-relay-board",
+          "name": "\ud83c\udfca Swim Relay Exchange Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-dive-judges-board",
+          "name": "\ud83e\udd3f Diving Judges + Leaderboard Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-broadcast-board",
+          "name": "\ud83c\udfca Broadcast Meet Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-duel-board",
+          "name": "\ud83c\udfca Dual-Meet Duel Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-chase-board",
+          "name": "\ud83c\udfca Record Chase Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-rotator",
+          "name": "\ud83e\udd1d Sponsor Rotator",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-scorebar",
+          "name": "\ud83c\udff7\ufe0f Co-Branded Scorebar",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-concourse",
+          "name": "\ud83d\udecd\ufe0f Concourse Sponsor Loop",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-presenting",
+          "name": "\u2b50 Presenting Sponsor",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-lineup",
+          "name": "\ud83d\udccb Starting Lineup",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-tonight",
+          "name": "\ud83d\udce3 Tonight\u2019s Game",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-schedule",
+          "name": "\ud83d\uddd3\ufe0f This Week\u2019s Games",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-halftime",
+          "name": "\u23f8\ufe0f Halftime Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-countdown",
+          "name": "Game Day Countdown",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "GYM",
+      "offeredPresets": 41,
+      "dedicatedPresets": 38,
+      "uniqueHtmlSources": 20,
+      "refreshedHtmlSources": 1,
+      "refreshedDedicatedHtmlSources": 0,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-gym-01",
+          "name": "Gym \u00b7 Floor Board",
+          "url": "/templates/signage/gym/01-floor-board-flagship.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-02",
+          "name": "Gym \u00b7 Leaderboard",
+          "url": "/templates/signage/gym/02-leaderboard.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-03",
+          "name": "Gym \u00b7 Welcome Poster",
+          "url": "/templates/signage/gym/03-welcome-poster.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-04",
+          "name": "Gym \u00b7 Welcome Split-Duo",
+          "url": "/templates/signage/gym/04-welcome-split-duo.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-05",
+          "name": "Gym \u00b7 Welcome Locker Room",
+          "url": "/templates/signage/gym/05-welcome-locker-room.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-06",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Champion Wall",
+          "url": "/templates/signage/gym/leaderboard-v1-champion-wall-landscape.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-06-portrait",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Champion Wall \u2014 Portrait",
+          "url": "/templates/signage/gym/leaderboard-v1-champion-wall-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-07",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Finish Line",
+          "url": "/templates/signage/gym/leaderboard-v2-finish-line-landscape.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-07-portrait",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Finish Line \u2014 Portrait",
+          "url": "/templates/signage/gym/leaderboard-v2-finish-line-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-08",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Plate Stack",
+          "url": "/templates/signage/gym/leaderboard-v3-plate-stack-landscape.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-gym-08-portrait",
+          "name": "Gym \u00b7 Leaderboard \u00b7 Plate Stack \u2014 Portrait",
+          "url": "/templates/signage/gym/leaderboard-v3-plate-stack-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-gym",
+          "name": "\ud83c\udfcb\ufe0f Touch Kiosk \u2014 Fitness Club",
+          "url": "/templates/kiosk/gym.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-kiosk-gym-workout",
+          "name": "\ud83c\udfcb\ufe0f Touch Kiosk \u2014 Guided Training",
+          "url": "/templates/kiosk/gym-workout.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "fitness-cardio-hub",
+          "name": "Cardio Floor Hub",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-weight-floor",
+          "name": "Weight Floor Hub",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-lobby-welcome",
+          "name": "Lobby Welcome",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-streaming-hub",
+          "name": "Streaming Hub",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-stadium",
+          "name": "Stadium \u2014 Broadcast Cardio Floor",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-iron",
+          "name": "Iron \u2014 Weight Floor",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-marquee",
+          "name": "Marquee \u2014 Events Board",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-channel-guide",
+          "name": "Channel Guide \u2014 Streaming Library",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-discotheque",
+          "name": "Discotheque \u2014 Disco Energy",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-locker",
+          "name": "Locker \u2014 Locker Room Board",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-splash",
+          "name": "Splash \u2014 Pool Deck Board",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-telemetry",
+          "name": "Telemetry \u2014 Data Bridge",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-crag",
+          "name": "Crag \u2014 Climbing Route Board",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-cornerman",
+          "name": "Cornerman \u2014 Boxing Corner",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-recess",
+          "name": "Kids Club \u2014 Playful Block",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-reformer",
+          "name": "Reformer \u2014 Boutique Pilates",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-trailhead",
+          "name": "Trailhead \u2014 Running Club",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-vault",
+          "name": "Vault \u2014 CrossFit WOD Board",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-lobby",
+          "name": "Lobby \u2014 Premium Concierge",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-pulsecast",
+          "name": "\ud83d\udcfa Media \u2014 PulseCast Broadcast Control",
+          "url": "/templates/fitness/gym-media-pulsecast.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-pulsecast-portrait",
+          "name": "\ud83d\udcfa Media \u2014 PulseCast Broadcast Control (Portrait)",
+          "url": "/templates/fitness/gym-media-pulsecast-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-soundfloor",
+          "name": "\ud83c\udfa7 Media \u2014 Soundfloor Music + Video",
+          "url": "/templates/fitness/gym-media-soundfloor.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-soundfloor-portrait",
+          "name": "\ud83c\udfa7 Media \u2014 Soundfloor Music + Video (Portrait)",
+          "url": "/templates/fitness/gym-media-soundfloor-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-motion-studio",
+          "name": "\ud83e\uddd8 Media \u2014 Motion Studio Class Timeline",
+          "url": "/templates/fitness/gym-media-motion-studio.html",
+          "tags": [
+            "GYM"
+          ]
+        },
+        {
+          "id": "fitness-media-motion-studio-portrait",
+          "name": "\ud83e\uddd8 Media \u2014 Motion Studio Class Timeline (Portrait)",
+          "url": "/templates/fitness/gym-media-motion-studio-portrait.html",
+          "tags": [
+            "GYM"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "RETAIL",
+      "offeredPresets": 20,
+      "dedicatedPresets": 0,
+      "uniqueHtmlSources": 17,
+      "refreshedHtmlSources": 5,
+      "refreshedDedicatedHtmlSources": 0,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-fashion-01",
+          "name": "Fashion \u00b7 Lookbook",
+          "url": "/templates/signage/fashion/01-lookbook-flagship.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-02",
+          "name": "Fashion \u00b7 Editorial",
+          "url": "/templates/signage/fashion/02-editorial.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-03",
+          "name": "Fashion \u00b7 Sale",
+          "url": "/templates/signage/fashion/03-sale.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-04",
+          "name": "Fashion \u00b7 New Arrivals",
+          "url": "/templates/signage/fashion/04-new-arrivals.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-05",
+          "name": "Fashion \u00b7 Event",
+          "url": "/templates/signage/fashion/05-event-trunkshow.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-06",
+          "name": "Fashion \u00b7 Fitting",
+          "url": "/templates/signage/fashion/06-fitting-room.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-09",
+          "name": "Fashion \u00b7 Hours",
+          "url": "/templates/signage/fashion/09-hours-story.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-10",
+          "name": "Fashion \u00b7 Members",
+          "url": "/templates/signage/fashion/10-loyalty-member.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-01",
+          "name": "Store \u00b7 Storefront \u2014 Gallery",
+          "url": "/templates/signage/retail/01-storefront-gallery-threshold.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-02",
+          "name": "Store \u00b7 Storefront \u2014 Aperture",
+          "url": "/templates/signage/retail/02-storefront-aperture.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-03",
+          "name": "Store \u00b7 End-Cap \u2014 Kinetic",
+          "url": "/templates/signage/retail/03-endcap-kinetic.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-04",
+          "name": "Store \u00b7 End-Cap \u2014 Object Study",
+          "url": "/templates/signage/retail/04-endcap-object-study.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-05",
+          "name": "Store \u00b7 End-Cap \u2014 Drop Signal",
+          "url": "/templates/signage/retail/05-endcap-drop-signal.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-06",
+          "name": "Store \u00b7 Wayfinding \u2014 Signal",
+          "url": "/templates/signage/retail/06-wayfinding-signal.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-07",
+          "name": "Store \u00b7 Wayfinding \u2014 Daylight",
+          "url": "/templates/signage/retail/07-wayfinding-daylight.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-08",
+          "name": "Store \u00b7 Wayfinding \u2014 Monolith",
+          "url": "/templates/signage/retail/08-wayfinding-monolith.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "retail-holiday-seasonal",
+          "name": "Holiday / Seasonal Promo",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "CORPORATE",
+      "offeredPresets": 37,
+      "dedicatedPresets": 29,
+      "uniqueHtmlSources": 35,
+      "refreshedHtmlSources": 9,
+      "refreshedDedicatedHtmlSources": 8,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-corporate-01",
+          "name": "Corporate \u00b7 Lobby",
+          "url": "/templates/signage/corporate/01-lobby-welcome-flagship.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-02",
+          "name": "Corporate \u00b7 Conference",
+          "url": "/templates/signage/corporate/02-conference-room.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-03",
+          "name": "Corporate \u00b7 KPI Dashboard",
+          "url": "/templates/signage/corporate/03-kpi-dashboard.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-04",
+          "name": "Corporate \u00b7 New Hires",
+          "url": "/templates/signage/corporate/04-new-hires.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-05",
+          "name": "Corporate \u00b7 Floor Directory",
+          "url": "/templates/signage/corporate/05-floor-directory.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-06",
+          "name": "Corporate \u00b7 All Hands",
+          "url": "/templates/signage/corporate/06-all-hands.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-08",
+          "name": "Corporate \u00b7 Shuttle",
+          "url": "/templates/signage/corporate/08-shuttle-board.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-09",
+          "name": "Corporate \u00b7 Events",
+          "url": "/templates/signage/corporate/09-events-week.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-10",
+          "name": "Corporate \u00b7 Emergency",
+          "url": "/templates/signage/corporate/10-emergency-info.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-11",
+          "name": "Corporate \u00b7 Signal",
+          "url": "/templates/signage/corporate/11-corporate-signal.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-12",
+          "name": "Corporate \u00b7 Signal (Ribbon)",
+          "url": "/templates/signage/corporate/12-signal-ribbon.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-real-estate-01",
+          "name": "Real Estate \u00b7 Availability",
+          "url": "/templates/signage/real-estate/01-availability-flagship.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-office-01",
+          "name": "Office \u00b7 Room Grid",
+          "url": "/templates/signage/office/01-room-grid-flagship.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate",
+          "name": "\ud83c\udfe2 Touch Kiosk \u2014 Commercial Leasing",
+          "url": "/templates/kiosk/real-estate.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum",
+          "name": "\ud83c\udfdb\ufe0f Touch Kiosk \u2014 Museum / Exhibits",
+          "url": "/templates/kiosk/museum.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-office",
+          "name": "\ud83c\udfe2 Touch Kiosk \u2014 Workplace / Lobby",
+          "url": "/templates/kiosk/office.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-kiosk-office-room",
+          "name": "\ud83d\udeaa Touch Kiosk \u2014 Meeting Room Panel",
+          "url": "/templates/kiosk/office-room-panel.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate-models",
+          "name": "\ud83c\udfe0 Touch Kiosk \u2014 Model Homes Gallery",
+          "url": "/templates/kiosk/real-estate-models.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate-resident",
+          "name": "\ud83c\udfe2 Touch Kiosk \u2014 Resident Concierge",
+          "url": "/templates/kiosk/real-estate-resident.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum-quest",
+          "name": "\ud83e\udded Touch Kiosk \u2014 Explorer Quest",
+          "url": "/templates/kiosk/museum-quest.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-13",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic",
+          "url": "/templates/signage/corporate/homebuilder/01-welcome-cinematic.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-14",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Editorial",
+          "url": "/templates/signage/corporate/homebuilder/02-welcome-editorial.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-15",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Gallery",
+          "url": "/templates/signage/corporate/homebuilder/03-welcome-gallery.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-16",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Floor Plans",
+          "url": "/templates/signage/corporate/homebuilder/04-home-plan.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-17",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Availability",
+          "url": "/templates/signage/corporate/homebuilder/05-home-availability.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-18",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Community \u00b7 Story",
+          "url": "/templates/signage/corporate/homebuilder/06-community-story.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-19",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Tour \u00b7 Takeaway",
+          "url": "/templates/signage/corporate/homebuilder/07-tour-takeaway.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-13-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Cinematic \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/01-welcome-cinematic.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-14-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Editorial \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/02-welcome-editorial.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-15-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Welcome \u00b7 Gallery \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/03-welcome-gallery.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-16-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Floor Plans \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/04-home-plan.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-17-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Home \u00b7 Availability \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/05-home-availability.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-18-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Community \u00b7 Story \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/06-community-story.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-19-portrait",
+          "name": "Corporate \u00b7 Homebuilder \u00b7 Tour \u00b7 Takeaway \u2014 Portrait",
+          "url": "/templates/signage/corporate/homebuilder/portrait/07-tour-takeaway.html",
+          "tags": [
+            "CORPORATE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "QSR",
+      "offeredPresets": 60,
+      "dedicatedPresets": 12,
+      "uniqueHtmlSources": 27,
+      "refreshedHtmlSources": 4,
+      "refreshedDedicatedHtmlSources": 3,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-qsr-12",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Lane One",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-13",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Market Board",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-14",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Order Logic",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-15",
+          "name": "QSR \u00b7 Counter Order \u2014 The Pass",
+          "url": "/templates/signage/qsr/redesign-counter-v1-the-pass.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-16",
+          "name": "QSR \u00b7 Counter Order \u2014 Market Mosaic",
+          "url": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-17",
+          "name": "QSR \u00b7 Counter Order \u2014 Menu Folio",
+          "url": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-18",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Roaster's Ledger",
+          "url": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-19",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Morning Window",
+          "url": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-20",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Ceramic Shelf",
+          "url": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-21",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Slice Signal",
+          "url": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-22",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Oven No. 7",
+          "url": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-23",
+          "name": "QSR \u00b7 Pizza Shop \u2014 House Press",
+          "url": "/templates/signage/qsr/redesign-pizza-v3-house-press.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-12-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Lane One \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-13-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Market Board \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-14-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Order Logic \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-15-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 The Pass \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v1-the-pass.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-16-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 Market Mosaic \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-17-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 Menu Folio \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-18-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Roaster's Ledger \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-19-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Morning Window \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-20-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Ceramic Shelf \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-21-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Slice Signal \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-22-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Oven No. 7 \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-23-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 House Press \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v3-house-press.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-24-super-taco",
+          "name": "Super Taco \u00b7 Flagship Mexican Menu",
+          "url": "/templates/signage/qsr/24-super-taco-flagship.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-24-super-taco-portrait",
+          "name": "Super Taco \u00b7 Flagship Mexican Menu \u00b7 Portrait",
+          "url": "/templates/signage/qsr/24-super-taco-flagship.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-25-super-taco-tacos",
+          "name": "Super Taco \u00b7 Menu Wall 1 \u00b7 Tacos",
+          "url": "/templates/signage/qsr/25-super-taco-tacos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-26-super-taco-burritos",
+          "name": "Super Taco \u00b7 Menu Wall 2 \u00b7 Burritos & More",
+          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-27-super-taco-combos",
+          "name": "Super Taco \u00b7 Menu Wall 3 \u00b7 Combo Spotlight",
+          "url": "/templates/signage/qsr/27-super-taco-combos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-25-super-taco-tacos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 1 \u00b7 Tacos \u00b7 Portrait",
+          "url": "/templates/signage/qsr/25-super-taco-tacos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-26-super-taco-burritos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 2 \u00b7 Burritos & More \u00b7 Portrait",
+          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-27-super-taco-combos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 3 \u00b7 Combo Spotlight \u00b7 Portrait",
+          "url": "/templates/signage/qsr/27-super-taco-combos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-03",
+          "name": "QSR \u00b7 Order Ready",
+          "url": "/templates/signage/qsr/03-order-ready.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-07",
+          "name": "QSR \u00b7 Mobile Pickup",
+          "url": "/templates/signage/qsr/07-mobile-pickup.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-08",
+          "name": "QSR \u00b7 Rewards",
+          "url": "/templates/signage/qsr/08-rewards.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-09",
+          "name": "QSR \u00b7 Hours",
+          "url": "/templates/signage/qsr/09-hours-location.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-10",
+          "name": "QSR \u00b7 Now Hiring",
+          "url": "/templates/signage/qsr/10-now-hiring.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-food",
+          "name": "\ud83e\udd57 Touch Kiosk \u2014 Self-Order (QSR)",
+          "url": "/templates/kiosk/food.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-kiosk-qsr",
+          "name": "\ud83c\udf54 Touch Kiosk \u2014 Fast-Food Self-Order",
+          "url": "/templates/kiosk/qsr.html",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "preset-kiosk-qsr-pickup",
+          "name": "\ud83e\udd61 Touch Kiosk \u2014 Order Pickup & Curbside",
+          "url": "/templates/kiosk/qsr-pickup.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-kiosk-food-nutrition",
+          "name": "\ud83e\udd57 Touch Kiosk \u2014 Nutrition & Allergens",
+          "url": "/templates/kiosk/food-nutrition.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "qsr-sushi-ramen-menu",
+          "name": "Sushi & Ramen Menu",
+          "url": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-sushi-ramen-menu-portrait",
+          "name": "Sushi & Ramen Menu \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-daily-specials-promo",
+          "name": "Daily Specials Promo",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-loyalty-rewards-board",
+          "name": "Loyalty Rewards Board",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-wait-time-display",
+          "name": "Wait Time Display",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-live-pos-menu",
+          "name": "Live POS Menu",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-modern-burger",
+          "name": "Modern Burger Joint",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-artisan-pizza",
+          "name": "Artisan Pizza Counter",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-specialty-coffee",
+          "name": "Specialty Coffee Bar",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-ramen-fusion",
+          "name": "Ramen / Asian Fusion",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-mexican-cantina",
+          "name": "Mexican Cantina",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-bakery-patisserie",
+          "name": "Bakery / Patisserie",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-sports-bar-grill",
+          "name": "Sports Bar Grill",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-brunch-spot",
+          "name": "Brunch Spot",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-food-truck",
+          "name": "Food Truck Window",
+          "tags": [
+            "QSR"
+          ]
+        },
+        {
+          "id": "qsr-fine-dining-wine",
+          "name": "Fine Dining Wine List",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "FASHION",
+      "offeredPresets": 20,
+      "dedicatedPresets": 0,
+      "uniqueHtmlSources": 17,
+      "refreshedHtmlSources": 5,
+      "refreshedDedicatedHtmlSources": 0,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-fashion-01",
+          "name": "Fashion \u00b7 Lookbook",
+          "url": "/templates/signage/fashion/01-lookbook-flagship.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-02",
+          "name": "Fashion \u00b7 Editorial",
+          "url": "/templates/signage/fashion/02-editorial.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-03",
+          "name": "Fashion \u00b7 Sale",
+          "url": "/templates/signage/fashion/03-sale.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-04",
+          "name": "Fashion \u00b7 New Arrivals",
+          "url": "/templates/signage/fashion/04-new-arrivals.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-05",
+          "name": "Fashion \u00b7 Event",
+          "url": "/templates/signage/fashion/05-event-trunkshow.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-06",
+          "name": "Fashion \u00b7 Fitting",
+          "url": "/templates/signage/fashion/06-fitting-room.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-09",
+          "name": "Fashion \u00b7 Hours",
+          "url": "/templates/signage/fashion/09-hours-story.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-fashion-10",
+          "name": "Fashion \u00b7 Members",
+          "url": "/templates/signage/fashion/10-loyalty-member.html",
+          "tags": [
+            "FASHION",
+            "RETAIL"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-01",
+          "name": "Store \u00b7 Storefront \u2014 Gallery",
+          "url": "/templates/signage/retail/01-storefront-gallery-threshold.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-02",
+          "name": "Store \u00b7 Storefront \u2014 Aperture",
+          "url": "/templates/signage/retail/02-storefront-aperture.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-03",
+          "name": "Store \u00b7 End-Cap \u2014 Kinetic",
+          "url": "/templates/signage/retail/03-endcap-kinetic.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-04",
+          "name": "Store \u00b7 End-Cap \u2014 Object Study",
+          "url": "/templates/signage/retail/04-endcap-object-study.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-05",
+          "name": "Store \u00b7 End-Cap \u2014 Drop Signal",
+          "url": "/templates/signage/retail/05-endcap-drop-signal.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-06",
+          "name": "Store \u00b7 Wayfinding \u2014 Signal",
+          "url": "/templates/signage/retail/06-wayfinding-signal.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-07",
+          "name": "Store \u00b7 Wayfinding \u2014 Daylight",
+          "url": "/templates/signage/retail/07-wayfinding-daylight.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-sig-retail-08",
+          "name": "Store \u00b7 Wayfinding \u2014 Monolith",
+          "url": "/templates/signage/retail/08-wayfinding-monolith.html",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "retail-holiday-seasonal",
+          "name": "Holiday / Seasonal Promo",
+          "tags": [
+            "RETAIL",
+            "FASHION"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "BAR",
+      "offeredPresets": 26,
+      "dedicatedPresets": 22,
+      "uniqueHtmlSources": 15,
+      "refreshedHtmlSources": 8,
+      "refreshedDedicatedHtmlSources": 7,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-bar-01",
+          "name": "Bar \u00b7 Tap List",
+          "url": "/templates/signage/bar/01-tap-list-flagship.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-02",
+          "name": "Bar \u00b7 Cocktails",
+          "url": "/templates/signage/bar/02-cocktail-menu.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-03",
+          "name": "Bar \u00b7 Bottle List",
+          "url": "/templates/signage/bar/03-bottle-list.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-04",
+          "name": "Bar \u00b7 Happy Hour",
+          "url": "/templates/signage/bar/04-happy-hour.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-06",
+          "name": "Bar \u00b7 Tonight",
+          "url": "/templates/signage/bar/06-tonight-live.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-07",
+          "name": "Bar \u00b7 Bottle Service",
+          "url": "/templates/signage/bar/07-bottle-service.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-08",
+          "name": "Bar \u00b7 Game Day",
+          "url": "/templates/signage/bar/08-game-day.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-09",
+          "name": "Bar \u00b7 Hours",
+          "url": "/templates/signage/bar/09-hours-location.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-10",
+          "name": "Bar \u00b7 Hiring",
+          "url": "/templates/signage/bar/10-now-hiring.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-11",
+          "name": "Bar \u00b7 Tap List \u2014 Copper Manifold",
+          "url": "/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-11-portrait",
+          "name": "Bar \u00b7 Tap List \u2014 Copper Manifold \u2014 Portrait",
+          "url": "/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-12",
+          "name": "Bar \u00b7 Tap List \u2014 Cellar Index",
+          "url": "/templates/signage/bar/redesign-tap-list-v2-cellar-index.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-12-portrait",
+          "name": "Bar \u00b7 Tap List \u2014 Cellar Index \u2014 Portrait",
+          "url": "/templates/signage/bar/redesign-tap-list-v2-cellar-index.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-13",
+          "name": "Bar \u00b7 Tap List \u2014 Draft Lab",
+          "url": "/templates/signage/bar/redesign-tap-list-v3-draft-lab.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-sig-bar-13-portrait",
+          "name": "Bar \u00b7 Tap List \u2014 Draft Lab \u2014 Portrait",
+          "url": "/templates/signage/bar/redesign-tap-list-v3-draft-lab.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-bar",
+          "name": "\ud83c\udf78 Touch Kiosk \u2014 Bar & Tap House",
+          "url": "/templates/kiosk/bar.html",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "preset-kiosk-bar-jukebox",
+          "name": "\ud83c\udfb5 Touch Kiosk \u2014 Jukebox",
+          "url": "/templates/kiosk/bar-jukebox.html",
+          "tags": [
+            "BAR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "bar-tap-list-board",
+          "name": "Tap List Board",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "bar-cocktail-menu",
+          "name": "Cocktail Menu",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "bar-game-day-hub",
+          "name": "Game Day Hub",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "bar-live-event-tonight",
+          "name": "Live Event Tonight",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "bar-happy-hour-promo",
+          "name": "Happy Hour Promo",
+          "tags": [
+            "BAR"
+          ]
+        },
+        {
+          "id": "bar-trivia-night",
+          "name": "Trivia Night Scoreboard",
+          "tags": [
+            "BAR"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "HEALTHCARE",
+      "offeredPresets": 20,
+      "dedicatedPresets": 17,
+      "uniqueHtmlSources": 17,
+      "refreshedHtmlSources": 15,
+      "refreshedDedicatedHtmlSources": 14,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait",
+        "preset-sig-clinic-02",
+        "preset-sig-clinic-02-portrait"
+      ],
+      "newDedicatedPresets": [
+        "preset-sig-clinic-02",
+        "preset-sig-clinic-02-portrait"
+      ],
+      "offeredNames": [
+        {
+          "id": "preset-sig-healthcare-01",
+          "name": "Healthcare \u00b7 Waiting Room",
+          "url": "/templates/signage/healthcare/01-waiting-room-flagship.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-02",
+          "name": "Healthcare \u00b7 Physicians",
+          "url": "/templates/signage/healthcare/02-physician-directory.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-03",
+          "name": "Healthcare \u00b7 Now Serving",
+          "url": "/templates/signage/healthcare/03-now-serving.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-04",
+          "name": "Healthcare \u00b7 Vaccines",
+          "url": "/templates/signage/healthcare/04-vaccine-clinic.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-05",
+          "name": "Healthcare \u00b7 Hours",
+          "url": "/templates/signage/healthcare/05-hours-closures.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-06",
+          "name": "Healthcare \u00b7 Patient Education",
+          "url": "/templates/signage/healthcare/06-patient-education.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-07",
+          "name": "Healthcare \u00b7 MyChart",
+          "url": "/templates/signage/healthcare/07-mychart-signup.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-08",
+          "name": "Healthcare \u00b7 Pharmacy",
+          "url": "/templates/signage/healthcare/08-pharmacy-pickup.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-09",
+          "name": "Healthcare \u00b7 Clinical Trial",
+          "url": "/templates/signage/healthcare/09-clinical-trial.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-healthcare-10",
+          "name": "Healthcare \u00b7 Thanks",
+          "url": "/templates/signage/healthcare/10-thanks-leave.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-veterinary-01",
+          "name": "Veterinary \u00b7 Waiting Room",
+          "url": "/templates/signage/veterinary/01-waiting-room-flagship.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-veterinary-02",
+          "name": "Veterinary \u00b7 Adoptable Pets",
+          "url": "/templates/signage/veterinary/02-adopt-gallery.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-clinic-01",
+          "name": "Clinic \u00b7 Campaign",
+          "url": "/templates/signage/clinic/01-campaign-flagship.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-clinic",
+          "name": "\ud83e\ude7a Touch Kiosk \u2014 Patient Check-In",
+          "url": "/templates/kiosk/clinic.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-kiosk-vet",
+          "name": "\ud83d\udc3e Touch Kiosk \u2014 Veterinary Check-In",
+          "url": "/templates/kiosk/vet.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-clinic-02",
+          "name": "Care Services \u00b7 Services & Booking Guide",
+          "url": "/templates/signage/clinic/02-services-booking-guide.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        },
+        {
+          "id": "preset-sig-clinic-02-portrait",
+          "name": "Care Services \u00b7 Services & Booking Guide \u2014 Portrait",
+          "url": "/templates/signage/clinic/02-services-booking-guide.html",
+          "tags": [
+            "HEALTHCARE"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "HOSPITALITY",
+      "offeredPresets": 20,
+      "dedicatedPresets": 12,
+      "uniqueHtmlSources": 18,
+      "refreshedHtmlSources": 5,
+      "refreshedDedicatedHtmlSources": 4,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-hospitality-01",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Welcome",
+          "url": "/templates/signage/hospitality/01-lobby-welcome-flagship.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-03",
+          "name": "Hospitality \u00b7 Today's Events",
+          "url": "/templates/signage/hospitality/03-events-board.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-06",
+          "name": "Hospitality \u00b7 Wayfinder",
+          "url": "/templates/signage/hospitality/06-wayfinder.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-08",
+          "name": "Hospitality \u00b7 Check-in",
+          "url": "/templates/signage/hospitality/08-checkin-status.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-09",
+          "name": "Hospitality \u00b7 Outlook",
+          "url": "/templates/signage/hospitality/09-outlook.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-11",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Arrival Atelier",
+          "url": "/templates/signage/hospitality/lobby-v1-arrival-atelier-landscape.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-11-portrait",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Arrival Atelier \u2014 Portrait",
+          "url": "/templates/signage/hospitality/lobby-v1-arrival-atelier-portrait.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-12",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Resort Current",
+          "url": "/templates/signage/hospitality/lobby-v2-resort-current-landscape.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-12-portrait",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Resort Current \u2014 Portrait",
+          "url": "/templates/signage/hospitality/lobby-v2-resort-current-portrait.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-13",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Grand Grid",
+          "url": "/templates/signage/hospitality/lobby-v3-grand-grid-landscape.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-hospitality-13-portrait",
+          "name": "Hospitality \u00b7 Lobby \u00b7 Grand Grid \u2014 Portrait",
+          "url": "/templates/signage/hospitality/lobby-v3-grand-grid-portrait.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-sig-museum-01",
+          "name": "Museum \u00b7 Today",
+          "url": "/templates/signage/museum/01-today-flagship.html",
+          "tags": [
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate",
+          "name": "\ud83c\udfe2 Touch Kiosk \u2014 Commercial Leasing",
+          "url": "/templates/kiosk/real-estate.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum",
+          "name": "\ud83c\udfdb\ufe0f Touch Kiosk \u2014 Museum / Exhibits",
+          "url": "/templates/kiosk/museum.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate-models",
+          "name": "\ud83c\udfe0 Touch Kiosk \u2014 Model Homes Gallery",
+          "url": "/templates/kiosk/real-estate-models.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-realestate-resident",
+          "name": "\ud83c\udfe2 Touch Kiosk \u2014 Resident Concierge",
+          "url": "/templates/kiosk/real-estate-resident.html",
+          "tags": [
+            "CORPORATE",
+            "HOSPITALITY"
+          ]
+        },
+        {
+          "id": "preset-kiosk-museum-quest",
+          "name": "\ud83e\udded Touch Kiosk \u2014 Explorer Quest",
+          "url": "/templates/kiosk/museum-quest.html",
+          "tags": [
+            "HOSPITALITY",
+            "CORPORATE",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "RESTAURANT",
+      "offeredPresets": 58,
+      "dedicatedPresets": 9,
+      "uniqueHtmlSources": 31,
+      "refreshedHtmlSources": 10,
+      "refreshedDedicatedHtmlSources": 9,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-qsr-12",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Lane One",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-13",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Market Board",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-14",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Order Logic",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-15",
+          "name": "QSR \u00b7 Counter Order \u2014 The Pass",
+          "url": "/templates/signage/qsr/redesign-counter-v1-the-pass.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-16",
+          "name": "QSR \u00b7 Counter Order \u2014 Market Mosaic",
+          "url": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-17",
+          "name": "QSR \u00b7 Counter Order \u2014 Menu Folio",
+          "url": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-18",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Roaster's Ledger",
+          "url": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-19",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Morning Window",
+          "url": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-20",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Ceramic Shelf",
+          "url": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-21",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Slice Signal",
+          "url": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-22",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Oven No. 7",
+          "url": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-23",
+          "name": "QSR \u00b7 Pizza Shop \u2014 House Press",
+          "url": "/templates/signage/qsr/redesign-pizza-v3-house-press.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-12-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Lane One \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v1-lane-one.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-13-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Market Board \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v2-market-board.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-14-portrait",
+          "name": "QSR \u00b7 Drive-Thru \u2014 Order Logic \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-drive-thru-v3-order-logic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-15-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 The Pass \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v1-the-pass.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-16-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 Market Mosaic \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v2-market-mosaic.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-17-portrait",
+          "name": "QSR \u00b7 Counter Order \u2014 Menu Folio \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-counter-v3-menu-folio.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-18-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Roaster's Ledger \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-19-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Morning Window \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v2-morning-window.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-20-portrait",
+          "name": "QSR \u00b7 Coffee Shop \u2014 Ceramic Shelf \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-coffee-v3-ceramic-shelf.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-21-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Slice Signal \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v1-slice-signal.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-22-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 Oven No. 7 \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v2-oven-no7.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-23-portrait",
+          "name": "QSR \u00b7 Pizza Shop \u2014 House Press \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-pizza-v3-house-press.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-01",
+          "name": "Menu \u00b7 Menu",
+          "url": "/templates/signage/menus-pos/01-fullservice-menu.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-02",
+          "name": "Menu \u00b7 Wine List",
+          "url": "/templates/signage/menus-pos/02-wine-list.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-04",
+          "name": "Menu \u00b7 Cocktails",
+          "url": "/templates/signage/menus-pos/04-cocktail-program.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-05",
+          "name": "Menu \u00b7 POS 86 Board",
+          "url": "/templates/signage/menus-pos/05-86-board.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-06",
+          "name": "Menu \u00b7 Brunch Menu",
+          "url": "/templates/signage/menus-pos/06-brunch.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-07",
+          "name": "Menu \u00b7 Prix Fixe",
+          "url": "/templates/signage/menus-pos/07-prix-fixe.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-08",
+          "name": "Menu \u00b7 Tasting Progress",
+          "url": "/templates/signage/menus-pos/08-tasting-progress.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-09",
+          "name": "Menu \u00b7 Reservations",
+          "url": "/templates/signage/menus-pos/09-reservations.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-menus-pos-10",
+          "name": "Menu \u00b7 Takeaway",
+          "url": "/templates/signage/menus-pos/10-takeaway-pickup.html",
+          "tags": [
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-24-super-taco",
+          "name": "Super Taco \u00b7 Flagship Mexican Menu",
+          "url": "/templates/signage/qsr/24-super-taco-flagship.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-24-super-taco-portrait",
+          "name": "Super Taco \u00b7 Flagship Mexican Menu \u00b7 Portrait",
+          "url": "/templates/signage/qsr/24-super-taco-flagship.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-25-super-taco-tacos",
+          "name": "Super Taco \u00b7 Menu Wall 1 \u00b7 Tacos",
+          "url": "/templates/signage/qsr/25-super-taco-tacos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-26-super-taco-burritos",
+          "name": "Super Taco \u00b7 Menu Wall 2 \u00b7 Burritos & More",
+          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-27-super-taco-combos",
+          "name": "Super Taco \u00b7 Menu Wall 3 \u00b7 Combo Spotlight",
+          "url": "/templates/signage/qsr/27-super-taco-combos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-25-super-taco-tacos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 1 \u00b7 Tacos \u00b7 Portrait",
+          "url": "/templates/signage/qsr/25-super-taco-tacos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-26-super-taco-burritos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 2 \u00b7 Burritos & More \u00b7 Portrait",
+          "url": "/templates/signage/qsr/26-super-taco-burritos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-qsr-27-super-taco-combos-portrait",
+          "name": "Super Taco \u00b7 Menu Wall 3 \u00b7 Combo Spotlight \u00b7 Portrait",
+          "url": "/templates/signage/qsr/27-super-taco-combos.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-food",
+          "name": "\ud83e\udd57 Touch Kiosk \u2014 Self-Order (QSR)",
+          "url": "/templates/kiosk/food.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-kiosk-qsr-pickup",
+          "name": "\ud83e\udd61 Touch Kiosk \u2014 Order Pickup & Curbside",
+          "url": "/templates/kiosk/qsr-pickup.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-kiosk-food-nutrition",
+          "name": "\ud83e\udd57 Touch Kiosk \u2014 Nutrition & Allergens",
+          "url": "/templates/kiosk/food-nutrition.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-bar-jukebox",
+          "name": "\ud83c\udfb5 Touch Kiosk \u2014 Jukebox",
+          "url": "/templates/kiosk/bar-jukebox.html",
+          "tags": [
+            "BAR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "qsr-sushi-ramen-menu",
+          "name": "Sushi & Ramen Menu",
+          "url": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-sushi-ramen-menu-portrait",
+          "name": "Sushi & Ramen Menu \u2014 Portrait",
+          "url": "/templates/signage/qsr/redesign-sushi-ramen-after-dark.html",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-daily-specials-promo",
+          "name": "Daily Specials Promo",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-artisan-pizza",
+          "name": "Artisan Pizza Counter",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-specialty-coffee",
+          "name": "Specialty Coffee Bar",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-ramen-fusion",
+          "name": "Ramen / Asian Fusion",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-mexican-cantina",
+          "name": "Mexican Cantina",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-bakery-patisserie",
+          "name": "Bakery / Patisserie",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-brunch-spot",
+          "name": "Brunch Spot",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        },
+        {
+          "id": "qsr-fine-dining-wine",
+          "name": "Fine Dining Wine List",
+          "tags": [
+            "QSR",
+            "RESTAURANT"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "SPORTS",
+      "offeredPresets": 54,
+      "dedicatedPresets": 0,
+      "uniqueHtmlSources": 1,
+      "refreshedHtmlSources": 1,
+      "refreshedDedicatedHtmlSources": 0,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sb-main",
+          "name": "\ud83c\udfdf\ufe0f Main Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-quick",
+          "name": "\u26a1 Quick Scoreboard (one-piece)",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-ribbon",
+          "name": "\ud83c\udf97\ufe0f Main Ribbon",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-main-scorebug",
+          "name": "\ud83d\udcfa Main Scorebug",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-hs",
+          "name": "\ud83c\udfc0 Scoreboard \u00b7 High School",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-college",
+          "name": "\ud83c\udf93 Scoreboard \u00b7 College",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-sb-pro",
+          "name": "\ud83c\udfc6 Scoreboard \u00b7 Pro",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "sports-cts-water-polo-ribbon",
+          "name": "CTS Water Polo Ribbon (cinematic celebrations)",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-hs",
+          "name": "High School Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-college",
+          "name": "College Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-pro",
+          "name": "Pro Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-touchdown",
+          "name": "Touchdown",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-field-goal",
+          "name": "Field Goal",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-slam-dunk",
+          "name": "Slam Dunk",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-buzzer-beater",
+          "name": "Buzzer Beater",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-three-pointer",
+          "name": "Three-Pointer",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-home-run",
+          "name": "Home Run",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-grand-slam",
+          "name": "Grand Slam",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-strikeout",
+          "name": "Strikeout",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-hockey-goal",
+          "name": "Hockey Goal",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-hat-trick",
+          "name": "Hat Trick",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-soccer-goal",
+          "name": "Soccer GOOOOAL",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-golazo",
+          "name": "Golazo",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-wrestling-pin",
+          "name": "Wrestling Pin",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-tennis-matchpoint",
+          "name": "Match Point",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-swim-record",
+          "name": "Swim Record",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-cel-track-record",
+          "name": "Track Record",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-football",
+          "name": "\ud83c\udfc8 Football Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-baseball",
+          "name": "\u26be Baseball / Softball Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-volleyball",
+          "name": "\ud83c\udfd0 Volleyball Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-soccer",
+          "name": "\u26bd Soccer Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-hockey",
+          "name": "\ud83c\udfd2 Hockey / Lacrosse Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-scoreboard-wrestling",
+          "name": "\ud83e\udd3c Wrestling Scoreboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-leaderboard-meet",
+          "name": "\ud83c\udfc5 Meet Leaderboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-swim-lane-board",
+          "name": "\ud83c\udfca Swimming Lane Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-track-lane-board",
+          "name": "\ud83c\udfc3 Track Lane Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-dive-leaderboard",
+          "name": "\ud83e\udd3f Diving Leaderboard",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-swim-relay-board",
+          "name": "\ud83c\udfca Swim Relay Exchange Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-dive-judges-board",
+          "name": "\ud83e\udd3f Diving Judges + Leaderboard Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-broadcast-board",
+          "name": "\ud83c\udfca Broadcast Meet Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-duel-board",
+          "name": "\ud83c\udfca Dual-Meet Duel Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-stadium-chase-board",
+          "name": "\ud83c\udfca Record Chase Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-rotator",
+          "name": "\ud83e\udd1d Sponsor Rotator",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-scorebar",
+          "name": "\ud83c\udff7\ufe0f Co-Branded Scorebar",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-concourse",
+          "name": "\ud83d\udecd\ufe0f Concourse Sponsor Loop",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-sponsor-presenting",
+          "name": "\u2b50 Presenting Sponsor",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-lineup",
+          "name": "\ud83d\udccb Starting Lineup",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-tonight",
+          "name": "\ud83d\udce3 Tonight\u2019s Game",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-schedule",
+          "name": "\ud83d\uddd3\ufe0f This Week\u2019s Games",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-halftime",
+          "name": "\u23f8\ufe0f Halftime Board",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        },
+        {
+          "id": "sports-gameday-countdown",
+          "name": "Game Day Countdown",
+          "tags": [
+            "SPORTS",
+            "K12"
+          ]
+        }
+      ]
+    },
+    {
+      "industry": "WORSHIP",
+      "offeredPresets": 51,
+      "dedicatedPresets": 48,
+      "uniqueHtmlSources": 25,
+      "refreshedHtmlSources": 1,
+      "refreshedDedicatedHtmlSources": 0,
+      "newPresetIds": [
+        "preset-sig-corporate-20",
+        "preset-sig-corporate-20-portrait"
+      ],
+      "newDedicatedPresets": [],
+      "offeredNames": [
+        {
+          "id": "preset-sig-worship-01",
+          "name": "Worship \u00b7 Welcome \u2014 Common Ground",
+          "url": "/templates/signage/worship/welcome-v1-common-ground.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-02",
+          "name": "Worship \u00b7 Welcome \u2014 Sacred Light",
+          "url": "/templates/signage/worship/welcome-v2-sacred-light.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-03",
+          "name": "Worship \u00b7 Welcome \u2014 Open Door",
+          "url": "/templates/signage/worship/welcome-v3-open-door.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-04",
+          "name": "Worship \u00b7 Service Times \u2014 Now / Next / Later",
+          "url": "/templates/signage/worship/service-v1-now-next.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-05",
+          "name": "Worship \u00b7 Service Times \u2014 Campus Threshold",
+          "url": "/templates/signage/worship/service-v2-campus-threshold.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-06",
+          "name": "Worship \u00b7 Service Times \u2014 Ceremonial Countdown",
+          "url": "/templates/signage/worship/service-v3-ceremonial.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-07",
+          "name": "Worship \u00b7 Sermon Series \u2014 Deep Root",
+          "url": "/templates/signage/worship/sermon-v1-deep-root.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-08",
+          "name": "Worship \u00b7 Sermon Series \u2014 Field Notes",
+          "url": "/templates/signage/worship/sermon-v2-field-notes.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-09",
+          "name": "Worship \u00b7 Sermon Series \u2014 Confluence",
+          "url": "/templates/signage/worship/sermon-v3-confluence.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-10",
+          "name": "Worship \u00b7 Song Board \u2014 Sunday Record",
+          "url": "/templates/signage/worship/song-v1-sunday-record.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-11",
+          "name": "Worship \u00b7 Song Board \u2014 The New Hymnal",
+          "url": "/templates/signage/worship/song-v2-new-hymnal.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-12",
+          "name": "Worship \u00b7 Song Board \u2014 Sacred Frequency",
+          "url": "/templates/signage/worship/song-v3-sacred-frequency.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-13",
+          "name": "Worship \u00b7 Weekly Events \u2014 One Invitation",
+          "url": "/templates/signage/worship/weekly-v1-one-invitation.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-14",
+          "name": "Worship \u00b7 Weekly Events \u2014 Weekline",
+          "url": "/templates/signage/worship/weekly-v2-weekline.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-15",
+          "name": "Worship \u00b7 Weekly Events \u2014 Three Ways In",
+          "url": "/templates/signage/worship/weekly-v3-three-ways-in.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-16",
+          "name": "Worship \u00b7 Giving \u2014 Measured Future",
+          "url": "/templates/signage/worship/giving-v1-measured-future.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-17",
+          "name": "Worship \u00b7 Giving \u2014 Light the Window",
+          "url": "/templates/signage/worship/giving-v2-light-window.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-18",
+          "name": "Worship \u00b7 Giving \u2014 One More Seat",
+          "url": "/templates/signage/worship/giving-v3-one-more-seat.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-19",
+          "name": "Worship \u00b7 Verse of the Day \u2014 Daybreak",
+          "url": "/templates/signage/worship/verse-v1-daybreak.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-20",
+          "name": "Worship \u00b7 Verse of the Day \u2014 The Word Stands",
+          "url": "/templates/signage/worship/verse-v2-word-stands.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-21",
+          "name": "Worship \u00b7 Verse of the Day \u2014 Open Sky",
+          "url": "/templates/signage/worship/verse-v3-open-sky.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-22",
+          "name": "Worship \u00b7 Lobby Hub \u2014 The Foyer Edit",
+          "url": "/templates/signage/worship/lobby-v1-foyer-edit.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-23",
+          "name": "Worship \u00b7 Lobby Hub \u2014 Campus Line",
+          "url": "/templates/signage/worship/lobby-v2-campus-line.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-24",
+          "name": "Worship \u00b7 Lobby Hub \u2014 Live Commons",
+          "url": "/templates/signage/worship/lobby-v3-live-commons.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-01-portrait",
+          "name": "Worship \u00b7 Welcome \u2014 Common Ground \u2014 Portrait",
+          "url": "/templates/signage/worship/welcome-v1-common-ground.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-02-portrait",
+          "name": "Worship \u00b7 Welcome \u2014 Sacred Light \u2014 Portrait",
+          "url": "/templates/signage/worship/welcome-v2-sacred-light.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-03-portrait",
+          "name": "Worship \u00b7 Welcome \u2014 Open Door \u2014 Portrait",
+          "url": "/templates/signage/worship/welcome-v3-open-door.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-04-portrait",
+          "name": "Worship \u00b7 Service Times \u2014 Now / Next / Later \u2014 Portrait",
+          "url": "/templates/signage/worship/service-v1-now-next.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-05-portrait",
+          "name": "Worship \u00b7 Service Times \u2014 Campus Threshold \u2014 Portrait",
+          "url": "/templates/signage/worship/service-v2-campus-threshold.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-06-portrait",
+          "name": "Worship \u00b7 Service Times \u2014 Ceremonial Countdown \u2014 Portrait",
+          "url": "/templates/signage/worship/service-v3-ceremonial.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-07-portrait",
+          "name": "Worship \u00b7 Sermon Series \u2014 Deep Root \u2014 Portrait",
+          "url": "/templates/signage/worship/sermon-v1-deep-root.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-08-portrait",
+          "name": "Worship \u00b7 Sermon Series \u2014 Field Notes \u2014 Portrait",
+          "url": "/templates/signage/worship/sermon-v2-field-notes.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-09-portrait",
+          "name": "Worship \u00b7 Sermon Series \u2014 Confluence \u2014 Portrait",
+          "url": "/templates/signage/worship/sermon-v3-confluence.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-10-portrait",
+          "name": "Worship \u00b7 Song Board \u2014 Sunday Record \u2014 Portrait",
+          "url": "/templates/signage/worship/song-v1-sunday-record.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-11-portrait",
+          "name": "Worship \u00b7 Song Board \u2014 The New Hymnal \u2014 Portrait",
+          "url": "/templates/signage/worship/song-v2-new-hymnal.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-12-portrait",
+          "name": "Worship \u00b7 Song Board \u2014 Sacred Frequency \u2014 Portrait",
+          "url": "/templates/signage/worship/song-v3-sacred-frequency.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-13-portrait",
+          "name": "Worship \u00b7 Weekly Events \u2014 One Invitation \u2014 Portrait",
+          "url": "/templates/signage/worship/weekly-v1-one-invitation.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-14-portrait",
+          "name": "Worship \u00b7 Weekly Events \u2014 Weekline \u2014 Portrait",
+          "url": "/templates/signage/worship/weekly-v2-weekline.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-15-portrait",
+          "name": "Worship \u00b7 Weekly Events \u2014 Three Ways In \u2014 Portrait",
+          "url": "/templates/signage/worship/weekly-v3-three-ways-in.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-16-portrait",
+          "name": "Worship \u00b7 Giving \u2014 Measured Future \u2014 Portrait",
+          "url": "/templates/signage/worship/giving-v1-measured-future.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-17-portrait",
+          "name": "Worship \u00b7 Giving \u2014 Light the Window \u2014 Portrait",
+          "url": "/templates/signage/worship/giving-v2-light-window.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-18-portrait",
+          "name": "Worship \u00b7 Giving \u2014 One More Seat \u2014 Portrait",
+          "url": "/templates/signage/worship/giving-v3-one-more-seat.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-19-portrait",
+          "name": "Worship \u00b7 Verse of the Day \u2014 Daybreak \u2014 Portrait",
+          "url": "/templates/signage/worship/verse-v1-daybreak.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-20-portrait",
+          "name": "Worship \u00b7 Verse of the Day \u2014 The Word Stands \u2014 Portrait",
+          "url": "/templates/signage/worship/verse-v2-word-stands.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-21-portrait",
+          "name": "Worship \u00b7 Verse of the Day \u2014 Open Sky \u2014 Portrait",
+          "url": "/templates/signage/worship/verse-v3-open-sky.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-22-portrait",
+          "name": "Worship \u00b7 Lobby Hub \u2014 The Foyer Edit \u2014 Portrait",
+          "url": "/templates/signage/worship/lobby-v1-foyer-edit.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-23-portrait",
+          "name": "Worship \u00b7 Lobby Hub \u2014 Campus Line \u2014 Portrait",
+          "url": "/templates/signage/worship/lobby-v2-campus-line.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-worship-24-portrait",
+          "name": "Worship \u00b7 Lobby Hub \u2014 Live Commons \u2014 Portrait",
+          "url": "/templates/signage/worship/lobby-v3-live-commons.html",
+          "tags": [
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-kiosk-website-tabs",
+          "name": "\ud83c\udf10 Touch Kiosk \u2014 Website Tabs",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20",
+          "name": "Service Update \u00b7 Temporary Closure",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        },
+        {
+          "id": "preset-sig-corporate-20-portrait",
+          "name": "Service Update \u00b7 Temporary Closure \u2014 Portrait",
+          "url": "/templates/signage/corporate/20-service-update.html",
+          "tags": [
+            "K12",
+            "GYM",
+            "RETAIL",
+            "CORPORATE",
+            "QSR",
+            "FASHION",
+            "BAR",
+            "HEALTHCARE",
+            "HOSPITALITY",
+            "RESTAURANT",
+            "SPORTS",
+            "WORSHIP"
+          ]
+        }
+      ]
+    }
+  ]
+}
