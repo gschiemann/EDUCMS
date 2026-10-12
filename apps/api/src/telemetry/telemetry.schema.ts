@@ -206,6 +206,26 @@ const nativeVideoSchema = z.strictObject({
   elapsedMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   stalls: z.number().int().min(0).max(1_000_000).optional(),
   loops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  // Protocol 3 (2026-10-12): late frames the native renderer dropped, the
+  // protocol the APK answered, and one bounded row per native SLOT (a mixed
+  // playlist item or a template zone) so native and web can be compared per
+  // screen type. Optional: a protocol-2 page never sends them.
+  drops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  protocol: z.number().int().min(1).max(3).optional(),
+  zones: z.array(z.strictObject({
+    slot: z.string().regex(/^(item|zone):[A-Za-z0-9_-]{1,64}$/),
+    state: z.enum(['preparing','ready','presenting','failed']),
+    held: z.boolean().optional(),
+    ended: z.boolean().optional(),
+    reason: z.string().regex(/^[a-z0-9-]{1,64}$/i).optional(),
+    codecName: z.string().regex(/^[a-z0-9_.-]{1,128}$/i).optional(),
+    uniqueFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    drops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    loops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    elapsedMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    width: z.number().int().min(0).max(16_384).optional(),
+    height: z.number().int().min(0).max(16_384).optional(),
+  })).max(8).optional(),
   output: z.strictObject({
     attached: z.boolean(), visible: z.boolean(), hardwareAccelerated: z.boolean(),
     viewUpdates: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),

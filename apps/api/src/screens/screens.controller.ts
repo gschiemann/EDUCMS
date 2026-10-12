@@ -1,5 +1,6 @@
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled } from './native-video';
+import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
 import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
@@ -7226,6 +7227,47 @@ export class ScreensController {
           const asset = item && schedules.flatMap((s: any) => s.playlist.items).find((pi: any) => pi.assetId === item.asset_id)?.asset;
           const native = buildNativeVideoDescriptor({ screen, manifest: manifestPayload, asset });
           if (native) manifestPayload.nativeVideo = native;
+        }
+      } catch {
+        // Never fail a manifest over an optional renderer.
+      }
+    }
+
+    // 2026-10-12 — protocol 3 (native-video-items.ts): the files native may
+    // play inside a MIXED playlist or a template's VIDEO zones. Only a
+    // non-solo candidate is considered (a solo keeps its protocol-2 field
+    // above and its payload hash). Template zones store a URL, not an asset
+    // id, so their rows are looked up by URL within the tenant — one query,
+    // only for an enrolled screen whose template actually has such zones.
+    if (screen.tenantId && !manifestPayload.nativeVideo && nativeVideoItemsCandidate(manifestPayload)) {
+      try {
+        const enrolled = await nativeVideoEnrolled(screen as any, async () =>
+          (await this.prisma.client.screen.count({
+            where: { tenantId: screen.tenantId as string, faceOfScreenId: screen.id },
+          })) > 0,
+        );
+        if (enrolled) {
+          const rows: any[] = schedules.flatMap((s: any) => s.playlist.items).map((pi: any) => pi.asset).filter(Boolean);
+          const byId = new Map<string, any>(rows.map((a: any) => [String(a.id), a]));
+          const tpl = dynamicPlaylists[0]?.template;
+          const urls = tpl
+            ? nativeTemplateVideoZones(tpl).map((z: any) => String(z.defaultConfig?.assetUrl ?? '')).filter(Boolean)
+            : [];
+          const byUrl = new Map<string, any>();
+          if (urls.length > 0) {
+            const found = await this.prisma.client.asset.findMany({
+              where: { tenantId: screen.tenantId as string, fileUrl: { in: urls } },
+              take: NATIVE_VIDEO_MAX_ZONES,
+            });
+            for (const a of found) byUrl.set(String(a.fileUrl), a);
+          }
+          const native = buildNativeVideoItems({
+            screen,
+            manifest: manifestPayload,
+            assetById: (id) => byId.get(id),
+            assetByUrl: (url) => byUrl.get(url),
+          });
+          if (native) manifestPayload.nativeVideoItems = native;
         }
       } catch {
         // Never fail a manifest over an optional renderer.
