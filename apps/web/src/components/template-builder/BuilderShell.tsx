@@ -49,7 +49,7 @@ import { BoardMediaControls, MediaQuickControls, RotationControls } from './Sele
 import { AppLibraryPanel } from '../apps/AppLibraryPanel';
 import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';
-import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
+import { PropertiesPanel } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { SuggestionsPanel } from './SuggestionsPanel';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -1578,8 +1578,6 @@ function BuilderBottomBar() {
   const setSnap      = useBuilderStore((s) => s.setSnapEnabled);
   const showGuides   = useBuilderStore((s) => s.showGuides);
   const setGuides    = useBuilderStore((s) => s.setShowGuides);
-  const meta         = useBuilderStore((s) => s.meta);
-  const setMeta      = useBuilderStore((s) => s.setMeta);
 
   // ── Zone-context controls ────────────────────────────────────────
   const zones          = useBuilderStore((s) => s.zones);
@@ -1591,7 +1589,6 @@ function BuilderBottomBar() {
   const moveLayer      = useBuilderStore((s) => s.moveLayer);
   const select         = useBuilderStore((s) => s.select);
 
-  const [backdropOpen, setBackdropOpen] = useState(false);
   const [urlOpen,      setUrlOpen]      = useState(false);
   const [dateOpen,     setDateOpen]     = useState(false);
   const [assetOpen,    setAssetOpen]    = useState(false);
@@ -1604,16 +1601,16 @@ function BuilderBottomBar() {
 
   // Close all popovers on Escape
   useEffect(() => {
-    if (!backdropOpen && !urlOpen && !dateOpen && !assetOpen) return;
+    if (!urlOpen && !dateOpen && !assetOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setBackdropOpen(false); setUrlOpen(false);
+        setUrlOpen(false);
         setDateOpen(false); setAssetOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [backdropOpen, urlOpen, dateOpen, assetOpen]);
+  }, [urlOpen, dateOpen, assetOpen]);
 
   // 2026-06-01 — operator: "none of the fields are editable." Every
   // EXTERNAL_HTML signage / menu board is a single full-bleed "Scene" zone,
@@ -2417,55 +2414,13 @@ function BuilderBottomBar() {
       {groupBtn(showGuides,  'Show alignment guides', () => setGuides(!showGuides),   <Ruler className="w-4 h-4" />)}
       <div className="w-px h-5 bg-slate-200 mx-1" />
 
-      {/* Canvas backdrop */}
-      {groupBtn(backdropOpen, 'Canvas backdrop', () => setBackdropOpen(true), <ImageIcon className="w-4 h-4" />)}
-
-      {backdropOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Canvas backdrop picker"
-          className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-        >
-          {/* Backdrop — mouse-only convenience; the labeled Close button
-              below is the keyboard/AT-accessible path. a11y wave
-              (2026-08-24), same pattern as app-dialog.tsx's backdrop. */}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
-            onClick={() => setBackdropOpen(false)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 slide-in-from-bottom-2 duration-200">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-              <h2 className="text-sm font-bold text-slate-800">Canvas backdrop</h2>
-              <button
-                onClick={() => setBackdropOpen(false)}
-                aria-label="Close"
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-4 h-4" aria-hidden />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5">
-              <CanvasBackdropSection
-                bgColor={meta.bgColor || ''}
-                bgGradient={meta.bgGradient || ''}
-                bgImage={meta.bgImage || ''}
-                onChange={(patch) => setMeta(patch)}
-                variant="modal"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50/40">
-              <button
-                onClick={() => setBackdropOpen(false)}
-                className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Add an image — owner 2026-10-12: this button used to open a "Canvas
+          backdrop" modal. Rendered INSIDE this bar, whose `-translate-x-1/2`
+          makes it the containing block for `position: fixed`, so the modal
+          sat half off-screen. Backdrop editing lives in the Background tab;
+          this button now adds a picture through the SAME media picker the
+          Image tile uses (library or upload), sized to the picture. */}
+      {groupBtn(false, tB('addImage'), () => openMediaPicker({ kind: 'image' }), <ImageIcon className="w-4 h-4" />)}
 
       {/* Asset picker modal — outside bar stacking context */}
       {assetOpen && selectedZone && (
