@@ -721,12 +721,11 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       payload: { overrideId: 'or-drill-1', severity: 'CRITICAL', textBlob: 'DRILL — test', expiresAt: 0, isDrill: true },
     });
 
+    // Owner 2026-10-12: no DRILL banner on the glass — customers design their
+    // own drill content. A drill must still never paint one.
     const banner = page.locator('[data-testid="drill-banner"]');
-    await expect(banner, 'a DRILL manifest must paint the drill banner').toBeVisible({ timeout: 5_000 });
-    await expect(banner).toContainText('THIS IS A DRILL');
-    await expect(banner).toContainText('SIMULACRO');
-    const cache = await readEmergencyCache(page);
-    expect(cache?.payload?.isDrill, 'the cached alert must remember it is a drill').toBe(true);
+    await expect.poll(async () => (await readEmergencyCache(page))?.payload?.isDrill, { timeout: 5_000 }).toBe(true);
+    await expect(banner).toHaveCount(0);
 
     // A LIVE alert of the same type — the banner must come down, the alert stays.
     manifestRef.value = baselineManifest({
@@ -744,7 +743,7 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       signature: 'fake-sig-for-test',
       payload: { overrideId: 'or-live-2', severity: 'CRITICAL', textBlob: '', expiresAt: 0 },
     });
-    await expect(banner, 'a LIVE alert must not carry the drill banner').toBeHidden({ timeout: 5_000 });
+    await expect(banner).toHaveCount(0);
     await expect.poll(async () => (await readEmergencyCache(page))?.payload?.isDrill, { timeout: 5_000 }).toBe(false);
   });
 

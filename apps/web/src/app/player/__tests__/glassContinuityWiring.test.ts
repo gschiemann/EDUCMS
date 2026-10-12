@@ -193,7 +193,8 @@ describe('6 — an alert still paints over every new state', () => {
     expect(overlayAt).toBeGreaterThan(0);
     const guard = PAGE.slice(PAGE.lastIndexOf('{tenantId && (', overlayAt), overlayAt);
     expect(guard).not.toContain('glassQuiet');
-    expect(PAGE.slice(PAGE.lastIndexOf('\n', PAGE.indexOf('<DrillBanner')), PAGE.indexOf('<DrillBanner'))).not.toContain('glassQuiet');
+    // No drill banner on the glass (owner 2026-10-12).
+    expect(PAGE).not.toContain('<DrillBanner');
   });
 
   it('quiet glass is computed OFF while any alert is up (activeEmergency, pushed message, emergency phase or playlist)', () => {
