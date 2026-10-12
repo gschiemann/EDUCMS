@@ -165,19 +165,17 @@ describe('changing the widget is deliberate, and reversible', () => {
     expect((theZone().defaultConfig as Record<string, unknown>).content).toBe(STALE);
   });
 
-  it('returns focus to the toggle after applying, never to document.body', async () => {
+  it('once the zone is live, the offer goes away (it only appears on static text/image zones)', async () => {
     mount();
     const dialog = await makeItAClock();
     fireEvent.click(within(dialog).getByRole('button', { name: /make it a clock/i }));
     await waitFor(() => expect(theZone().widgetType).toBe('CLOCK'));
-    await waitFor(() => expect(document.activeElement).toBe(toggle()));
+    await waitFor(() => expect(screen.queryByText(/make it live/i)).toBeNull());
   });
 
-  it('drops the type it already is from the list, so it cannot become itself', async () => {
+  it('is not offered on a widget that already updates itself (owner 2026-10-12)', () => {
     mount({ zone: textZone({ widgetType: 'CLOCK', defaultConfig: {} }) });
-    fireEvent.click(toggle());
-    expect(screen.queryByRole('button', { name: /^Clock$/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /weather/i })).toBeInTheDocument();
+    expect(screen.queryByText(/make it live/i)).toBeNull();
   });
 });
 

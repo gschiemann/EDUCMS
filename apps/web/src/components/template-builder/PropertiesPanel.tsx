@@ -1077,8 +1077,11 @@ export function PropertiesPanel() {
               different tab (WIDGETS → arm "Replace <zone>" → click a tile).
               An operator reading an imported text box sits HERE, so the
               affordance belongs here, framed by the outcome. Destructive,
-              confirmed, and one undo step. See MakeItLive.tsx. */}
-          <MakeItLive zone={zone} />
+              confirmed, and one undo step. See MakeItLive.tsx.
+              2026-10-12 (owner): only on STATIC zones (plain text / image) —
+              on a clock or any widget that already updates itself the offer
+              made no sense and duplicated the widget picker. */}
+          {['TEXT', 'RICH_TEXT', 'IMAGE'].includes(String(zone.widgetType)) && <MakeItLive zone={zone} />}
 
           {/* 2026-05-09 — operator: "what is the layer name for?" Renamed
               to "Name" with explainer so it's obvious it's a label for
