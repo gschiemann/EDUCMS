@@ -230,7 +230,16 @@ internal object FaceVideoBox {
         val container = s.container ?: FrameLayout(host.web.context).also { s.container = it }
         val box = s.box ?: FrameLayout(host.web.context).also { it.setBackgroundColor(Color.BLACK); s.box = it }
         val surface = s.surface ?: SurfaceView(host.web.context).also { sv ->
-            sv.setZOrderOnTop(false)
+            // A SOLO full-screen video (protocol 2) sits ABOVE the page, the
+            // way a native signage player (Goodview's CMS) draws it: nothing
+            // has to turn transparent, so it shows on every ROM. Field
+            // 2026-10-12 VisionCore (Rockchip rk3328, Android 11): behind the
+            // page the decoder rendered 29.8 fps, visible=true, while the glass
+            // stayed WHITE (the window never turned see-through). Emergency
+            // stops native before an alert paints (FaceVideoBox hold + 1 s
+            // watch), so nothing the page must show is ever covered. Protocol-3
+            // zones stay UNDER the page — widgets draw above them.
+            if (s.protocol == 2) sv.setZOrderMediaOverlay(true) else sv.setZOrderOnTop(false)
             sv.isFocusable = false
             sv.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) { surfaceReady(host, s) }
