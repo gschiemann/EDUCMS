@@ -96,3 +96,18 @@ All 60 landscape visuals inspected from regenerated contact sheets. Retain means
 ## Evidence
 
 Initial source-to-image map: `scratch/astra-finish/coverage.json`; six regenerated current-poster contact sheets. Original supplied astra-sheets directory was absent. No source edited yet.
+
+## One-file follow-up: patient education portrait spacing
+
+Scope: only `apps/web/public/templates/signage/healthcare/06-patient-education.html`. Reuses the 21-section coverage table above; this follow-up covers the scoped rendering/editability portions of sections 15, 18, 19, 20 and 21. Other domains remain deferred.
+
+The portrait lead now reserves an 800px panel and a nonshrinking 280px headline line box with explicit clearance after the eyebrow. The longer lead leaves the four topic rows readable. Chromium and WebKit screenshots inspected; no eyebrow/headline DOM Range collision in either orientation under default or longer headline copy.
+
+|Engine|Orientation|Default gap (stage px)|Long-copy gap|Saved font|
+|---|---|---|---|---|
+|Chromium|Landscape|25.0|25.0|64px Georgia preserved|
+|Chromium|Portrait|49.0|54.0|64px Georgia preserved|
+|WebKit|Landscape|22.9|24.5|64px Georgia preserved|
+|WebKit|Portrait|48.4|53.7|64px Georgia preserved|
+
+Minimum visible support text remains >=51.8px; the long portrait headline fits at150.45px. Exact script blocks, text keys and image-slot keys are unchanged. Evidence: `scratch/astra-finish/one-check.json`, `education-spacing-{engine}-{orientation}.png`. This is a targeted collision check, not a claim that unrelated full-board geometry or release gates have passed. Lead owns injection/posters/integration/CI.

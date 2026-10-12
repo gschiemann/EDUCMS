@@ -23,6 +23,12 @@
 
 
 .top .brand-tag{margin-top:18px}.top .brand-name{line-height:1.25}
+
+/* Give the portrait headline its own line box; glyph bounds must clear the eyebrow. */
+.stage[data-orient="port"] .education{grid-template-rows:800px 1fr}
+.stage[data-orient="port"] .guide-lead .eyebrow{flex-shrink:0;margin-bottom:32px}
+.stage[data-orient="port"] .guide-lead .hero-title{flex-shrink:0;height:280px;line-height:1.15}
+.stage[data-orient="port"] .guide-note{margin-top:12px}
 </style><script>/*EDUCMS-SHIM-V15*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
