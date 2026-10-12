@@ -414,6 +414,7 @@ test('cached video loops after a cold boot without internet', async ({ page, con
 test.describe('cached pairing authority', () => {
 test.use({ serviceWorkers: 'block' });
 test('an authoritative unpair retires cached content and stays retired after reload', async ({ page }) => {
+  test.setTimeout(180_000);
   await installMocks(page);
   await installWsStub(page);
   const saved = { at: Date.now(), m: {
@@ -441,7 +442,15 @@ test('an authoritative unpair retires cached content and stays retired after rel
   await page.goto('/player', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText(PROOF_TEXT, { exact: true })).toBeVisible({ timeout: 20_000 });
   release();
-  await expect(page.getByText(PROOF_TEXT, { exact: true })).toHaveCount(0);
+  // Glass continuity (2026-10-11, launch W4 P0-6): ONE unpaired answer never
+  // takes a screen with content on its glass to the pairing code — it is held
+  // and content keeps playing (IdentityVerdictGate) …
+  await page.waitForTimeout(5_000);
+  await expect(page.getByText(PROOF_TEXT, { exact: true })).toBeVisible();
+  expect(await page.evaluate(id => localStorage.getItem('edu_manifest_pairing_v2:' + id), FAKE_SCREEN_ID)).not.toBe('unpaired');
+  // … and the identical answer ≥ 60 s later (the page asks again by itself)
+  // is the authority: cached content retires and the pairing code shows.
+  await expect(page.getByText(PROOF_TEXT, { exact: true })).toHaveCount(0, { timeout: 90_000 });
   await expect.poll(() => page.evaluate(id => localStorage.getItem('edu_manifest_pairing_v2:' + id), FAKE_SCREEN_ID)).toBe('unpaired');
   await expect(page.locator('body')).toContainText('123456');
   await page.reload({ waitUntil: 'domcontentloaded' });
