@@ -25,6 +25,7 @@
 import {
   UPDATE_COVER_KEY,
   UPDATE_EVIDENCE_KEY,
+  isBundleUpdateRecord,
   parseUpdateAppliedRecord,
   type UpdateAppliedRecord,
 } from './offHoursUpdate';
@@ -302,6 +303,12 @@ export function removeUpdateCover(doc: Document, storage: Storage | null, nowMs:
     } catch { /* nothing to clear */ }
   }
   if (!record) return null;
+  // A reload that only borrowed the cover (glass continuity) is not an update:
+  // drop the record, report nothing.
+  if (!isBundleUpdateRecord(record)) {
+    try { storage?.removeItem(UPDATE_COVER_KEY); } catch { /* best effort */ }
+    return null;
+  }
   const { data: _picture, ...rest } = record as UpdateAppliedRecord & { data?: string };
   void _picture;
   const completed: UpdateAppliedRecord = { ...rest, contentAtMs: nowMs };
@@ -311,3 +318,32 @@ export function removeUpdateCover(doc: Document, storage: Storage | null, nowMs:
   } catch { /* best effort */ }
   return completed;
 }
+
+/**
+ * Why a document reloads under the cover (2026-10-11, glass continuity).
+ * Every reload of a paired screen that has shown content - an operator or
+ * system REFRESH_WEB, the durable manifest refresh, the error boundary, an
+ * LED canvas change, Sync - takes the same picture the off-hours update
+ * takes, so the next document's first frame is the last one the customer
+ * saw (or its colour), never the splash.
+ */
+export type ReloadCoverReason =
+  | 'refresh-ws'
+  | 'refresh-sse'
+  | 'refresh-durable'
+  | 'error-boundary'
+  | 'canvas'
+  | 'sync'
+  | 'reload';
+
+/** The record a borrowed-cover reload leaves for the next document. */
+export function reloadCoverRecord(reason: ReloadCoverReason, frame: CoverFrame, nowMs: number): UpdateCoverRecord {
+  return {
+    v: 1, from: null, to: null, window: 'idle', boundary: 'now', zone: 'UTC', zoneSource: 'utc',
+    capture: frame.capture, navigatedAtMs: nowMs, reason,
+    kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
+  };
+}
+
+/** A plain black cover - for a reload whose frame is already gone (a crash). */
+export const BLACK_COVER_FRAME: CoverFrame = { kind: 'color', color: '#000', capture: 'none', w: 0, h: 0 };

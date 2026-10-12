@@ -256,6 +256,19 @@ export interface UpdateAppliedRecord {
   coverAtMs?: number;
   /** Stamped by the next document when operator content was on the glass. */
   contentAtMs?: number;
+  /**
+   * Why the document navigated (2026-10-11, glass continuity). Absent or
+   * `'bundle-update'` = the off-hours update this record was built for.
+   * Anything else (`refresh-ws`, `error-boundary`, `canvas`, ...) is a reload
+   * that borrowed the cover only: it never feeds the update evidence report
+   * and never arms the convergence hold.
+   */
+  reason?: string;
+}
+
+/** Did this record come from an off-hours bundle update (not a borrowed cover)? */
+export function isBundleUpdateRecord(record: UpdateAppliedRecord | null): boolean {
+  return !!record && (record.reason === undefined || record.reason === 'bundle-update');
 }
 
 export function parseUpdateAppliedRecord(raw: unknown): UpdateAppliedRecord | null {
@@ -277,7 +290,7 @@ export function parseUpdateAppliedRecord(raw: unknown): UpdateAppliedRecord | nu
  * or 0 when there is nothing to hold for.
  */
 export function convergenceHoldUntil(record: UpdateAppliedRecord | null, myIdentity: string | null): number {
-  if (!record || !myIdentity || !record.from) return 0;
+  if (!record || !myIdentity || !record.from || !isBundleUpdateRecord(record)) return 0;
   if (record.from !== myIdentity) return 0;
   return record.navigatedAtMs + CONVERGENCE_HOLD_MS;
 }

@@ -384,7 +384,12 @@ export async function precachePlaylist(
  * `cached` is read as present === current.
  */
 export async function lookupCached(assets: PlaylistCacheAsset[]): Promise<Record<string, CacheLookupState> | null> {
-  const sw = await activeWorker();
+  // The worker already CONTROLLING this page answers at once (2026-10-11,
+  // glass continuity): after a reload the files on disk must not wait on the
+  // registration round trip before they may play (mediaReadiness 'unknown').
+  let sw: ServiceWorker | null = null;
+  try { sw = isSwSupported() ? (getServiceWorkerContainer()?.controller ?? null) : null; } catch { sw = null; }
+  if (!sw) sw = await activeWorker();
   if (!sw || !assets?.length) return null;
   const reply = await askWorker(sw, {
     type: 'CACHE_LOOKUP',

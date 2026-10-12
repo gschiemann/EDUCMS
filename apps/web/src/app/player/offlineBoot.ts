@@ -3,8 +3,12 @@
  * Expired credentials retain their own saved content while renewal retries.
  */
 export const LEGACY_MANIFEST_KEY = 'edu_manifest_cache_v1';
-const PREFIX = 'edu_manifest_cache_v2:';
-const PAIRING_PREFIX = 'edu_manifest_pairing_v2:';
+export const MANIFEST_CACHE_PREFIX = 'edu_manifest_cache_v2:';
+export const MANIFEST_PAIRING_PREFIX = 'edu_manifest_pairing_v2:';
+/** Set once this screen put operator content on the glass (glassContinuity.ts). */
+export const GLASS_SHOWN_PREFIX = 'edu_glass_shown_v1:';
+const PREFIX = MANIFEST_CACHE_PREFIX;
+const PAIRING_PREFIX = MANIFEST_PAIRING_PREFIX;
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
 export interface SavedManifest { at: number; m: any; screenId: string; fingerprint: string }
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -73,7 +77,7 @@ export function readOfflineManifest(store: Store, token: string | null, fingerpr
 export function clearOfflineManifests(store: Store): void {
   try {
     const keys: string[] = [LEGACY_MANIFEST_KEY];
-    for (let i = 0; i < store.length; i++) { const key = store.key(i); if (key?.startsWith(PREFIX) || key?.startsWith(PAIRING_PREFIX)) keys.push(key); }
+    for (let i = 0; i < store.length; i++) { const key = store.key(i); if (key?.startsWith(PREFIX) || key?.startsWith(PAIRING_PREFIX) || key?.startsWith(GLASS_SHOWN_PREFIX)) keys.push(key); }
     for (const key of keys) store.removeItem(key);
   } catch { /* best effort when storage is inaccessible */ }
 }

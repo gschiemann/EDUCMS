@@ -101,7 +101,17 @@ import {
   type UpdateEvidenceReport,
   type UpdateWindowKind,
 } from './offHoursUpdate';
-import { captureCoverFrame, removeUpdateCover, writeUpdateCover } from './updateCover';
+import { captureCoverFrame, removeUpdateCover, writeUpdateCover, reloadCoverRecord, BLACK_COVER_FRAME, type ReloadCoverReason } from './updateCover';
+import {
+  hasShownContentBefore,
+  markContentShown,
+  quietGlass,
+  decideItemFailure,
+  lastGoodRetryDelayMs,
+  reconcileCachedKeys,
+  IdentityVerdictGate,
+} from './glassContinuity';
+import { clearQuietBoot } from './quietBootInline';
 import type { SoftWindow } from './softSchedule';
 import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader } from './deviceDiagnostics';
 import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled } from './mediaStallWatchdog';
@@ -919,7 +929,7 @@ function maybeExecuteDurableRefresh(
     // manifest branch never carries refreshRequestedAt, and this helper
     // only runs on live (non-cached) manifests.
     try {
-      if (!nativeFire('reload')) hardCacheBustingReload();
+      void reloadUnderCover('refresh-durable');
     } catch { /* swallow */ }
   }, 250);
 }
@@ -1067,6 +1077,27 @@ function safeSessionStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Glass continuity (2026-10-11): EVERY reload of a paired screen that has
+ * shown content goes out under the cover the off-hours update uses — the
+ * frame on the glass (or its colour) is captured into sessionStorage and the
+ * next document's inline script paints it first, so the customer never sees
+ * the splash or the white "Connecting" card between documents. A screen that
+ * has never shown content (unpaired, first run) reloads exactly as before.
+ * Never throws; the reload happens whatever the capture did. Callers keep
+ * their own emergency gates (a reload never navigates an alert off glass).
+ */
+async function reloadUnderCover(reason: ReloadCoverReason): Promise<void> {
+  try {
+    if (typeof window !== 'undefined' && !isPreviewMode() && hasShownContentBefore(window.localStorage, getDeviceToken())) {
+      const frame = reason === 'error-boundary' ? BLACK_COVER_FRAME : await captureCoverFrame(document);
+      const st = safeSessionStorage();
+      if (st) writeUpdateCover(st, reloadCoverRecord(reason, frame, Date.now()));
+    }
+  } catch { /* a cover is a nicety; the reload is the point */ }
+  hardCacheBustingReload();
 }
 
 /** The box's own IANA zone, when it can say — the off-hours update's fallback zone. */
@@ -2528,6 +2559,14 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
 
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = setTimeout(() => {
+      // Glass continuity (2026-10-11): the next document opens on black (a
+      // crash has already taken the frame), never on the splash.
+      try {
+        const st = safeSessionStorage();
+        if (st && !isPreviewMode() && hasShownContentBefore(window.localStorage, getDeviceToken())) {
+          writeUpdateCover(st, reloadCoverRecord('error-boundary', BLACK_COVER_FRAME, Date.now()));
+        }
+      } catch { /* the reload is the point */ }
       if (isAndroidWebView()) nativeReload();
       else if (typeof window !== 'undefined') window.location.reload();
     }, delayMs);
@@ -2555,6 +2594,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       const led = readCanvasOverride();
       return (
         <div
+          data-edu-emergency-root="crash"
           className="fixed bg-red-700 text-white"
           style={{
             position: 'fixed',
@@ -2579,6 +2619,21 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
             </div>
           </FitToViewport>
         </div>
+      );
+    }
+    // Glass continuity (2026-10-11): a paired screen that has shown content
+    // is customer glass — the crash is logged and reported (Sentry, console),
+    // never drawn. Black until the reload above, which opens under a black
+    // cover. Unpaired / first-run screens keep the diagnostic panel.
+    let customerGlass = false;
+    try { customerGlass = !isPreviewMode() && hasShownContentBefore(window.localStorage, getDeviceToken()); } catch { /* storage denied */ }
+    if (customerGlass) {
+      return (
+        <div
+          data-edu-glass-hold="crash"
+          aria-hidden="true"
+          style={{ position: 'fixed', top: 0, left: 0, width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)', background: '#000' }}
+        />
       );
     }
     const e: any = this.state.err;
@@ -3161,6 +3216,24 @@ function PlayerPage() {
   // the splash then switches to a "use your remote's HOME button"
   // hint so the operator isn't left poking a broken Exit button.
   const [playbackStopped, setPlaybackStopped] = useState(false);
+  // ── Glass continuity (2026-10-11) ─────────────────────────────────────
+  // Has this screen put operator content on the glass (this boot or before)?
+  // False at SSR and hydration (the HTML is identical for every screen); the
+  // mount effect reads the persisted fact, and the first content render sets
+  // it. Drives `glassQuiet` — the rule that keeps our chrome off customer
+  // glass (glassContinuity.ts). `glassResolved` = the mount read happened.
+  const [glassShown, setGlassShown] = useState(false);
+  const glassShownRef = useRef(false);
+  const [glassResolved, setGlassResolved] = useState(false);
+  // Items that played on THIS page (unplayableKey) — the last-good rule.
+  const provenGoodKeysRef = useRef<Set<string>>(new Set());
+  // Re-mount nonce per item id: a last good file that failed is re-mounted in
+  // place (a fresh element) instead of being set aside for five minutes.
+  const [slideRetryNonce, setSlideRetryNonce] = useState<Record<string, number>>({});
+  const lastGoodRetryRef = useRef<Map<string, { attempts: number; timer: ReturnType<typeof setTimeout> | null }>>(new Map());
+  // One server answer never takes a playing screen to the pairing code.
+  const identityGateRef = useRef(new IdentityVerdictGate());
+  const identityConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackStoppedRef = useRef(false);
   playbackStoppedRef.current = playbackStopped;
   // ── Off-hours background update (2026-10-10) ────────────────────────────
@@ -3626,7 +3699,34 @@ function PlayerPage() {
             return 'failed';
           }
           const changedIdentity = !!registeredScreenRef.current && data.screenId !== registeredScreenRef.current;
-          if (data.paired === false || changedIdentity) {
+          // Glass continuity (2026-10-11, launch W4 P0-6): ONE "unpaired" /
+          // "different screen" answer used to tear the playlist down and put
+          // the pairing code on a screen that was playing — until someone
+          // re-paired it — on whatever the server said once (the 10-min
+          // proactive renewal included). A screen with content on its glass
+          // now HOLDS that answer and keeps playing; the teardown below runs
+          // only when an identical answer comes back ≥ 60 s later
+          // (IdentityVerdictGate). Tokens are untouched: the session store
+          // (the one writer) already holds whatever the server minted. An
+          // authenticated TENANT_CHANGED / unpair stays immediate.
+          const identityAction = identityGateRef.current.decide(
+            { paired: data.paired, screenId: data.screenId, knownScreenId: registeredScreenRef.current },
+            glassShownRef.current || phaseRef.current === 'playing',
+            Date.now(),
+          );
+          if (identityAction === 'hold') {
+            console.warn(`[Player] credential recovery (${trigger}) answered ${data.paired === false ? 'unpaired' : `a different screen (${data.screenId})`} — holding content; confirming in ${Math.round((identityGateRef.current.confirmDueAt()! - Date.now()) / 1000)} s before leaving it`);
+            reportRegisterSuccess();
+            if (identityConfirmTimerRef.current) clearTimeout(identityConfirmTimerRef.current);
+            const due = identityGateRef.current.confirmDueAt();
+            identityConfirmTimerRef.current = setTimeout(() => {
+              identityConfirmTimerRef.current = null;
+              if (identityGateRef.current.isPending) void attemptCredentialRecoveryRef.current('identity-confirm');
+            }, Math.max(0, (due ?? Date.now()) - Date.now()) + 2_000);
+            return 'failed';
+          }
+          if (identityAction === 'apply') {
+            if (identityConfirmTimerRef.current) { clearTimeout(identityConfirmTimerRef.current); identityConfirmTimerRef.current = null; }
             // An authoritative unpair/new identity ends normal cached replay.
             // Retire in-flight/pending normal manifests; preserve a live alert.
             manifestIdentityGenerationRef.current++;
@@ -3646,6 +3746,8 @@ function PlayerPage() {
             setScreenName(data.name || '');
             setPairingCode(data.pairingCode || null);
             setPhase(data.paired === false ? 'pairing' : 'connecting');
+            glassShownRef.current = false;
+            setGlassShown(false);
           }
           serverUnpairedRef.current = data.paired === false;
           registeredScreenRef.current = data.screenId;
@@ -3685,6 +3787,27 @@ function PlayerPage() {
     },
     [],
   );
+
+  const attemptCredentialRecoveryRef = useRef(attemptCredentialRecovery);
+  useEffect(() => { attemptCredentialRecoveryRef.current = attemptCredentialRecovery; }, [attemptCredentialRecovery]);
+  useEffect(() => () => { if (identityConfirmTimerRef.current) clearTimeout(identityConfirmTimerRef.current); }, []);
+
+  // Glass continuity: read the persisted "this screen has shown content" fact
+  // once, after hydration (the server HTML is the same for every screen), then
+  // take down the first-paint quiet-boot mark — from here this component
+  // renders the quiet states (black) itself.
+  useEffect(() => {
+    let shown = false;
+    try { shown = !isPreviewMode() && hasShownContentBefore(window.localStorage, getDeviceToken()); } catch { /* storage denied */ }
+    if (shown) {
+      glassShownRef.current = true;
+      setGlassShown(true);
+    }
+    setGlassResolved(true);
+  }, []);
+  useEffect(() => {
+    if (glassResolved && typeof document !== 'undefined') clearQuietBoot(document);
+  }, [glassResolved]);
 
   // Local identity/content replay precedes online registration. A known
   // device can start its saved playlist while the ordinary authenticated
@@ -4458,6 +4581,10 @@ function PlayerPage() {
       // watches for this attribute and, when it never appears, says so on the
       // glass instead of letting the static text lie.
       document.documentElement.setAttribute('data-edu-booted', '1');
+      // The red "Player did not start" line (layout.tsx) is a claim that
+      // this script never ran. It just did: if a slow cold boot let it
+      // appear, take it down now — it must never sit over content.
+      try { document.getElementById('edu-boot-failed')?.remove(); } catch { /* not ours to keep */ }
       // …and tell the APK the same thing, at the same instant. The
       // attribute is for a human at the glass; this is for the native boot
       // watchdog, which is the only thing that can raise a diagnostic
@@ -4761,9 +4888,20 @@ function PlayerPage() {
   // means nothing is shown. A hidden slide failing at mount must not flip the
   // render proof to "Loading content" under a picture that is playing.
   const displayedItemIdRef = useRef<string | null>(null);
+  // Glass continuity: the same item as its failure identity (unplayableKey)
+  // and as its cache key — what a success proves good, and what an empty
+  // cache report must never unmount.
+  const displayedItemKeyRef = useRef<string | null>(null);
+  const displayedCacheKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const it = displayIndex !== null ? sorted[displayIndex] : null;
     displayedItemIdRef.current = it ? String(it.id) : null;
+    displayedItemKeyRef.current = it
+      ? unplayableKey({ id: String(it.id), url: String(it.asset?.fileUrl || ''), hash: it.asset?.fileHash ?? null })
+      : null;
+    displayedCacheKeyRef.current = it
+      ? stableManifestUrlKey(playbackUrlFor(it.asset?.fileUrl || '', it.asset?.mimeType))
+      : null;
   }, [displayIndex, sorted]);
   // One clear line per item this screen cannot show at all (audio today).
   const unshowableLoggedRef = useRef<Set<string>>(new Set());
@@ -5047,7 +5185,20 @@ function PlayerPage() {
       // disk, so a large item must go back to waiting (never stream it).
       // While a drive is in flight the tier is legitimately empty until the
       // file assembles — the drive's own marks are the truth then.
-      if (!playlistCacheInFlightRef.current) setCachedMediaKeys((prev) => (prev.size ? new Set() : prev));
+      //
+      // Glass continuity (2026-10-11): a count of 0 is a reason to ASK, not a
+      // fact — it used to clear every mark and unmount the large video that
+      // was PLAYING, dropping the screen to the download card mid-day. Each
+      // URL is looked up (CACHE_LOOKUP); only those the worker says are
+      // definitely gone are forgotten, never the file on the glass, and
+      // nothing when the worker cannot answer (reconcileCachedKeys).
+      const last = playlistCacheAssetsRef.current;
+      if (!playlistCacheInFlightRef.current && last?.assets.length) {
+        void lookupCached(last.assets).then((found) => {
+          const protect = new Set<string>(displayedCacheKeyRef.current ? [displayedCacheKeyRef.current] : []);
+          setCachedMediaKeys((prev) => reconcileCachedKeys(prev, found, (u) => stableManifestUrlKey(u), protect));
+        }).catch(() => { /* unknown ≠ not cached */ });
+      }
     }
     cacheReportRef.current = {
       playlist: {
@@ -5188,6 +5339,30 @@ function PlayerPage() {
       } catch { /* cover bookkeeping must never touch playback */ }
     }
   }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
+  // An alert is never behind a cover or the quiet-boot mark (2026-10-11).
+  // `rendering` above already counts an active emergency; a PUSHED message
+  // (SOS / broadcast) is drawn by EmergencyOverlay, outside that proof — take
+  // both first-paint marks down for it too. (The layout also keeps every
+  // `data-edu-emergency-root` visible through them — two guarantees.)
+  useEffect(() => {
+    if (!activeEmergency && !pushedEmergencyMessage) return;
+    if (typeof document === 'undefined') return;
+    try {
+      clearQuietBoot(document);
+      const done = removeUpdateCover(document, safeSessionStorage(), Date.now());
+      if (done) updateEvidenceRef.current = buildUpdateEvidence(done, readOwnBundleId() || readOwnBundleSha() || null);
+    } catch { /* never block an alert */ }
+  }, [activeEmergency, pushedEmergencyMessage]);
+  // Glass continuity: the first operator content on the glass makes this a
+  // customer screen — persist it so every later boot of THIS screen is quiet
+  // (no splash, no cards, no toasts), and switch the quiet rule on now.
+  useEffect(() => {
+    const st = renderStateRef.current;
+    if (!st.rendering || st.kind === 'emergency' || glassShownRef.current || !screenId || isPreviewMode()) return;
+    try { markContentShown(window.localStorage, screenId); } catch { /* storage denied */ }
+    glassShownRef.current = true;
+    setGlassShown(true);
+  }, [screenId, phase, playlist, playbackStopped, activeEmergency, mediaReady, displayIndex]);
   // An assignment still downloading must not replace the reboot fallback.
   // Persist the selected payload only once its media is ready on this page.
   useEffect(() => {
@@ -6214,7 +6389,7 @@ function PlayerPage() {
             localPin = null;
             if (isAndroidWebView()) {
               console.warn('[Player] dashboard LED canvas cleared — reloading so the boot pin re-derives the size');
-              hardCacheBustingReload();
+              void reloadUnderCover('canvas');
               return;
             }
           }
@@ -6412,7 +6587,7 @@ function PlayerPage() {
             // no loop. Browser previews keep the live path.
             if (canvasChanged && currentW && isAndroidWebView()) {
               console.warn(`[Player] LED canvas ${currentW}×${currentH} → ${targetW}×${targetH}: reloading so the pin script applies it at boot (live viewport rewrites black out the TB WebView)`);
-              hardCacheBustingReload();
+              void reloadUnderCover('canvas');
               return;
             }
             root.style.width = `${cw}px`;
@@ -8361,7 +8536,7 @@ function PlayerPage() {
             setTimeout(() => fireSseRefresh(attempt + 1), 30_000);
             return;
           }
-          if (!nativeFire('reload')) hardCacheBustingReload();
+          void reloadUnderCover('refresh-sse');
         };
         fireSseRefresh(0);
       });
@@ -8704,6 +8879,9 @@ function PlayerPage() {
               // Ask the native shell (if present) to wipe USB cache + reload.
               const nativeReloading = nativeFire('unpair');
               if (!nativeReloading) deviceTokenSession.resume();
+              // An authenticated unpair: this screen is setup glass again.
+              glassShownRef.current = false;
+              setGlassShown(false);
               setActiveEmergency(null);
               setPhase('registering');
               return;
@@ -8939,7 +9117,7 @@ function PlayerPage() {
                     // cache-busting reload (location.replace + fresh ?_v=) so
                     // refresh-web actually fetches the current bundle. This is
                     // the same helper the stale-bundle auto-reload uses.
-                    if (!nativeFire('reload')) hardCacheBustingReload();
+                    void reloadUnderCover('refresh-ws');
                   } catch (e) {
                     console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
                   }
@@ -10093,6 +10271,42 @@ function PlayerPage() {
     // "Loading content" under a picture that was playing. An emergency
     // playlist keeps the old rule exactly.
     if (playlist?.isEmergency || String(itemId) === displayedItemIdRef.current) setMediaReady(false);
+    // Glass continuity (2026-10-11, launch W4 P0-5): the LAST thing this
+    // screen can show, which has played here before, is never set aside over
+    // one decode error or a second stall — that put "Content Unavailable" on
+    // a single-video screen for five minutes. It stays in the rotation and is
+    // re-mounted in place (a fresh element) on a short backoff
+    // (decideItemFailure / lastGoodRetryDelayMs). Never for an emergency
+    // playlist, never under frame-locked sync (the timeline owns the slot).
+    if (!playlist?.isEmergency) {
+      const failing = sorted.find((s) => String(s.id) === String(itemId));
+      if (failing) {
+        const failKey = unplayableKey({ id: String(failing.id), url: String(failing.asset?.fileUrl || ''), hash: failing.asset?.fileHash ?? null });
+        let othersPlayable = 0;
+        sorted.forEach((s, i) => { if (String(s.id) !== String(itemId) && playableAt(i)) othersPlayable += 1; });
+        const verdict = decideItemFailure({
+          isEmergency: false,
+          syncLocked: syncLocked || syncActiveRef.current,
+          provenGood: provenGoodKeysRef.current.has(failKey),
+          othersPlayable,
+        });
+        if (verdict === 'retry-in-place') {
+          const id = String(failing.id);
+          const entry = lastGoodRetryRef.current.get(failKey) ?? { attempts: 0, timer: null };
+          if (!entry.timer) {
+            entry.attempts += 1;
+            const delay = lastGoodRetryDelayMs(entry.attempts);
+            console.warn(`[Player] the last playable file failed (attempt ${entry.attempts}) — keeping it on the glass and re-mounting it in ${Math.round(delay / 1000)} s: ${failing.asset?.fileUrl}`);
+            entry.timer = setTimeout(() => {
+              entry.timer = null;
+              setSlideRetryNonce((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+            }, delay);
+            lastGoodRetryRef.current.set(failKey, entry);
+          }
+          return;
+        }
+      }
+    }
     const allIds = sorted.map((s: any) => s.id as string).filter(Boolean);
     const allFailed = assetsFailedTrackerRef.current.recordFailure(itemId, allIds);
     if (allFailed) setAllAssetsFailed(true);
@@ -10106,11 +10320,25 @@ function PlayerPage() {
       console.warn(`[Player] this screen could not play an item — left out of the rotation for ${Math.round(UNPLAYABLE_RETRY_MS / 60_000)} min: ${item.asset?.fileUrl}`);
       setUnplayableRev((n) => n + 1);
     }
-  }, [sorted, playlist?.isEmergency]);
+  }, [sorted, playlist?.isEmergency, playableAt, syncLocked]);
   const markItemSucceeded = useCallback(() => {
     assetsFailedTrackerRef.current.recordSuccess();
     setAllAssetsFailed(false);
     setMediaReady(true);
+    // The item on the glass is proven good on this page (the last-good rule).
+    const key = displayedItemKeyRef.current;
+    if (key) {
+      const proven = provenGoodKeysRef.current;
+      if (!proven.has(key)) {
+        if (proven.size >= 256) proven.clear();
+        proven.add(key);
+      }
+      const retry = lastGoodRetryRef.current.get(key);
+      if (retry) {
+        if (retry.timer) clearTimeout(retry.timer);
+        lastGoodRetryRef.current.delete(key);
+      }
+    }
   }, []);
 
   // ── Playlist cache drive (2026-09-26, 4K cache-fill incident) ─────────
@@ -10346,9 +10574,7 @@ function PlayerPage() {
         try {
           // AND-002 — false means no transport took it (browser player /
           // older APK), which is the web-fallback case.
-          if (!nativeFire('reload') && typeof window !== 'undefined') {
-            window.location.reload();
-          }
+          void reloadUnderCover('sync');
         } catch { /* swallow */ }
       }, 800);
     } catch {
@@ -10437,6 +10663,8 @@ function PlayerPage() {
     // invalid forever, even if its response lands after this reset.
     if (nativeFire('unpair')) return;
     deviceTokenSession.resume();
+    glassShownRef.current = false;
+    setGlassShown(false);
     setActiveEmergency(null);
     setPlaybackStopped(false);
     setExitUnavailable(false);
@@ -10581,7 +10809,43 @@ function PlayerPage() {
     return () => clearTimeout(t);
   }, [connectivity.kind]);
 
-  const connectivityToast = connectivity.kind === 'reconnecting' && showReconnectToast ? (() => {
+  // ── GLASS CONTINUITY (2026-10-11, launch W4) — the one rule ───────────
+  // A paired screen that has shown content is CUSTOMER glass: none of our
+  // chrome paints on it — no splash, no "Connecting / Downloading / Content
+  // Unavailable / Nothing scheduled" card, no reconnect toast, no
+  // "Real-time disabled" banner, no "Re-pair required" chip (the dashboard
+  // states all of these). A non-content state shows the last good item where
+  // there is one, otherwise plain black. Our surfaces stay where a person is
+  // installing or operating the screen: unpaired / first run, the pairing
+  // code, and the Back-key "Screen options" surface (playbackStopped). Never
+  // while an alert is up — an alert keeps exactly the surfaces it had.
+  // Decision: glassContinuity.ts `quietGlass`.
+  const glassQuiet = quietGlass({
+    everShown: glassShown,
+    phase,
+    playbackStopped,
+    emergency: !!activeEmergency || !!pushedEmergencyMessage || phase === 'emergency' || playlist?.isEmergency === true,
+    preview: isPreviewMode(),
+  });
+  // Plain black, sized to the canvas — what a quiet screen shows where the
+  // splash / a card used to be. Two sides + size only (never four sides:
+  // CLAUDE.md #10, the inset-serialization landmine).
+  const glassHoldNode = (
+    <div
+      data-edu-glass-hold="1"
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: 'var(--led-w, 100%)',
+        height: 'var(--led-h, 100%)',
+        background: '#000',
+      }}
+    />
+  );
+
+  const connectivityToast = connectivity.kind === 'reconnecting' && showReconnectToast && !glassQuiet ? (() => {
     const remainMs = Math.max(0, connectivity.nextRetryAt - Date.now());
     const remainSec = Math.ceil(remainMs / 1000);
     // Operator screenshot 2026-04-27 (post-deploy reconnect on M Series):
@@ -10690,7 +10954,7 @@ function PlayerPage() {
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
   // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
-  const unsignedWsBanner = unsignedWsTokenWarning ? (
+  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet ? (
     <div
       data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
@@ -10819,6 +11083,7 @@ function PlayerPage() {
   // the exits (the template branch and the main return) can be showing EITHER
   // live content or a diagnostic view depending on state.
   const renderRepairRequiredChip = (onOperatorSurface: boolean) =>
+    !glassQuiet &&
     !unsignedWsTokenWarning &&
     shouldShowRepairChip({
       repairRequired,
@@ -11039,7 +11304,7 @@ function PlayerPage() {
   // One-line standing hint so the escape panel is discoverable from across
   // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
   // the bridge) and shown only where a remote is plausible (Android shell).
-  const remoteBackHint = bootMounted && isAndroidWebView() && !playbackStopped ? (
+  const remoteBackHint = bootMounted && isAndroidWebView() && !playbackStopped && !glassQuiet ? (
     <div
       aria-hidden="true"
       style={{
@@ -11062,6 +11327,23 @@ function PlayerPage() {
   ) : null;
 
   // ─── Render: Registering ───
+  // A quiet (paired, has shown content) screen never paints the splash: it
+  // holds black until its content is up (the cover, when a reload left one,
+  // paints the previous frame on top until then).
+  if (phase === 'registering' && glassQuiet) {
+    return (
+      <>
+        {glassHoldNode}
+        {/* Both null on a quiet screen; kept so every render exit carries the
+            cross-branch overlays (softBlankRenderExits.test.ts). */}
+        {otaOverlay}
+        {connectivityToast}
+        {canvasEditor}
+        {softBlankOverlay}
+        {preContentEscapeOverlay}
+      </>
+    );
+  }
   if (phase === 'registering') {
     return (
       <>
@@ -11195,6 +11477,12 @@ function PlayerPage() {
   // The slot the readiness gate chose (mediaReadiness.ts): under free-run the
   // first PLAYABLE slot from the counter; under sync the timeline's slot, or
   // the last shown slide while that slot's file is still downloading.
+  // React key of a slide: the item id, plus a re-mount nonce once the last
+  // good file failed (glass continuity — a fresh element is the retry).
+  const slideKey = (item: { id: string }): string => {
+    const n = slideRetryNonce[String(item.id)];
+    return n ? `${item.id}#r${n}` : item.id;
+  };
   const currentItem = displayIndex !== null && isItemValid(sorted[displayIndex]) ? sorted[displayIndex] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const useVideoPlaylistDeck = playlistDeckAllowed && !syncActiveRef.current &&
@@ -11975,11 +12263,11 @@ function PlayerPage() {
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
               const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={item.id} descriptor={nativeSharedDescriptor} classes={classes} fit={slideFit}
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeSharedDescriptor} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : browser;
               if (loopChoice.backend === 'continuous') {
-                return wrapNative(<ContinuousLoopVideo key={item.id} videoKey={item.id} src={videoSrc} fit={slideFit}
+                return wrapNative(<ContinuousLoopVideo key={slideKey(item)} videoKey={item.id} src={videoSrc} fit={slideFit}
                   sourceHash={item.asset.fileHash.toLowerCase()} isActive={isActive} classes={classes}
                   onPlaying={markItemSucceeded} onError={() => {
                     markItemFailed(item.id);
@@ -11989,7 +12277,7 @@ function PlayerPage() {
               if (loopChoice.backend === 'twodeck') {
                 return wrapNative(
                   <SeamlessLoopVideo
-                    key={item.id}
+                    key={slideKey(item)}
                     videoKey={item.id}
                     src={videoSrc}
                     fit={slideFit}
@@ -12007,7 +12295,7 @@ function PlayerPage() {
               return wrapNative(
                 <PlayerVideoSlide
                   trackDecodedFrames={!playlist?.isEmergency}
-                  key={item.id}
+                  key={slideKey(item)}
                   videoKey={item.id}
                   src={videoSrc}
                   isActive={isActive}
@@ -12070,7 +12358,7 @@ function PlayerPage() {
               if (nativeUrlOverlayAvailable) {
                 return (
                   <div
-                    key={item.id}
+                    key={slideKey(item)}
                     className={`${classes} bg-black`}
                     aria-label="Native URL overlay active"
                   />
@@ -12098,7 +12386,7 @@ function PlayerPage() {
               if (!isPdf) {
                 return (
                   <ScaledWebFrame
-                    key={item.id}
+                    key={slideKey(item)}
                     src={iframeSrc}
                     classes={classes}
                     title={item.id}
@@ -12145,7 +12433,7 @@ function PlayerPage() {
               // Content-Type. Close that at upload validation (out of this
               // file's scope), not by breaking PDFs here.
               return <iframe
-                key={item.id}
+                key={slideKey(item)}
                 src={iframeSrc}
                 className={classes}
                 title={item.id}
@@ -12166,7 +12454,7 @@ function PlayerPage() {
             }
             return (
               <img
-                key={item.id}
+                key={slideKey(item)}
                 src={resUrl}
                 data-slide-id={String(item.id)}
                 alt=""
@@ -12200,6 +12488,12 @@ function PlayerPage() {
             );
           })}
         </div>
+      ) : glassQuiet ? (
+        // Glass continuity: no card on customer glass — "Connecting",
+        // "Downloading", "Content Unavailable" and "Nothing scheduled" are
+        // black here (the dashboard says which). Failed files that played
+        // before never reach this branch (markItemFailed re-mounts them).
+        glassHoldNode
       ) : (
         <div
           className="edu-paired-view absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center overflow-hidden cursor-default"

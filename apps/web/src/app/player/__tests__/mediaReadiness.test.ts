@@ -91,8 +91,12 @@ describe('isItemReady / readyItemIds', () => {
   });
 
   it('registration still unanswered (first boot): a large item is held, a small one is not', () => {
-    expect(isItemReady(big, 'unknown', new Set(['key:4k']))).toBe(false);
     expect([...readyItemIds([small, big], 'unknown', new Set())]).toEqual(['img']);
+  });
+
+  it('registration still unanswered but the worker CONFIRMED the file on disk (reload): it plays at once (glass continuity)', () => {
+    expect(isItemReady(big, 'unknown', new Set(['key:4k']))).toBe(true);
+    expect([...readyItemIds([small, big], 'unknown', new Set(['key:4k']))]).toEqual(['img', '4k']);
   });
 });
 

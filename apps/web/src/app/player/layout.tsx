@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
 import { UPDATE_COVER_INLINE_JS } from './updateCoverInline';
+import { QUIET_BOOT_INLINE_JS } from './quietBootInline';
 
 // 2026-06-27 — LAUNCH-BLOCKING root cause of "deploys never reach the kiosk".
 // The /player route is a client app with no per-request data, so Next.js
@@ -307,6 +308,18 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
         data-edu-shim="update-cover"
         dangerouslySetInnerHTML={{ __html: UPDATE_COVER_INLINE_JS }}
       />
+      {/* ── QUIET BOOT (2026-10-11, glass continuity) ─────────────────────
+          A paired screen that has shown content must never paint the
+          server-rendered splash on a reload. This marks <html> with
+          data-edu-quiet-boot (black document, player root invisible — rules
+          in the style block below) BEFORE any chunk runs; the page renders
+          black itself for every non-content state once it mounts and then
+          removes the mark. Unpaired / first-run screens get no mark and keep
+          their splash. Body + tests: quietBootInline.ts. Plain ES5. */}
+      <script
+        data-edu-shim="quiet-boot"
+        dangerouslySetInnerHTML={{ __html: QUIET_BOOT_INLINE_JS }}
+      />
       {/* ── BOOT PROOF WATCHDOG (2026-09-01) ─────────────────────────────
           The splash's "Connecting to your CMS…" / "Online" are server-
           rendered. The player page stamps data-edu-booted="1" in its first
@@ -316,7 +329,7 @@ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID!=='function'&&typeof cr
           the exact facts a photo from the site needs. Plain ES5. */}
       <script
         dangerouslySetInnerHTML={{
-          __html: `(function(){try{setTimeout(function(){try{
+          __html: `(function(){try{var quiet=document.documentElement.hasAttribute('data-edu-quiet-boot');setTimeout(function(){try{
 if(document.documentElement.getAttribute('data-edu-booted')==='1')return;
 if(document.getElementById('edu-boot-failed'))return;
 var ua=(navigator.userAgent||''),m=/Chrome\\/(\\d+)/.exec(ua),sha=(document.querySelector('meta[name="edu-build"]')||{}).content||'';
@@ -324,7 +337,7 @@ var d=document.createElement('div');d.id='edu-boot-failed';
 d.style.cssText='position:fixed;left:0;top:calc(var(--led-h,100vh) - 96px);width:var(--led-w,100vw);z-index:2147483647;background:#7f1d1d;color:#fff;font:600 16px/1.35 system-ui,sans-serif;padding:12px 16px;box-sizing:border-box';
 d.textContent='Player did not start on this device \u2014 the page loaded but its script never ran. Engine: Chrome '+(m?m[1]:'?')+(sha?' \u00b7 build '+sha.slice(0,8):'')+'. Power-cycle once; if this returns, report this line.';
 document.body.appendChild(d);
-}catch(e){}},25000);}catch(e){}})();`,
+}catch(e){}},quiet?60000:25000);}catch(e){}})();`,
         }}
       />
       {/* 2026-05-13 — Chromium-83 CSS-inset polyfill.
@@ -368,6 +381,20 @@ document.body.appendChild(d);
            — a node inserted before hydration is a React mismatch risk. */
         html[data-edu-update-cover] body { background: transparent !important; }
         html[data-edu-update-cover] .player-root-wrapper { visibility: hidden !important; }
+
+        /* 2026-10-11 — quiet boot (quietBootInline.ts): a paired screen that
+           has shown content paints black, never the server-rendered splash,
+           until the page mounts and renders black itself. The cover above,
+           when present, keeps painting the previous frame instead. */
+        html[data-edu-quiet-boot]:not([data-edu-update-cover]),
+        html[data-edu-quiet-boot]:not([data-edu-update-cover]) body { background: #000 !important; }
+        html[data-edu-quiet-boot] .player-root-wrapper { visibility: hidden !important; }
+
+        /* An alert is NEVER hidden by a cover or a quiet boot: every
+           emergency surface carries data-edu-emergency-root, and a visible
+           descendant of a visibility:hidden parent still paints. */
+        html[data-edu-update-cover] .player-root-wrapper [data-edu-emergency-root],
+        html[data-edu-quiet-boot] .player-root-wrapper [data-edu-emergency-root] { visibility: visible !important; }
 
         /* 2026-05-26 — The player-root-wrapper (a few lines below this
            style block) uses width:var(--led-w,100vw); height:var(--led-h,

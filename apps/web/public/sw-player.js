@@ -589,9 +589,15 @@ async function shellNavigate(req) {
     if (cached) return cached;
     const target = new URL(req.url).pathname || '/player';
     return new Response(
+      // Glass continuity (2026-10-11): black, and on a PAIRED screen (a device
+      // credential in this origin's storage) nothing at all — customer glass
+      // never shows our chrome; it waits on black and reloads by itself. An
+      // unpaired screen still says what it is doing.
       '<!doctype html><meta charset="utf-8"><title>Reconnecting…</title>' +
-      '<body style="background:#0b1020;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
-      '<div style="text-align:center"><div style="width:34px;height:34px;margin:0 auto 14px;border:3px solid rgba(226,232,240,.25);border-top-color:#818cf8;border-radius:50%;animation:sp 1s linear infinite"></div>' +
+      '<script>try{if(localStorage.getItem("edu_device_token"))document.documentElement.className="q"}catch(e){}</script>' +
+      '<style>html,body{background:#000}.q #w{display:none}</style>' +
+      '<body style="background:#000;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
+      '<div id="w" style="text-align:center"><div style="width:34px;height:34px;margin:0 auto 14px;border:3px solid rgba(226,232,240,.25);border-top-color:#818cf8;border-radius:50%;animation:sp 1s linear infinite"></div>' +
       '<h1 style="font-size:26px;margin:0 0 8px">Waiting for network…</h1>' +
       '<p style="opacity:.7;margin:0">This screen reconnects automatically. Nothing to do.</p></div>' +
       '<style>@keyframes sp{to{transform:rotate(360deg)}}</style>' +

@@ -48,6 +48,10 @@ export function isLargeMedia(asset: { url: string; sizeBytes?: number | null }):
  *                   nothing can ever land on disk, so every item plays by
  *                   streaming (a no-SW player is never stranded).
  *   'unknown'     — the registration has not answered yet (first boot, ms).
+ *                   A large item the worker already confirmed on disk (the
+ *                   page's CACHE_LOOKUP, which needs no registration answer)
+ *                   plays: after a reload the file on disk must not wait on
+ *                   the registration round trip (2026-10-11, glass continuity).
  *   'ready'       — the worker is up; a large item waits for its bytes.
  */
 export type CacheDriveState = 'unknown' | 'ready' | 'unavailable';
@@ -64,7 +68,8 @@ export interface ReadinessItem {
 export function isItemReady(item: ReadinessItem, cacheDrive: CacheDriveState, onDisk: ReadonlySet<string>): boolean {
   if (!item.large) return true;
   if (cacheDrive === 'unavailable') return true;
-  if (cacheDrive === 'unknown') return false;
+  // 'unknown' and 'ready' agree: what the worker confirmed on disk plays,
+  // nothing else does (never stream a large file from origin).
   return onDisk.has(item.cacheKey);
 }
 
