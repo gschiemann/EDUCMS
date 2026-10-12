@@ -2001,9 +2001,12 @@ export function FleetCommandCenter({
                   </div>
                 )}
 
-                {/* Live summary of what the map shows — counts filter the
-                    map, the action line selects the location to fix first. */}
-                {mappableTotal > 0 && (
+                {/* Live summary of the whole scope — counts filter the map,
+                    each alert row opens its location's fix. It steps aside
+                    while a location card is open (both float bottom-right
+                    and the card's fix is the next step); closing the card
+                    brings it back. The phone copy below the map stays. */}
+                {mappableTotal > 0 && !selectedLocation && (
                   <FleetLiveSummary
                     summary={liveSummary}
                     filter={atlasFilter}

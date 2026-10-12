@@ -504,8 +504,9 @@ export function ScreenLocationAtlas({
           </div>
         )}
         {/* The organisation map's live summary, unchanged — same counts,
-            same alert, same doors into the fix. */}
-        {allPins.length > 0 && (
+            same alert, same doors into the fix — and, like there, it steps
+            aside while an address card is open. */}
+        {allPins.length > 0 && !selectedStore && (
           <FleetLiveSummary
             summary={liveSummary}
             filter={filter}
