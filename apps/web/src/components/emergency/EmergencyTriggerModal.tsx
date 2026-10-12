@@ -1,5 +1,5 @@
 import { useAppStore } from '@/lib/store';
-import { X, Flame, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
+import { X, Flame, ShieldAlert, FlaskConical, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -480,7 +480,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <WifiOff className="w-4 h-4" /> {isDrill ? t('emergency.drill.fire') : t('emergency.modal.title')}
+                {isDrill ? <FlaskConical className="w-4 h-4" aria-hidden="true" /> : <ShieldAlert className="w-4 h-4" aria-hidden="true" />} {isDrill ? t('emergency.drill.fire') : t('emergency.modal.title')}
               </span>
             )}
           </button>
