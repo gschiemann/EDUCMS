@@ -337,6 +337,7 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   '1.1.26': 'aeb943eaccea60c3e0dc24da5118aca6e923bd5bd4cb5f7f096b95b4a570f78c',
   '1.1.27': '89e29135728b21cdbbfbc6c32087655e03ff5a0de8c982b79d006912f1992322',
   '1.1.28': 'd769acdeefe37b9c7d1e5b3e6b38c0a61bb702450c56ef9a15eb970f04806c97',
+  '1.1.29': '7679c16dee051b1e15cb2345b28a0f740ba3c99220e761dabcc388799034473f',
 };
 
 /**
