@@ -6946,6 +6946,13 @@ function PlayerPage() {
               // undefined, defaulted to muted=true, video played
               // silent. Carry it through.
               muted: item.muted,
+              // The file's own pixel shape (2026-10-12): playlistItemFit reads
+              // these to fill only when the shapes are close and show the whole
+              // file otherwise. The mapping used to drop them, so every screen
+              // got 'cover' and a portrait clip on a landscape panel zoomed.
+              ...(Number.isInteger(item.media_w) && item.media_w > 0 && Number.isInteger(item.media_h) && item.media_h > 0
+                ? { media_w: item.media_w, media_h: item.media_h }
+                : {}),
               asset: {
                 id: item.asset_id ?? null,
                 fileUrl: item.url,
