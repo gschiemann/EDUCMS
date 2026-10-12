@@ -24,14 +24,16 @@ type Props = {
   mode?: PanicMode;
 };
 
-const ACCENT_MAP = {
-  red:    { dot: 'bg-red-500',    border: 'border-red-200',    bg: 'bg-red-50/40',    chip: 'text-red-700' },
-  amber:  { dot: 'bg-amber-500',  border: 'border-amber-200',  bg: 'bg-amber-50/40',  chip: 'text-amber-700' },
-  orange: { dot: 'bg-orange-500', border: 'border-orange-200', bg: 'bg-orange-50/40', chip: 'text-orange-700' },
-  slate:  { dot: 'bg-slate-500',  border: 'border-slate-200',  bg: 'bg-slate-50',     chip: 'text-slate-700' },
-  sky:    { dot: 'bg-sky-500',    border: 'border-sky-200',    bg: 'bg-sky-50/40',    chip: 'text-sky-700' },
-  violet: { dot: 'bg-violet-500', border: 'border-violet-200', bg: 'bg-violet-50/40', chip: 'text-violet-700' },
-  rose:   { dot: 'bg-rose-500',   border: 'border-rose-200',   bg: 'bg-rose-50/40',   chip: 'text-rose-700' },
+// 2026-10-12 (owner: "each card has a different background — messy"): every
+// card is the SAME neutral surface; the type keeps only its small dot.
+const ACCENT_DOT = {
+  red: 'bg-red-500',
+  amber: 'bg-amber-500',
+  orange: 'bg-orange-500',
+  slate: 'bg-slate-500',
+  sky: 'bg-sky-500',
+  violet: 'bg-violet-500',
+  rose: 'bg-rose-500',
 };
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raised 2026-09-23)
@@ -52,7 +54,7 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raise
  * orientation in play.
  */
 export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }: Props) {
-  const a = ACCENT_MAP[accent];
+  const dot = ACCENT_DOT[accent];
   const [orientation, setOrientation] = useState<PanicOrientation>('landscape');
   // Read BOTH variants so the toggle labels can show a count for each
   // side. The inactive variant still hits the API once but that's a
@@ -155,11 +157,11 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
   const anyConfigured = landscapeCount > 0 || portraitCount > 0;
 
   return (
-    <div data-alert-content-card={kind} data-alert-content-mode={mode} className={`min-w-0 p-3 rounded-xl border ${a.border} ${a.bg} flex flex-col gap-2`}>
+    <div data-alert-content-card={kind} data-alert-content-mode={mode} className="min-w-0 p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors flex flex-col gap-2">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <div className={`w-3 h-3 shrink-0 rounded-full ${a.dot}`} />
+            <span aria-hidden className={`w-2.5 h-2.5 shrink-0 rounded-full ${dot}`} />
             <h3 className="text-sm font-bold text-slate-800">{label}</h3>
           </div>
           <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -167,7 +169,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
             {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : (mode === 'drill' ? 'Uses live content' : 'No content')}
           </span>
         </div>
-        {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-5">{hint}</p>}
+        {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-[18px]">{hint}</p>}
       </div>
 
       {/* Orientation toggle — which variant the drop zone + list below
@@ -212,8 +214,8 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
       <div
         className={`border border-dashed rounded-md px-2.5 py-1.5 transition-colors cursor-pointer flex items-center gap-1.5 ${
           dragOver
-            ? 'border-indigo-400 bg-indigo-50'
-            : 'border-slate-300 bg-white/70 hover:border-indigo-300 hover:bg-white'
+            ? 'border-slate-500 bg-slate-50'
+            : 'border-slate-300 bg-slate-50/60 hover:border-slate-400 hover:bg-slate-50'
         }`}
         onClick={() => fileInputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}

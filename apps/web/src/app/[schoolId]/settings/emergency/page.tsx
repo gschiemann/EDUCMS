@@ -600,14 +600,14 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
                 data-testid={`emergency-content-tab-${m}`}
                 onClick={() => setContentMode(m)}
                 className={`min-h-[34px] px-4 rounded-[8px] flex items-center justify-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                  // One selected style for both tabs (2026-10-12) — the type
+                  // colour lives on the icon only, like the cards' dots.
                   on
-                    ? m === 'drill'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-red-600 text-white shadow-sm'
+                    ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" aria-hidden />
+                <Icon className={`w-3.5 h-3.5 ${m === 'drill' ? 'text-indigo-600' : 'text-red-600'}`} aria-hidden />
                 {t(`settings.cc.emergency.drill.tabs.${m}`)}
               </button>
             );
