@@ -175,8 +175,8 @@ export function friendlyVariantName(v: Pick<WidgetVariant, 'name' | 'widgetType'
 
 /** Match the everyday words an operator uses, including their plurals. */
 export function matchesWidgetSearch(v: WidgetVariant, query: string): boolean {
-  const aliases: Record<string, string> = { images: 'image', pictures: 'image', picture: 'image', photos: 'photo', videos: 'video', logos: 'logo', shapes: 'shape', slideshows: 'slideshow' };
-  const q = query.trim().toLowerCase().replace(/\b(images|pictures|picture|photos|videos|logos|shapes|slideshows)\b/g, word => aliases[word]);
+  const aliases: Record<string, string> = { images: 'image', pictures: 'image', picture: 'image', photos: 'photo', videos: 'video', logos: 'logo', shapes: 'shape', slideshows: 'slideshow', tables: 'table', charts: 'chart', frames: 'frame', collages: 'collage' };
+  const q = query.trim().toLowerCase().replace(/\b(images|pictures|picture|photos|videos|logos|shapes|slideshows|tables|charts|frames|collages)\b/g, word => aliases[word]);
   const text = [v.name, v.description, friendlyTypeLabel(String(v.widgetType)), String(v.widgetType).replace(/_/g, ' ')].join(' ').toLowerCase();
   return text.includes(q);
 }
@@ -217,9 +217,17 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
   },
   {
     id: 'design',
-    label: 'Shapes & backgrounds',
+    label: 'Shapes, icons & backgrounds',
     blurb: 'The layer under everything else — blocks, icons, backdrops.',
-    types: ['SHAPE', 'ICON', 'BACKGROUND', 'EXTERNAL_HTML'],
+    types: ['SHAPE', 'ICON', 'QR_CODE', 'BACKGROUND', 'EXTERNAL_HTML'],
+  },
+  {
+    id: 'layouts', label: 'Photo frames & collages',
+    blurb: 'Shaped frames and several photos arranged together.', types: [],
+  },
+  {
+    id: 'data', label: 'Tables & charts',
+    blurb: 'Editable cells, labels and values, plus connected venue charts.', types: ['CHART'],
   },
   {
     id: 'brand',
@@ -231,7 +239,7 @@ export const WIDGET_CATEGORIES: readonly WidgetCategory[] = [
     id: 'live',
     label: 'Live info',
     blurb: 'Weather, web pages and numbers that update themselves.',
-    types: ['WEATHER', 'LIVE_DATA', 'CHART', 'WEBPAGE', 'RSS_FEED', 'SOCIAL_FEED', 'GOOGLE_REVIEWS'],
+    types: ['WEATHER', 'LIVE_DATA', 'WEBPAGE', 'RSS_FEED', 'SOCIAL_FEED', 'GOOGLE_REVIEWS'],
   },
   {
     id: 'time',
@@ -309,6 +317,12 @@ for (const c of WIDGET_CATEGORIES) {
 /** Category id for a widget type. Total — unmapped types land in `more`. */
 export function categoryForType(type: string): string {
   return TYPE_TO_CATEGORY.get(type) || OTHER_CATEGORY.id;
+}
+
+/** Static layouts keep their own discoverable row without duplicating a type. */
+export function categoryForVariant(v: Pick<WidgetVariant, 'id' | 'widgetType'>): string {
+  if (v.id.startsWith('photo-frame-') || v.id.startsWith('photo-collage-')) return 'layouts';
+  return categoryForType(String(v.widgetType));
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -409,10 +423,10 @@ const VERTICAL_FLAGSHIP_TYPES: Record<string, readonly string[]> = {
 };
 
 export const EVERYDAY_WIDGET_TYPES: readonly string[] = [
-  'IMAGE', 'VIDEO', 'TEXT', 'IMAGE_CAROUSEL', 'VIDEO_CAROUSEL', 'LOGO', 'SHAPE',
+  'IMAGE', 'VIDEO', 'TEXT', 'IMAGE_CAROUSEL', 'VIDEO_CAROUSEL', 'LOGO', 'SHAPE', 'ICON', 'QR_CODE', 'CHART',
 ];
 
-const BASIC_MEDIA_IDS = new Set(['image-basic', 'video-basic', 'image-carousel-basic', 'video-carousel-basic']);
+const BASIC_MEDIA_IDS = new Set(['image-basic', 'video-basic', 'image-carousel-basic', 'video-carousel-basic', 'shape-rectangle', 'design-table']);
 
 /** Put one everyday tool first, before a long run of its styled variants. */
 export function orderWidgetVariants(visible: readonly WidgetVariant[]): WidgetVariant[] {
@@ -420,7 +434,10 @@ export function orderWidgetVariants(visible: readonly WidgetVariant[]): WidgetVa
   for (const v of visible) if (!first.has(String(v.widgetType)) || BASIC_MEDIA_IDS.has(v.id)) first.set(String(v.widgetType), v);
   const front = EVERYDAY_WIDGET_TYPES.map(type => first.get(type)).filter((v): v is WidgetVariant => !!v);
   const ids = new Set(front.map(v => v.id));
-  return [...front, ...visible.filter(v => !ids.has(v.id))];
+  const priority = ['shape-circle', 'shape-line', 'shape-arrow', 'design-chart-bar', 'design-chart-line', 'design-chart-pie'];
+  const next = priority.map(id => visible.find(v => v.id === id)).filter((v): v is WidgetVariant => !!v && !ids.has(v.id));
+  next.forEach(v => ids.add(v.id));
+  return [...front, ...next, ...visible.filter(v => !ids.has(v.id))];
 }
 
 /** The everyday building blocks lead for every industry. */

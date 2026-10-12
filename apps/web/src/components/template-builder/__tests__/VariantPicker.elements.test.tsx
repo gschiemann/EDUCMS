@@ -54,14 +54,14 @@ function search(term: string) {
 describe('VariantPicker — Elements tiles render in the real palette', () => {
   it('groups Shapes / Icons / Backgrounds under one named, human row', () => {
     mountPicker();
-    expect(screen.getByText('Shapes & backgrounds')).toBeTruthy();
+    expect(screen.getByText('Shapes, icons & backgrounds')).toBeTruthy();
   });
 
-  it('the Shapes & backgrounds filter shows every SHAPE primitive tile', () => {
+  it('the Shapes, icons & backgrounds filter shows every SHAPE primitive tile', () => {
     mountPicker();
     fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
     const axis = screen.getByLabelText('Category') as HTMLSelectElement;
-    const option = Array.from(axis.options).find((o) => o.textContent === 'Shapes & backgrounds')!;
+    const option = Array.from(axis.options).find((o) => o.textContent === 'Shapes, icons & backgrounds')!;
     fireEvent.change(axis, { target: { value: option.value } });
     for (const label of ['Rectangle', 'Rounded Pill', 'Circle', 'Triangle', 'Star', 'Divider Line', 'Arrow']) {
       expect(screen.getByText(label)).toBeTruthy();

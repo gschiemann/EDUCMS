@@ -65,7 +65,7 @@ export function PhotoDesignFields({ config, onChange, renderAssetPicker, renderF
     const photo: PhotoDesignPhoto = {
       url: frame.assetUrl || frame.imageUrl || "",
       caption: frame.caption || "",
-      fit: frame.fit === "contain" || frame.fitMode === "contain" ? "contain" : "cover",
+      fit: (frame.fit || frame.fitMode) === "contain" ? "contain" : "cover",
       focalX: frame.focalX ?? 50,
       focalY: frame.focalY ?? 50,
       zoom: frame.zoom ?? 1,
@@ -75,10 +75,12 @@ export function PhotoDesignFields({ config, onChange, renderAssetPicker, renderF
         <ImagePicker label="Photo" value={photo.url} renderAssetPicker={renderAssetPicker} onChange={(url) => onChange({ assetUrl: url, imageUrl: url })} />
         <label style={labelStyle}>Caption<input aria-label="Photo caption" value={photo.caption} onChange={(event) => onChange({ caption: event.target.value })} style={fieldStyle} /></label>
         <FramingFields photo={photo} onPatch={(patch) => onChange(patch)} />
+        {renderFontPicker && renderFontPicker({ label: "Caption font", value: frame.captionFont || "Inter, sans-serif", onChange: captionFont => onChange({ captionFont }) })}
+        <NumericField label="Caption size" min={12} max={240} value={Number(frame.captionFontSize ?? 60)} suffix="px" onChange={captionFontSize => onChange({ captionFontSize })} />
       </section>
       <section style={sectionStyle} aria-label="Frame appearance">
-        <label style={labelStyle}>Frame shape<select aria-label="Frame shape" value={frameShape || "rounded"} onChange={(event) => onChange({ frameShape: event.target.value })} style={fieldStyle}><option value="rounded">Rounded</option><option value="circle">Circle</option><option value="arch">Arch</option></select></label>
-        <NumericField label="Border width" min={0} max={24} value={Number(frame.borderWidth ?? 6)} suffix="px" onChange={(borderWidth) => onChange({ borderWidth })} />
+        <label style={labelStyle}>Frame shape<select aria-label="Frame shape" value={frame.frameShape || frameShape || "rounded"} onChange={(event) => onChange({ frameShape: event.target.value })} style={fieldStyle}><option value="rounded">Rounded</option><option value="circle">Circle</option><option value="arch">Arch</option></select></label>
+        <NumericField label="Border width" min={0} max={24} value={Number(frame.borderWidth ?? 0)} suffix="px" onChange={(borderWidth) => onChange({ borderWidth })} />
         <ColorField label="Border color" value={frame.borderColor} fallback="#d4af72" onChange={(borderColor) => onChange({ borderColor })} />
         <label style={labelStyle}>Opacity <input aria-label="Opacity" type="range" min={0} max={100} value={Number(frame.opacity ?? 100)} onChange={(event) => onChange({ opacity: Number(event.target.value) })} /><span style={{ fontSize: 10, fontWeight: 400 }}>{Number(frame.opacity ?? 100)}%</span></label>
       </section>
@@ -107,6 +109,7 @@ export function PhotoDesignFields({ config, onChange, renderAssetPicker, renderF
       <NumericField label="Photo spacing" min={0} max={64} value={Number(collage.spacing ?? 12)} suffix="px" onChange={(spacing) => onChange({ spacing })} />
       <ColorField label="Collage background" value={collage.backgroundColor} fallback="#f3eee5" onChange={(backgroundColor) => onChange({ backgroundColor })} />
       <label style={labelStyle}>Caption font{renderFontPicker ? renderFontPicker({ label: "Caption font", value: collage.captionFont || "", onChange: (captionFont) => onChange({ captionFont }) }) : <input aria-label="Caption font" value={collage.captionFont || ""} onChange={(event) => onChange({ captionFont: event.target.value })} style={fieldStyle} />}</label>
+      <NumericField label="Caption size" min={12} max={240} value={Number(collage.captionFontSize ?? 60)} suffix="px" onChange={captionFontSize => onChange({ captionFontSize })} />
       <ColorField label="Caption color" value={collage.captionColor} fallback="#ffffff" onChange={(captionColor) => onChange({ captionColor })} />
       <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#475569", fontSize: 11, fontWeight: 650 }}><input type="checkbox" checked={collage.showCaptions !== false} onChange={(event) => onChange({ showCaptions: event.target.checked })} />Show captions</label>
       <div style={{ color: "#64748b", fontSize: 10 }} aria-live="polite">{photos.length} {photos.length === 1 ? "photo" : "photos"} shown together{photos.length > 4 ? ` · ${photos.length} saved photos are kept and editable` : ""}</div>
