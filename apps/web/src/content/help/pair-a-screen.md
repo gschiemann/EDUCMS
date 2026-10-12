@@ -44,8 +44,26 @@ Some displays are mounted in portrait orientation. In the screen's detail page, 
 
 For Chromebooks and Chromeboxes, we recommend **Chrome OS managed kiosk mode** running the player web page, `https://venue-os.app/player`, as a kiosk web app — there is no separate Chrome app to install. Pair it once from the dashboard; the pairing survives restarts. See [the kiosk hardening guide](/help/kiosk-hardening) for full instructions.
 
+## Network requirements for IT
+
+A screen needs to reach **three separate hosts** over port 443. Allow all three, or the screen will look broken when it is really blocked:
+
+| What it is | Host to allow | Used for |
+|---|---|---|
+| **Dashboard and player** | `venue-os.app` and `*.venue-os.app` (`https://`) | Loading the player, the pairing page and the Player app download |
+| **VenueOS API** | `api-production-39a1.up.railway.app` (`https://` **and** `wss://`) | Pairing, schedules, content updates, the live connection that delivers emergency alerts |
+| **Uploaded media** | `*.supabase.co` (`https://`) | Every image and video in your playlists |
+
+Notes for IT:
+
+- The API host is a different address from the dashboard. A filter that allows the dashboard but blocks the API leaves the screen on "Connecting…". Blocking `wss://` on it only slows alerts down (the screen falls back to polling), but it should be allowed.
+- Your account's exact API address is also shown to administrators under **Settings → Developer & audit → System & build → API Endpoint**.
+- No inbound ports need opening; screens only make outbound connections.
+- If you use content from other sources (RSS feeds, weather, web pages), allow those hosts too.
+- The same list is in [the kiosk hardening guide](/help/kiosk-hardening).
+
 ## Troubleshooting
 
 - **Code doesn't work**: Pairing codes are short-lived. Read the code that is on the screen right now (it can change if the player restarts) and enter that one.
-- **Screen shows "Unpaired"**: Network/firewall may be blocking WebSocket. We fall back to HTTP polling automatically, but double-check your content filter allows `venue-os.app` and `*.venue-os.app` on ports 443 and 80.
+- **Screen shows "Unpaired" or sits on "Connecting…"**: a firewall or content filter is almost always blocking one of the hosts listed under [Network requirements for IT](#network-requirements-for-it). Allowing only `venue-os.app` is not enough.
 - **Screen is blank**: No schedule applies right now. Assign a default template from the screen's detail page.

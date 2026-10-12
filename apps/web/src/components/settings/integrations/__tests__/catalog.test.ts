@@ -108,7 +108,9 @@ describe('§11 state vocabulary', () => {
       brandingReachable: true,
       clever: { connected: false },
     });
-    expect(rows.length).toBeGreaterThan(10);
+    expect(rows.length).toBeGreaterThan(5);
+    // Ad networks were passed in, and still produce no customer-visible row.
+    expect(rows.some((r) => r.id.startsWith('ads:'))).toBe(false);
     for (const row of rows) {
       expect(ALL_STATES).toContain(row.state);
     }
@@ -293,8 +295,12 @@ describe('filters and counts', () => {
   it('maps the five §7.7 filters onto §11 states', () => {
     const external = rows.filter((r) => matchesStateFilter(r, 'external'));
     expect(external.map((r) => r.id)).toEqual(['streaming:atmosphere']);
+    // A provider with no connector yet is hidden, not listed with a label,
+    // and ad-network monetization has no row at all (it is not built).
     const planned = rows.filter((r) => matchesStateFilter(r, 'planned'));
-    expect(planned.map((r) => r.id)).toEqual(['streaming:soundtrack']);
+    expect(planned).toEqual([]);
+    expect(rows.map((r) => r.id)).not.toContain('streaming:soundtrack');
+    expect(rows.some((r) => r.family === 'monetization')).toBe(false);
     const available = rows.filter((r) => matchesStateFilter(r, 'available'));
     expect(available.map((r) => r.id)).toContain('clever:roster');
   });

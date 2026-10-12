@@ -40,7 +40,11 @@ import { ConnectScreenCard } from '../ConnectScreenCard';
 import { CONNECT_PATH_STORAGE_KEY } from '../connectPaths';
 import { API_URL } from '@/lib/api-url';
 
-const EXPECTED_APK_URL = `${API_URL}/player/apk/latest`;
+// The QR and link carry the stable VenueOS address (which redirects to the
+// API's /player/apk/latest) — never the API host itself. jsdom's origin is
+// loopback, which playerDownloadUrl keeps as-is for local development.
+const EXPECTED_APK_URL = `${window.location.origin}/download/player`;
+const REAL_APK_ENDPOINT = `${API_URL}/player/apk/latest`;
 
 async function mount(
   overrides: Partial<React.ComponentProps<typeof ConnectScreenCard>> = {},
@@ -112,7 +116,7 @@ describe('ConnectScreenCard — Android path', () => {
       'href',
       EXPECTED_APK_URL,
     );
-    expect(screen.getByText(/Download the APK here/)).toBeInTheDocument();
+    expect(screen.getByText(/Download the Player app here/)).toBeInTheDocument();
     // And the QR encodes it verbatim — no invented URL can slip through.
     await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
     expect(encoded).toContain(EXPECTED_APK_URL);
@@ -178,7 +182,7 @@ describe('ConnectScreenCard — media player path (its OWN steps, not the APK fl
       .not.toBeInTheDocument();
     expect(screen.queryByTestId('connect-apk-qr')).not.toBeInTheDocument();
     expect(screen.queryByTestId('connect-apk-download')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Download the APK here/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Download the Player app here/)).not.toBeInTheDocument();
     // The USB sideload line belongs to the APK path only — a preloaded
     // VenueOS player has nothing to sideload.
     expect(screen.queryByTestId('connect-apk-usb')).not.toBeInTheDocument();
@@ -190,7 +194,7 @@ describe('ConnectScreenCard — media player path (its OWN steps, not the APK fl
     await mount();
     await click(screen.getByTestId('connect-path-media-player'));
     expect(
-      screen.getByText(/preloaded with the Player app, so there is nothing to sideload/),
+      screen.getByText(/preloaded with the Player app, so there is nothing to install/),
     ).toBeInTheDocument();
   });
 
@@ -292,5 +296,21 @@ describe('ConnectScreenCard — both paths end at the existing pairing entries',
       expect(screen.getByTestId('connect-pair-screen')).toBeInTheDocument();
       expect(screen.getByTestId('connect-phone-pair-toggle')).toBeInTheDocument();
     }
+  });
+});
+
+describe('ConnectScreenCard — customer-facing wording and addresses (2026-10-11)', () => {
+  it('never shows the API host, and no path uses install jargon', async () => {
+    await mount();
+    for (const p of ['android', 'media-player', 'browser'] as const) {
+      await click(screen.getByTestId(`connect-path-${p}`));
+      const copy = screen.getByTestId('connect-screen-card').textContent ?? '';
+      expect(copy).not.toMatch(/sideload|\bAPK\b|NEXT_PUBLIC|vercel|railway/i);
+    }
+    // And the link/QR on the Android path never encode the raw API endpoint.
+    await click(screen.getByTestId('connect-path-android'));
+    await waitFor(() => expect(screen.getByTestId('connect-apk-qr')).toBeInTheDocument());
+    expect(encoded).not.toContain(REAL_APK_ENDPOINT);
+    expect(screen.getByTestId('connect-apk-download').getAttribute('href')).not.toContain('railway');
   });
 });

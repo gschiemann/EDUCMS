@@ -28,9 +28,11 @@
  *
  * TRUTH CONSTRAINTS (each claim below is code-verified — see the inline
  * citations; do not add a claim here the app does not actually do):
- *   • APK URL — `${API_URL}/player/apk/latest`, the same endpoint the
- *     Settings → Player APK button links to. 302s to
- *     /api/v1/player/apk/v/:vc and streams the real bytes.
+ *   • Download URL — the stable VenueOS address `<web origin>/download/player`
+ *     (apps/web/src/app/download/player/route.ts), which redirects to
+ *     `${API_URL}/player/apk/latest`, the same endpoint the Settings → Player
+ *     button links to. That 302s to /api/v1/player/apk/v/:vc and streams the
+ *     real bytes. The QR carries the VenueOS address, never the API host.
  *     apps/api/src/player-ota/player-ota.controller.ts
  *   • 6-CHARACTER code (not 6 digits — the old copy was wrong):
  *     `generatePairingCode(length = 6)` draws from PAIRING_CODE_ALPHABET,
@@ -55,11 +57,13 @@ import { useTranslations } from 'next-intl';
 import QRCode from 'qrcode';
 import { Cast, Check, Copy, Download, ExternalLink, Globe, QrCode as QrCodeIcon, Smartphone, Tv, Wifi } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
+import { LEGAL_CONTACTS } from '@/lib/legal-entity';
 import {
   CONNECT_PATHS,
   CONNECT_PATH_STORAGE_KEY,
   DEFAULT_CONNECT_PATH,
   apkDownloadUrl,
+  playerDownloadUrl,
   connectPathMeta,
   normalizeConnectPath,
   pairFromPhoneUrl,
@@ -68,6 +72,17 @@ import {
 } from './connectPaths';
 
 type IconComponent = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+
+const PATH_LABEL_KEY = {
+  android: 'pathAndroidLabel',
+  'media-player': 'pathMediaLabel',
+  browser: 'pathBrowserLabel',
+} as const;
+const PATH_HINT_KEY = {
+  android: 'pathAndroidHint',
+  'media-player': 'pathMediaHint',
+  browser: 'pathBrowserHint',
+} as const;
 
 const PATH_ICON: Record<ConnectPathId, IconComponent> = {
   android: Tv,
@@ -275,6 +290,9 @@ export function ConnectScreenCard({
   pairDisabled,
 }: ConnectScreenCardProps) {
   const t = useTranslations();
+  const c = useTranslations('screens.connect');
+  // `<b>` in the pairing sentence renders as the semibold button name.
+  const richB = { b: (chunks: React.ReactNode) => <span className="font-semibold text-slate-600">{chunks}</span> };
   // The remembered choice comes from localStorage, which is an EXTERNAL
   // STORE — so it is read with `useSyncExternalStore`, not with a mount
   // effect that calls setState (React 19 flags that as a cascading render,
@@ -293,7 +311,14 @@ export function ConnectScreenCard({
   const expanded = true;
 
   const meta = connectPathMeta(path);
-  const apkUrl = useMemo(() => apkDownloadUrl(API_URL), []);
+  // The download is only OFFERED when the API it redirects to is configured.
+  const apkAvailable = useMemo(() => !!apkDownloadUrl(API_URL), []);
+  // What the operator sees and what the QR encodes is the stable VenueOS web
+  // address, never the API host (it redirects server-side). See playerDownloadUrl.
+  const apkUrl = useMemo(
+    () => (apkAvailable ? playerDownloadUrl(typeof window !== 'undefined' ? window.location.origin : '') : ''),
+    [apkAvailable],
+  );
   const phonePairUrl = useMemo(
     () => pairFromPhoneUrl(typeof window !== 'undefined' ? window.location.origin : ''),
     [],
@@ -353,19 +378,18 @@ export function ConnectScreenCard({
     >
       <div className="flex items-start gap-3 mb-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold text-slate-800">Connect a screen</h3>
+          <h3 className="text-sm font-bold text-slate-800">{c('title')}</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Nearly every screen runs the VenueOS Player app. Pick what you&apos;re setting up
-            and we&apos;ll show only those steps.
+            {c('intro')}
           </p>
         </div>
       </div>
 
       {/* 1 — the chooser */}
-      <p className="text-xs font-bold text-slate-600 mb-2">What are you setting up?</p>
+      <p className="text-xs font-bold text-slate-600 mb-2">{c('chooser')}</p>
       <div
         role="radiogroup"
-        aria-label="What are you setting up?"
+        aria-label={c('chooser')}
         className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
       >
         {CONNECT_PATHS.map((p) => {
@@ -397,18 +421,18 @@ export function ConnectScreenCard({
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5 flex-wrap">
                   <span className={`text-sm font-bold ${active ? 'text-slate-800' : 'text-slate-600'}`}>
-                    {p.label}
+                    {c(PATH_LABEL_KEY[p.id])}
                   </span>
                   {p.badge && (
                     <span
                       className="text-[10px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full text-white"
                       style={{ background: 'var(--brand-primary, #4f46e5)' }}
                     >
-                      {p.badge}
+                      {c('pathAndroidBadge')}
                     </span>
                   )}
                 </span>
-                <span className="block text-[11px] text-slate-500 mt-0.5">{p.hint}</span>
+                <span className="block text-[11px] text-slate-500 mt-0.5">{c(PATH_HINT_KEY[p.id])}</span>
               </span>
             </button>
           );
@@ -429,10 +453,9 @@ export function ConnectScreenCard({
       <div className="mt-5 pt-5 border-t border-slate-200 space-y-5">
         {meta.steps === 'apk-sideload' ? (
           <>
-            <Step n={1} title="Install the VenueOS Player app on the screen">
+            <Step n={1} title={c('androidStep1Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Scan this from the screen’s own browser or setup app, or from your phone,
-                then sideload it.
+                {c('androidStep1Body')}
               </p>
 
               <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -440,7 +463,7 @@ export function ConnectScreenCard({
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={apkQr}
-                    alt="QR code linking to the VenueOS Player APK download"
+                    alt={c('apkQrAlt')}
                     width={132}
                     height={132}
                     data-testid="connect-apk-qr"
@@ -463,7 +486,7 @@ export function ConnectScreenCard({
                         data-testid="connect-apk-download"
                         className="min-h-11 px-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-xs font-bold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5"
                       >
-                        <Download className="w-3.5 h-3.5" /> Download the APK here
+                        <Download className="w-3.5 h-3.5" /> {c('apkDownload')}
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                       </a>
                       <p className="text-[11px] text-slate-400">
@@ -475,32 +498,28 @@ export function ConnectScreenCard({
                           file manager, so this is the route that always works.
                           Kept to one sentence on purpose. */}
                       <p className="text-[11px] text-slate-400" data-testid="connect-apk-usb">
-                        <span className="font-semibold text-slate-500">No browser on the panel?</span>{' '}
-                        Save the APK to a USB stick, plug it into the panel, open its file
-                        manager, and tap the file — Android asks you to allow the install once.
+                        <span className="font-semibold text-slate-500">{c('usbLabel')}</span>{' '}
+                        {c('usbBody')}
                       </p>
                     </>
                   ) : (
-                    <p className="text-xs text-amber-700">
-                      This deploy has no API URL configured, so the download link can&apos;t be
-                      built. Set <code className="font-mono">NEXT_PUBLIC_API_URL</code> and redeploy.
+                    <p className="text-xs text-amber-700" data-testid="connect-apk-unavailable">
+                      {c('downloadUnavailable', { email: LEGAL_CONTACTS.support })}
                     </p>
                   )}
                 </div>
               </div>
             </Step>
 
-            <Step n={2} title="Open it — the app shows a 6-character code">
+            <Step n={2} title={c('androidStep2Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                First launch asks for a few one-tap Android permissions, one dialog at a time,
-                then the code fills the screen.
+                {c('androidStep2Body')}
               </p>
             </Step>
 
-            <Step n={3} title="Pair it">
+            <Step n={3} title={c('pairTitle')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Type that code into <span className="font-semibold text-slate-600">Pair Screen</span> below,
-                or scan the QR the screen is showing with your phone.
+                {c.rich('pairBodyScreen', richB)}
               </p>
             </Step>
           </>
@@ -513,15 +532,13 @@ export function ConnectScreenCard({
              specifics we cannot support — no model, no dimensions, no
              price, no "what's in the box", no shipping or ordering copy. */
           <>
-            <Step n={1} title="Plug the player into the display">
+            <Step n={1} title={c('mediaStep1Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Into any free HDMI input, then give it power. The display is only a monitor on
-                this path — the player is what runs the VenueOS Player app.
+                {c('mediaStep1Body')}
               </p>
               {apkUrl && (
                 <p className="text-[11px] text-slate-400 mt-2">
-                  Using an Android stick you already own? That one needs the Player app
-                  installed on it first —{' '}
+                  {c('mediaByoPrefix')}{' '}
                   <a
                     href={apkUrl}
                     target="_blank"
@@ -529,54 +546,50 @@ export function ConnectScreenCard({
                     data-testid="connect-byo-apk-link"
                     className="font-semibold underline underline-offset-2 hover:text-slate-600"
                   >
-                    download the APK
+                    {c('mediaByoLink')}
                   </a>
-                  . A VenueOS player already has it.
+                  {c('mediaByoSuffix')}
                 </p>
               )}
             </Step>
 
-            <Step n={2} title="Switch the display to that input">
+            <Step n={2} title={c('mediaStep2Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Use the display’s own source or input button. A VenueOS media player is
-                preloaded with the Player app, so there is nothing to sideload.
+                {c('mediaStep2Body')}
               </p>
             </Step>
 
-            <Step n={3} title="It starts up and shows a 6-character code">
+            <Step n={3} title={c('mediaStep3Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                {t('screens.connect.mediaFirstBoot')}
+                {c('mediaFirstBoot')}
               </p>
             </Step>
 
-            <Step n={4} title="Pair it">
+            <Step n={4} title={c('pairTitle')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Type that code into <span className="font-semibold text-slate-600">Pair Screen</span> below,
-                or scan the QR the screen is showing with your phone.
+                {c.rich('pairBodyScreen', richB)}
               </p>
             </Step>
           </>
         ) : (
           <>
-            <Step n={1} title="Open the Player URL on the display">
+            <Step n={1} title={c('browserStep1Title')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                In the display&apos;s own browser. Works on a smart panel, a PC, or a Chromebook —
-                nothing to install.
+                {c('browserStep1Body')}
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <code className="flex-1 min-w-0 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] sm:text-sm font-mono text-slate-700 select-all break-all">
                   {playerUrl}
                 </code>
-                <CopyButton url={playerUrl} label="Copy the Player URL" variant="hero" />
+                <CopyButton url={playerUrl} label={c('copyPlayerUrl')} variant="hero" />
               </div>
             </Step>
 
-            <Step n={2} title="The page shows a 6-character code" />
+            <Step n={2} title={c('browserStep2Title')} />
 
-            <Step n={3} title="Pair it">
+            <Step n={3} title={c('pairTitle')}>
               <p className="text-xs text-slate-500 mt-0.5">
-                Type that code into <span className="font-semibold text-slate-600">Pair Screen</span> below,
-                or scan the QR the page is showing with your phone.
+                {c.rich('pairBodyPage', richB)}
               </p>
             </Step>
           </>
@@ -589,12 +602,12 @@ export function ConnectScreenCard({
           type="button"
           onClick={onPairScreen}
           disabled={pairDisabled}
-          title={pairDisabled ? 'Your role can’t pair screens' : undefined}
+          title={pairDisabled ? c('pairDisabled') : undefined}
           data-testid="connect-pair-screen"
           className="min-h-11 px-4 rounded-xl text-white text-sm font-bold shadow-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: 'var(--brand-accent, var(--brand-primary, #4f46e5))' }}
         >
-          <Wifi className="w-4 h-4" /> Pair Screen
+          <Wifi className="w-4 h-4" /> {c('pairScreen')}
         </button>
         <button
           type="button"
@@ -604,7 +617,7 @@ export function ConnectScreenCard({
           className="min-h-11 px-4 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-bold shadow-sm inline-flex items-center justify-center gap-2 hover:bg-slate-50"
         >
           <Smartphone className="w-4 h-4" />
-          {showPhoneQr ? 'Hide phone pairing' : 'Pair from my phone'}
+          {showPhoneQr ? c('phoneHide') : c('phoneShow')}
         </button>
       </div>
 
@@ -617,7 +630,7 @@ export function ConnectScreenCard({
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={phoneQr}
-              alt="QR code that opens the phone pairing scanner"
+              alt={c('phoneQrAlt')}
               width={120}
               height={120}
               className="shrink-0 self-start"
@@ -625,17 +638,16 @@ export function ConnectScreenCard({
           )}
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
-              <QrCodeIcon className="w-4 h-4 text-slate-400" /> Scan this with your phone
+              <QrCodeIcon className="w-4 h-4 text-slate-400" /> {c('phoneScanTitle')}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              It opens the pairing scanner. Then point your phone at the code the screen is
-              showing — no typing.
+              {c('phoneScanBody')}
             </p>
             <div className="flex items-center gap-2 mt-2">
               <code className="flex-1 min-w-0 px-3 py-2 bg-slate-50 rounded-lg text-[11px] font-mono text-slate-600 select-all break-all">
                 {phonePairUrl}
               </code>
-              <CopyButton url={phonePairUrl} label="Copy the phone pairing link" />
+              <CopyButton url={phonePairUrl} label={c('copyPhoneLink')} />
             </div>
           </div>
         </div>

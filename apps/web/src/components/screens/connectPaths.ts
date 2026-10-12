@@ -141,6 +141,23 @@ export function apkDownloadUrl(apiBase: string | null | undefined): string {
 }
 
 /**
+ * The address a person (or a QR code) uses to download the Player app: a
+ * stable VenueOS web URL that redirects to the live APK endpoint. Staff and
+ * customers see `venue-os.app`, never the API host behind it.
+ *
+ * Production and preview hosts both resolve to the canonical origin so a QR
+ * printed from a preview deploy cannot carry a throw-away address. A loopback
+ * origin is kept as-is, so local development still works end to end.
+ */
+export const CANONICAL_WEB_ORIGIN = 'https://venue-os.app';
+
+export function playerDownloadUrl(origin: string | null | undefined): string {
+  const o = (origin || '').trim().replace(/\/+$/, '');
+  const loopback = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(o);
+  return `${loopback ? o : CANONICAL_WEB_ORIGIN}/download/player`;
+}
+
+/**
  * The phone-side pairing scanner (apps/web/src/app/pair/page.tsx). The
  * operator scans THIS with their phone to open the camera scanner, then
  * points the phone at the code the screen is showing.

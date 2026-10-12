@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Bug Reporter — the floating "Report a bug" button + submission modal.
+ * Bug Reporter — the floating "Report a problem" button + submission modal.
  *
  * Operator vision (2026-05-27): "the best bug reporter ever seen
  * before where someone finds a bug, clicks a button, it screen caps the
@@ -30,13 +30,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { LEGAL_CONTACTS } from '@/lib/legal-entity';
 import { AlertCircle, Bug, CheckCircle2, Loader2, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { captureBugBundle } from '@/lib/bug-capture';
 import { setBugCaptureIgnoreSelector } from '@/lib/bug-ringbuffers';
 import { useCreateBug } from '@/hooks/use-bugs';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import type { BugStatus } from '@cms/api-types';
 
 const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
 
@@ -56,6 +57,7 @@ const HIDDEN_PREFIXES = [
 ];
 
 export function BugReporterButton() {
+  const t = useTranslations('bugReporter');
   const pathname = usePathname() || '';
   const user = useAppStore((s) => s.user);
   const [open, setOpen] = useState(false);
@@ -120,8 +122,8 @@ export function BugReporterButton() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Report a bug"
-          title="Report a bug (⌘⇧B)"
+          aria-label={t('open')}
+          title={t('openTitle')}
           // Sit ABOVE the MobileTabBar (z-[60]) and the EmergencyOverlay
           // chrome. The bottom-24 offset keeps it clear of the mobile tab
           // bar (h-56px + safe-area). On desktop it lifts to bottom-6.
@@ -156,10 +158,11 @@ type SubmitState =
   | { kind: 'idle' }
   | { kind: 'capturing' }
   | { kind: 'submitting' }
-  | { kind: 'success'; bugId: string; status: BugStatus }
+  | { kind: 'success'; bugId: string }
   | { kind: 'error'; message: string };
 
 function BugReporterModal({ onClose, reporterRole }: ModalProps) {
+  const t = useTranslations('bugReporter');
   const [description, setDescription] = useState('');
   const [state, setState] = useState<SubmitState>({ kind: 'idle' });
   const createBug = useCreateBug();
@@ -191,7 +194,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
     } catch (err) {
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Capture failed before we could submit.',
+        message: t('captureFailed'),
       });
       return;
     }
@@ -201,14 +204,14 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
         captured: bundle.captured,
         screenshotBase64: bundle.screenshotBase64,
       });
-      setState({ kind: 'success', bugId: res.bugId, status: res.status });
+      setState({ kind: 'success', bugId: res.bugId });
     } catch (err) {
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Submit failed. Please try again.',
+        message: t('submitFailed'),
       });
     }
-  }, [createBug, description, state.kind]);
+  }, [createBug, description, state.kind, t]);
 
   const busy = state.kind === 'capturing' || state.kind === 'submitting';
   const isSuperAdmin = reporterRole === 'SUPER_ADMIN';
@@ -225,7 +228,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
           rest of the dashboard's modal UX. */}
       <button
         type="button"
-        aria-label="Close"
+        aria-label={t('close')}
         onClick={() => { if (!busy) onClose(); }}
         className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 backdrop-blur-sm"
       />
@@ -238,10 +241,10 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
             </div>
             <div>
               <h2 id="bug-reporter-title" className="text-base font-extrabold text-slate-900 leading-tight">
-                Report a bug
+                {t('title')}
               </h2>
               <p className="text-[11px] text-slate-500 leading-tight">
-                We&apos;ll capture the screen + state automatically.
+                {t('subtitle')}
               </p>
             </div>
           </div>
@@ -249,7 +252,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
             type="button"
             onClick={onClose}
             disabled={busy}
-            aria-label="Close"
+            aria-label={t('close')}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4" />
@@ -260,21 +263,18 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
           {state.kind === 'success' ? (
             <SuccessPanel
               bugId={state.bugId}
-              status={state.status}
               isSuperAdmin={isSuperAdmin}
               onClose={onClose}
             />
           ) : (
             <>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Tell us what went wrong. We&apos;ll capture the page, recent actions, console
-                errors, and network failures — and route it to the team for an automated
-                fix proposal.
+                {t('intro')}
               </p>
 
               <label className="block">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  What happened? <span className="text-slate-300 normal-case font-normal">(optional but helpful)</span>
+                  {t('whatHappened')} <span className="text-slate-300 normal-case font-normal">{t('optionalHelpful')}</span>
                 </span>
                 <textarea
                   ref={textareaRef}
@@ -282,7 +282,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
                   onChange={(e) => setDescription(e.target.value)}
                   disabled={busy}
                   rows={4}
-                  placeholder="I clicked Save and nothing happened, or…"
+                  placeholder={t('placeholder')}
                   className="mt-1.5 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder:text-slate-400 disabled:opacity-50"
                   maxLength={2000}
                 />
@@ -295,7 +295,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
                 <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" aria-hidden />
                   <div className="text-[11px] text-rose-700 leading-snug">
-                    <div className="font-bold mb-0.5">Couldn&apos;t submit the bug</div>
+                    <div className="font-bold mb-0.5">{t('errorTitle')}</div>
                     <div>{state.message}</div>
                   </div>
                 </div>
@@ -308,7 +308,7 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
                   disabled={busy}
                   className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="button"
@@ -318,12 +318,12 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
                 >
                   {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {state.kind === 'capturing'
-                    ? 'Capturing screen…'
+                    ? t('capturing')
                     : state.kind === 'submitting'
-                      ? 'Submitting…'
+                      ? t('submitting')
                       : state.kind === 'error'
-                        ? 'Try again'
-                        : 'Submit bug report'}
+                        ? t('tryAgain')
+                        : t('submit')}
                 </button>
               </div>
             </>
@@ -336,25 +336,28 @@ function BugReporterModal({ onClose, reporterRole }: ModalProps) {
 
 interface SuccessProps {
   bugId: string;
-  status: BugStatus;
   isSuperAdmin: boolean;
   onClose: () => void;
 }
 
-function SuccessPanel({ bugId, status, isSuperAdmin, onClose }: SuccessProps) {
+/**
+ * What a customer reads after sending a report: a plain "we got it" with the
+ * reference. Nothing about statuses, internal tooling or how it gets fixed.
+ * Only platform staff get a link into the owner console.
+ */
+export function SuccessPanel({ bugId, isSuperAdmin, onClose }: SuccessProps) {
+  const t = useTranslations('bugReporter');
   return (
     <div className="text-center py-2">
       <div className="w-12 h-12 mx-auto rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mb-3">
         <CheckCircle2 className="w-6 h-6 text-emerald-600" aria-hidden />
       </div>
-      <h3 className="text-base font-extrabold text-slate-900 mb-1">Thanks — bug filed.</h3>
+      <h3 className="text-base font-extrabold text-slate-900 mb-1">{t('successTitle')}</h3>
       <p className="text-xs text-slate-500 leading-relaxed">
-        The team has it. Bug{' '}
-        <span className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
-          {bugId.slice(0, 8)}
-        </span>{' '}
-        is{' '}
-        <span className="font-bold text-slate-700">{status.toLowerCase()}</span>.
+        {t('successBody', { ref: bugId.slice(0, 8) })}
+      </p>
+      <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+        {t('successContact', { email: LEGAL_CONTACTS.support })}
       </p>
       <div className="mt-4 flex items-center justify-center gap-2">
         {isSuperAdmin && (
@@ -363,7 +366,7 @@ function SuccessPanel({ bugId, status, isSuperAdmin, onClose }: SuccessProps) {
             onClick={onClose}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
           >
-            Open in /super/bugs
+            {t('openOwnerConsole')}
           </Link>
         )}
         <button
@@ -371,7 +374,7 @@ function SuccessPanel({ bugId, status, isSuperAdmin, onClose }: SuccessProps) {
           onClick={onClose}
           className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-slate-900"
         >
-          Close
+          {t('close')}
         </button>
       </div>
     </div>

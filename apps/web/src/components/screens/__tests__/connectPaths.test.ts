@@ -1,4 +1,5 @@
 import {
+  playerDownloadUrl,
   CONNECT_PATHS,
   CONNECT_PATH_STORAGE_KEY,
   DEFAULT_CONNECT_PATH,
@@ -157,5 +158,20 @@ describe('shouldStartCollapsed', () => {
     expect(shouldStartCollapsed(null)).toBe(false);
     expect(shouldStartCollapsed(NaN)).toBe(false);
     expect(shouldStartCollapsed(-1)).toBe(false);
+  });
+});
+
+describe('connectPaths — the stable download address', () => {
+  it('is always the VenueOS address, never a hosting URL', () => {
+    expect(playerDownloadUrl('https://venue-os.app')).toBe('https://venue-os.app/download/player');
+    // A preview deploy must not bake a throw-away host into a printed QR.
+    expect(playerDownloadUrl('https://preview-abc123.vercel.app')).toBe('https://venue-os.app/download/player');
+    expect(playerDownloadUrl('')).toBe('https://venue-os.app/download/player');
+    expect(playerDownloadUrl(undefined)).toBe('https://venue-os.app/download/player');
+  });
+
+  it('keeps a loopback origin so local development works end to end', () => {
+    expect(playerDownloadUrl('http://localhost:3000')).toBe('http://localhost:3000/download/player');
+    expect(playerDownloadUrl('http://127.0.0.1:3000/')).toBe('http://127.0.0.1:3000/download/player');
   });
 });
