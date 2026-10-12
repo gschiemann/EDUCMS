@@ -111,3 +111,7 @@ The portrait lead now reserves an 800px panel and a nonshrinking 280px headline 
 |WebKit|Portrait|48.4|53.7|64px Georgia preserved|
 
 Minimum visible support text remains >=51.8px; the long portrait headline fits at150.45px. Exact script blocks, text keys and image-slot keys are unchanged. Evidence: `scratch/astra-finish/one-check.json`, `education-spacing-{engine}-{orientation}.png`. This is a targeted collision check, not a claim that unrelated full-board geometry or release gates have passed. Lead owns injection/posters/integration/CI.
+
+### Same-file landscape follow-up
+
+Reserved guide-number height and increased landscape guide gap to35px after WebKit DOM Range exposed number/title intersections. Final existing full-field collision check: **collisions=[] for default and longer copy in Chromium + WebKit, landscape + portrait (all four cases)**. Saved64px Georgia remains absolute in all four cases. All script blocks and editable keys remain byte-identical. Final evidence: `scratch/astra-finish/education-final-verify.log` and final `healthcare-06-patient-education-{orientation}-{engine}.png` screenshots. No other board was edited in this follow-up. Remaining: lead injection/posters/integration/CI and separately queued boards.
