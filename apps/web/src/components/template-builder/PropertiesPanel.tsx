@@ -4466,7 +4466,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // loop and it's on by default.
       fields.push(<TextField key="title" label="Caption (editor only)" value={cfg.title || ''} placeholder="Promo Reel" onChange={(v) => setField({ title: v })} />);
       fields.push(<SelectField key="transition" label="Transition between clips" value={cfg.transition || 'fade'} options={[['fade','Fade'],['slide-left','Slide left'],['slide-right','Slide right'],['slide-up','Slide up'],['cut','Cut (no animation)']]} onChange={(v) => setField({ transition: v })} />);
-      fields.push(<SelectField key="fitMode" label="Video fit" value={cfg.fitMode || 'contain'} options={[['contain','Fit (no crop)'],['cover','Fill (crop)']]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<SelectField key="fitMode" label="Video fit" value={cfg.fitMode || 'fill'} options={[['fill','Fill screen (no crop)'],['contain','Fit (bars)'],['cover','Fill (crop)']]} onChange={(v) => setField({ fitMode: v })} />);
       fields.push(<AssetListPickerField key="urls" label="Videos" value={(cfg.assetUrls || cfg.urls || []) as string[]} kind="video" onChange={(v) => setField({ assetUrls: v, urls: v })} />);
       fields.push(<ToggleField key="muted" label="Muted (required for autoplay)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
       break;
