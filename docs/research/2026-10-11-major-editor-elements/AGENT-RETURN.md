@@ -1,0 +1,1 @@
+Luna returned clean commits 31dcc19e and 4c034ede. Two focused suites / nine tests, new-file ESLint, full web TypeScript after workspace types build passed. Existing PropertiesPanel lint backlog remains; no production/browser review. Lead registration, design review, verification, push remain.
