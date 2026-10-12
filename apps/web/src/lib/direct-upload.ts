@@ -534,14 +534,54 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
     let accepted = 0;
     let stalls = 0;
     report(0);
+    // SMOOTH PROGRESS (2026-10-12, Greg: "it goes 6 MB at a time then pauses").
+    // The browser hands a whole 6 MB chunk to the socket buffer at once, so
+    // the XHR's own upload events jump to the chunk's end in a blink and the
+    // real transfer then happens during the "pause" while storage confirms
+    // the chunk. Shown instead: confirmed bytes plus the measured average
+    // rate times the time this chunk has been in flight, never past the
+    // chunk's end. Nothing is claimed beyond the chunk being sent, and the
+    // confirmed offset still lands exactly when storage acknowledges it.
+    const startedAt = deps.now();
+    let shown = 0;
+    const show = (n: number) => {
+      const v = Math.max(shown, Math.min(n, total));
+      if (v !== shown) { shown = v; report(v); }
+    };
+    // READ-AHEAD: the next chunk is read from disk while this one uploads.
+    let nextRead: { at: number; end: number; p: Promise<ArrayBuffer> } | null = null;
+    const readAt = (at: number, end: number): Promise<ArrayBuffer> => {
+      if (nextRead && nextRead.at === at && nextRead.end === end) {
+        const p = nextRead.p;
+        nextRead = null;
+        return p;
+      }
+      nextRead = null;
+      return deps.readChunk(file.slice(at, end), opts.signal);
+    };
     while (offset < total) {
       aborted();
       await freshToken();
       const end = Math.min(offset + chunk, total);
-      const bytes = await deps.readChunk(file.slice(offset, end), opts.signal);
+      const bytes = await readAt(offset, end);
       aborted();
+      if (end < total) {
+        const nEnd = Math.min(end + chunk, total);
+        const p = deps.readChunk(file.slice(end, nEnd), opts.signal);
+        p.catch(() => undefined); // surfaced when awaited
+        nextRead = { at: end, end: nEnd, p };
+      }
       if (bytes.byteLength !== end - offset) throw new DirectUploadError('unreadable', 'The selected file could not be read. Select it again from Files.');
       opts.onPhase?.('uploading');
+      const chunkFrom = offset;
+      const chunkStart = deps.now();
+      const ticker: ReturnType<typeof setInterval> | null =
+        accepted > 0 && typeof setInterval === 'function'
+          ? setInterval(() => {
+              const rate = accepted / Math.max(1, chunkStart - startedAt);
+              show(Math.min(end - 1, chunkFrom + rate * (deps.now() - chunkStart)));
+            }, 200)
+          : null;
       const res = await deps.request(
         'PATCH',
         uploadUrl,
@@ -552,9 +592,14 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
           'Content-Type': 'application/offset+octet-stream',
         },
         bytes,
-        (loaded) => report(offset + loaded),
+        (loaded) => {
+          // First chunk: no measured rate yet, so the XHR's events are all we have.
+          if (accepted === 0) show(offset + loaded);
+        },
         opts.signal,
-      );
+      ).finally(() => {
+        if (ticker) clearInterval(ticker);
+      });
       if (res.status === -1) throw new DirectUploadError('aborted', 'Upload cancelled.');
       if (res.status === 204 || res.status === 200) {
         const value = res.header('Upload-Offset');
@@ -567,7 +612,7 @@ export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = 
           // A 204 without new bytes must never reset the retry budget or
           // manufacture progress (the iOS empty-body / 409 loop).
           if (offset > accepted) { accepted = offset; stalls = 0; }
-          report(offset);
+          show(offset);
           continue;
         }
       }

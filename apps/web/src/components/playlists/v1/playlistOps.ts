@@ -840,7 +840,12 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
   const reportAt = toMs(screen.lastVideoReportAt ?? screen.lastVideoReport?.at);
   const reportAge = reportAt === null ? Infinity : nowMs - reportAt;
   if (playback && reportAge >= 0 && reportAge < RENDER_STALE_AFTER_MS &&
-      (playback.grade === 'hitching' || playback.grade === 'stuttering')) {
+      playback.grade === 'stuttering') {
+    // Only a VISIBLE problem raises the delivery banner (Greg, 2026-10-12:
+    // VisionCore dropped 29 of ~2,400 frames — 1.2 %, invisible — and a
+    // freshly published playlist was labelled "playback problem"). A hitch
+    // stays on the screen's own "Last video" line; the per-file record
+    // (screen_file_playback) owns the settled verdict.
     return 'issue';
   }
 
