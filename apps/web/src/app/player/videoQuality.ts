@@ -57,6 +57,18 @@
  * An element that cannot be listened to reports frames only: the stall keys
  * are ABSENT ("not counted"), never 0 ("counted, none").
  *
+ * ── PER-FILE EVIDENCE (2026-10-11, video guarantee step 1) ─────────────
+ * Each report also says, when the page knows: WHICH file (`sha256`, the
+ * manifest digest — `rememberVideoDigest`), WHICH engine played it
+ * (`engine`, handed to `attach`), whether it played from the verified offline
+ * cache (`cached`, from the page's `setVideoPlaybackContext`), how many
+ * `<video>` elements were decoding in the document at that instant
+ * (`concurrent`), and whether this is the FIRST stretch after the clip went
+ * on glass (`first` — warm-up, never decode evidence). The server folds them
+ * into one record per screen × file (`screen_file_playback`). Every one is
+ * OMITTED when unknown, never guessed: a missing `cached` means "could not
+ * say", which the server treats differently from `false`.
+ *
  * Player reliability rules: no timers, no network, nothing that advances
  * content — a read of two counters and six event listeners, on an effect
  * the page already has, taken off again on detach.
@@ -84,6 +96,63 @@ export interface VideoQualitySource {
 
 /** Below this many frames a sample says nothing reliable (5 s at 30 fps). */
 export const VIDEO_QUALITY_MIN_FRAMES = 150;
+
+/** Engines the player reports a sample from (server enum — keep in step). */
+export type VideoEngine = 'native' | 'continuous' | 'twodeck' | 'deck';
+
+/**
+ * What the page knows that this module cannot: whether a URL is on disk in
+ * the verified cache, and how many videos are decoding right now. Both may
+ * answer null ("could not say"); the defaults count live `<video>` elements
+ * in the document and know nothing about the cache.
+ */
+export interface VideoPlaybackContext {
+  cachedFor?: (url: string) => boolean | null;
+  concurrent?: () => number | null;
+}
+
+/** Live `<video>` elements actually decoding: playing, not ended, with a frame. */
+export function countDecodingVideos(doc: { querySelectorAll?: (sel: string) => ArrayLike<unknown> } | null | undefined): number | null {
+  if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+  try {
+    const list = doc.querySelectorAll('video');
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const v = list[i] as { paused?: boolean; ended?: boolean; readyState?: number };
+      if (v && v.paused === false && v.ended !== true && (v.readyState ?? 0) >= 2) n += 1;
+    }
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+/** Digest registry, filled from the manifest (`asset_hash`). Bounded, newest wins. */
+const DIGEST_LIMIT = 256;
+const digests = new Map<string, string>();
+const digestKey = (url: string): string => String(url ?? '').split('#')[0];
+
+/** Remember the manifest digest of a video URL (lower-case hex, 64 chars) — anything else is ignored. */
+export function rememberVideoDigest(url: string | null | undefined, sha256: string | null | undefined): void {
+  if (!url || typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(sha256)) return;
+  const k = digestKey(url);
+  digests.delete(k);
+  digests.set(k, sha256.toLowerCase());
+  while (digests.size > DIGEST_LIMIT) {
+    const oldest = digests.keys().next().value;
+    if (oldest === undefined) break;
+    digests.delete(oldest);
+  }
+}
+
+export function videoDigestFor(url: string): string | null {
+  return digests.get(digestKey(url)) ?? null;
+}
+
+/** For tests. */
+export function resetVideoDigestsForTests(): void {
+  digests.clear();
+}
 
 /** The media events rebuffer counting listens to. */
 const STALL_EVENTS = ['waiting', 'playing', 'pause', 'ended', 'seeking', 'seeked'] as const;
@@ -129,6 +198,9 @@ interface Stalls {
 interface Active {
   el: VideoQualitySource;
   src: string;
+  engine: VideoEngine | null;
+  /** No report has been taken from this clip since it went on glass. */
+  first: boolean;
   base: VideoQualityCounters;
   sinceMs: number;
   /** Null when the element cannot be listened to: frames only, no stall keys. */
@@ -140,9 +212,17 @@ export class VideoQualityTracker {
   private pending: TelemetryVideoReport | null = null;
   /** Wall clock for the media-event handlers; `attach`/`detach`/`take` are handed theirs. */
   private readonly clock: () => number;
+  /** The clip most recently attached — a re-attach of the same one is not a new activation. */
+  private lastSrc: string | null = null;
+  private context: VideoPlaybackContext = {};
 
   constructor(clock: () => number = () => Date.now()) {
     this.clock = clock;
+  }
+
+  /** The page hands over what it knows (cache state, decoder count). Replaces the previous context. */
+  setContext(ctx: VideoPlaybackContext): void {
+    this.context = ctx ?? {};
   }
 
   /** Local boot evidence reads the active decoder, without consuming a
@@ -154,15 +234,19 @@ export class VideoQualityTracker {
   }
 
   /** A slide became the one on glass. Records the base reading; replaces any earlier element. */
-  attach(el: VideoQualitySource, src: string, nowMs: number): void {
+  attach(el: VideoQualitySource, src: string, nowMs: number, engine: VideoEngine | null = null): void {
     if (this.active) {
       if (this.active.el !== el) this.finish(nowMs);
       // The same element again: re-based silently, as before — never listened to twice.
       else this.drop();
     }
+    // A loop lap (two-deck reveal, continuous re-load) re-attaches the SAME
+    // clip: still the stretch after warm-up, so not "first".
+    const first = src !== this.lastSrc;
+    this.lastSrc = src;
     const base = readVideoQuality(el);
     if (!base) return;
-    this.active = { el, src, base, sinceMs: nowMs, stalls: this.listen(el) };
+    this.active = { el, src, engine, first, base, sinceMs: nowMs, stalls: this.listen(el) };
   }
 
   /** The slide left the glass (ended, advanced, unmounted). Takes the final delta. */
@@ -186,6 +270,7 @@ export class VideoQualityTracker {
     if (!a) return null;
     const report = this.delta(a, nowMs);
     if (!report) return null;
+    a.first = false;
     // Re-base so the next tick reports only what happened after this one.
     const now = readVideoQuality(a.el);
     if (now) {
@@ -247,7 +332,27 @@ export class VideoQualityTracker {
       report.stalls = s.count + (open === null ? 0 : 1);
       report.stalledMs = Math.floor(s.ms + (open === null ? 0 : Math.max(0, nowMs - open)));
     }
+    this.addEvidence(report, a);
     return report;
+  }
+
+  /** The per-file evidence keys — each only when known (never guessed). */
+  private addEvidence(report: TelemetryVideoReport, a: Active): void {
+    const sha = videoDigestFor(a.src);
+    if (sha) report.sha256 = sha;
+    if (a.engine) report.engine = a.engine;
+    report.first = a.first;
+    try {
+      const cached = this.context.cachedFor ? this.context.cachedFor(a.src) : null;
+      if (typeof cached === 'boolean') report.cached = cached;
+    } catch { /* unknown */ }
+    try {
+      const n = this.context.concurrent
+        ? this.context.concurrent()
+        : countDecodingVideos(typeof document !== 'undefined' ? document : null);
+      // The element being reported is decoding by definition — never below 1.
+      if (typeof n === 'number' && Number.isFinite(n)) report.concurrent = Math.min(Math.max(Math.floor(n), 1), 16);
+    } catch { /* unknown */ }
   }
 
   /** Rebuffer counting on this element, or null when it cannot be listened to. */

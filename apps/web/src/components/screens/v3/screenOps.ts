@@ -55,7 +55,7 @@ import { contentBehindCause } from '@/components/dashboard/district/fleetCommand
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
 import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
-import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
+import { HARDWARE_CATALOG, gradePlaybackSample, resolveHardwareModel } from '@cms/api-types';
 
 // ═══════════════════════════════════════════════════════════════════
 // Inputs — the subset of `GET /screens` this surface reads
@@ -1487,22 +1487,24 @@ export interface VideoPlayback {
   age?: string;
 }
 
-/** Below this many frames a sample says nothing reliable (5 s at 30 fps). */
-export const VIDEO_SAMPLE_MIN_FRAMES = 150;
-/** Dropped-frame share thresholds. Under 1% is invisible; over 5% is what an operator calls choppy. */
-export const VIDEO_HITCHING_PCT = 1;
-export const VIDEO_STUTTERING_PCT = 5;
 /**
- * Rebuffer thresholds. A pause to buffer is a FREEZE on the glass, which no
- * dropped-frame share can express — a file whose MP4 index sits at the end
- * drops nothing and still stops while its bytes arrive. So pauses grade the
- * sample whatever its dropped-frame share: pauses adding up to a second or
- * more are at least a hitch; three pauses, or five seconds spent waiting,
- * are a stutter.
+ * The sample thresholds and the grade itself live in ONE place since
+ * 2026-10-11 — `playback-capability.ts` in @cms/api-types — so the dashboard's
+ * "Last video" line and the API's per-file playback record (and, later, the
+ * publish gate) can never disagree about what "stutters" means. Re-exported
+ * under their old names. Under 1 % dropped is invisible, over 5 % is choppy; a
+ * pause to buffer is a FREEZE on the glass, so pauses grade the sample
+ * whatever its dropped-frame share (≥ 1 s at least a hitch; 3 pauses or 5 s a
+ * stutter).
  */
-export const VIDEO_STALL_HITCHING_MS = 1_000;
-export const VIDEO_STALL_STUTTERING_COUNT = 3;
-export const VIDEO_STALL_STUTTERING_MS = 5_000;
+export {
+  PLAYBACK_SAMPLE_MIN_FRAMES as VIDEO_SAMPLE_MIN_FRAMES,
+  PLAYBACK_HITCHING_PCT as VIDEO_HITCHING_PCT,
+  PLAYBACK_STUTTERING_PCT as VIDEO_STUTTERING_PCT,
+  PLAYBACK_STALL_HITCHING_MS as VIDEO_STALL_HITCHING_MS,
+  PLAYBACK_STALL_STUTTERING_COUNT as VIDEO_STALL_STUTTERING_COUNT,
+  PLAYBACK_STALL_STUTTERING_MS as VIDEO_STALL_STUTTERING_MS,
+} from '@cms/api-types';
 
 const VIDEO_HEADLINE: Record<VideoPlaybackGrade, string> = {
   smooth: 'Played smoothly on this screen',
@@ -1564,19 +1566,9 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
       ? `paused ${stalls === 1 ? 'once' : `${stalls.toLocaleString('en-US')} times`} to buffer${stalledMs !== null ? ` (${stallSeconds(stalledMs)})` : ''}`
       : null;
   const detail = [framesLine, size, age ? `${age} ago` : null, pausedLine].filter(Boolean).join(' · ');
-  let grade: VideoPlaybackGrade;
-  if (total < VIDEO_SAMPLE_MIN_FRAMES) grade = 'short';
-  else if (droppedPct >= VIDEO_STUTTERING_PCT) grade = 'stuttering';
-  else if (droppedPct >= VIDEO_HITCHING_PCT) grade = 'hitching';
-  else grade = 'smooth';
-  // Pauses grade the sample whatever its dropped-frame share. A pause needs
-  // no frame floor to be believed, so it lifts "too short to judge" as well.
-  const waitedMs = stalledMs ?? 0;
-  if (stalls >= VIDEO_STALL_STUTTERING_COUNT || waitedMs >= VIDEO_STALL_STUTTERING_MS) {
-    grade = 'stuttering';
-  } else if (stalls >= 1 && waitedMs >= VIDEO_STALL_HITCHING_MS && (grade === 'smooth' || grade === 'short')) {
-    grade = 'hitching';
-  }
+  // The one shared grade (@cms/api-types): pauses grade the sample whatever
+  // its dropped-frame share, and lift "too short to judge" as well.
+  const grade: VideoPlaybackGrade = gradePlaybackSample({ totalFrames: total, droppedFrames: dropped, stalls, stalledMs });
   return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age };
 }
 

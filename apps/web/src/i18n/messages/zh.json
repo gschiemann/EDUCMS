@@ -2364,6 +2364,35 @@
         "notConfirmed": "上次“开启面板”（{ago}）：播放器未确认。"
       },
       "noEvidence": "此播放器版本不会报告其观察结果。更新后即可在此查看确认信息。"
+    },
+    "playback": {
+      "title": "视频播放",
+      "summarySmooth": "视频播放流畅",
+      "summaryHitches": "视频偶有卡顿",
+      "summaryStutters": "视频播放卡顿",
+      "summaryUnknown": "尚未检测",
+      "unknownHint": "这块屏幕播放几分钟视频后即可得知。",
+      "evidenceMeasuredScreen": "在这块屏幕上实测",
+      "evidenceMeasuredClass": "在 {count} 块同型号屏幕上实测",
+      "evidenceDeclared": "这块屏幕的浏览器声明可播放的内容",
+      "evidenceClassDefault": "该型号的典型表现",
+      "evidenceUnknown": "暂无数据",
+      "cap2160": "可播放最高 4K 视频",
+      "cap1080": "可播放最高 1080p 视频",
+      "capNone": "尚无经证实可流畅播放的视频尺寸",
+      "concurrencyOne": "这台显示器一次只能播放一个视频",
+      "concurrencyMany": "这台显示器可同时播放 {count} 个视频",
+      "stale": "测量时间早于上次播放器更新，将会重新检测。",
+      "fileSmooth": "流畅",
+      "fileHitching": "偶有卡顿",
+      "fileStuttering": "卡顿",
+      "fileInsufficient": "检测中",
+      "fileDetail": "{minutes} 分钟内丢帧 {pct}%",
+      "fileChecking": "目前已有 {count} 个样本",
+      "copy1080": "1080p 副本",
+      "bothSides": "两面同时在播放视频",
+      "note": "以上为播放器的测量结果，我们无法看到屏幕本身。",
+      "loadFailed": "无法加载播放记录。"
     }
   },
   "selection": {

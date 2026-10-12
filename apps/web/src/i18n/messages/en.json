@@ -2364,6 +2364,35 @@
         "notConfirmed": "Last Turn panel on ({ago}): not confirmed by the player."
       },
       "noEvidence": "This player version does not report what it saw. Update it to see proof here."
+    },
+    "playback": {
+      "title": "Video playback",
+      "summarySmooth": "Plays video smoothly",
+      "summaryHitches": "Hitches a little on video",
+      "summaryStutters": "Stutters on video",
+      "summaryUnknown": "Not checked yet",
+      "unknownHint": "We’ll know after a few minutes of video on this screen.",
+      "evidenceMeasuredScreen": "Measured on this screen",
+      "evidenceMeasuredClass": "Measured on {count} screens of this model",
+      "evidenceDeclared": "What this screen’s browser says it can play",
+      "evidenceClassDefault": "Typical for this model",
+      "evidenceUnknown": "No evidence yet",
+      "cap2160": "Video up to 4K",
+      "cap1080": "Video up to 1080p",
+      "capNone": "No video size proven smooth yet",
+      "concurrencyOne": "One video at a time on this display",
+      "concurrencyMany": "{count} videos at once on this display",
+      "stale": "Measured before the last player update — it will be checked again.",
+      "fileSmooth": "Smooth",
+      "fileHitching": "Hitches",
+      "fileStuttering": "Stutters",
+      "fileInsufficient": "Checking",
+      "fileDetail": "{pct}% of frames dropped over {minutes} min",
+      "fileChecking": "{count} samples so far",
+      "copy1080": "1080p copy",
+      "bothSides": "video was playing on both sides",
+      "note": "As measured by the player — we can’t see the panel itself.",
+      "loadFailed": "Couldn’t load playback history."
     }
   },
   "selection": {

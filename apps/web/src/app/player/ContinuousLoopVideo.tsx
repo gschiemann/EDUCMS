@@ -116,7 +116,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
       diagnostics.reset(Date.now(), readVideoQuality(video));
       diagnosticSeeking = false;
       videoQualityTracker.detach(video, Date.now());
-      videoQualityTracker.attach(video, src, Date.now());
+      videoQualityTracker.attach(video, src, Date.now(), engine && !fellBack ? 'continuous' : 'native');
     };
     const onVideoError = () => {
       if (engine && !fellBack) fallback('media-error');
@@ -147,7 +147,7 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
     video.addEventListener('error', onVideoError);
     video.loop = true; video.muted = true;
     video.play().catch(() => { /* active error / watchdog owns it */ });
-    videoQualityTracker.attach(video, src, Date.now());
+    videoQualityTracker.attach(video, src, Date.now(), 'native');
     loopBoundaryTracker.startSession('native');
 
     const onFrame = (_now: number, meta: FrameMeta) => {

@@ -45,7 +45,7 @@ export function PlaylistVideoDeck(props: PlaylistVideoDeckProps) {
       present(video, source, previous) {
         if (previous) videoQualityTracker.detach(previous, Date.now());
         tracked = video;
-        videoQualityTracker.attach(video, source.src, Date.now());
+        videoQualityTracker.attach(video, source.src, Date.now(), 'deck');
         detector.reset();
         recoveries = 0;
         callbacks.current.onPlaying();

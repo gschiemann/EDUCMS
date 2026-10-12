@@ -678,6 +678,60 @@ export function useHardwareCatalog() {
 }
 
 /**
+ * 2026-10-11 — one screen's video playback evidence: per file it played,
+ * smooth / hitches / stutters / still checking, plus the computed playback
+ * capability profile (`GET /screens/:id/playback-capability`, read-only).
+ * Fetched only while the drawer's Overview is open; never polled.
+ */
+export interface ScreenPlaybackFile {
+  sha256: string;
+  name: string;
+  assetId: string | null;
+  copy: 'original' | '1080p' | null;
+  verdict: 'smooth' | 'hitching' | 'stuttering' | 'insufficient';
+  samples: number;
+  settledSamples: number;
+  droppedPct: number | null;
+  worstPct: number | null;
+  lastPct: number | null;
+  width: number | null;
+  height: number | null;
+  engine: string | null;
+  concurrentMax: number;
+  unitConcurrentMax: number;
+  firstAt: string;
+  lastAt: string;
+}
+export interface ScreenPlaybackCapabilityResponse {
+  screenId: string;
+  summary: 'smooth' | 'hitches' | 'stutters' | 'unknown';
+  capability: {
+    deviceClass: string | null;
+    maxShortEdge: 1080 | 2160 | null;
+    stuttersAtShortEdge: number | null;
+    maxFps: number | null;
+    maxUnitConcurrentVideos: number | null;
+    evidence: 'measured-screen' | 'measured-class' | 'declared' | 'class-default' | 'unknown';
+    concurrencyEvidence: 'measured-screen' | 'measured-class' | 'declared' | 'class-default' | 'unknown';
+    evidenceAt: string | null;
+    classScreens: number;
+    stale: boolean;
+  };
+  declared: { reportedAt: string; maxShortEdge: 1080 | 2160 | null; webviewMajor: number | null } | null;
+  files: ScreenPlaybackFile[];
+}
+export function useScreenPlaybackCapability(screenId: string, enabled: boolean) {
+  return useQuery<ScreenPlaybackCapabilityResponse>({
+    queryKey: ['screen-playback-capability', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/playback-capability`),
+    enabled: enabled && !!screenId,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/**
  * 2026-08-24 — one screen's full (bounded) device inventory: vendor control
  * packages, vendor Settings keys, serial nodes, admin/device-owner state.
  * Fetched LAZILY (`enabled` = the Device details drawer is open) — this is

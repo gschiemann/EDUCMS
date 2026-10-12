@@ -47,6 +47,7 @@ import {
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
 import { ExpectedThumb } from './ExpectedThumb';
+import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -689,6 +690,11 @@ export function ScreenDetailDrawer({
                   As reported by the player — we can&apos;t see the panel itself.
                 </p>
               </div>
+
+              {/* Video playback (2026-10-11, video guarantee step 4): per file
+                  this screen played, smooth / hitches / stutters, from minutes
+                  of the player's own counts — read-only, enforces nothing. */}
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} />
 
               {/* Device — the facts the screen reported about itself
                   (2026-09-24, Greg: "give info about the screen itself right?

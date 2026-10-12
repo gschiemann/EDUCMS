@@ -111,7 +111,7 @@ export function SeamlessLoopVideo({
       const p = d0.play();
       if (p && typeof p.catch === 'function') p.catch(() => { /* the watchdog / error path owns it */ });
     } catch { /* noop */ }
-    videoQualityTracker.attach(d0, src, Date.now());
+    videoQualityTracker.attach(d0, src, Date.now(), 'twodeck');
 
     const startEngine = () => {
       if (disposed || started) return;
@@ -137,7 +137,7 @@ export function SeamlessLoopVideo({
             const after = decks[next];
             activeIdx.current = next;
             videoQualityTracker.detach(before, Date.now());
-            videoQualityTracker.attach(after, src, Date.now());
+            videoQualityTracker.attach(after, src, Date.now(), 'twodeck');
             cbs.current.onPlaying?.();
           },
           onBoundary: (ev) => loopBoundaryTracker.record(ev),

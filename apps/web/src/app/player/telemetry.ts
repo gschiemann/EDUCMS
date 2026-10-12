@@ -127,6 +127,34 @@ export interface TelemetryVideoReport {
    */
   stalls?: number;
   stalledMs?: number;
+  /**
+   * Per-file evidence (2026-10-11, video guarantee step 1) — the server folds
+   * samples that carry `sha256` into one record per screen × file. Each key is
+   * OMITTED when the player does not know it. ⚠️ Same rollout rule: the API
+   * that accepts these ships first, and the page drops them for a while after
+   * a 400 that carried them (`videoExtrasRefused`).
+   */
+  sha256?: string;
+  engine?: 'native' | 'continuous' | 'twodeck' | 'deck';
+  cached?: boolean;
+  first?: boolean;
+  concurrent?: number;
+}
+
+/**
+ * What the WebView DECLARES it decodes smoothly (2026-10-11): one
+ * `navigator.mediaCapabilities.decodingInfo` answer per canonical H.264
+ * config, sent once per page boot (`mediaCapsProbe.ts`). ⚠️ Rollout as above
+ * (`mediaCapsRefused`).
+ */
+export interface TelemetryMediaCaps {
+  webviewMajor?: number;
+  configs: Array<{
+    id: '1080p30-landscape' | '1080p30-portrait' | '2160p30-landscape' | '2160p30-portrait';
+    supported: boolean;
+    smooth: boolean;
+    powerEfficient: boolean;
+  }>;
 }
 
 /**
@@ -234,6 +262,7 @@ export interface TelemetryBody {
   capsHash?: string;
   nativeVideo?: NativeSharedVideoState;
   video?: TelemetryVideoReport;
+  mediaCaps?: TelemetryMediaCaps;
   loop?: TelemetryLoopReport;
   update?: TelemetryUpdateReport;
 }
@@ -442,6 +471,13 @@ export interface TelemetryBodyInput {
    *  when counted), when there is a new one to report. */
   nativeVideo?: NativeSharedVideoState | null;
   video?: TelemetryVideoReport | null;
+  /**
+   * Send the per-file evidence keys on `video` (default true). False for a
+   * while after an older API refused them — the frame sample still goes.
+   */
+  videoExtras?: boolean;
+  /** The WebView's declared decode capability, once per boot (2026-10-11). */
+  mediaCaps?: TelemetryMediaCaps | null;
   /** The loop-boundary summary, when a boundary was observed since the last one (2026-09-29). */
   loop?: Omit<TelemetryLoopReport, 'evidence'> | null;
   /**
@@ -512,7 +548,12 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   const capsHash = (input.capsHash ?? '').trim();
   if (capsHash) body.capsHash = capsHash;
 
-  if (input.video) body.video = videoReport(input.video);
+  if (input.video) body.video = videoReport(input.video, input.videoExtras !== false);
+
+  if (input.mediaCaps) {
+    const m = mediaCapsReport(input.mediaCaps);
+    if (m) body.mediaCaps = m;
+  }
 
   if (input.loop) {
     const l = loopReport(input.loop);
@@ -627,7 +668,7 @@ const VIDEO_MAX_STALLED_MS = 86_400_000;
 
 /** Only the documented keys, as bounded non-negative ints — the server's
  *  schema is strict and a stray key would 400 the whole report. */
-function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
+function videoReport(v: TelemetryVideoReport, extras = true): TelemetryVideoReport {
   const int = (n: unknown): number =>
     typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
   const out: TelemetryVideoReport = {
@@ -649,7 +690,56 @@ function videoReport(v: TelemetryVideoReport): TelemetryVideoReport {
   if (stalls !== null) out.stalls = stalls;
   const stalledMs = bounded(v.stalledMs, VIDEO_MAX_STALLED_MS);
   if (stalledMs !== null) out.stalledMs = stalledMs;
+  if (extras) {
+    // Per-file evidence — only well-formed values, each omitted when unknown:
+    // one value outside the server's schema would 400 the WHOLE report.
+    if (typeof v.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(v.sha256)) out.sha256 = v.sha256.toLowerCase();
+    if (v.engine && VIDEO_ENGINES.has(v.engine)) out.engine = v.engine;
+    if (typeof v.cached === 'boolean') out.cached = v.cached;
+    if (typeof v.first === 'boolean') out.first = v.first;
+    const concurrent = bounded(v.concurrent, 64);
+    if (concurrent !== null) out.concurrent = concurrent;
+  }
   return out;
+}
+
+const VIDEO_ENGINES: ReadonlySet<string> = new Set(['native', 'continuous', 'twodeck', 'deck']);
+const MEDIA_CAPS_IDS: ReadonlySet<string> = new Set(['1080p30-landscape', '1080p30-portrait', '2160p30-landscape', '2160p30-portrait']);
+
+/** The declared-capability block as the server's strict schema accepts it, or null. */
+export function mediaCapsReport(m: TelemetryMediaCaps): TelemetryMediaCaps | null {
+  if (!m || !Array.isArray(m.configs)) return null;
+  const seen = new Set<string>();
+  const configs: TelemetryMediaCaps['configs'] = [];
+  for (const c of m.configs) {
+    if (!c || !MEDIA_CAPS_IDS.has(c.id) || seen.has(c.id) || configs.length >= 8) continue;
+    seen.add(c.id);
+    configs.push({ id: c.id, supported: c.supported === true, smooth: c.smooth === true, powerEfficient: c.powerEfficient === true });
+  }
+  if (configs.length === 0) return null;
+  const out: TelemetryMediaCaps = { configs };
+  if (typeof m.webviewMajor === 'number' && Number.isFinite(m.webviewMajor) && m.webviewMajor > 0 && m.webviewMajor <= 10_000) {
+    out.webviewMajor = Math.floor(m.webviewMajor);
+  }
+  return out;
+}
+
+/** The per-file evidence keys the server learned on 2026-10-11. */
+const VIDEO_EXTRA_KEYS = ['sha256', 'engine', 'cached', 'first', 'concurrent'] as const;
+
+/**
+ * Should the page hold the per-file evidence keys back for a while? Yes when
+ * the server answered 400 to a report whose `video` carried any of them: an
+ * API from before them rejects the whole strict body. The frame sample keeps
+ * going without them, so liveness and render proof land on the retry.
+ */
+export function videoExtrasRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.video && VIDEO_EXTRA_KEYS.some((k) => k in (sent.video as object));
+}
+
+/** Same self-heal for the declared-capability block. */
+export function mediaCapsRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.mediaCaps;
 }
 
 /**

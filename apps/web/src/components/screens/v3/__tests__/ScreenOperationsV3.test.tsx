@@ -49,6 +49,7 @@ jest.mock('@/hooks/use-api', () => ({
   useDeleteScreen: () => ({ mutate: deleteScreenMutate, isPending: false }),
   useScreenEvents: () => ({ data: { events: [] }, isLoading: false, isError: false }),
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // ── the "Full settings" popover's own reads/writes (2026-09-01) ──
   // It mounts INSIDE this surface now instead of behind a hop into the classic
   // page, so its hooks have to exist in this mock or the module throws on load.

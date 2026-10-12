@@ -94,6 +94,10 @@ describe('VideoQualityTracker', () => {
       elapsedMs: 60_000,
       width: 1920,
       height: 1080,
+      // Per-file evidence (2026-10-11): the first stretch after activation,
+      // and the jsdom document has no decoding <video> — never below 1.
+      first: true,
+      concurrent: 1,
     });
   });
 
@@ -119,7 +123,7 @@ describe('VideoQualityTracker', () => {
     const b = fakeVideo();
     t.attach(b.el, 'https://cdn/x/next.mp4', 30_000);
     b.play(10);
-    expect(t.take(40_000)).toEqual({ url: SRC, totalFrames: 900, droppedFrames: 45, elapsedMs: 30_000, width: 1920, height: 1080 });
+    expect(t.take(40_000)).toEqual({ url: SRC, totalFrames: 900, droppedFrames: 45, elapsedMs: 30_000, width: 1920, height: 1080, first: true, concurrent: 1 });
     expect(t.take(41_000)).toBeNull();
   });
 
@@ -178,6 +182,8 @@ describe('VideoQualityTracker — rebuffer pauses', () => {
       height: 1080,
       stalls: 1,
       stalledMs: 2_500,
+      first: true,
+      concurrent: 1,
     });
   });
 
@@ -351,4 +357,80 @@ test('local boot reads active decoder output without consuming telemetry', () =>
   expect(report?.droppedFrames).toBe(10);
   tracker.detach(el, 2100);
   expect(tracker.presentedFrames()).toBeNull();
+});
+
+describe('VideoQualityTracker — per-file evidence (2026-10-11, video guarantee step 1)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require('../videoQuality') as typeof import('../videoQuality');
+  const SHA = 'c'.repeat(64);
+  const counter = () => {
+    const state = { total: 0, dropped: 0 };
+    return {
+      el: { videoWidth: 2160, videoHeight: 3338, getVideoPlaybackQuality: () => ({ totalVideoFrames: state.total, droppedVideoFrames: state.dropped }) },
+      play: (n: number, d = 0) => { state.total += n; state.dropped += d; },
+    };
+  };
+  beforeEach(() => mod.resetVideoDigestsForTests());
+
+  it('names the file by its manifest digest, the engine, the cache state and the decoder count — each only when known', () => {
+    const t = new mod.VideoQualityTracker(() => 0);
+    mod.rememberVideoDigest('https://cdn/a.mp4', SHA.toUpperCase());
+    t.setContext({ cachedFor: (u) => u === 'https://cdn/a.mp4', concurrent: () => 2 });
+    const v = counter();
+    t.attach(v.el, 'https://cdn/a.mp4', 0, 'continuous');
+    v.play(1800, 3);
+    expect(t.take(60_000)).toMatchObject({ sha256: SHA, engine: 'continuous', cached: true, first: true, concurrent: 2 });
+    v.play(1800);
+    expect(t.take(120_000)).toMatchObject({ first: false, cached: true });
+  });
+
+  it('the digest key ignores a media fragment', () => {
+    mod.rememberVideoDigest('https://cdn/a.mp4', SHA);
+    expect(mod.videoDigestFor('https://cdn/a.mp4#t=0')).toBe(SHA);
+  });
+
+  it('unknown stays absent — no digest, no cache answer, no engine, no count', () => {
+    const t = new mod.VideoQualityTracker(() => 0);
+    t.setContext({ cachedFor: () => null, concurrent: () => null });
+    const v = counter();
+    t.attach(v.el, 'https://cdn/unknown.mp4', 0);
+    v.play(1800);
+    const r = t.take(60_000)!;
+    expect('sha256' in r || 'engine' in r || 'cached' in r || 'concurrent' in r).toBe(false);
+    expect(r.first).toBe(true);
+  });
+
+  it('a loop lap re-attaching the SAME clip is not a new activation; a different clip is', () => {
+    const t = new mod.VideoQualityTracker(() => 0);
+    const a = counter();
+    const b = counter();
+    t.attach(a.el, 'https://cdn/a.mp4', 0, 'twodeck');
+    a.play(1800);
+    expect(t.take(60_000)!.first).toBe(true);
+    t.attach(b.el, 'https://cdn/a.mp4', 60_000, 'twodeck'); // the standby deck revealed: same file
+    b.play(1800);
+    expect(t.take(120_000)!.first).toBe(false);
+    t.attach(a.el, 'https://cdn/other.mp4', 120_000, 'deck');
+    a.play(1800);
+    expect(t.take(180_000)!.first).toBe(true);
+  });
+
+  it('countDecodingVideos counts only playing, unended elements with a frame', () => {
+    const doc = { querySelectorAll: () => [
+      { paused: false, ended: false, readyState: 4 },
+      { paused: true, ended: false, readyState: 4 }, // a preloaded, paused next-up
+      { paused: false, ended: true, readyState: 4 },
+      { paused: false, ended: false, readyState: 1 },
+    ] };
+    expect(mod.countDecodingVideos(doc)).toBe(1);
+    expect(mod.countDecodingVideos(null)).toBeNull();
+  });
+
+  it('the digest registry ignores garbage and stays bounded', () => {
+    mod.rememberVideoDigest('https://cdn/x.mp4', 'not-a-digest');
+    expect(mod.videoDigestFor('https://cdn/x.mp4')).toBeNull();
+    for (let i = 0; i < 300; i++) mod.rememberVideoDigest(`https://cdn/${i}.mp4`, SHA);
+    expect(mod.videoDigestFor('https://cdn/0.mp4')).toBeNull();
+    expect(mod.videoDigestFor('https://cdn/299.mp4')).toBe(SHA);
+  });
 });

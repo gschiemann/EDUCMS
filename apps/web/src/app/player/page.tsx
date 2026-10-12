@@ -154,17 +154,22 @@ import {
   downloadReportRefused,
   loopReportRefused,
   loopReportDue,
+  mediaCapsRefused,
   updateReportRefused,
+  videoExtrasRefused,
   LOOP_REPORT_RETRY_MS,
   initialTelemetryDelayMs,
   nextTelemetryDelayMs,
   outcomeFromStatus,
   shouldPostEarly,
   type TelemetryCacheTier,
+  type TelemetryMediaCaps,
   type TelemetryResponse,
   type TelemetrySyncReport,
 } from './telemetry';
-import { videoQualityTracker } from './videoQuality';
+import { rememberVideoDigest, videoQualityTracker } from './videoQuality';
+// The WebView's declared decode capability, once per boot (2026-10-11).
+import { probeMediaCaps } from './mediaCapsProbe';
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
@@ -1825,7 +1830,7 @@ function PlayerVideoSlide({
   useEffect(() => {
     const v = videoRef.current;
     if (!isActive || !v) return;
-    videoQualityTracker.attach(v, src, Date.now());
+    videoQualityTracker.attach(v, src, Date.now(), 'native');
     return () => {
       videoQualityTracker.detach(v, Date.now());
     };
@@ -4735,6 +4740,19 @@ function PlayerPage() {
   const [cacheDrive, setCacheDrive] = useState<CacheDriveState>('unknown');
   const cacheDriveRef = useRef<CacheDriveState>('unknown');
   useEffect(() => { cacheDriveRef.current = cacheDrive; }, [cacheDrive]);
+  // Per-file playback evidence (2026-10-11): whether the clip a sample came
+  // from played off the verified cache. `true` only when the worker confirmed
+  // it on disk, `false` only when this player has no cache at all, otherwise
+  // unknown (null) — never guessed. Refs, so no re-render is involved.
+  useEffect(() => {
+    videoQualityTracker.setContext({
+      cachedFor: (url: string) => {
+        if (cacheDriveRef.current === 'unavailable') return false;
+        return cachedMediaKeysRef.current.has(stableManifestUrlKey(url)) ? true : null;
+      },
+    });
+    return () => videoQualityTracker.setContext({});
+  }, []);
   // The large file the page is driving into the cache right now — feeds the
   // splash's real download bar while nothing is ready to play.
   const [largeDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
@@ -6666,6 +6684,10 @@ function PlayerPage() {
               // listed, downloaded or played — a screen downloads the whole
               // native file, then plays it.
               playlistAssets.push({ url: playbackUrl, ...(size ? { size } : {}), ...(sha256 ? { sha256 } : {}) });
+              // Per-file playback evidence (2026-10-11): the dropped-frame
+              // sample names its file by this digest. Both spellings of the URL
+              // a slide may have been handed.
+              if (sha256) { rememberVideoDigest(u, sha256); rememberVideoDigest(playbackUrl, sha256); }
               // Item ids do not change when a transcode swaps the media URL.
               // The cache identity must follow the bytes the player renders.
               playlistAssetKeys.push(stableManifestUrlKey(playbackUrl));
@@ -7465,6 +7487,21 @@ function PlayerPage() {
   // the API 400'd a report that carried it (an API half of a rollout not landed
   // yet) the block is held back for LOOP_REPORT_RETRY_MS, then tried again.
   const loopReportBlockedUntilRef = useRef(0);
+  // Per-file playback evidence (2026-10-11): the evidence keys on `video`, and
+  // the WebView's declared decode capability. Both held back for
+  // LOOP_REPORT_RETRY_MS after an older API refused them; the capability is
+  // sent until one report carrying it is accepted, then never again this boot.
+  const videoExtrasBlockedUntilRef = useRef(0);
+  const mediaCapsRef = useRef<TelemetryMediaCaps | null>(null);
+  const mediaCapsSentRef = useRef(false);
+  const mediaCapsBlockedUntilRef = useRef(0);
+  useEffect(() => {
+    if (typeof window === 'undefined' || isPreviewMode()) return;
+    let live = true;
+    // One question per config, once per boot — no timer, no retry.
+    void probeMediaCaps().then((caps) => { if (live) mediaCapsRef.current = caps; }).catch(() => { /* nothing to say */ });
+    return () => { live = false; };
+  }, []);
   // Two-deck loop circuit breaker (2026-09-29): a boot that finds the running
   // marker means the last session died — two short ones in a row block the
   // path for a day (loopGuard.ts). Once per page load, before any slide's engine.
@@ -7534,6 +7571,8 @@ function PlayerPage() {
         // The last video's dropped-frame sample, when there is a new one
         // (2026-09-24). At most one per report; the server keeps the latest.
         video: videoQualityTracker.take(nowMs),
+        videoExtras: nowMs >= videoExtrasBlockedUntilRef.current,
+        mediaCaps: !mediaCapsSentRef.current && nowMs >= mediaCapsBlockedUntilRef.current ? mediaCapsRef.current : null,
         nativeVideo: nativeSharedVideoEvidence.telemetry(),
         // What this screen measured at a solo video's loop seam (2026-09-29);
         // sent only when a boundary was observed since the last report.
@@ -7594,6 +7633,14 @@ function PlayerPage() {
         downloadReportAllowedRef.current = false;
         console.warn('[Player] the server refused the download progress report — not sending it again this session');
       }
+      if (videoExtrasRefused(status, body)) {
+        videoExtrasBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the per-file playback keys — holding them back for 10 minutes');
+      }
+      if (mediaCapsRefused(status, body)) {
+        mediaCapsBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the decode-capability report — holding it back for 10 minutes');
+      }
       if (updateReportRefused(status, body)) {
         updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the update-applied report — holding it back for 10 minutes');
@@ -7601,6 +7648,7 @@ function PlayerPage() {
       const outcome = outcomeFromStatus(status);
       if (outcome === 'ok') {
         telemetryLastPostAtRef.current = nowMs;
+        if (body.mediaCaps) mediaCapsSentRef.current = true;
         if (body.update) {
           // Carried. One row per deploy per screen — never send it twice.
           updateEvidenceRef.current = null;

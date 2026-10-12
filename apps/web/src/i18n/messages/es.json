@@ -2364,6 +2364,35 @@
         "notConfirmed": "Último Encender panel ({ago}): el reproductor no lo confirmó."
       },
       "noEvidence": "Esta versión del reproductor no informa lo que observó. Actualícela para ver la comprobación aquí."
+    },
+    "playback": {
+      "title": "Reproducción de video",
+      "summarySmooth": "Reproduce video con fluidez",
+      "summaryHitches": "El video se traba un poco",
+      "summaryStutters": "El video se entrecorta",
+      "summaryUnknown": "Aún sin comprobar",
+      "unknownHint": "Lo sabremos tras unos minutos de video en esta pantalla.",
+      "evidenceMeasuredScreen": "Medido en esta pantalla",
+      "evidenceMeasuredClass": "Medido en {count} pantallas de este modelo",
+      "evidenceDeclared": "Lo que el navegador de esta pantalla dice que puede reproducir",
+      "evidenceClassDefault": "Habitual para este modelo",
+      "evidenceUnknown": "Aún no hay datos",
+      "cap2160": "Video hasta 4K",
+      "cap1080": "Video hasta 1080p",
+      "capNone": "Aún no hay un tamaño de video comprobado sin cortes",
+      "concurrencyOne": "Un video a la vez en esta pantalla",
+      "concurrencyMany": "{count} videos a la vez en esta pantalla",
+      "stale": "Medido antes de la última actualización del reproductor; se volverá a comprobar.",
+      "fileSmooth": "Fluido",
+      "fileHitching": "Se traba",
+      "fileStuttering": "Se entrecorta",
+      "fileInsufficient": "Comprobando",
+      "fileDetail": "{pct}% de fotogramas perdidos en {minutes} min",
+      "fileChecking": "{count} muestras hasta ahora",
+      "copy1080": "copia 1080p",
+      "bothSides": "había video en los dos lados",
+      "note": "Según lo medido por el reproductor; no podemos ver el panel.",
+      "loadFailed": "No se pudo cargar el historial de reproducción."
     }
   },
   "selection": {

@@ -563,3 +563,82 @@ describe('off-hours update block (2026-10-10)', () => {
     expect(updateReportRefused(200, withUpdate)).toBe(false);
   });
 });
+
+describe('per-file playback evidence on the wire (2026-10-11, video guarantee step 1)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tel = require('../telemetry') as typeof import('../telemetry');
+  const SHA = 'd'.repeat(64);
+  const sample = {
+    url: 'https://cdn/a.mp4', totalFrames: 1800, droppedFrames: 2,
+    sha256: SHA.toUpperCase(), engine: 'continuous' as const, cached: true, first: false, concurrent: 2,
+  };
+
+  it('carries the evidence keys, normalised, when allowed', () => {
+    const body = tel.buildTelemetryBody({ video: sample } as never);
+    expect(body.video).toEqual({ url: 'https://cdn/a.mp4', totalFrames: 1800, droppedFrames: 2, sha256: SHA, engine: 'continuous', cached: true, first: false, concurrent: 2 });
+  });
+
+  it('drops them (and only them) while the server refuses them', () => {
+    const body = tel.buildTelemetryBody({ video: sample, videoExtras: false } as never);
+    expect(body.video).toEqual({ url: 'https://cdn/a.mp4', totalFrames: 1800, droppedFrames: 2 });
+  });
+
+  it('never sends a malformed value — one would 400 the whole report', () => {
+    const body = tel.buildTelemetryBody({ video: { ...sample, sha256: 'xyz', engine: 'vlc', concurrent: -1 } } as never);
+    expect(body.video).toEqual({ url: 'https://cdn/a.mp4', totalFrames: 1800, droppedFrames: 2, cached: true, first: false });
+  });
+
+  it('videoExtrasRefused / mediaCapsRefused: only a 400 to a report that carried them', () => {
+    const withExtras = tel.buildTelemetryBody({ video: sample } as never);
+    const plain = tel.buildTelemetryBody({ video: sample, videoExtras: false } as never);
+    expect(tel.videoExtrasRefused(400, withExtras)).toBe(true);
+    expect(tel.videoExtrasRefused(400, plain)).toBe(false);
+    expect(tel.videoExtrasRefused(500, withExtras)).toBe(false);
+    const caps = { configs: [{ id: '1080p30-landscape' as const, supported: true, smooth: true, powerEfficient: true }] };
+    expect(tel.mediaCapsRefused(400, tel.buildTelemetryBody({ mediaCaps: caps } as never))).toBe(true);
+    expect(tel.mediaCapsRefused(400, tel.buildTelemetryBody({} as never))).toBe(false);
+  });
+
+  it('mediaCaps: only the four canonical configs, each once, booleans only', () => {
+    const body = tel.buildTelemetryBody({ mediaCaps: { webviewMajor: 95.4, configs: [
+      { id: '2160p30-portrait', supported: true, smooth: 'yes', powerEfficient: true },
+      { id: '2160p30-portrait', supported: false, smooth: false, powerEfficient: false },
+      { id: '8k', supported: true, smooth: true, powerEfficient: true },
+    ] } } as never);
+    expect(body.mediaCaps).toEqual({ webviewMajor: 95, configs: [{ id: '2160p30-portrait', supported: true, smooth: false, powerEfficient: true }] });
+    expect(tel.buildTelemetryBody({ mediaCaps: { configs: [] } } as never).mediaCaps).toBeUndefined();
+  });
+});
+
+describe('probeMediaCaps', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { probeMediaCaps, webviewMajorFrom } = require('../mediaCapsProbe') as typeof import('../mediaCapsProbe');
+
+  it('asks once per canonical config; a throwing config reads unsupported, never smooth', async () => {
+    const asked: unknown[] = [];
+    const nav = {
+      userAgent: 'Mozilla/5.0 (Linux; Android 11; wv) Chrome/95.0.4638.74 Mobile Safari/537.36',
+      mediaCapabilities: {
+        decodingInfo: async (c: any) => {
+          asked.push(c);
+          if (c.video.width === 3840) throw new Error('nope');
+          return { supported: true, smooth: c.video.height <= 1920 && c.video.width <= 1920, powerEfficient: true };
+        },
+      },
+    };
+    const out = await probeMediaCaps(nav);
+    expect(asked).toHaveLength(4);
+    expect(out).toEqual({ webviewMajor: 95, configs: [
+      { id: '1080p30-landscape', supported: true, smooth: true, powerEfficient: true },
+      { id: '1080p30-portrait', supported: true, smooth: true, powerEfficient: true },
+      { id: '2160p30-landscape', supported: false, smooth: false, powerEfficient: false },
+      { id: '2160p30-portrait', supported: true, smooth: false, powerEfficient: true },
+    ] });
+  });
+
+  it('no API → nothing to say', async () => {
+    expect(await probeMediaCaps({ userAgent: 'x' })).toBeNull();
+    expect(await probeMediaCaps(null)).toBeNull();
+    expect(webviewMajorFrom('Safari/605')).toBeNull();
+  });
+});

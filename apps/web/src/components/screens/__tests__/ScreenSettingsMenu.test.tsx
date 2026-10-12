@@ -39,6 +39,7 @@ jest.mock('@/hooks/use-api', () => ({
   useLatestPlayerVersion: () => ({ data: latestVersionPayload }),
   useHardwareCatalog: () => ({ data: { models: [] }, isLoading: false }),
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   useSetScreenOrientation: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
   useSetScreenCanvas: () => ({ mutate: setCanvasMutate, isPending: false, isError: false }),
   useSetScreenConsoleProfile: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
