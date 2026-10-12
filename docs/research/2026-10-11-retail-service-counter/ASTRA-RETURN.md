@@ -1,0 +1,1 @@
+Astra final commit a0866197, codex/retail-service-counter. 16 Chromium/WebKit orientation/scenario runs, 400 text checks, zero page errors; four additional URL-size/theme/font/image replacement contract runs. All38fields/3image keys preserved. Lead still owns shim/gallery/poster/exemplar integration, browser happy path, final push/CI.

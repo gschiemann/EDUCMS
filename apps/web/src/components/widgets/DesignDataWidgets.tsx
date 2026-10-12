@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import type { ThemeWidgetProps } from './themes/registry';
 import { useDesignFont } from './use-design-font';
+import { DesignElementStage } from './DesignElementStage';
 
 export const DATA_WIDGET_VARIANTS = ['design-table', 'design-chart-bar', 'design-chart-line', 'design-chart-pie'] as const;
 export const DATA_TABLE_MAX_COLUMNS = 6;
@@ -101,17 +102,17 @@ export function readDesignChartConfig(config: Record<string, unknown> = {}): Des
 }
 
 export function DesignTableWidget({ config = {} }: ThemeWidgetProps) {
-  const c = useMemo(() => ({ ...readDesignTableConfig(config || {}), ...(config?._thumb ? { fontSize: 8 } : {}) }), [config]);
+  const c = useMemo(() => readDesignTableConfig(config || {}), [config]);
   useDesignFont(c.fontFamily);
   const table = <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', color: c.textColor, fontFamily: c.fontFamily, fontSize: `${c.fontSize}px`, textAlign: c.alignment }}>
     <thead><tr>{c.columns.map((column, i) => <th key={i} scope="col" style={{ background: c.headerColor, border: `1px solid ${c.borderColor}`, padding: '0.55em', overflowWrap: 'anywhere' }}>{column || `Column ${i + 1}`}</th>)}</tr></thead>
     <tbody>{c.rows.map((row, ri) => <tr key={ri}>{c.columns.map((_, ci) => <td key={ci} style={{ background: c.backgroundColor, border: `1px solid ${c.borderColor}`, padding: '0.5em', overflowWrap: 'anywhere' }}>{row[ci] ?? ''}</td>)}</tr>)}</tbody>
   </table>;
-  return <section data-design-data="table" aria-label={c.heading || 'Data table'} style={{ boxSizing: 'border-box', width: '100%', height: '100%', overflow: 'auto', padding: '2.5%', background: c.backgroundColor, color: c.textColor, fontFamily: c.fontFamily }}>
+  return <DesignElementStage background={c.backgroundColor}><section data-design-data="table" aria-label={c.heading || 'Data table'} style={{ boxSizing: 'border-box', width: '100%', height: '100%', overflow: 'auto', padding: '2.5%', background: c.backgroundColor, color: c.textColor, fontFamily: c.fontFamily }}>
     {c.heading && <h2 style={{ fontSize: `${c.fontSize * 1.45}px`, lineHeight: 1.15, margin: '0 0 0.2em', overflowWrap: 'anywhere' }}>{c.heading}</h2>}
     {c.caption && <p style={{ margin: '0 0 0.7em', fontSize: `${c.fontSize * 0.85}px`, overflowWrap: 'anywhere' }}>{c.caption}</p>}
     {c.columns.length === 0 ? <p role="status">Add a column to begin this table.</p> : table}
-  </section>;
+  </section></DesignElementStage>;
 }
 
 function pieSegments(rows: DesignChartDatum[]) {
@@ -132,7 +133,7 @@ function pieSegments(rows: DesignChartDatum[]) {
 }
 
 export function DesignChartWidget({ config = {} }: ThemeWidgetProps) {
-  const c = useMemo(() => ({ ...readDesignChartConfig(config || {}), ...(config?._thumb ? { fontSize: 8 } : {}) }), [config]);
+  const c = useMemo(() => readDesignChartConfig(config || {}), [config]);
   useDesignFont(c.fontFamily);
   
   const values = c.rows.map((r) => r.value);
@@ -142,27 +143,27 @@ export function DesignChartWidget({ config = {} }: ThemeWidgetProps) {
   const pie = c.variant === 'design-chart-pie' ? pieSegments(c.rows) : null;
   const linePoints = c.rows.map((row, i) => `${c.rows.length < 2 ? 50 : i / (c.rows.length - 1) * 100},${100 - ((row.value - min) / span * 86 + 7)}`).join(' ');
   const labelSize = `${c.fontSize}px`;
-  return <section data-design-data="chart" aria-label={c.heading || 'Data chart'} style={{ boxSizing: 'border-box', width: '100%', height: '100%', overflow: 'auto', padding: '2.5%', background: c.backgroundColor, color: c.textColor, fontFamily: c.fontFamily }}>
+  return <DesignElementStage background={c.backgroundColor}><section data-design-data="chart" aria-label={c.heading || 'Data chart'} style={{ boxSizing: 'border-box', width: '100%', height: '100%', overflow: 'auto', padding: '2.5%', background: c.backgroundColor, color: c.textColor, fontFamily: c.fontFamily }}>
     {c.heading && <h2 style={{ fontSize: `${c.fontSize * 1.45}px`, lineHeight: 1.15, margin: '0 0 0.2em', overflowWrap: 'anywhere' }}>{c.heading}</h2>}
     {c.caption && <p style={{ margin: '0 0 0.5em', fontSize: `${c.fontSize * 0.85}px`, overflowWrap: 'anywhere' }}>{c.caption}</p>}
-    {c.rows.length === 0 ? <p role="status">Add a data row to begin this chart.</p> : pie?.invalid ? <p role="status">{pie.invalid}</p> : c.variant === 'design-chart-pie' && pie ? <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '1em', minHeight: '65%' }}>
-      <svg role="img" aria-label={`Pie chart: ${c.rows.map((r) => `${r.label || 'Unlabeled'} ${r.value}`).join(', ')}`} viewBox="0 0 100 100" style={{ width: '52%', maxHeight: '100%', aspectRatio: '1' }}>
+    {c.rows.length === 0 ? <p role="status">Add a data row to begin this chart.</p> : pie?.invalid ? <p role="status">{pie.invalid}</p> : c.variant === 'design-chart-pie' && pie ? <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',  height: '60%' }}>
+      <svg role="img" aria-label={`Pie chart: ${c.rows.map((r) => `${r.label || 'Unlabeled'} ${r.value}`).join(', ')}`} viewBox="0 0 100 100" style={{ width: '48%', height: '100%', marginRight: '3%', maxHeight: '100%', aspectRatio: '1' }}>
         {(pie.segments ?? []).map((segment, i) => segment.path ? <path key={i} d={segment.path} fill={segment.color} stroke={c.backgroundColor} strokeWidth="1" /> : <circle key={i} cx="50" cy="50" r="45" fill={segment.color} />)}
       </svg>
-      {c.showLegend && <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: labelSize }}>{c.rows.map((row, i) => <li key={i} style={{ display: 'flex', gap: '0.45em', alignItems: 'baseline', marginBottom: '0.3em', overflowWrap: 'anywhere' }}><span aria-hidden="true" style={{ display: 'inline-block', width: '0.75em', height: '0.75em', background: row.color, flex: '0 0 auto' }} />{row.label}: {row.value} ({pie.total ? Math.round(row.value / pie.total * 100) : 0}%)</li>)}</ul>}
-    </div> : c.variant === 'design-chart-line' ? <div style={{ minHeight: '68%', display: 'flex', flexDirection: 'column' }}>
+      {c.showLegend && <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: labelSize }}>{c.rows.map((row, i) => <li key={i} style={{ display: 'flex',  alignItems: 'baseline', marginBottom: '0.3em', overflowWrap: 'anywhere' }}><span aria-hidden="true" style={{ display: 'inline-block', width: '0.75em', height: '0.75em', background: row.color, marginRight: '0.45em', flex: '0 0 auto' }} />{row.label}: {row.value} ({pie.total ? Math.round(row.value / pie.total * 100) : 0}%)</li>)}</ul>}
+    </div> : c.variant === 'design-chart-line' ? <div style={{ height: '60%', display: 'flex', flexDirection: 'column' }}>
       <svg role="img" aria-label={`Line chart: ${c.rows.map((r) => `${r.label || 'Unlabeled'} ${r.value}`).join(', ')}`} viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', flex: 1, minHeight: 100, overflow: 'visible' }}>
         {c.showGrid && [20, 40, 60, 80].map(y => <line key={y} x1="0" x2="100" y1={y} y2={y} stroke={c.gridColor} strokeDasharray="1 2" />)}
         <line x1="0" x2="100" y1={93 - zeroPct * .86} y2={93 - zeroPct * .86} stroke={c.gridColor} />
         <polyline points={linePoints} fill="none" stroke={c.rows[0]?.color || '#2563eb'} strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
         {c.rows.map((row, i) => <circle key={i} cx={c.rows.length < 2 ? 50 : i / (c.rows.length - 1) * 100} cy={100 - ((row.value - min) / span * 86 + 7)} r="1.7" fill={row.color} />)}
       </svg>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, c.rows.length)}, minmax(0,1fr))`, gap: 4, fontSize: labelSize, textAlign: 'center' }}>{c.rows.map((r, i) => <div key={i} style={{ overflowWrap: 'anywhere' }}>{r.label}<br />{r.value}</div>)}</div>
-    </div> : <div style={{ display: 'grid', gap: '0.5em', alignContent: 'center', minHeight: '68%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, c.rows.length)}, minmax(0,1fr))`, columnGap: 4, fontSize: labelSize, textAlign: 'center' }}>{c.rows.map((r, i) => <div key={i} style={{ overflowWrap: 'anywhere' }}>{r.label}<br />{r.value}</div>)}</div>
+    </div> : <div style={{ display: 'grid', rowGap: '0.5em', alignContent: 'center', height: '60%' }}>
       {c.rows.map((row, i) => {
         const width = Math.abs(row.value) / span * 100;
         const left = row.value < 0 ? zeroPct - width : zeroPct;
-        return <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(4em, 1.1fr) minmax(3em, 3fr) auto', alignItems: 'center', gap: '0.65em', fontSize: labelSize }}>
+        return <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(4em, 1.1fr) minmax(3em, 3fr) auto', alignItems: 'center', columnGap: '0.65em', fontSize: labelSize }}>
           <span style={{ overflowWrap: 'anywhere' }}>{row.label || `Item ${i + 1}`}</span>
           <span aria-hidden="true" style={{ position: 'relative', height: '1.5em', borderBottom: c.showGrid ? `1px solid ${c.gridColor}` : undefined, minWidth: 0 }}>
             {c.showGrid && [25, 50, 75].map(x => <i key={x} style={{ position: 'absolute', top: 0, bottom: 0, left: `${x}%`, borderLeft: `1px dashed ${c.gridColor}` }} />)}
@@ -173,6 +174,6 @@ export function DesignChartWidget({ config = {} }: ThemeWidgetProps) {
         </div>;
       })}
     </div>}
-    {c.showLegend && c.variant !== 'design-chart-pie' && <ul aria-label="Chart values" style={{ listStyle: 'none', padding: 0, margin: '0.4em 0 0', fontSize: `${c.fontSize * 0.85}px`, display: 'flex', flexWrap: 'wrap', gap: '0.35em 1em' }}>{c.rows.map((r, i) => <li key={i} style={{ display: 'flex', gap: '0.35em', alignItems: 'baseline', overflowWrap: 'anywhere' }}><span aria-hidden="true" style={{ display: 'inline-block', width: '0.7em', height: '0.7em', background: r.color }} />{r.label}: {r.value}</li>)}</ul>}
-  </section>;
+    {c.showLegend && c.variant !== 'design-chart-pie' && <ul aria-label="Chart values" style={{ listStyle: 'none', padding: 0, margin: '0.4em 0 0', fontSize: `${c.fontSize * 0.85}px`, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline' }}>{c.rows.map((r, i) => <li key={i} style={{ display: 'flex',  alignItems: 'baseline', overflowWrap: 'anywhere' }}><span aria-hidden="true" style={{ display: 'inline-block', width: '0.7em', height: '0.7em', background: r.color, marginRight: '0.35em' }} />{r.label}: {r.value}</li>)}</ul>}
+  </section></DesignElementStage>;
 }

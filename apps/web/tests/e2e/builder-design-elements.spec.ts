@@ -2,6 +2,10 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Playwright's block script reads navigator.serviceWorker in every frame;
+// packaged boards deliberately lack allow-same-origin. This suite uses no SW.
+test.use({ serviceWorkers: 'allow' });
+
 const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
 const CORS = {
   'Access-Control-Allow-Origin': ORIGIN,
@@ -16,14 +20,14 @@ type TestZone = Record<string, unknown> & { defaultConfig: Record<string, unknow
   imageOverrides?: Record<string, string | string[]>;
 } };
 
-async function openEditor(page: Page, portrait = false, initialZones?: TestZone[]) {
+async function openEditor(page: Page, portrait = false, initialZones?: TestZone[], resolution = 1920) {
   let template: Record<string, unknown> & { zones: TestZone[] } = {
     id: 'media-editor', name: 'Media design', tenantId: 'e2e-school', isSystem: false,
-    screenWidth: portrait ? 1080 : 1920, screenHeight: portrait ? 1920 : 1080, bgColor: '#ffffff', scenes: [],
+    screenWidth: portrait ? Math.round(resolution * 9 / 16) : resolution, screenHeight: portrait ? resolution : Math.round(resolution * 9 / 16), bgColor: '#ffffff', scenes: [],
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.addInitScript(() => localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'));
+  await page.addInitScript(() => { if (window === window.top) localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'); });
   await page.route('**/test-media/**', route => {
     if (route.request().method() === 'PUT') return route.fulfill({ status: 200, body: '{}' });
     const name = new URL(route.request().url()).pathname.split('/').pop()!;
@@ -119,9 +123,41 @@ for (const preset of [false, true]) {
     expect(configs().find(c => c.variant === 'photo-frame-circle')).toMatchObject({ frameShape: 'arch', focalY: 35 });
     expect(configs().find(c => c.variant === 'photo-collage-featured')?.photos).toHaveLength(2);
     await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('tab', { name: /^Widgets$/i })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('[data-zone-id] [data-design-data="table"]')).toContainText('Reception');
     await expect(page.locator('[data-zone-id] [data-photo-frame="arch"] img')).toHaveCSS('object-position', '50% 35%');
     await expect(page.locator('[data-zone-id] [data-photo-collage] img')).toHaveCount(2);
     expect(errors).toEqual([]);
   });
 }
+
+test('render all ten additional elements with readable default data and editable photographs', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const zone = (id: string, widgetType: string, config: Record<string, unknown>, x: number, y: number, width: number, height: number): TestZone => ({ id, name: id, widgetType, defaultConfig: config, x, y, width, height, zIndex: 1, sortOrder: 0 });
+  const dataZones = [
+    zone('table', 'CHART', { variant: 'design-table', heading: 'Visitor services', columns: ['Service', 'Location'], rows: [['Reception', 'Main lobby'], ['Collection', 'Service desk'], ['Returns', 'Service desk']], fontFamily: 'Fraunces, serif' }, 2, 2, 46, 46),
+    ...['bar', 'line', 'pie'].map((kind, i) => zone(kind, 'CHART', { variant: `design-chart-${kind}`, heading: `${kind[0].toUpperCase() + kind.slice(1)} chart`, rows: [{ label: 'North', value: 42, color: '#285c52' }, { label: 'South', value: 58, color: '#b86245' }, { label: 'East', value: 35, color: '#c49e55' }, { label: 'West', value: 71, color: '#6b6692' }] }, i === 0 ? 52 : i === 1 ? 2 : 52, i === 0 ? 2 : 52, 46, 46)),
+  ];
+  await openEditor(page, false, dataZones, 3840);
+  await expect(page.locator('[data-template-canvas] [data-design-data]')).toHaveCount(4);
+  await expect(page.locator('[data-template-canvas] svg[aria-label^="Pie chart"]')).toBeVisible();
+  await page.evaluate(async () => { await document.fonts.ready; });
+  await page.locator('[data-template-canvas]').screenshot({ path: testInfo.outputPath('all-data-elements.png') });
+  const bounds = await page.locator('[data-template-canvas] [data-design-data]').evaluateAll(nodes => nodes.map(node => ({ w: node.scrollWidth - node.clientWidth, h: node.scrollHeight - node.clientHeight })));
+  expect(bounds).toEqual(bounds.map(() => ({ w: 0, h: 0 })));
+  const photos = [
+    '/templates/signage/hospitality/assets/hospitality-lobby-grand-room-v1.jpg',
+    '/templates/signage/retail/assets/retail-endcap-cobalt-sneaker-v1.png',
+    '/templates/signage/hospitality/assets/hospitality-lobby-goldenhour-pool-v1.jpg',
+    '/templates/signage/fashion/assets/pexels-6263068.jpg',
+  ].map((url, i) => ({ url, caption: ['Welcome', 'New arrivals', 'Golden hour', 'The edit'][i], focalX: 50, focalY: 50, zoom: 1 }));
+  const photoZones = [
+    ...['rounded', 'circle', 'arch'].map((shape, i) => zone(shape, 'IMAGE', { variant: `photo-frame-${shape}`, frameShape: shape, assetUrl: photos[i].url, borderWidth: 0 }, 2 + i * 33, 2, 29, 44)),
+    ...['pair', 'featured', 'grid'].map((layout, i) => zone(layout, 'IMAGE_CAROUSEL', { variant: `photo-collage-${layout}`, layout, photos: photos.slice(0, i + 2), spacing: 20 }, 2 + i * 33, 52, 29, 46)),
+  ];
+  await openEditor(page, false, photoZones, 3840);
+  await expect(page.locator('[data-template-canvas] [data-photo-frame]')).toHaveCount(3);
+  await expect(page.locator('[data-template-canvas] [data-photo-collage]')).toHaveCount(3);
+  await expect.poll(() => page.locator('[data-template-canvas] img').evaluateAll(nodes => nodes.every(node => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await page.locator('[data-template-canvas]').screenshot({ path: testInfo.outputPath('all-photo-elements.png') });
+});
