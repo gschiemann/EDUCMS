@@ -118,6 +118,41 @@ const videoSchema = z.strictObject({
   stalls: z.number().finite().min(0).max(1_000_000).optional(),
   /** Wall-clock ms spent inside those pauses. */
   stalledMs: z.number().finite().min(0).max(86_400_000).optional(),
+  /**
+   * Video guarantee, step 1 (2026-10-11) — what the per-file playback record
+   * needs (`screen_file_playback`): the manifest digest of the file played,
+   * which engine played it, whether it played from the verified offline cache,
+   * how many videos were decoding in the document at report time, and whether
+   * this is the first stretch after the clip went on glass. All optional;
+   * absent means "the player did not say". ⚠️ Same rollout rule as `stalls`:
+   * this API must be live before a bundle that sends them — and the bundle
+   * drops them for a while after a 400 (`videoExtrasRefused`).
+   */
+  sha256: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
+  engine: z.enum(['native', 'continuous', 'twodeck', 'deck']).optional(),
+  cached: z.boolean().optional(),
+  first: z.boolean().optional(),
+  concurrent: z.number().finite().min(0).max(64).optional(),
+});
+
+/**
+ * What the WebView DECLARES it decodes smoothly (2026-10-11, video guarantee
+ * step 1): `navigator.mediaCapabilities.decodingInfo` for four canonical H.264
+ * configs, sent once per page boot. Optimistic by nature — see
+ * `declaredMaxShortEdge` in @cms/api-types. ⚠️ Rollout: as above.
+ */
+const mediaCapsSchema = z.strictObject({
+  webviewMajor: z.number().finite().min(0).max(10_000).optional(),
+  configs: z
+    .array(
+      z.strictObject({
+        id: z.enum(['1080p30-landscape', '1080p30-portrait', '2160p30-landscape', '2160p30-portrait']),
+        supported: z.boolean(),
+        smooth: z.boolean(),
+        powerEfficient: z.boolean(),
+      }),
+    )
+    .max(8),
 });
 
 /**
@@ -248,6 +283,7 @@ export const screenTelemetrySchema = z.strictObject({
   refreshAckMs: z.number().finite().min(0).optional(),
   capsHash: z.string().max(64).optional(),
   video: videoSchema.optional(),
+  mediaCaps: mediaCapsSchema.optional(),
   nativeVideo: nativeVideoSchema.optional(),
   loop: loopBoundarySchema.optional(),
   update: updateAppliedSchema.optional(),

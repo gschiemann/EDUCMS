@@ -1129,3 +1129,10 @@ export * from './tenant-slug';
 // Team abbreviations (Muse beta S-04, 2026-10-11) — operator value or the
 // smart default, one rule for the API, the console and every scoreboard.
 export * from './team-abbrev';
+
+// Playback capability (2026-10-11, video guarantee steps 1–4) — what a SCREEN
+// plays smoothly, learned from what it played. Shared so the API (which folds
+// player samples into per-file evidence) and the dashboard (which shows it) can
+// never disagree about what "stutters" means. Read-only today: nothing gates
+// or demotes on it yet.
+export * from './playback-capability';

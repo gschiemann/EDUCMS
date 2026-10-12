@@ -1870,6 +1870,12 @@ model Screen {
   // see that model's header). Optional: browser players and pre-probe APKs
   // never report one.
   deviceInventory                     ScreenDeviceInventory?
+  // Per-file playback evidence + the WebView's declared decode capability
+  // (2026-10-11, video guarantee steps 1–4). Separate tables, never Screen
+  // columns, and NOT manifest-fed: telemetry writes them, the dashboard reads
+  // them on demand.
+  filePlayback                        ScreenFilePlayback[]
+  mediaCapabilities                   ScreenMediaCapabilities?
 
   @@index([tenantId, status])
   @@index([tenantId, lastPingAt])
@@ -1904,6 +1910,83 @@ model ScreenDeviceInventory {
 
   @@index([tenantId])
   @@map("screen_device_inventory")
+}
+
+// 2026-10-11 — per-(screen, file digest) playback evidence (video guarantee,
+// docs/research/2026-10-11-launch-readiness/02-video-guarantee.md §4.4).
+//
+// ONE upserted row per screen × file, never a row per sample: the player's
+// ~60 s dropped-frame sample (`video` on POST /screens/:id/telemetry) is folded
+// into counters by the pure `foldPlaybackSample` in @cms/api-types, so DB load
+// and egress stay flat however long a clip loops. Only SETTLED samples (a full
+// minute of frames, played from the verified cache, not the first stretch after
+// activation) feed the decode counters and the verdict — an uncached sample that
+// paused to buffer is a delivery problem and is never graded as stutter.
+//
+// NOT in MANIFEST_FED_MODELS: a write here never busts the manifest hot cache.
+// Read on demand only (GET /screens/:id/playback-capability). Nothing here
+// changes what a screen plays — the publish gate and demotion are later steps.
+model ScreenFilePlayback {
+  screenId          String   @map("screen_id")
+  screen            Screen   @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  // SHA-256 of the file the player played (the manifest's asset_hash).
+  fileSha256        String   @map("file_sha256")
+  tenantId          String   @map("tenant_id")
+  // Normalised Build identity (`playbackDeviceClass`) at the time of the last
+  // sample — lets evidence carry from one unit of a model to the next.
+  deviceClass       String?  @map("device_class")
+  fileUrl           String?  @map("file_url")
+  // Decoded size of the frames (videoWidth × videoHeight).
+  width             Int?
+  height            Int?
+  samples           Int      @default(0)
+  settledSamples    Int      @default(0) @map("settled_samples")
+  // Settled-sample counters only.
+  frames            BigInt   @default(0)
+  dropped           BigInt   @default(0)
+  stalls            Int      @default(0)
+  stalledMs         BigInt   @default(0) @map("stalled_ms")
+  consecutiveGood   Int      @default(0) @map("consecutive_good")
+  consecutiveBad    Int      @default(0) @map("consecutive_bad")
+  worstPct          Float?   @map("worst_pct")
+  lastPct           Float?   @map("last_pct")
+  lastGrade         String?  @map("last_grade")
+  lastSettled       Boolean  @default(false) @map("last_settled")
+  engine            String?
+  // Videos decoding at once in the reporting document, and across the faces
+  // of the physical unit (a double-sided display's two faces are two rows).
+  concurrentMax     Int      @default(1) @map("concurrent_max")
+  unitConcurrentMax Int      @default(1) @map("unit_concurrent_max")
+  playerVersionCode Int?     @map("player_version_code")
+  webviewMajor      Int?     @map("webview_major")
+  // smooth | hitching | stuttering | insufficient
+  verdict           String   @default("insufficient")
+  firstAt           DateTime @map("first_at")
+  lastAt            DateTime @map("last_at")
+
+  @@id([screenId, fileSha256])
+  @@index([tenantId, lastAt])
+  @@index([deviceClass])
+  @@map("screen_file_playback")
+}
+
+// 2026-10-11 — what the screen's WebView DECLARES it can decode smoothly
+// (`navigator.mediaCapabilities.decodingInfo` for four canonical H.264
+// configs), sent once per page boot on the telemetry POST. Optimistic by
+// nature: it can raise an unknown screen's profile, never override measured
+// evidence, never establish concurrency. One row per screen, replaced whole.
+// NOT manifest-fed.
+model ScreenMediaCapabilities {
+  screenId     String   @id @map("screen_id")
+  screen       Screen   @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  tenantId     String?  @map("tenant_id")
+  webviewMajor Int?     @map("webview_major")
+  // Bounded by `sanitizeMediaCaps` before it gets here.
+  report       Json
+  reportedAt   DateTime @map("reported_at")
+
+  @@index([tenantId])
+  @@map("screen_media_capabilities")
 }
 
 model AssetFolder {

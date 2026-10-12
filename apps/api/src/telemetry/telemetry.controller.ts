@@ -29,6 +29,12 @@ import {
 } from './telemetry.schema';
 import { sanitizeCacheReport } from './cache-report';
 import { TELEMETRY_INTERVAL_MS, type ScreenTelemetryResponse } from './telemetry.types';
+import {
+  ingestFilePlayback,
+  sanitizeMediaCaps,
+  webviewMajorFromUserAgent,
+  type StoredVideoSample,
+} from './file-playback';
 
 /**
  * POST /api/v1/screens/:id/telemetry — the ONE routine report a player
@@ -556,6 +562,54 @@ export class TelemetryController {
       }
     }
 
+    // ── PER-FILE PLAYBACK EVIDENCE (2026-10-11, video guarantee step 1) ──
+    // The sample above, folded into ONE row per screen × file digest
+    // (`screen_file_playback`) — the history `lastVideoReport` cannot keep.
+    // Only when the sample names its file by digest; never manifest-fed;
+    // best-effort for the same reason as the timeline rows. Changes nothing a
+    // screen plays (the publish gate and demotion are later, deliberate steps).
+    const webviewMajor = webviewMajorFromUserAgent(req?.headers?.['user-agent']);
+    if (videoReport && typeof videoReport.sha256 === 'string' && screen.tenantId) {
+      try {
+        await ingestFilePlayback(this.prisma.client as any, {
+          screenId,
+          tenantId: screen.tenantId,
+          sample: videoReport as unknown as StoredVideoSample,
+          playerVersionCode:
+            (data.playerVersionCode as number | undefined) ?? screen.playerVersionCode ?? null,
+          webviewMajor,
+          now,
+        });
+      } catch {
+        /* evidence best-effort */
+      }
+    }
+
+    // ── DECLARED DECODE CAPABILITY (2026-10-11) ─────────────────────────
+    // What the WebView says it decodes smoothly, once per page boot. Its own
+    // one-row-per-screen table, replaced whole; not manifest-fed; best-effort.
+    const mediaCaps = sanitizeMediaCaps(body.mediaCaps);
+    if (mediaCaps) {
+      try {
+        const capsRow = {
+          tenantId: screen.tenantId ?? null,
+          webviewMajor: mediaCaps.webviewMajor ?? webviewMajor,
+          report: mediaCaps as any,
+          reportedAt: now,
+        };
+        // ten-ok: self-scoped device write — keyed by the screen id the
+        // device token proved; tenantId comes from that live row.
+        await (this.prisma.client as any).screenMediaCapabilities.upsert({
+          where: { screenId },
+          create: { screenId, ...capsRow },
+          update: capsRow,
+          select: { screenId: true },
+        });
+      } catch {
+        /* evidence best-effort */
+      }
+    }
+
     // ── OFF-HOURS BUNDLE UPDATE, APPLIED (2026-10-10) ───────────────────
     // The document that came up after the player reloaded itself onto a new
     // bundle says so once (`update`): the window, the zone it was read in,
@@ -801,8 +855,18 @@ export function sanitizeVideoReport(
   if (stalls !== null) out.stalls = stalls;
   const stalledMs = int(v.stalledMs, 86_400_000);
   if (stalledMs !== null) out.stalledMs = stalledMs;
+  // Video guarantee step 1 (2026-10-11) — each kept only when sent, never
+  // defaulted: an absent `cached` means "the player could not say".
+  if (typeof v.sha256 === 'string' && /^[0-9a-fA-F]{64}$/.test(v.sha256)) out.sha256 = v.sha256.toLowerCase();
+  if (typeof v.engine === 'string' && VIDEO_ENGINES.has(v.engine)) out.engine = v.engine;
+  if (typeof v.cached === 'boolean') out.cached = v.cached;
+  if (typeof v.first === 'boolean') out.first = v.first;
+  const concurrent = int(v.concurrent, 64);
+  if (concurrent !== null) out.concurrent = concurrent;
   return out;
 }
+
+const VIDEO_ENGINES: ReadonlySet<string> = new Set(['native', 'continuous', 'twodeck', 'deck']);
 
 /**
  * The stored seam report, to carry across a fresh frame sample that is about to

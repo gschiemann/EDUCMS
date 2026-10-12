@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TelemetryController } from './telemetry.controller';
+import { PlaybackCapabilityController } from './playback-capability.controller';
 
 /**
  * Unified player telemetry (2026-09-02, efficiency program P0-1).
@@ -12,6 +13,8 @@ import { TelemetryController } from './telemetry.controller';
  * (there is no `setGlobalPrefix`; see controller-prefix.spec.ts).
  */
 @Module({
-  controllers: [TelemetryController],
+  // PlaybackCapabilityController (2026-10-11): the read-only per-screen
+  // playback evidence + capability profile (video guarantee step 4).
+  controllers: [TelemetryController, PlaybackCapabilityController],
 })
 export class TelemetryModule {}
