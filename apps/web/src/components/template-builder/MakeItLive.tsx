@@ -50,6 +50,7 @@ import type { Zone } from './types';
 import {
   suggestLiveWidgets,
   shouldOfferLiveHint,
+  isImportedTemplate,
   liveHintDismissKey,
   zoneCopyPreview,
   openWidgetLibrary,
@@ -127,6 +128,11 @@ export function MakeItLive({ zone }: { zone: Zone }) {
     },
     [zone, setZoneWidget],
   );
+
+  // Owner 2026-10-12: only on IMPORTED designs (a PDF/PPTX page turned into
+  // frozen text/picture boxes). On anything the operator built themselves it
+  // was a confusing duplicate of the widget picker.
+  if (!isImportedTemplate(templateDescription)) return null;
 
   return (
     <div className="space-y-2">

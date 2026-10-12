@@ -41,7 +41,7 @@ function textZone(over: Partial<Zone> = {}): Zone {
   } as Zone;
 }
 
-function mount({ description = '', zone = textZone() }: { description?: string; zone?: Zone } = {}) {
+function mount({ description = IMPORT_DESC, zone = textZone() }: { description?: string; zone?: Zone } = {}) {
   useBuilderStore.getState().init({
     id: 'tpl-1',
     isSystem: false,
@@ -218,11 +218,9 @@ describe('negative control', () => {
     expect(useBuilderStore.getState().past.length).toBe(before);
   });
 
-  it('shows NO hint on a hand-built template, however stale the text looks', () => {
+  it('is not offered at all on a hand-built template (owner 2026-10-12)', () => {
     mount({ description: 'Lobby welcome board' });
-    expect(screen.queryByText(/came in from an import/i)).toBeNull();
-    // …but the control is still there. The hint is discovery, not the feature.
-    expect(toggle()).toBeInTheDocument();
+    expect(screen.queryByText(/make it live/i)).toBeNull();
   });
 
   it('shows NO hint on an imported board when it has nothing specific to point at', () => {
@@ -236,7 +234,7 @@ describe('negative control', () => {
     const b = textZone({ id: 'z2', name: 'Second', defaultConfig: { content: 'Second' } });
     useBuilderStore.getState().init({
       id: 'tpl-1', isSystem: false, zones: [a, b],
-      meta: { name: 'T', description: '', screenWidth: 1920, screenHeight: 1080, bgColor: '', bgGradient: '', bgImage: '' },
+      meta: { name: 'T', description: IMPORT_DESC, screenWidth: 1920, screenHeight: 1080, bgColor: '', bgGradient: '', bgImage: '' },
       isTouchEnabled: false, idleResetMs: 60000, scenes: [],
     });
     useBuilderStore.setState({ selectedIds: ['z1'] });
