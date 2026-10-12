@@ -158,6 +158,7 @@ import {
   verifyDeviceForScreen as verifyDeviceForScreenShared,
   invalidateDeviceCredentialCache,
   isEpochAcceptable,
+  isEpochAcceptableFresh,
   epochFromClaim,
   decodeDeviceTokenUnsafe,
   isUnprovenDeviceClaim,
@@ -5759,7 +5760,7 @@ export class ScreensController {
         const deviceClaims = decodeDeviceTokenUnsafe(
           typeof req.headers.authorization === 'string' ? req.headers.authorization : '',
         );
-        if (!isEpochAcceptable(epochFromClaim(deviceClaims), screen as any)) {
+        if (!(await isEpochAcceptableFresh({ prisma: this.prisma }, screen.id, epochFromClaim(deviceClaims), screen as any))) {
           return res.status(403).json({ error: 'Device credential revoked' });
         }
       } else if (!isSuper) {

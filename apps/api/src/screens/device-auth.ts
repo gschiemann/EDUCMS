@@ -650,6 +650,27 @@ export function isEpochAcceptable(
   return false;
 }
 
+/**
+ * `isEpochAcceptable`, except that a token NEWER than the snapshot first
+ * forces one live read (2026-10-12, VisionCore). A presented epoch above the
+ * row's can only mean the snapshot predates a rotation that already committed:
+ * a manifest read that raced the device's own re-register cached the
+ * pre-commit row and every poll was refused for the preamble's 10-min TTL.
+ * The decision is still made against the live row — never weaker.
+ */
+export async function isEpochAcceptableFresh(
+  deps: { prisma: DeviceAuthPrisma },
+  screenId: string,
+  presented: number,
+  state: Pick<DeviceCredentialState, 'credentialEpoch' | 'credentialEpochRotatedAt'>,
+): Promise<boolean> {
+  if (isEpochAcceptable(presented, state)) return true;
+  if (!(presented > (Number(state.credentialEpoch ?? 0) || 0))) return false;
+  invalidateDeviceCredentialCache(screenId);
+  const live = await loadCredentialState(deps.prisma, screenId);
+  return !!live && live.status !== 'REVOKED' && isEpochAcceptable(presented, live);
+}
+
 /** Verify signature + kind + subject. No DB, no Redis — pure crypto. */
 export function decodeDeviceBearer(
   req: ExpressReq,
@@ -921,7 +942,7 @@ export async function admitDeviceCredential(
     return { ok: false, reason: 'screen_unpaired' };
   }
   const presentedEpoch = epochFromClaim(decoded);
-  if (!isEpochAcceptable(presentedEpoch, state)) {
+  if (!(await isEpochAcceptableFresh({ prisma: deps.prisma }, screenId, presentedEpoch, state))) {
     return { ok: false, reason: 'credential_epoch_stale' };
   }
 

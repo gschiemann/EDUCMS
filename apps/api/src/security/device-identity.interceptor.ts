@@ -61,6 +61,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   loadDeviceCredentialState,
   isEpochAcceptable,
+  isEpochAcceptableFresh,
   epochFromClaim,
   decodeDeviceTokenUnsafe,
   isUnprovenDeviceClaim,
@@ -130,7 +131,7 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
     const auth = typeof req.headers?.authorization === 'string' ? req.headers.authorization : '';
     const decoded = decodeDeviceTokenUnsafe(auth);
     const presentedEpoch = epochFromClaim(decoded);
-    if (!isEpochAcceptable(presentedEpoch, state)) {
+    if (!(await isEpochAcceptableFresh({ prisma: this.prisma }, user.sub, presentedEpoch, state))) {
       throw new UnauthorizedException('Device credential revoked');
     }
 
