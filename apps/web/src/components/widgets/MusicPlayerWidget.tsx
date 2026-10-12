@@ -46,6 +46,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { sceneCss } from './scene-css';
 
 type MusicSource =
   | 'somafm'
@@ -480,8 +481,8 @@ function StationArt({ seed, size, radius }: { seed: string; size: number; radius
 function Equalizer({ active, height, bars }: { active: boolean; height: number; bars: number }) {
   return (
     <div aria-hidden data-music-eq={active ? 'on' : 'off'} style={{ display: 'flex', alignItems: 'flex-end', height }}>
-      <style>{`@keyframes vos-eq{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
-@media (prefers-reduced-motion: reduce){[data-music-eq] span{animation:none!important}}`}</style>
+      <style>{sceneCss(`@keyframes vos-eq{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+@media (prefers-reduced-motion: reduce){[data-music-eq] span{animation:none!important}}`)}</style>
       {Array.from({ length: bars }, (_, i) => (
         <span
           key={i}
