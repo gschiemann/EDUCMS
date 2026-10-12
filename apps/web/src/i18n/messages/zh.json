@@ -1878,7 +1878,27 @@
     "playlistFallback": "播放列表",
     "allDay": "全天",
     "emergencyTriggers": "紧急触发",
-    "allCaughtUp": "已全部处理"
+    "allCaughtUp": "已全部处理",
+    "liveSummary": {
+      "aria": "屏幕实时概况",
+      "screens": "{count, plural, other {# 块屏幕}}",
+      "playing": "{count} 块正在播放",
+      "offline": "{count} 块离线",
+      "offlineSince": "{count} 块离线（已 {since}）",
+      "noPicture": "{count} 块未显示内容",
+      "needsUpdate": "{count, plural, other {# 块需要更新}}",
+      "filterHint": "在地图上只显示这些",
+      "showAll": "重新显示全部",
+      "minutes": "{count, plural, other {# 分钟}}",
+      "hours": "{count, plural, other {# 小时}}",
+      "days": "{count, plural, other {# 天}}",
+      "actionOffline": "{location} 有 {count, plural, other {# 块屏幕}}离线——请检查电源和网络。",
+      "actionDark": "{location} 有 {count, plural, other {# 块屏幕}}未显示内容——打开查看播放器。",
+      "actionEmergency": "{location} 无法显示紧急警报——请添加警报内容。",
+      "actionDrift": "{location} 有 {count, plural, other {# 块屏幕}}尚未收到最新内容。",
+      "allGood": "一切正常播放，目前无需处理。",
+      "noScreens": "这里还没有屏幕。"
+    }
   },
   "screens": {
     "title": "屏幕",

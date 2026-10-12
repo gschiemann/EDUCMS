@@ -1878,7 +1878,27 @@
     "playlistFallback": "Lista",
     "allDay": "Todo el día",
     "emergencyTriggers": "Activadores de emergencia",
-    "allCaughtUp": "Todo al día"
+    "allCaughtUp": "Todo al día",
+    "liveSummary": {
+      "aria": "Resumen en vivo de las pantallas",
+      "screens": "{count, plural, one {# pantalla} other {# pantallas}}",
+      "playing": "{count} reproduciendo",
+      "offline": "{count} sin conexión",
+      "offlineSince": "{count} sin conexión (desde hace {since})",
+      "noPicture": "{count} sin mostrar contenido",
+      "needsUpdate": "{count, plural, one {# necesita actualizarse} other {# necesitan actualizarse}}",
+      "filterHint": "Mostrar solo estas en el mapa",
+      "showAll": "Volver a mostrar todo",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "actionOffline": "{count, plural, one {# pantalla sin conexión} other {# pantallas sin conexión}} en {location}: revise la alimentación y la red.",
+      "actionDark": "{count, plural, one {# pantalla} other {# pantallas}} en {location} sin mostrar contenido: ábrala para revisar el reproductor.",
+      "actionEmergency": "{location} no puede mostrar una alerta de emergencia: agregue contenido de alerta.",
+      "actionDrift": "{count, plural, one {# pantalla} other {# pantallas}} en {location} aún no tienen el contenido más reciente.",
+      "allGood": "Todo se está reproduciendo. Nada requiere su atención ahora.",
+      "noScreens": "Aún no hay pantallas aquí."
+    }
   },
   "screens": {
     "title": "Pantallas",

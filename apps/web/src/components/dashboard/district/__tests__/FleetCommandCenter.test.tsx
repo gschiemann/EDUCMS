@@ -1048,15 +1048,28 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(pinTones()).toContain('Peak North=ok');
   });
 
-  it('the legend speaks English — "Picture proof", never "painting"', () => {
+  it('the live summary counts what the map shows, filters it, and names the first fix (2026-10-12)', () => {
     renderAtlas();
-    // jsdom doesn't apply responsive CSS; both placements must keep the copy.
-    for (const group of rtl.getAllByRole('group', { name: 'Status guide' })) {
-      const legend = within(group);
-      for (const label of ['Device online', 'App current', 'Push live', 'Picture proof']) {
-        expect(legend.getByText(label)).toBeInTheDocument();
-      }
-    }
+    // jsdom doesn't apply responsive CSS; both placements carry the same data.
+    const cards = rtl.getAllByRole('group', { name: 'Live screen summary' });
+    expect(cards).toHaveLength(2);
+    const card = within(cards[0]);
+    expect(card.getByText('4 screens')).toBeInTheDocument();
+    expect(card.getByText('2 playing')).toBeInTheDocument();
+    // The old static legend is gone — it carried no data.
+    expect(rtl.queryByRole('group', { name: 'Status guide' })).not.toBeInTheDocument();
+    // The single most important action: the offline screen, by location.
+    const action = card.getByRole('button', { name: /1 screen offline at Peak West/ });
+    // Count chips filter the map (same predicate as the map chips).
+    fireEvent.click(card.getByRole('button', { name: '1 not showing content' }));
+    expect(pinTones()).toEqual(['Iron Peak HQ=bad']);
+    expect(within(rtl.getAllByRole('group', { name: 'Live screen summary' })[0]).getByText('1 screen')).toBeInTheDocument();
+    fireEvent.click(within(rtl.getAllByRole('group', { name: 'Live screen summary' })[0]).getByRole('button', { name: '1 not showing content' }));
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
+    // The action line SELECTS the location — it never navigates away.
+    fireEvent.click(action);
+    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
+    expect(switchToTenant).not.toHaveBeenCalled();
     // Our wire vocabulary must not leak into the operator's map.
     expect(rtl.queryByText(/paint/i)).not.toBeInTheDocument();
   });

@@ -1878,7 +1878,27 @@
     "playlistFallback": "Playlist",
     "allDay": "All day",
     "emergencyTriggers": "Emergency triggers",
-    "allCaughtUp": "All caught up"
+    "allCaughtUp": "All caught up",
+    "liveSummary": {
+      "aria": "Live screen summary",
+      "screens": "{count, plural, one {# screen} other {# screens}}",
+      "playing": "{count} playing",
+      "offline": "{count} offline",
+      "offlineSince": "{count} offline (since {since} ago)",
+      "noPicture": "{count} not showing content",
+      "needsUpdate": "{count, plural, one {# needs an update} other {# need an update}}",
+      "filterHint": "Show only these on the map",
+      "showAll": "Show everything again",
+      "minutes": "{count, plural, one {# minute} other {# minutes}}",
+      "hours": "{count, plural, one {# hour} other {# hours}}",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "actionOffline": "{count, plural, one {# screen} other {# screens}} offline at {location} — check power and network.",
+      "actionDark": "{count, plural, one {# screen} other {# screens}} at {location} not showing content — open to check the player.",
+      "actionEmergency": "{location} can’t show an emergency alert — add alert content.",
+      "actionDrift": "{count, plural, one {# screen} other {# screens}} at {location} haven’t picked up the latest content yet.",
+      "allGood": "Everything is playing. Nothing needs you right now.",
+      "noScreens": "No screens here yet."
+    }
   },
   "screens": {
     "title": "Screens",

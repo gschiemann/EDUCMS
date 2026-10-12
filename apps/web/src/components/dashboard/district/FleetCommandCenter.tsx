@@ -45,7 +45,7 @@ import type { ExpectedContent } from '@/components/screens/v3/screenOps';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, CheckCircle2, ChevronDown,
   ChevronUp, CloudOff, CreditCard, FileCheck2, Inbox, Info, KeyRound, ListVideo, Loader2, MapPin,
-  MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, Radio, RefreshCw, Send,
+  MonitorCheck, MonitorPlay, MonitorX, MoreHorizontal, RefreshCw, Send,
   ShieldAlert, ShieldCheck, Upload, Wifi, X, Zap,
 } from 'lucide-react';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -68,6 +68,7 @@ import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { computeUptime, type DisplayScheduleRow } from './uptime';
 import { UptimeCard } from './UptimeCard';
+import { FleetLiveSummary, summarizeLiveFleet } from './FleetLiveSummary';
 import { LocationMapSurface, LocationMapFilters } from '@/components/screens/LocationMapSurface';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
@@ -195,7 +196,9 @@ function initialsOf(name: string): string {
  * the table and the ring read, so a chip can never select a set the rest of
  * the page would grade differently.
  */
-type AtlasFilterKey = 'all' | 'healthy' | 'offline' | 'drift' | 'push' | 'emergency';
+// 'dark' has no chip of its own — the live summary's "not showing content"
+// count is its way in (2026-10-12).
+type AtlasFilterKey = 'all' | 'healthy' | 'offline' | 'drift' | 'push' | 'emergency' | 'dark';
 const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; Icon?: typeof ShieldAlert }> = [
   { key: 'all', label: 'All' },
   { key: 'healthy', label: 'Healthy', dot: '#10b981' },
@@ -215,6 +218,7 @@ function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
     case 'offline': return row.screensOffline > 0;
     case 'drift': return row.contentBehind > 0;
     case 'push': return row.pushStale > 0;
+    case 'dark': return row.notPainting > 0;
     // "Isn't Ready" — but never UNKNOWN: a readiness check that has not
     // answered is not evidence of a gap (never cry wolf).
     case 'emergency': return row.readiness === 'NEEDS_ATTENTION' || row.readiness === 'NOT_CONFIGURED';
@@ -726,6 +730,24 @@ export function FleetCommandCenter({
     return allLocationPins.filter((p) => keep.has(p.id));
   }, [allLocationPins, fc.locations, atlasFilter]);
   const mappableCount = locationPins.length;
+  /**
+   * Live summary for exactly what the map is showing (2026-10-12 — replaces
+   * the static "Status guide"). Rows are the chip-filtered LocationRows;
+   * "playing" is the same per-screen predicate as the "Need attention" card.
+   */
+  const liveSummary = useMemo(
+    () =>
+      summarizeLiveFleet(
+        fc.locations.filter((row) => matchesAtlasFilter(row, atlasFilter)),
+        scoped.fleet.screens.map((s) => ({
+          tenantId: s.sourceTenant?.id ?? null,
+          status: s.status,
+          lastPingAt: s.lastPingAt ?? null,
+          needsAttention: needsAttention(s),
+        })),
+      ),
+    [fc.locations, atlasFilter, scoped.fleet.screens, needsAttention],
+  );
   /** Pins BEFORE the filter — separates "no addresses" from "no match". */
   const mappableTotal = allLocationPins.length;
 
@@ -1957,12 +1979,27 @@ export function FleetCommandCenter({
                   </div>
                 )}
 
-                {/* Static guide, separate from the live assurance counts above. */}
+                {/* Live summary of what the map shows — counts filter the
+                    map, the action line selects the location to fix first. */}
                 {mappableTotal > 0 && (
-                  <DashboardStatusGuide className="hidden lg:block absolute bottom-3 right-3 z-[1000] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3" />
+                  <FleetLiveSummary
+                    summary={liveSummary}
+                    filter={atlasFilter}
+                    onFilter={setAtlasFilter}
+                    onSelectLocation={setSelectedTenantId}
+                    className="hidden lg:block absolute bottom-3 right-3 z-[1000] w-[300px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
+                  />
                 )}
               </LocationMapSurface>
-              {mappableTotal > 0 && <DashboardStatusGuide className={`${CARD} lg:hidden px-4 py-3`} />}
+              {mappableTotal > 0 && (
+                <FleetLiveSummary
+                  summary={liveSummary}
+                  filter={atlasFilter}
+                  onFilter={setAtlasFilter}
+                  onSelectLocation={setSelectedTenantId}
+                  className={`${CARD} lg:hidden px-4 py-3`}
+                />
+              )}
             </div>
           ) : (
             <>
@@ -2206,31 +2243,5 @@ export function FleetCommandCenter({
       )}
 
     </section>
-  );
-}
-
-function DashboardStatusGuide({ className }: { className: string }) {
-  return (
-                  <div className={className}
-                    role="group"
-                    aria-label="Status guide"
-                  >
-                    <h4 className="text-[12px] font-black text-slate-800">Status guide <span className="font-normal text-slate-500">· not live status</span></h4>
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
-                      {[
-                        { label: 'Device online', Icon: Wifi },
-                        { label: ASSURANCE_LABEL.contentCurrent, Icon: CheckCircle2 },
-                        { label: 'Push live', Icon: Radio },
-                        // "Picture proof", never "painting" — that is our wire
-                        // vocabulary, not the operator's (2026-08-31 feedback).
-                        { label: 'Picture proof', Icon: MonitorCheck },
-                      ].map(({ label, Icon }) => (
-                        <span key={label} className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
-                          <Icon className="w-4 h-4 shrink-0 text-slate-400" aria-hidden />
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
   );
 }
