@@ -1848,7 +1848,11 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   const lineHeight = Math.max(0.5, Math.min(2.5, rawLh));
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%] overflow-hidden" style={{ backgroundColor: bgColor }}>
+    <div
+      className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-[5%] overflow-hidden"
+      // `borderRadius` — the Brand tab's "Call to action" pill (2026-10-12).
+      style={{ backgroundColor: bgColor, borderRadius: typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius || undefined }}
+    >
       <p
         data-field="content"
         style={{

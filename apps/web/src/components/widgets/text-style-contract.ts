@@ -235,6 +235,22 @@ export function buildTextStyleRules(style: unknown): string[] {
  * nested span, and hiding a field must not hide unrelated inner structure.
  * Byte-identical to `BuilderZone.buildFieldOnlyRules`.
  */
+/**
+ * Rounded corners for a TEXT box — the Brand tab's "Call to action" pill
+ * (2026-10-12). The zone-wide background override paints the zone wrapper
+ * (builder: `[data-widget-content]`, player: the zone div), so the radius has
+ * to round THAT box or the pill renders as a square. TEXT only, and only when
+ * the config carries `borderRadius`: every other widget keeps the exact
+ * wrapper it had. Returns the CSS declaration value, or null.
+ */
+export function textBoxRadius(widgetType: string | undefined, config: unknown): string | null {
+  if (widgetType !== 'TEXT' || !config || typeof config !== 'object') return null;
+  const r = (config as { borderRadius?: unknown }).borderRadius;
+  if (typeof r === 'number' && Number.isFinite(r) && r > 0) return `${r}px`;
+  if (typeof r === 'string' && /^\d+(\.\d+)?(px|%|em|rem)$/.test(r.trim())) return r.trim();
+  return null;
+}
+
 export function buildFieldOnlyStyleRules(style: unknown): string[] {
   const s = asStyle(style);
   const rules: string[] = [];

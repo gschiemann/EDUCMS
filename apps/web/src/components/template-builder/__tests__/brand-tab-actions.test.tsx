@@ -1,39 +1,40 @@
 /**
- * Owner 2026-10-12: "picking colors and fonts I don't see anything happen".
- * Every Brand-tab action must change the canvas visibly:
- *   - logo  → a LOGO zone in the TOP-LEFT corner at the logo's own aspect,
- *             selected; an existing LOGO zone gets its image swapped instead
- *   - font  → nothing selected: ADDS a text box in that font, selected;
- *             widget selected: applies the font + "Font applied" toast
- *   - color → nothing selected: a menu (background / gradient / all text);
- *             widget selected: text colour, or background via a VISIBLE toggle
- *   - Apply brand across template → a toast naming what changed
+ * Owner 2026-10-12: "branding page is still useless, I can't do anything but
+ * add a logo … Apply brand should only be available if they've done branding;
+ * what does Apply branding actually do?"
+ *
+ * The Brand tab is ACTION-FIRST: every control does one visible thing whatever
+ * is selected, toasts, and is one undo step.
  */
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { useBuilderStore } from '../useBuilderStore';
 import type { Zone } from '../types';
 
 const MOCK_KIT = {
   logoUrl: 'https://cdn.example/logo.png',
-  palette: { primary: '#112233', accent: '#445566', ink: '#0f172a', surface: '#f8fafc' },
+  palette: { primary: '#1d4ed8', accent: '#f59e0b', ink: '#0f172a', surface: '#f8fafc' },
   fontHeading: 'Oswald',
   fontBody: 'Lato',
   displayName: 'Test Brand',
 };
+let mockTemplateKit: unknown = MOCK_KIT;
+let mockOrgBrand: unknown = null;
 
 jest.mock('@/hooks/use-api', () => ({
-  useTemplate: () => ({ data: { id: 't1', brandKit: MOCK_KIT }, isLoading: false }),
+  useTemplate: () => ({ data: { id: 't1', brandKit: mockTemplateKit }, isLoading: false }),
+  useTenantBranding: () => ({ data: mockOrgBrand }),
   useAdoptTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useClearTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
 }));
+jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'school-1' }) }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: jest.fn().mockResolvedValue(false), appAlert: jest.fn() }));
 const mockToastSuccess = jest.fn();
+const mockToast = jest.fn();
 jest.mock('sonner', () => {
-  const fn = Object.assign(jest.fn(), { success: (...a: unknown[]) => mockToastSuccess(...a) });
+  const fn = Object.assign((...a: unknown[]) => mockToast(...a), { success: (...a: unknown[]) => mockToastSuccess(...a) });
   return { toast: fn };
 });
-// A wide 2:1 wordmark.
 jest.mock('../media-sizing', () => ({
   ...jest.requireActual('../media-sizing'),
   readMediaDimensions: jest.fn().mockResolvedValue({ width: 400, height: 200 }),
@@ -44,146 +45,208 @@ import { BrandKitPanel } from '../BrandKitPanel';
 const CANVAS = { width: 1920, height: 1080 };
 const placeholder: Zone = { id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} } as Zone;
 const text = (id = 'txt'): Zone => ({ id, name: 'Text 1', widgetType: 'TEXT', x: 10, y: 10, width: 30, height: 10, zIndex: 1, sortOrder: 1, defaultConfig: { content: 'Hello' } } as Zone);
+const clock: Zone = { id: 'clk', name: 'Clock', widgetType: 'CLOCK', x: 60, y: 10, width: 20, height: 10, zIndex: 1, sortOrder: 2, defaultConfig: {} } as Zone;
+const board: Zone = { id: 'board', name: 'Board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/x.html' } } as Zone;
 
 function init(zones: Zone[], selectedIds: string[] = []) {
   useBuilderStore.getState().init({
     id: 't1', isSystem: false, zones,
-    meta: { name: 'T', description: '', screenWidth: CANVAS.width, screenHeight: CANVAS.height, bgColor: '', bgGradient: '', bgImage: '' },
+    meta: { name: 'T', description: '', screenWidth: CANVAS.width, screenHeight: CANVAS.height, bgColor: '#ffffff', bgGradient: '', bgImage: '' },
     isTouchEnabled: false, idleResetMs: 60000, scenes: [],
   } as never);
   useBuilderStore.setState({ selectedIds, previewMode: false });
 }
-
-beforeEach(() => mockToastSuccess.mockClear());
-
 const cfg = (z: Zone | undefined) => (z?.defaultConfig || {}) as Record<string, unknown>;
+const zone = (id: string) => useBuilderStore.getState().zones.find((z) => z.id === id);
+
+beforeEach(() => {
+  mockToastSuccess.mockClear();
+  mockToast.mockClear();
+  mockTemplateKit = MOCK_KIT;
+  mockOrgBrand = null;
+});
+
+describe('no brand set up', () => {
+  it('shows ONLY the "Set up your brand" card — no Brand this template, no actions', () => {
+    mockTemplateKit = null;
+    init([text()]);
+    render(<BrandKitPanel />);
+    expect(screen.getByRole('heading', { name: 'Set up your brand' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open Brand & appearance' }).getAttribute('href')).toBe('/school-1/settings/branding');
+    expect(screen.queryByRole('button', { name: 'Brand this template' })).toBeNull();
+    expect(screen.queryByText('Backgrounds')).toBeNull();
+  });
+
+  it('an empty kit object (no logo, colour or font) counts as no brand', () => {
+    mockTemplateKit = { palette: {}, logoUrl: null };
+    init([]);
+    render(<BrandKitPanel />);
+    expect(screen.getByRole('heading', { name: 'Set up your brand' })).toBeTruthy();
+  });
+
+  it('falls back to the organisation brand when the template has none', () => {
+    mockTemplateKit = null;
+    mockOrgBrand = { ...MOCK_KIT, displayName: 'Org Brand' };
+    init([]);
+    render(<BrandKitPanel />);
+    expect(screen.getByRole('button', { name: 'Brand this template' })).toBeTruthy();
+    expect(screen.getByText("From your organization's brand.")).toBeTruthy();
+    expect(screen.getByText('Org Brand')).toBeTruthy();
+  });
+});
 
 describe('logo', () => {
-  it('places a NEW logo in the top-left corner at its own aspect ratio, selected', async () => {
+  it('Add logo places it top-left at its own aspect, selected, one undo step', async () => {
     init([placeholder], ['blank']);
     render(<BrandKitPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Insert as logo widget' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add logo' }));
     await waitFor(() => expect(useBuilderStore.getState().zones.some((z) => z.widgetType === 'LOGO')).toBe(true));
     const st = useBuilderStore.getState();
     const logo = st.zones.find((z) => z.widgetType === 'LOGO')!;
-    expect(st.zones.some((z) => z.widgetType === 'EMPTY')).toBe(false); // the blank starter is replaced
     expect(cfg(logo).assetUrl).toBe(MOCK_KIT.logoUrl);
     expect(logo.x).toBeLessThan(5);
-    expect(logo.y).toBeLessThan(5);
-    // Pixel aspect of the frame = the logo's 2:1.
     expect((logo.width * CANVAS.width) / (logo.height * CANVAS.height)).toBeCloseTo(2);
-    expect(logo.width).toBeLessThanOrEqual(28);
     expect(st.selectedIds).toEqual([logo.id]);
-    // One undo step removes it.
-    st.undo();
+    act(() => st.undo());
     expect(useBuilderStore.getState().zones.some((z) => z.widgetType === 'LOGO')).toBe(false);
   });
 
-  it('swaps the image of an existing LOGO zone instead of adding another', async () => {
-    const existing = { id: 'logo1', name: 'Logo 1', widgetType: 'LOGO', x: 70, y: 70, width: 10, height: 10, zIndex: 1, sortOrder: 0, defaultConfig: { assetUrl: '/old.png' } } as Zone;
-    init([existing]);
-    render(<BrandKitPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Insert as logo widget' }));
-    const st = useBuilderStore.getState();
-    expect(st.zones.filter((z) => z.widgetType === 'LOGO')).toHaveLength(1);
-    expect(cfg(st.zones[0]).assetUrl).toBe(MOCK_KIT.logoUrl);
-    expect(st.zones[0].x).toBe(70); // position kept
-    expect(st.selectedIds).toEqual(['logo1']);
-  });
-});
-
-describe('fonts', () => {
-  it('with nothing selected, ADDS a headline text box in the heading font, selected', () => {
-    init([placeholder], ['blank']);
-    render(<BrandKitPanel />);
-    fireEvent.click(screen.getByText('Oswald'));
-    const st = useBuilderStore.getState();
-    const added = st.zones.find((z) => z.widgetType === 'TEXT')!;
-    expect(added).toBeTruthy();
-    expect(cfg(added)).toMatchObject({ content: 'Your headline', fontFamily: 'Oswald', bold: true });
-    expect(st.selectedIds).toEqual([added.id]);
-    expect(mockToastSuccess).toHaveBeenCalled();
-  });
-
-  it('the body font adds "Your text here"', () => {
-    init([]);
-    render(<BrandKitPanel />);
-    fireEvent.click(screen.getByText('Lato'));
-    const added = useBuilderStore.getState().zones.find((z) => z.widgetType === 'TEXT')!;
-    expect(cfg(added)).toMatchObject({ content: 'Your text here', fontFamily: 'Lato' });
-  });
-
-  it('with a text widget selected, applies the font and says so', () => {
-    init([text()], ['txt']);
-    render(<BrandKitPanel />);
-    fireEvent.click(screen.getByText('Lato'));
-    const st = useBuilderStore.getState();
-    expect(st.zones).toHaveLength(1);
-    expect(cfg(st.zones[0]).fontFamily).toBe('Lato');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Font applied: Lato.', expect.anything());
-  });
-});
-
-describe('colors', () => {
-  it('with nothing selected, a swatch opens a menu; "Use as background" sets the canvas', () => {
-    init([text()]);
-    render(<BrandKitPanel />);
-    expect(screen.queryByRole('menu')).toBeNull();
-    fireEvent.click(screen.getByTitle(/^Primary: #112233/));
-    expect(screen.getByRole('menu')).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Use as background/ }));
-    expect(useBuilderStore.getState().meta).toMatchObject({ bgColor: '#112233', bgGradient: '' });
-    expect(screen.queryByRole('menu')).toBeNull();
-  });
-
-  it('"Gradient with <next brand color>" builds a gradient from the two', () => {
-    init([text()]);
-    render(<BrandKitPanel />);
-    fireEvent.click(screen.getByTitle(/^Primary: #112233/));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Gradient with #445566/ }));
-    const g = useBuilderStore.getState().meta.bgGradient;
-    expect(g).toContain('#112233');
-    expect(g).toContain('#445566');
-  });
-
-  it('"Set text color on all text" colours every text widget in one undo step', () => {
-    init([text('a'), text('b'), { ...text('c'), widgetType: 'CLOCK' } as Zone]);
+  it('a placement chip MOVES the existing logo there (whatever is selected)', () => {
+    const logo = { id: 'logo1', name: 'Logo', widgetType: 'LOGO', x: 2, y: 3, width: 10, height: 10, zIndex: 1, sortOrder: 0, defaultConfig: {} } as Zone;
+    init([logo, text()], ['txt']);
     render(<BrandKitPanel />);
     const before = useBuilderStore.getState().past.length;
-    fireEvent.click(screen.getByTitle(/^Accent: #445566/));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Set text color on all text/ }));
-    const st = useBuilderStore.getState();
-    expect(cfg(st.zones[0]).color).toBe('#445566');
-    expect(cfg(st.zones[1]).color).toBe('#445566');
-    expect(cfg(st.zones[2]).color).toBeUndefined();
-    expect(st.past.length).toBe(before + 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Bottom right' }));
+    const moved = zone('logo1')!;
+    expect(moved.x + moved.width).toBeGreaterThan(95);
+    expect(moved.y + moved.height).toBeGreaterThan(95);
+    expect(moved.width).toBe(10);
+    expect(useBuilderStore.getState().past.length).toBe(before + 1);
+    expect(screen.getByRole('button', { name: 'Bottom right' }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('with a widget selected: click = text colour, the visible Background toggle = background', () => {
-    init([text()], ['txt']);
+  it('a placement chip with no logo on the canvas adds one there', async () => {
+    init([]);
     render(<BrandKitPanel />);
-    fireEvent.click(screen.getByTitle(/^Primary: #112233/));
-    expect(cfg(useBuilderStore.getState().zones[0]).color).toBe('#112233');
-    expect(screen.queryByRole('menu')).toBeNull();
-    fireEvent.click(within(screen.getByRole('group', { name: 'Apply color to' })).getByRole('button', { name: 'Background' }));
-    fireEvent.click(screen.getByTitle(/^Accent: #445566/));
-    expect(cfg(useBuilderStore.getState().zones[0]).bgColor).toBe('#445566');
-    // Shift+click stays a background shortcut regardless of the toggle.
-    fireEvent.click(within(screen.getByRole('group', { name: 'Apply color to' })).getByRole('button', { name: 'Text' }));
-    fireEvent.click(screen.getByTitle(/^Surface: #f8fafc/), { shiftKey: true });
-    expect(cfg(useBuilderStore.getState().zones[0]).bgColor).toBe('#f8fafc');
+    fireEvent.click(screen.getByRole('button', { name: 'Center' }));
+    await waitFor(() => expect(useBuilderStore.getState().zones.some((z) => z.widgetType === 'LOGO')).toBe(true));
+    const logo = useBuilderStore.getState().zones.find((z) => z.widgetType === 'LOGO')!;
+    expect(logo.x + logo.width / 2).toBeCloseTo(50);
+    expect(logo.y + logo.height / 2).toBeCloseTo(50);
   });
 });
 
-describe('apply brand across template', () => {
-  it('toasts a summary of what changed', () => {
-    init([text()]);
+describe('backgrounds', () => {
+  it('a tile sets the TEMPLATE background even with a widget selected', () => {
+    init([text()], ['txt']);
     render(<BrandKitPanel />);
-    fireEvent.click(screen.getByRole('button', { name: /Apply brand across template/ }));
-    expect(mockToastSuccess).toHaveBeenCalledTimes(1);
-    const message = String(mockToastSuccess.mock.calls[0][0]);
-    expect(message).toMatch(/^Brand applied: /);
-    expect(message).toContain('1 of 1 widgets restyled');
-    expect(message).toContain('brand gradient background');
+    fireEvent.click(screen.getByRole('button', { name: 'Background: Brand gradient' }));
+    const st = useBuilderStore.getState();
+    expect(st.meta.bgGradient).toContain('#1d4ed8');
+    expect(st.meta.bgGradient).toContain('#f59e0b');
+    expect(cfg(zone('txt')).bgColor).toBeUndefined();
+    expect(mockToastSuccess).toHaveBeenCalledWith('Background set: Brand gradient.', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'Background: Primary' }));
+    expect(useBuilderStore.getState().meta).toMatchObject({ bgColor: '#1d4ed8', bgGradient: '' });
+  });
+
+  it('a full-canvas board gets the same background in one undo step', () => {
+    init([board]);
+    render(<BrandKitPanel />);
+    const before = useBuilderStore.getState().past.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Background: Dark brand' }));
+    const st = useBuilderStore.getState();
+    expect((cfg(zone('board')).brand as Record<string, unknown>).background).toBe(st.meta.bgColor);
+    expect(st.past.length).toBe(before + 1);
+  });
+});
+
+describe('text', () => {
+  it('a style tile ADDS a centred text box in the brand font, selected', () => {
+    init([placeholder], ['blank']);
+    render(<BrandKitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Heading text box' }));
+    const st = useBuilderStore.getState();
+    const added = st.zones.find((z) => z.widgetType === 'TEXT')!;
+    expect(cfg(added)).toMatchObject({ content: 'Your headline', fontFamily: 'Oswald', bold: true, color: '#1d4ed8' });
+    expect(added.x + added.width / 2).toBeCloseTo(50);
+    expect(st.selectedIds).toEqual([added.id]);
+    expect(st.selectionSource).toBe('panel'); // stays on the Brand tab
+  });
+
+  it('the call to action is a pill in the brand primary', () => {
+    init([]);
+    render(<BrandKitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Call to action text box' }));
+    const added = useBuilderStore.getState().zones.find((z) => z.widgetType === 'TEXT')!;
+    expect(cfg(added)).toMatchObject({ content: 'Learn more', bgColor: '#1d4ed8', borderRadius: 9999 });
+  });
+
+  it('text colour swatches are disabled until a text box is selected, then colour only it', () => {
+    init([text('a'), text('b')]);
+    const { rerender } = render(<BrandKitPanel />);
+    const swatch = () => screen.getByRole('button', { name: 'Text color Accent #f59e0b' });
+    expect((swatch() as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Select a text box first.')).toBeTruthy();
+    act(() => useBuilderStore.setState({ selectedIds: ['a'] }));
+    rerender(<BrandKitPanel />);
+    expect((swatch() as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(swatch());
+    expect(cfg(zone('a')).color).toBe('#f59e0b');
+    expect(cfg(zone('b')).color).toBeUndefined();
+  });
+
+  it('Recolor all text gives every text box a readable brand colour in one step', () => {
+    init([text('a'), text('b'), clock]);
+    render(<BrandKitPanel />);
+    const before = useBuilderStore.getState().past.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Recolor all text' }));
+    expect(cfg(zone('a')).color).toBe('#0f172a');
+    expect(cfg(zone('b')).color).toBe('#0f172a');
+    expect(cfg(zone('clk')).color).toBeUndefined();
+    expect(useBuilderStore.getState().past.length).toBe(before + 1);
+  });
+});
+
+describe('selected non-text widget', () => {
+  it('shows "Selected Clock: Background" and colours that widget', () => {
+    init([clock, text()], ['clk']);
+    render(<BrandKitPanel />);
+    expect(screen.getByText('Selected Clock: Background')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clock background Primary #1d4ed8' }));
+    expect(cfg(zone('clk')).bgColor).toBe('#1d4ed8');
+  });
+
+  it('is absent when nothing (or only text) is selected', () => {
+    init([clock, text()], ['txt']);
+    render(<BrandKitPanel />);
+    expect(screen.queryByTestId('brand-selected-bg')).toBeNull();
+  });
+});
+
+describe('Brand this template', () => {
+  it('lists what it will do BEFORE the click', () => {
+    init([]);
+    render(<BrandKitPanel />);
+    const list = screen.getByTestId('brand-checklist');
+    expect(list.textContent).toContain('Your logo in the logo spots');
+    expect(list.textContent).toContain('Headings and body text in Oswald + Lato');
+    expect(list.textContent).toContain('Brand colors on text, tickers and countdowns');
+    expect(list.textContent).toContain('A brand background');
+  });
+
+  it('applies, toasts what changed with an Undo, and Undo reverts it in one step', () => {
+    init([text(), board]);
+    render(<BrandKitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Brand this template' }));
+    const [message, opts] = mockToastSuccess.mock.calls[0];
+    expect(String(message)).toMatch(/^Brand applied: /);
+    expect(opts.action.label).toBe('Undo');
+    expect(cfg(zone('txt')).fontFamily).toBe('Oswald');
+    expect((cfg(zone('board')).imageOverrides as Record<string, unknown>)['brand.logo']).toBe(MOCK_KIT.logoUrl);
+    act(() => opts.action.onClick());
+    expect(cfg(zone('txt')).fontFamily).toBeUndefined();
+    expect(cfg(zone('board')).brand).toBeUndefined();
+    expect(useBuilderStore.getState().meta.bgGradient).toBe('');
   });
 });

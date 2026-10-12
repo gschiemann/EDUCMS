@@ -12,6 +12,7 @@ jest.mock('@/hooks/use-api', () => ({
   useTemplate: () => ({ data: { id: 't1', brandKit: MOCK_KIT }, isLoading: false }),
   useAdoptTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useClearTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
+  useTenantBranding: () => ({ data: null }),
 }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: jest.fn().mockResolvedValue(false), appAlert: jest.fn().mockResolvedValue(undefined) }));
@@ -28,7 +29,7 @@ beforeEach(() => {
 describe('brand swatch on a selected widget', () => {
   it('applies the colour AND pushes exactly one history entry, which Undo reverts', () => {
     render(<BrandKitPanel />);
-    const swatch = screen.getAllByTitle(/#112233/i)[0];
+    const swatch = screen.getByRole('button', { name: 'Text color Primary #112233' });
     const before = useBuilderStore.getState().past.length;
     fireEvent.click(swatch);
     const st = useBuilderStore.getState();

@@ -20,7 +20,7 @@ const WidgetPreview = dynamic(
   { ssr: false, loading: () => null },
 );
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
-import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widgets/text-style-contract';
+import { buildTextStyleRules, buildFieldOnlyStyleRules, textBoxRadius } from '@/components/widgets/text-style-contract';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { assignMediaSource } from './media-source';
@@ -754,6 +754,10 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         if (bgRule) {
           cssChunks.push(`${contentSel}, ${contentSel} *:not(svg):not(svg *) { ${bgRule}; background-image: none !important }`);
         }
+        // A rounded TEXT box (the Brand tab's "Call to action" pill): round the
+        // wrapper the background rule paints, or the pill shows as a square.
+        const radius = textBoxRadius(zone.widgetType, cfg);
+        if (radius) cssChunks.push(`${contentSel} { border-radius: ${radius} !important; overflow: hidden !important }`);
         // Per-field rules — higher specificity (zone + field), so they
         // win over zone-wide for the targeted field.
         for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {

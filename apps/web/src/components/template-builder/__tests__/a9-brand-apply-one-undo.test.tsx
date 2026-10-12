@@ -32,6 +32,7 @@ jest.mock('@/hooks/use-api', () => ({
   useTemplate: () => ({ data: { id: 't1', brandKit: MOCK_KIT }, isLoading: false }),
   useAdoptTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useClearTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
+  useTenantBranding: () => ({ data: null }),
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -81,7 +82,7 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     ]);
     render(<BrandKitPanel />);
 
-    fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^brand this template$/i }));
 
     const st = useBuilderStore.getState();
     // The apply really happened…
@@ -99,7 +100,7 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     ]);
     render(<BrandKitPanel />);
 
-    fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^brand this template$/i }));
     expect((zoneById('ticker').defaultConfig as any).bgColor).toBe('#112233');
     expect(useBuilderStore.getState().meta.bgGradient).not.toBe('');
 
@@ -118,7 +119,7 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     ]);
     render(<BrandKitPanel />);
 
-    fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^brand this template$/i }));
     act(() => useBuilderStore.getState().undo());
     expect((zoneById('ticker').defaultConfig as any).bgColor).toBeUndefined();
 
@@ -136,7 +137,7 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     expect(useBuilderStore.getState().past.length).toBe(1);
 
     render(<BrandKitPanel />);
-    fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^brand this template$/i }));
     expect(useBuilderStore.getState().past.length).toBe(2);
 
     act(() => useBuilderStore.getState().undo()); // undoes brand-apply

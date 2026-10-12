@@ -200,7 +200,7 @@ import { resolveAssetUrl } from '@/lib/asset-cdn';
 // Pure, zero-runtime-dependency module (its only import is `import type`),
 // so a static import here costs the player bundle nothing — unlike the
 // widget world, which stays behind `lazyRenderer`.
-import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widgets/text-style-contract';
+import { buildTextStyleRules, buildFieldOnlyStyleRules, textBoxRadius } from '@/components/widgets/text-style-contract';
 import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
 import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
 import {
@@ -11897,6 +11897,11 @@ function PlayerPage() {
           if (_zoneBg) {
             _cssChunks.push(`${_zoneSel}, ${_zoneSel} *:not(svg):not(svg *) { ${_zoneBg} }`);
           }
+          // A rounded TEXT box (Brand tab "Call to action" pill, 2026-10-12):
+          // round the zone div the background rule above paints. TEXT with an
+          // explicit borderRadius only; every other zone is unchanged.
+          const _radius = textBoxRadius(zone.widgetType, cfg);
+          if (_radius) _cssChunks.push(`${_zoneSel} { border-radius: ${_radius} !important }`);
           const stylesPerField = (cfg._styles && typeof cfg._styles === 'object') ? cfg._styles : {};
           for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
             const r = _buildPlayerRules(fieldStyle);

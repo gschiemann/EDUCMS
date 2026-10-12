@@ -26,7 +26,19 @@ import {
   resolveTextDecoration,
   toCssTextStyle,
   toCssTextStyleMap,
+  textBoxRadius,
 } from '../text-style-contract';
+
+describe('textBoxRadius — the Brand tab call-to-action pill', () => {
+  it('rounds only a TEXT box that carries a borderRadius', () => {
+    expect(textBoxRadius('TEXT', { borderRadius: 9999 })).toBe('9999px');
+    expect(textBoxRadius('TEXT', { borderRadius: '12px' })).toBe('12px');
+    expect(textBoxRadius('TEXT', {})).toBeNull();
+    expect(textBoxRadius('TEXT', { borderRadius: 0 })).toBeNull();
+    expect(textBoxRadius('TEXT', { borderRadius: 'url(x)' })).toBeNull();
+    expect(textBoxRadius('IMAGE', { borderRadius: 12 })).toBeNull();
+  });
+});
 
 describe('text-style contract — boolean → CSS', () => {
   it('bold:true becomes fontWeight 800 (what the board shims read)', () => {
