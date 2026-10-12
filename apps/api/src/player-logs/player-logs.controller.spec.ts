@@ -328,3 +328,20 @@ describe('what reaches the immutable audit table', () => {
     }
   });
 });
+
+describe('recovery candidates — reboot evidence is never crowded out (2026-10-12)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { selectRecoveryCandidates, isPriorityRecoveryLine } = require('./player-logs.controller');
+  it('keeps an old PLAYER_BOOT_REASON line even when 40 newer recovery lines follow it', () => {
+    const lines = ['x [INFO] B: PLAYER_BOOT_REASON sys.boot.reason=watchdog'];
+    for (let i = 0; i < 40; i++) lines.push(`x [INFO] E: PLAYER_EMERGENCY_ENFORCE_STEP step=poke n=${i}`);
+    const picked: string[] = selectRecoveryCandidates(lines);
+    expect(picked[0]).toContain('PLAYER_BOOT_REASON');
+    expect(picked.filter((l: string) => l.includes('ENFORCE_STEP'))).toHaveLength(32);
+  });
+  it('marks boot / process-start / restart / exit markers as priority', () => {
+    expect(isPriorityRecoveryLine('PLAYER_PROCESS_START pid=1')).toBe(true);
+    expect(isPriorityRecoveryLine('PLAYER_WAKE_PROCESS_RESTART')).toBe(true);
+    expect(isPriorityRecoveryLine('PLAYER_EMERGENCY_ENFORCE_STEP step=poke')).toBe(false);
+  });
+});

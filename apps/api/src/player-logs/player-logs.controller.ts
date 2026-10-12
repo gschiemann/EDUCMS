@@ -87,6 +87,25 @@ const MAX_RECOVERY_CANDIDATES = 32;
  * process's exit) — the L55VEC rebooted after an alert wake. Exported for
  * the spec; the player's markers are the contract.
  */
+/** Markers that explain a reboot or a process restart — never crowded out. */
+export const PRIORITY_RECOVERY_LINE = /PLAYER_BOOT_REASON|PLAYER_PROCESS_START|PLAYER_WAKE_PROCESS_RESTART|PLAYER_PROCESS_EXIT/;
+
+export function isPriorityRecoveryLine(line: string): boolean {
+  return PRIORITY_RECOVERY_LINE.test(line);
+}
+
+/**
+ * The newest MAX_RECOVERY_CANDIDATES recovery lines, plus every priority line
+ * (boot reason / process start) even when it is older than that tail — those
+ * are the lines a post-reboot upload exists to deliver.
+ */
+export function selectRecoveryCandidates(lines: string[]): string[] {
+  const recovery = lines.filter((line) => RECOVERY_LINE.test(line));
+  const tail = recovery.slice(-MAX_RECOVERY_CANDIDATES);
+  const older = recovery.slice(0, Math.max(0, recovery.length - MAX_RECOVERY_CANDIDATES)).filter(isPriorityRecoveryLine);
+  return [...older.slice(-MAX_RECOVERY_CANDIDATES), ...tail];
+}
+
 export const RECOVERY_LINE =
   /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_WAKE_[A-Z_]+|PLAYER_EMERGENCY_ENFORCE_STEP|PLAYER_BOOT_REASON/;
 
@@ -237,8 +256,7 @@ export class PlayerLogsController {
     // object storage (separate bucket, not AuditLog).
     // The JVM crash handler never sees an isolated WebView renderer death.
     // Native recovery writes these bounded, timestamped markers to disk.
-    const recoveryLines = rawBody.split('\n').filter(line => RECOVERY_LINE.test(line))
-      .slice(-MAX_RECOVERY_CANDIDATES);
+    const recoveryLines = selectRecoveryCandidates(rawBody.split('\n'));
     const looksLikeCrash = CRASH_LINE.test(rawBody);
 
     // SECURITY (sec-fix P1, 2026-07-03): only a VERIFIED device (a valid
@@ -317,12 +335,18 @@ export class PlayerLogsController {
     }
     const recoveryBudget = MAX_AUDIT_ROWS_PER_UPLOAD - (looksLikeCrash ? 1 : 0);
     const claimed: Array<{ line: string; recoveryEventId: string; key: string }> = [];
-    for (let i = recoveryLines.length - 1; i >= 0 && claimed.length < recoveryBudget; i--) {
-      const line = recoveryLines[i];
+    // Lines that explain a reboot / process restart are claimed FIRST
+    // (2026-10-12): with an 8-row budget, the routine lines after a reboot
+    // used to crowd out the evidence of WHY it rebooted.
+    const ordered = [...recoveryLines].reverse().sort((a, b) => Number(isPriorityRecoveryLine(b)) - Number(isPriorityRecoveryLine(a)));
+    for (let i = 0; i < ordered.length && claimed.length < recoveryBudget; i++) {
+      const line = ordered[i];
       const recoveryEventId = createHash('sha256').update(line).digest('hex');
       const key = recoverySeenKey(tenantId, screenId, recoveryEventId);
       if (await this.limits.claimNew(key)) claimed.push({ line, recoveryEventId, key });
     }
+    // Write in the original newest-first order (priority only decided WHICH lines fit).
+    claimed.sort((a, b) => recoveryLines.lastIndexOf(b.line) - recoveryLines.lastIndexOf(a.line));
     // Unseen markers beyond the per-upload budget were never claimed, so the
     // next upload records them. `capped` reports the HOURLY cap only.
     let capped = false;
