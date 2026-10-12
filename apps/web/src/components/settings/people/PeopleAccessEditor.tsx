@@ -74,16 +74,6 @@ function initials(u: TeamUser): string {
   return fromName || (u.email?.substring(0, 2).toUpperCase() || '??');
 }
 
-/** Small labelled cell: the label shows only under 768px (§14 — rows become cards). */
-function Cell({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <span className="md:hidden block w-full text-[11px] font-medium tracking-[.04em] uppercase text-slate-400 mb-0.5">{label}</span>
-      {children}
-    </div>
-  );
-}
-
 export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   ssoManageable: boolean;
   ssoHref: string;
@@ -636,13 +626,6 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
             </p>
           ) : (
             <>
-              {/* Column header — desktop only; under 768px every cell carries its own label. */}
-              <div className="hidden md:grid grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] gap-3 px-2 pb-1.5 text-[11px] font-medium tracking-[.04em] uppercase text-slate-400">
-                <span>{t('settings.cc.people.colPerson')}</span>
-                <span>{t('settings.cc.people.colRole')}</span>
-                <span>{t('settings.cc.people.colAccess')}</span>
-                <span className="text-right">{t('settings.cc.people.colActions')}</span>
-              </div>
               <ul className="divide-y divide-slate-100 border-t border-slate-100">
                 {filtered.map((user) => {
                   const full = displayName(user);
@@ -657,9 +640,13 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                   return (
                     <li
                       key={user.id}
-                      className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] gap-2 md:gap-3 md:items-center px-2 py-3"
+                      className="min-w-0 px-2 py-3"
                     >
-                      <Cell label={t('settings.cc.people.colPerson')} className="min-w-0 flex items-center gap-2.5 flex-wrap md:flex-nowrap">
+                      {/* 2026-10-12 — stacked, never a 4-column grid: at 1325px the
+                          zero-width columns let pills and buttons paint on top of
+                          each other (owner screenshot). Line 1 who, line 2 role +
+                          access badges, line 3 a wrapping row of actions. */}
+                      <div className="min-w-0 flex items-start gap-2.5">
                         <span
                           aria-hidden
                           className={`w-8 h-8 shrink-0 rounded-[9px] grid place-items-center text-white text-[10px] font-semibold ${isDisabled ? 'opacity-40 grayscale' : ''}`}
@@ -667,15 +654,14 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                         >
                           {initials(user)}
                         </span>
-                        <span className="min-w-0">
+                        <span className="min-w-0 flex-1">
                           <span className={`block text-[13px] font-medium truncate ${isDisabled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                             {full || user.email}
                           </span>
                           <span className="block text-[12px] text-slate-500 truncate">{user.email}</span>
                         </span>
-                      </Cell>
-
-                      <Cell label={t('settings.cc.people.colRole')}>
+                      </div>
+                      <div className="mt-2 sm:pl-[42px] flex flex-wrap items-center gap-1.5 min-w-0">
                         <label htmlFor={`people-role-${user.id}`} className="sr-only">
                           {t('settings.cc.people.roleForUser', { email: user.email })}
                         </label>
@@ -690,7 +676,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           }}
                           disabled={!manageable}
                           title={manageable ? undefined : t('settings.team.cannotManageHint')}
-                          className={`w-full md:min-w-[104px] min-h-[36px] px-2 rounded-[8px] border text-[12px] font-medium ${manageable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${ROLE_TONE[user.role] || 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                          className={`w-auto max-w-full min-w-[104px] min-h-[34px] px-2 rounded-[8px] border text-[12px] font-medium ${manageable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${ROLE_TONE[user.role] || 'bg-slate-50 text-slate-600 border-slate-200'}`}
                         >
                           {/* SUPER_ADMIN is only ever listed when the row already IS one,
                               so the select renders its own value without ever offering
@@ -699,9 +685,6 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>
                           ))}
                         </select>
-                      </Cell>
-
-                      <Cell label={t('settings.cc.people.colAccess')} className="flex flex-wrap items-center gap-1.5 md:flex-col md:items-start">
                         {isDisabled ? (
                           <StatusPill kind="blocked" label={t('settings.team.disabledBadge')} />
                         ) : isPending ? (
@@ -724,9 +707,13 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           <StatusPill kind="ready" label={t('settings.cc.people.accessPillLocations', { count: user.extraLocationCount ?? 0 })} />
                         )}
                         {user.screenLimited && <StatusPill kind="attention" label={t('settings.cc.people.accessPillLimited')} />}
-                      </Cell>
+                      </div>
 
-                      <Cell label={t('settings.cc.people.colActions')} className="flex flex-wrap items-center gap-1.5 md:justify-end">
+                      <div
+                        className="mt-2 sm:pl-[42px] flex flex-wrap items-center gap-1.5 min-w-0"
+                        role="group"
+                        aria-label={t('settings.cc.people.actionsFor', { email: user.email })}
+                      >
                         {/* 2026-10-11 — "Can trigger emergency alerts" (User.canTriggerPanic).
                             Rendered only where it MEANS something and the server would
                             accept it: a CONTRIBUTOR below my rank (admins hold the
@@ -948,7 +935,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             <Trash2 className="w-3.5 h-3.5" aria-hidden />
                           </button>
                         )}
-                      </Cell>
+                      </div>
 
                       {/* The reset panel spans the whole row so the operator
                           can still read WHOSE account is about to change

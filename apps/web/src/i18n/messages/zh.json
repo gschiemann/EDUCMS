@@ -1404,7 +1404,9 @@
         "ssoDomainManualVerify": "标记为已验证（记录审计）",
         "ssoDomainVerifiedNow": "域名已验证。该域名的登录现在将使用您的提供商。",
         "ssoDomainRecordNotFound": "尚未找到该 TXT 记录。DNS 更改可能需要一段时间才能生效，请稍后再试。",
-        "ssoDomainTakenElsewhere": "此邮箱域名已被其他组织验证。如果它属于您，请联系 VenueOS 支持。"
+        "ssoDomainTakenElsewhere": "此邮箱域名已被其他组织验证。如果它属于您，请联系 VenueOS 支持。",
+        "actionsFor": "{email} 的操作",
+        "accessNoScreensYet": "尚无屏幕：{locations}"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",

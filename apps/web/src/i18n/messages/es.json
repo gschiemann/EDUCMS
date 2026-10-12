@@ -1404,7 +1404,9 @@
         "ssoDomainManualVerify": "Marcar como verificado (auditado)",
         "ssoDomainVerifiedNow": "Dominio verificado. El inicio de sesión con este dominio ahora usa tu proveedor.",
         "ssoDomainRecordNotFound": "Aún no se encontró el registro TXT. Los cambios de DNS pueden tardar en aparecer; inténtalo más tarde.",
-        "ssoDomainTakenElsewhere": "Este dominio de correo ya está verificado por otra organización. Contacta con el soporte de VenueOS si te pertenece."
+        "ssoDomainTakenElsewhere": "Este dominio de correo ya está verificado por otra organización. Contacta con el soporte de VenueOS si te pertenece.",
+        "actionsFor": "Acciones para {email}",
+        "accessNoScreensYet": "Aún sin pantallas: {locations}"
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",

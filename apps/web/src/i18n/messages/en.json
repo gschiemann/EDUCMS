@@ -1404,7 +1404,9 @@
         "ssoDomainManualVerify": "Mark verified (audited)",
         "ssoDomainVerifiedNow": "Domain verified. Sign-in at this domain now uses your provider.",
         "ssoDomainRecordNotFound": "The TXT record was not found yet. DNS changes can take a while to appear; try again later.",
-        "ssoDomainTakenElsewhere": "This email domain is already verified by another organization. Contact VenueOS support if it belongs to you."
+        "ssoDomainTakenElsewhere": "This email domain is already verified by another organization. Contact VenueOS support if it belongs to you.",
+        "actionsFor": "Actions for {email}",
+        "accessNoScreensYet": "No screens yet: {locations}"
       },
       "overview": {
         "readinessTitle": "Configuration readiness",

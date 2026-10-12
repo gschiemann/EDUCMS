@@ -173,3 +173,29 @@ it('a refused save shows the server\'s words as an alert', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Save access' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Only an organization admin');
 });
+
+it('says the screen-limit rule once and folds screenless locations into one line (2026-10-12)', async () => {
+  const access = {
+    ...ACCESS,
+    locations: [
+      ...ACCESS.locations,
+      { id: 'loc-c', name: 'Chicago', isHome: false, granted: true, scopeEditable: true },
+      { id: 'loc-d', name: 'Cincinnati', isHome: false, granted: true, scopeEditable: true },
+    ],
+    options: {
+      ...ACCESS.options,
+      'loc-c': { screens: [], groups: [] },
+      'loc-d': { screens: [], groups: [] },
+    },
+  };
+  mockApi([LOBBY], access);
+  renderEditor();
+  fireEvent.click(await screen.findByRole('button', { name: /Locations & screens/ }));
+  await screen.findByText('Locations & screens for lobby@riot.test');
+  // The rule appears exactly once, not under every location.
+  expect(screen.getAllByText(/Emergency alerts are never limited/)).toHaveLength(1);
+  expect(screen.getByText('No screens yet: Chicago, Cincinnati')).toBeInTheDocument();
+  // Only Cleveland (which has screens) gets a picker.
+  expect(screen.queryByText(/Screens in Chicago/)).toBeNull();
+  expect(screen.getByText(/Screens in Cleveland/)).toBeInTheDocument();
+});

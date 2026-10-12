@@ -135,16 +135,24 @@ it('reports a real invite as sent, with no copy-link fallback', async () => {
   expect(screen.queryByLabelText('Invitation accept link')).toBeNull();
 });
 
-it('gives every row a labelled cell for each column, so <768px reads as a card and not a table', async () => {
+it('stacks a row — who, then role + badges, then a wrapping actions row — so nothing can overlap (2026-10-12)', async () => {
   mockApi([JUNIOR]);
   renderEditor();
   await screen.findByText('jr@x.edu');
   const row = rowFor('jr@x.edu');
-  // No <table> anywhere: the labels ARE the small-screen header.
+  // No <table> and no fixed-column grid: at 1325px the old 4-column grid let
+  // the badges and the buttons paint on top of each other.
   expect(document.querySelector('table')).toBeNull();
-  ['Person', 'Role', 'Access', 'Actions'].forEach((label) => {
-    expect(within(row).getAllByText(label).length).toBeGreaterThan(0);
-  });
+  expect(row.className).not.toMatch(/grid-cols/);
+  const blocks = Array.from(row.children) as HTMLElement[];
+  // Line 1: the person. Line 2: role select + badges. Line 3: actions.
+  expect(within(blocks[0]).getAllByText('jr@x.edu').length).toBeGreaterThan(0);
+  expect(within(blocks[1]).getByRole('combobox')).toBeInTheDocument();
+  expect(within(blocks[1]).getByText('Active')).toBeInTheDocument();
+  const actions = within(row).getByRole('group', { name: 'Actions for jr@x.edu' });
+  expect(actions).toBe(blocks[2]);
+  expect(actions.className).toContain('flex-wrap');
+  expect(within(actions).queryByText('Active')).toBeNull();
 });
 
 it('filters by search text and by account status', async () => {

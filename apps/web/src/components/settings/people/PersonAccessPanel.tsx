@@ -76,6 +76,16 @@ export function PersonAccessPanel({ user, onClose }: { user: Pick<TeamUser, 'id'
   }
 
   const scopable = data.scopable;
+  /** Editable, but nothing to pick yet (and nothing already picked). */
+  const isEmptyLocation = (id: string) => {
+    const opts = data.options[id];
+    const loc = data.locations.find((x) => x.id === id);
+    const cur = scopes[id];
+    return !!loc?.scopeEditable && !!opts && opts.screens.length === 0 && opts.groups.length === 0
+      && !(cur && (cur.screenIds.length || cur.screenGroupIds.length));
+  };
+  const emptyNames = reachable.filter((l) => isEmptyLocation(l.id)).map((l) => l.name);
+  const limitable = reachable.filter((l) => l.scopeEditable && data.options[l.id] && !isEmptyLocation(l.id));
   const submit = () => {
     setStatus(null);
     const screenScopes: Record<string, { screenIds: string[]; screenGroupIds: string[] } | null> = {};
@@ -145,10 +155,25 @@ export function PersonAccessPanel({ user, onClose }: { user: Pick<TeamUser, 'id'
             </ul>
           </fieldset>
 
+          {/* The screen-limit rule, said ONCE (2026-10-12 — it used to repeat
+              under every location), then one fieldset per location that has
+              something to limit. Locations with no screens or groups yet are
+              one line, not a stack of empty boxes. */}
+          {limitable.length > 0 && (
+            <p className="mt-3 text-[12px] leading-[17px] text-slate-500" data-testid="people-access-limit-help">
+              {t('settings.cc.people.accessLimitHelp')}
+            </p>
+          )}
+          {emptyNames.length > 0 && (
+            <p className="mt-2 text-[12px] leading-[17px] text-slate-500" data-testid="people-access-no-screens">
+              {t('settings.cc.people.accessNoScreensYet', { locations: emptyNames.join(', ') })}
+            </p>
+          )}
           {reachable.map((l) => {
             const opts = data.options[l.id];
             const s = scopes[l.id] ?? { screenIds: [], screenGroupIds: [] };
             const count = s.screenIds.length + s.screenGroupIds.length;
+            if (isEmptyLocation(l.id)) return null;
             const summary = count === 0 ? t('settings.cc.people.accessEveryScreen') : t('settings.cc.people.accessLimitedCount', { count });
             if (!l.scopeEditable || !opts) {
               return (
@@ -173,7 +198,6 @@ export function PersonAccessPanel({ user, onClose }: { user: Pick<TeamUser, 'id'
                   <MonitorSmartphone className="w-3.5 h-3.5" aria-hidden /> {t('settings.cc.people.accessLimitTitle', { location: l.name })}
                   <span className="font-normal text-slate-500">· {summary}</span>
                 </legend>
-                <p className="mt-0.5 text-[12px] leading-[17px] text-slate-500">{t('settings.cc.people.accessLimitHelp')}</p>
                 <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <p className="text-[12px] font-medium text-slate-700">{t('settings.cc.people.accessGroups')}</p>
