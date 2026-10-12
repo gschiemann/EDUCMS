@@ -291,6 +291,11 @@ export function Sidebar() {
   // now lives as a card on the Settings page (→ /audit route unchanged).
   const adminNavItems = [
     { name: t('nav.reviews'), href: hrefFor('/reviews'), icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
+    // 2026-10-12 — the owner console was reachable only through the tiny
+    // SUPER ADMIN badge under the user's name (Greg typed /admin and got a 404).
+    ...(user?.role === 'SUPER_ADMIN'
+      ? [{ name: t('nav.ownerConsole'), href: '/super', icon: Crown, badge: null }]
+      : []),
   ];
 
   return (
