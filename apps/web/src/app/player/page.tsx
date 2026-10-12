@@ -2,7 +2,7 @@
 import { NativeDualVideo } from './NativeDualVideo';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
-import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
+import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -12574,7 +12574,7 @@ function PlayerPage() {
                 v1: nativeSharedDescriptor,
                 protocol: nativeVideoProtocol,
                 v2Blocked: !!nativeVideoDescriptor && (() => {
-                  try { return nativeVideoBlocked(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now()); } catch { return false; }
+                  try { return nativeVideoBlockedNoted(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now()); } catch { return false; }
                 })(),
               });
               const nativeEligible = sharedVideoEligible(nativeChoice, {

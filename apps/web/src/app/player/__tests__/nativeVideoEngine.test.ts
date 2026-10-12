@@ -16,6 +16,9 @@ import {
   sharedVideoIdentity,
   type NativeSharedVideoDescriptor,
   type NativeVideoDescriptor,
+  nativeVideoBuildScope,
+  nativeVideoFallbackLine,
+  nativeVideoBlockedLine,
 } from "../nativeSharedVideo";
 import { nativeVideoNext } from "../NativeDualVideo";
 
@@ -202,5 +205,117 @@ describe("what a native end means next", () => {
     blockNativeVideo(store, digest, 0, 1000);
     expect(nativeVideoBlocked(store, digest, 0, 2000)).toBe(true);
     expect(nativeVideoBlocked(null, digest, 0, 2000)).toBe(false);
+  });
+});
+
+/**
+ * FIELD 2026-10-12 — M43 (c4945182…) and L55VEC (882706a8…), both Amlogic
+ * T982 / Android 13, solo muted 2160×3338 H.264 30 fps, 186,954,348 bytes.
+ * Railway HTTP logs: under APK 1.1.29 each box made a `Dalvik/2.1.0` manifest
+ * GET (FaceVideoBox.select) ~0.6 s after the page's own manifest at 06:04Z, a
+ * second one 41–60 s later (the re-select after the 186 MB download), and
+ * then NEVER again — through the 1.1.30-field.1 install at 11:17/11:32Z.
+ * Native was asked and downloaded; then the page wrote a 24 h block that
+ * (a) was keyed by file + face only, so it outlived the APK upgrade, and
+ * (b) could be written by a PAGE-side hiccup while native said `caching`.
+ */
+describe("field 2026-10-12: why native never engaged on the T982 pair", () => {
+  const field: NativeVideoDescriptor = {
+    version: 2,
+    screenId: "c4945182-435e-4260-8765-8091243828cc",
+    tenantId: "28d09f9d-0a6c-4828-b46d-38712eb69f1f",
+    faceIndex: 0,
+    revision: "f".repeat(64),
+    asset: {
+      id: "9c0eb1c6-2486-484a-863d-e74c2dde5e93",
+      url: "https://bhdaxzfalaycfopvcopm.supabase.co/storage/v1/object/public/assets/28d09f9d-0a6c-4828-b46d-38712eb69f1f/6bd9a41f-131e-4a96-a8e8-1b24f3ac2956.mp4",
+      sha256: "d4d05533719e94ccc8d0a280149b1971a87a31f8641366b53e1fa97a071438dd",
+      size: 186_954_348,
+      width: 2160,
+      height: 3338,
+      fps: 30,
+    },
+    transform: { orientation: "AUTO", fit: "cover" },
+  };
+  const fieldState = (extra: Record<string, unknown> = {}) => ({
+    ...state("preparing", 0),
+    revision: field.revision,
+    sha256: field.asset.sha256,
+    ...extra,
+  });
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("every web gate passes for these exact facts (descriptor, protocol-3 reply, eligibility)", () => {
+    expect(readNativeVideoDescriptor(field)).toEqual(field);
+    const reply = JSON.stringify({ version: 1, state: "idle", sessionId: null, protocol: 2, protocolMax: 3, sessions: [] });
+    expect(readNativeVideoProtocol(reply)).toBe(3);
+    expect(pickNativeVideo({ v2: field, v1: null, protocol: 3, v2Blocked: false })).toBe(field);
+    expect(sharedVideoEligible(field, {
+      screenId: field.screenId, tenantId: field.tenantId, assetId: field.asset.id, sha256: field.asset.sha256,
+      solo: true, muted: true, active: true, emergency: false, sync: false, preview: false,
+    })).toBe(true);
+  });
+
+  it("state replies that stop coming back while native is `caching` are a page hiccup: retry, never a 24 h block", async () => {
+    const fallback = jest.fn();
+    let replies = 0;
+    const c = new SharedVideoController(field, {
+      has: () => true,
+      fire: () => true,
+      // Native answered `caching` (downloading 186 MB), then the channel
+      // reply stalled past the 2 s poll bound on a box busy decoding 4K.
+      state: () => (++replies <= 2 ? Promise.resolve(fieldState({ reason: "caching" })) : new Promise(() => {})),
+    }, { ready: jest.fn(), update: jest.fn(), fallback });
+    c.start();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    const reason = fallback.mock.calls[0][0] as string | undefined;
+    expect(reason).toBeUndefined();
+    expect(nativeVideoNext(2, reason, 0)).toBe("retry");
+    c.stop();
+  });
+
+  it("one late reply before commit is tolerated (the download keeps going)", async () => {
+    const fallback = jest.fn();
+    let n = 0;
+    const c = new SharedVideoController(field, {
+      has: () => true,
+      fire: () => true,
+      state: () => (++n === 2 ? new Promise(() => {}) : Promise.resolve(fieldState({ reason: "caching" }))),
+    }, { ready: jest.fn(), update: jest.fn(), fallback });
+    c.start();
+    await jest.advanceTimersByTimeAsync(20_000);
+    expect(fallback).not.toHaveBeenCalled();
+    expect(n).toBeGreaterThan(5);
+    c.stop();
+  });
+
+  it("a block written under one APK build does not hold the file off native under the next build", () => {
+    const mem = new Map<string, string>();
+    const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    const sha = field.asset.sha256;
+    blockNativeVideo(store, sha, 0, 1000, "1.1.29");
+    expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.29")).toBe(true);
+    expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.30-field.1")).toBe(false);
+    // The pre-fix key shape (file:face, no build) no longer blocks an APK build.
+    mem.set("edu.nativeVideo.block.v1", JSON.stringify({ [`${sha}:0`]: 1000 + NATIVE_VIDEO_BLOCK_MS }));
+    expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.30-field.1")).toBe(false);
+    expect(nativeVideoBuildScope("Mozilla/5.0 (Linux; Android 13; wv) Chrome/101 Safari/537.36 EduCmsPlayer/1.1.30-field.1 (Android 13)")).toBe("1.1.30-field.1");
+    expect(nativeVideoBuildScope("Mozilla/5.0 Chrome/120")).toBe("");
+  });
+
+  it("every fallback leaves one diagnosable line the APK persists and the API keeps", () => {
+    const line = nativeVideoFallbackLine({ reason: undefined, next: "retry", attempt: 0, protocol: 2, faceIndex: 0, sha256: field.asset.sha256 });
+    // MainActivity.onConsoleMessage persists a warn that starts `[Player]` and matches /fallback/i.
+    expect(line.startsWith("[Player] PLAYER_NATIVE_VIDEO_FALLBACK ")).toBe(true);
+    expect(/stalled|failed|fallback|checksum/i.test(line)).toBe(true);
+    expect(line).toContain("reason=none");
+    expect(line).toContain("next=retry");
+    expect(line).toContain("sha=d4d05533");
+    expect(line).not.toMatch(/https?:/);
+    const blocked = nativeVideoBlockedLine({ faceIndex: 0, sha256: field.asset.sha256, build: "1.1.30-field.1" });
+    expect(blocked.startsWith("[Player] PLAYER_NATIVE_VIDEO_BLOCKED ")).toBe(true);
+    expect(/fallback/i.test(blocked)).toBe(true);
   });
 });

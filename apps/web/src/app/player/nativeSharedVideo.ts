@@ -336,27 +336,118 @@ export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;
 export const NATIVE_VIDEO_BLOCK_MS = 24 * 60 * 60 * 1000;
 const BLOCK_KEY = "edu.nativeVideo.block.v1";
 
+/**
+ * The APK build a block was earned under: `EduCmsPlayer/<version>` from the
+ * WebView UA (MainActivity stamps it), '' in a browser. A block is a verdict
+ * about THIS file on THIS native build — a new APK is exactly what may fix it,
+ * so it gets a fresh chance (field 2026-10-12: a 1.1.29 block, keyed by file +
+ * face only, held both T982 screens off native for 24 h after 1.1.30 landed,
+ * and localStorage survives an APK update).
+ */
+export function nativeVideoBuildScope(
+  ua: string = typeof navigator !== "undefined" ? navigator.userAgent : "",
+): string {
+  const m = /EduCmsPlayer\/([0-9A-Za-z.+_-]{1,40})/.exec(ua || "");
+  return m ? m[1] : "";
+}
+const blockKey = (sha256: string, faceIndex: number, build: string) =>
+  build ? `${sha256.toLowerCase()}:${faceIndex}:${build}` : `${sha256.toLowerCase()}:${faceIndex}`;
+
 type BlockStore = Pick<Storage, "getItem" | "setItem">;
 export function nativeVideoBlocked(
   store: BlockStore | null,
   sha256: string,
   faceIndex: number,
   now: number,
+  build: string = nativeVideoBuildScope(),
 ): boolean {
-  if (!store) return false;
+  return nativeVideoBlockedUntil(store, sha256, faceIndex, now, build) !== null;
+}
+/** The instant a live block ends, or null when there is none. */
+export function nativeVideoBlockedUntil(
+  store: BlockStore | null,
+  sha256: string,
+  faceIndex: number,
+  now: number,
+  build: string = nativeVideoBuildScope(),
+): number | null {
+  if (!store) return null;
   try {
     const all = JSON.parse(store.getItem(BLOCK_KEY) || "{}");
-    const until = record(all) ? all[`${sha256.toLowerCase()}:${faceIndex}`] : 0;
-    return typeof until === "number" && until > now;
+    const until = record(all) ? all[blockKey(sha256, faceIndex, build)] : 0;
+    return typeof until === "number" && until > now ? until : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * The one line a native fallback leaves behind (2026-10-12). Native refusals
+ * used to be silent end to end: nothing on the page, nothing in the APK log,
+ * and telemetry only starts after `ready`. A `console.warn` that starts with
+ * `[Player]` and matches /fallback/i is persisted by every shipped APK
+ * (MainActivity.onConsoleMessage → `PLAYER_PLAYBACK_FAILURE …`, 1/min) and
+ * kept by the API as a PLAYER_RECOVERY_EVENT row — no new APK needed.
+ * Codes and a short digest prefix only: never a URL or a credential.
+ */
+export function nativeVideoFallbackLine(f: {
+  reason: string | undefined;
+  next: string;
+  attempt: number;
+  protocol: number;
+  faceIndex: number;
+  sha256: string;
+  stage?: string;
+}): string {
+  const reason = f.reason && /^[a-z0-9-]{1,64}$/i.test(f.reason) ? f.reason : "none";
+  return (
+    `[Player] PLAYER_NATIVE_VIDEO_FALLBACK reason=${reason} next=${f.next} attempt=${f.attempt}` +
+    ` proto=${f.protocol} face=${f.faceIndex} sha=${f.sha256.slice(0, 8).toLowerCase()}` +
+    (f.stage ? ` stage=${f.stage}` : "") + " (web fallback)"
+  );
+}
+/** Logged once per page load when a live block keeps a file on the web engine. */
+export function nativeVideoBlockedLine(f: {
+  faceIndex: number;
+  sha256: string;
+  build: string;
+  until?: number | null;
+}): string {
+  return (
+    `[Player] PLAYER_NATIVE_VIDEO_BLOCKED face=${f.faceIndex} sha=${f.sha256.slice(0, 8).toLowerCase()}` +
+    ` build=${f.build || "browser"}` +
+    (typeof f.until === "number" ? ` until=${new Date(f.until).toISOString()}` : "") + " (web fallback)"
+  );
+}
+const blockedLogged = new Set<string>();
+/**
+ * `nativeVideoBlocked` for the render path: the same answer, plus ONE
+ * `PLAYER_NATIVE_VIDEO_BLOCKED` line per file + face + build per page load,
+ * so a screen held on the web engine by an earlier verdict says so.
+ */
+export function nativeVideoBlockedNoted(
+  store: BlockStore | null,
+  sha256: string,
+  faceIndex: number,
+  now: number,
+  build: string = nativeVideoBuildScope(),
+  log: (line: string) => void = (l) => console.warn(l),
+): boolean {
+  const until = nativeVideoBlockedUntil(store, sha256, faceIndex, now, build);
+  if (until === null) return false;
+  const key = blockKey(sha256, faceIndex, build);
+  if (!blockedLogged.has(key)) {
+    blockedLogged.add(key);
+    log(nativeVideoBlockedLine({ faceIndex, sha256, build, until }));
+  }
+  return true;
 }
 export function blockNativeVideo(
   store: BlockStore | null,
   sha256: string,
   faceIndex: number,
   now: number,
+  build: string = nativeVideoBuildScope(),
 ): void {
   if (!store) return;
   try {
@@ -370,7 +461,7 @@ export function blockNativeVideo(
     const kept: Record<string, number> = {};
     for (const [k, v] of Object.entries(all))
       if (typeof v === "number" && v > now) kept[k] = v;
-    kept[`${sha256.toLowerCase()}:${faceIndex}`] = now + NATIVE_VIDEO_BLOCK_MS;
+    kept[blockKey(sha256, faceIndex, build)] = now + NATIVE_VIDEO_BLOCK_MS;
     // Bounded: the newest 32 entries.
     const entries = Object.entries(kept).sort((x, y) => y[1] - x[1]).slice(0, 32);
     store.setItem(BLOCK_KEY, JSON.stringify(Object.fromEntries(entries)));
@@ -386,7 +477,8 @@ export function readNativeSharedVideoState(
   let v: unknown = raw;
   try {
     if (typeof raw === "string") {
-      if (raw.length > 4096) return null;
+      // Same bound as readNativeVideoProtocol: a protocol-3 reply carries `sessions[]`.
+      if (raw.length > 16384) return null;
       v = JSON.parse(raw);
     }
   } catch {
@@ -533,7 +625,8 @@ export class SharedVideoController {
   private commitAt = 0;
   private lastFrames = 0;
   private lastAdvance = 0;
-  private lastReason: string | undefined;
+  private missed = 0;
+  static readonly MAX_MISSED_POLLS = 3;
   constructor(
     private descriptor: AnyNativeVideoDescriptor,
     private bridge: SharedVideoBridge,
@@ -593,10 +686,18 @@ export class SharedVideoController {
     if (this.timer !== null) clearTimeout(this.timer);
     if (this.session) this.bridge.fire("sharedVideoStop", this.session);
   }
+  /**
+   * `reason` is passed ONLY for native's own end code (a `failed` state).
+   * Every page-side end — a reply that never came, a budget, a mismatch —
+   * carries no reason, which the page treats as transient (retry). It used to
+   * fall back to the last reason native REPORTED, and while native downloads
+   * that is the progress code `caching`: one late reply during a download
+   * turned into a 24 h block of a perfectly good file (field 2026-10-12).
+   */
   private fail(reason?: string): void {
     if (this.cancelled) return;
     this.stop();
-    this.callbacks.fallback(reason ?? this.lastReason);
+    this.callbacks.fallback(reason);
   }
   private async poll(): Promise<void> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -616,11 +717,15 @@ export class SharedVideoController {
         return s;
       });
     let s: NativeSharedVideoState | null;
+    let late = false;
     try {
       s = await Promise.race([
         response,
         new Promise<null>((resolve) => {
-          timeout = setTimeout(() => resolve(null), 2000);
+          timeout = setTimeout(() => {
+            late = true;
+            resolve(null);
+          }, 2000);
         }),
       ]);
     } catch {
@@ -628,16 +733,28 @@ export class SharedVideoController {
     }
     if (timeout !== undefined) clearTimeout(timeout);
     if (this.cancelled) return;
+    // A reply that did not come back in time, BEFORE commit, is the page's or
+    // the channel's hiccup (a box busy decoding 4K while native downloads),
+    // not native's verdict: nothing native is on glass yet, and the poll that
+    // was sent still renewed native's 10 s lease. Up to MAX_MISSED_POLLS in a
+    // row are tolerated so a long download is not thrown away.
+    if (!s && late && !this.committed && this.missed < SharedVideoController.MAX_MISSED_POLLS) {
+      this.missed++;
+      this.timer = setTimeout(() => {
+        void this.poll();
+      }, 500);
+      return;
+    }
     if (!s || (s.state !== "idle" && !this.matches(s))) {
       this.fail();
       return;
     }
+    this.missed = 0;
     if (this.committed && s.sessionId !== this.session) {
       this.fail();
       return;
     }
     if (s.sessionId) this.session = s.sessionId;
-    this.lastReason = s.reason;
     if (s.state === "failed") {
       this.callbacks.update(s, false);
       this.fail(s.reason ?? "failed");

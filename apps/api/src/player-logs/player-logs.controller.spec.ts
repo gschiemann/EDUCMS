@@ -154,6 +154,16 @@ test('emergency enforce steps and the boot reason are recovery events (2026-10-1
   expect(await controller.ingestLog(screenId, request(lines.join('\n')))).toEqual({ stored: true, rows: lines.length });
   expect(loggedLines()).toEqual(lines);
 });
+test('a native video fallback is a recovery event (2026-10-12)', async () => {
+  const lines = [
+    // What every shipped APK persists from the page's console line (MainActivity.onConsoleMessage).
+    '2026-10-12T11:40:01.000Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] PLAYER_NATIVE_VIDEO_FALLBACK reason=hardware-codec-unavailable next=block attempt=0 proto=2 face=0 sha=d4d05533 stage=preparing (web fallback)',
+    '2026-10-12T11:41:01.000Z [WARN] Player: PLAYER_NATIVE_VIDEO_REFUSED reason=coded-size',
+  ];
+  for (const line of lines) expect(RECOVERY_LINE.test(line)).toBe(true);
+  expect(await controller.ingestLog(screenId, request(lines.join('\n')))).toEqual({ stored: true, rows: lines.length });
+  expect(loggedLines()).toEqual(lines);
+});
 test('retains each distinct renderer and decoder event in a bounded upload', async () => {
   const body = recovery + '\n2026-09-29T17:36:00Z PLAYER_PLAYBACK_FAILURE video stalled';
   expect(await controller.ingestLog(screenId, request(body))).toEqual({ stored: true, rows: 2 });

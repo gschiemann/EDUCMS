@@ -106,8 +106,12 @@ export function selectRecoveryCandidates(lines: string[]): string[] {
   return [...older.slice(-MAX_RECOVERY_CANDIDATES), ...tail];
 }
 
+// PLAYER_NATIVE_VIDEO_* (2026-10-12): why the native video engine handed a
+// file back to the web engine. Today it arrives inside the APK's persisted
+// `PLAYER_PLAYBACK_FAILURE [Player] PLAYER_NATIVE_VIDEO_…` console line; the
+// token is listed on its own so a native-side line is kept too.
 export const RECOVERY_LINE =
-  /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_WAKE_[A-Z_]+|PLAYER_EMERGENCY_ENFORCE_STEP|PLAYER_BOOT_REASON/;
+  /PLAYER_RENDERER_TERMINATED|PLAYER_RENDERER_REPLACE_FAILED|PLAYER_PLAYBACK_FAILURE|PLAYER_PROCESS_EXIT|PLAYER_PROCESS_START|PLAYER_NATIVE_ALERT_[A-Z_]+|PLAYER_NATIVE_VIDEO_[A-Z_]+|PLAYER_WAKE_[A-Z_]+|PLAYER_EMERGENCY_ENFORCE_STEP|PLAYER_BOOT_REASON/;
 
 @Controller('api/v1/player-logs')
 export class PlayerLogsController {

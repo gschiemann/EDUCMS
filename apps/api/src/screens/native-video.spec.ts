@@ -165,3 +165,54 @@ describe('native video engine (protocol 2) — descriptor', () => {
     expect(d).toMatchObject({ version: 1, asset: { width: 1080, height: 1920, fps: 30 }, transform: { fit: 'fill' } });
   });
 });
+
+/**
+ * FIELD 2026-10-12 — the API is NOT the gate that kept M43 / L55VEC on the
+ * web engine. Production rows as read from the database that morning, with
+ * the production `PLAYER_NATIVE_VIDEO` shape: both screens are enrolled and
+ * both get a protocol-2 descriptor for the original 4K file. (Railway HTTP
+ * logs agree: under APK 1.1.29 each box fetched its manifest natively and
+ * downloaded the file — the page then blocked it; see "field 2026-10-12" in
+ * apps/web/src/app/player/__tests__/nativeVideoEngine.test.ts.)
+ */
+describe('field 2026-10-12 — the T982 pair is enrolled and gets a descriptor', () => {
+  const tenantId = '28d09f9d-0a6c-4828-b46d-38712eb69f1f';
+  const url =
+    'https://bhdaxzfalaycfopvcopm.supabase.co/storage/v1/object/public/assets/28d09f9d-0a6c-4828-b46d-38712eb69f1f/6bd9a41f-131e-4a96-a8e8-1b24f3ac2956.mp4';
+  const sha = 'd4d05533719e94ccc8d0a280149b1971a87a31f8641366b53e1fa97a071438dd';
+  const asset = {
+    id: '9c0eb1c6-2486-484a-863d-e74c2dde5e93',
+    fileUrl: url,
+    fileHash: sha,
+    fileSize: 186_954_348,
+    mimeType: 'video/mp4',
+    processingMeta: {
+      probe: { fps: 30, codec: 'h264', level: 51, pixFmt: 'yuv420p', profile: 'High', rotation: 0, codedWidth: 2160, codedHeight: 3338 },
+    },
+  };
+  const env = {
+    PLAYER_NATIVE_VIDEO:
+      'faces,40864836-9367-47a3-b349-ba1c3378f814,882706a8-33d9-45a6-a10c-c102e56da8b2,c4945182-435e-4260-8765-8091243828cc',
+    SUPABASE_URL: 'https://bhdaxzfalaycfopvcopm.supabase.co',
+  } as any;
+  it.each([
+    ['M43', 'c4945182-435e-4260-8765-8091243828cc', 'generic-android', 'AUTO'],
+    ['L55VEC', '882706a8-33d9-45a6-a10c-c102e56da8b2', 'maxhub-l55vec', 'PORTRAIT'],
+  ])('%s', async (_n, id, hardwareModel, orientation) => {
+    const screen = { id, tenantId, status: 'ONLINE', hardwareModel, faceOfScreenId: null, faceIndex: null };
+    expect(await nativeVideoEnrolled(screen, async () => false, env)).toBe(true);
+    const manifest = {
+      screenId: id, tenantId, isEmergency: false, sync: { enabled: false }, repeats: 1, canvasW: null, canvasH: null, orientation,
+      playlists: [{
+        id: 'pl', schedule: { mode: 'replace' },
+        items: [{ asset_id: asset.id, asset_hash: sha, asset_size: 186_954_348, url, mime_type: 'video/mp4', muted: true }],
+      }],
+    };
+    expect(nativeVideoCandidate(manifest)).toBe(true);
+    expect(build({ screen, manifest, asset, env })).toMatchObject({
+      version: 2, screenId: id, faceIndex: 0,
+      asset: { id: asset.id, url, sha256: sha, size: 186_954_348, width: 2160, height: 3338, fps: 30 },
+      transform: { orientation, fit: 'cover' },
+    });
+  });
+});

@@ -8,6 +8,7 @@ import {
   NATIVE_VIDEO_RETRY_MS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
   nativeSharedVideoEvidence,
+  nativeVideoFallbackLine,
   SharedVideoController,
   sharedVideoIdentity,
   type AnyNativeVideoDescriptor,
@@ -78,6 +79,8 @@ export function NativeDualVideo({
     const owner = {};
     let alive = true;
     let playingReported = false;
+    // How far this attempt got, for the fallback log line only.
+    let seen: "preparing" | "ready" | "presenting" = "preparing";
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const c = new SharedVideoController(
       descriptor,
@@ -117,6 +120,7 @@ export function NativeDualVideo({
             }
           });
           nativeSharedVideoEvidence.select(owner);
+          seen = "ready";
           setPhase({ identity, stage: "handoff" });
         },
         update: (state, fresh) => {
@@ -124,6 +128,7 @@ export function NativeDualVideo({
           nativeSharedVideoEvidence.update(owner, state, fresh, Date.now());
           if (fresh && !playingReported) {
             playingReported = true;
+            seen = "presenting";
             playing.current();
           }
           if (fresh)
@@ -139,6 +144,7 @@ export function NativeDualVideo({
           // The browser subtree remounts and plays the same verified file.
           setPhase({ identity, stage: "browser" });
           const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN);
+          console.warn(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
           if (next === "block")
             blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());
           else if (next === "retry")

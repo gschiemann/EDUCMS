@@ -308,6 +308,17 @@ describe("protocol 3 controller — hand-off sequencing", () => {
     expect(b.cb.fallback).toHaveBeenCalledWith("uncommitted-output");
   });
 
+  it("a reply that never comes back while native is `caching` ends the attempt with NO reason: retry, never a 24 h block (field 2026-10-12)", async () => {
+    let n = 0;
+    const a = harness(() => (++n === 1 ? reply([zoneState("preparing", 0, { reason: "caching" })]) : new Promise(() => {})));
+    a.c.start();
+    await tick();
+    await tick(2500);
+    expect(a.cb.fallback).toHaveBeenCalledTimes(1);
+    expect(a.cb.fallback.mock.calls[0][0]).toBeUndefined();
+    expect(nativeZoneNext(a.cb.fallback.mock.calls[0][0], 0)).toBe("retry");
+  });
+
   it("an APK that does not answer protocol 3, or loses the slot, ends the attempt; a late reply only stops its own session", async () => {
     const a = harness(() => JSON.stringify({ version: 1, state: "idle", protocol: 2 }));
     a.c.start();

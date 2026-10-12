@@ -556,7 +556,6 @@ export class NativeZoneController {
   private startedAt: number;
   private lastFrames = 0;
   private lastAdvance = 0;
-  private lastReason: string | undefined;
   private layoutSent: ZoneLayout;
   constructor(
     private descriptor: NativeVideoItemsDescriptor,
@@ -626,7 +625,10 @@ export class NativeZoneController {
     if (this.cancelled) return;
     this.stage = "failed";
     this.stop();
-    this.callbacks.fallback(reason ?? this.lastReason);
+    // Only an explicit end code (native's, or a named page verdict). The last
+    // REPORTED reason is a progress code while native downloads (`caching`)
+    // and must never turn a page-side end into a 24 h block (field 2026-10-12).
+    this.callbacks.fallback(reason);
   }
   private async poll(): Promise<void> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -653,7 +655,13 @@ export class NativeZoneController {
     }
     if (timeout !== undefined) clearTimeout(timeout);
     if (this.cancelled) return;
-    if (!r || r.protocol !== 3) {
+    // A reply that never came is the page's / channel's hiccup — no reason,
+    // so the owner retries. Only an ANSWER without protocol 3 is a verdict.
+    if (!r) {
+      this.fail();
+      return;
+    }
+    if (r.protocol !== 3) {
       this.fail("protocol");
       return;
     }
@@ -674,7 +682,6 @@ export class NativeZoneController {
       return;
     }
     this.session = s.sessionId;
-    this.lastReason = s.reason;
     if (s.state === "failed") {
       this.callbacks.update(s, false);
       // The next slot took this one's place after it had played: a clean
