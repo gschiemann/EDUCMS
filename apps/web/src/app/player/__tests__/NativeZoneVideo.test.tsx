@@ -136,7 +136,7 @@ describe("NativeZoneVideo — mixed-playlist slide", () => {
     await flush();
     expect(m.queryByTestId("web")).not.toBeNull();
     expect(m.onHole).toHaveBeenLastCalledWith("item:v1", false, null);
-    expect(JSON.parse(window.localStorage.getItem("edu.nativeVideo.block.v1") || "{}")).toHaveProperty(`${digestA}:0`);
+    expect(JSON.parse(window.localStorage.getItem("edu.nativeVideo.block.v2") || "{}")).toHaveProperty(`${digestA}:0`);
     window.localStorage.clear();
     const t = mount(false);
     setSessions([zoneState("failed", 0, { reason: "decoder-budget" })]);

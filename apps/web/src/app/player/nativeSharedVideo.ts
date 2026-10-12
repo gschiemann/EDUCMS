@@ -329,12 +329,19 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "page-stopped",
   "engine-switched",
   "page-lease-expired",
+  // The device credential rotated while native was preparing (the page
+  // renews its token on reload / every few minutes). Native re-reads it on
+  // the next attempt — never a verdict on the file (field 2026-10-12: M43 +
+  // L55VEC were blocked for 24 h by exactly this, seconds after a reload).
+  "credential-changed",
 ]);
 export const NATIVE_VIDEO_RETRY_MS = 30_000;
 export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;
 /** A file that faults native on this box stays on the web engine for a day. */
 export const NATIVE_VIDEO_BLOCK_MS = 24 * 60 * 60 * 1000;
-const BLOCK_KEY = "edu.nativeVideo.block.v1";
+// v2 (2026-10-12): drops every block written while transient reasons
+// (`caching`, `credential-changed`) were mis-graded as file faults.
+const BLOCK_KEY = "edu.nativeVideo.block.v2";
 
 /**
  * The APK build a block was earned under: `EduCmsPlayer/<version>` from the

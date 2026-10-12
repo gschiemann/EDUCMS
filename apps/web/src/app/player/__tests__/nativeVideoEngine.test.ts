@@ -191,6 +191,8 @@ describe("what a native end means next", () => {
     expect(nativeVideoNext(2, "hardware-codec-unavailable", 0)).toBe("block");
     expect(nativeVideoNext(1, "codec-failed", 0)).toBe("stay");
     expect(NATIVE_VIDEO_TRANSIENT_REASONS.has("emergency-held")).toBe(true);
+    // Field 2026-10-12: a token renewal during prepare blocked M43 + L55VEC for a day.
+    expect(nativeVideoNext(2, "credential-changed", 0)).toBe("retry");
   });
   it("a block is per file per face, expires after a day, and survives a broken store", () => {
     const mem = new Map<string, string>();
@@ -200,7 +202,7 @@ describe("what a native end means next", () => {
     expect(nativeVideoBlocked(store, digest, 0, 2000)).toBe(true);
     expect(nativeVideoBlocked(store, digest, 1, 2000)).toBe(false);
     expect(nativeVideoBlocked(store, digest, 0, 1000 + NATIVE_VIDEO_BLOCK_MS + 1)).toBe(false);
-    mem.set("edu.nativeVideo.block.v1", "{corrupt");
+    mem.set("edu.nativeVideo.block.v2", "{corrupt");
     expect(nativeVideoBlocked(store, digest, 0, 2000)).toBe(false);
     blockNativeVideo(store, digest, 0, 1000);
     expect(nativeVideoBlocked(store, digest, 0, 2000)).toBe(true);
@@ -299,7 +301,7 @@ describe("field 2026-10-12: why native never engaged on the T982 pair", () => {
     expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.29")).toBe(true);
     expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.30-field.1")).toBe(false);
     // The pre-fix key shape (file:face, no build) no longer blocks an APK build.
-    mem.set("edu.nativeVideo.block.v1", JSON.stringify({ [`${sha}:0`]: 1000 + NATIVE_VIDEO_BLOCK_MS }));
+    mem.set("edu.nativeVideo.block.v2", JSON.stringify({ [`${sha}:0`]: 1000 + NATIVE_VIDEO_BLOCK_MS }));
     expect(nativeVideoBlocked(store, sha, 0, 2000, "1.1.30-field.1")).toBe(false);
     expect(nativeVideoBuildScope("Mozilla/5.0 (Linux; Android 13; wv) Chrome/101 Safari/537.36 EduCmsPlayer/1.1.30-field.1 (Android 13)")).toBe("1.1.30-field.1");
     expect(nativeVideoBuildScope("Mozilla/5.0 Chrome/120")).toBe("");
