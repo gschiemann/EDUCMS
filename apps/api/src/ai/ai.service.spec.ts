@@ -124,7 +124,10 @@ function makeStorageMock() {
 // limiter pass explicitly.
 const meterCalls: any[] = [];
 function makeMeterMock() {
-  return { record: jest.fn(async (entry: any) => { meterCalls.push(entry); return 0; }) } as any;
+  return {
+    record: jest.fn(async (entry: any) => { meterCalls.push(entry); return 0; }),
+    recordFixed: jest.fn(async (entry: any) => { meterCalls.push(entry); return entry.costMicros; }),
+  } as any;
 }
 
 function buildService(publisher: any, storage?: any, stock?: any, menu?: any, allowance?: any): { service: AiService; storage: any; stock: any; menu: any; altText: any; meter: any } {
@@ -2842,6 +2845,7 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
   it('allowance used up → the ONE AI_CAP_REACHED 402, in credits, with the own-key way out — and no provider call', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const allowance = {
+      entitlement: jest.fn(async () => ({ plan: 'ai' })),
       snapshot: jest.fn(async () => ({
         orgTenantId: 't1', screens: 2, includedMicros: 5_000_000, usedMicros: 5_000_001,
         includedCredits: 500, usedCredits: 501, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
@@ -2861,6 +2865,7 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
   it('getUsage reports the organisation allowance in credits, with screens', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const allowance = {
+      entitlement: jest.fn(async () => ({ plan: 'ai' })),
       snapshot: jest.fn(async () => ({
         orgTenantId: 't1', screens: 12, includedMicros: 24_000_000, usedMicros: 1_234_567,
         includedCredits: 2400, usedCredits: 124, resetAt: '2026-10-01T00:00:00.000Z', perScreenUsd: 2, floorUsd: 5,
@@ -2868,7 +2873,7 @@ describe('AiService — model per JOB, dollar-metered allowance', () => {
     };
     const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
     await expect(service.getUsage('t1')).resolves.toEqual({
-      source: 'platform', used: 124, cap: 2400, resetAt: '2026-10-01T00:00:00.000Z', unit: 'credits', screens: 12, perScreenUsd: 2,
+      source: 'platform', used: 124, cap: 2400, resetAt: '2026-10-01T00:00:00.000Z', unit: 'credits', screens: 12, perScreenUsd: 2, plan: 'ai',
     });
   });
 
@@ -2985,11 +2990,13 @@ describe('AiService — our key: design on OpenAI, chat on Anthropic, never a ke
     expect(input).toMatchObject({ apiKey: 'sk-ant-platform', model: 'claude-haiku-4-5', job: 'fast' });
   });
 
-  it('images NEVER run on our key — even now that our key can be an OpenAI key', async () => {
+  it('2026-10-12 — images on our key ONLY for the AI plan: a tenant without it gets AI_PLAN_REQUIRED and nothing is called', async () => {
     const fetchSpy = jest.spyOn(globalThis as any, 'fetch');
-    const { service } = buildService(makeFakeRedisClient());
+    const allowance = { entitlement: jest.fn(async () => ({ plan: 'none' })) };
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
     await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion', size: '1024x1024' } as any)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'AI_IMAGE_UNAVAILABLE' }),
+      status: 402,
+      response: expect.objectContaining({ code: 'AI_PLAN_REQUIRED' }),
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -3206,10 +3213,12 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
    */
   function realAllowance(opts: { used: number; screens?: number }) {
     const rows = Array.from({ length: opts.used }, () => ({ orgTenantId: 't1', source: 'platform', feature: 'designer', createdAt: new Date() }));
+    // 2026-10-12 — t1 is on the VenueOS + AI plan (an invoice customer with AI switched on).
+    const license = { tier: 'ANNUAL', status: 'ACTIVE', billingMode: 'INVOICE', aiIncluded: true };
     const prisma: any = {
       client: {
         tenant: {
-          findUnique: jest.fn(async ({ where }: any) => (where.id === 't1' ? { parentId: null } : null)),
+          findUnique: jest.fn(async ({ where }: any) => (where.id === 't1' ? { id: 't1', parentId: null, license, parent: null } : null)),
           findMany: jest.fn(async () => []),
         },
         screen: { count: jest.fn(async () => opts.screens ?? 0) },
@@ -3242,7 +3251,7 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
   });
 
   it('a batch that does NOT FIT the boards left is refused before anything is spent — the whole batch, with the numbers', async () => {
-    // included max(10, 5 × 0 screens) = 10, 9 drawn → 1 left; the batch needs 2.
+    // included 10 × max(1, 0 screens) = 10, 9 drawn → 1 left; the batch needs 2.
     const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 9 }));
     const err = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
     expect(err.getStatus()).toBe(402);
@@ -3258,10 +3267,10 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
     expect(out.candidates).toHaveLength(2);
   });
 
-  it('paired screens raise the included boards (5 per screen): the same ledger that was full at 10 has room at 4 screens', async () => {
+  it('paired screens raise the included boards (10 per screen): the same ledger that was full at 10 has room at 4 screens', async () => {
     const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, realAllowance({ used: 12, screens: 4 }));
     const out = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' });
-    expect(out.candidates).toHaveLength(2); // 20 included, 12 used → 8 left
+    expect(out.candidates).toHaveLength(2); // 40 included, 12 used → 28 left
   });
 
   it('a tenant on its OWN key is never board-capped — the allowance is not even consulted', async () => {
@@ -3303,5 +3312,166 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
     expect(out.candidates).toHaveLength(1);
     const features = meter.record.mock.calls.map((c: any[]) => c[0].feature).filter((f: string) => f !== 'designer-brief');
     expect(features).toEqual(['designer', 'designer-redraw']);
+  });
+});
+
+// ── 2026-10-12 — the VenueOS + AI plan: who may spend OUR keys (billing/ai-plan.ts) ─────────────
+describe('AiService — the AI plan gate (AI plan / trial / no AI / own key)', () => {
+  let fetchSpy: jest.SpyInstance;
+  const IMG_B64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  /** An allowance stub: the plan, plus counters the image path consults. */
+  function allowanceFor(plan: 'ai' | 'trial' | 'none', over: Record<string, any> = {}) {
+    return {
+      entitlement: jest.fn(async () => ({ plan })),
+      snapshot: jest.fn(async () => ({
+        orgTenantId: 't1', screens: 3, includedMicros: 7_500_000, usedMicros: 0,
+        includedCredits: 750, usedCredits: 0, resetAt: '2026-11-01T00:00:00.000Z', perScreenUsd: 2.5, floorUsd: 5,
+      })),
+      assertImagesAvailable: jest.fn(async () => ({ left: 5 })),
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    delete process.env.AI_IMAGE_HOURLY_CAP;
+    delete process.env.AI_IMAGE_COST_USD;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    meterCalls.length = 0;
+    tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    require('./ai-model-catalog').setCatalogState({});
+    (prismaMock.client.asset.create as jest.Mock).mockClear();
+    fetchSpy = jest.spyOn(global, 'fetch' as any);
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    jest.restoreAllMocks();
+  });
+
+  it.each([['ai'], ['trial']] as const)('plan %s → our key answers', async (plan) => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Spring sale starts today.' }]), model: 'claude-haiku-4-5' });
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor(plan));
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock).toHaveBeenCalled();
+    expect(dispatchMock.mock.calls[0][1]).toMatchObject({ apiKey: 'sk-ant-platform' });
+  });
+
+  it('no AI plan → 402 AI_PLAN_REQUIRED naming the $5 add-on AND the own-key way, before any provider call', async () => {
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor('none'));
+    const err = await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' }).catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_PLAN_REQUIRED', aiAddonMonthlyCents: 500, byokAvailable: true });
+    expect(err.getResponse().message).toContain('$5/screen/month');
+    expect(err.getResponse().message).toContain('your own AI key');
+    expect(dispatchMock).not.toHaveBeenCalled();
+    // the board designer refuses at the same door
+    const board = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);
+    expect(board.getResponse()).toMatchObject({ code: 'AI_PLAN_REQUIRED' });
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('own key works on EVERY plan — no AI plan needed, the plan is never even consulted', async () => {
+    tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'standard' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-tenant');
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'ok' }]), model: 'gpt-5.6-luna' });
+    const allowance = allowanceFor('none');
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'sale' });
+    expect(dispatchMock.mock.calls[0][1]).toMatchObject({ apiKey: 'sk-openai-tenant' });
+    expect(allowance.entitlement).not.toHaveBeenCalled();
+  });
+
+  it('getUsage without the AI plan: source none + planRequired (the upsell), not "AI is not configured"', async () => {
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor('none'));
+    await expect(service.getUsage('t1')).resolves.toEqual({
+      source: 'none', used: 0, cap: null, resetAt: null, planRequired: true, plan: 'none', aiAddonMonthlyCents: 500,
+    });
+  });
+
+  it('getUsage with NO platform key at all: plain none — there is nothing to upsell', async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor('none'));
+    await expect(service.getUsage('t1')).resolves.toEqual({ source: 'none', used: 0, cap: null, resetAt: null });
+  });
+
+  it('IMAGE on the AI plan → OUR OpenAI key, checked against the image count first, metered in dollars + counted', async () => {
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: IMG_B64 }] }));
+    const allowance = allowanceFor('ai');
+    const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    const res = await service.generateImage({ tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN', prompt: 'a lion mascot' });
+    expect(allowance.assertImagesAvailable).toHaveBeenCalledWith('t1');
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://api.openai.com/v1/images/generations');
+    expect(fetchSpy.mock.calls[0][1].headers.authorization).toBe('Bearer sk-openai-platform');
+    expect(meter.recordFixed).toHaveBeenCalledWith({
+      tenantId: 't1', provider: 'openai', model: 'gpt-image', source: 'platform', feature: 'image', costMicros: 80_000,
+    });
+    expect(res).toMatchObject({ provider: 'openai' });
+    const audit = JSON.parse(auditRows.find((r) => r.action === 'AI_IMAGE_GENERATED').details);
+    expect(audit).toMatchObject({ provider: 'openai', source: 'platform' });
+  });
+
+  it('IMAGE on a trial → the same platform route (trials experience AI)', async () => {
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: IMG_B64 }] }));
+    const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor('trial'));
+    await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion mascot' });
+    expect(meter.recordFixed).toHaveBeenCalledWith(expect.objectContaining({ source: 'platform', feature: 'image' }));
+  });
+
+  it('IMAGE with no images left → the friendly 402 (unit images); NOTHING is called or charged', async () => {
+    const { HttpException } = require('@nestjs/common');
+    const allowance = allowanceFor('ai', {
+      assertImagesAvailable: jest.fn(async () => {
+        throw new HttpException({ code: 'AI_CAP_REACHED', unit: 'images', message: 'used up' }, 402);
+      }),
+    });
+    const { service, meter, storage } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    const err = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion' }).catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'images' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(meter.recordFixed).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('IMAGE when the DOLLAR ceiling is spent → AI_CAP_REACHED in credits, even with images left; nothing called', async () => {
+    const allowance = allowanceFor('ai', {
+      snapshot: jest.fn(async () => ({
+        orgTenantId: 't1', screens: 3, includedMicros: 7_500_000, usedMicros: 7_500_000,
+        includedCredits: 750, usedCredits: 750, resetAt: '2026-11-01T00:00:00.000Z', perScreenUsd: 2.5, floorUsd: 5,
+      })),
+    });
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    const err = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion' }).catch((e) => e);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'credits' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('IMAGE on the AI plan but we hold no OpenAI key → AI_IMAGE_UNAVAILABLE (503), never Claude, never Google-on-our-key', async () => {
+    delete process.env.OPENAI_API_KEY;
+    const { service } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowanceFor('ai'));
+    const err = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion' }).catch((e) => e);
+    expect(err.getStatus()).toBe(503);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_IMAGE_UNAVAILABLE' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('IMAGE on a tenant\'s own key: never counted against our image allowance, never metered as platform', async () => {
+    tenantsById.set('t1', { id: 't1', parentId: null, aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'standard' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-tenant');
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: IMG_B64 }] }));
+    const allowance = allowanceFor('none');
+    const { service, meter } = buildService(makeFakeRedisClient(), undefined, undefined, undefined, allowance);
+    await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a lion' });
+    expect(fetchSpy.mock.calls[0][1].headers.authorization).toBe('Bearer sk-openai-tenant');
+    expect(allowance.assertImagesAvailable).not.toHaveBeenCalled();
+    expect(meter.recordFixed).not.toHaveBeenCalled();
   });
 });

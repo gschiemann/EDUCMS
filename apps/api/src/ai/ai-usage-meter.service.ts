@@ -70,6 +70,50 @@ export class AiUsageMeterService {
       return 0;
     }
   }
+
+  /**
+   * A call priced per UNIT, not per token — an image (2026-10-12). Same ledger, same best-effort
+   * contract: a meter failure is logged and swallowed, never thrown at a generation the provider
+   * already completed. Platform rows here are also what the image counter counts.
+   */
+  async recordFixed(entry: FixedMeterEntry): Promise<number> {
+    try {
+      const orgTenantId = await this.allowance.orgTenantIdFor(entry.tenantId);
+      const micros = clampInt(entry.costMicros);
+      await this.prisma.client.aiUsageEvent.create({
+        data: {
+          tenantId: entry.tenantId,
+          orgTenantId,
+          feature: entry.feature.slice(0, 40),
+          provider: entry.provider,
+          model: entry.model.slice(0, 80),
+          source: entry.source,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costMicros: micros,
+          durationMs: null,
+        },
+      });
+      if (entry.source === 'platform') this.allowance.invalidate(orgTenantId);
+      return micros;
+    } catch (e: any) {
+      this.logger.warn(`AI usage meter write failed (${entry.feature}, ${entry.provider}/${entry.model}): ${e?.message}`);
+      return 0;
+    }
+  }
+}
+
+export interface FixedMeterEntry {
+  tenantId: string;
+  provider: AiProvider;
+  model: string;
+  source: 'platform' | 'tenant';
+  /** Which surface spent it — 'image', … */
+  feature: string;
+  /** The call's price, micro-dollars. */
+  costMicros: number;
 }
 
 function clampInt(n: unknown): number {

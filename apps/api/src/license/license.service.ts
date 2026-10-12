@@ -127,7 +127,7 @@ export class LicenseService {
     suspended: boolean;
   }> {
     const client = tx ?? this.prisma.client;
-    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true, trialEndsAt: true, dunningFailedAt: true, dunningNextAttemptAt: true } };
+    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true, trialEndsAt: true, dunningFailedAt: true, dunningNextAttemptAt: true, aiIncluded: true } };
     const row = await client.tenant.findUnique({
       where: { id: tenantId },
       select: {

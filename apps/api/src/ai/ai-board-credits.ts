@@ -36,9 +36,15 @@
 import { getCatalog } from './ai-model-catalog';
 import { hasPlatformKey } from './ai-platform-keys';
 
-/** Included boards per paired screen per month. */
-export const BOARDS_PER_SCREEN = 5;
-/** Included boards per month for an organisation with few (or no) screens — enough to set up. */
+/**
+ * Included boards per paired screen per month — the DEFAULT; `AI_BOARDS_PER_SCREEN` overrides it
+ * (2026-10-12 pricing: 10 per paid AI screen, billing/ai-plan.ts).
+ */
+export const BOARDS_PER_SCREEN = 10;
+/**
+ * Included boards for an organisation with no paired screen yet (an AI-plan organisation is
+ * always counted as at least one screen), and the floor a degraded read reports.
+ */
 export const BOARDS_FLOOR = 10;
 /** A pack is good for this many calendar months after purchase. */
 export const BOARD_PACK_VALID_MONTHS = 12;
@@ -102,10 +108,15 @@ export const BOARD_COGS_FEATURES: readonly string[] = [
   'designer-brief',
 ];
 
-/** The month's included boards for an organisation with `screens` paired screens. */
-export function includedBoardsFor(screens: number): number {
-  const n = Number.isFinite(screens) ? Math.max(0, Math.floor(screens)) : 0;
-  return Math.max(BOARDS_FLOOR, BOARDS_PER_SCREEN * n);
+/**
+ * The month's included boards for an organisation ON THE AI PLAN with `screens` paired screens:
+ * `perScreen` (AI_BOARDS_PER_SCREEN, default 10) × screens, counting at least one screen. A trial
+ * and an organisation without AI are sized in billing/ai-plan.ts `includedFor`.
+ */
+export function includedBoardsFor(screens: number, perScreen: number = BOARDS_PER_SCREEN): number {
+  const n = Number.isFinite(screens) ? Math.max(1, Math.floor(screens)) : 1;
+  const per = Number.isFinite(perScreen) && perScreen >= 0 ? Math.floor(perScreen) : BOARDS_PER_SCREEN;
+  return per * n;
 }
 
 /** 'YYYY-MM' of a date's UTC month. */
@@ -242,11 +253,20 @@ export function stripeConfigured(): boolean {
  */
 export type BoardSource = 'platform' | 'tenant' | 'none';
 
+export type BoardPurchaseReasonCode =
+  | 'NO_PLATFORM_KEY'
+  | 'OWN_KEY'
+  | 'STRIPE_NOT_CONFIGURED'
+  /** 2026-10-12 — the organisation is not on the VenueOS + AI plan (AI on our key is not included). */
+  | 'AI_PLAN_REQUIRED'
+  /** 2026-10-12 — a free trial: its AI is a fixed trial allowance; packs open with the AI plan. */
+  | 'TRIAL';
+
 export type BoardPurchaseAvailability =
   | { enabled: true }
   | {
       enabled: false;
-      reasonCode: 'NO_PLATFORM_KEY' | 'OWN_KEY' | 'STRIPE_NOT_CONFIGURED';
+      reasonCode: BoardPurchaseReasonCode;
       reason: string;
     };
 
@@ -258,7 +278,17 @@ export type BoardPurchaseAvailability =
  */
 export function boardPurchaseAvailability(
   source: BoardSource,
+  /** 2026-10-12 — the organisation's AI plan (billing/ai-plan.ts); omitted = the AI plan. */
+  plan: 'ai' | 'trial' | 'none' = 'ai',
 ): BoardPurchaseAvailability {
+  if (source === 'none' && plan === 'none' && platformDesignRouteAvailable()) {
+    return {
+      enabled: false,
+      reasonCode: 'AI_PLAN_REQUIRED',
+      reason:
+        'AI is part of the VenueOS + AI plan — add it for $5/screen/month in Settings → Billing, or use your own AI key (it works on every plan).',
+    };
+  }
   if (source === 'none' || !platformDesignRouteAvailable()) {
     return {
       enabled: false,
@@ -272,6 +302,13 @@ export function boardPurchaseAvailability(
       reasonCode: 'OWN_KEY',
       reason:
         'Your boards run on your own AI key, with no limit here — there is nothing to buy.',
+    };
+  }
+  if (plan === 'trial') {
+    return {
+      enabled: false,
+      reasonCode: 'TRIAL',
+      reason: 'Your free trial includes a set number of AI boards. Buying more opens once you are on the VenueOS + AI plan.',
     };
   }
   if (!stripeConfigured()) {
@@ -308,6 +345,6 @@ export function boardsCapMessage(o: {
   });
   const ways = o.purchaseEnabled
     ? 'Buy more boards in Settings → Billing, or add your own AI key in Settings → AI provider — you pay your provider directly, with no limit here.'
-    : 'Add your own AI key in Settings → AI provider to keep going — you pay your provider directly, with no limit here.';
+    : 'Add your own AI key in Settings → AI provider to keep going — you pay your provider directly, with no limit here — or contact us for more.';
   return `${needs}; ${have} (included boards reset ${resetDay}). ${ways}`;
 }

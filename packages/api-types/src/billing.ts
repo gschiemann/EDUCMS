@@ -21,10 +21,18 @@
 // SKUs only. No unlimited, no add-ons, no school references. Per-screen
 // metering across the board. Add tiers back in later sprints once
 // real demand from a specific buyer makes them worth supporting.
+//
+// 2026-10-12 — owner pricing decision: every paid tier is sold WITH or WITHOUT AI.
+//   VenueOS        $20 / screen / month · $200 / screen / year
+//   VenueOS + AI   $25 / screen / month · $250 / screen / year
+// The AI choice is NOT a separate tier id: License.tier stays MONTHLY / ANNUAL and
+// License.aiIncluded says whether AI on our keys is paid for (stamped by the Stripe
+// webhook from the price id). `aiMonthlyPriceCents` / `aiAnnualPriceCents` below are
+// the "with AI" prices of the same tier.
 export type LicenseTierId =
-  | 'FREE_TRIAL'   // 14-day free, 3 screens, no credit card needed
-  | 'MONTHLY'      // $25 / screen / month, billed monthly
-  | 'ANNUAL'       // $240 / screen / year = $20/mo effective (save 20% vs monthly)
+  | 'FREE_TRIAL'   // 14-day free, 3 screens, no credit card needed — AI included at trial limits
+  | 'MONTHLY'      // $20 / screen / month ($25 with AI), billed monthly
+  | 'ANNUAL'       // $200 / screen / year ($250 with AI) — two months free vs monthly
   | 'COMP'         // Internal / partner — admin only
   | 'CUSTOM';      // Negotiated — admin only
 
@@ -36,6 +44,9 @@ export interface LicenseTier {
   monthlyPriceCents: number | null;
   /** Annual price (typically 10× monthly = 2 months free). */
   annualPriceCents: number | null;
+  /** 2026-10-12 — the same tier WITH AI (VenueOS + AI). Null = no AI variant. */
+  aiMonthlyPriceCents?: number | null;
+  aiAnnualPriceCents?: number | null;
   /** Soft seat limit (screens). Null = unlimited. */
   seatLimit: number | null;
   /** Verticals this tier is most relevant to. Empty = universal. */
@@ -61,7 +72,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'FREE_TRIAL',
     name: 'Free trial',
-    blurb: '14 days, up to 3 screens, no credit card needed.',
+    blurb: '14 days, up to 3 screens, no credit card needed. AI included to try.',
     monthlyPriceCents: 0,
     annualPriceCents: 0,
     seatLimit: 3,
@@ -71,6 +82,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
       '14-day trial',
       'Full template library',
       'All integrations',
+      'AI included (10 board designs + 10 images)',
       'Email support',
     ],
     selfServe: true,
@@ -79,16 +91,19 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'MONTHLY',
     name: 'Monthly',
-    blurb: '$25 per screen, billed monthly. Cancel anytime.',
-    monthlyPriceCents: 2500,
+    blurb: '$20 per screen, billed monthly — $25 with AI. Cancel anytime.',
+    monthlyPriceCents: 2000,
     annualPriceCents: null,
+    aiMonthlyPriceCents: 2500,
+    aiAnnualPriceCents: null,
     seatLimit: null,
     bestFor: [],
     features: [
       'Per-screen billing',
       'Full template library',
-      'All integrations (streaming, POS, AI)',
+      'All integrations (streaming, POS)',
       'Emergency alerts',
+      'AI add-on: +$5 / screen / month',
       'Email + chat support',
       'Cancel any time',
     ],
@@ -98,27 +113,30 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'ANNUAL',
     name: 'Annual',
-    blurb: '$240 per screen / year — $20/mo effective. Save 20% vs monthly.',
+    blurb: '$200 per screen / year — $250 with AI. Two months free vs monthly.',
     // 2026-07-25 — was `null`, which made an ANNUAL subscriber look UNPAID:
     //  • the billing page computes `perScreen = monthlyPriceCents ?? null` and
     //    renders the free-pilot / "This month: Free" copy when it is null, so a
     //    paying annual customer was told they were on the free tier;
     //  • the owner console computes MRR as `(monthlyPriceCents ?? 0) * seats`,
     //    so every annual tenant contributed $0 to reported revenue.
-    // 24000/yr ÷ 12 = 2000, i.e. the "$20/mo effective" this tier's own blurb
-    // advertises. Display/reporting only — checkout still uses
-    // STRIPE_PRICE_ANNUAL via priceIdFor('annual'), and the pricing card still
-    // shows annualPriceCents for this tier.
-    monthlyPriceCents: 2000,
-    annualPriceCents: 24000,
+    // annualPriceCents ÷ 12 (2026-10-12: 20000/yr ÷ 12 = 1667, the "$16.67/mo
+    // effective"). Display/reporting only — checkout still uses
+    // STRIPE_PRICE_ANNUAL(_AI) via priceIdFor('annual', ai), and the pricing
+    // card still shows annualPriceCents for this tier.
+    monthlyPriceCents: 1667,
+    annualPriceCents: 20000,
+    aiMonthlyPriceCents: 2083,
+    aiAnnualPriceCents: 25000,
     seatLimit: null,
     bestFor: [],
     features: [
       'Per-screen billing',
-      'Save 20% vs monthly ($20/mo effective)',
+      'Two months free vs monthly',
       'Full template library',
-      'All integrations (streaming, POS, AI)',
+      'All integrations (streaming, POS)',
       'Emergency alerts',
+      'AI add-on: +$50 / screen / year',
       'Priority support',
     ],
     selfServe: true,

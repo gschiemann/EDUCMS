@@ -873,6 +873,11 @@ model License {
   dunningNoticeStage       Int       @default(0) @map("dunning_notice_stage")
   dunningFailedAt          DateTime? @map("dunning_failed_at")
   dunningNextAttemptAt     DateTime? @map("dunning_next_attempt_at")
+  // 2026-10-12 — VenueOS + AI plan (apps/api/src/billing/ai-plan.ts). True = this organisation
+  // pays for AI on OUR platform keys. Stamped by the Stripe webhook from the subscription's price
+  // id (STRIPE_PRICE_MONTHLY_AI / STRIPE_PRICE_ANNUAL_AI); toggled in the super-admin customer
+  // console for INVOICE / PURCHASE_ORDER / COMP licenses. A free trial gets AI regardless.
+  aiIncluded               Boolean   @default(false) @map("ai_included")
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at")
   tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)

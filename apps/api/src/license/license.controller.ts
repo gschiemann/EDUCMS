@@ -24,10 +24,15 @@ export class LicenseController {
     const summary: any = await this.license.summary(req.user.tenantId);
     if (!summary) return null;
     const tierDef = getLicenseTier(summary.tier);
+    // 2026-10-12 — a VenueOS + AI license shows the "with AI" price of its tier.
+    const account = await this.license.orgAccount(req.user.tenantId).catch(() => null);
+    const aiIncluded = (account?.governing as any)?.aiIncluded === true;
+    const aiPrice = aiIncluded ? tierDef?.aiMonthlyPriceCents ?? null : null;
     return {
       ...summary,
       tierName: tierDef?.name || summary.tier,
-      monthlyPriceCents: tierDef?.monthlyPriceCents ?? summary.monthlyPriceCents,
+      monthlyPriceCents: aiPrice ?? tierDef?.monthlyPriceCents ?? summary.monthlyPriceCents,
+      aiIncluded,
     };
   }
 
@@ -49,6 +54,10 @@ export class LicenseController {
         blurb: t.blurb,
         monthlyPriceCents: t.monthlyPriceCents,
         annualPriceCents: t.annualPriceCents,
+        // 2026-10-12 — the same tier with AI (VenueOS + AI); the Billing page shows these when the
+        // AI option is on and the deploy offers it.
+        aiMonthlyPriceCents: t.aiMonthlyPriceCents ?? null,
+        aiAnnualPriceCents: t.aiAnnualPriceCents ?? null,
         seatLimit: t.seatLimit,
         features: t.features,
         selfServe: t.selfServe,

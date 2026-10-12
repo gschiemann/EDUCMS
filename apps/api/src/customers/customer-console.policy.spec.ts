@@ -103,6 +103,18 @@ describe('license patch', () => {
     expect(policyCode(() => assertPatchAllowed({ ...live, status: 'CANCELLED' }, { billingMode: 'INVOICE' }))).toBeNull();
   });
 
+  it('2026-10-12 — the enterprise AI toggle: a boolean, written to aiIncluded, audited; never on a live card plan', () => {
+    expect(parseLicensePatch({ aiIncluded: true })).toEqual({ aiIncluded: true });
+    expect(policyCode(() => parseLicensePatch({ aiIncluded: 'yes' }))).toBe('CUSTOMER_AI_INVALID');
+    expect(licenseDataFromPatch({ aiIncluded: false })).toEqual({ aiIncluded: false });
+    const live = { stripeSubscriptionId: 'sub_1', status: 'ACTIVE', billingMode: 'CARD' };
+    // a card customer's AI comes from the price they pay — the console cannot hand it out unpaid
+    expect(policyCode(() => assertPatchAllowed(live, { aiIncluded: true }))).toBe('CUSTOMER_STRIPE_MANAGED');
+    // invoice / PO / comp: the toggle is the owner's
+    expect(policyCode(() => assertPatchAllowed({ billingMode: 'INVOICE', status: 'ACTIVE' }, { aiIncluded: true }))).toBeNull();
+    expect(changedFields({ aiIncluded: false }, { aiIncluded: true })).toEqual(['aiIncluded']);
+  });
+
   it('changedFields names exactly what moved', () => {
     expect(changedFields({ a: 1, b: null, c: 'x' }, { a: 2, b: null, c: 'x', d: 1 })).toEqual(['a', 'd']);
     expect(changedFields(null, { a: 1 })).toEqual(['a']);

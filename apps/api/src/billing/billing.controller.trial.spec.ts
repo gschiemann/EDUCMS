@@ -39,9 +39,11 @@ function build(governing: Record<string, any> | null, own: Record<string, any> |
     enabled: () => !!process.env.STRIPE_SECRET_KEY,
     checkoutForTenant: jest.fn(async () => ({ url: 'https://checkout.stripe.test/x' })),
     setSeatQuantity: jest.fn(async (o: any) => ({ seatLimit: o.quantity, previous: o.quantity - 1 })),
+    setAiPlan: jest.fn(async (o: any) => ({ aiIncluded: o.ai, changed: true })),
   };
-  const controller = new BillingController(stripe as any, license as any, prisma as any, {} as any);
-  return { controller, stripe, license };
+  const allowance = { invalidateEntitlement: jest.fn() };
+  const controller = new BillingController(stripe as any, license as any, prisma as any, allowance as any);
+  return { controller, stripe, license, allowance };
 }
 
 const trial = (days: number) => ({
@@ -65,8 +67,34 @@ describe('GET /billing/summary', () => {
       canManage: true,
       seatsUsed: 2,
       seatLimit: 3,
-      prices: { monthlyCents: 2500, annualCents: 24000 },
+      prices: { monthlyCents: 2000, annualCents: 20000 },
+      // 2026-10-12 — a trial gets AI (at the trial limits) whatever plan it will pick
+      aiPlan: 'trial',
+      aiIncluded: false,
+      aiAddonMonthlyCents: 500,
     });
+  });
+
+  it('the AI plan prices appear ONLY when both AI price ids are configured', async () => {
+    Object.assign(process.env, KEYS);
+    delete process.env.STRIPE_PRICE_MONTHLY_AI;
+    delete process.env.STRIPE_PRICE_ANNUAL_AI;
+    const { controller } = build(trial(12));
+    expect(((await controller.summary(req())) as any).aiPrices).toBeNull();
+    process.env.STRIPE_PRICE_MONTHLY_AI = 'price_m_ai';
+    process.env.STRIPE_PRICE_ANNUAL_AI = 'price_y_ai';
+    expect(((await controller.summary(req())) as any).aiPrices).toEqual({ monthlyCents: 2500, annualCents: 25000 });
+    delete process.env.STRIPE_PRICE_MONTHLY_AI;
+    delete process.env.STRIPE_PRICE_ANNUAL_AI;
+  });
+
+  it('a paid plan reports whether AI is included (aiPlan ai vs none)', async () => {
+    Object.assign(process.env, KEYS);
+    const paid = { tier: 'MONTHLY', status: 'ACTIVE', billingMode: 'CARD', seatLimit: 5, stripeSubscriptionId: 'sub_1', trialEndsAt: null };
+    let { controller } = build({ ...paid, aiIncluded: true });
+    expect(await controller.summary(req())).toMatchObject({ state: 'active', aiIncluded: true, aiPlan: 'ai' });
+    ({ controller } = build({ ...paid, aiIncluded: false }));
+    expect(await controller.summary(req())).toMatchObject({ state: 'active', aiIncluded: false, aiPlan: 'none' });
   });
 
   it('INVOICE customer: offline, never a card checkout', async () => {
@@ -153,5 +181,71 @@ describe('POST /billing/checkout', () => {
         successUrl: 'https://app.example/taco/settings/billing?checkout=success',
       }),
     );
+  });
+
+  it('2026-10-12 — `ai: true` checks out the VenueOS + AI plan; without the AI prices it is a clear 400', async () => {
+    Object.assign(process.env, KEYS);
+    const { controller, stripe } = build(trial(10));
+    await expect(controller.checkout(req(), { billingPeriod: 'monthly', ai: true })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'BILLING_AI_PLAN_UNAVAILABLE' }),
+    });
+    expect(stripe.checkoutForTenant).not.toHaveBeenCalled();
+    process.env.STRIPE_PRICE_MONTHLY_AI = 'price_m_ai';
+    process.env.STRIPE_PRICE_ANNUAL_AI = 'price_y_ai';
+    try {
+      await controller.checkout(req(), { billingPeriod: 'monthly', ai: true });
+      expect(stripe.checkoutForTenant).toHaveBeenLastCalledWith(expect.objectContaining({ period: 'monthly', ai: true }));
+      // anything but a literal `true` is the plan without AI
+      await controller.checkout(req(), { billingPeriod: 'annual', ai: 'yes' });
+      expect(stripe.checkoutForTenant).toHaveBeenLastCalledWith(expect.objectContaining({ period: 'annual', ai: false }));
+    } finally {
+      delete process.env.STRIPE_PRICE_MONTHLY_AI;
+      delete process.env.STRIPE_PRICE_ANNUAL_AI;
+    }
+  });
+});
+
+describe('POST /billing/ai-plan — switch AI on / off (2026-10-12)', () => {
+  const card = { tier: 'MONTHLY', status: 'ACTIVE', billingMode: 'CARD', seatLimit: 4, stripeSubscriptionId: 'sub_1', trialEndsAt: null };
+  afterEach(() => {
+    delete process.env.STRIPE_PRICE_MONTHLY_AI;
+    delete process.env.STRIPE_PRICE_ANNUAL_AI;
+  });
+
+  it('a card customer switches AI on: the subscription moves, the plan cache is dropped', async () => {
+    Object.assign(process.env, KEYS, { STRIPE_PRICE_MONTHLY_AI: 'price_m_ai', STRIPE_PRICE_ANNUAL_AI: 'price_y_ai' });
+    const { controller, stripe, allowance } = build(card);
+    expect(await controller.aiPlan(req(), { ai: true })).toEqual({ ok: true, aiIncluded: true, changed: true });
+    expect(stripe.setAiPlan).toHaveBeenCalledWith({ tenantId: 't1', ai: true, actorUserId: 'u1' });
+    expect(allowance.invalidateEntitlement).toHaveBeenCalled();
+    // and off again — always possible, even if the AI prices were later removed
+    delete process.env.STRIPE_PRICE_MONTHLY_AI;
+    expect(await controller.aiPlan(req(), { ai: false })).toMatchObject({ aiIncluded: false });
+  });
+
+  it('switching ON without the AI prices configured is a clear 400, nothing changes', async () => {
+    Object.assign(process.env, KEYS);
+    const { controller, stripe } = build(card);
+    await expect(controller.aiPlan(req(), { ai: true })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'BILLING_AI_PLAN_UNAVAILABLE' }),
+    });
+    expect(stripe.setAiPlan).not.toHaveBeenCalled();
+  });
+
+  it('an invoice / PO / comp customer is switched by VenueOS, never here (409 BILLING_NOT_CARD)', async () => {
+    Object.assign(process.env, KEYS, { STRIPE_PRICE_MONTHLY_AI: 'price_m_ai', STRIPE_PRICE_ANNUAL_AI: 'price_y_ai' });
+    const { controller, stripe } = build({ ...card, billingMode: 'INVOICE', stripeSubscriptionId: null });
+    await expect(controller.aiPlan(req(), { ai: true })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'BILLING_NOT_CARD' }),
+    });
+    expect(stripe.setAiPlan).not.toHaveBeenCalled();
+  });
+
+  it('a body without a boolean `ai` is a 400', async () => {
+    Object.assign(process.env, KEYS);
+    const { controller } = build(card);
+    await expect(controller.aiPlan(req(), { ai: 'on' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'BILLING_AI_PLAN_INVALID' }),
+    });
   });
 });

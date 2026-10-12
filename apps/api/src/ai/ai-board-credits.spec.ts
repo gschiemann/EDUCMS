@@ -35,14 +35,16 @@ const pack = (
 const map = (o: Record<string, number>) => new Map(Object.entries(o));
 
 describe('the unit', () => {
-  it('included boards: 5 per paired screen, never below 10', () => {
+  it('included boards on the AI plan (2026-10-12): 10 per paired screen, counting at least one', () => {
     expect(includedBoardsFor(0)).toBe(10);
     expect(includedBoardsFor(1)).toBe(10);
-    expect(includedBoardsFor(2)).toBe(10);
-    expect(includedBoardsFor(3)).toBe(15);
-    expect(includedBoardsFor(40)).toBe(200);
+    expect(includedBoardsFor(2)).toBe(20);
+    expect(includedBoardsFor(3)).toBe(30);
+    expect(includedBoardsFor(40)).toBe(400);
     expect(includedBoardsFor(NaN)).toBe(10);
     expect(includedBoardsFor(-4)).toBe(10);
+    // AI_BOARDS_PER_SCREEN is passed in by the allowance
+    expect(includedBoardsFor(4, 3)).toBe(12);
   });
 
   it('a credit is a board DRAWN for the tenant; the loop that makes it good is never one', () => {
@@ -306,6 +308,17 @@ describe('who may buy a pack', () => {
     });
     process.env.STRIPE_SECRET_KEY = 'sk_test_x';
     expect(boardPurchaseAvailability('platform')).toEqual({ enabled: true });
+  });
+
+  it('2026-10-12 — no AI plan → AI_PLAN_REQUIRED (the upsell, not "no key"); a trial → TRIAL (packs open with the AI plan)', () => {
+    process.env.OPENAI_API_KEY = 'sk-openai';
+    process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+    const none = boardPurchaseAvailability('none', 'none');
+    expect(none).toMatchObject({ enabled: false, reasonCode: 'AI_PLAN_REQUIRED' });
+    expect((none as any).reason).toContain('$5/screen/month');
+    expect((none as any).reason).toContain('your own AI key');
+    expect(boardPurchaseAvailability('platform', 'trial')).toMatchObject({ enabled: false, reasonCode: 'TRIAL' });
+    expect(boardPurchaseAvailability('platform', 'ai')).toEqual({ enabled: true });
   });
 });
 

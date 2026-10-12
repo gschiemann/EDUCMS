@@ -43,6 +43,7 @@ import { LicenseService } from '../license/license.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiAllowanceService } from '../ai/ai-allowance.service';
 import { AI_BOARD_PACKS, BOARD_PACK_VALID_MONTHS, boardPackById } from '../ai/ai-board-credits';
+import { AI_ADDON_MONTHLY_CENTS, aiEntitlementOf, aiPlanOffered, PLAN_PRICES } from './ai-plan';
 import { cardCheckoutAllowed, isInvoiceBilled } from '../customers/customer-console.policy';
 
 /**
@@ -113,7 +114,7 @@ export class BillingController {
   @RequireRoles(...BILLING_ROLES)
   async checkout(
     @Request() req: any,
-    @Body() body: { billingPeriod?: 'monthly' | 'annual' },
+    @Body() body: { billingPeriod?: 'monthly' | 'annual'; ai?: unknown },
   ) {
     const account = await this.license.orgAccount(req.user.tenantId);
     if (!cardCheckoutAllowed(account.governing)) throw notCardBilled(account.governing?.billingMode);
@@ -124,6 +125,15 @@ export class BillingController {
       };
     }
     const period = body?.billingPeriod === 'annual' ? 'annual' : 'monthly';
+    // 2026-10-12 — `ai: true` = the VenueOS + AI plan. Offered only when both AI prices are set;
+    // asking for it otherwise is a clear 400, never a silent downgrade to the plan without AI.
+    const ai = body?.ai === true;
+    if (ai && !aiPlanOffered()) {
+      throw new HttpException(
+        { code: 'BILLING_AI_PLAN_UNAVAILABLE', message: 'The VenueOS + AI plan is not available on this deployment yet.' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     const base = await this.billingUrl(req);
     try {
       // Pre-fill Stripe's email with the person adding the card (first checkout only).
@@ -135,6 +145,7 @@ export class BillingController {
       const { url } = await this.stripe.checkoutForTenant({
         tenantId: req.user.tenantId,
         period,
+        ai,
         successUrl: `${base}?checkout=success`,
         cancelUrl: `${base}?checkout=cancelled`,
         customerEmail: email,
@@ -184,6 +195,41 @@ export class BillingController {
       return await this.stripe.retryAfterCardUpdate(req.user.tenantId, req.user.id ?? null);
     } catch (e) {
       throw new HttpException({ code: 'BILLING_RETRY_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
+   * 2026-10-12 — switch AI on or off on the card plan (`{ ai: true | false }`): the subscription
+   * moves to the same interval's other price, prorated. Invoice / PO / comp organisations are
+   * switched by VenueOS (the customer console's AI toggle) — 409 BILLING_NOT_CARD here.
+   */
+  @Post('ai-plan')
+  @RequireRoles(...BILLING_ROLES)
+  async aiPlan(@Request() req: any, @Body() body: { ai?: unknown }) {
+    const tenantId = req.user.tenantId;
+    if (typeof body?.ai !== 'boolean') {
+      throw new HttpException({ code: 'BILLING_AI_PLAN_INVALID', message: 'Say whether AI should be on (ai: true) or off (ai: false).' }, HttpStatus.BAD_REQUEST);
+    }
+    const account = await this.license.orgAccount(tenantId);
+    if (!cardCheckoutAllowed(account.governing)) throw notCardBilled(account.governing?.billingMode);
+    if (!this.stripe.enabled()) {
+      return { enabled: false, message: 'Online payments are not set up on this deployment yet.' };
+    }
+    if (body.ai && !aiPlanOffered()) {
+      throw new HttpException(
+        { code: 'BILLING_AI_PLAN_UNAVAILABLE', message: 'The VenueOS + AI plan is not available on this deployment yet.' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    try {
+      const r = await this.stripe.setAiPlan({ tenantId, ai: body.ai, actorUserId: req.user.id ?? null });
+      this.allowance.invalidateEntitlement();
+      return { ok: true, aiIncluded: r.aiIncluded, changed: r.changed };
+    } catch (e) {
+      if (e instanceof SeatChangeError) {
+        throw new HttpException({ code: e.code, message: e.message }, HttpStatus.CONFLICT);
+      }
+      throw new HttpException({ code: 'BILLING_AI_PLAN_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }
   }
 
@@ -276,8 +322,13 @@ export class BillingController {
     const role = req.user?.role;
     const canManage = (BILLING_ROLES as readonly string[]).includes(role);
     const prices = { monthlyCents: PRICE_MONTHLY_CENTS, annualCents: PRICE_ANNUAL_CENTS };
+    // 2026-10-12 — the VenueOS + AI prices, or null when the AI plan is not offered on this deploy
+    // (both AI price ids unset) — the dashboard then hides the AI option entirely.
+    const aiPrices = aiPlanOffered()
+      ? { monthlyCents: PLAN_PRICES.monthlyAiCents, annualCents: PLAN_PRICES.annualAiCents }
+      : null;
     if (req.user?.kind === 'device' || !req.user?.tenantId) {
-      return { state: 'none', billingReady: ready, canManage: false, prices };
+      return { state: 'none', billingReady: ready, canManage: false, prices, aiPrices };
     }
     const tenantId = req.user.tenantId;
     const [account, own, seatsUsed] = await Promise.all([
@@ -316,6 +367,12 @@ export class BillingController {
       nextPaymentAttemptAt: gov?.dunningNextAttemptAt ? new Date(gov.dunningNextAttemptAt).toISOString() : null,
       endedForNonPayment: b.state === 'cancelled' && !!gov?.dunningFailedAt,
       prices,
+      aiPrices,
+      // 2026-10-12 — the VenueOS + AI plan (billing/ai-plan.ts). `aiIncluded` = the license pays
+      // for AI; `aiPlan` = what AI on our key is available on right now ('trial' during a trial).
+      aiIncluded: gov?.aiIncluded === true,
+      aiPlan: aiEntitlementOf(gov, new Date(), ready).plan,
+      aiAddonMonthlyCents: AI_ADDON_MONTHLY_CENTS,
     };
   }
 

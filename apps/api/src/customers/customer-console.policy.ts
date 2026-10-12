@@ -67,6 +67,8 @@ export interface LicenseLike {
   notes?: string | null;
   suspendedAt?: Date | string | null;
   suspendReason?: string | null;
+  /** 2026-10-12 — the organisation pays for AI on our keys (the VenueOS + AI plan). */
+  aiIncluded?: boolean | null;
 }
 
 /** A card subscription Stripe is still billing. Its plan, price and billing mode belong to Stripe. */
@@ -162,6 +164,8 @@ export interface LicensePatch {
   renewalDate?: Date | null;
   poNumber?: string | null;
   notes?: string | null;
+  /** 2026-10-12 — AI on our keys for an invoice / PO / comp customer (enterprise AI toggle). */
+  aiIncluded?: boolean;
 }
 
 export function parseLicensePatch(body: unknown): LicensePatch {
@@ -202,6 +206,12 @@ export function parseLicensePatch(body: unknown): LicensePatch {
   if (po !== undefined) out.poNumber = po;
   const notes = optionalText(b.notes, 'notes', MAX_NOTES);
   if (notes !== undefined) out.notes = notes;
+  if (b.aiIncluded !== undefined) {
+    if (typeof b.aiIncluded !== 'boolean') {
+      throw new PolicyError('CUSTOMER_AI_INVALID', 'aiIncluded must be true or false.');
+    }
+    out.aiIncluded = b.aiIncluded;
+  }
   if (Object.keys(out).length === 0) throw new PolicyError('CUSTOMER_NOTHING_TO_CHANGE', 'Nothing to change.');
   return out;
 }
@@ -229,6 +239,15 @@ export function assertPatchAllowed(current: LicenseLike | null, patch: LicensePa
       409,
     );
   }
+  // 2026-10-12 — a card customer's AI comes from the PRICE they pay for (the webhook stamps it):
+  // a console toggle would be overwritten by the next subscription event, or hand out AI unpaid.
+  if (patch.aiIncluded !== undefined) {
+    throw new PolicyError(
+      'CUSTOMER_STRIPE_MANAGED',
+      'AI for a card customer comes from their plan (VenueOS or VenueOS + AI). They switch it on the Billing page.',
+      409,
+    );
+  }
 }
 
 /** The License columns a patch writes. `plan` is stored in `tier` (the Stripe webhook writes MONTHLY / ANNUAL there too). */
@@ -242,6 +261,7 @@ export function licenseDataFromPatch(patch: LicensePatch): Record<string, unknow
   if (patch.renewalDate !== undefined) data.renewalDate = patch.renewalDate;
   if (patch.poNumber !== undefined) data.poNumber = patch.poNumber;
   if (patch.notes !== undefined) data.notes = patch.notes;
+  if (patch.aiIncluded !== undefined) data.aiIncluded = patch.aiIncluded;
   // COMP is free by definition — never leave a price on it that a report could add up.
   if (patch.billingMode === 'COMP') data.monthlyPriceCents = 0;
   return data;
@@ -263,6 +283,7 @@ export function licenseSnapshot(lic: LicenseLike | null | undefined): Record<str
     notes: lic.notes ?? null,
     suspendedAt: iso(lic.suspendedAt),
     suspendReason: lic.suspendReason ?? null,
+    aiIncluded: lic.aiIncluded === true,
   };
 }
 

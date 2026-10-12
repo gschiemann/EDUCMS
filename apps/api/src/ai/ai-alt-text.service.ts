@@ -329,6 +329,10 @@ export class AiAltTextService {
     const visionProvider = platformVisionProvider();
     const platformKey = visionProvider ? platformKeyFor(visionProvider) : null;
     if (visionProvider && platformKey) {
+      // 2026-10-12 — our key reads images only for the VenueOS + AI plan or a free trial
+      // (billing/ai-plan.ts). Everyone else: no provider here (alt text is skipped, as for a
+      // tenant with no key at all) — never a silent platform spend.
+      if (this.allowance && (await this.allowance.entitlement(tenantId)).plan === 'none') return {};
       return { resolved: { provider: visionProvider, apiKey: platformKey, model: '', source: 'platform' } };
     }
     return {};

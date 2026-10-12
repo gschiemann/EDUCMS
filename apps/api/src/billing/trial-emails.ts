@@ -12,7 +12,8 @@
  * No card number, no price table, no marketing.
  */
 import type { TrialNoticeStage } from './trial-policy';
-import { PRICE_ANNUAL_CENTS, PRICE_MONTHLY_CENTS, TRIAL_GRACE_DAYS } from './trial-policy';
+import { TRIAL_GRACE_DAYS } from './trial-policy';
+import { PLAN_PRICES } from './ai-plan';
 
 export type NoticeLocale = 'en' | 'es' | 'zh';
 
@@ -38,8 +39,11 @@ export function noticeLocaleOf(v: string | null | undefined): NoticeLocale {
 export function trialEmail(input: TrialEmailInput): { subject: string; body: string; kind: string } {
   const l = noticeLocaleOf(input.locale);
   const when = dateIn(l, input.trialEndsAt);
-  const m = money(PRICE_MONTHLY_CENTS);
-  const y = money(PRICE_ANNUAL_CENTS);
+  // 2026-10-12 pricing: VenueOS $20/mo · $200/yr; VenueOS + AI $25/mo · $250/yr.
+  const m = money(PLAN_PRICES.monthlyCents);
+  const y = money(PLAN_PRICES.annualCents);
+  const mAi = money(PLAN_PRICES.monthlyAiCents);
+  const yAi = money(PLAN_PRICES.annualAiCents);
   const kind = input.stage === 3 ? 'TRIAL_ENDED' : input.stage === 2 ? 'TRIAL_REMINDER_1D' : 'TRIAL_REMINDER_7D';
   const org = input.orgName;
   const url = input.billingUrl;
@@ -58,7 +62,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
           `Agrega un método de pago (menos de un minuto, en la página segura de Stripe):`,
           url,
           ``,
-          `${m} por pantalla al mes, o ${y} por pantalla al año.`,
+          `${m} por pantalla al mes, o ${y} por pantalla al año — con IA, ${mAi} al mes o ${yAi} al año.`,
           ``,
           `— El equipo de VenueOS`,
         ].join('\n'),
@@ -74,7 +78,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
         `Agrega un método de pago ahora y no perderás ningún día: el primer cobro es el ${when}.`,
         url,
         ``,
-        `${m} por pantalla al mes, o ${y} por pantalla al año (ahorras 20%).`,
+        `${m} por pantalla al mes, o ${y} por pantalla al año (dos meses gratis) — con IA, ${mAi} al mes o ${yAi} al año.`,
         `Tus pantallas y las alertas de emergencia nunca se apagan por un tema de facturación.`,
         ``,
         `— El equipo de VenueOS`,
@@ -96,7 +100,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
           `添加付款方式（在 Stripe 安全页面完成，不到一分钟）：`,
           url,
           ``,
-          `每块屏幕每月 ${m}，或每块屏幕每年 ${y}。`,
+          `每块屏幕每月 ${m}，或每块屏幕每年 ${y}；含 AI 版为每月 ${mAi} 或每年 ${yAi}。`,
           ``,
           `— VenueOS 团队`,
         ].join('\n'),
@@ -112,7 +116,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
         `现在添加付款方式不会损失任何试用天数：首次扣款日期为 ${when}。`,
         url,
         ``,
-        `每块屏幕每月 ${m}，或每块屏幕每年 ${y}（节省 20%）。`,
+        `每块屏幕每月 ${m}，或每块屏幕每年 ${y}（相当于免费两个月）；含 AI 版为每月 ${mAi} 或每年 ${yAi}。`,
         `屏幕和紧急警报绝不会因为账单问题而停止。`,
         ``,
         `— VenueOS 团队`,
@@ -133,7 +137,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
         `Add a payment method (under a minute, on Stripe's secure page):`,
         url,
         ``,
-        `${m} per screen per month, or ${y} per screen per year.`,
+        `${m} per screen per month, or ${y} per screen per year — with AI, ${mAi} a month or ${yAi} a year.`,
         ``,
         `— The VenueOS team`,
       ].join('\n'),
@@ -149,7 +153,7 @@ export function trialEmail(input: TrialEmailInput): { subject: string; body: str
       `Add a payment method now and you keep every trial day — your first charge is on ${when}.`,
       url,
       ``,
-      `${m} per screen per month, or ${y} per screen per year (save 20%).`,
+      `${m} per screen per month, or ${y} per screen per year (two months free) — with AI, ${mAi} a month or ${yAi} a year.`,
       `Your screens and emergency alerts never switch off over billing.`,
       ``,
       `— The VenueOS team`,

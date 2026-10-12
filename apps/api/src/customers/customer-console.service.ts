@@ -301,6 +301,9 @@ export class CustomerConsoleService {
             suspendedAt: iso(lic.suspendedAt),
             suspendReason: lic.suspendReason,
             stripeManaged: !!lic.stripeSubscriptionId && lic.status !== 'CANCELLED' && lic.billingMode === 'CARD',
+            // 2026-10-12 — AI on our keys (the VenueOS + AI plan). The console toggles it for
+            // invoice / PO / comp; a card customer's comes from their Stripe price.
+            aiIncluded: lic.aiIncluded === true,
           }
         : null,
       cardCheckout: cardCheckoutAllowed(lic),

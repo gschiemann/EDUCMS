@@ -37,7 +37,8 @@ import { hasPlatformKey, platformKeyFor } from './ai-platform-keys';
 import { findTenantAiKeyRow } from './ai-tenant-key';
 import { tierForSavedChoice } from './ai-legacy-models';
 import { AiUsageMeterService } from './ai-usage-meter.service';
-import { AiAllowanceService } from './ai-allowance.service';
+import { AI_IMAGE_FEATURE, AiAllowanceService } from './ai-allowance.service';
+import { AI_ADDON_MONTHLY_CENTS, aiPlanRequiredMessage, platformImageCostMicros } from '../billing/ai-plan';
 // Signage Concierge (2026-06-28) — the conversational intake brain. The PURE
 // module owns the persona/contract + defensive parsing; AiService.conciergeChat
 // orchestrates it through the SAME resolve-key/caps/audit plumbing as generate().
@@ -682,16 +683,35 @@ export class AiService {
     unit?: 'credits';
     screens?: number;
     perScreenUsd?: number;
+    /** 2026-10-12 — 'ai' (VenueOS + AI), 'trial', or 'none'. */
+    plan?: 'ai' | 'trial' | 'none';
+    /** Our key exists, but AI on it needs the VenueOS + AI plan (show the upsell). */
+    planRequired?: boolean;
+    aiAddonMonthlyCents?: number;
   }> {
     // Status-only read: stay tolerant of an unreadable BYOK key so the
     // settings page still renders (it reports keyHealthy separately). This
     // is a read — no AI spend happens here, so the S5 hard-error is scoped
     // to the actual generate/image spend paths (default 'throw').
     const resolved = await this.resolveProviderKey(tenantId, 'platform');
-    if (!resolved) return { source: 'none', used: 0, cap: null, resetAt: null };
+    if (!resolved) {
+      // 2026-10-12 — our key exists but this organisation is not on the VenueOS + AI plan (and not
+      // in a trial): the dashboard shows the upsell ("Add AI for $5/screen/month") or "use your own
+      // key", never a dead button.
+      const planRequired = !!this.allowance && this.platformFastRouteAvailable()
+        && (await this.allowance.entitlement(tenantId)).plan === 'none';
+      return {
+        source: 'none',
+        used: 0,
+        cap: null,
+        resetAt: null,
+        ...(planRequired ? { planRequired: true, plan: 'none' as const, aiAddonMonthlyCents: AI_ADDON_MONTHLY_CENTS } : {}),
+      };
+    }
     if (resolved.source === 'tenant') return { source: 'tenant', used: 0, cap: null, resetAt: null };
     const u = await this.readPlatformUsage(tenantId);
     const snap = this.allowance ? await this.allowance.snapshot(tenantId) : null;
+    const plan = this.allowance ? (await this.allowance.entitlement(tenantId)).plan : undefined;
     return {
       source: 'platform',
       used: u.used,
@@ -699,7 +719,27 @@ export class AiService {
       resetAt: u.resetAt,
       unit: 'credits',
       ...(snap ? { screens: snap.screens, perScreenUsd: snap.perScreenUsd } : {}),
+      ...(plan ? { plan } : {}),
     };
+  }
+
+  /** Do we hold a key for the `fast` job at all (the route every non-design AI call starts on)? */
+  private platformFastRouteAvailable(): boolean {
+    const r = getCatalog().routeForJob('fast', hasPlatformKey);
+    return !!(r && platformKeyFor(r.provider));
+  }
+
+  /** The 402 a tenant without the AI plan gets on a spend path that would need OUR key. */
+  private aiPlanRequiredError(): HttpException {
+    return new HttpException(
+      {
+        code: 'AI_PLAN_REQUIRED',
+        message: aiPlanRequiredMessage(),
+        aiAddonMonthlyCents: AI_ADDON_MONTHLY_CENTS,
+        byokAvailable: true,
+      },
+      HttpStatus.PAYMENT_REQUIRED,
+    );
   }
 
   /**
@@ -795,6 +835,13 @@ export class AiService {
     const fastRoute = getCatalog().routeForJob('fast', hasPlatformKey);
     const fastKey = fastRoute ? platformKeyFor(fastRoute.provider) : null;
     if (fastRoute && fastKey) {
+      // 2026-10-12 — OUR key only for an organisation on the VenueOS + AI plan or in its free trial
+      // (billing/ai-plan.ts). Everyone else: the upsell 402 on a spend path, "no AI here" on a
+      // status read. Never a silent platform spend. (No allowance service = a hand-built spec.)
+      if (this.allowance && (await this.allowance.entitlement(tenantId)).plan === 'none') {
+        if (onUnreadableKey === 'throw') throw this.aiPlanRequiredError();
+        return null;
+      }
       const platform = { provider: fastRoute.provider, apiKey: fastKey, source: 'platform' as const, tier: 'standard' as AiTier };
       return {
         ...platform,
@@ -5038,19 +5085,37 @@ export class AiService {
       ? opts.size
       : '1024x1024';
 
-    // Anthropic can't generate images, and OUR key never does (images are a
-    // tenant-key, Tier-2 spend — since 2026-09-22 our key can be an OpenAI
-    // key, so the gate is on the SOURCE, not just the vendor). Surface a
-    // friendly, stable code — NEVER a 500 — so the FE can show the same "add
-    // an OpenAI or Google key" message the alt-text path uses.
-    if (resolved.source === 'platform' || resolved.provider === 'anthropic') {
+    // 2026-10-12 — images on OUR key, for the VenueOS + AI plan and free trials only (resolved is
+    // 'platform' only for them — resolveProviderKey refuses everyone else with AI_PLAN_REQUIRED).
+    // Always our OpenAI key (Anthropic has no image model; Google images stay own-key only).
+    // Counted (AI_IMAGES_PER_SCREEN / AI_TRIAL_IMAGES) and metered in dollars against the
+    // included allowance, both checked BEFORE anything is spent.
+    let platformImageKey: string | null = null;
+    if (resolved.source === 'platform') {
+      platformImageKey = platformKeyFor('openai');
+      if (!platformImageKey) {
+        throw new HttpException(
+          {
+            code: 'AI_IMAGE_UNAVAILABLE',
+            message: 'Image generation needs an OpenAI or Google API key. Add one in Settings → AI provider.',
+            provider: resolved.provider,
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      if (this.allowance) {
+        await this.allowance.assertImagesAvailable(opts.tenantId);
+        const u = await this.readPlatformUsage(opts.tenantId);
+        if (u.used >= u.cap) throw this.capReachedError(u);
+      }
+    } else if (resolved.provider === 'anthropic') {
+      // Surface a friendly, stable code — NEVER a 500 — so the FE can show the
+      // same "add an OpenAI or Google key" message the alt-text path uses.
       throw new HttpException(
         {
           code: 'AI_IMAGE_UNAVAILABLE',
           message:
-            resolved.source === 'platform'
-              ? 'Image generation needs an OpenAI or Google API key. Add one in Settings → AI provider.'
-              : 'Anthropic doesn’t generate images yet. Switch your provider to OpenAI or Google in Settings → AI provider to create images.',
+            'Anthropic doesn’t generate images yet. Switch your provider to OpenAI or Google in Settings → AI provider to create images.',
           provider: 'anthropic',
         },
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -5073,8 +5138,6 @@ export class AiService {
       );
     }
 
-    // (No included-allowance check here: the gate above means only a tenant's
-    // OWN key ever reaches this point — their provider bills them.)
 
     // Brand-aware prompt — a light touch. Weave the venue name, up to two
     // brand hexes, and the brand voice (if any) so the output matches the
@@ -5083,10 +5146,23 @@ export class AiService {
     const finalPrompt = brandHint ? `${prompt}. ${brandHint}` : prompt;
 
     // Dispatch to the right provider. Each returns the decoded PNG bytes.
-    const png =
-      resolved.provider === 'openai'
+    const png = platformImageKey
+      ? await this.callOpenAiImage(platformImageKey, finalPrompt, size)
+      : resolved.provider === 'openai'
         ? await this.callOpenAiImage(resolved.apiKey, finalPrompt, size)
         : await this.callGoogleImage(resolved.apiKey, resolved.model, finalPrompt, size);
+    // The provider has billed us for a platform image the moment it returned: meter it now (the
+    // ledger row is also what the image counter counts), whatever happens to the upload below.
+    if (platformImageKey) {
+      await this.meter?.recordFixed({
+        tenantId: opts.tenantId,
+        provider: 'openai',
+        model: 'gpt-image',
+        source: 'platform',
+        feature: AI_IMAGE_FEATURE,
+        costMicros: platformImageCostMicros(),
+      });
+    }
 
     // Persist as a normal Asset — same Supabase path + Asset row shape as
     // a regular image upload, so it shows up in the library, the player
@@ -5145,8 +5221,8 @@ export class AiService {
         tenantId: opts.tenantId,
         userId: opts.userId || null,
         details: JSON.stringify({
-          provider: resolved.provider,
-          model: resolved.model || null,
+          provider: platformImageKey ? 'openai' : resolved.provider,
+          model: platformImageKey ? 'gpt-image' : resolved.model || null,
           source: resolved.source,
           size,
           promptLen: prompt.length,
@@ -5162,7 +5238,7 @@ export class AiService {
       fileUrl: asset.fileUrl,
       name,
       status: asset.status,
-      provider: resolved.provider,
+      provider: platformImageKey ? 'openai' : resolved.provider,
     };
   }
 

@@ -342,7 +342,10 @@ describe('AiAltTextService (P1-2)', () => {
         { provide: RedisService, useValue: { publisher: null } },
         {
           provide: AiAllowanceService,
-          useValue: { snapshot: jest.fn(async () => ({ usedMicros: 5_000_000, includedMicros: 5_000_000 })) },
+          useValue: {
+            entitlement: jest.fn(async () => ({ plan: 'ai' })),
+            snapshot: jest.fn(async () => ({ usedMicros: 5_000_000, includedMicros: 5_000_000 })),
+          },
         },
       ],
     }).compile();
@@ -357,6 +360,31 @@ describe('AiAltTextService (P1-2)', () => {
     const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
     expect(audit).toBeDefined();
     expect(JSON.parse(audit.details).reason).toBe('platform_cap_exhausted');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('2026-10-12 — no VenueOS + AI plan (no BYOK): our key is NEVER used; skipped like a tenant with no key', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    const snapshot = jest.fn(async () => ({ usedMicros: 0, includedMicros: 5_000_000 }));
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AiAltTextService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: RedisService, useValue: { publisher: null } },
+        { provide: AiAllowanceService, useValue: { entitlement: jest.fn(async () => ({ plan: 'none' })), snapshot } },
+      ],
+    }).compile();
+    service = module.get(AiAltTextService);
+
+    const result = await service.generateImageAltText({
+      tenantId: 'tenant-1',
+      imageBuffer: Buffer.from([0]),
+      mimeType: 'image/jpeg',
+    });
+    expect(result).toBeNull();
+    const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
+    expect(audit).toBeDefined();
+    expect(JSON.parse(audit.details).reason).toBe('no_ai_provider_configured');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

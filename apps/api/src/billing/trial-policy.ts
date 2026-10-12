@@ -34,9 +34,13 @@ export const TRIAL_DAYS = 14;
 export const TRIAL_SCREENS = 3;
 /** Days after the trial ends before the dashboard goes read-only. */
 export const TRIAL_GRACE_DAYS = 7;
-/** Per-screen list prices (USD cents) — the same numbers as the MONTHLY / ANNUAL catalog tiers. */
-export const PRICE_MONTHLY_CENTS = 2500;
-export const PRICE_ANNUAL_CENTS = 24000;
+/**
+ * Per-screen list prices (USD cents) of the plan WITHOUT AI — the same numbers as the MONTHLY /
+ * ANNUAL catalog tiers. The VenueOS + AI prices live beside them in ai-plan.ts (PLAN_PRICES).
+ * 2026-10-12: $25/$240 → $20/$200 (no AI) and $25/$250 (with AI).
+ */
+export const PRICE_MONTHLY_CENTS = 2000;
+export const PRICE_ANNUAL_CENTS = 20000;
 /** Checkout's adjustable-quantity ceiling — far above any real self-serve fleet. */
 export const MAX_SELF_SERVE_SCREENS = 1000;
 

@@ -28,13 +28,33 @@
  *   against either; a tenant with its own provider key pays its provider and is unlimited here (the
  *   hourly abuse cap still applies).
  *
+ * 2026-10-12 — THE VenueOS + AI PLAN (billing/ai-plan.ts). Nothing on our key without it:
+ * `entitlement()` reads the nearest license up the tenant tree — 'ai' (License.aiIncluded),
+ * 'trial' (a free trial), or 'none'. The AI plan includes AI_BOARDS_PER_SCREEN (10) boards and
+ * AI_IMAGES_PER_SCREEN (20) images per paired screen per month; a trial AI_TRIAL_BOARDS (10) +
+ * AI_TRIAL_IMAGES (10) for the whole trial (counted from its first day, not the month); no plan
+ * nothing. IMAGES are a third count (`images()`): one ledger row per image on our key
+ * (feature 'image'), also metered in dollars. The dollar allowance (now $2.50 per screen) stays
+ * the hard ceiling over everything that is not the board pipeline.
+ *
  * Month = UTC calendar month. Dollar reads are cached for 30s per organisation (a burst of checks
  * during one generation costs one query) and dropped whenever this process records spend. Board
  * reads are NOT cached: they happen once per batch / refine / page load, and a pack bought a moment
  * ago must show up on the very next read.
  */
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { LicenseService } from '../license/license.service';
+import { cardBillingReady } from '../billing/trial-policy';
+import {
+  AI_ADDON_MONTHLY_CENTS,
+  aiEntitlementOf,
+  aiLimitMessage,
+  aiPlanLimits,
+  includedFor,
+  type AiEntitlement,
+  type AiPlan,
+} from '../billing/ai-plan';
 import { collectDescendantTenantIds, MAX_TENANT_TREE_DEPTH } from '../emergency/tenant-hierarchy';
 import { findTenantAiKeyRow } from './ai-tenant-key';
 import {
@@ -54,8 +74,12 @@ import {
   platformDesignRouteAvailable,
   settleBoardPacks,
   type BoardPurchaseAvailability,
+  type BoardPurchaseReasonCode,
   type BoardSource,
 } from './ai-board-credits';
+
+/** Ledger feature of one AI image generated on OUR key (2026-10-12 — counted + metered in dollars). */
+export const AI_IMAGE_FEATURE = 'image';
 
 export interface AllowanceSnapshot {
   /** Root of the tenant tree the allowance is pooled under. */
@@ -109,6 +133,24 @@ export interface BoardSnapshot {
   packs: BoardPackBalance[];
   /** A read failed: the numbers are the floor, not the truth (never unlimited, never a thrown 500). */
   degraded?: true;
+  /** 2026-10-12 — which allowance: the AI plan (per month), a free trial (one total), or none. */
+  plan?: AiPlan;
+  /** 'month' = resets at `resetAt`; 'trial' = one total for the trial, ends at `resetAt`. */
+  period?: 'month' | 'trial';
+}
+
+/** The organisation's AI IMAGE allowance on our key (2026-10-12). */
+export interface ImageSnapshot {
+  orgTenantId: string;
+  plan: AiPlan;
+  period: 'month' | 'trial';
+  screens: number;
+  included: number;
+  used: number;
+  left: number;
+  /** Month: the first instant of next UTC month. Trial: when the trial ends (null when unknown). */
+  resetAt: string | null;
+  degraded?: true;
 }
 
 /** `GET /api/v1/ai/allowance` — what the dashboard shows an operator. */
@@ -126,8 +168,18 @@ export interface AiAllowanceView {
   purchaseEnabled: boolean;
   /** Present when purchaseEnabled is false (or source is not 'platform'): one line the web can show. */
   reason?: string;
-  reasonCode?: 'OWN_KEY' | 'NO_PLATFORM_KEY' | 'STRIPE_NOT_CONFIGURED';
+  reasonCode?: BoardPurchaseReasonCode;
   degraded?: true;
+  /** 2026-10-12 — the organisation's AI plan: 'ai' (VenueOS + AI), 'trial', or 'none'. */
+  plan?: AiPlan;
+  /** 'month' or 'trial' (a trial's boards and images are one total, not monthly). */
+  period?: 'month' | 'trial';
+  /** Images on our key (null on the tenant's own key, or without AI). */
+  imagesIncluded?: number | null;
+  imagesUsed?: number | null;
+  imagesLeft?: number | null;
+  /** What AI adds per screen per month (the upsell), cents. */
+  aiAddonMonthlyCents?: number;
   /** SUPER_ADMIN callers only: our trailing-30-day cost of goods per board, USD (null = no history). */
   boardCostUsdTrailing?: number | null;
 }
@@ -184,11 +236,21 @@ export class AiAllowanceService {
   private readonly logger = new Logger(AiAllowanceService.name);
   private readonly orgCache = new Map<string, { org: string; at: number }>();
   private readonly snapCache = new Map<string, { snap: AllowanceSnapshot; at: number }>();
+  private readonly entCache = new Map<string, { ent: AiEntitlement; at: number }>();
+  private readonly licenses: LicenseService;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // LicenseService only needs Prisma; specs that build this service by hand get one over the same
+    // client, so the entitlement read is the SAME code in every environment (never a stub that says yes).
+    @Optional() license?: LicenseService,
+  ) {
+    this.licenses = license ?? new LicenseService(prisma);
+  }
 
+  /** 2026-10-12: $2.50 per paired screen (half the $5 AI add-on) — the hard dollar ceiling on our key. */
   get perScreenUsd(): number {
-    return envUsd('AI_INCLUDED_USD_PER_SCREEN', 2);
+    return envUsd('AI_INCLUDED_USD_PER_SCREEN', 2.5);
   }
 
   get floorUsd(): number {
@@ -219,6 +281,32 @@ export class AiAllowanceService {
     }
     this.orgCache.set(tenantId, { org: current, at: Date.now() });
     return current;
+  }
+
+  /**
+   * May this organisation spend OUR AI keys, and on which allowance (billing/ai-plan.ts)? The plan
+   * comes from the nearest license up the tenant tree. Cached 30 s per tenant. A read failure is
+   * 'none' — we never spend platform money on a guess.
+   */
+  async entitlement(tenantId: string, now: Date = new Date()): Promise<AiEntitlement> {
+    const hit = this.entCache.get(tenantId);
+    if (hit && Date.now() - hit.at < SNAPSHOT_CACHE_MS) return hit.ent;
+    let ent: AiEntitlement = { plan: 'none', trialStartsAt: null, trialEndsAt: null };
+    try {
+      const account = await this.licenses.orgAccount(tenantId);
+      ent = aiEntitlementOf(account.governing as any, now, cardBillingReady());
+    } catch (e: any) {
+      this.logger.warn(`AI plan lookup failed for ${tenantId}: ${e?.message} — treated as no AI plan`);
+      return ent; // not cached: the next call retries
+    }
+    this.entCache.set(tenantId, { ent, at: Date.now() });
+    return ent;
+  }
+
+  /** Drop the cached plan (after a checkout / AI switch / console toggle in THIS process). */
+  invalidateEntitlement(tenantId?: string): void {
+    if (tenantId) this.entCache.delete(tenantId);
+    else this.entCache.clear();
   }
 
   /** Paired screens across the organisation (root + every non-archived descendant). */
@@ -296,6 +384,10 @@ export class AiAllowanceService {
     const orgTenantId = await this.orgTenantIdFor(tenantId);
     const month = monthKey(now);
     const resetAt = utcMonthWindow(now).next.toISOString();
+    // 2026-10-12 — the plan sizes the allowance: the AI plan per paired screen per month, a trial
+    // one flat total for the whole trial, no AI plan nothing (billing/ai-plan.ts).
+    const ent = await this.entitlement(tenantId, now);
+    if (ent.plan === 'trial') return this.trialBoards(orgTenantId, ent, now);
     try {
       // Packs that can matter: every pack still live, and every pack that was live alongside one
       // (bought within the last 24 months). An older pack cannot change today's balance.
@@ -315,10 +407,11 @@ export class AiAllowanceService {
 
       // This month's included boards only ever RISE within the month: pairing a screen adds its
       // boards at once, unpairing one does not take boards back until the month turns.
-      const computed = includedBoardsFor(screens);
+      const computed = ent.plan === 'ai' ? includedBoardsFor(screens, aiPlanLimits().boardsPerScreen) : 0;
       const includedByMonth = new Map<string, number>(monthRows.map((r) => [r.month, r.includedBoards]));
       const stored = includedByMonth.get(month) ?? 0;
-      const included = Math.max(computed, stored);
+      // Without the AI plan nothing is included this month, whatever an earlier month recorded.
+      const included = ent.plan === 'ai' ? Math.max(computed, stored) : 0;
       includedByMonth.set(month, included);
       if (computed > stored) await this.raiseMonthIncluded(orgTenantId, month, computed);
 
@@ -356,24 +449,120 @@ export class AiAllowanceService {
             expired,
           };
         }),
+        plan: ent.plan,
+        period: 'month',
       };
     } catch (e: any) {
       // Same bounded choice as the dollar snapshot: never unlimited, never a thrown 500 — the floor,
       // nothing used, no packs (a pack balance we could not read is shown as none, never invented).
       this.logger.warn(`board allowance read failed for org ${orgTenantId}: ${e?.message}`);
+      const floor = ent.plan === 'ai' ? BOARDS_FLOOR : 0;
       return {
         orgTenantId,
         screens: 0,
         month,
-        included: BOARDS_FLOOR,
+        included: floor,
         used: 0,
         purchasedRemaining: 0,
-        left: BOARDS_FLOOR,
+        left: floor,
         resetAt,
         packs: [],
         degraded: true,
+        plan: ent.plan,
+        period: 'month',
       };
     }
+  }
+
+  /** Start of the window an allowance is counted over: the trial's first day, else this UTC month. */
+  private windowStart(ent: AiEntitlement, now: Date): Date {
+    if (ent.plan === 'trial' && ent.trialStartsAt) return ent.trialStartsAt;
+    return utcMonthWindow(now).start;
+  }
+
+  /**
+   * A free trial's boards: ONE total for the whole trial (AI_TRIAL_BOARDS, default 10), counted
+   * from the trial's first day — never reset by a month turning mid-trial. No packs on a trial.
+   */
+  private async trialBoards(orgTenantId: string, ent: AiEntitlement, now: Date): Promise<BoardSnapshot> {
+    const month = monthKey(now);
+    const included = includedFor('boards', 'trial', 0);
+    const resetAt = ent.trialEndsAt ? ent.trialEndsAt.toISOString() : utcMonthWindow(now).next.toISOString();
+    try {
+      const [screens, used] = await Promise.all([
+        this.screensInOrg(orgTenantId),
+        this.prisma.client.aiUsageEvent.count({
+          where: {
+            orgTenantId,
+            source: 'platform',
+            feature: { in: [...BOARD_CREDIT_FEATURES] },
+            createdAt: { gte: this.windowStart(ent, now) },
+          },
+        }),
+      ]);
+      return {
+        orgTenantId, screens, month, included, used, purchasedRemaining: 0,
+        left: Math.max(0, included - used), resetAt, packs: [], plan: 'trial', period: 'trial',
+      };
+    } catch (e: any) {
+      this.logger.warn(`trial board allowance read failed for org ${orgTenantId}: ${e?.message}`);
+      return {
+        orgTenantId, screens: 0, month, included, used: 0, purchasedRemaining: 0, left: included,
+        resetAt, packs: [], degraded: true, plan: 'trial', period: 'trial',
+      };
+    }
+  }
+
+  // ── IMAGES ────────────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * The organisation's AI IMAGE allowance on our key (2026-10-12): the AI plan gets
+   * AI_IMAGES_PER_SCREEN (20) × paired screens per UTC month, a trial AI_TRIAL_IMAGES (10) for the
+   * whole trial, no plan none. Counted from the ledger (`feature = 'image'`, our key), pooled at
+   * the organisation. A read failure reports nothing left — an image is the costliest call we make.
+   */
+  async images(tenantId: string, now: Date = new Date()): Promise<ImageSnapshot> {
+    const orgTenantId = await this.orgTenantIdFor(tenantId);
+    const ent = await this.entitlement(tenantId, now);
+    const period: 'month' | 'trial' = ent.plan === 'trial' ? 'trial' : 'month';
+    const resetAt =
+      ent.plan === 'trial'
+        ? ent.trialEndsAt ? ent.trialEndsAt.toISOString() : null
+        : utcMonthWindow(now).next.toISOString();
+    try {
+      const [screens, used] = await Promise.all([
+        this.screensInOrg(orgTenantId),
+        this.prisma.client.aiUsageEvent.count({
+          where: { orgTenantId, source: 'platform', feature: AI_IMAGE_FEATURE, createdAt: { gte: this.windowStart(ent, now) } },
+        }),
+      ]);
+      const included = includedFor('images', ent.plan, screens);
+      return { orgTenantId, plan: ent.plan, period, screens, included, used, left: Math.max(0, included - used), resetAt };
+    } catch (e: any) {
+      this.logger.warn(`image allowance read failed for org ${orgTenantId}: ${e?.message}`);
+      return { orgTenantId, plan: ent.plan, period, screens: 0, included: 0, used: 0, left: 0, resetAt, degraded: true };
+    }
+  }
+
+  /**
+   * Before an image on OUR key: one must be left, or the friendly AI_CAP_REACHED 402 (unit
+   * 'images') — "add your own AI key or contact us for more". Nothing is spent before this passes.
+   */
+  async assertImagesAvailable(tenantId: string): Promise<ImageSnapshot> {
+    const img = await this.images(tenantId);
+    if (img.left >= 1) return img;
+    throw new HttpException(
+      {
+        message: aiLimitMessage({ unit: 'images', plan: img.plan, resetAt: img.resetAt }),
+        code: 'AI_CAP_REACHED',
+        unit: 'images',
+        plan: img.plan,
+        used: img.used,
+        cap: img.included,
+        resetAt: img.resetAt,
+      },
+      HttpStatus.PAYMENT_REQUIRED,
+    );
   }
 
   /**
@@ -444,12 +633,16 @@ export class AiAllowanceService {
     const b = await this.boards(tenantId);
     const want = Math.max(1, Math.floor(needed) || 1);
     if (want <= b.left) return b;
-    const purchase = boardPurchaseAvailability('platform');
+    const purchase = boardPurchaseAvailability('platform', b.plan ?? 'ai');
     throw new HttpException(
       {
-        message: boardsCapMessage({ needed: want, left: b.left, resetAt: b.resetAt, purchaseEnabled: purchase.enabled, kind }),
+        message:
+          b.plan === 'trial'
+            ? aiLimitMessage({ unit: 'boards', plan: 'trial', resetAt: b.resetAt })
+            : boardsCapMessage({ needed: want, left: b.left, resetAt: b.resetAt, purchaseEnabled: purchase.enabled, kind }),
         code: 'AI_CAP_REACHED',
         unit: 'boards',
+        plan: b.plan ?? 'ai',
         boardsNeeded: want,
         boardsLeft: b.left,
         used: b.used,
@@ -472,18 +665,23 @@ export class AiAllowanceService {
     } catch (e: any) {
       this.logger.warn(`AI key lookup failed for ${tenantId}: ${e?.message}`);
     }
-    return platformDesignRouteAvailable() ? 'platform' : 'none';
+    if (!platformDesignRouteAvailable()) return 'none';
+    // 2026-10-12 — our key draws boards only for the VenueOS + AI plan or a free trial.
+    return (await this.entitlement(tenantId)).plan === 'none' ? 'none' : 'platform';
   }
 
   /** May this tenant buy a board pack right now (and if not, why)? Checkout and the view share it. */
   async purchaseAvailabilityFor(tenantId: string): Promise<BoardPurchaseAvailability> {
-    return boardPurchaseAvailability(await this.boardSourceFor(tenantId));
+    const source = await this.boardSourceFor(tenantId);
+    const plan = source === 'tenant' ? 'ai' : (await this.entitlement(tenantId)).plan;
+    return boardPurchaseAvailability(source, plan);
   }
 
   /** `GET /api/v1/ai/allowance`. Tenant from the session only; `includeCost` for SUPER_ADMIN. */
   async operatorView(tenantId: string, opts: { includeCost?: boolean } = {}): Promise<AiAllowanceView> {
     const source = await this.boardSourceFor(tenantId);
-    const purchase = boardPurchaseAvailability(source);
+    const plan: AiPlan = source === 'tenant' ? 'none' : (await this.entitlement(tenantId)).plan;
+    const purchase = boardPurchaseAvailability(source, source === 'tenant' ? 'ai' : plan);
     const packs = AI_BOARD_PACKS.map(({ id, boards, usd }) => ({ id, boards, usd }));
     const blocked = purchase.enabled ? {} : { reason: purchase.reason, reasonCode: purchase.reasonCode };
     if (source !== 'platform') {
@@ -499,9 +697,15 @@ export class AiAllowanceService {
         packs,
         purchaseEnabled: false,
         ...blocked,
+        plan,
+        period: 'month',
+        imagesIncluded: null,
+        imagesUsed: null,
+        imagesLeft: null,
+        aiAddonMonthlyCents: AI_ADDON_MONTHLY_CENTS,
       };
     }
-    const b = await this.boards(tenantId);
+    const [b, img] = await Promise.all([this.boards(tenantId), this.images(tenantId)]);
     let boardCostUsdTrailing: number | null | undefined;
     if (opts.includeCost) {
       boardCostUsdTrailing = (await this.boardCostTrailing([b.orgTenantId])).get(b.orgTenantId)?.usdPerBoard ?? null;
@@ -520,6 +724,12 @@ export class AiAllowanceService {
       ...blocked,
       ...(b.degraded ? { degraded: true as const } : {}),
       ...(opts.includeCost ? { boardCostUsdTrailing } : {}),
+      plan: b.plan ?? plan,
+      period: b.period ?? 'month',
+      imagesIncluded: img.included,
+      imagesUsed: img.used,
+      imagesLeft: img.left,
+      aiAddonMonthlyCents: AI_ADDON_MONTHLY_CENTS,
     };
   }
 

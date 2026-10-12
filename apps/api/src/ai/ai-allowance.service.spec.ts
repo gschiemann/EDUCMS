@@ -11,7 +11,17 @@ import { AiUsageMeterService } from './ai-usage-meter.service';
 import { addMonthsUtc, monthKey } from './ai-board-credits';
 import { setCatalogState } from './ai-model-catalog';
 
-type Row = { id: string; parentId: string | null; archivedAt?: Date | null; aiKeyEncrypted?: string | null; aiProvider?: string | null };
+type Row = {
+  id: string;
+  parentId: string | null;
+  archivedAt?: Date | null;
+  aiKeyEncrypted?: string | null;
+  aiProvider?: string | null;
+  /** 2026-10-12 — the organisation's License (the AI plan is read from the nearest one up the tree). */
+  license?: Record<string, unknown> | null;
+};
+/** An enterprise (invoice) license with AI switched on in the customer console. */
+const AI_LICENSE = { tier: 'ANNUAL', status: 'ACTIVE', billingMode: 'INVOICE', aiIncluded: true };
 type Event = { tenantId?: string; orgTenantId: string; source: string; feature: string; costMicros: number; createdAt: Date };
 type Purchase = { id: string; orgTenantId: string; stripeSessionId: string; pack: string; boards: number; usdMicros: number; createdAt: Date; expiresAt: Date };
 type MonthRow = { orgTenantId: string; month: string; includedBoards: number };
@@ -37,9 +47,23 @@ function makePrisma(tenants: Row[], screens: Array<{ tenantId: string; pairedAt:
   const prisma: any = {
     client: {
       tenant: {
+        // One row shape serves every reader: the org walk (parentId), the key walk (aiKey*), and
+        // LicenseService.orgAccount (license + parent chain, three levels up).
         findUnique: jest.fn(async ({ where }: any) => {
-          const t = tenants.find((x) => x.id === where.id);
-          return t ? { parentId: t.parentId, aiKeyEncrypted: t.aiKeyEncrypted ?? null, aiProvider: t.aiProvider ?? null, aiModel: null } : null;
+          const shape = (id: string | null, depth: number): any => {
+            const t = id ? tenants.find((x) => x.id === id) : undefined;
+            if (!t) return null;
+            return {
+              id: t.id,
+              parentId: t.parentId,
+              aiKeyEncrypted: t.aiKeyEncrypted ?? null,
+              aiProvider: t.aiProvider ?? null,
+              aiModel: null,
+              license: t.license ?? null,
+              parent: depth < 3 ? shape(t.parentId, depth + 1) : null,
+            };
+          };
+          return shape(where.id, 0);
         }),
         findMany: jest.fn(async ({ where }: any) =>
           tenants.filter((t) => where.parentId.in.includes(t.parentId) && !t.archivedAt).map((t) => ({ id: t.id })),
@@ -108,11 +132,11 @@ function makePrisma(tenants: Row[], screens: Array<{ tenantId: string; pairedAt:
 }
 
 const TREE: Row[] = [
-  { id: 'district', parentId: null },
+  { id: 'district', parentId: null, license: AI_LICENSE },
   { id: 'school-a', parentId: 'district' },
   { id: 'school-b', parentId: 'district' },
   { id: 'closed', parentId: 'district', archivedAt: new Date() },
-  { id: 'solo', parentId: null },
+  { id: 'solo', parentId: null, license: AI_LICENSE },
 ];
 const SCREENS = [
   ...Array.from({ length: 6 }, () => ({ tenantId: 'school-a', pairedAt: new Date() })),
@@ -149,8 +173,8 @@ describe('AiAllowanceService — dollars (every AI feature outside the Designer)
     const snap = await svc.snapshot('school-a');
     expect(snap.orgTenantId).toBe('district');
     expect(snap.screens).toBe(10); // 6 + 4 paired; pending + archived school excluded
-    expect(snap.includedMicros).toBe(20_000_000);
-    expect(snap.includedCredits).toBe(2_000);
+    expect(snap.includedMicros).toBe(25_000_000); // $2.50 per screen (2026-10-12: half the $5 AI add-on)
+    expect(snap.includedCredits).toBe(2_500);
     expect(snap.usedCredits).toBe(0);
     expect(snap.resetAt).toBe(utcMonthWindow().next.toISOString());
   });
@@ -170,7 +194,7 @@ describe('AiAllowanceService — dollars (every AI feature outside the Designer)
     expect(snap.includedMicros).toBe(10_000_000);
     expect(snap.perScreenUsd).toBe(1);
     process.env.AI_INCLUDED_USD_PER_SCREEN = 'nonsense';
-    expect(new AiAllowanceService(prisma).perScreenUsd).toBe(2);
+    expect(new AiAllowanceService(prisma).perScreenUsd).toBe(2.5);
   });
 
   it('spend recorded anywhere in the organisation counts against the shared pool; BYOK spend never does', async () => {
@@ -238,13 +262,13 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
     setCatalogState({});
   });
 
-  it('included = max(10, 5 × paired screens) across the organisation; used = board credits on OUR key only', async () => {
+  it('included = 10 × paired screens across the organisation (AI plan); used = board credits on OUR key only', async () => {
     const { prisma, events } = makePrisma(TREE, SCREENS);
     events.push(ev('district', 'designer'), ev('district', 'designer'), ev('district', 'designer-revise'));
     events.push(ev('district', 'designer-redraw'), ev('district', 'designer-review'), ev('district', 'designer-review-revise'), ev('district', 'designer-brief'));
     events.push(ev('district', 'designer', new Date(), 'tenant')); // own key: never a credit
     const b = await new AiAllowanceService(prisma).boards('school-b');
-    expect(b).toMatchObject({ orgTenantId: 'district', screens: 10, included: 50, used: 3, purchasedRemaining: 0, left: 47, packs: [] });
+    expect(b).toMatchObject({ orgTenantId: 'district', screens: 10, included: 100, used: 3, purchasedRemaining: 0, left: 97, packs: [], plan: 'ai', period: 'month' });
     expect(b.resetAt).toBe(utcMonthWindow().next.toISOString());
   });
 
@@ -262,13 +286,13 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
     const { prisma, raised, months } = makePrisma(TREE, SCREENS);
     const svc = new AiAllowanceService(prisma);
     await svc.boards('school-a');
-    expect(raised).toEqual([{ orgTenantId: 'district', month: monthKey(new Date()), included: 50 }]);
-    // six screens unpaired mid-month: the stored 50 stands, and nothing is re-written
+    expect(raised).toEqual([{ orgTenantId: 'district', month: monthKey(new Date()), included: 100 }]);
+    // six screens unpaired mid-month: the stored 100 stands, and nothing is re-written
     prisma.client.screen.count = jest.fn(async () => 4);
     const after = await svc.boards('school-a');
-    expect(after.included).toBe(50);
+    expect(after.included).toBe(100);
     expect(raised).toHaveLength(1);
-    expect(months).toEqual([{ orgTenantId: 'district', month: monthKey(new Date()), includedBoards: 50 }]);
+    expect(months).toEqual([{ orgTenantId: 'district', month: monthKey(new Date()), includedBoards: 100 }]);
   });
 
   it('packs: bought boards are drawn after the included ones, month by month, from the LEDGER — and expired packs lapse', async () => {
@@ -328,7 +352,7 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
     const tree: Row[] = [
       { id: 'chain', parentId: null, aiKeyEncrypted: 'enc', aiProvider: 'openai' },
       { id: 'store', parentId: 'chain' },
-      { id: 'indie', parentId: null },
+      { id: 'indie', parentId: null, license: AI_LICENSE },
     ];
     const { prisma } = makePrisma(tree, []);
     const svc = new AiAllowanceService(prisma);
@@ -347,10 +371,10 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
     expect(view).toEqual({
       source: 'platform',
       unlimited: false,
-      boardsIncluded: 50,
+      boardsIncluded: 100,
       boardsUsed: 2,
       boardsPurchasedRemaining: 0,
-      boardsLeft: 48,
+      boardsLeft: 98,
       resetAt: utcMonthWindow().next.toISOString(),
       screens: 10,
       packs: [
@@ -359,6 +383,12 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
         { id: 'bulk', boards: 100, usd: 49 },
       ],
       purchaseEnabled: true,
+      plan: 'ai',
+      period: 'month',
+      imagesIncluded: 200,
+      imagesUsed: 0,
+      imagesLeft: 200,
+      aiAddonMonthlyCents: 500,
     });
     expect(view).not.toHaveProperty('boardCostUsdTrailing');
     const su = await svc.operatorView('school-a', { includeCost: true });
@@ -421,6 +451,167 @@ describe('AiUsageMeterService', () => {
     const meter = new AiUsageMeterService(prisma, new AiAllowanceService(prisma));
     await expect(
       meter.record({ tenantId: 'solo', provider: 'anthropic', model: 'claude-haiku-4-5', source: 'platform', feature: 'x', usage: { inputTokens: 1, outputTokens: 1 } }),
+    ).resolves.toBe(0);
+  });
+});
+
+describe('AiAllowanceService — the VenueOS + AI plan (2026-10-12)', () => {
+  const saved = { ...process.env };
+  const DAY = 86_400_000;
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'sk-openai-platform';
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
+    process.env.STRIPE_PRICE_MONTHLY = 'price_m';
+    process.env.STRIPE_PRICE_ANNUAL = 'price_y';
+    for (const k of ['AI_BOARDS_PER_SCREEN', 'AI_IMAGES_PER_SCREEN', 'AI_TRIAL_BOARDS', 'AI_TRIAL_IMAGES']) delete process.env[k];
+    setCatalogState({});
+  });
+  afterAll(() => {
+    process.env = saved;
+    setCatalogState({});
+  });
+
+  const trialLicense = (daysLeft: number) => ({
+    tier: 'FREE_TRIAL', status: 'ACTIVE', billingMode: 'CARD', trialEndsAt: new Date(Date.now() + daysLeft * DAY),
+  });
+
+  it('GATE: no AI plan → our key draws nothing; the view says AI_PLAN_REQUIRED (the upsell), not "no key"', async () => {
+    const tree: Row[] = [
+      { id: 'basic', parentId: null, license: { tier: 'MONTHLY', status: 'ACTIVE', billingMode: 'CARD', stripeSubscriptionId: 'sub', aiIncluded: false } },
+      { id: 'legacy', parentId: null }, // no license at all
+    ];
+    const { prisma } = makePrisma(tree, [{ tenantId: 'basic', pairedAt: new Date() }]);
+    const svc = new AiAllowanceService(prisma);
+    for (const id of ['basic', 'legacy']) {
+      expect((await svc.entitlement(id)).plan).toBe('none');
+      expect(await svc.boardSourceFor(id)).toBe('none');
+      expect(await svc.operatorView(id)).toMatchObject({
+        source: 'none', plan: 'none', purchaseEnabled: false, reasonCode: 'AI_PLAN_REQUIRED', aiAddonMonthlyCents: 500,
+      });
+    }
+    // and the counters agree: nothing included
+    expect(await svc.images('basic')).toMatchObject({ plan: 'none', included: 0, left: 0 });
+    expect(await svc.boards('basic')).toMatchObject({ plan: 'none', included: 0, left: 0 });
+  });
+
+  it('GATE: the plan is inherited — a school under an AI district is on the AI plan; a cancelled AI license is not', async () => {
+    const tree: Row[] = [
+      { id: 'd', parentId: null, license: AI_LICENSE },
+      { id: 's', parentId: 'd' },
+      { id: 'gone', parentId: null, license: { ...AI_LICENSE, status: 'CANCELLED' } },
+    ];
+    const { prisma } = makePrisma(tree, []);
+    const svc = new AiAllowanceService(prisma);
+    expect((await svc.entitlement('s')).plan).toBe('ai');
+    expect((await svc.entitlement('gone')).plan).toBe('none');
+  });
+
+  it('GATE: a license read failure is "no AI plan" (never a guess that spends our money), and is not cached', async () => {
+    const { prisma } = makePrisma(TREE, []);
+    const real = prisma.client.tenant.findUnique;
+    prisma.client.tenant.findUnique = jest.fn(async (args: any) => {
+      if (args?.select?.license) throw new Error('db down');
+      return real(args);
+    });
+    const svc = new AiAllowanceService(prisma);
+    expect((await svc.entitlement('solo')).plan).toBe('none');
+    prisma.client.tenant.findUnique = real;
+    expect((await svc.entitlement('solo')).plan).toBe('ai');
+  });
+
+  it('TRIAL: 10 boards and 10 images for the WHOLE trial — counted from the trial start, not the month', async () => {
+    const lic = trialLicense(4);
+    const tree: Row[] = [{ id: 'try', parentId: null, license: lic }];
+    const { prisma, events } = makePrisma(tree, [{ tenantId: 'try', pairedAt: new Date() }, { tenantId: 'try', pairedAt: new Date() }]);
+    // 3 boards drawn 9 days ago (inside the 14-day trial, possibly last month) + 2 today; one image
+    const earlier = new Date(Date.now() - 9 * DAY);
+    events.push(ev('try', 'designer', earlier), ev('try', 'designer', earlier), ev('try', 'designer-revise', earlier));
+    events.push(ev('try', 'designer'), ev('try', 'designer'), ev('try', 'image'));
+    // a row from BEFORE the trial began never counts
+    events.push(ev('try', 'designer', new Date(Date.now() - 30 * DAY)));
+    const svc = new AiAllowanceService(prisma);
+    const b = await svc.boards('try');
+    expect(b).toMatchObject({ plan: 'trial', period: 'trial', included: 10, used: 5, left: 5, purchasedRemaining: 0 });
+    expect(b.resetAt).toBe(lic.trialEndsAt.toISOString());
+    const img = await svc.images('try');
+    expect(img).toMatchObject({ plan: 'trial', period: 'trial', included: 10, used: 1, left: 9 });
+    // a trial cannot buy packs (they open with the AI plan)
+    expect(await svc.purchaseAvailabilityFor('try')).toMatchObject({ enabled: false, reasonCode: 'TRIAL' });
+  });
+
+  it('TRIAL: out of boards → AI_CAP_REACHED 402 that says "for your free trial", your own key, or contact us', async () => {
+    const tree: Row[] = [{ id: 'try', parentId: null, license: trialLicense(4) }];
+    const { prisma, events } = makePrisma(tree, []);
+    for (let i = 0; i < 10; i++) events.push(ev('try', 'designer'));
+    const err = await new AiAllowanceService(prisma).assertBoardsAvailable('try', 1).catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'boards', plan: 'trial', boardsLeft: 0 });
+    expect(err.getResponse().message).toContain('for your free trial');
+    expect(err.getResponse().message).toContain('contact us for more');
+  });
+
+  it('IMAGES: 20 per paired screen per month on the AI plan, POOLED across the organisation, our key only, this month only', async () => {
+    const { prisma, events } = makePrisma(TREE, SCREENS);
+    const lastMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15));
+    events.push(ev('district', 'image'), ev('district', 'image'), ev('district', 'image', lastMonth));
+    events.push(ev('district', 'image', new Date(), 'tenant')); // their own key: never counted
+    events.push(ev('solo', 'image')); // another organisation
+    const img = await new AiAllowanceService(prisma).images('school-b');
+    expect(img).toMatchObject({ orgTenantId: 'district', plan: 'ai', period: 'month', screens: 10, included: 200, used: 2, left: 198 });
+    expect(img.resetAt).toBe(utcMonthWindow().next.toISOString());
+  });
+
+  it('IMAGES: the monthly reset — last month\'s images never count against this month', async () => {
+    const { prisma, events } = makePrisma(TREE, []);
+    const lastMonth = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 20));
+    for (let i = 0; i < 20; i++) events.push(ev('solo', 'image', lastMonth));
+    const svc = new AiAllowanceService(prisma);
+    expect(await svc.images('solo')).toMatchObject({ included: 20, used: 0, left: 20 });
+  });
+
+  it('IMAGES: none left → the friendly AI_CAP_REACHED 402 (unit images), nothing spent; env tunes the limit', async () => {
+    const { prisma, events } = makePrisma(TREE, []);
+    for (let i = 0; i < 20; i++) events.push(ev('solo', 'image'));
+    const svc = new AiAllowanceService(prisma);
+    const err = await svc.assertImagesAvailable('solo').catch((e) => e);
+    expect(err.getStatus()).toBe(402);
+    expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'images', plan: 'ai', used: 20, cap: 20 });
+    expect(err.getResponse().message).toContain('your own AI key');
+    process.env.AI_IMAGES_PER_SCREEN = '25';
+    await expect(svc.assertImagesAvailable('solo')).resolves.toMatchObject({ included: 25, left: 5 });
+  });
+
+  it('IMAGES: a read failure reports nothing left (an image is our costliest call) — never a thrown 500', async () => {
+    const { prisma } = makePrisma(TREE, SCREENS);
+    prisma.client.aiUsageEvent.count = jest.fn(async () => {
+      throw new Error('db down');
+    });
+    expect(await new AiAllowanceService(prisma).images('school-a')).toMatchObject({ left: 0, degraded: true });
+  });
+
+  it('BOARDS: AI_BOARDS_PER_SCREEN moves the AI plan\'s boards with no deploy', async () => {
+    process.env.AI_BOARDS_PER_SCREEN = '3';
+    const { prisma } = makePrisma(TREE, SCREENS);
+    expect(await new AiAllowanceService(prisma).boards('school-a')).toMatchObject({ included: 30 });
+  });
+
+  it('METER: recordFixed writes one image row at its price, stamped with the org — and swallows a failure', async () => {
+    const { prisma, events } = makePrisma(TREE, SCREENS);
+    const allowance = new AiAllowanceService(prisma);
+    const meter = new AiUsageMeterService(prisma, allowance);
+    expect(
+      await meter.recordFixed({ tenantId: 'school-a', provider: 'openai', model: 'gpt-image', source: 'platform', feature: 'image', costMicros: 80_000 }),
+    ).toBe(80_000);
+    expect(events[0]).toMatchObject({ tenantId: 'school-a', orgTenantId: 'district', feature: 'image', source: 'platform', costMicros: 80_000, inputTokens: 0 });
+    // images are dollars too: the hard ceiling sees them
+    expect((await allowance.snapshot('school-a')).usedMicros).toBe(80_000);
+    prisma.client.aiUsageEvent.create = jest.fn(async () => {
+      throw new Error('db down');
+    });
+    await expect(
+      meter.recordFixed({ tenantId: 'school-a', provider: 'openai', model: 'gpt-image', source: 'platform', feature: 'image', costMicros: 80_000 }),
     ).resolves.toBe(0);
   });
 });

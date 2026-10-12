@@ -12,10 +12,13 @@
  *
  * Env vars (all set by the operator from their Stripe dashboard —
  * test keys first, live keys at go-live):
- *   STRIPE_SECRET_KEY      sk_test_… / sk_live_…
- *   STRIPE_PRICE_MONTHLY   the $25/screen/mo recurring Price id
- *   STRIPE_PRICE_ANNUAL    the $240/screen/yr recurring Price id
- *   STRIPE_WEBHOOK_SECRET  whsec_…  (used by the webhook controller)
+ *   STRIPE_SECRET_KEY         sk_test_… / sk_live_…
+ *   STRIPE_PRICE_MONTHLY      VenueOS        $20/screen/mo recurring Price id
+ *   STRIPE_PRICE_ANNUAL       VenueOS        $200/screen/yr recurring Price id
+ *   STRIPE_PRICE_MONTHLY_AI   VenueOS + AI   $25/screen/mo recurring Price id (optional)
+ *   STRIPE_PRICE_ANNUAL_AI    VenueOS + AI   $250/screen/yr recurring Price id (optional)
+ *   STRIPE_WEBHOOK_SECRET     whsec_…  (used by the webhook controller)
+ * Without the two AI prices the AI plan is simply not offered (billing/ai-plan.ts).
  */
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
@@ -29,6 +32,7 @@ import {
   type AiBoardPack,
 } from '../ai/ai-board-credits';
 import { checkoutTrialEnd, MAX_SELF_SERVE_SCREENS } from './trial-policy';
+import { planOfPriceId, priceIdForPlan, switchedPriceId } from './ai-plan';
 import { DUNNING_CLEARED, dunningOnFailure } from './dunning-policy';
 
 /** Outcome of `retryAfterCardUpdate` — what the Billing page tells the customer. */
@@ -157,14 +161,10 @@ export class StripeService {
     return this.client;
   }
 
-  /** The Stripe Price id for a billing period — from env, never hard-
-   *  coded, so test keys pair with test prices and live with live. */
-  private priceIdFor(period: 'monthly' | 'annual'): string | null {
-    return (
-      (period === 'annual'
-        ? process.env.STRIPE_PRICE_ANNUAL
-        : process.env.STRIPE_PRICE_MONTHLY) || null
-    );
+  /** The Stripe Price id for a plan — from env, never hard-coded, so test
+   *  keys pair with test prices and live with live. `ai` = VenueOS + AI. */
+  private priceIdFor(period: 'monthly' | 'annual', ai = false): string | null {
+    return priceIdForPlan(period, ai);
   }
 
   /** Paired-screen count — the per-screen subscription quantity.
@@ -321,6 +321,8 @@ export class StripeService {
   async checkoutForTenant(opts: {
     tenantId: string;
     period: 'monthly' | 'annual';
+    /** 2026-10-12 — the VenueOS + AI plan ($25/$250) instead of VenueOS ($20/$200). */
+    ai?: boolean;
     successUrl: string;
     cancelUrl: string;
     /** Pre-fills Stripe's email field for a first-time customer. */
@@ -329,11 +331,12 @@ export class StripeService {
   }): Promise<{ url: string; existing?: boolean }> {
     const stripe = this.getClient();
     if (!stripe) throw new Error('Stripe is not configured on this deployment.');
-    const price = this.priceIdFor(opts.period);
+    const ai = opts.ai === true;
+    const price = this.priceIdFor(opts.period, ai);
     if (!price) {
       throw new Error(
-        `No Stripe Price id configured for the ${opts.period} plan — ` +
-          `set STRIPE_PRICE_${opts.period.toUpperCase()}.`,
+        `No Stripe Price id configured for the ${opts.period}${ai ? ' + AI' : ''} plan — ` +
+          `set STRIPE_PRICE_${opts.period.toUpperCase()}${ai ? '_AI' : ''}.`,
       );
     }
     const license = await this.prisma.client.license.findUnique({
@@ -403,6 +406,8 @@ export class StripeService {
     const metadata: Record<string, string> = {
       tenantId: opts.tenantId,
       period: opts.period,
+      // Informational — the webhook stamps aiIncluded from the PRICE id, never from metadata.
+      plan: ai ? 'ai' : 'standard',
       ...(trialEnd ? { trialConversion: '1' } : {}),
     };
     const session = await stripe.checkout.sessions.create({
@@ -434,6 +439,71 @@ export class StripeService {
     });
     if (!session.url) throw new Error('Stripe did not return a Checkout URL.');
     return { url: session.url };
+  }
+
+  /**
+   * 2026-10-12 — switch AI on or off on a live card plan: the subscription item moves to the same
+   * interval's other price (VenueOS ⇄ VenueOS + AI), prorated onto the next invoice
+   * (`create_prorations` — no surprise charge today). The License's aiIncluded is written at once so
+   * AI works (or stops) on the next request; the `customer.subscription.updated` webhook that
+   * follows stamps the same value from the price id. Audited (BILLING_AI_PLAN_CHANGED).
+   */
+  async setAiPlan(opts: {
+    tenantId: string;
+    ai: boolean;
+    actorUserId: string | null;
+  }): Promise<{ aiIncluded: boolean; changed: boolean }> {
+    const stripe = this.getClient();
+    if (!stripe) throw new SeatChangeError('BILLING_NOT_CONFIGURED', 'Online payments are not set up on this deployment yet.');
+    const license = await this.prisma.client.license.findUnique({ where: { tenantId: opts.tenantId } });
+    if (
+      !license?.stripeSubscriptionId ||
+      (license.billingMode ?? 'CARD') !== 'CARD' ||
+      license.status === 'CANCELLED'
+    ) {
+      throw new SeatChangeError('BILLING_NO_SUBSCRIPTION', 'Add a payment method first — then you can change your plan.');
+    }
+    const sub: Record<string, any> = await stripe.subscriptions.retrieve(license.stripeSubscriptionId);
+    const item = sub.items?.data?.[0];
+    if (!item?.id) throw new SeatChangeError('BILLING_NO_SUBSCRIPTION', 'Your subscription has no plan item — contact support.');
+    const currentPriceId: string | null = typeof item.price?.id === 'string' ? item.price.id : null;
+    const current = planOfPriceId(currentPriceId);
+    if (!current) {
+      throw new SeatChangeError('BILLING_PLAN_UNKNOWN', 'Your plan is a custom price — contact us to change it.');
+    }
+    if (current.ai === opts.ai) {
+      if (license.aiIncluded !== opts.ai) {
+        await this.prisma.client.license.updateMany({ where: { id: license.id, tenantId: opts.tenantId }, data: { aiIncluded: opts.ai } });
+      }
+      return { aiIncluded: opts.ai, changed: false };
+    }
+    const target = switchedPriceId(currentPriceId, opts.ai);
+    if (!target) {
+      throw new SeatChangeError('BILLING_AI_PLAN_UNAVAILABLE', 'The VenueOS + AI plan is not available on this deployment yet.');
+    }
+    await stripe.subscriptionItems.update(item.id, {
+      price: target,
+      quantity: item.quantity ?? license.seatLimit,
+      proration_behavior: 'create_prorations',
+    } as any);
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.license.updateMany({
+        where: { id: license.id, tenantId: opts.tenantId },
+        data: { aiIncluded: opts.ai },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: opts.tenantId,
+          userId: opts.actorUserId,
+          action: 'BILLING_AI_PLAN_CHANGED',
+          targetType: 'License',
+          targetId: license.id,
+          details: JSON.stringify({ from: current.ai, to: opts.ai, period: current.period, fromPrice: currentPriceId, toPrice: target, proration: 'create_prorations' }),
+        },
+      });
+    });
+    this.logger.log(`billing: tenant ${opts.tenantId} AI ${current.ai ? 'on' : 'off'} → ${opts.ai ? 'on' : 'off'} (customer-initiated)`);
+    return { aiIncluded: opts.ai, changed: true };
   }
 
   /**
@@ -984,6 +1054,10 @@ export class StripeService {
     const interval = price?.recurring?.interval;
     const unit = price?.unit_amount ?? null;
     const tier = interval === 'year' ? 'ANNUAL' : 'MONTHLY';
+    // 2026-10-12 — the VenueOS + AI plan, from the subscription's PRICE id (billing/ai-plan.ts).
+    // A price this deploy does not know leaves aiIncluded as it is rather than guessing.
+    const plan = planOfPriceId(typeof price?.id === 'string' ? price.id : null);
+    const aiStamp = plan ? { aiIncluded: plan.ai } : {};
     const monthlyPriceCents =
       unit == null ? null : interval === 'year' ? Math.round(unit / 12) : unit;
     const status = this.mapSubscriptionStatus(sub.status);
@@ -1046,6 +1120,7 @@ export class StripeService {
                 seatLimit,
                 monthlyPriceCents,
                 ...(trialEndsAt ? { trialEndsAt } : {}),
+                ...aiStamp,
                 stripeCustomerId: customerId,
                 stripeSubscriptionId: sub.id,
                 currentPeriodStart: periodStart,
@@ -1059,6 +1134,7 @@ export class StripeService {
                 seatLimit,
                 monthlyPriceCents,
                 ...(trialEndsAt ? { trialEndsAt } : {}),
+                ...aiStamp,
                 stripeCustomerId: customerId,
                 stripeSubscriptionId: sub.id,
                 currentPeriodStart: periodStart,
@@ -1088,6 +1164,8 @@ export class StripeService {
                   monthlyPriceCents,
                   seatLimit,
                   trialEndsAt: trialEndsAt?.toISOString() ?? null,
+                  priceId: typeof price?.id === 'string' ? price.id : null,
+                  aiIncluded: plan ? plan.ai : 'unchanged',
                 }),
               },
             });

@@ -155,12 +155,17 @@ describe('POST /billing/ai-packs/checkout', () => {
       process.env.ANTHROPIC_API_KEY = 'sk-ant'; // a fast key alone never draws a board
       process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
       setCatalogState({});
+      // 2026-10-12 — a card customer on the VenueOS + AI plan (packs need the AI plan).
+      let license: any = { tier: 'ANNUAL', status: 'ACTIVE', billingMode: 'CARD', stripeSubscriptionId: 'sub_1', aiIncluded: true };
       const prisma: any = {
         client: {
           tenant: {
             findUnique: jest.fn(async () => ({
+              id: 'school_A1',
               parentId: null,
               aiKeyEncrypted: null,
+              license,
+              parent: null,
             })),
           },
         },
@@ -181,6 +186,14 @@ describe('POST /billing/ai-packs/checkout', () => {
       process.env.OPENAI_API_KEY = 'sk-openai';
       await controller.aiPackCheckout(req(), { pack: 'starter' });
       expect(stripe.checkoutBoardPack).toHaveBeenCalled();
+      // …but a customer on VenueOS WITHOUT AI is offered the AI plan, never a pack
+      license = { ...license, aiIncluded: false };
+      stripe.checkoutBoardPack.mockClear();
+      allowance.invalidateEntitlement();
+      await expect(
+        controller.aiPackCheckout(req(), { pack: 'starter' }),
+      ).resolves.toMatchObject({ enabled: false, reason: 'AI_PLAN_REQUIRED' });
+      expect(stripe.checkoutBoardPack).not.toHaveBeenCalled();
     } finally {
       process.env = saved;
       setCatalogState({});
