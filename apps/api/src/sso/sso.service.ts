@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException, ServiceUnavailableException, ConflictException, BadGatewayException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -11,6 +11,14 @@ import {
 } from './sso.types';
 import { assertTenantScopedRoleAssignable } from '../auth/role-assignment';
 import { encryptSecret, decryptSecret } from './sso.crypto';
+import { assertSafeOidcUrl, discoverOidcIssuer, pinClientRequests, OidcIssuerUrlError } from './oidc-discovery';
+import {
+  normalizeEmailDomain,
+  newDomainVerificationToken,
+  txtRecordFor,
+  domainHasVerificationRecord,
+  type TxtResolver,
+} from './sso-domain-verification';
 
 /**
  * SSO Service — SAML 2.0 + OIDC scaffold.
@@ -75,6 +83,15 @@ export class SsoService {
       defaultRole: cfg.defaultRole,
       allowedEmailDomain: cfg.allowedEmailDomain,
       autoProvision: cfg.autoProvision,
+      // V-2 (2026-10-11): what the admin must publish, and whether it is proven.
+      domainVerification: cfg.allowedEmailDomain
+        ? {
+            domain: cfg.allowedEmailDomain,
+            txtRecord: cfg.domainVerificationToken ? txtRecordFor(cfg.domainVerificationToken) : null,
+            verifiedAt: cfg.domainVerifiedAt ?? null,
+            method: cfg.domainVerificationMethod ?? null,
+          }
+        : null,
       createdAt: cfg.createdAt,
       updatedAt: cfg.updatedAt,
     };
@@ -125,6 +142,20 @@ export class SsoService {
       autoProvision: !!dto.autoProvision,
     };
 
+    // ── V-3 (2026-10-11): the issuer is fetched server-side from a PUBLIC
+    // route — https, port 443, public host name only. Checked at save so a bad
+    // address never reaches the fetcher; safeFetch re-checks DNS at fetch time.
+    if (data.oidcIssuer) {
+      try {
+        assertSafeOidcUrl(data.oidcIssuer);
+      } catch (e) {
+        throw new BadRequestException({
+          code: 'SSO_OIDC_ISSUER_INVALID',
+          message: e instanceof OidcIssuerUrlError ? e.message : 'The identity provider address is not allowed.',
+        });
+      }
+    }
+
     // ── ARM-A-LOGIN-PATH GATE (SAML: F-1 / CVE-2025-54419. OIDC: ACC-01) ──
     // Flipping `enabled:true` makes an EXTERNAL identity provider
     // authoritative for who may sign in to this tenant. That is the single
@@ -138,6 +169,36 @@ export class SsoService {
     if (isSamlEnableAttempt || isOidcEnableAttempt) {
       await this.assertMayArmLoginPath(tenantId, data, dto, actorUserId, actorRole);
     }
+
+    // ── V-2 (2026-10-11): DOMAIN CLAIM ─────────────────────────────────────
+    // A claimed domain routes the public sign-in page and auto-provisions only
+    // once VERIFIED (DNS TXT or an audited super-admin override). Changing the
+    // domain clears the proof; a domain another tenant has verified cannot be
+    // claimed at all.
+    const existingCfg: any = await this.prisma.client.tenantSSOConfig.findUnique({ where: { tenantId } });
+    const rawDomain = dto.allowedEmailDomain;
+    let domain: string | null = null;
+    if (rawDomain !== undefined && rawDomain !== null && String(rawDomain).trim() !== '') {
+      domain = normalizeEmailDomain(rawDomain);
+      if (!domain) {
+        throw new BadRequestException({
+          code: 'SSO_DOMAIN_INVALID',
+          message: 'Enter the email domain only, for example example.org.',
+        });
+      }
+    }
+    data.allowedEmailDomain = domain;
+    const previousDomain = normalizeEmailDomain(existingCfg?.allowedEmailDomain ?? null);
+    const domainChanged = domain !== previousDomain;
+    if (domainChanged) {
+      data.domainVerifiedAt = null;
+      data.domainVerificationMethod = null;
+      data.domainVerificationToken = domain ? newDomainVerificationToken() : null;
+    } else if (domain && !existingCfg?.domainVerificationToken) {
+      data.domainVerificationToken = newDomainVerificationToken();
+    }
+    if (domain) await this.assertDomainNotVerifiedElsewhere(tenantId, domain);
+
     // Only re-encrypt secrets when the caller explicitly sends a new value.
     const x509CertChanged = dto.x509Cert !== undefined;
     const oidcSecretChanged = dto.oidcClientSecret !== undefined;
@@ -179,6 +240,7 @@ export class SsoService {
             defaultRole: data.defaultRole,
             allowedEmailDomain: data.allowedEmailDomain,
             autoProvision: data.autoProvision,
+            domainVerificationReset: domainChanged && !!previousDomain,
           }),
         },
       });
@@ -229,6 +291,110 @@ export class SsoService {
       }
       return result;
     });
+  }
+
+  /** 409 when another tenant already holds a VERIFIED claim on `domain`. */
+  private async assertDomainNotVerifiedElsewhere(tenantId: string, domain: string): Promise<void> {
+    const taken = await this.prisma.client.tenantSSOConfig.findFirst({
+      where: {
+        tenantId: { not: tenantId },
+        domainVerifiedAt: { not: null },
+        allowedEmailDomain: { equals: domain, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictException({
+        code: 'SSO_DOMAIN_VERIFIED_ELSEWHERE',
+        message: 'This email domain is already verified by another organization. Contact support if it belongs to you.',
+      });
+    }
+  }
+
+  /**
+   * V-2 (2026-10-11) — prove the claimed `allowedEmailDomain`.
+   *
+   *  - `manual: false` (any admin who may manage this SSO config): look up the
+   *    domain's TXT records for `venueos-verification=<token>`.
+   *  - `manual: true` (SUPER_ADMIN only, written reason required): mark it
+   *    verified without DNS — for a customer whose DNS team is slow, after the
+   *    super admin has confirmed ownership out of band. Audited with the reason.
+   *
+   * Either way, a domain already verified by ANOTHER tenant is a 409, and the
+   * outcome (including a failed DNS check) is an AuditLog row.
+   */
+  async verifyDomain(
+    tenantId: string,
+    opts: { manual?: boolean; reason?: string | null },
+    actorUserId: string | null,
+    actorRole: string | null,
+    resolver?: TxtResolver,
+  ): Promise<{ verified: boolean; domain: string; method: 'dns' | 'manual' | null; txtRecord: string | null; verifiedAt: Date | null }> {
+    const cfg: any = await this.prisma.client.tenantSSOConfig.findUnique({ where: { tenantId } });
+    const domain = normalizeEmailDomain(cfg?.allowedEmailDomain ?? null);
+    if (!cfg || !domain) {
+      throw new BadRequestException({ code: 'SSO_DOMAIN_NOT_SET', message: 'Save an email domain first.' });
+    }
+    let token: string = cfg.domainVerificationToken || '';
+    if (!token) {
+      token = newDomainVerificationToken();
+      await this.prisma.client.tenantSSOConfig.update({ where: { tenantId }, data: { domainVerificationToken: token } });
+    }
+    const txtRecord = txtRecordFor(token);
+    if (cfg.domainVerifiedAt) {
+      return { verified: true, domain, method: cfg.domainVerificationMethod ?? null, txtRecord, verifiedAt: cfg.domainVerifiedAt };
+    }
+
+    let method: 'dns' | 'manual';
+    const reason = String(opts.reason || '').trim().slice(0, 500);
+    if (opts.manual) {
+      if (actorRole !== 'SUPER_ADMIN') {
+        await this.bestEffortAudit(tenantId, actorUserId, 'SSO_DOMAIN_MANUAL_VERIFY_DENIED', { domain, actorRole: actorRole ?? null });
+        throw new ForbiddenException({ code: 'SSO_DOMAIN_MANUAL_VERIFY_FORBIDDEN', message: 'Only VenueOS support can verify a domain without DNS.' });
+      }
+      if (reason.length < 5) {
+        throw new BadRequestException({ code: 'SSO_DOMAIN_MANUAL_REASON_REQUIRED', message: 'Write down how ownership of the domain was confirmed.' });
+      }
+      method = 'manual';
+    } else {
+      const ok = await domainHasVerificationRecord(domain, token, resolver);
+      if (!ok) {
+        await this.bestEffortAudit(tenantId, actorUserId, 'SSO_DOMAIN_VERIFY_FAILED', { domain, method: 'dns' });
+        return { verified: false, domain, method: null, txtRecord, verifiedAt: null };
+      }
+      method = 'dns';
+    }
+
+    await this.assertDomainNotVerifiedElsewhere(tenantId, domain);
+    const verifiedAt = new Date();
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+        await tx.tenantSSOConfig.update({
+          where: { tenantId },
+          data: { domainVerifiedAt: verifiedAt, domainVerificationMethod: method },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId: actorUserId ?? null,
+            action: method === 'manual' ? 'SSO_DOMAIN_MANUALLY_VERIFIED' : 'SSO_DOMAIN_VERIFIED',
+            targetType: 'TenantSSOConfig',
+            targetId: tenantId,
+            details: JSON.stringify({ domain, method, actorRole: actorRole ?? null, ...(method === 'manual' ? { reason } : {}) }),
+          },
+        });
+      });
+    } catch (err: any) {
+      // The partial unique index is the race-proof backstop for the check above.
+      if (err?.code === 'P2002') {
+        throw new ConflictException({
+          code: 'SSO_DOMAIN_VERIFIED_ELSEWHERE',
+          message: 'This email domain is already verified by another organization. Contact support if it belongs to you.',
+        });
+      }
+      throw err;
+    }
+    return { verified: true, domain, method, txtRecord, verifiedAt };
   }
 
   /**
@@ -533,14 +699,15 @@ export class SsoService {
     const { oidcRedirectUri } = this.buildServiceProviderMetadata(tenantSlug, baseUrl);
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { Issuer, generators }: any = require('openid-client');
-      const issuer = await Issuer.discover(config.oidcIssuer!);
-      const client = new issuer.Client({
+      const { generators }: any = require('openid-client');
+      // V-3 (2026-10-11): discovery through safeFetch; every later request pinned.
+      const issuer = await discoverOidcIssuer(config.oidcIssuer!);
+      const client = pinClientRequests(new issuer.Client({
         client_id: config.oidcClientId!,
         client_secret: decryptSecret(config.oidcClientSecret) ?? '',
         redirect_uris: [oidcRedirectUri],
         response_types: ['code'],
-      });
+      }));
       const state = generators.state();
       const nonce = generators.nonce();
       const url = client.authorizationUrl({
@@ -550,9 +717,14 @@ export class SsoService {
       });
       return { url, state, nonce };
     } catch (err) {
-      this.logger.warn(`openid-client unavailable or discovery failed (${(err as Error).message}); returning stub URL`);
-      const stub = `${config.oidcIssuer || '#oidc-not-configured'}/authorize?client_id=${encodeURIComponent(config.oidcClientId || '')}&redirect_uri=${encodeURIComponent(oidcRedirectUri)}&response_type=code&scope=openid+email+profile`;
-      return { url: stub, state: 'stub', nonce: 'stub' };
+      // V-3 (2026-10-11): NEVER redirect to a stub built from the typed issuer
+      // (that was an anonymous open redirect). 502 in plain words; the reason
+      // is logged, not returned.
+      this.logger.warn(`OIDC discovery failed for tenant ${tenantSlug}: ${(err as Error).message}`);
+      throw new BadGatewayException({
+        code: 'SSO_IDP_UNREACHABLE',
+        message: "Your organization's sign-in provider could not be reached. Try again, or sign in with your password.",
+      });
     }
   }
 
@@ -587,15 +759,13 @@ export class SsoService {
     }
     const { oidcRedirectUri } = this.buildServiceProviderMetadata(tenantSlug, baseUrl);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { Issuer }: any = require('openid-client');
-      const issuer = await Issuer.discover(config.oidcIssuer!);
-      const client = new issuer.Client({
+      const issuer = await discoverOidcIssuer(config.oidcIssuer!);
+      const client = pinClientRequests(new issuer.Client({
         client_id: config.oidcClientId!,
         client_secret: decryptSecret(config.oidcClientSecret) ?? '',
         redirect_uris: [oidcRedirectUri],
         response_types: ['code'],
-      });
+      }));
       const tokenSet = await client.callback(oidcRedirectUri, params, {
         state: expected?.state,
         nonce: expected?.nonce,
@@ -637,9 +807,19 @@ export class SsoService {
           `No local account exists for ${email}. Ask your admin to enable auto-provisioning or invite you first.`,
         );
       }
-      if (config.allowedEmailDomain) {
+      // V-2 (2026-10-11): auto-provisioning creates accounts for whatever
+      // address this tenant's IdP asserts, and `users.email` is globally
+      // unique — so an unproven claim could squat another organization's
+      // people. Provision ONLY into a VERIFIED domain, and only that domain.
+      const claimed = normalizeEmailDomain(config.allowedEmailDomain ?? null);
+      if (!claimed || !(config as any).domainVerifiedAt) {
+        throw new UnauthorizedException(
+          'No account exists for this address yet. Ask your administrator to invite you.',
+        );
+      }
+      {
         const domain = email.split('@')[1] ?? '';
-        if (domain.toLowerCase() !== config.allowedEmailDomain.toLowerCase()) {
+        if (domain.toLowerCase() !== claimed) {
           throw new UnauthorizedException(
             `Email domain "${domain}" is not allowed for this tenant`,
           );
@@ -828,12 +1008,17 @@ export class SsoService {
         return { ok: false, message: 'OIDC requires issuer, clientId, and clientSecret' };
       }
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { Issuer }: any = require('openid-client');
-        await Issuer.discover(config.oidcIssuer);
+        await discoverOidcIssuer(config.oidcIssuer);
         return { ok: true, message: `Discovered OIDC issuer ${config.oidcIssuer}` };
       } catch (err) {
-        return { ok: false, message: `OIDC discovery failed: ${(err as Error).message}` };
+        // V-3: generic words only — the raw error was a reachability /
+        // status oracle into the private network.
+        this.logger.warn(`OIDC test discovery failed for tenant ${tenantSlug}: ${(err as Error).message}`);
+        return {
+          ok: false,
+          message:
+            "Could not read the identity provider's discovery document. Check the issuer address (it must be a public https address).",
+        };
       }
     }
     return { ok: false, message: 'Unknown provider' };

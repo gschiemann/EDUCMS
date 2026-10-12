@@ -1,4 +1,7 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Optional, Param, Post, Query, Req, Request, UseGuards } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
+import { verifyDeviceForScreen } from '../screens/device-auth';
+import { RedisService } from '../realtime/redis.service';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { requireTenantIdStrict } from '../auth/require-tenant';
@@ -42,50 +45,66 @@ export class NotificationsController {
 
 // Phase D1 — touch builder "request help" action endpoint.
 //
-// Sibling controller without the class-level JwtAuthGuard so kiosks
-// (which run unauthenticated for touch flows) can post help requests
-// without needing a device JWT. We resolve the tenant via screenId
-// so an attacker can't notify a tenant they don't have a paired
-// screen on. Rate-limited 10/min/IP to stop a mashy visitor (or
-// scripted abuse) from spamming the admin pager. 5-min dedupe
-// bucket so the same kiosk's mash-the-button visitor only produces
-// ONE notification per window.
+// Sibling controller without the class-level JwtAuthGuard: the kiosk proves
+// itself with its DEVICE credential instead of a person's session.
+//
+// 2026-10-11 (launch security re-audit V-6): this used to take NO credential
+// at all — anyone who knew a screen id (it is visible on screens and in player
+// URLs) could drop an attacker-written title + body into that tenant's admin
+// inbox ("IT: re-enter your password at ..."). Now:
+//   - the caller must present the device credential OF THAT SCREEN
+//     (`verifyDeviceForScreen`, strict: paired + proven); anything else is 401;
+//   - the wording is constrained: the operator-authored title/body from the
+//     board config is kept only as plain text with links, addresses and
+//     control characters removed, length-capped, and always carries the
+//     screen's real name. A device can no longer ship a clickable lure.
+// Rate-limited 10/min/IP plus a 5-min dedupe bucket per screen, as before.
+const HELP_DEFAULT_TITLE = 'Visitor needs assistance';
+const HELP_DEFAULT_BODY = 'A kiosk visitor tapped “request help.”';
+
+/** Plain words only: no URLs, bare domains, email addresses or control characters. */
+export function constrainHelpText(raw: unknown, max: number, fallback: string): string {
+  let s = String(raw ?? '');
+  s = s.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ');
+  s = s.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S*/gi, ' ');
+  s = s.replace(/\bwww\.\S*/gi, ' ');
+  s = s.replace(/\S+@\S+\.\S+/g, ' ');
+  s = s.replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\/\S*)?/gi, ' ');
+  s = s.replace(/\s+/g, ' ').trim().slice(0, max).trim();
+  return s || fallback;
+}
+
 @Controller('api/v1/notifications')
 export class NotificationsPublicController {
   constructor(
     private readonly service: NotificationsService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('help')
   async requestHelp(
+    @Req() req: ExpressRequest,
     @Body() body: { screenId?: string; tenantId?: string; title?: string; body?: string },
   ) {
-    const screenId = (body?.screenId || '').trim();
+    const screenId = String(body?.screenId ?? '').trim();
     if (!screenId) {
       throw new HttpException({ code: 'NOTIFICATIONS_SCREEN_ID_REQUIRED', message: 'screenId required' }, HttpStatus.BAD_REQUEST);
     }
-    // ten-ok: unauthenticated public kiosk endpoint — there IS no caller tenant, so
-    // the screen row IS the tenant resolver (this is the documented design above:
-    // "resolve the tenant via screenId so an attacker can't notify a tenant they
-    // don't have a paired screen on"). An unknown or unpaired screen returns a
-    // silent ok, and every write below is pinned to `screen.tenantId`.
-    const screen = await this.prisma.client.screen.findUnique({
-      where: { id: screenId },
+    // V-6: the screen must prove it is that screen. The verifier also resolves
+    // the tenant from the live screen row; the body's tenantId is ignored.
+    const auth = await verifyDeviceForScreen({ prisma: this.prisma as any, redis: (this.redis ?? null) as any }, req as any, screenId);
+    if (!auth.ok || !auth.tenantId) {
+      throw new HttpException({ code: 'NOTIFICATIONS_DEVICE_AUTH_REQUIRED', message: 'This screen is not signed in.' }, HttpStatus.UNAUTHORIZED);
+    }
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id: screenId, tenantId: auth.tenantId },
       select: { id: true, tenantId: true, name: true },
     });
-    if (!screen?.tenantId) {
-      // Unpaired / unknown screen — silently no-op so a probe gets
-      // no useful error signal.
-      return { ok: true };
-    }
-    // Phase D1.6 — coerce-then-slice so a malformed payload with a
-    // non-string title/body doesn't 500 on `.slice` (security review
-    // 2026-05-12 LOW finding). `String()` handles null/undefined/
-    // object/number; the fallback string covers the empty case.
-    const title = String(body?.title ?? '').slice(0, 120) || 'Visitor needs assistance';
-    const detail = String(body?.body ?? '').slice(0, 500) || 'A kiosk visitor tapped “request help.”';
+    if (!screen?.tenantId) return { ok: true };
+    const title = constrainHelpText(body?.title, 80, HELP_DEFAULT_TITLE);
+    const detail = constrainHelpText(body?.body, 300, HELP_DEFAULT_BODY);
     const bucket = Math.floor(Date.now() / (5 * 60_000));
     await this.service.notify({
       tenantId: screen.tenantId,
@@ -94,7 +113,7 @@ export class NotificationsPublicController {
       body: detail,
       link: `/screens`,
       dedupeKey: `touch-help:${screenId}:${bucket}`,
-    }).catch(() => { /* best-effort — notification table off is OK */ });
+    }).catch(() => { /* best-effort: notification table off is OK */ });
     return { ok: true };
   }
 }

@@ -63,7 +63,13 @@ export type ScopeCheck =
   /** `param` is a DisplaySchedule (on/off power schedule) id. */
   | { kind: 'display-schedule'; param: string }
   /** `param` is a Playlist id: every screen / group it is scheduled on must be in scope. */
-  | { kind: 'playlist'; param: string };
+  | { kind: 'playlist'; param: string }
+  /**
+   * `param` is a Submission id. Approving it activates every schedule it
+   * bundles, so each bundled schedule's target must be in scope (V-7,
+   * 2026-10-11 launch security re-audit).
+   */
+  | { kind: 'submission'; param: string };
 
 export interface ScopedRouteRule {
   methods: readonly string[] | '*';
@@ -109,6 +115,12 @@ export const SCOPED_ROUTE_RULES: readonly ScopedRouteRule[] = [
   { methods: ANY, pattern: '/api/v1/assets/**', check: PASS, why: 'media library (content)' },
   { methods: ANY, pattern: '/api/v1/templates/**', check: PASS, why: 'templates (content)' },
   { methods: ANY, pattern: '/api/v1/imports/**', check: PASS, why: 'PDF / slide imports (content)' },
+  {
+    methods: ['POST'],
+    pattern: '/api/v1/submissions/:id/approve',
+    check: { kind: 'submission', param: 'id' },
+    why: 'approving publishes the bundled schedules — only when every one targets their screens (V-7)',
+  },
   { methods: ANY, pattern: '/api/v1/submissions/**', check: PASS, why: 'content review (role decides approve/reject)' },
   { methods: ['POST'], pattern: '/api/v1/data-source/fetch', check: PASS, why: 'widget data preview' },
   { methods: ['POST', 'DELETE'], pattern: '/api/v1/ai/key/**', check: DENY, why: "the location's AI key is a setting" },

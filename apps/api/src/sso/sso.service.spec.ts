@@ -30,6 +30,8 @@ describe('SsoService', () => {
         },
         tenantSSOConfig: {
           findUnique: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(null),
+          update: jest.fn().mockResolvedValue({}),
           upsert: jest.fn(async ({ create, update, where }) => ({
             id: 'sso-1',
             tenantId: where.tenantId,
@@ -523,6 +525,7 @@ describe('SsoService', () => {
       prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
         autoProvision: true,
         allowedEmailDomain: 'acme.edu',
+        domainVerifiedAt: new Date(),
         defaultRole: 'CONTRIBUTOR',
       });
       const u = await service.resolveOrProvisionUser(tenant.id, { email: 'new@acme.edu' });
@@ -545,6 +548,7 @@ describe('SsoService', () => {
         prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
           autoProvision: true,
           allowedEmailDomain: 'acme.edu',
+          domainVerifiedAt: new Date(),
           defaultRole: 'SUPER_ADMIN', // poisoned at rest
         });
 
@@ -565,6 +569,8 @@ describe('SsoService', () => {
         prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
         prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
           autoProvision: true,
+          allowedEmailDomain: 'acme.edu',
+          domainVerifiedAt: new Date(),
           defaultRole: 'ROOT',
         });
         await service.resolveOrProvisionUser(tenant.id, { email: 'x@acme.edu' });
@@ -667,6 +673,7 @@ describe('SsoService', () => {
         enabled: true,
         autoProvision: true,
         allowedEmailDomain: 'acme.edu',
+        domainVerifiedAt: new Date(),
         defaultRole: 'CONTRIBUTOR',
       });
       prismaMock.client.user.findUnique.mockResolvedValue(null);

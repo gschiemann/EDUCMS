@@ -23,6 +23,7 @@ interface ConfigRow {
   provider: string;
   allowedEmailDomain: string | null;
   oidcIssuer: string | null;
+  domainVerifiedAt?: Date | null;
   tenant: { slug: string; archivedAt: Date | null };
 }
 
@@ -38,6 +39,7 @@ interface FindManyArgs {
   where: {
     enabled?: boolean;
     allowedEmailDomain: { equals: string; mode?: 'insensitive' };
+    domainVerifiedAt?: { not: null };
     tenant?: { archivedAt?: null };
   };
   take?: number;
@@ -58,6 +60,7 @@ function makePrisma(rows: ConfigRow[]) {
       ) {
         return false;
       }
+      if (w.domainVerifiedAt && !r.domainVerifiedAt) return false;
       if (r.allowedEmailDomain === null) return false;
       return insensitive
         ? r.allowedEmailDomain.toLowerCase() === wanted.toLowerCase()
@@ -80,6 +83,7 @@ const row = (over: Partial<ConfigRow> = {}): ConfigRow => ({
   provider: 'OIDC',
   allowedEmailDomain: 'northfield.example',
   oidcIssuer: 'https://accounts.google.com',
+  domainVerifiedAt: new Date('2026-10-01T00:00:00Z'),
   tenant: { slug: 'northfield', archivedAt: null },
   ...over,
 });
@@ -300,5 +304,28 @@ describe('providerLabelFor', () => {
     [null, null],
   ])('%s -> %s', (issuer, label) => {
     expect(providerLabelFor(issuer)).toBe(label);
+  });
+});
+
+describe('V-2 — only a VERIFIED domain claim routes (2026-10-11)', () => {
+  it('an unverified claim answers sso: null', async () => {
+    const { out } = await ask([row({ domainVerifiedAt: null })], 'a@northfield.example');
+    expect(out).toEqual({ password: true, sso: null });
+  });
+
+  it('two tenants claim one domain: only the verified one routes, the squatter cannot switch it off', async () => {
+    const { out } = await ask(
+      [
+        row({ domainVerifiedAt: null, oidcIssuer: 'https://sso-northfield.evil', tenant: { slug: 'squatter', archivedAt: null } }),
+        row({ tenant: { slug: 'northfield', archivedAt: null } }),
+      ],
+      'a@northfield.example',
+    );
+    expect(out.sso?.tenantSlug).toBe('northfield');
+  });
+
+  it('the query itself requires domainVerifiedAt', async () => {
+    const { findMany } = await ask([row()], 'a@northfield.example');
+    expect(findMany.mock.calls[0][0].where.domainVerifiedAt).toEqual({ not: null });
   });
 });

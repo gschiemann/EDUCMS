@@ -13,6 +13,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import { z } from 'zod';
 import { SsoService } from './sso.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -34,6 +36,13 @@ import { publicApiBase } from '../security/public-api-base';
  * Login/callback routes are mounted under /api/v1/auth/sso/:tenantSlug/... and
  * are PUBLIC (they are the entry point for unauthenticated SSO login).
  */
+const VerifyDomainSchema = z
+  .object({
+    manual: z.boolean().optional(),
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
 @Controller()
 export class SsoController {
   constructor(
@@ -137,6 +146,8 @@ export class SsoController {
   // OIDC
   // -----------------------------------------------------------------
   @Get('api/v1/auth/sso/:tenantSlug/oidc/login')
+  // V-3 (2026-10-11): public route that triggers an outbound discovery fetch.
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   async oidcLogin(
     @Param('tenantSlug') tenantSlug: string,
     @Req() req: Request,
@@ -246,6 +257,27 @@ export class SsoController {
     const actorRole = (req as any)?.user?.role ?? null;
     const cfg = await this.sso.upsertConfig(tenant.id, dto, actorUserId, actorRole);
     return this.sso.toSafeConfig(cfg);
+  }
+
+  /**
+   * V-2 (2026-10-11) — verify the claimed email domain. Body `{}` checks DNS
+   * for `venueos-verification=<token>`; `{ manual: true, reason }` is the
+   * SUPER_ADMIN override (enforced + audited in the service).
+   */
+  @Post('api/v1/tenants/:tenantSlug/sso/domain/verify')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles('SUPER_ADMIN', 'DISTRICT_ADMIN')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async verifyDomain(
+    @Param('tenantSlug') tenantSlug: string,
+    @Body(new ZodValidationPipe(VerifyDomainSchema)) body: z.infer<typeof VerifyDomainSchema>,
+    @Req() req: Request,
+  ) {
+    await this.assertTenantAccess(tenantSlug, req);
+    const { tenant } = await this.sso.getConfigByTenantSlug(tenantSlug);
+    const actorUserId = (req as any)?.user?.userId ?? (req as any)?.user?.id ?? null;
+    const actorRole = (req as any)?.user?.role ?? null;
+    return this.sso.verifyDomain(tenant.id, { manual: !!body?.manual, reason: body?.reason ?? null }, actorUserId, actorRole);
   }
 
   @Post('api/v1/tenants/:tenantSlug/sso/test')

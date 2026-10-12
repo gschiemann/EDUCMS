@@ -134,7 +134,33 @@ export class UserScopeInterceptor implements NestInterceptor {
         if (!id || !(await this.playlistWithinScope(id, tenantId, screenScope))) throw refusal();
         return;
       }
+      case 'submission': {
+        const id = decision.params[check.param];
+        if (!id || !(await this.submissionWithinScope(id, tenantId, screenScope))) throw refusal();
+        return;
+      }
     }
+  }
+
+  /**
+   * V-7 (2026-10-11): every schedule a submission bundles targets one of the
+   * person's screens or groups. A submission with no schedules (assets only)
+   * publishes nowhere and is theirs to approve. One from another location is
+   * refused here and 404s for everyone else.
+   */
+  private async submissionWithinScope(submissionId: string, tenantId: string, scope: ScreenScope): Promise<boolean> {
+    const client: any = this.prisma.client;
+    const sub = await client.submission.findFirst({ where: { id: submissionId, tenantId } });
+    if (!sub) return false;
+    const ids = String(sub.scheduleIds || '').split(',').map((x: string) => x.trim()).filter(Boolean);
+    if (!ids.length) return true;
+    const rows: Array<{ id: string; screenId: string | null; screenGroupId: string | null }> = await client.schedule.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true, screenId: true, screenGroupId: true },
+    });
+    // A bundled id that no longer resolves in this location cannot be judged — refuse.
+    if (rows.length !== new Set(ids).size) return false;
+    return rows.every((r) => rowTargetInScope(scope, r));
   }
 
   /**

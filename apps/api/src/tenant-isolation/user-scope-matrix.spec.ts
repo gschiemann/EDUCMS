@@ -139,6 +139,12 @@ function dataset(): Dataset {
       { id: 'ds-lobby', tenantId: A, screenId: null, screenGroupId: 'grp-lobby', createdAt: new Date() },
       { id: 'ds-a3', tenantId: A, screenId: 'scr-a3', screenGroupId: null, createdAt: new Date() },
     ],
+    // V-7 (2026-10-11): approval publishes the bundled schedules.
+    submission: [
+      { id: 'sub-lobby', tenantId: A, status: 'PENDING', assetIds: '', playlistIds: 'pl-lobby', scheduleIds: 'sch-lobby' },
+      { id: 'sub-gym', tenantId: A, status: 'PENDING', assetIds: '', playlistIds: 'pl-mixed', scheduleIds: 'sch-mixed-lobby,sch-a3' },
+      { id: 'sub-assets', tenantId: A, status: 'PENDING', assetIds: 'asset-1', playlistIds: '', scheduleIds: '' },
+    ],
     auditLog: [],
   };
 }
@@ -397,6 +403,12 @@ describe('user scoping — a person limited to some screens', () => {
     ['GET', '/api/v1/floor-plans', undefined, 'SCREEN_SCOPE_FORBIDDEN'],
     ['GET', '/api/v1/analytics/proof-of-play', undefined, 'SCREEN_SCOPE_FORBIDDEN'],
     ['GET', '/api/v1/stats/overview', undefined, 'SCREEN_SCOPE_FORBIDDEN'],
+    // V-7: approving a submission publishes its schedules
+    ['POST', '/api/v1/submissions/sub-lobby/approve', {}, 'allow'],
+    ['POST', '/api/v1/submissions/sub-gym/approve', {}, 'SCREEN_SCOPE_FORBIDDEN'],
+    ['POST', '/api/v1/submissions/sub-assets/approve', {}, 'allow'],
+    ['POST', '/api/v1/submissions/sub-gym/reject', {}, 'allow'],
+    ['POST', '/api/v1/submissions/does-not-exist/approve', {}, 'SCREEN_SCOPE_FORBIDDEN'],
     // self
     ['GET', '/api/v1/users/me', undefined, 'allow'],
     ['POST', '/api/v1/auth/change-password', {}, 'allow'],

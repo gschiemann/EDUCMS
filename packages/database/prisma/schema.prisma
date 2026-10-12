@@ -524,6 +524,14 @@ model TenantSSOConfig {
   defaultRole        String   @default("RESTRICTED_VIEWER") @map("default_role")
   allowedEmailDomain String?  @map("allowed_email_domain")
   autoProvision      Boolean  @default(false) @map("auto_provision")
+  // 2026-10-11 (launch security re-audit V-2): a claimed `allowedEmailDomain`
+  // ROUTES sign-in and AUTO-PROVISIONS only once proven — a DNS TXT record
+  // `venueos-verification=<token>` on the domain, or an audited SUPER_ADMIN
+  // override. Changing the domain clears the proof. At most one VERIFIED claim
+  // per domain (partial unique index in the migration).
+  domainVerificationToken  String?   @map("domain_verification_token")
+  domainVerifiedAt         DateTime? @map("domain_verified_at")
+  domainVerificationMethod String?   @map("domain_verification_method") // 'dns' | 'manual'
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
   tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)

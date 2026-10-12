@@ -31,8 +31,10 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
  * `GET /auth/sso/:tenantSlug/config-public` already discloses enabled +
  * provider; the domain → slug mapping is what home-realm discovery is.
  *
- * ── A DOMAIN CLAIM IS NOT VERIFIED ─────────────────────────────────────────
- * `allowedEmailDomain` is whatever an admin typed. So this answer only ROUTES;
+ * ── ONLY A VERIFIED DOMAIN CLAIM ROUTES (2026-10-11, V-2) ─────────────────
+ * `allowedEmailDomain` is whatever an admin typed; it is considered here only
+ * once proven (DNS TXT or an audited super-admin override — see
+ * sso-domain-verification.ts). Even then this answer only ROUTES;
  * it never authenticates and never removes the password form:
  *  • `password` is always `true` (the schema has no "SSO only" switch);
  *  • when MORE THAN ONE enabled config claims the domain the answer is "no
@@ -123,6 +125,10 @@ export class SignInOptionsController {
       where: {
         enabled: true,
         allowedEmailDomain: { equals: domain, mode: 'insensitive' },
+        // V-2 (2026-10-11): only a VERIFIED claim routes. An unverified claim
+        // can neither send people to its IdP nor (by colliding) switch off the
+        // real owner's routing — verified claims are unique per domain.
+        domainVerifiedAt: { not: null },
         tenant: { archivedAt: null },
       },
       select: {
