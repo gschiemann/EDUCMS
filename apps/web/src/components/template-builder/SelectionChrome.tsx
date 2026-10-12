@@ -62,6 +62,24 @@ interface Props {
   onRotatePointerDown?: (e: React.PointerEvent, zoneId: string) => void;
 }
 
+/**
+ * Where the rotate knob goes so the canvas never clips it (owner 2026-10-12:
+ * on a zone at the canvas edge — or rotated so its "bottom" faces up — the
+ * knob was drawn outside the canvas and hidden). Picks the zone's local
+ * bottom or top so the knob lands on the SCREEN side with room; if neither
+ * side has room (a full-height zone), the knob sits just inside the edge.
+ */
+export function rotateHandlePlacement(zone: Pick<Zone, 'y' | 'height'>, rot: number): { side: 'bottom' | 'top'; inside: boolean } {
+  const ROOM = 8; // % of canvas height the knob + stem need
+  const roomBelow = 100 - (Number(zone.y) + Number(zone.height));
+  const roomAbove = Number(zone.y);
+  const bottomFacesDown = Math.cos((rot * Math.PI) / 180) >= 0;
+  const wantDown = roomBelow >= ROOM || roomBelow >= roomAbove;
+  const fits = wantDown ? roomBelow >= ROOM : roomAbove >= ROOM;
+  const side: 'bottom' | 'top' = wantDown === bottomFacesDown ? 'bottom' : 'top';
+  return { side, inside: !fits };
+}
+
 export function SelectionChrome({ zone, onResizePointerDown, onRotatePointerDown }: Props) {
   if (isFullCanvasExternalZone(zone)) return null;
   const rot = zoneRotation(zone);
@@ -93,11 +111,15 @@ export function SelectionChrome({ zone, onResizePointerDown, onRotatePointerDown
           onPointerDown={(e) => { e.stopPropagation(); onResizePointerDown(e, zone.id, h); }}
         />
       ))}
-      {canResize && onRotatePointerDown && zone.widgetType !== 'EMPTY' && <>
-        <div className="absolute left-1/2 -translate-x-1/2 w-px h-6 bg-indigo-500" style={{ bottom: -26 }} />
+      {canResize && onRotatePointerDown && zone.widgetType !== 'EMPTY' && (() => {
+        const place = rotateHandlePlacement(zone, rot);
+        const stem: React.CSSProperties = place.inside ? { [place.side]: 4 } : { [place.side]: -26 };
+        const knob: React.CSSProperties = place.inside ? { [place.side]: 12 } : { [place.side]: -56 };
+        return <>
+        {!place.inside && <div className="absolute left-1/2 -translate-x-1/2 w-px h-6 bg-indigo-500" style={stem} />}
         <button type="button" aria-label="Rotate selection" title="Drag to rotate. Hold Shift for 15° steps. Arrow keys rotate; Home resets."
           className="absolute left-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-indigo-300 bg-white text-indigo-600 shadow-md cursor-grab active:cursor-grabbing"
-          style={{ bottom: -56, pointerEvents: 'auto', touchAction: 'none' }}
+          style={{ ...knob, pointerEvents: 'auto', touchAction: 'none' }}
           onPointerDown={e => { e.stopPropagation(); onRotatePointerDown(e, zone.id); }}
           onKeyDown={e => {
             if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home'].includes(e.key)) return;
@@ -109,7 +131,8 @@ export function SelectionChrome({ zone, onResizePointerDown, onRotatePointerDown
             const next = e.key === 'Home' ? 0 : angle + (['ArrowLeft', 'ArrowDown'].includes(e.key) ? -1 : 1) * (e.shiftKey ? 15 : 1);
             st.updateZone(zone.id, { defaultConfig: { ...current.defaultConfig, _zoneRotation: ((next % 360) + 360) % 360 } }, true);
           }}><RotateCw className="h-4 w-4" aria-hidden /></button>
-      </>}
+        </>;
+      })()}
     </div>
   );
 }
