@@ -734,7 +734,11 @@ const VIDEO_EXTRA_KEYS = ['sha256', 'engine', 'cached', 'first', 'concurrent'] a
  * going without them, so liveness and render proof land on the retry.
  */
 export function videoExtrasRefused(status: number | null, sent: TelemetryBody): boolean {
-  return status === 400 && !!sent.video && VIDEO_EXTRA_KEYS.some((k) => k in (sent.video as object));
+  if (status !== 400) return false;
+  if (!!sent.video && VIDEO_EXTRA_KEYS.some((k) => k in (sent.video as object))) return true;
+  // Protocol 3 (2026-10-12): the native block's `protocol` / `zones` are
+  // extras too — an older API's strict schema refuses them the same way.
+  return !!sent.nativeVideo && ('protocol' in sent.nativeVideo || 'zones' in sent.nativeVideo || 'drops' in sent.nativeVideo);
 }
 
 /** Same self-heal for the declared-capability block. */

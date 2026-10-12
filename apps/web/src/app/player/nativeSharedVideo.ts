@@ -48,6 +48,25 @@ export interface NativeSharedVideoState {
   elapsedMs?: number;
   stalls?: number;
   loops?: number;
+  /** Protocol 3 telemetry (nativeZones.ts): native's late-frame drops, the
+   *  protocol the APK answered, and one bounded row per live slot. Sent only
+   *  while the API accepts the video extras (same back-off as `video`). */
+  drops?: number;
+  protocol?: 1 | 2 | 3;
+  zones?: Array<{
+    slot: string;
+    state: "preparing" | "ready" | "presenting" | "failed";
+    held?: boolean;
+    ended?: boolean;
+    reason?: string;
+    codecName?: string;
+    uniqueFrames?: number;
+    drops?: number;
+    loops?: number;
+    elapsedMs?: number;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 const record = (v: unknown): v is Record<string, unknown> =>
@@ -259,18 +278,22 @@ export function readNativeVideoDescriptor(
  * says so, 1 for any other well-formed state (the 1.1.25–1.1.28 field
  * builds), null when there is no usable answer (no bridge, refused, garbage).
  */
-export function readNativeVideoProtocol(raw: unknown): 1 | 2 | null {
+export function readNativeVideoProtocol(raw: unknown): 1 | 2 | 3 | null {
   let v: unknown = raw;
   try {
     if (typeof raw === "string") {
-      if (raw.length > 4096) return null;
+      // Protocol 3 replies carry a bounded `sessions[]` list (nativeZones.ts).
+      if (raw.length > 16384) return null;
       v = JSON.parse(raw);
     }
   } catch {
     return null;
   }
   if (!record(v) || v.version !== 1) return null;
-  if (v.protocol === 2) return 2;
+  // Protocol 3 (2026-10-12) keeps `protocol: 2` on the top level — an older
+  // web bundle meeting a newer APK sees exactly what it saw — and proves the
+  // positioned-zone engine with `protocolMax: 3`.
+  if (v.protocol === 2) return v.protocolMax === 3 ? 3 : 2;
   return readNativeSharedVideoState(v) ? 1 : null;
 }
 
@@ -283,11 +306,12 @@ export function readNativeVideoProtocol(raw: unknown): 1 | 2 | null {
 export function pickNativeVideo(input: {
   v2: NativeVideoDescriptor | null;
   v1: NativeSharedVideoDescriptor | null;
-  protocol: 1 | 2 | null;
+  protocol: 1 | 2 | 3 | null;
   v2Blocked: boolean;
 }): AnyNativeVideoDescriptor | null {
   if (input.protocol === null) return null;
-  if (input.v2 && input.protocol === 2 && !input.v2Blocked) return input.v2;
+  // A protocol-3 APK runs the solo engine exactly as protocol 2 does.
+  if (input.v2 && input.protocol >= 2 && !input.v2Blocked) return input.v2;
   return input.v1;
 }
 

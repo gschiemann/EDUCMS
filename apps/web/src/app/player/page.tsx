@@ -1,5 +1,7 @@
 'use client';
 import { NativeDualVideo } from './NativeDualVideo';
+import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
+import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect, type ZoneLayout } from './nativeZones';
 import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
@@ -2874,7 +2876,52 @@ function PlayerPage() {
   // 2026-10-12 — per-face native video engine (protocol 2, nativeSharedVideo.ts).
   // The descriptor is per SCREEN; the protocol is what this APK proved it speaks.
   const [nativeVideoDescriptor, setNativeVideoDescriptor] = useState<NativeVideoDescriptor | null>(null);
-  const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | null>(null);
+  const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | 3 | null>(null);
+  // ── Protocol 3 (2026-10-12, nativeZones.ts): positioned native slots for
+  // mixed playlists and template VIDEO zones. `nativeHoles` is the set of
+  // slots whose native picture is on glass right now, each with the hole to
+  // cut in the owner's backdrop (null = the whole media root); the owners
+  // paint opaque everywhere else. `nativeLinger` keeps a just-ended native
+  // slide mounted while its last frame sits behind the next slide's fade.
+  const [nativeVideoItems, setNativeVideoItems] = useState<NativeVideoItemsDescriptor | null>(null);
+  const [nativeHoles, setNativeHoles] = useState<Record<string, NativeHoleRect | null>>({});
+  const [nativeAttempts, setNativeAttempts] = useState<Record<string, number>>({});
+  const [nativeLinger, setNativeLinger] = useState<Record<string, true>>({});
+  const nativeHoleOpen = Object.keys(nativeHoles).length > 0;
+  const onNativeHole = useCallback((slot: string, open: boolean, rect: NativeHoleRect | null) => {
+    setNativeHoles(prev => {
+      if (!open) {
+        if (!(slot in prev)) return prev;
+        const next = { ...prev };
+        delete next[slot];
+        return next;
+      }
+      const cur = prev[slot];
+      if (slot in prev && JSON.stringify(cur) === JSON.stringify(rect)) return prev;
+      return { ...prev, [slot]: rect };
+    });
+  }, []);
+  const onNativeLinger = useCallback((slot: string, lingering: boolean) => {
+    setNativeLinger(prev => {
+      if (lingering ? prev[slot] : !prev[slot]) return prev;
+      const next = { ...prev };
+      if (lingering) next[slot] = true; else delete next[slot];
+      return next;
+    });
+  }, []);
+  const onNativeAttempt = useCallback((slot: string, n: number) => {
+    setNativeAttempts(prev => (prev[slot] === n ? prev : { ...prev, [slot]: n }));
+  }, []);
+  /** The page rotated `body` 90° because the ROM ignored PORTRAIT (the orientation effect below). */
+  const bodyRotatedByFallback = () => {
+    try { return typeof document !== 'undefined' && document.body.style.cssText.includes('rotate(90deg)'); } catch { return false; }
+  };
+  const nativeViewport = () => ({ w: typeof window !== 'undefined' ? window.innerWidth : 0, h: typeof window !== 'undefined' ? window.innerHeight : 0 });
+  const nativeSlotBlocked = (sha256: string, faceIndex: number) => {
+    try { return nativeVideoBlocked(window.localStorage, sha256, faceIndex, Date.now()); } catch { return false; }
+  };
+  const scalerLayoutRef = useRef<{ scale: number; align: 'center' | 'left' }>({ scale: 0, align: 'center' });
+  const templateRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // One question at boot (plus one retry): does this APK run independent
     // per-face native sessions? No bridge / no answer = web, as today.
@@ -6363,6 +6410,7 @@ function PlayerPage() {
 
       setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
       setNativeVideoDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoDescriptor(manifest.nativeVideo));
+      setNativeVideoItems(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoItems(manifest.nativeVideoItems));
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -6924,6 +6972,9 @@ function PlayerPage() {
               // fall back to a normalized URL for legacy manifests.
               id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${itemIdentity}`,
               manifestKey: itemIdentity,
+              // The server's PlaylistItem id: the protocol-3 native slot
+              // `item:<id>` (nativeZones.ts) is keyed on it.
+              itemId: typeof item.item_id === 'string' ? item.item_id : null,
               // The same PlaylistItem can point at a newly optimized file.
               // Fold in the served bytes' identity so a changed URL/hash
               // actually remounts the video instead of returning "same
@@ -7643,7 +7694,15 @@ function PlayerPage() {
         video: videoQualityTracker.take(nowMs),
         videoExtras: nowMs >= videoExtrasBlockedUntilRef.current,
         mediaCaps: !mediaCapsSentRef.current && nowMs >= mediaCapsBlockedUntilRef.current ? mediaCapsRef.current : null,
-        nativeVideo: nativeSharedVideoEvidence.telemetry(),
+        nativeVideo: (() => {
+          const base = nativeSharedVideoEvidence.telemetry();
+          // Protocol 3 (2026-10-12): the protocol the APK answered and one
+          // row per live slot ride on the same block — held back, like the
+          // video extras, while an older API refuses them (strict schema).
+          if (!base || nativeVideoProtocol !== 3 || nowMs < videoExtrasBlockedUntilRef.current) return base;
+          const zones = nativeZoneTelemetryRows();
+          return { ...base, protocol: 3 as const, ...(zones.length ? { zones } : {}) };
+        })(),
         // What this screen measured at a solo video's loop seam (2026-09-29);
         // sent only when a boundary was observed since the last report.
         loop: loopReportDue(nowMs, loopReportBlockedUntilRef.current) ? loopBoundaryTracker.take() : null,
@@ -11697,6 +11756,25 @@ function PlayerPage() {
     const hasWebpageZone = zones.some((z: any) => z.widgetType === 'WEBPAGE' || z.widgetType === 'WEBSITE_TABS');
     const isInteractive = isTouchTemplate || hasWebpageZone;
 
+    // Protocol 3 (2026-10-12): the template's background, painted by the root
+    // today. While a native zone is on glass the root goes transparent and a
+    // BACKDROP child paints the same background with an even-odd hole cut at
+    // every native zone's rect (nativeZones.ts holeClipPath) — the hardware
+    // surface shows through there; every other pixel stays exactly as it was.
+    const templateBg: React.CSSProperties = {
+      backgroundColor: tpl.bgColor || '#000000',
+      ...(tpl.bgGradient ? { background: healPatternCss(tpl.bgGradient) as string } : {}),
+      ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+    };
+    const templateHoles = Object.entries(nativeHoles).filter(([slot, r]) => slot.startsWith('zone:') && r).map(([, r]) => r as NativeHoleRect);
+    const templateHoleOpen = templateHoles.length > 0;
+    const designW = tpl.screenWidth || 1920;
+    const designH = tpl.screenHeight || 1080;
+    const nativeZoneCount = (() => {
+      if (!nativeVideoItems || nativeVideoProtocol !== 3 || isInteractive || tplScenes.length > 0 || !!activeEmergency || playlist?.isEmergency === true) return 0;
+      return zones.filter((z: any) => z.widgetType === 'VIDEO' && !!nativeZoneItemFor(nativeVideoItems, `zone:${z.id}`)).length;
+    })();
+
     // Stop splash short-circuit before rendering template widgets
     // so the whole widget tree tears down (stopping any animations,
     // video loops, weather polls, etc.) during the stop.
@@ -11723,6 +11801,7 @@ function PlayerPage() {
         // the Back menu (`edu-show-stop-overlay` / Escape — the window-level
         // listener, which needs no focus to work).
         data-edu-player-root="template"
+        ref={templateRootRef}
         style={{
           // 2026-05-13 — Inline-style fallback. Operator reported
           // (Taurus LED) publishing the Rainbow Animated Portrait
@@ -11764,10 +11843,29 @@ function PlayerPage() {
           // to reconcile: each is right for its own surface, which is
           // exactly why the ROW has to state the answer rather than leave
           // it to whichever surface draws it. Do NOT "align" these two.
-          backgroundColor: tpl.bgColor || '#000000',
-          ...(tpl.bgGradient ? { background: healPatternCss(tpl.bgGradient) as string } : {}),
-          ...(tpl.bgImage ? { backgroundImage: tpl.bgImage.trim().startsWith('url(') ? tpl.bgImage : `url(${tpl.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+          ...(templateHoleOpen ? { backgroundColor: 'transparent', background: 'transparent' } : templateBg),
         }}>
+        {templateHoleOpen ? (
+          <>
+            <div
+              data-native-backdrop="template"
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: 0, left: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: 0,
+                ...templateBg,
+                clipPath: holeClipPath(templateHoles),
+                WebkitClipPath: holeClipPath(templateHoles),
+              }}
+            />
+            <style>{`
+      html, body, .player-root-wrapper, [data-edu-player-root="template"] { background: transparent !important; }
+    `}</style>
+          </>
+        ) : null}
         {/* Scale the entire template scene from its authored design
             resolution down (or up) to the LED canvas via transform:
             scale(). Pre-built templates are authored at 1920×1080
@@ -11777,9 +11875,10 @@ function PlayerPage() {
             "the template loads now but its 1080x1920 so cutting off
             half the screen." */}
         <TemplateScaler
-          designW={tpl.screenWidth || 1920}
-          designH={tpl.screenHeight || 1080}
+          designW={designW}
+          designH={designH}
           fitMode={canvasOverride.fitMode}
+          onLayout={(scale, align) => { scalerLayoutRef.current = { scale, align }; }}
         >
         {/* Render each zone with its live widget. Key by sceneTick on touch
             templates so idle-reset remounts widgets and clears local state. */}
@@ -11966,15 +12065,68 @@ function PlayerPage() {
                 splash, the pairing UI, the emergency overlay, the
                 soft-blank overlay or any escape surface — all of which are
                 statically imported and render outside this subtree. */}
-            <Suspense fallback={null}>
-              <LazyPlayerZoneWidget
-                zoneId={zone.id}
-                widgetType={zone.widgetType}
-                config={cfg}
-                width={zone.width}
-                height={zone.height}
-              />
-            </Suspense>
+            {(() => {
+              const widget = (
+                <Suspense fallback={null}>
+                  <LazyPlayerZoneWidget
+                    zoneId={zone.id}
+                    widgetType={zone.widgetType}
+                    config={cfg}
+                    width={zone.width}
+                    height={zone.height}
+                  />
+                </Suspense>
+              );
+              // Protocol 3 (2026-10-12): an eligible VIDEO zone is decoded
+              // natively BELOW the WebView at this zone's measured rect; the
+              // web <video> stays until native holds the first frame, then
+              // this wrapper unmounts it and the backdrop above cuts the hole.
+              const slot = `zone:${zone.id}`;
+              const zoneItem = nativeZoneCount > 0 && zone.widgetType === 'VIDEO' && templateZoneConfigEligible(cfg)
+                ? nativeZoneItemFor(nativeVideoItems, slot) : null;
+              const zoneNative = nativeZoneEligible(nativeVideoItems, zoneItem, {
+                screenId, tenantId, protocol: nativeVideoProtocol, sha256: null,
+                emergency: !!activeEmergency || playlist?.isEmergency === true,
+                sync: syncConfigRef.current.enabled, preview: isPreviewMode(),
+                blocked: !!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0),
+              });
+              if (!zoneNative || !nativeVideoItems || !zoneItem) return widget;
+              const zoneRotation = typeof (cfg as any)._zoneRotation === 'number' ? (cfg as any)._zoneRotation : 0;
+              return (
+                <NativeZoneVideo
+                  descriptor={nativeVideoItems}
+                  item={zoneItem}
+                  active
+                  prerollOnly={false}
+                  measure={(el) => {
+                    if (!el) return null;
+                    const deg = zoneDegrees(bodyRotatedByFallback(), zoneRotation);
+                    if (deg === null) return null;
+                    return zoneLayout(el.getBoundingClientRect(), nativeViewport(), deg, templateZoneFit(cfg));
+                  }}
+                  localRect={() => {
+                    const root = templateRootRef.current;
+                    const { scale, align } = scalerLayoutRef.current;
+                    if (!root) return null;
+                    return templateZoneLocalRect(
+                      { w: root.offsetWidth, h: root.offsetHeight },
+                      { w: designW, h: designH },
+                      scale, align,
+                      { x: zone.x, y: zone.y, width: zone.width, height: zone.height, rotation: zoneRotation },
+                    );
+                  }}
+                  onHole={onNativeHole}
+                  onPlaying={() => {}}
+                  evidence={zones.findIndex((z: any) => z.widgetType === 'VIDEO' && !!nativeZoneItemFor(nativeVideoItems, `zone:${z.id}`)) === zones.indexOf(zone)}
+                  attempt={nativeAttempts[slot] ?? 0}
+                  onAttempt={onNativeAttempt}
+                  className="absolute top-0 left-0 w-full h-full"
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+                >
+                  {widget}
+                </NativeZoneVideo>
+              );
+            })()}
           </div>
           );
         })}
@@ -12256,7 +12408,10 @@ function PlayerPage() {
         // box whose size comes from width/height. See CLAUDE.md rule #10.
         width: 'var(--led-w, 100vw)',
         height: 'var(--led-h, 100vh)',
-        background: '#000',
+        // Protocol 3 (2026-10-12): while a native slide is on glass the root
+        // is the hole — the hardware surface below the WebView shows through;
+        // every other slide paints opaque over it (NativeZoneVideo.tsx).
+        background: nativeHoleOpen ? 'transparent' : '#000',
         overflow: 'hidden',
         cursor: isPlaylistInteractive ? undefined : 'none',
       }}
@@ -12266,6 +12421,11 @@ function PlayerPage() {
       // Back menu (window-level Escape / `edu-show-stop-overlay`) is the
       // operator surface and needs no focused element to reach.
     >
+      {nativeHoleOpen ? (
+        <style>{`
+      html, body, .player-root-wrapper, [data-edu-player-root="media"] { background: transparent !important; }
+    `}</style>
+      ) : null}
       {currentItem && !playbackStopped && !allAssetsFailed && !normalFilesSetAside && !allItemsUnplayable ? (
         <div
           className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}
@@ -12346,7 +12506,10 @@ function PlayerPage() {
             const advanceOnFailure = isActive || playlist?.isEmergency === true;
             // Render video for active OR next-up so the next clip
             // is already decoded by the time it becomes active.
-            if (isVid && !isActive && !isNext) return null;
+            // A native slide that just left the glass lingers (its last frame
+            // sits behind the next slide's fade; NativeZoneVideo.tsx).
+            const lingering = isVid && !!nativeLinger[`item:${(item as { itemId?: string | null }).itemId ?? ''}`];
+            if (isVid && !isActive && !isNext && !lingering) return null;
             // Iframes (web pages) keep "active only" — preloading
             // an inactive iframe runs JS and burns CPU even invisible.
             if (isWeb && !isActive) return null;
@@ -12420,9 +12583,36 @@ function PlayerPage() {
                 active:isActive,emergency:!!activeEmergency || playlist?.isEmergency === true,
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
+              // Protocol 3 (2026-10-12, nativeZones.ts): a video inside a
+              // MIXED playlist. Pre-rolled while this slide is the hidden
+              // next-up, shown through the media root's hole once it is
+              // active, plays once, then lingers behind the next slide's fade.
+              const zoneSlot = `item:${(item as { itemId?: string | null }).itemId ?? ''}`;
+              const zoneItem = !nativeEligible && (item as { itemId?: string | null }).itemId && !useVideoPlaylistDeck
+                ? nativeZoneItemFor(nativeVideoItems, zoneSlot) : null;
+              const zoneNative = nativeZoneEligible(nativeVideoItems, zoneItem, {
+                screenId, tenantId, protocol: nativeVideoProtocol, sha256: item.asset.fileHash ?? null,
+                emergency: !!activeEmergency || playlist?.isEmergency === true,
+                sync: syncConfigRef.current.enabled, preview: isPreviewMode(),
+                blocked: !!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0),
+              }) && (item as { muted?: boolean | null }).muted !== false && !syncActiveRef.current;
               const wrapNative = (browser: React.ReactNode) => nativeEligible
                 ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
+                : zoneNative && nativeVideoItems && zoneItem
+                ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
+                    active={isActive} prerollOnly
+                    measure={(el) => {
+                      if (!el) return null;
+                      const deg = zoneDegrees(bodyRotatedByFallback(), 0);
+                      return deg === null ? null : zoneLayout(el.getBoundingClientRect(), nativeViewport(), deg, slideFit);
+                    }}
+                    onHole={onNativeHole} onLinger={onNativeLinger}
+                    onPlaying={markItemSucceeded}
+                    onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
+                    evidence
+                    attempt={nativeAttempts[zoneSlot] ?? 0} onAttempt={onNativeAttempt}
+                    className={classes}>{browser}</NativeZoneVideo>
                 : browser;
               if (loopChoice.backend === 'continuous') {
                 return wrapNative(<ContinuousLoopVideo key={slideKey(item)} videoKey={item.id} src={videoSrc} fit={slideFit}
@@ -12632,6 +12822,9 @@ function PlayerPage() {
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
+                  // While the media root is a native hole, a letterboxed
+                  // picture paints its own black bars (the root is see-through).
+                  ...(nativeHoleOpen ? { backgroundColor: '#000' } : {}),
                 }}
                 onLoad={markItemSucceeded}
                 onError={() => {
@@ -14414,10 +14607,13 @@ function TemplateScaler({
   designW,
   designH,
   fitMode = 'auto',
+  onLayout,
   children,
 }: {
   designW: number;
   designH: number;
+  /** Protocol 3 (nativeZones.ts): the scale + anchor the native-zone hole math mirrors. */
+  onLayout?: (scale: number, align: 'center' | 'left') => void;
   /**
    * - contain: fit the WHOLE design inside the LED (letterbox bars
    *   on the axis that doesn't match).
@@ -14473,7 +14669,9 @@ function TemplateScaler({
       // out of the box with zero controller config and zero on-poster
       // menu fiddling. Anything that fills the LED, or is downscaled to
       // fit, stays centered exactly as before.
-      setAlign(s >= 0.999 && designW * s < w - 1 ? 'left' : 'center');
+      const a: 'center' | 'left' = s >= 0.999 && designW * s < w - 1 ? 'left' : 'center';
+      setAlign(a);
+      onLayout?.(s, a);
     };
     compute();
     // Two RAFs — first paint may report 0 offsetWidth on the Taurus
