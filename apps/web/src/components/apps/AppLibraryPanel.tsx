@@ -282,6 +282,9 @@ export function AppLibraryPanel() {
           />
         )}
 
+        <p className="text-xs text-slate-500" data-testid="apps-how-to">
+          Click an app to add it — you&apos;ll paste a link or connect your account next.
+        </p>
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
           <input
