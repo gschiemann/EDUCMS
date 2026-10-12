@@ -1,0 +1,111 @@
+{
+  "fieldCount": 38,
+  "slotCount": 3,
+  "keysPreserved": true,
+  "results": [
+    {
+      "engine": "chromium",
+      "orientation": "landscape",
+      "passed": true,
+      "urlManualSizes": true,
+      "manualAbsoluteAcrossScale": true,
+      "displayFontToken": true,
+      "resetToFloor": true,
+      "geometry": {
+        "overlap": [],
+        "outside": [],
+        "uneditable": []
+      },
+      "images": [
+        {
+          "key": "collection.parcel",
+          "fit": "contain",
+          "placeholder": "none"
+        },
+        {
+          "key": "returns.desk",
+          "fit": "contain",
+          "placeholder": "none"
+        }
+      ]
+    },
+    {
+      "engine": "chromium",
+      "orientation": "portrait",
+      "passed": true,
+      "urlManualSizes": true,
+      "manualAbsoluteAcrossScale": true,
+      "displayFontToken": true,
+      "resetToFloor": true,
+      "geometry": {
+        "overlap": [],
+        "outside": [],
+        "uneditable": []
+      },
+      "images": [
+        {
+          "key": "collection.parcel",
+          "fit": "contain",
+          "placeholder": "none"
+        },
+        {
+          "key": "returns.desk",
+          "fit": "contain",
+          "placeholder": "none"
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "orientation": "landscape",
+      "passed": true,
+      "urlManualSizes": true,
+      "manualAbsoluteAcrossScale": true,
+      "displayFontToken": true,
+      "resetToFloor": true,
+      "geometry": {
+        "overlap": [],
+        "outside": [],
+        "uneditable": []
+      },
+      "images": [
+        {
+          "key": "collection.parcel",
+          "fit": "contain",
+          "placeholder": "none"
+        },
+        {
+          "key": "returns.desk",
+          "fit": "contain",
+          "placeholder": "none"
+        }
+      ]
+    },
+    {
+      "engine": "webkit",
+      "orientation": "portrait",
+      "passed": true,
+      "urlManualSizes": true,
+      "manualAbsoluteAcrossScale": true,
+      "displayFontToken": true,
+      "resetToFloor": true,
+      "geometry": {
+        "overlap": [],
+        "outside": [],
+        "uneditable": []
+      },
+      "images": [
+        {
+          "key": "collection.parcel",
+          "fit": "contain",
+          "placeholder": "none"
+        },
+        {
+          "key": "returns.desk",
+          "fit": "contain",
+          "placeholder": "none"
+        }
+      ]
+    }
+  ]
+}
