@@ -628,6 +628,10 @@ registerVariant({
     defaultVolume: 70,
     autoResume: true,
     pauseDuringEmergency: true,
+    // 2026-10-12 (owner): background music should not sit on the content —
+    // a new music zone is audio only; "On screen" in Properties shows it.
+    display: 'hidden',
+    hideOnScreen: true,
   },
 });
 

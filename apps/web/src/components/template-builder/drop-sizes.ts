@@ -57,6 +57,8 @@ const WIDGET_TYPE_DROP_SIZE: Record<string, DropSize> = {
   TICKER: { w: 100, h: 10 },
   ANNOUNCEMENT: { w: 55, h: 28 },
   WEBPAGE: { w: 60, h: 55 },
+  // Audio only by default (2026-10-12): a small handle, not a 40×30 box.
+  MUSIC_PLAYER: { w: 22, h: 14 },
   // Website Tabs (2026-09-28) IS the screen — a tab bar plus the site under
   // it — so it lands full-canvas (addZone pins a 100×100 drop at the origin).
   WEBSITE_TABS: { w: 100, h: 100 },

@@ -202,6 +202,7 @@ import { TimeField } from '@/components/ui/time-field';
 import { isFromDocumentFrame } from '@/lib/board-message-source';
 import { AppZoneSetup } from '@/components/apps/AppZoneSetup';
 import { appZoneInfo } from '@/components/apps/app-zone';
+import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -2720,6 +2721,7 @@ function CtsLiveCard({
 // passes it. Tests mount it directly to prove the LOGO font/color controls and
 // the converted list/schedule editors fire through to a config write.
 export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
+  const tMusic = useTranslations('musicPlayer');
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
@@ -5860,6 +5862,22 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // dropped the tile and saw nothing editable. Now exposes every
     // documented knob.
     case 'MUSIC_PLAYER': {
+      // 2026-10-12 (owner) — "On screen" first: hidden (audio only, the
+      // default for a new music zone), a small corner badge, or a now-playing
+      // card. `hideOnScreen` is kept in step for anything reading the old key.
+      fields.push(
+        <SelectField
+          key="display"
+          label={tMusic('onScreen')}
+          value={resolveMusicDisplay(cfg)}
+          options={[
+            ['hidden', tMusic('onScreenHidden')],
+            ['badge', tMusic('onScreenBadge')],
+            ['card', tMusic('onScreenCard')],
+          ]}
+          onChange={(v) => setField({ display: v, hideOnScreen: v === 'hidden' })}
+        />,
+      );
       fields.push(
         <SelectField
           key="source"
@@ -5933,7 +5951,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         setField({ defaultVolume: Math.max(0, Math.min(100, n)) });
       }} />);
       fields.push(<ToggleField key="autoResume" label="Auto-resume on player reload" value={cfg.autoResume !== false} onChange={(v) => setField({ autoResume: v })} />);
-      fields.push(<ToggleField key="hideOnScreen" label="Hide on screen (audio only)" value={cfg.hideOnScreen === true} onChange={(v) => setField({ hideOnScreen: v })} />);
       fields.push(<ToggleField key="pauseDuringEmergency" label="Silence during emergency (recommended)" value={cfg.pauseDuringEmergency !== false} onChange={(v) => setField({ pauseDuringEmergency: v })} />);
       // Business-hours editor — structured start/end time + day-of-week
       // toggles (no raw JSON; §19 P3). Blank = plays 24/7. Overnight

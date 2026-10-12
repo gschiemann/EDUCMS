@@ -5289,5 +5289,18 @@
     "removeApp": "移除",
     "cancel": "取消",
     "changeSetup": "更改链接或账户"
+  },
+  "musicPlayer": {
+    "nowPlaying": "正在播放",
+    "tapToStart": "▶ 点击开始播放音乐",
+    "stillBlocked": "自动播放仍被阻止",
+    "offHours": "已暂停 — 播放时间 {start}–{end}",
+    "silenced": "警报期间已静音",
+    "pickStation": "请在“属性”中选择电台",
+    "audioChip": "音频",
+    "onScreen": "屏幕显示",
+    "onScreenHidden": "隐藏 — 仅音频",
+    "onScreenBadge": "角落小标签",
+    "onScreenCard": "正在播放卡片"
   }
 }

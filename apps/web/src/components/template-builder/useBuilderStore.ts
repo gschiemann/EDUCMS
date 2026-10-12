@@ -32,6 +32,9 @@ export function seedDefaultConfig(type: string): Record<string, any> {
       case 'COUNTDOWN':         return { label: 'Countdown', targetDate: '' };
       case 'STAFF_SPOTLIGHT':   return { staffName: 'Staff Name', role: 'Role' };
       case 'QUOTE':             return { quote: 'Click to edit quote', author: 'Author' };
+      // 2026-10-12 (owner) — background music is audio only until the
+      // operator asks for a badge or a now-playing card.
+      case 'MUSIC_PLAYER':      return { source: 'somafm', somafmStationId: 'groovesalad', defaultVolume: 70, autoResume: true, pauseDuringEmergency: true, display: 'hidden', hideOnScreen: true };
       // Phase D2.9 — Touch palette tiles. Each canonicalizes to
       // widgetType='TOUCH_POINT' (see below) with the variant in
       // defaultConfig. Variant drives the visual the renderer

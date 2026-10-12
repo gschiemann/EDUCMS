@@ -5289,5 +5289,18 @@
     "removeApp": "Quitar",
     "cancel": "Cancelar",
     "changeSetup": "Cambiar enlace o cuenta"
+  },
+  "musicPlayer": {
+    "nowPlaying": "Sonando ahora",
+    "tapToStart": "▶ Toca para iniciar la música",
+    "stillBlocked": "La reproducción automática sigue bloqueada",
+    "offHours": "En pausa — suena de {start} a {end}",
+    "silenced": "Silenciada durante la alerta",
+    "pickStation": "Elige una emisora en Propiedades",
+    "audioChip": "Audio",
+    "onScreen": "En pantalla",
+    "onScreenHidden": "Oculto — solo audio",
+    "onScreenBadge": "Insignia pequeña en la esquina",
+    "onScreenCard": "Tarjeta de reproducción"
   }
 }

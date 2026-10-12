@@ -45,6 +45,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 type MusicSource =
   | 'somafm'
@@ -81,6 +82,11 @@ interface MusicPlayerConfig {
   };
   /** Optional zone label rendered at the top of the widget. */
   zoneLabel?: string;
+  /** What the screen shows: nothing (audio only), a small corner badge, or a
+   *  now-playing card. See resolveMusicDisplay. */
+  display?: MusicDisplay;
+  /** Legacy (pre-`display`) audio-only toggle — still honoured. */
+  hideOnScreen?: boolean;
 }
 
 const SOMAFM_DIRECT_URLS: Record<string, string> = {
@@ -133,41 +139,72 @@ function isWithinBusinessHours(bh?: MusicPlayerConfig['businessHours']): boolean
   return nowMin >= startMin || nowMin <= endMin;
 }
 
-function resolveStreamUrl(c: MusicPlayerConfig): { url: string | null; sourceLabel: string } {
+/** Station display names — the same list the Properties picker offers. */
+export const SOMAFM_STATION_NAMES: Record<string, string> = {
+  groovesalad: 'Groove Salad', dronezone: 'Drone Zone', secretagent: 'Secret Agent',
+  lush: 'Lush', bagel: 'BAGeL Radio', defcon: 'DEF CON Radio', spacestation: 'Space Station Soma',
+  beatblender: 'Beat Blender', indie: 'Indie Pop Rocks!', cliqhop: 'cliqhop idm', poptron: 'PopTron',
+  thetrip: 'The Trip', fluid: 'Fluid', folkfwd: 'Folk Forward', illstreet: 'Illinois Street Lounge',
+  brfm: 'Black Rock FM', digitalis: 'Digitalis', metal: 'Metal Detector', '7soul': 'Seven Inch Soul',
+  seventies: 'Left Coast 70s', u80s: 'Underground 80s',
+};
+
+export interface ResolvedStream {
+  url: string | null;
+  /** What is playing — a station name, in words a passer-by can read. */
+  title: string;
+  /** Who it comes from (SomaFM, NTS Radio, NPR, …). */
+  provider: string;
+}
+
+export function resolveStreamUrl(c: MusicPlayerConfig): ResolvedStream {
   const src = c.source || 'somafm';
   switch (src) {
     case 'somafm': {
-      const id = (c.somafmStationId || 'groovesalad').toLowerCase();
-      return { url: SOMAFM_DIRECT_URLS[id] || SOMAFM_DIRECT_URLS.groovesalad, sourceLabel: `SomaFM · ${id}` };
+      const raw = (c.somafmStationId || 'groovesalad').toLowerCase();
+      const id = SOMAFM_DIRECT_URLS[raw] ? raw : 'groovesalad';
+      return { url: SOMAFM_DIRECT_URLS[id], title: SOMAFM_STATION_NAMES[id] || id, provider: 'SomaFM' };
     }
     case 'nts': {
       const ch = c.ntsChannel || '1';
-      return { url: NTS_DIRECT_URLS[ch], sourceLabel: `NTS Radio · channel ${ch}` };
+      return { url: NTS_DIRECT_URLS[ch], title: `NTS ${ch}`, provider: 'NTS Radio' };
     }
     case 'npr': {
-      // NPR doesn't publish a single global stream — each member
-      // station has its own. The Properties panel uses the NPR
-      // /stations/finder API by lat/lng (server-side, /api/v1/music/
-      // npr-stations) to populate a station picker. Once picked,
-      // we store the station's call sign + the direct stream URL
-      // it returned in customStreamUrl. So at render time NPR + a
-      // populated customStreamUrl is the "best path" and we use it.
+      // NPR doesn't publish a single global stream — each member station has
+      // its own; the Properties panel stores the picked station's direct
+      // stream in customStreamUrl.
       if (c.customStreamUrl) {
-        return { url: c.customStreamUrl, sourceLabel: `NPR · ${c.nprStationCallSign || 'local station'}` };
+        return { url: c.customStreamUrl, title: c.nprStationCallSign || 'Local station', provider: 'NPR' };
       }
-      return { url: null, sourceLabel: 'NPR — pick a local station in Properties' };
+      return { url: null, title: 'NPR', provider: 'NPR' };
     }
     case 'custom-stream':
-      return { url: c.customStreamUrl || null, sourceLabel: 'Custom stream' };
+      return { url: c.customStreamUrl || null, title: c.zoneLabel || 'Live radio', provider: 'Stream' };
     // Legacy saved sources with no playable stream: show the neutral
     // "pick a station" state, never a label about a future release.
     case 'apple-business':
     case 'spotify-business':
-      return { url: null, sourceLabel: 'Music' };
+      return { url: null, title: 'Music', provider: 'Music' };
     default:
-      return { url: null, sourceLabel: src };
+      return { url: null, title: String(src), provider: String(src) };
   }
 }
+
+export type MusicDisplay = 'hidden' | 'badge' | 'card';
+
+/**
+ * How the player looks on screen. Owner, 2026-10-12: background music should
+ * not sit on top of the content, so a NEW music zone is `hidden` (its seed
+ * carries `display: 'hidden'`). A zone saved before `display` existed keeps
+ * what it had: the card, unless its old `hideOnScreen` toggle was on.
+ */
+export function resolveMusicDisplay(c: { display?: unknown; hideOnScreen?: unknown }): MusicDisplay {
+  if (c.display === 'hidden' || c.display === 'badge' || c.display === 'card') return c.display;
+  return c.hideOnScreen === true ? 'hidden' : 'card';
+}
+
+
+type MusicState = 'playing' | 'tap' | 'off-hours' | 'silenced' | 'unset';
 
 export function MusicPlayerWidget({
   config,
@@ -176,13 +213,16 @@ export function MusicPlayerWidget({
   config?: MusicPlayerConfig;
   live?: boolean;
 }) {
+  const t = useTranslations('musicPlayer');
   const c: MusicPlayerConfig = config || {};
   const isLive = !!live;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { url, sourceLabel } = useMemo(() => resolveStreamUrl(c), [c]);
+  const stream = useMemo(() => resolveStreamUrl(c), [c]);
+  const { url } = stream;
+  const display = resolveMusicDisplay(c);
   const withinHours = useMemo(() => isWithinBusinessHours(c.businessHours), [c.businessHours]);
 
   // Emergency awareness — the player wraps templates in a provider
@@ -199,11 +239,12 @@ export function MusicPlayerWidget({
     };
     check();
     // Polling at 1Hz is cheap and avoids needing a mutation observer.
-    const t = setInterval(check, 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(check, 1000);
+    return () => clearInterval(timer);
   }, [isLive]);
 
   const silenced = !!c.pauseDuringEmergency && emergencyActive;
+  const canPlay = !!url && withinHours && !silenced;
 
   // Auto-start playback when live + URL resolved + not silenced.
   useEffect(() => {
@@ -233,145 +274,226 @@ export function MusicPlayerWidget({
     try { window.localStorage.setItem('music-player:lastStation', url); } catch { /* ignore */ }
   }, [isLive, url, c.autoResume]);
 
-  // ─── Off-hours fallback ─────────────────────────────────────
-  if (!withinHours) {
+  const state: MusicState =
+    !withinHours ? 'off-hours'
+      : silenced ? 'silenced'
+        : !url ? 'unset'
+          : needsTap && isLive ? 'tap'
+            : 'playing';
+
+  // ONE audio element for every look, mounted only while it may play.
+  const audio = canPlay ? <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} /> : null;
+  const tapButton = state === 'tap' ? (
+    <button
+      type="button"
+      onClick={() => {
+        const a = audioRef.current;
+        if (a) a.play().then(() => setNeedsTap(false)).catch(() => setError(t('stillBlocked')));
+      }}
+      style={{ padding: '8px 16px', fontSize: 14, fontWeight: 700, borderRadius: 10, border: 0, background: '#10b981', color: '#fff', cursor: 'pointer' }}
+    >
+      {t('tapToStart')}
+    </button>
+  ) : null;
+
+  const statusLine =
+    state === 'off-hours' ? t('offHours', { start: c.businessHours?.start || '08:00', end: c.businessHours?.end || '22:00' })
+      : state === 'silenced' ? t('silenced')
+        : state === 'unset' ? t('pickStation')
+          : error || stream.provider;
+
+  // ─── Hidden (audio only) — the DEFAULT for a new music zone. On a screen it
+  // paints nothing (except the one-time "tap to start" a browser may demand).
+  // In the editor it is a small "♪ audio" chip so the operator can still find,
+  // select and move it.
+  if (display === 'hidden') {
+    if (isLive) {
+      return (
+        <>
+          {audio}
+          {tapButton && <div style={{ position: 'absolute', top: 0, left: 0 }}>{tapButton}</div>}
+        </>
+      );
+    }
     return (
-      <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>
-        <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-          <div style={{ fontSize: '2em', marginBottom: 6 }}>🌙</div>
-          <div style={{ fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>Music paused — outside business hours</div>
-          <div style={{ fontSize: '0.85em', lineHeight: 1.4 }}>
-            Plays {c.businessHours?.start || '08:00'}–{c.businessHours?.end || '22:00'}
-          </div>
-        </div>
-      </PlayerShell>
-    );
-  }
-
-  // ─── Emergency fallback ─────────────────────────────────────
-  if (silenced) {
-    return (
-      <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>
-        <div style={{ textAlign: 'center', color: '#fecaca' }}>
-          <div style={{ fontSize: '2em', marginBottom: 6 }}>🔇</div>
-          <div style={{ fontWeight: 700, color: '#fef2f2', marginBottom: 4 }}>Music silenced — emergency mode</div>
-          <div style={{ fontSize: '0.85em', lineHeight: 1.4 }}>
-            Will resume automatically once all-clear is received.
-          </div>
-        </div>
-      </PlayerShell>
-    );
-  }
-
-  // ─── No URL resolved (NPR awaiting station pick, custom empty) ──
-  if (!url) {
-    return (
-      <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>
-        <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-          <div style={{ fontSize: '2em', marginBottom: 6 }}>📻</div>
-          <div style={{ fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>{sourceLabel}</div>
-          <div style={{ fontSize: '0.85em', lineHeight: 1.4 }}>
-            Pick a station or paste a stream URL in Properties.
-          </div>
-        </div>
-      </PlayerShell>
-    );
-  }
-
-  // ─── Hidden (audio only) — owner 2026-10-12: background music should not
-  // sit on top of the content. Plays the audio, paints nothing (except the
-  // one-time "tap to start" button a browser may demand).
-  if ((c as { hideOnScreen?: boolean }).hideOnScreen && !needsTap) {
-    return <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} />;
-  }
-
-  // ─── Live audio render ──────────────────────────────────────
-  return (
-    <PlayerShell zoneLabel={c.zoneLabel} sourceLabel={sourceLabel}>
-      <audio ref={audioRef} preload="none" crossOrigin="anonymous" />
-      {needsTap && isLive && (
-        <button
-          type="button"
-          onClick={() => {
-            const a = audioRef.current;
-            if (a) a.play().then(() => setNeedsTap(false)).catch(() => setError('Autoplay still blocked'));
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, ...NO_SELECT }}>
+        <span
+          data-music-chip="true"
+          title={`${stream.title} · ${statusLine}`}
+          style={{
+            position: 'absolute', top: 6, left: 6, maxWidth: 'calc(100% - 12px)',
+            display: 'inline-flex', alignItems: 'center', padding: '4px 10px 4px 8px',
+            borderRadius: 999, background: 'rgba(15,23,42,0.82)', color: '#fff',
+            fontFamily: FONT, fontSize: 12, fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
           }}
-          className="px-4 py-2 text-sm font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 shadow-md"
         >
-          ▶ Tap to start music
-        </button>
-      )}
-      {!needsTap && (
-        <div style={{ textAlign: 'center', color: '#cbd5e1' }}>
-          <div style={{ fontSize: '2.4em', marginBottom: 8, opacity: 0.95 }}>🎵</div>
-          <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '1.1em', marginBottom: 2 }}>{sourceLabel}</div>
-          <div style={{ fontSize: '0.78em', lineHeight: 1.3, opacity: 0.75 }}>
-            Volume {(c.defaultVolume ?? 70)}% · {isLive ? 'streaming' : 'preview'}
+          <span aria-hidden style={{ marginRight: 6, color: ACCENT }}>♪</span>
+          {t('audioChip')}
+          <span style={{ marginLeft: 6, fontWeight: 500, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis' }}>{stream.title}</span>
+        </span>
+      </div>
+    );
+  }
+
+  const playing = state === 'playing';
+
+  // ─── Small corner badge ─────────────────────────────────────
+  if (display === 'badge') {
+    return (
+      <ScaledScene naturalW={420} naturalH={84} align="start">
+        {audio}
+        <div
+          data-music-badge="true"
+          style={{
+            width: 420, height: 84, display: 'flex', alignItems: 'center', padding: '0 22px 0 12px',
+            borderRadius: 42, background: 'rgba(15,23,42,0.88)', color: '#fff', fontFamily: FONT,
+            boxShadow: '0 6px 20px rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.10)', boxSizing: 'border-box',
+          }}
+        >
+          <StationArt seed={stream.title} size={60} radius={30} />
+          <div style={{ marginLeft: 14, minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 24, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stream.title}</div>
+            <div style={{ fontSize: 16, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine}</div>
           </div>
-          {error && <div style={{ marginTop: 6, color: '#fca5a5', fontSize: '0.75em' }}>{error}</div>}
+          {tapButton ?? <Equalizer active={playing} height={30} bars={4} />}
         </div>
-      )}
-    </PlayerShell>
+      </ScaledScene>
+    );
+  }
+
+  // ─── Now-playing card ───────────────────────────────────────
+  return (
+    <ScaledScene naturalW={760} naturalH={240}>
+      {audio}
+      <div
+        data-music-card="true"
+        style={{
+          position: 'relative', width: 760, height: 240, display: 'flex', alignItems: 'center',
+          padding: 24, boxSizing: 'border-box', borderRadius: 28, overflow: 'hidden', fontFamily: FONT, color: '#fff',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)', border: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
+        {/* Brand glow — the tenant's own colours, softly. */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute', top: -120, right: -80, width: 420, height: 420, borderRadius: '50%',
+            background: `radial-gradient(circle, ${BRAND} 0%, rgba(0,0,0,0) 65%)`, opacity: 0.35,
+          }}
+        />
+        <StationArt seed={stream.title} size={192} radius={22} />
+        <div style={{ position: 'relative', marginLeft: 28, minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', fontSize: 15, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: ACCENT }}>
+            {playing && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#22c55e', marginRight: 9, boxShadow: '0 0 0 4px rgba(34,197,94,0.20)' }} />}
+            {c.zoneLabel || t('nowPlaying')}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 46, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {stream.title}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 20, opacity: 0.72, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine}</div>
+          <div style={{ marginTop: 18 }}>{tapButton ?? <Equalizer active={playing} height={34} bars={7} />}</div>
+        </div>
+      </div>
+    </ScaledScene>
   );
 }
 
-function PlayerShell({
-  zoneLabel,
-  sourceLabel,
-  children,
-}: {
-  zoneLabel?: string;
-  sourceLabel: string;
-  children: React.ReactNode;
+// ─── Look ──────────────────────────────────────────────────────
+
+const FONT = "'Inter', system-ui, sans-serif";
+const BRAND = 'var(--brand-primary, #6366f1)';
+const ACCENT = 'var(--brand-accent, #a5b4fc)';
+/** The editor's drag on a zone used to start a TEXT SELECTION across this
+ *  widget (the "highlighted 'ad'" + "Volume 70% · preview" the owner saw):
+ *  nothing here is text to select. */
+const NO_SELECT: React.CSSProperties = { userSelect: 'none', WebkitUserSelect: 'none' };
+
+/** Fixed-size scene scaled to fit its zone (same pattern as the scoreboards):
+ *  sizes stay designed, never `vw`/`%`. */
+function ScaledScene({ naturalW, naturalH, align = 'center', children }: {
+  naturalW: number; naturalH: number; align?: 'center' | 'start'; children: React.ReactNode;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const compute = () => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      setScale(Math.min(w / naturalW, h / naturalH));
+    };
+    compute();
+    const raf = requestAnimationFrame(compute);
+    if (typeof ResizeObserver === 'undefined') return () => cancelAnimationFrame(raf);
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, [naturalW, naturalH]);
   return (
     <div
-      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center"
+      ref={ref}
       style={{
-        background: 'linear-gradient(135deg, #0b0f1a 0%, #1e293b 100%)',
-        padding: 20,
-        overflow: 'hidden',
-        fontFamily: "'Inter', system-ui, sans-serif",
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden',
+        display: 'flex', alignItems: align === 'start' ? 'flex-start' : 'center',
+        justifyContent: align === 'start' ? 'flex-start' : 'center', ...NO_SELECT,
       }}
     >
-      {zoneLabel && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            padding: '4px 10px',
-            background: 'rgba(255,255,255,0.06)',
-            color: '#cbd5e1',
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            borderRadius: 999,
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
-          {zoneLabel}
-        </div>
-      )}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 4 }}>
+      <div style={{ width: naturalW, height: naturalH, flexShrink: 0, transform: `scale(${scale})`, transformOrigin: align === 'start' ? 'top left' : 'center center' }}>
         {children}
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 8,
-          right: 12,
-          color: '#475569',
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          opacity: 0.7,
-        }}
-      >
-        ♫ {sourceLabel}
-      </div>
+    </div>
+  );
+}
+
+function hueOf(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+  return h;
+}
+
+/** Station "art": a brand-led gradient with a per-station hue, so two
+ *  stations never look identical, and a music note. */
+function StationArt({ seed, size, radius }: { seed: string; size: number; radius: number }) {
+  const hue = hueOf(seed);
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'relative', width: size, height: size, flexShrink: 0, borderRadius: radius, overflow: 'hidden',
+        background: `linear-gradient(135deg, ${BRAND} 0%, hsl(${hue}, 70%, 52%) 100%)`,
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div style={{ position: 'absolute', top: '-30%', left: '-20%', width: '90%', height: '90%', borderRadius: '50%', background: 'rgba(255,255,255,0.16)' }} />
+      <span style={{ position: 'relative', fontSize: size * 0.46, lineHeight: 1, color: 'rgba(255,255,255,0.95)', textShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>♪</span>
+    </div>
+  );
+}
+
+/** Subtle equalizer. transform-only animation (compositor, no layout); still
+ *  bars when paused; honours prefers-reduced-motion. */
+function Equalizer({ active, height, bars }: { active: boolean; height: number; bars: number }) {
+  return (
+    <div aria-hidden data-music-eq={active ? 'on' : 'off'} style={{ display: 'flex', alignItems: 'flex-end', height }}>
+      <style>{`@keyframes vos-eq{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+@media (prefers-reduced-motion: reduce){[data-music-eq] span{animation:none!important}}`}</style>
+      {Array.from({ length: bars }, (_, i) => (
+        <span
+          key={i}
+          style={{
+            display: 'block', width: Math.max(4, Math.round(height / 5)), height, marginLeft: i === 0 ? 0 : Math.max(3, Math.round(height / 8)),
+            borderRadius: 3, background: ACCENT, transformOrigin: 'bottom',
+            transform: active ? undefined : `scaleY(${0.25 + ((i * 37) % 50) / 100})`,
+            animation: active ? `vos-eq ${0.9 + ((i * 23) % 7) / 10}s ease-in-out ${(i * 0.13).toFixed(2)}s infinite` : 'none',
+            opacity: 0.9,
+          }}
+        />
+      ))}
     </div>
   );
 }

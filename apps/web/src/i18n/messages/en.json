@@ -5289,5 +5289,18 @@
     "removeApp": "Remove",
     "cancel": "Cancel",
     "changeSetup": "Change link or account"
+  },
+  "musicPlayer": {
+    "nowPlaying": "Now playing",
+    "tapToStart": "▶ Tap to start music",
+    "stillBlocked": "Autoplay still blocked",
+    "offHours": "Paused — plays {start}–{end}",
+    "silenced": "Silenced during the alert",
+    "pickStation": "Pick a station in Properties",
+    "audioChip": "Audio",
+    "onScreen": "On screen",
+    "onScreenHidden": "Hidden — audio only",
+    "onScreenBadge": "Small corner badge",
+    "onScreenCard": "Now-playing card"
   }
 }
