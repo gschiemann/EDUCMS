@@ -508,6 +508,12 @@ for (const [layout, name, count] of [['pair', 'Photo pair', 2], ['featured', 'Fe
 });
 
 const loadRendererWidgets = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
+registerVariant({
+  id: 'text-basic', name: 'Text', widgetType: 'TEXT', category: 'MINIMAL',
+  description: 'Plain editable text. Choose your font, size, color and alignment.',
+  render: lazyWidget(loadRendererWidgets, 'TextWidget'),
+  defaultConfig: { content: 'Click to edit text', fontSize: 48, fontFamily: 'Inter, sans-serif', color: '#172033', bgColor: 'transparent', alignment: 'left' },
+});
 const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;
 
 const REACHABILITY_TILES: Array<{

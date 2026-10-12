@@ -50,6 +50,13 @@ describe('resolveDropSize', () => {
     }
   });
 
+  it.each([[1920, 1080], [1080, 1920], [3840, 2160], [2160, 3840], [4096, 512]])('adds circular photo frames without distorting on a %s×%s canvas', (width, height) => {
+    const size = resolveDropSize('IMAGE', 'photo-frame-circle', { width, height })!;
+    expect(size.w * width / 100).toBeCloseTo(size.h * height / 100, 5);
+    expect(size.w).toBeGreaterThan(0);
+    expect(size.h).toBeLessThanOrEqual(60);
+  });
+
   it('mirrors the App Library map for the shared types (the two add paths agree)', () => {
     // AppConfigForm.tsx WIDGET_TYPE_DEFAULT_SIZE parity — keep in sync.
     expect(resolveDropSize('CLOCK')).toEqual({ w: 28, h: 22 });

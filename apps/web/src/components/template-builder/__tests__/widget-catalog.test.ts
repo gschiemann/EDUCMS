@@ -106,7 +106,7 @@ describe('categories — a widget can never become unreachable', () => {
     const all = listVariants();
     const ordered = orderWidgetVariants(all);
     expect(ordered.slice(0, EVERYDAY_WIDGET_TYPES.length).map(v => String(v.widgetType))).toEqual(EVERYDAY_WIDGET_TYPES);
-    expect(ordered.slice(0, 2).map(v => v.id)).toEqual(['image-basic', 'video-basic']);
+    expect(ordered.slice(0, 3).map(v => v.id)).toEqual(['image-basic', 'video-basic', 'text-basic']);
     expect(ordered.map(v => v.id).sort()).toEqual(all.map(v => v.id).sort());
   });
 
