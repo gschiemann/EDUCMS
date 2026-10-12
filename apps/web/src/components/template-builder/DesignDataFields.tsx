@@ -50,6 +50,7 @@ export function DesignDataFields({ config, onChange, renderFontPicker }: Props) 
       <ColorInput label="Cell background" value={c.backgroundColor} onChange={backgroundColor => patch({ backgroundColor })} />
       <ColorInput label="Border color" value={c.borderColor} onChange={borderColor => patch({ borderColor })} />
       {renderFontPicker ? renderFontPicker({ label: "Font family", value: c.fontFamily, onChange: fontFamily => patch({ fontFamily }) }) : <TextInput label="Font family" value={c.fontFamily} onChange={fontFamily => patch({ fontFamily })} />}
+      {renderFontPicker ? renderFontPicker({ label: "Heading font", value: c.headingFont, onChange: headingFont => patch({ headingFont }) }) : <TextInput label="Heading font" value={c.headingFont} onChange={headingFont => patch({ headingFont })} />}
       <TextInput label="Text size (px)" type="number" min={12} max={160} value={c.fontSize} onChange={v => patch({ fontSize: Math.max(12, Math.min(160, Number(v) || DEFAULT_DESIGN_TABLE.fontSize)) })} />
       <label style={fieldStyle}>Text alignment<select aria-label="Text alignment" value={c.alignment} onChange={e => patch({ alignment: e.target.value })} style={inputStyle}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
     </section>;
@@ -81,6 +82,7 @@ export function DesignDataFields({ config, onChange, renderFontPicker }: Props) 
       <ColorInput label="Background" value={c.backgroundColor} onChange={backgroundColor => patch({ backgroundColor })} />
       {c.variant !== 'design-chart-pie' && <ColorInput label="Grid color" value={c.gridColor} onChange={gridColor => patch({ gridColor })} />}
       {renderFontPicker ? renderFontPicker({ label: "Font family", value: c.fontFamily, onChange: fontFamily => patch({ fontFamily }) }) : <TextInput label="Font family" value={c.fontFamily} onChange={fontFamily => patch({ fontFamily })} />}
+      {renderFontPicker ? renderFontPicker({ label: "Heading font", value: c.headingFont, onChange: headingFont => patch({ headingFont }) }) : <TextInput label="Heading font" value={c.headingFont} onChange={headingFont => patch({ headingFont })} />}
       <TextInput label="Text size (px)" type="number" min={12} max={160} value={c.fontSize} onChange={v => patch({ fontSize: Math.max(12, Math.min(160, Number(v) || DEFAULT_DESIGN_CHART.fontSize)) })} />
       {c.variant !== 'design-chart-pie' && <label style={{ ...fieldStyle, display: 'flex', alignItems: 'center' }}><input aria-label="Show grid" type="checkbox" checked={c.showGrid} onChange={e => patch({ showGrid: e.target.checked })} />Show grid</label>}
       <label style={{ ...fieldStyle, display: 'flex', alignItems: 'center' }}><input aria-label="Show legend" type="checkbox" checked={c.showLegend} onChange={e => patch({ showLegend: e.target.checked })} />Show legend</label>

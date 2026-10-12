@@ -34,7 +34,7 @@ describe('design data widget readers and saved-data rendering', () => {
     const config = readDesignChartConfig({ variant: 'design-chart-bar', rows: [{ label: 'Loss', value: -5, color: '#dc2626' }, { label: 'Flat', value: 0, color: '#64748b' }] });
     render(<DesignChartWidget config={config} />);
     expect(screen.getByText('Loss')).toBeInTheDocument();
-    expect(screen.getByText('-5')).toBeInTheDocument();
+    expect(screen.getByText('-5', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByText('Flat')).toBeInTheDocument();
     expect(screen.getByText('0', { selector: 'strong' })).toBeInTheDocument();
   });

@@ -102,7 +102,7 @@ function PhotoSurface({
   showCaption = true,
   captionColor = "#fff",
   captionFont,
-  captionFontSize = 80,
+  captionFontSize = 72,
 }: {
   photo: PhotoDesignPhoto;
   alt: string;
@@ -112,11 +112,11 @@ function PhotoSurface({
   captionFontSize?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(800);
+  const [size, setSize] = useState({ width: 800, height: 600 });
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const measure = () => setWidth(node.clientWidth);
+    const measure = () => setSize({ width: node.clientWidth, height: node.clientHeight });
     measure();
     if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }
     const observer = new ResizeObserver(measure);
@@ -131,7 +131,7 @@ function PhotoSurface({
   const y = clamp(photo.focalY, 0, 100, 50);
   const zoom = clamp(photo.zoom, 1, 3, 1);
   return (
-    <div ref={ref} style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, overflow: "hidden", background: "#e2e8f0" }}>
+    <div ref={ref} style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, overflow: "hidden", background: "#111b21" }}>
       {valid ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -159,15 +159,18 @@ function PhotoSurface({
             right: 0,
             bottom: 0,
             left: 0,
-            padding: "0.65em 0.8em",
+            padding: "1.4em 0.8em 0.7em",
             color: captionColor,
             fontFamily: captionFont || "inherit",
-            fontSize: captionFontSize * width / 800,
+            fontSize: Math.max(11, captionFontSize * Math.min(size.width / 800, size.height / 500)),
             lineHeight: 1.2,
-            fontWeight: 650,
+            fontWeight: 550,
             overflowWrap: "anywhere",
-            background: "linear-gradient(transparent, rgba(8, 15, 26, .82))",
-            textShadow: "0 1px 3px rgba(0,0,0,.7)",
+            background: "linear-gradient(transparent, rgba(8, 15, 26, .88))",
+            textShadow: "0 1px 2px rgba(0,0,0,.5)",
+            maxHeight: "100%",
+            boxSizing: "border-box",
+            overflow: "auto",
           }}
         >
           {photo.caption}
@@ -179,13 +182,24 @@ function PhotoSurface({
 
 function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?: "rounded" | "circle" | "arch" }) {
   const c: PhotoFrameConfig = config || {};
-  useDesignFont(c.captionFont);
+  const host = useRef<HTMLDivElement>(null);
+  const [diameter, setDiameter] = useState<number>();
+  useEffect(() => {
+    const node = host.current;
+    if (!node) return;
+    const measure = () => setDiameter(Math.min(node.clientWidth, node.clientHeight));
+    measure();
+    if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }
+    const observer = new ResizeObserver(measure); observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useDesignFont(c.captionFont || "DM Sans");
   const configuredShape = (config as PhotoFrameConfig | undefined)?.frameShape;
   if (configuredShape === "rounded" || configuredShape === "circle" || configuredShape === "arch") shape = configuredShape;
   const src = c.assetUrl || c.imageUrl || "";
-  const numericRadius = clamp(c.borderRadius, 0, 1000, shape === "rounded" ? 20 : 0);
+  const numericRadius = clamp(c.borderRadius, 0, 1000, shape === "rounded" ? 16 : 0);
   const radius = shape === "circle" ? "50%" : shape === "arch" ? "50% 50% 8px 8px" : typeof c.borderRadius === "string" ? c.borderRadius : `${numericRadius}px`;
-  const width = clamp(c.borderWidth, 0, 24, 6);
+  const width = clamp(c.borderWidth, 0, 24, 0);
   const opacity = clamp(c.opacity, 0, 100, 100) / 100;
   const focalX = clamp(c.focalX, 0, 100, 50);
   const focalY = clamp(c.focalY, 0, 100, 50);
@@ -199,8 +213,8 @@ function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?:
     fit: (c.fit || c.fitMode) === "contain" ? "contain" : "cover",
   };
   const style: CSSProperties = {
-    width: "100%",
-    height: "100%",
+    width: shape === "circle" && diameter ? diameter : "100%",
+    height: shape === "circle" && diameter ? diameter : "100%",
     minWidth: 0,
     minHeight: 0,
 
@@ -213,10 +227,12 @@ function FrameWidget({ config, shape = "rounded" }: ThemeWidgetProps & { shape?:
     overflow: "hidden",
   };
   return (
+    <div ref={host} style={{ width: "100%", height: "100%", display: "grid", placeItems: "center" }}>
     <div data-photo-frame={shape} style={style}>
       <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: "inherit" }}>
-        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} captionFont={c.captionFont} captionFontSize={clamp(c.captionFontSize, 12, 240, 80)} />
+        <PhotoSurface photo={photo} alt={c.caption || "Framed photo"} captionFont={c.captionFont || "DM Sans, sans-serif"} captionFontSize={clamp(c.captionFontSize, 12, 240, 72)} />
       </div>
+    </div>
     </div>
   );
 }
@@ -235,7 +251,7 @@ export function PhotoFrameArchWidget(props: ThemeWidgetProps) {
 
 export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
   const c: PhotoCollageConfig = config || {};
-  useDesignFont(c.captionFont);
+  useDesignFont(c.captionFont || "DM Sans");
   const photos = normalizePhotoList(c);
   const layout = c.layout === "featured" || c.layout === "grid" ? c.layout : "pair";
   const gap = clamp(c.spacing, 0, 64, 12);
@@ -247,15 +263,15 @@ export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
     minHeight: 0,
     boxSizing: "border-box",
     gap,
-    padding: gap,
+    padding: 0,
     overflow: "hidden",
-    background: c.backgroundColor || "#f3eee5",
+    background: c.backgroundColor || "transparent",
   };
   let gridStyle: CSSProperties = { ...base, gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(photos.length / 2))}, minmax(0, 1fr))` };
   let featureIndex = -1;
   if (layout === "featured" && photos.length > 1) {
     featureIndex = 0;
-    gridStyle = { ...base, gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 1fr)", gridTemplateRows: `repeat(${Math.max(1, photos.length - 1)}, minmax(0, 1fr))` };
+    gridStyle = { ...base, gridTemplateColumns: "minmax(0, 1.65fr) minmax(0, 1fr)", gridTemplateRows: `repeat(${Math.max(1, photos.length - 1)}, minmax(0, 1fr))` };
   } else if (layout === "grid") {
     gridStyle = { ...base, gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(photos.length / 2))}, minmax(0, 1fr))` };
   }
@@ -271,13 +287,12 @@ export function PhotoCollageWidget({ config }: ThemeWidgetProps) {
             minWidth: 0,
             minHeight: 0,
             overflow: "hidden",
-            borderRadius: 7,
-            background: "#e2e8f0",
-            boxShadow: "0 3px 12px rgba(18, 25, 38, .14)",
+            borderRadius: 2,
+            background: "#111b21",
             ...(index === featureIndex ? { gridRow: `1 / span ${Math.max(1, photos.length - 1)}` } : {}),
           }}
         >
-          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont} captionFontSize={clamp(c.captionFontSize, 12, 240, 80)} />
+          <PhotoSurface photo={photo} alt={photo.caption || `Collage photo ${index + 1}`} showCaption={c.showCaptions !== false} captionColor={c.captionColor || "#fff"} captionFont={c.captionFont || "DM Sans, sans-serif"} captionFontSize={clamp(c.captionFontSize, 12, 240, 72)} />
         </div>
       ))}
     </div>
