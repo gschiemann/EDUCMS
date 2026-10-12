@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, BarChart3 } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
@@ -234,9 +234,6 @@ export function Sidebar() {
     { name: t('nav.assets'), href: hrefFor('/assets'), icon: Upload },
     { name: t('nav.templates'), href: hrefFor('/templates'), icon: LayoutTemplate },
     { name: t('nav.playlists'), href: hrefFor('/playlists'), icon: Folders },
-    // Proof of play — the display-time report (/analytics) had no link anywhere
-    // (Muse beta 2026-10-07: "proof-of-play is missing").
-    { name: t('nav.proofOfPlay'), href: hrefFor('/analytics'), icon: BarChart3 },
     // Sports (live scoreboard + game-day control) — only for
     // SPORTS-vertical tenants. K-12 / GYM / RESTAURANT / etc. don't
     // see it. /sports is still reachable by typing the URL.
