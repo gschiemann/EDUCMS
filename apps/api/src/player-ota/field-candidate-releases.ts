@@ -32,4 +32,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387599,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38233912481',
   },
+  // Signed CI run 38258733645 (native: credential compared by screen identity).
+  // Mirror read back + verified; certificate e45adf50…3d1897 = installed fleet.
+  '1.1.31-field.1': {
+    versionName: '1.1.31-field.1',
+    versionCode: 10131,
+    sha256: '256fdb4d87b73c6c55d5379259989a1ced7e50c77f82bf63fbeef49c47007062',
+    size: 2387607,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38258733645',
+  },
 };
