@@ -5279,5 +5279,15 @@
     "applyBgGradient": "brand gradient background",
     "applyBgSolid": "brand color background",
     "applyNothing": "Nothing to change. The template already matches the brand."
+  },
+  "builderApps": {
+    "howTo": "Click an app or drag it onto your board — then paste a link or connect your account in Properties.",
+    "setUpApp": "Set up {app}",
+    "setUpHint": "Paste a link or connect your account in Properties.",
+    "saveSetup": "Show it on the board",
+    "fillToContinue": "Add your {field} to continue",
+    "removeApp": "Remove",
+    "cancel": "Cancel",
+    "changeSetup": "Change link or account"
   }
 }

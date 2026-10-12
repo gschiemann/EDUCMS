@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Search, ChevronLeft, Sparkles as AggregatorIcon, CheckCircle2, X,
   LogIn as LoginTierIcon,
@@ -40,6 +41,7 @@ import {
 } from './app-registry';
 import { detectApp } from './url-transforms';
 import { AppConfigForm } from './AppConfigForm';
+import { addAppZone } from './app-zone';
 import {
   resolveConciergeSuggestions, readOnboardingConciergeSuggestions,
   type SuggestedApp,
@@ -60,6 +62,7 @@ import {
 let __conciergeDiscoverCache: { sourceUrl: string; suggestions: SuggestedApp[] } | null = null;
 
 export function AppLibraryPanel() {
+  const tApps = useTranslations('builderApps');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<AppCategory | 'ALL'>('ALL');
   const [openApp, setOpenApp] = useState<AppDefinition | null>(null);
@@ -69,7 +72,12 @@ export function AppLibraryPanel() {
 
   const categories = useMemo(() => listAppCategories(), []);
 
+  // 2026-10-12 (owner: "I still can't add any apps to my templates") — a
+  // click PUTS THE APP ON THE CANVAS, like a widget tile. The setup form now
+  // opens in Properties on that zone (see app-zone.ts); the old in-panel form
+  // is kept only for coming-soon tiles, which explain why nothing is added.
   const openAppWithValues = (app: AppDefinition, values: Record<string, string> | undefined, trigger?: HTMLButtonElement | null) => {
+    if (!app.comingSoon && addAppZone(app, { values })) return;
     lastTriggerRef.current = trigger ?? null;
     setOpenInitialValues(values);
     setOpenApp(app);
@@ -283,7 +291,7 @@ export function AppLibraryPanel() {
         )}
 
         <p className="text-xs text-slate-500" data-testid="apps-how-to">
-          Click an app to add it — you&apos;ll paste a link or connect your account next.
+          {tApps('howTo')}
         </p>
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />

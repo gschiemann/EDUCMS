@@ -200,6 +200,8 @@ import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-co
 import { DateField } from '@/components/ui/date-field';
 import { TimeField } from '@/components/ui/time-field';
 import { isFromDocumentFrame } from '@/lib/board-message-source';
+import { AppZoneSetup } from '@/components/apps/AppZoneSetup';
+import { appZoneInfo } from '@/components/apps/app-zone';
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -1061,8 +1063,22 @@ export function PropertiesPanel() {
 
   const configString = zone.defaultConfig ? JSON.stringify(zone.defaultConfig, null, 2) : '';
 
+  // 2026-10-12 — an app zone still waiting for its link / account shows the
+  // app's setup and nothing else: the widget's own fields (a STREAMING
+  // "Pick a channel", a WEBPAGE URL box) are not how you set up an app and
+  // only confused the first step.
+  const appInfo = appZoneInfo(zone);
+  if (appInfo?.pending) {
+    return (
+      <div className="p-5 space-y-4 text-xs" data-properties-panel="true">
+        <AppZoneSetup key={zone.id} zone={zone} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-5 space-y-6 text-xs" data-properties-panel="true">
+      {appInfo && <AppZoneSetup key={zone.id} zone={zone} />}
       <section className="space-y-3">
         <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Zone</h3>
 

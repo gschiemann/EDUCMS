@@ -5279,5 +5279,15 @@
     "applyBgGradient": "品牌渐变背景",
     "applyBgSolid": "品牌颜色背景",
     "applyNothing": "无需更改，模板已与品牌一致。"
+  },
+  "builderApps": {
+    "howTo": "点击应用或将其拖到画布上，然后在“属性”中粘贴链接或连接你的账户。",
+    "setUpApp": "设置 {app}",
+    "setUpHint": "在“属性”中粘贴链接或连接你的账户。",
+    "saveSetup": "显示在画布上",
+    "fillToContinue": "填写{field}后继续",
+    "removeApp": "移除",
+    "cancel": "取消",
+    "changeSetup": "更改链接或账户"
   }
 }

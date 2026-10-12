@@ -24,6 +24,8 @@ import { buildTextStyleRules, buildFieldOnlyStyleRules } from '@/components/widg
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { assignMediaSource } from './media-source';
+import { appZoneInfo } from '@/components/apps/app-zone';
+import { AppSetupCard } from '@/components/apps/AppSetupCard';
 
 /**
  * setByPath — build a shallow-merge patch that updates a nested
@@ -121,6 +123,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   const label = widgetLabel(zone.widgetType);
   const isTouchPoint = isTouchPointType(zone.widgetType);
   const isHotspotVariant = isInvisibleTouchVariant(zone);
+  // An app zone still waiting for its link / account (app-zone.ts).
+  const appInfo = appZoneInfo(zone);
+  const pendingApp = appInfo?.pending ? appInfo : null;
 
   // 2026-06-01 — a full-bleed EXTERNAL_HTML zone (a self-contained signage
   // template that IS the whole board, e.g. the Domino's pizza board) needs
@@ -643,6 +648,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       data-zone-id={zone.id}
+      data-widget-type={zone.widgetType}
     >
       {/* Universal text-style override. Three scopes:
             1. Per-field (cfg._styles[fieldKey]) — ONE css rule per
@@ -788,6 +794,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
               keyframes. Data-driven widgets (SCOREBOARD polls
               /sports/board/:id, WEATHER fetches) stay `live={false}`
               so the builder never hammers an API. */}
+          {pendingApp ? (
+            <AppSetupCard zoneId={zone.id} appId={pendingApp.app.id} appName={pendingApp.app.name} icon={pendingApp.app.icon} />
+          ) : (
           <WidgetPreview
             widgetType={zone.widgetType}
             config={zone.defaultConfig || {}}
@@ -796,6 +805,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
             live={zone.widgetType === 'CELEBRATION' || String((zone.defaultConfig || {}).variant || '').startsWith('cel-')}
             onConfigChange={!previewMode && onConfigChange ? (patch) => onConfigChange(zone.id, patch) : undefined}
           />
+          )}
         </WidgetErrorBoundary>
       </div>
 

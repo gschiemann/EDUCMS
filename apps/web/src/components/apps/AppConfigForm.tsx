@@ -35,6 +35,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ExternalLink, AlertTriangle, Loader2, Sparkles, LayoutTemplate } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
 
 // Bundle-split step 2 (2026-07-20): WidgetRenderer is the widget world —
 // a ~3.4 MB chunk when bundled statically. Load it on demand so this
@@ -53,6 +54,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { AppDefinition, AppFieldSchema, AppStarterLayout } from './app-registry';
 import { buildApp } from './build-app';
+import { appDefaultValues, applyAppToZone, removeAppZone, WIDGET_TYPE_DEFAULT_SIZE } from './app-zone';
 import { isUsableWebUrl } from './url-transforms';
 import {
   fetchGoogleReviewsStatus,
@@ -60,45 +62,34 @@ import {
   type GoogleReviewCandidate,
 } from '@/lib/reviews/google-reviews-client';
 
-function defaultValues(app: AppDefinition, initialValues?: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const f of app.configSchema) {
-    if (f.defaultValue !== undefined) out[f.key] = String(f.defaultValue);
-  }
-  // Paste-first handoff (AppLibraryPanel's detectApp match) and Concierge
-  // seed values win over the schema's static defaults.
-  if (initialValues) Object.assign(out, initialValues);
-  return out;
-}
-
-// Smart-placement fallback for apps that don't set an explicit
-// `defaultSize` in the registry — keyed by widgetType so it still applies
-// sanely to any future app built on top of an existing widget. Lives here
-// (not in useBuilderStore.addZone) because it's an App Library concern only
-// — the plain Widgets palette / drag-drop path never passes a `size` at
-// all, so this can never regress that unrelated flow.
-const WIDGET_TYPE_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
-  STREAMING: { w: 60, h: 45 },
-  WEBPAGE: { w: 60, h: 55 },
-  WEATHER: { w: 28, h: 22 },
-  CLOCK: { w: 28, h: 22 },
-  COUNTDOWN: { w: 28, h: 22 },
-};
+// Defaults + the per-widget smart-placement sizes moved to app-zone.ts
+// (2026-10-12) so the click/drag-to-add path and this form agree.
+const defaultValues = appDefaultValues;
 
 const URL_DEBOUNCE_MS = 600;
 
 export function AppConfigForm({
-  app, onBack, onDone, initialValues,
+  app, onBack, onDone, initialValues, zoneId, embedded, cancelLabel,
 }: {
   app: AppDefinition;
   onBack: () => void;
   onDone: () => void;
+  /** 2026-10-12 — set up an app zone that is ALREADY on the canvas (the
+   *  Properties panel's setup card). Confirm writes into this zone instead of
+   *  adding a new one; a finished layout / AI board replaces it. */
+  zoneId?: string;
+  /** Rendered inside another scrolling panel (Properties): no own scroller,
+   *  no back chevron. */
+  embedded?: boolean;
+  /** Footer's secondary button copy (default "Cancel"). */
+  cancelLabel?: string;
   /** Seed values from the paste-first detector or a Concierge suggestion —
    *  merged over the schema's own defaults so e.g. a pasted YouTube link
    *  arrives already in the `url` field and "Add to canvas" is instantly
    *  live (required field already satisfied). */
   initialValues?: Record<string, string>;
 }) {
+  const tApps = useTranslations('builderApps');
   const addZone = useBuilderStore((s) => s.addZone);
   const updateZone = useBuilderStore((s) => s.updateZone);
   const select = useBuilderStore((s) => s.select);
@@ -198,6 +189,10 @@ export function AppConfigForm({
     // state; UI state is not enforcement (M6-1).
     const fresh = buildApp(app, values);
     if (!fresh.ok) { setTouched(true); return; }
+    if (zoneId) {
+      if (applyAppToZone(zoneId, app, values)) { select(zoneId); onDone(); }
+      return;
+    }
     const size = app.defaultSize ?? WIDGET_TYPE_DEFAULT_SIZE[fresh.widgetType];
     const id = addZone(fresh.widgetType, undefined, size);
     updateZone(id, { defaultConfig: fresh.defaultConfig });
@@ -224,6 +219,8 @@ export function AppConfigForm({
     // Same boundary rule as handleConfirm — this writes zones too.
     const fresh = buildApp(app, values);
     if (!fresh.ok) { setTouched(true); return; }
+    // From a zone's setup card the layout REPLACES the pending zone.
+    if (zoneId) removeAppZone(zoneId);
     let firstId: string | null = null;
     for (const z of layout.zones) {
       const widgetType = z.widgetType ?? fresh.widgetType;
@@ -276,6 +273,7 @@ export function AppConfigForm({
         setAiDesignError('The AI returned no design. Try again in a moment.');
         return;
       }
+      if (zoneId) removeAppZone(zoneId);
       const id = addZone('EXTERNAL_HTML', undefined, { w: 100, h: 100 });
       updateZone(id, { x: 0, y: 0, width: 100, height: 100, zIndex: 1, defaultConfig: { html: board.html } });
       select(id);
@@ -289,21 +287,31 @@ export function AppConfigForm({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    <div
+      className={embedded ? 'flex flex-col rounded-xl border-2 border-indigo-200 bg-white overflow-hidden' : 'flex flex-col h-full min-h-0 overflow-hidden'}
+      data-app-setup={zoneId ? app.id : undefined}
+    >
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 shrink-0 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="p-1 rounded hover:bg-slate-100 text-slate-500"
-          aria-label="Back to Apps"
-        >
-          <ChevronLeft className="w-4 h-4" aria-hidden />
-        </button>
-        <h2 ref={headingRef} tabIndex={-1} className="text-sm font-bold text-slate-800 truncate flex-1 focus:outline-none">{app.name}</h2>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-1 rounded hover:bg-slate-100 text-slate-500"
+            aria-label="Back to Apps"
+          >
+            <ChevronLeft className="w-4 h-4" aria-hidden />
+          </button>
+        )}
+        <h2 ref={headingRef} tabIndex={-1} className="text-sm font-bold text-slate-800 truncate flex-1 focus:outline-none">
+          {zoneId ? tApps('setUpApp', { app: app.name }) : app.name}
+        </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Embedded (Properties setup card): the link field comes FIRST — it is
+          the one thing the operator came to do — and the preview only once
+          there is something real to preview. */}
+      <div className={embedded ? 'flex flex-col' : 'flex-1 overflow-y-auto'}>
         {/* Live preview — same WidgetPreview the canvas renders, so this is
             a truthful preview, not a mockup that can drift from reality.
             For WEBPAGE apps this now renders the operator's ACTUAL page
@@ -322,7 +330,7 @@ export function AppConfigForm({
             'builder' via RenderSurfaceContext) is what keeps this preview
             on the alive SAMPLE instead of a real screen's neutral/"no
             game bound" state. Do not add `renderSurface="player"` here. */}
-        <div className="p-3 border-b border-slate-100 bg-slate-50/60">
+        <div className={`p-3 border-b border-slate-100 bg-slate-50/60 ${embedded && !outcome.ok ? 'hidden' : ''}`}>
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Live preview</div>
           <div className="relative w-full rounded-lg overflow-hidden border border-slate-200 bg-slate-900" style={{ aspectRatio: '16 / 9' }}>
             {/* A link that can't work gets the REASON here, not a spinner
@@ -422,7 +430,7 @@ export function AppConfigForm({
           </div>
         )}
 
-        <div className="p-4 space-y-4">
+        <div className={`p-4 space-y-4 ${embedded ? 'order-first border-b border-slate-100' : ''}`}>
           <p className="text-xs text-slate-500 leading-snug">{app.blurb}</p>
 
           {app.comingSoon ? (
@@ -510,7 +518,7 @@ export function AppConfigForm({
             onClick={onBack}
             className="flex-1 py-2 rounded-lg text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
           >
-            Cancel
+            {cancelLabel ?? 'Cancel'}
           </button>
           <button
             type="button"
@@ -521,7 +529,9 @@ export function AppConfigForm({
               canConfirm ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-300 cursor-not-allowed'
             }`}
           >
-            {canConfirm || !firstMissingLabel ? 'Add to canvas' : `Paste your ${firstMissingLabel.replace(/^Your\s+/i, '')} to continue`}
+            {zoneId
+              ? (canConfirm || !firstMissingLabel ? tApps('saveSetup') : tApps('fillToContinue', { field: firstMissingLabel.replace(/^Your\s+/i, '') }))
+              : (canConfirm || !firstMissingLabel ? 'Add to canvas' : `Paste your ${firstMissingLabel.replace(/^Your\s+/i, '')} to continue`)}
           </button>
         </div>
       </div>

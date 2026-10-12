@@ -5279,5 +5279,15 @@
     "applyBgGradient": "fondo con degradado de la marca",
     "applyBgSolid": "fondo con el color de la marca",
     "applyNothing": "No hay nada que cambiar. La plantilla ya coincide con la marca."
+  },
+  "builderApps": {
+    "howTo": "Haz clic en una app o arrástrala a tu pantalla; luego pega un enlace o conecta tu cuenta en Propiedades.",
+    "setUpApp": "Configurar {app}",
+    "setUpHint": "Pega un enlace o conecta tu cuenta en Propiedades.",
+    "saveSetup": "Mostrarlo en la pantalla",
+    "fillToContinue": "Agrega tu {field} para continuar",
+    "removeApp": "Quitar",
+    "cancel": "Cancelar",
+    "changeSetup": "Cambiar enlace o cuenta"
   }
 }
