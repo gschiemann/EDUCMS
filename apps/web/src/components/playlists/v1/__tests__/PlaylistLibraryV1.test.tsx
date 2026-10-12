@@ -17,6 +17,11 @@ import {
   summarizeDelivery, DELIVERY_UNAVAILABLE, type DeliveryTarget, type PlaylistSummaryRow,
 } from '../playlistOps';
 
+// One fixed timestamp for the many-rows fixtures: row() stamps Date.now() per
+// call, so a slow runner spread rows across milliseconds and the newest-first
+// sort pushed Playlist 03 onto page 2 (flaky in CI 2026-10-12).
+const MANY_UPDATED_AT = '2026-10-01T12:00:00.000Z';
+
 jest.mock('@/components/playlists/PlaylistPreviewThumb', () => ({
   PlaylistPreviewThumb: () => <div data-testid="thumb" />,
 }));
@@ -697,7 +702,7 @@ describe('bulk selection', () => {
   const tableRow = (name: string) => rowNamed(name);
   const box = (name: string) => within(tableRow(name)).getByRole('checkbox', { name: `Select ${name}` });
   const many = (n: number): PlaylistSummaryRow[] =>
-    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}` }));
+    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}`, updatedAt: MANY_UPDATED_AT }));
 
   it('offers no checkboxes without a bulk handler, and none to a viewer', () => {
     const { unmount } = mount();
@@ -794,7 +799,7 @@ describe('bulk selection', () => {
 // ─────────────────────────────────────────────────────────────────────
 describe('the one select-all pattern — header box, heading box, tile boxes', () => {
   const many = (n: number): PlaylistSummaryRow[] =>
-    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}` }));
+    Array.from({ length: n }, (_, i) => row({ id: `m${i}`, name: `Playlist ${String(i).padStart(2, '0')}`, searchText: `playlist ${i}`, updatedAt: MANY_UPDATED_AT }));
   const mountMany = (n: number) => {
     const rows = many(n);
     return mount({ rows, rawById: new Map(rows.map((r) => [r.id, { id: r.id, name: r.name, items: [] }])), onRemoveMany: jest.fn() });
