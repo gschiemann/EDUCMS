@@ -87,6 +87,7 @@ import {
   PermissionDenied,
   ScopePath,
   StatusPill,
+  HelpText,
   useSettingsShellActions,
   type SettingsSearchItem,
 } from '@/components/settings/shell';
@@ -383,14 +384,10 @@ function EnablementSection() {
                   </label>
                 )}
                 {locked && (
-                  <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600">
-                    {t('settings.cc.emergency.enablement.lockedNote')}
-                  </p>
+                  <HelpText className="mt-1.5 text-[12px] leading-[17px] text-slate-600" text={t('settings.cc.emergency.enablement.lockedNote')} />
                 )}
                 {!locked && !verticalStated && enabled && (
-                  <p className="mt-1.5 text-[12px] leading-[17px] text-slate-600" data-testid="emergency-industry-unset">
-                    {t('settings.cc.emergency.enablement.industryUnsetNote')}
-                  </p>
+                  <HelpText className="mt-1.5 text-[12px] leading-[17px] text-slate-600" testId="emergency-industry-unset" text={t('settings.cc.emergency.enablement.industryUnsetNote')} />
                 )}
                 {confirmedMessage && (
                   <p role="status" className="mt-1.5 text-[12px] leading-[17px] text-emerald-700">
@@ -613,9 +610,12 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
             );
           })}
         </div>
-        <p className="text-[12px] leading-[17px] text-slate-500 mb-3" data-testid="emergency-content-mode-note">
-          {contentMode === 'drill' ? t('settings.cc.emergency.drill.drillNote') : t('settings.cc.emergency.drill.liveNote')}
-        </p>
+        <HelpText
+          key={contentMode}
+          className="text-[12px] leading-[17px] text-slate-500 mb-3"
+          testId="emergency-content-mode-note"
+          text={contentMode === 'drill' ? t('settings.cc.emergency.drill.drillNote') : t('settings.cc.emergency.drill.liveNote')}
+        />
         <h4 className="text-[12px] font-medium text-slate-500 mb-2">
           {t('settings.cc.emergency.content.criticalGroup')}
         </h4>
@@ -657,9 +657,7 @@ function DeliveryAndContent({ schoolId }: { schoolId: string }) {
         {locationMode ? (
           <LocationCoverage schoolId={schoolId} />
         ) : (
-          <p className="text-[13px] leading-[18px] text-slate-500">
-            {t('settings.cc.emergency.coverage.orgModeNote')}
-          </p>
+          <HelpText className="text-[13px] leading-[18px] text-slate-500" text={t('settings.cc.emergency.coverage.orgModeNote')} />
         )}
       </EditorSection>
     </>

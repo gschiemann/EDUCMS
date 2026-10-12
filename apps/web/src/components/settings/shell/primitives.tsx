@@ -9,11 +9,55 @@
  * (body ≥13px, helper 12px, group title 13–15px, editor title 17–20px).
  * Section dividers instead of a card around every group (§6.5).
  */
-import type { ComponentType, ReactNode } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { GitBranch, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type IconType = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+
+/**
+ * Split help copy into its first sentence and the rest (2026-10-12, owner:
+ * "so much text — make each section beyond clear and simple"). Handles the
+ * Latin ". " / "? " / "! " ends and the CJK "。" / "？" / "！" ends, so the
+ * same rule works for en, es and zh. A lead shorter than 12 characters is not
+ * a sentence worth stopping at ("e.g." etc.), so the split looks further.
+ */
+export function splitLead(text: string): [string, string] {
+  const re = /[.!?](?=\s+\S)|[。！？](?=\S)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const end = m.index + 1;
+    if (end < 12) continue;
+    return [text.slice(0, end), text.slice(end).trim()];
+  }
+  return [text, ''];
+}
+
+/**
+ * One short sentence, with the rest behind "Learn more". Non-string content
+ * (rich text, links) renders untouched — only plain help copy is folded.
+ */
+export function HelpText({ text, className, testId }: { text: ReactNode; className?: string; testId?: string }) {
+  const t = useTranslations('settings.common');
+  const [open, setOpen] = useState(false);
+  if (typeof text !== 'string') return <p className={className} data-testid={testId}>{text}</p>;
+  const [lead, rest] = splitLead(text);
+  if (!rest) return <p className={className} data-testid={testId}>{text}</p>;
+  return (
+    <p className={className} data-testid={testId}>
+      {open ? text : lead}{' '}
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 decoration-slate-300 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 rounded-sm"
+      >
+        {open ? t('showLess') : t('learnMore')}
+      </button>
+    </p>
+  );
+}
 
 /** Editor identity row: 42px tinted icon + title + description + inheritance badge. */
 export function EditorHead({
@@ -43,7 +87,7 @@ export function EditorHead({
       )}
       <div className="min-w-0 flex-1 basis-[220px]">
         <h2 className="text-[17px] leading-[22px] font-medium text-slate-900">{title}</h2>
-        {description && <p className="mt-[3px] text-[13px] leading-[18px] text-slate-500">{description}</p>}
+        {description && <HelpText text={description} className="mt-[3px] text-[13px] leading-[18px] text-slate-500" />}
       </div>
       {badge}
     </div>
@@ -103,7 +147,7 @@ export function EditorSection({
           <h3 id={id ? `${id}-heading` : undefined} className="text-[14px] leading-[19px] font-medium text-slate-900">
             {title}
           </h3>
-          {description && <p className="mt-0.5 text-[12px] leading-[17px] text-slate-500">{description}</p>}
+          {description && <HelpText text={description} className="mt-0.5 text-[12px] leading-[17px] text-slate-500" />}
         </div>
         {action}
       </div>

@@ -461,7 +461,9 @@
       "configure": "Configure",
       "adminOnly": "Admin only",
       "unavailable": "Unavailable",
-      "manageArrow": "Manage →"
+      "manageArrow": "Manage →",
+      "learnMore": "Learn more",
+      "showLess": "Show less"
     },
     "ai": {
       "title": "AI provider",

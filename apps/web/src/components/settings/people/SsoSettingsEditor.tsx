@@ -32,7 +32,7 @@ import { useTenant } from '@/hooks/use-api';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   EditorHead, EditorSection, ErrorSummary, EditorSkeleton, PermissionDenied, StatusPill,
-  ContextModule, ContextAction,
+  ContextModule, ContextAction, HelpText,
 } from '@/components/settings/shell/primitives';
 
 type Provider = 'SAML' | 'OIDC';
@@ -545,7 +545,7 @@ export function SsoSettingsEditor() {
                 </div>
                 {!config.domainVerification.verifiedAt && (
                   <>
-                    <p className="text-[12px] text-slate-600">{t('settings.cc.people.ssoDomainVerifyHelp')}</p>
+                    <HelpText className="text-[12px] text-slate-600" text={t('settings.cc.people.ssoDomainVerifyHelp')} />
                     {config.domainVerification.txtRecord && (
                       <CopyField label={t('settings.cc.people.ssoDomainTxtRecord')} value={config.domainVerification.txtRecord} />
                     )}

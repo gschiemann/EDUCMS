@@ -45,7 +45,7 @@ import { useUIStore } from '@/store/ui-store';
 import { canAssignRole } from '@/lib/role-assignment';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { EditorHead, EditorSection, StatusPill, ErrorSummary } from '@/components/settings/shell/primitives';
+import { EditorHead, EditorSection, StatusPill, ErrorSummary, HelpText } from '@/components/settings/shell/primitives';
 import { PersonAccessPanel } from '@/components/settings/people/PersonAccessPanel';
 
 /** 2026-10-11 — user scoping applies to the location roles only (server: SCOPABLE_ROLES). */
@@ -1309,7 +1309,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           ))}
         </ul>
         <p className="mt-3 text-[12px] leading-[17px] text-slate-500">{t('settings.cc.people.rolesRankNote')}</p>
-        <p className="mt-1.5 text-[12px] leading-[17px] text-slate-500">{t('settings.cc.people.panicNote')}</p>
+        <HelpText className="mt-1.5 text-[12px] leading-[17px] text-slate-500" text={t('settings.cc.people.panicNote')} />
       </EditorSection>
 
       {/* ── MFA policy ──────────────────────────────────────────────── */}

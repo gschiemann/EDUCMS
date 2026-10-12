@@ -10,7 +10,7 @@
  *      never an optimistic flip to the value that was clicked (§13.2).
  */
 import * as React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const push = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -183,7 +183,12 @@ describe('Emergency settings page', () => {
     fireEvent.click(screen.getByTestId('emergency-content-tab-drill'));
     expect(screen.getByTestId('emergency-content-tab-drill')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByText(/^panic-editor:drill:/)).toHaveLength(6);
-    expect(screen.getByTestId('emergency-content-mode-note')).toHaveTextContent('still shows a DRILL banner');
+    // One sentence up front; the detail is one tap away (2026-10-12 settings copy pass).
+    const note = screen.getByTestId('emergency-content-mode-note');
+    expect(note).toHaveTextContent('What screens show during a practice drill.');
+    expect(note).not.toHaveTextContent('still shows a DRILL banner');
+    fireEvent.click(within(note).getByRole('button', { name: 'Learn more' }));
+    expect(note).toHaveTextContent('still shows a DRILL banner');
     expect(screen.getByTestId('emergency-drill-log')).toBeInTheDocument();
     expect(screen.getByTestId('emergency-drill-log-empty')).toBeInTheDocument();
 

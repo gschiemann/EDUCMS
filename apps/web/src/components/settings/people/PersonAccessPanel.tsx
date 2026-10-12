@@ -17,6 +17,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Loader2, MapPin, MonitorSmartphone } from 'lucide-react';
+import { HelpText } from '@/components/settings/shell/primitives';
 import { useSetUserAccess, useUserAccess, type TeamUser, type UserAccess } from '@/hooks/use-api';
 
 type ScopeState = Record<string, { screenIds: string[]; screenGroupIds: string[] }>;
@@ -117,7 +118,7 @@ export function PersonAccessPanel({ user, onClose }: { user: Pick<TeamUser, 'id'
       className="md:col-span-4 mt-2 rounded-[11px] border border-slate-200 bg-slate-50/70 p-3.5"
     >
       <p className="text-[13px] font-medium text-slate-900">{t('settings.cc.people.accessTitle', { email: user.email })}</p>
-      <p className="mt-1 text-[12px] leading-[17px] text-slate-600">{t('settings.cc.people.accessExplain')}</p>
+      <HelpText className="mt-1 text-[12px] leading-[17px] text-slate-600" text={t('settings.cc.people.accessExplain')} />
 
       {!scopable ? (
         <p className="mt-3 text-[12px] leading-[17px] text-slate-700">{t('settings.cc.people.accessNotScopable')}</p>

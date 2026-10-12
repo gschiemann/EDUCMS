@@ -461,7 +461,9 @@
       "configure": "Configurar",
       "adminOnly": "Solo administradores",
       "unavailable": "No disponible",
-      "manageArrow": "Gestionar →"
+      "manageArrow": "Gestionar →",
+      "learnMore": "Más información",
+      "showLess": "Mostrar menos"
     },
     "ai": {
       "title": "Proveedor de IA",

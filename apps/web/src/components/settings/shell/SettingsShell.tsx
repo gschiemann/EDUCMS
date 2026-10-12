@@ -25,6 +25,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { SETTINGS_SECTIONS, sectionForPathname, settingsHref, visibleSections } from './registry';
 import { SettingsIndex } from './SettingsIndex';
 import { SettingsCommandPalette } from './SettingsCommandPalette';
+import { HelpText } from './primitives';
 import { isDirty, useSettingsShell } from './SettingsShellContext';
 
 export function SettingsShell({ children }: { children: ReactNode }) {
@@ -163,7 +164,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
             )}
           </nav>
           <h1 className="text-[27px] leading-[34px] font-medium tracking-[-.03em] text-slate-900">{title}</h1>
-          {description && <p className="mt-1 text-[13px] leading-[18px] text-slate-500 max-w-2xl">{description}</p>}
+          {description && <HelpText text={description} className="mt-1 text-[13px] leading-[18px] text-slate-500 max-w-2xl" />}
         </div>
         <div className={cn('flex items-center gap-2 shrink-0', isMobile && 'w-full justify-end flex-wrap')}>
           {!isMobile && (

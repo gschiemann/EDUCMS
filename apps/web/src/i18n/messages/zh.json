@@ -461,7 +461,9 @@
       "configure": "配置",
       "adminOnly": "仅管理员",
       "unavailable": "不可用",
-      "manageArrow": "管理 →"
+      "manageArrow": "管理 →",
+      "learnMore": "了解更多",
+      "showLess": "收起"
     },
     "ai": {
       "title": "AI 服务商",
