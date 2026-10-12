@@ -15,7 +15,8 @@ config has `heading`, `caption`, `rows: {label, value, color}[]`, `textColor`,
 
 - The editor offers up to 6 columns and 8 rows for tables, and up to 8 chart rows.
   Add controls disable at capacity; remove remains available. Existing saved arrays
-  are not truncated by the readers or renderer. Over-capacity data stays visible and
+  are not truncated by the readers or renderer. If saved rows contain more cells than
+  declared columns, generated editable headings expose every cell. Over-capacity data stays visible and
   can be removed down to the supported editor limit.
 - Empty tables and charts render a clear prompt. Bar/line charts support signed values
   and zero-only data. Pie charts report negative values and zero totals rather than
@@ -29,6 +30,8 @@ config has `heading`, `caption`, `rows: {label, value, color}[]`, `textColor`,
 ## Validation
 
 Focused unit tests are in the new widget and template-builder `__tests__` folders.
-At report creation, they have not yet run because the assigned worktree has no
-`node_modules`; `pnpm --filter web exec jest --version` reports Jest is unavailable.
-No production build or browser review has been performed.
+Both focused Jest suites pass (9 tests). ESLint passes for the two new implementation
+files and two new test files. The requested `PropertiesPanel.tsx`-inclusive lint run
+reports 120 errors and 19 warnings across that large file; the two new implementation
+files and tests are lint-clean. `tsc --noEmit` passes after building the workspace type
+packages inside this worktree. No production build or browser review has been performed.
