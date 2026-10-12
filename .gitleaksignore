@@ -69,3 +69,5 @@ db1042afc0ae6cda7a838fbc47559cdc6a76bf99:apps/api/src/assets/pdf-encryption.ts:v
 db1042afc0ae6cda7a838fbc47559cdc6a76bf99:packages/api-types/src/pdf-pages.ts:generic-api-key:49
 # 2026-10-05 9a84e65d — the comment line above, as first written, quoted that page-frame name in a form the generic rule matches.
 9a84e65d45456e918cccc679ce44df44a7a6f977:.gitleaksignore:generic-api-key:68
+# APK sha256 digest of private field build 1.1.33-field.1 (public hash, not a secret)
+15f35cc8748c98ad43e412c89d5dd28081855c02:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:58
