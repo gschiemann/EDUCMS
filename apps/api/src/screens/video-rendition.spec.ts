@@ -325,3 +325,35 @@ describe('screen-specific media rendition', () => {
     }
   });
 });
+
+
+describe('demoted screens (video guarantee, owner decision A, 2026-10-12)', () => {
+  const demoted = new Set([original.fileHash]);
+  const copy = { url: 'https://example.com/1080.mp4', sha256: 'b'.repeat(64), size: 45_000_000 };
+  const primary = { url: original.fileUrl, sha256: original.fileHash, size: original.fileSize };
+
+  it('a 4K screen keeps the original unless it is demoted for THIS file', () => {
+    expect(selectVideoFile(original, '3840x2160')).toEqual(primary);
+    expect(selectVideoFile(original, '3840x2160', false, false, new Set())).toEqual(primary);
+    expect(selectVideoFile(original, '3840x2160', false, false, new Set(['c'.repeat(64)]))).toEqual(primary);
+    expect(selectVideoFile(original, '3840x2160', false, false, demoted)).toEqual(copy);
+    expect(selectVideoFile(original, '2160x3840', false, false, demoted)).toEqual(copy);
+  });
+
+  it('matches the digest case-insensitively and never applies to pictures', () => {
+    expect(selectVideoFile({ ...original, fileHash: 'A'.repeat(64) }, '3840x2160', false, false, new Set(['a'.repeat(64)]))).toEqual(copy);
+    const photo = { ...original, mimeType: 'image/jpeg' };
+    expect(selectVideoFile(photo, '3840x2160', false, false, demoted).url).toBe(original.fileUrl);
+  });
+
+  it('no valid copy → the original (never a broken URL/hash/size pair)', () => {
+    const broken = { ...original, processingMeta: { renditions: { '1080p': { url: 'https://example.com/x.mp4', sha256: 'nope', size: 1 } } } };
+    expect(selectVideoFile(broken, '3840x2160', false, false, demoted)).toEqual(primary);
+    const none = { ...original, processingMeta: {} };
+    expect(selectVideoFile(none, '3840x2160', false, false, demoted)).toEqual(primary);
+  });
+
+  it('a 1080p screen already gets the copy — demotion changes nothing there', () => {
+    expect(selectVideoFile(original, '1920x1080', false, false, demoted)).toEqual(selectVideoFile(original, '1920x1080'));
+  });
+});

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseF
 import { isScreenOnline } from '../telemetry/online-grace';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaPublicationService, type RuleTarget } from '../schedules/media-publication.service';
+import type { PlaybackGateWarning } from '../schedules/playback-gate.service';
 import { recordPushDeployment } from '../screens/deployment-record';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -987,8 +988,10 @@ export class PlaylistsController {
           select: { id: true, screenId: true, screenGroupId: true },
         })
       : [];
+    // Video gate (2026-10-12): warnings for THIS location's screens ride the response.
+    const playbackWarnings: PlaybackGateWarning[] = [];
     const waiting = body.active && this.mediaPublication && parked.length
-      ? await this.mediaPublication.prepareRules(req.user.tenantId, id, parked)
+      ? await this.mediaPublication.prepareRules(req.user.tenantId, id, parked, { warnings: playbackWarnings })
       : new Set<string>();
     const { result, held } = await this.prisma.client.$transaction(async (tx) => {
       const held = body.active
@@ -1083,6 +1086,7 @@ export class PlaylistsController {
       // lands. The dashboard reads the rules themselves (PREPARING 1080P).
       heldForPlaybackCopy: held.length,
       cascadedHeldForPlaybackCopy: cascadedHeld,
+      ...(playbackWarnings.length ? { playbackWarnings } : {}),
     };
   }
 
@@ -1236,8 +1240,9 @@ export class PlaylistsController {
       plan.setActive.some((u) => u.isActive && pressedOwnIds.has(u.id))
       || plan.splits.some((s) => s.create.some((r) => r.screenId === screenId && r.isActive))
     );
+    const playbackWarnings: PlaybackGateWarning[] = [];
     const holdPressed = activatesPressed && !!this.mediaPublication
-      && await this.mediaPublication.prepare(tenantId, id, screenId, null);
+      && await this.mediaPublication.prepare(tenantId, id, screenId, null, { warnings: playbackWarnings });
     // Switching a screen off or taking it out also cancels a publish that is
     // still preparing (or failed) for it — the rows the planner does not list
     // because they are not active.
@@ -1365,6 +1370,7 @@ export class PlaylistsController {
       // True when this screen's rule was held for its 1080p copy: it is not
       // on yet, and starts by itself when the copy lands.
       heldForPlaybackCopy: holdPressed,
+      ...(playbackWarnings.length ? { playbackWarnings } : {}),
     };
   }
 

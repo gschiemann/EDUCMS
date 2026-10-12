@@ -6,6 +6,7 @@ import {
   Req,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressReq } from 'express';
@@ -29,6 +30,7 @@ import {
 } from './telemetry.schema';
 import { sanitizeCacheReport } from './cache-report';
 import { TELEMETRY_INTERVAL_MS, type ScreenTelemetryResponse } from './telemetry.types';
+import { PlaybackDemotionService } from './playback-demotion.service';
 import {
   ingestFilePlayback,
   sanitizeMediaCaps,
@@ -95,6 +97,9 @@ export class TelemetryController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
+    // Video guarantee closed loop (2026-10-12). Optional so a context without
+    // it (older specs) still ingests evidence exactly as before.
+    @Optional() private readonly playbackDemotion?: PlaybackDemotionService,
   ) {}
 
   /**
@@ -571,7 +576,7 @@ export class TelemetryController {
     const webviewMajor = webviewMajorFromUserAgent(req?.headers?.['user-agent']);
     if (videoReport && typeof videoReport.sha256 === 'string' && screen.tenantId) {
       try {
-        await ingestFilePlayback(this.prisma.client as any, {
+        const ingested = await ingestFilePlayback(this.prisma.client as any, {
           screenId,
           tenantId: screen.tenantId,
           sample: videoReport as unknown as StoredVideoSample,
@@ -580,6 +585,24 @@ export class TelemetryController {
           webviewMajor,
           now,
         });
+        // ── CLOSED LOOP (2026-10-12, owner decisions A/B/C) ──────────────
+        // Only a BAD sample that brings the visible-stutter streak to the
+        // threshold can act (demote to the 1080p copy / record / alert);
+        // everything else returns at once without a query. Best-effort.
+        if (ingested && this.playbackDemotion && ingested.visibleClass === 'bad') {
+          await this.playbackDemotion.evaluate({
+            screenId,
+            tenantId: screen.tenantId,
+            sha256: String(videoReport.sha256),
+            fileUrl: String((videoReport as any).url ?? ''),
+            sampleClass: ingested.visibleClass,
+            visibleBadStreak: ingested.visibleBadStreak,
+            unitConcurrentMax: ingested.unitConcurrentMax,
+            lastPct: ingested.lastPct,
+            settledSamples: ingested.settledSamples,
+            now,
+          });
+        }
       } catch {
         /* evidence best-effort */
       }

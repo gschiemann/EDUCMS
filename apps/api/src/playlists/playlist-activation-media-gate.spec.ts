@@ -232,7 +232,7 @@ function makeClient(w: World) {
   return client;
 }
 
-function harness(w: World, opts: { queueFails?: boolean } = {}) {
+function harness(w: World, opts: { queueFails?: boolean; gate?: any } = {}) {
   const client = makeClient(w);
   const prisma = { client, ensurePlaylistMetadataColumns: jest.fn(async () => undefined) } as any;
   // The transcode queue, as the real one behaves: one job per (tenant, asset),
@@ -253,7 +253,7 @@ function harness(w: World, opts: { queueFails?: boolean } = {}) {
   };
   const signer = { signMessage: jest.fn((type: string) => `signed-${type}`) };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
-  const service = new MediaPublicationService(prisma, jobs as any, redis as any, signer as any, storage as any, new MediaOptimizationService());
+  const service = new MediaPublicationService(prisma, jobs as any, redis as any, signer as any, storage as any, new MediaOptimizationService(), undefined, opts.gate);
   (service as any).lastLegacyBackfillAt = Date.now(); // pending publications only; not the 15-minute legacy scan
   const distribution = new PlaylistDistributionService(prisma, service);
   const controller = new PlaylistsController(prisma, redis as any, signer as any, distribution, service);
@@ -628,5 +628,58 @@ describe('POST /playlists/:id/publish-to-fleet — copies in each location', () 
     expect(out.perLocation[0].screenFailures).toEqual([expect.objectContaining({ screenId: 'c-lcd', error: expect.stringMatching(/^The 1080p copy of “4k\.mp4” couldn't be made just now\..*publish again/) })]);
     expect(rowOn(h.w, 'c-lcd')).toEqual([]);
     expect(rowOn(h.w, 'c-wall')[0]).toMatchObject({ isActive: true });
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Video gate (step 5, 2026-10-12): every door carries the gate's warnings,
+// and an enforce refusal writes nothing. The gate itself is unit-tested in
+// schedules/playback-gate.service.spec.ts; here it is a stub so each DOOR is
+// proven to consult it.
+describe('the video gate rides every playlist door', () => {
+  const W = (screenId: string) => ({
+    code: 'VIDEO_MAY_STUTTER', reason: 'capability', assetId: 'v4k', file: 'Promo 4K', screens: [{ id: screenId, name: screenId }], hasLighterCopy: true, message: 'm',
+  });
+  const warnGate = () => ({
+    evaluate: jest.fn(async (_t: string, _p: string, screenId: string | null, groupId: string | null) => ({
+      mode: 'warn', warnings: [W(screenId ?? groupId ?? '?')], copyWanted: [],
+    })),
+  });
+  const refuseGate = () => ({
+    evaluate: jest.fn(async () => { throw new HttpException({ code: 'VIDEO_SCREEN_CANNOT_PLAY' }, 422); }),
+  });
+
+  it('Play everywhere: warnings for every rule switched on, merged per file', async () => {
+    const gate = warnGate();
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-wall', screenId: 'wall' }), rule({ id: 'r-g', screenGroupId: 'G' })] }), { gate });
+    const res: any = await h.controller.setActive(req as any, 'P', { active: true } as any);
+    expect(gate.evaluate).toHaveBeenCalledTimes(2);
+    expect(res.playbackWarnings).toHaveLength(1);
+    expect(res.playbackWarnings[0].screens.map((x: any) => x.id)).toEqual(['wall', 'G']);
+    expect(byId(h.w, 'r-wall').isActive).toBe(true); // warn never blocks
+  });
+
+  it('per-screen switch: the warning rides the response; the screen still starts', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-wall', screenId: 'wall' })] }), { gate: warnGate() });
+    const res: any = await h.controller.setScreenActive(req as any, 'P', 'wall', { active: true } as any);
+    expect(res.playbackWarnings).toEqual([expect.objectContaining({ assetId: 'v4k', screens: [{ id: 'wall', name: 'wall' }] })]);
+    expect(byId(h.w, 'r-wall').isActive).toBe(true);
+  });
+
+  it('no warning: the response has no playbackWarnings field at all (unchanged shape)', async () => {
+    const gate = { evaluate: jest.fn(async () => ({ mode: 'warn', warnings: [], copyWanted: [] })) };
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-wall', screenId: 'wall' })] }), { gate });
+    const res: any = await h.controller.setActive(req as any, 'P', { active: true } as any);
+    expect('playbackWarnings' in res).toBe(false);
+  });
+
+  it('enforce refusal on Play everywhere and on the per-screen switch writes nothing', async () => {
+    const h = harness(makeWorld({ schedules: [rule({ id: 'r-wall', screenId: 'wall' })] }), { gate: refuseGate() });
+    expect(await code(h.controller.setActive(req as any, 'P', { active: true } as any))).toBe('VIDEO_SCREEN_CANNOT_PLAY');
+    expect(byId(h.w, 'r-wall')).toMatchObject({ isActive: false, pendingMedia: false });
+    expect(await code(h.controller.setScreenActive(req as any, 'P', 'wall', { active: true } as any))).toBe('VIDEO_SCREEN_CANNOT_PLAY');
+    expect(byId(h.w, 'r-wall')).toMatchObject({ isActive: false, pendingMedia: false });
+    expect(h.w.jobs).toEqual([]);
   });
 });

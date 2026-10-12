@@ -673,3 +673,186 @@ export function summarizeScreenPlayback(verdicts: readonly FilePlaybackVerdict[]
   if (verdicts.includes('smooth')) return 'smooth';
   return 'unknown';
 }
+
+// ── Steps 5–8 (2026-10-12): the visible-stutter rule, the closed loop and the
+// publish gate. Owner decisions (Greg, binding 2026-10-12):
+//   A — a 4K screen with PROVEN, VISIBLE stutter on a fully cached file is
+//       moved (sticky, audited) to that file's validated 1080p copy; an
+//       operator can "try full quality again".
+//   B — a double-sided unit is never demoted (it must eventually play any
+//       combination natively); its stutter is recorded, nothing else.
+//   C — stutter with no lighter copy keeps playing and alerts (never blank).
+// Threshold rule (Greg, 2026-10-12): only stutter a viewer would actually see.
+// Healthy 4K screens run 0–0.7 % dropped per minute; the visibly bad units run
+// 38–55 %. One bad minute, start-up, an uncached/streaming sample or a single
+// dropped frame never counts.
+
+/** The visible-stutter rule's knobs. */
+export interface VisibleStutterThresholds {
+  /** A settled, cached sample dropping at least this share of frames (%) is BAD. */
+  badPct: number;
+  /** …or one holding at least one stall that adds up to this many ms. */
+  stallMs: number;
+  /** BAD samples in a row (same file, same screen) before the screen is demoted. */
+  streak: number;
+}
+
+/** Defaults: ≥ 5 % dropped (≈ 1.5 frames/s at 30 fps) or a ≥ 250 ms freeze, three minutes running. */
+export const VISIBLE_STUTTER_DEFAULTS: Readonly<VisibleStutterThresholds> = Object.freeze({
+  badPct: 5,
+  stallMs: 250,
+  streak: 3,
+});
+
+const envNumber = (raw: string | undefined, min: number, max: number): number | null => {
+  if (raw === undefined || raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+};
+
+/**
+ * The thresholds from the environment (`VIDEO_DEMOTION_BAD_PCT`,
+ * `VIDEO_DEMOTION_STALL_MS`, `VIDEO_DEMOTION_STREAK`). A missing, junk or
+ * out-of-range value keeps its default — a typo can never make the rule
+ * trigger-happy (the bounds keep it at ≥ 1 %, ≥ 100 ms, ≥ 2 samples).
+ */
+export function visibleStutterThresholds(env: Record<string, string | undefined> = {}): VisibleStutterThresholds {
+  const pct = envNumber(env.VIDEO_DEMOTION_BAD_PCT, 1, 100);
+  const stall = envNumber(env.VIDEO_DEMOTION_STALL_MS, 100, 60_000);
+  const streak = envNumber(env.VIDEO_DEMOTION_STREAK, 2, 60);
+  return {
+    badPct: pct ?? VISIBLE_STUTTER_DEFAULTS.badPct,
+    stallMs: stall ?? VISIBLE_STUTTER_DEFAULTS.stallMs,
+    streak: streak !== null ? Math.floor(streak) : VISIBLE_STUTTER_DEFAULTS.streak,
+  };
+}
+
+export type VisibleSampleClass = 'bad' | 'good' | 'ignored';
+
+/**
+ * One sample against the visible-stutter rule. Only a SETTLED sample played
+ * from the verified cache is evidence (`cached === true` — an unknown cache
+ * state never counts here, stricter than `isSettledSample`); anything else is
+ * `ignored` and neither extends nor breaks a streak. The share is compared
+ * unrounded, so 4.9 % is good and 5.0 % is bad.
+ */
+export function classifyVisibleStutterSample(
+  s: PlaybackSampleInput,
+  th: VisibleStutterThresholds = VISIBLE_STUTTER_DEFAULTS,
+): VisibleSampleClass {
+  if (s.cached !== true || !isSettledSample(s)) return 'ignored';
+  const total = nonNegInt(s.totalFrames) ?? 0;
+  const dropped = Math.min(total, nonNegInt(s.droppedFrames) ?? 0);
+  if (total > 0 && (dropped * 100) / total >= th.badPct) return 'bad';
+  const stalls = nonNegInt(s.stalls) ?? 0;
+  const waited = stalls > 0 ? nonNegInt(s.stalledMs) ?? 0 : 0;
+  if (stalls > 0 && waited >= th.stallMs) return 'bad';
+  return 'good';
+}
+
+/** The BAD streak after one more sample: BAD extends it, GOOD resets it, ignored leaves it. */
+export function nextVisibleBadStreak(prev: number, cls: VisibleSampleClass): number {
+  const p = Number.isFinite(prev) && prev > 0 ? Math.floor(prev) : 0;
+  if (cls === 'bad') return p + 1;
+  if (cls === 'good') return 0;
+  return p;
+}
+
+export type PlaybackDemotionMode = 'on' | 'observe' | 'off';
+
+/** `VIDEO_PLAYBACK_DEMOTION`: default ON; `off`/`0`/`false`/`no` off; `observe` logs only. */
+export function playbackDemotionMode(env: Record<string, string | undefined> = {}): PlaybackDemotionMode {
+  const v = (env.VIDEO_PLAYBACK_DEMOTION ?? '').trim().toLowerCase();
+  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
+  if (v === 'observe') return 'observe';
+  return 'on';
+}
+
+export type PlaybackGateMode = 'warn' | 'enforce' | 'off';
+
+/** `VIDEO_PLAYBACK_GATE`: `warn` (default, and for anything unrecognised), `enforce`, `off`. */
+export function playbackGateMode(env: Record<string, string | undefined> = {}): PlaybackGateMode {
+  const v = (env.VIDEO_PLAYBACK_GATE ?? '').trim().toLowerCase();
+  if (v === 'enforce') return 'enforce';
+  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
+  return 'warn';
+}
+
+export type StutterAction =
+  | { kind: 'none'; why: 'below-threshold' | 'emergency' | 'already-demoted' | 'demotion-off' }
+  | { kind: 'demote' }
+  | { kind: 'observe' }
+  | { kind: 'record-two-sided' }
+  | { kind: 'alert'; reason: 'concurrency' | 'already-lighter' | 'no-lighter-copy' };
+
+export interface StutterActionInput {
+  /** BAD samples in a row for this screen × file (`nextVisibleBadStreak`). */
+  streak: number;
+  threshold: number;
+  mode: PlaybackDemotionMode;
+  /** The file is emergency content (shared fail-closed check: a check that could not run counts as yes). */
+  emergency: boolean;
+  /** The screen is one face of a double-sided unit. */
+  twoSided: boolean;
+  /** Videos the unit was decoding at once during this file's evidence. */
+  unitConcurrent: number;
+  /** Which copy the screen played: the original, the 1080p copy, or a file not in the library. */
+  served: 'original' | '1080p' | 'unknown';
+  /** The asset has a validated 1080p copy that is smaller than the original. */
+  hasLighterCopy: boolean;
+  /** An active demotion already covers this screen × file. */
+  alreadyDemoted: boolean;
+}
+
+/**
+ * What the closed loop does after a sample. Order matters and is the owner's:
+ * emergency is untouchable; a two-sided unit is only recorded (B); several
+ * videos at once is concurrency, which a lighter copy does not fix (field
+ * trials 2026-10-08/09) — keep playing, alert (C); a stuttering original with
+ * a lighter copy is demoted (A); anything else keeps playing and alerts (C).
+ */
+export function decideStutterAction(i: StutterActionInput): StutterAction {
+  if (!(i.streak >= Math.max(1, i.threshold))) return { kind: 'none', why: 'below-threshold' };
+  if (i.emergency) return { kind: 'none', why: 'emergency' };
+  if (i.twoSided) return { kind: 'record-two-sided' };
+  if (i.unitConcurrent > 1) return { kind: 'alert', reason: 'concurrency' };
+  if (i.served === 'original' && i.hasLighterCopy) {
+    if (i.alreadyDemoted) return { kind: 'none', why: 'already-demoted' };
+    if (i.mode === 'off') return { kind: 'none', why: 'demotion-off' };
+    return i.mode === 'observe' ? { kind: 'observe' } : { kind: 'demote' };
+  }
+  return { kind: 'alert', reason: i.served === '1080p' ? 'already-lighter' : 'no-lighter-copy' };
+}
+
+/** One (file, screen) outcome the publish gate reports. */
+export type PlaybackGateFinding =
+  | { kind: 'ok' }
+  /** May stutter here; the closed loop moves this screen to the 1080p copy if it does. */
+  | { kind: 'may-stutter'; hasLighterCopy: boolean }
+  /** Won't play smoothly here and no copy fixes it. `twoSided`: never refused (owner decision B). */
+  | {
+      kind: 'cannot-play';
+      reason: 'concurrency' | 'measured-stutter' | 'over-capability';
+      twoSided: boolean;
+      detail: { max?: number; demand?: number };
+    };
+
+/**
+ * The publish gate's reading of one `decidePlayback` answer for one screen.
+ * Unknown never warns. `play-1080p` on a ≤ 1080 panel is today's rule (the
+ * manifest already hands it the copy); on a bigger panel the manifest still
+ * sends the original until the screen PROVES it stutters, so it is a warning
+ * — unless a demotion already sends that screen the copy.
+ */
+export function gateFinding(
+  decision: PlaybackDecision,
+  ctx: { panelShortEdge: number | null; twoSided: boolean; demoted: boolean; has1080p: boolean },
+): PlaybackGateFinding {
+  if (decision.kind === 'play-native' || decision.kind === 'unverified') return { kind: 'ok' };
+  if (decision.kind === 'play-1080p') {
+    if (ctx.demoted) return { kind: 'ok' };
+    if (ctx.panelShortEdge !== null && ctx.panelShortEdge <= 1080) return { kind: 'ok' };
+    return { kind: 'may-stutter', hasLighterCopy: ctx.has1080p };
+  }
+  return { kind: 'cannot-play', reason: decision.reason, twoSided: ctx.twoSided, detail: decision.detail };
+}

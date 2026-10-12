@@ -8,9 +8,11 @@
  * capability profile (measured on this screen → measured on the same model →
  * declared by its WebView → class default → unknown; pure, in @cms/api-types).
  *
- * It ENFORCES NOTHING. No publish is refused, no file is swapped, no screen is
- * told anything: steps 5–8 (publish gate, demotion) ship later, deliberately,
- * behind a flag, with the owner's sign-off (Player Reliability rule 12).
+ * The GET enforces nothing. Since 2026-10-12 (steps 6/7, owner decision A) it
+ * also lists the screen's active DEMOTIONS (files it plays the 1080p copy of
+ * because it visibly stuttered on the original), and the POST beside it is
+ * the operator's "Try full quality again". The demotion itself is made by the
+ * closed loop (playback-demotion.service.ts), never here.
  * Emergency content is never evaluated here.
  *
  * Mounted under /api/v1/screens next to ScreensController / DisplayController;
@@ -19,17 +21,13 @@
  * screens only) — user-scope.policy.ts.
  */
 
-import { Controller, Get, NotFoundException, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, NotFoundException, Optional, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 import {
-  computePlaybackCapability,
   declaredMaxShortEdge,
   droppedPercent,
-  playbackDeviceClass,
   summarizeScreenPlayback,
-  type CapabilityRecordInput,
   type FilePlaybackVerdict,
-  type MediaCapsReport,
   type PlaybackCapability,
   type ScreenPlaybackSummary,
 } from '@cms/api-types';
@@ -40,11 +38,20 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertSupportReach } from '../support-access/support-access.context';
 import { recordFromRow } from './file-playback';
+import { loadPlaybackCapability, PLAYBACK_CLASS_GROUPS_LIMIT, PLAYBACK_FILES_LIMIT } from './playback-capability.loader';
+import { PlaybackDemotionService } from './playback-demotion.service';
 
-/** The newest files shown per screen. */
-export const PLAYBACK_FILES_LIMIT = 20;
-/** Upper bound on the aggregate groups read for class evidence (verdict × short edge × alone/with company). */
-export const PLAYBACK_CLASS_GROUPS_LIMIT = 200;
+export { PLAYBACK_CLASS_GROUPS_LIMIT, PLAYBACK_FILES_LIMIT };
+
+/** One active demotion: this screen plays a file's 1080p copy because it visibly stuttered on the original. */
+export interface ScreenPlaybackDemotionView {
+  id: string;
+  sha256: string;
+  assetId: string | null;
+  /** The asset's name in this location's library, else null. */
+  name: string | null;
+  since: string;
+}
 
 export interface ScreenFilePlaybackView {
   sha256: string;
@@ -75,6 +82,8 @@ export interface ScreenPlaybackCapabilityResponse {
   capability: PlaybackCapability;
   declared: { reportedAt: string; maxShortEdge: 1080 | 2160 | null; webviewMajor: number | null } | null;
   files: ScreenFilePlaybackView[];
+  /** Files this screen was moved to the 1080p copy of (owner decision A). Empty for nearly every screen. */
+  demotions: ScreenPlaybackDemotionView[];
 }
 
 const fileNameOf = (url: unknown): string => {
@@ -91,7 +100,60 @@ const isoOf = (d: unknown): string => (d instanceof Date ? d.toISOString() : new
 
 @Controller('api/v1/screens')
 export class PlaybackCapabilityController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly demotions?: PlaybackDemotionService,
+  ) {}
+
+  /**
+   * The screen, if the caller may reach it: the ACTIVE workspace plus its
+   * direct, non-archived child locations — a SUPER_ADMIN included (support
+   * access governs which workspace that is). 404 otherwise, never 403.
+   */
+  private async reachableScreen(screenId: string, req: any) {
+    const callerTenantId: string | null = req.user?.tenantId || req.user?.schoolId || req.user?.districtId || null;
+    if (!callerTenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: callerTenantId, archivedAt: null },
+      select: { id: true },
+    });
+    const readable = [callerTenantId, ...children.map((c) => c.id)];
+    const screen = (await this.prisma.client.screen.findFirst({
+      where: { id: screenId, tenantId: { in: readable } },
+      select: { id: true, tenantId: true, playerVersionCode: true, displayCapabilities: true },
+    })) as { id: string; tenantId: string | null; playerVersionCode: number | null; displayCapabilities: any } | null;
+    if (!screen || !screen.tenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    await assertSupportReach(req.user, screen.tenantId);
+    return screen as { id: string; tenantId: string; playerVersionCode: number | null; displayCapabilities: any };
+  }
+
+  /**
+   * POST /api/v1/screens/:id/playback-demotions/:demotionId/clear — "Try full
+   * quality again" (owner decision A). The screen goes back to the original
+   * file under the same seamless rule (downloaded whole and verified before
+   * it mounts, swapped at a natural boundary), and its visible-stutter streak
+   * starts from zero. Admin roles only; tenant-scoped; audited
+   * (VIDEO_PLAYBACK_DEMOTION_CLEARED).
+   */
+  @Post(':id/playback-demotions/:demotionId/clear')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async clearDemotion(
+    @Param('id') screenId: string,
+    @Param('demotionId') demotionId: string,
+    @Req() req: any,
+  ): Promise<{ cleared: true }> {
+    const screen = await this.reachableScreen(screenId, req);
+    const svc = this.demotions ?? new PlaybackDemotionService(this.prisma);
+    await svc.clear({
+      tenantId: screen.tenantId,
+      screenId: screen.id,
+      demotionId: String(demotionId ?? ''),
+      userId: req.user?.userId ?? req.user?.id ?? null,
+    });
+    return { cleared: true };
+  }
 
   @Get(':id/playback-capability')
   @UseGuards(JwtAuthGuard, RbacGuard)
@@ -102,67 +164,13 @@ export class PlaybackCapabilityController {
     AppRole.CONTRIBUTOR,
   )
   async get(@Param('id') screenId: string, @Req() req: any): Promise<ScreenPlaybackCapabilityResponse> {
-    // Same reach as the drawer's other per-screen reads (ScreensController):
-    // the ACTIVE workspace plus its direct, non-archived child locations —
-    // a SUPER_ADMIN included (support access governs which workspace that is).
-    const callerTenantId: string | null = req.user?.tenantId || req.user?.schoolId || req.user?.districtId || null;
-    if (!callerTenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
-    const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: callerTenantId, archivedAt: null },
-      select: { id: true },
-    });
-    const readable = [callerTenantId, ...children.map((c) => c.id)];
-
-    const screen = (await this.prisma.client.screen.findFirst({
-      where: { id: screenId, tenantId: { in: readable } },
-      select: { id: true, tenantId: true, playerVersionCode: true, displayCapabilities: true },
-    })) as { id: string; tenantId: string | null; playerVersionCode: number | null; displayCapabilities: any } | null;
-    if (!screen || !screen.tenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
-    await assertSupportReach(req.user, screen.tenantId);
+    // Same reach as the drawer's other per-screen reads (ScreensController).
+    const screen = await this.reachableScreen(screenId, req);
     const tenantId = screen.tenantId;
 
-    const db = this.prisma.client as any;
-    const rows: any[] = await db.screenFilePlayback.findMany({
-      where: { screenId: screen.id, tenantId },
-      orderBy: { lastAt: 'desc' },
-      take: PLAYBACK_FILES_LIMIT,
-    });
-    const capsRow = await db.screenMediaCapabilities.findFirst({ where: { screenId: screen.id, tenantId } });
-    const declared = (capsRow?.report ?? null) as MediaCapsReport | null;
-
-    const deviceClass: string | null =
-      rows.find((r) => typeof r.deviceClass === 'string' && r.deviceClass)?.deviceClass ??
-      playbackDeviceClass(screen.displayCapabilities?.build ?? null);
-
-    // Evidence from OTHER screens of the same model, in ANY location, so a new
-    // unit is "proven" on day one by the units of its model already in the
-    // field. AGGREGATED IN SQL: what leaves the database is a handful of
-    // (verdict, short edge, concurrency, newest date) groups and one count of
-    // distinct screens — never a row, screen id, file, name or tenant from
-    // another location (the two-tenant matrix forbids reading foreign rows).
-    const { classRecords, classScreenCount } = deviceClass
-      ? await this.classEvidence(deviceClass, screen.id)
-      : { classRecords: [] as CapabilityRecordInput[], classScreenCount: 0 };
-
-    const toInput = (r: any): CapabilityRecordInput => ({
-      screenId: r.screenId,
-      width: r.width ?? null,
-      height: r.height ?? null,
-      verdict: r.verdict,
-      unitConcurrentMax: Number(r.unitConcurrentMax ?? 1) || 1,
-      lastAt: r.lastAt,
-      playerVersionCode: r.playerVersionCode ?? null,
-      webviewMajor: r.webviewMajor ?? null,
-    });
-    const currentWebview: number | null = rows[0]?.webviewMajor ?? capsRow?.webviewMajor ?? null;
-    const capability = computePlaybackCapability({
-      deviceClass,
-      screenRecords: rows.map(toInput),
-      classRecords,
-      classScreenCount,
-      declared,
-      current: { playerVersionCode: screen.playerVersionCode ?? null, webviewMajor: currentWebview },
-    });
+    // Same-model evidence from OTHER screens arrives as SQL aggregates only
+    // (playback-capability.loader.ts) — never a foreign row.
+    const { capability, rows, capsRow, declared } = await loadPlaybackCapability(this.prisma.client as any, screen);
 
     const names = await this.resolveFiles(tenantId, rows.map((r) => String(r.fileSha256)));
     const files: ScreenFilePlaybackView[] = rows.map((r) => {
@@ -197,45 +205,36 @@ export class PlaybackCapabilityController {
         ? { reportedAt: isoOf(capsRow.reportedAt), maxShortEdge: declaredMaxShortEdge(declared), webviewMajor: capsRow.webviewMajor ?? null }
         : null,
       files,
+      demotions: await this.demotionViews(screen.id, tenantId),
     };
   }
 
-  /** Same-model evidence from other screens, as SQL aggregates only (see the call site). */
-  private async classEvidence(
-    deviceClass: string,
-    excludeScreenId: string,
-  ): Promise<{ classRecords: CapabilityRecordInput[]; classScreenCount: number }> {
-    const groups = await this.prisma.client.$queryRaw<
-      Array<{ verdict: string; se: number | null; unit: number | null; at: Date | null; screens: number | bigint | null }>
-    >`
-      WITH c AS (
-        SELECT screen_id, verdict, LEAST(width, height) AS se, unit_concurrent_max AS u, last_at
-        FROM screen_file_playback
-        WHERE device_class = ${deviceClass}
-          AND screen_id <> ${excludeScreenId}
-          AND verdict IN ('smooth', 'stuttering')
-          AND width IS NOT NULL AND height IS NOT NULL
-      )
-      SELECT verdict, se, max(u)::int AS unit, max(last_at) AS at,
-             (SELECT count(DISTINCT screen_id)::int FROM c) AS screens
-      FROM c
-      GROUP BY verdict, se, (u > 1)
-      LIMIT ${PLAYBACK_CLASS_GROUPS_LIMIT}`;
-    const list = Array.isArray(groups) ? groups : [];
-    return {
-      classScreenCount: list.length ? Number(list[0].screens ?? 0) : 0,
-      classRecords: list.map((g, i) => ({
-        screenId: `class-${i}`,
-        width: g.se ?? null,
-        height: g.se ?? null,
-        verdict: g.verdict === 'stuttering' ? 'stuttering' : 'smooth',
-        unitConcurrentMax: Number(g.unit ?? 1) || 1,
-        lastAt: g.at ?? new Date(0),
-      })),
-    };
+  /** Active demotions of this screen, named from this location's library. */
+  private async demotionViews(screenId: string, tenantId: string): Promise<ScreenPlaybackDemotionView[]> {
+    const svc = this.demotions ?? new PlaybackDemotionService(this.prisma);
+    const active = await svc.listActive(screenId, tenantId);
+    if (active.length === 0) return [];
+    const ids = active.map((d) => d.assetId).filter((x): x is string => !!x);
+    const assets: Array<{ id: string; originalName: string | null; fileUrl: string }> = ids.length
+      ? await this.prisma.client.asset.findMany({
+          where: { tenantId, id: { in: ids } },
+          select: { id: true, originalName: true, fileUrl: true },
+        })
+      : [];
+    const byId = new Map(assets.map((a) => [a.id, a] as const));
+    return active.map((d) => {
+      const a = d.assetId ? byId.get(d.assetId) : undefined;
+      return {
+        id: d.id,
+        sha256: d.sourceSha256,
+        assetId: a ? a.id : null,
+        name: a ? a.originalName || fileNameOf(a.fileUrl) : null,
+        since: isoOf(d.createdAt),
+      };
+    });
   }
 
-  /** Digest → this location's asset (original file or its 1080p copy). Tenant-scoped both ways. */
+    /** Digest → this location's asset (original file or its 1080p copy). Tenant-scoped both ways. */
   private async resolveFiles(
     tenantId: string,
     shas: string[],

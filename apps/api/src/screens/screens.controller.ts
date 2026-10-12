@@ -6,6 +6,7 @@ import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGu
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
+import { loadDemotedSources } from './playback-demotions';
 import { NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -6818,6 +6819,14 @@ export class ScreensController {
       resolvePlaybackConfig(screen.id).loopMode === 'native';
     const noBFrameCompatibility = usesNoBFrameCompatibility(screen.id) &&
       resolvePlaybackConfig(screen.id).loopMode === 'native';
+    // 2026-10-12 — video guarantee (owner decision A). The original files this
+    // screen PROVED it cannot play smoothly (3 settled, cached minutes of
+    // visible stutter) are served as their validated 1080p copy. THIS NORMAL
+    // BRANCH ONLY — the emergency and sports branches returned above and never
+    // read demotions. One indexed read per rebuild (cache miss); a demotion
+    // write is manifest-fed, so it busts the cache. A read that fails leaves
+    // selection exactly as before (empty set) — never a broken manifest.
+    const demotedSources = await loadDemotedSources(this.prisma.client as any, screen.id, screen.tenantId ?? null);
     const dynamicPlaylists = schedules.map(s => {
     // 2026-05-05 — schedule-level audio override.
     // Null = honor each PlaylistItem.muted (current behavior).
@@ -6880,7 +6889,7 @@ export class ScreensController {
           sum +
           (pdfDelivery(pi.asset) === 'pages'
             ? pdfPageBytes(pi, pdfShape)
-            : selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility).size || 0),
+            : selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility, demotedSources).size || 0),
         0,
       ),
       // Include template data when playlist is template-based
@@ -6934,7 +6943,7 @@ export class ScreensController {
       } : {}),
       items: deliverableItems.flatMap(pi => {
         if (pdfDelivery(pi.asset) === 'pages') return pdfPageManifestItems(pi, pdfShape, itemMuted(pi));
-        const selected = selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility);
+        const selected = selectVideoFile(pi.asset, screen.resolution, portraitAvcCompatibility, noBFrameCompatibility, demotedSources);
         return [({
         item_id: pi.id,
         asset_id: pi.assetId,

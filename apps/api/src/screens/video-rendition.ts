@@ -44,6 +44,11 @@ function validRendition(
   return { url, sha256, size };
 }
 
+/** The validated 1080p copy of a file (every integrity field present), or null. */
+export function valid1080pRendition(meta: unknown): SelectedVideoFile | null {
+  return validRendition(meta);
+}
+
 /** Explicit field compatibility control; unknown screens keep normal quality selection. */
 export function usesPortraitAvcCompatibility(
   screenId: string,
@@ -191,11 +196,21 @@ function portraitAvcRendition(
   return selected;
 }
 
+/**
+ * The digests of ORIGINAL files this screen has been moved off (video
+ * guarantee, owner decision A, 2026-10-12): `screen_playback_demotions` rows
+ * with `cleared_at IS NULL`. Empty for every screen that never proved visible
+ * stutter, which leaves its selection — and its manifest ETag — byte-for-byte
+ * unchanged.
+ */
+export type DemotedSources = ReadonlySet<string>;
+
 export function selectVideoFile(
   asset: ManifestVideoAsset,
   screenResolution: string | null | undefined,
   portraitAvcCompatibility = false,
   noBFrameCompatibility = false,
+  demotedSources?: DemotedSources | null,
 ): SelectedVideoFile {
   const primary = {
     url: asset.fileUrl,
@@ -204,6 +219,23 @@ export function selectVideoFile(
   };
   if (!asset.mimeType || !/^(video|image)\//i.test(asset.mimeType))
     return primary;
+  // A demoted screen gets the validated 1080p copy of THIS file whatever its
+  // panel size — the only way a >1080p screen is ever handed it. The demotion
+  // exists only after the screen proved visible stutter on the original
+  // (3 settled, cached minutes); it is not a stand-in-then-switch-up (the
+  // 2026-09-26 rule stays: the screen downloads the whole copy, verified,
+  // before the player mounts it — mediaReadiness / renditionSwap). No valid
+  // copy → the original, exactly as before (never a broken URL/hash pair).
+  if (
+    demotedSources &&
+    demotedSources.size > 0 &&
+    /^video\//i.test(asset.mimeType) &&
+    typeof asset.fileHash === 'string' &&
+    demotedSources.has(asset.fileHash.toLowerCase())
+  ) {
+    const copy = validRendition(asset.processingMeta);
+    if (copy) return copy;
+  }
   const match = /^\s*(\d{2,6})\s*[x×X*]\s*(\d{2,6})\s*$/.exec(
     screenResolution ?? '',
   );

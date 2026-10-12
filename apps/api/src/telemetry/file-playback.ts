@@ -19,13 +19,21 @@
  *   • Tenant scope comes from the LIVE screen row, never from the payload.
  *   • Bounded: one narrow read + one read + one upsert, and only on a report
  *     that carries a digest — at most once per accepted POST (≥ 30 s apart).
- *   • Changes NOTHING a screen plays. No gate, no demotion (steps 5–8).
+ *   • Changes NOTHING a screen plays by itself. Since 2026-10-12 it also keeps
+ *     the VISIBLE-stutter streak (`visibleBadStreak`: settled, cached samples
+ *     in a row that dropped ≥ 5 % or froze ≥ 250 ms; one good sample resets
+ *     it), which the closed loop (`PlaybackDemotionService.evaluate`) reads.
  */
 
 import {
   EMPTY_FILE_PLAYBACK,
   MEDIA_CAPS_CONFIGS,
+  classifyVisibleStutterSample,
   foldPlaybackSample,
+  nextVisibleBadStreak,
+  visibleStutterThresholds,
+  type VisibleSampleClass,
+  type VisibleStutterThresholds,
   playbackDeviceClass,
   type FilePlaybackRecord,
   type MediaCapsReport,
@@ -118,6 +126,14 @@ function columnsFromRecord(r: FilePlaybackRecord) {
  * or null when the sample carries no digest / the screen has no tenant (an
  * unpaired screen's evidence has nowhere to belong).
  */
+/** The folded record plus the visible-stutter facts the closed loop needs. */
+export type IngestedFilePlayback = FilePlaybackRecord & {
+  /** This sample under the visible-stutter rule. */
+  visibleClass: VisibleSampleClass;
+  /** BAD samples in a row after this one (stored as `visible_bad_streak`). */
+  visibleBadStreak: number;
+};
+
 export async function ingestFilePlayback(
   db: FilePlaybackDb,
   args: {
@@ -127,8 +143,10 @@ export async function ingestFilePlayback(
     playerVersionCode: number | null;
     webviewMajor: number | null;
     now: Date;
+    /** Default: from the environment (`VIDEO_DEMOTION_*`). */
+    thresholds?: VisibleStutterThresholds;
   },
-): Promise<FilePlaybackRecord | null> {
+): Promise<IngestedFilePlayback | null> {
   const { screenId, tenantId, sample, now } = args;
   const sha = typeof sample.sha256 === 'string' && /^[0-9a-f]{64}$/.test(sample.sha256) ? sample.sha256 : null;
   if (!sha || !tenantId) return null;
@@ -156,8 +174,12 @@ export async function ingestFilePlayback(
   // screen id the device token proved; tenantId comes from that live row.
   const existing = await db.screenFilePlayback.findUnique({ where: key });
   const next = foldPlaybackSample(recordFromRow(existing), sample, { unitConcurrent: ownConcurrent + siblings });
+  const visibleClass = classifyVisibleStutterSample(sample, args.thresholds ?? visibleStutterThresholds(process.env));
+  const prevStreak = typeof existing?.visibleBadStreak === 'number' ? existing.visibleBadStreak : 0;
+  const visibleBadStreak = nextVisibleBadStreak(prevStreak, visibleClass);
   const cols = {
     ...columnsFromRecord(next),
+    visibleBadStreak,
     tenantId,
     deviceClass,
     fileUrl: sample.url.slice(0, 512),
@@ -172,7 +194,7 @@ export async function ingestFilePlayback(
     update: cols,
     select: { screenId: true },
   });
-  return next;
+  return { ...next, visibleClass, visibleBadStreak };
 }
 
 /**

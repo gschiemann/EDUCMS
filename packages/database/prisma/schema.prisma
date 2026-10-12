@@ -1891,6 +1891,7 @@ model Screen {
   // them on demand.
   filePlayback                        ScreenFilePlayback[]
   mediaCapabilities                   ScreenMediaCapabilities?
+  playbackDemotions                   ScreenPlaybackDemotion[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastPingAt])
@@ -1976,6 +1977,13 @@ model ScreenFilePlayback {
   webviewMajor      Int?     @map("webview_major")
   // smooth | hitching | stuttering | insufficient
   verdict           String   @default("insufficient")
+  // 2026-10-12 (video guarantee steps 5-8) — the VISIBLE-stutter streak: settled,
+  // cached samples in a row that dropped >= 5 % of frames or froze >= 250 ms
+  // (`classifyVisibleStutterSample`); a good sample resets it. Three demote.
+  visibleBadStreak  Int      @default(0) @map("visible_bad_streak")
+  // When ops were last told this screen x file stutters with no fix (owner
+  // decision C) — the once-a-day claim.
+  stutterAlertedAt  DateTime? @map("stutter_alerted_at")
   firstAt           DateTime @map("first_at")
   lastAt            DateTime @map("last_at")
 
@@ -2002,6 +2010,34 @@ model ScreenMediaCapabilities {
 
   @@index([tenantId])
   @@map("screen_media_capabilities")
+}
+
+// 2026-10-12 — video guarantee steps 6/7 (owner decision A): a screen that
+// PROVED visible stutter on a fully cached original is moved, sticky, to that
+// file's validated 1080p copy. One ACTIVE row per (screen, source digest) —
+// enforced by a partial unique index in the migration (`cleared_at IS NULL`).
+// Cleared only by an operator's "Try full quality again" (audited).
+// MANIFEST-FED (manifest-hot-cache.ts): a write must bust the cached manifest,
+// because `selectVideoFile` reads it. Never consulted on the emergency branch.
+model ScreenPlaybackDemotion {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  screenId        String    @map("screen_id")
+  screen          Screen    @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  // SHA-256 of the ORIGINAL file (Asset.fileHash) the screen stuttered on.
+  sourceSha256    String    @map("source_sha256")
+  assetId         String?   @map("asset_id")
+  fromRung        String    @map("from_rung")
+  toRung          String    @map("to_rung")
+  reason          String
+  evidence        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  clearedAt       DateTime? @map("cleared_at")
+  clearedByUserId String?   @map("cleared_by_user_id")
+
+  @@index([screenId, clearedAt])
+  @@index([tenantId, createdAt])
+  @@map("screen_playback_demotions")
 }
 
 model AssetFolder {

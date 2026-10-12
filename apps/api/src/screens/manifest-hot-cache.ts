@@ -246,6 +246,13 @@ export const MANIFEST_FED_MODELS = new Set([
     'StudentPrivacyPolicy',
     'RosterPlayer',
     'SportsPerson',
+    // Video guarantee (2026-10-12, owner decision A). A demotion moves ONE
+    // screen from a file's original to its validated 1080p copy; `selectVideoFile`
+    // reads it on the normal branch. Creating or clearing one must reach the
+    // screen on its next poll, not after the 30-minute armed TTL. Rare writes
+    // (a proven stutter, an operator's "Try full quality again") — never
+    // telemetry-frequency.
+    'ScreenPlaybackDemotion',
 ]);
 
 /**

@@ -4,6 +4,7 @@ import {
   MediaPublicationService,
   SCHEDULE_MEDIA_COPY_FAILED,
 } from './media-publication.service';
+import type { PlaybackGateWarning } from './playback-gate.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -221,9 +222,11 @@ export class SchedulesController {
     // (or directly). Everyone else honors the requested isActive flag.
     const isContributor = req.user?.role === AppRole.CONTRIBUTOR;
     const willBeActive = !isContributor && body.isActive !== false;
+    // Video gate (2026-10-12, VIDEO_PLAYBACK_GATE): warnings ride the response.
+    const playbackWarnings: PlaybackGateWarning[] = [];
     const pendingMedia = willBeActive && this.mediaPublication
       ? await this.mediaPublication.prepare(req.user.tenantId, body.playlistId,
-          body.screenId || null, body.screenGroupId || null)
+          body.screenId || null, body.screenGroupId || null, { warnings: playbackWarnings })
       : false;
     const activateNow = willBeActive && !pendingMedia;
 
@@ -425,10 +428,12 @@ export class SchedulesController {
     if (routeThroughReview) {
       await this.routeScheduleThroughReview(req, res);
       // Signal the UI to message "sent for review" instead of "published."
-      return { ...res, pendingReview: true };
+      return { ...res, pendingReview: true, ...(playbackWarnings.length ? { playbackWarnings } : {}) };
     }
 
-    return res;
+    // Absent when there is nothing to say — an unaffected publish answers
+    // exactly as before.
+    return playbackWarnings.length ? { ...res, playbackWarnings } : res;
   }
 
   /**
@@ -636,12 +641,13 @@ export class SchedulesController {
     const effectiveScreenGroupId =
       data.screenGroupId !== undefined ? data.screenGroupId : schedule.screenGroupId;
 
+    const playbackWarnings: PlaybackGateWarning[] = [];
     const changesLiveMedia = schedule.isActive && body.isActive !== false &&
       (body.playlistId !== undefined || body.screenId !== undefined || body.screenGroupId !== undefined);
     const activatesDraft = !schedule.isActive && body.isActive === true;
     if ((changesLiveMedia || activatesDraft) && this.mediaPublication) {
       const needsCopy = await this.mediaPublication.prepare(req.user.tenantId,
-        data.playlistId ?? schedule.playlistId, effectiveScreenId, effectiveScreenGroupId);
+        data.playlistId ?? schedule.playlistId, effectiveScreenId, effectiveScreenGroupId, { warnings: playbackWarnings });
       if (needsCopy && changesLiveMedia) {
         throw new HttpException({ code: 'SCHEDULE_MEDIA_PREPARING',
           message: 'This edit needs a screen-sized playback copy. Publish it as a new schedule so the current content stays on screen until the copy is ready.' },
@@ -726,7 +732,7 @@ export class SchedulesController {
     }
 
     this.notifySync(req.user.tenantId);
-    return res;
+    return playbackWarnings.length ? { ...res, playbackWarnings } : res;
   }
 
   @Put(':id/toggle')
@@ -740,9 +746,10 @@ export class SchedulesController {
     // A pending publish's toggle cancels it; a draft going live must pass the
     // same media gate as a new publish.
     const cancelPending = schedule.pendingMedia && !schedule.isActive;
+    const playbackWarnings: PlaybackGateWarning[] = [];
     const needsCopy = !schedule.isActive && !cancelPending && this.mediaPublication
       ? await this.mediaPublication.prepare(req.user.tenantId, schedule.playlistId,
-          schedule.screenId, schedule.screenGroupId)
+          schedule.screenId, schedule.screenGroupId, { warnings: playbackWarnings })
       : false;
 
     // 2026-05-23 launch audit P1: toggling a schedule active/inactive
@@ -794,7 +801,7 @@ export class SchedulesController {
       return updated;
     });
     this.notifySync(req.user.tenantId);
-    return res;
+    return playbackWarnings.length ? { ...res, playbackWarnings } : res;
   }
 
   @Delete(':id')

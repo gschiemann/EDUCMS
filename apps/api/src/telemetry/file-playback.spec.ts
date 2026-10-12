@@ -209,18 +209,25 @@ describe('POST /screens/:id/telemetry → evidence', () => {
 });
 
 describe('emergency is never evaluated by the playback capability (design §4.6)', () => {
-  // Steps 1–4 are read-only. Only the telemetry ingest and the read-only
-  // endpoint may touch the capability functions; in particular nothing on the
-  // emergency path or the manifest builder may consult them. Steps 5–8 must
-  // widen this list deliberately — and never to an emergency file.
-  it('only the ingest + read-only endpoint use the capability functions', () => {
+  // Only the evidence ingest, the capability loader / read endpoint, the
+  // publish gate (step 5) and the closed loop (steps 6/7) may touch the
+  // capability functions. The emergency path and the manifest builder never
+  // do — the manifest reads ONLY the demotion rows (playback-demotions.ts).
+  // Widen this list deliberately — and never to an emergency file.
+  it('only the sanctioned files use the capability functions', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const fs = require('fs') as typeof import('fs');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const path = require('path') as typeof import('path');
     const root = path.resolve(__dirname, '..');
-    const allowed = new Set(['telemetry/file-playback.ts', 'telemetry/playback-capability.controller.ts']);
-    const uses = /\b(computePlaybackCapability|decidePlayback|foldPlaybackSample|ingestFilePlayback|unitConcurrentVideos)\b/;
+    const allowed = new Set([
+      'telemetry/file-playback.ts',
+      'telemetry/playback-capability.controller.ts',
+      'telemetry/playback-capability.loader.ts',
+      'telemetry/playback-demotion.service.ts',
+      'schedules/playback-gate.service.ts',
+    ]);
+    const uses = /\b(computePlaybackCapability|decidePlayback|decideStutterAction|foldPlaybackSample|ingestFilePlayback|loadPlaybackCapability|unitConcurrentVideos)\b/;
     const offenders: string[] = [];
     const walk = (dir: string) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -235,5 +242,16 @@ describe('emergency is never evaluated by the playback capability (design §4.6)
     walk(root);
     // telemetry.controller.ts calls ingestFilePlayback — the one sanctioned caller.
     expect(offenders).toEqual(['telemetry/telemetry.controller.ts']);
+  });
+
+  it('no emergency module imports the gate, the closed loop or the demotion read', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('path') as typeof import('path');
+    const dir = path.resolve(__dirname, '..', 'emergency');
+    const bad = /playback-gate|playback-demotion|playback-demotions|playback-capability/;
+    const offenders = fs.readdirSync(dir).filter((f) => /\.ts$/.test(f) && !/\.spec\.ts$/.test(f) && bad.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+    expect(offenders).toEqual([]);
   });
 });

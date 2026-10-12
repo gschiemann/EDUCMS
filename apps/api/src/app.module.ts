@@ -160,6 +160,7 @@ import { VideoPosterService } from './storage/video-poster.service';
 import { VideoProbeAutoHealCron } from './storage/video-probe-autoheal.cron';
 import { VideoTranscodeService } from './storage/video-transcode/video-transcode.service';
 import { MediaPublicationService } from './schedules/media-publication.service';
+import { PlaybackGateService } from './schedules/playback-gate.service';
 import { VideoTranscodePipeline } from './storage/video-transcode/video-transcode.pipeline';
 import { VideoTranscodeWorker } from './storage/video-transcode/video-transcode.worker';
 import { StorageQuotaService } from './assets/storage-quota.service';
@@ -353,6 +354,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // SupabaseStorageService (a second instance would re-run the bucket setup at boot).
     VideoTranscodeService,
     MediaPublicationService,
+    // Video guarantee step 5 (2026-10-12): the publish-time video gate.
+    PlaybackGateService,
     VideoTranscodePipeline,
     VideoTranscodeWorker,
     // 2026-09-24 — per-organisation storage allowance on the media-library upload

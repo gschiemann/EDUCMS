@@ -17,6 +17,15 @@ import { VideoTranscodeService } from '../storage/video-transcode/video-transcod
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { MediaOptimizationService } from '../storage/media-optimization.service';
 import { displaceCompetingActiveSchedules } from './schedule-displacement';
+import { PlaybackGateService, type PlaybackGateWarning } from './playback-gate.service';
+
+/**
+ * Where an activation door collects the video gate's warnings (step 5,
+ * 2026-10-12) to return them with its response as `playbackWarnings`.
+ */
+export interface PrepareOptions {
+  warnings?: PlaybackGateWarning[];
+}
 
 const RESOLUTION = /^\s*(\d+)\s*[x×X*]\s*(\d+)\s*$/;
 
@@ -215,7 +224,38 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: SupabaseStorageService,
     private readonly mediaOpt: MediaOptimizationService,
     @Optional() private readonly lease?: LeaderLeaseService,
+    // Video guarantee step 5 (2026-10-12): the publish-time video gate.
+    // Optional so every existing construction keeps today's behaviour.
+    @Optional() private readonly gate?: PlaybackGateService,
   ) {}
+
+  /**
+   * The video gate for one activation (VIDEO_PLAYBACK_GATE, default `warn`).
+   * Runs BEFORE any copy is queued so an `enforce` refusal writes nothing.
+   * Warnings land in `opts.warnings`; a file that may stutter on a big screen
+   * and has no 1080p copy yet gets one queued (the publish never waits for it —
+   * it is what the closed loop switches to if the screen proves it stutters).
+   */
+  private async runPlaybackGate(tenantId: string, playlistId: string, screenId: string | null | undefined, groupId: string | null | undefined, opts?: PrepareOptions): Promise<void> {
+    if (!this.gate) return;
+    const result = await this.gate.evaluate(tenantId, playlistId, screenId ?? null, groupId ?? null);
+    if (opts?.warnings) {
+      for (const w of result.warnings) {
+        if (!opts.warnings.some((x) => x.assetId === w.assetId && x.code === w.code && x.reason === w.reason)) opts.warnings.push(w);
+        else {
+          const existing = opts.warnings.find((x) => x.assetId === w.assetId && x.code === w.code && x.reason === w.reason)!;
+          for (const sc of w.screens) if (!existing.screens.some((e) => e.id === sc.id)) existing.screens.push(sc);
+        }
+      }
+    }
+    for (const c of result.copyWanted) {
+      try {
+        await this.jobs.enqueueForRendition({ tenantId, assetId: c.id, sourceUrl: c.fileUrl, sourceBytes: c.fileSize });
+      } catch (err) {
+        this.logger.warn(`[video-gate] could not queue a 1080p copy of ${c.id}: ${(err as Error).message}`);
+      }
+    }
+  }
 
   /**
    * The tenant whose folder holds this file: every server-generated upload
@@ -346,7 +386,8 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Queue only the assets that selected screens cannot decode at native size. */
-  async prepare(tenantId: string, playlistId: string, screenId?: string | null, groupId?: string | null): Promise<boolean> {
+  async prepare(tenantId: string, playlistId: string, screenId?: string | null, groupId?: string | null, opts?: PrepareOptions): Promise<boolean> {
+    await this.runPlaybackGate(tenantId, playlistId, screenId, groupId, opts);
     const [playlist, screens] = await Promise.all([
       this.prisma.client.playlist.findFirst({
         where: { id: playlistId, tenantId },
@@ -408,10 +449,10 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
    * used to switch rules straight on, which is how a paused 1080p screen was
    * handed the 4K original again (2026-09-26).
    */
-  async prepareRules(tenantId: string, playlistId: string, rules: RuleTarget[]): Promise<Set<string>> {
+  async prepareRules(tenantId: string, playlistId: string, rules: RuleTarget[], opts?: PrepareOptions): Promise<Set<string>> {
     const waiting = new Set<string>();
     for (const rule of rules) {
-      if (await this.prepare(tenantId, playlistId, rule.screenId, rule.screenGroupId)) waiting.add(rule.id);
+      if (await this.prepare(tenantId, playlistId, rule.screenId, rule.screenGroupId, opts)) waiting.add(rule.id);
     }
     return waiting;
   }

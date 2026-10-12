@@ -64,6 +64,7 @@ import { PanicContentController } from '../panic-content/panic-content.controlle
 import { ScreensController } from '../screens/screens.controller';
 import { ScreensBulkController } from '../screens/bulk/screens-bulk.controller';
 import { PlaybackCapabilityController } from '../telemetry/playback-capability.controller';
+import { PlaybackDemotionService } from '../telemetry/playback-demotion.service';
 import { SportsController } from '../sports/sports.controller';
 import { SportsService } from '../sports/sports.service';
 import { SponsorsService } from '../sports/sponsors.service';
@@ -258,6 +259,22 @@ function dataset(): Dataset {
       verdict: 'smooth',
       firstAt: new Date('2026-10-11T00:00:00Z'),
       lastAt: new Date('2026-10-11T01:00:00Z'),
+    })),
+    // 2026-10-12 — a screen moved to a file's 1080p copy (video guarantee,
+    // owner decision A). Manifest-fed; cleared by "Try full quality again".
+    screenPlaybackDemotion: pair((tenantId, s) => ({
+      id: `dem-${s}`,
+      tenantId,
+      screenId: `scr-${s}`,
+      sourceSha256: s.repeat(64),
+      assetId: `asset-${s}`,
+      fromRung: 'native',
+      toRung: '1080p',
+      reason: 'visible-stutter',
+      evidence: null,
+      createdAt: new Date('2026-10-12T00:00:00Z'),
+      clearedAt: null,
+      clearedByUserId: null,
     })),
     screenMediaCapabilities: pair((tenantId, s) => ({
       id: `smc-${s}`,
@@ -987,6 +1004,19 @@ const MATRIX: Case[] = [
     controller: PlaybackCapabilityController, handler: 'get', op: 'read',
     build: (p) => new PlaybackCapabilityController(p),
     invoke: (c, req) => c.get('scr-a', req),
+  },
+  // 2026-10-12 — "Try full quality again" (video guarantee, owner decision A).
+  {
+    name: 'screens: clear another tenant\'s video playback demotion',
+    controller: PlaybackCapabilityController, handler: 'clearDemotion', op: 'write',
+    build: (p) => new PlaybackCapabilityController(p, new PlaybackDemotionService(p, stubRedis, stubSigner)),
+    invoke: (c, req) => c.clearDemotion('scr-b', 'dem-b', req),
+  },
+  {
+    name: 'screens: clear a foreign demotion id through an own screen',
+    controller: PlaybackCapabilityController, handler: 'clearDemotion', op: 'write',
+    build: (p) => new PlaybackCapabilityController(p, new PlaybackDemotionService(p, stubRedis, stubSigner)),
+    invoke: (c, req) => c.clearDemotion('scr-a', 'dem-b', req),
   },
 
   // ── Bulk screen actions (2026-10-11) ──────────────────────────────────
