@@ -364,6 +364,7 @@
     "passkeyTooMany": "尝试次数过多。请等待一分钟后再试。",
     "eulaRequired": "你必须接受最终用户许可协议才能继续。",
     "invalidCredentials": "邮箱或密码无效，请重试。",
+    "tooManySignInAttempts": "此邮箱的登录尝试次数过多。请稍等几分钟后重试，或重置密码。",
     "serverUnreachableAt": "无法连接到位于 {url} 的服务器。如果问题持续存在，请联系你的管理员。",
     "serverMissingApiUrl": "无法连接到服务器。此部署缺少 NEXT_PUBLIC_API_URL——请让管理员在 Vercel 中设置（它应指向 Railway API + /api/v1）。",
     "mfaEnterBackupToFinish": "请输入你的一个备用码。",

@@ -364,6 +364,7 @@
     "passkeyTooMany": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "eulaRequired": "Debes aceptar el Acuerdo de licencia de usuario final para continuar.",
     "invalidCredentials": "Correo electrónico o contraseña no válidos. Inténtalo de nuevo.",
+    "tooManySignInAttempts": "Demasiados intentos de inicio de sesión con este correo. Espera unos minutos y vuelve a intentarlo, o restablece tu contraseña.",
     "serverUnreachableAt": "No se puede contactar con el servidor en {url}. Si sigue ocurriendo, contacta con tu administrador.",
     "serverMissingApiUrl": "No se puede contactar con el servidor. A esta implementación le falta NEXT_PUBLIC_API_URL: pide a tu administrador que la configure en Vercel (debe apuntar a la API de Railway + /api/v1).",
     "mfaEnterBackupToFinish": "Introduce uno de tus códigos de respaldo.",

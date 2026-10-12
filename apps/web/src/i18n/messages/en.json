@@ -364,6 +364,7 @@
     "passkeyTooMany": "Too many attempts. Wait a minute and try again.",
     "eulaRequired": "You must accept the End User License Agreement to continue.",
     "invalidCredentials": "Invalid email or password. Please try again.",
+    "tooManySignInAttempts": "Too many sign-in attempts for this email. Wait a few minutes and try again, or reset your password.",
     "serverUnreachableAt": "Can't reach the server at {url}. If this keeps happening, contact your administrator.",
     "serverMissingApiUrl": "Can't reach the server. This deployment is missing NEXT_PUBLIC_API_URL — ask your administrator to set it in Vercel (it should point to the Railway API + /api/v1).",
     "mfaEnterBackupToFinish": "Enter one of your backup codes.",

@@ -25,6 +25,7 @@ import { claimEmailCodeAttempt, spendEmailCode } from './email-code-claim';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
+import { LoginAttemptLimiter } from './login-attempt-limiter';
 import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TENANT_ID, ensureSystemTenant } from '../security/system-tenant';
 import { clientIpFromRequest } from '../security/client-ip';
@@ -99,6 +100,9 @@ export class AuthController {
     @Optional() private emailService?: EmailService,
   ) {}
 
+  /** V-5 — per-account sign-in throttle (Redis; fails open to the per-IP limit). */
+  private readonly loginLimiter = new LoginAttemptLimiter(() => (this.redisService as any)?.publisher ?? null);
+
   @HttpCode(HttpStatus.OK)
   @Post('login')
   // Per-IP rate limit: 10 attempts per minute. argon2's cost slows brute
@@ -117,8 +121,19 @@ export class AuthController {
     @Body(new ZodValidationPipe(LoginInputSchema)) body: LoginInput,
     @Req() req: Request,
   ) {
+    // V-5 (2026-10-11): per-ACCOUNT backoff / soft lock, checked BEFORE the
+    // password is verified so a correct guess during a lock is refused too.
+    // Keyed on the typed address whether or not an account exists.
+    await this.loginLimiter.check(body.email);
     const user = await this.authService.validateUser(body.email, body.password);
     if (!user) {
+      const outcome = await this.loginLimiter.recordFailure(body.email);
+      if (outcome?.locked) {
+        await this.auditLoginAttempt(req, body.email, null, 'AUTH_LOGIN_LOCKED', {
+          failures: outcome.failures,
+          lockMinutes: 15,
+        });
+      }
       // P0-4 (2026-05-28) — credential check failed. Audit it for
       // forensics (credential stuffing: when, from which IP, against
       // which accounts). The throttler counter alone doesn't survive a
@@ -128,6 +143,7 @@ export class AuthController {
       });
       throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
+    await this.loginLimiter.recordSuccess(body.email);
     const session = await this.authService.login(user, body.rememberMe);
     // THE POST-SIGN-IN PASSKEY OFFER (2026-09-22) — mint site 1 of exactly 3
     // (the others are MfaController.challenge and MfaEmailCodeController
@@ -898,12 +914,12 @@ export class AuthController {
     req: Request,
     email: string,
     tenantId: string | null,
-    action: 'AUTH_LOGIN_SUCCESS' | 'AUTH_LOGIN_FAILED',
+    action: 'AUTH_LOGIN_SUCCESS' | 'AUTH_LOGIN_FAILED' | 'AUTH_LOGIN_LOCKED',
     extra: Record<string, unknown> = {},
   ): Promise<void> {
     // Resolve a real tenant for the FAILED-against-real-account case.
     let resolvedTenantId = tenantId;
-    if (!resolvedTenantId && action === 'AUTH_LOGIN_FAILED') {
+    if (!resolvedTenantId && action !== 'AUTH_LOGIN_SUCCESS') {
       resolvedTenantId = await this.authService.tenantIdForEmail(email);
     }
 

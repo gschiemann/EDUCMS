@@ -914,6 +914,13 @@ function LoginContent() {
       return;
     }
     clog.warn('auth', 'Login rejected', { status: res.status, message: data?.message, source });
+    // V-5 (2026-10-11): the per-account sign-in throttle. Translated here —
+    // the server's sentence is English — and it says the same thing for every
+    // address, so it reveals nothing about whether the account exists.
+    if (data?.code === 'AUTH_TEMP_LOCKED') {
+      setError(t('tooManySignInAttempts'));
+      return;
+    }
     setError(data?.message || fallbackError);
   };
 
