@@ -2876,6 +2876,7 @@ function PlayerPage() {
   // The descriptor is per SCREEN; the protocol is what this APK proved it speaks.
   const [nativeVideoDescriptor, setNativeVideoDescriptor] = useState<NativeVideoDescriptor | null>(null);
   const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | 3 | null>(null);
+  const nativeSkipLogged = useRef(false);
   // ── Protocol 3 (2026-10-12, nativeZones.ts): positioned native slots for
   // mixed playlists and template VIDEO zones. `nativeHoles` is the set of
   // slots whose native picture is on glass right now, each with the hole to
@@ -12582,6 +12583,13 @@ function PlayerPage() {
                 active:isActive,emergency:!!activeEmergency || playlist?.isEmergency === true,
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
+              // Why native did NOT mount, once per page load (2026-10-12: VisionCore
+              // stayed web with no reason anywhere). Codes only, then one log upload.
+              if (!nativeEligible && !nativeSkipLogged.current && (nativeVideoDescriptor || nativeVideoProtocol !== null)) {
+                nativeSkipLogged.current = true;
+                const d = nativeVideoDescriptor;
+                reportNativeFallback(`[Player] PLAYER_NATIVE_VIDEO_SKIPPED desc=${d ? 'yes' : 'no'} proto=${nativeVideoProtocol ?? 'none'} choice=${nativeChoice ? 'yes' : 'no'} solo=${isSoloPlaylist && sorted.length === 1} muted=${(item as { muted?: boolean | null }).muted !== false} active=${isActive} sha=${d ? (d.asset.sha256 === (item.asset.fileHash ?? '') ? 'match' : 'differ') : 'n/a'} asset=${d ? (d.asset.id === item.asset.id ? 'match' : 'differ') : 'n/a'} sync=${syncConfigRef.current.enabled} preview=${isPreviewMode()} emergency=${!!activeEmergency} (web fallback)`);
+              }
               // Protocol 3 (2026-10-12, nativeZones.ts): a video inside a
               // MIXED playlist. Pre-rolled while this slide is the hidden
               // next-up, shown through the media root's hole once it is
