@@ -137,15 +137,15 @@ describe('the gate matrix — who may spend OUR AI keys', () => {
 });
 
 describe('limits', () => {
-  it('defaults: 10 boards + 20 images per AI screen; trial 10 + 10', () => {
-    expect(aiPlanLimits({} as any)).toEqual({ boardsPerScreen: 10, imagesPerScreen: 20, trialBoards: 10, trialImages: 10 });
+  it('defaults: 10 boards + 20 images per AI screen; trial 2 + 2', () => {
+    expect(aiPlanLimits({} as any)).toEqual({ boardsPerScreen: 10, imagesPerScreen: 20, trialBoards: 2, trialImages: 2 });
   });
 
   it('are env-tunable, and a bad value falls back to the default', () => {
     expect(aiPlanLimits({ AI_BOARDS_PER_SCREEN: '15', AI_IMAGES_PER_SCREEN: 'lots', AI_TRIAL_BOARDS: '-1', AI_TRIAL_IMAGES: '3' } as any)).toEqual({
       boardsPerScreen: 15,
       imagesPerScreen: 20,
-      trialBoards: 10,
+      trialBoards: 2,
       trialImages: 3,
     });
   });
@@ -155,8 +155,8 @@ describe('limits', () => {
     expect(includedFor('boards', 'ai', 4, l)).toBe(40);
     expect(includedFor('images', 'ai', 4, l)).toBe(80);
     expect(includedFor('boards', 'ai', 0, l)).toBe(10);
-    expect(includedFor('boards', 'trial', 3, l)).toBe(10);
-    expect(includedFor('images', 'trial', 3, l)).toBe(10);
+    expect(includedFor('boards', 'trial', 3, l)).toBe(2);
+    expect(includedFor('images', 'trial', 3, l)).toBe(2);
     expect(includedFor('boards', 'none', 40, l)).toBe(0);
     expect(includedFor('images', 'none', 40, l)).toBe(0);
   });

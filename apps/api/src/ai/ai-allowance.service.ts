@@ -31,8 +31,8 @@
  * 2026-10-12 — THE VenueOS + AI PLAN (billing/ai-plan.ts). Nothing on our key without it:
  * `entitlement()` reads the nearest license up the tenant tree — 'ai' (License.aiIncluded),
  * 'trial' (a free trial), or 'none'. The AI plan includes AI_BOARDS_PER_SCREEN (10) boards and
- * AI_IMAGES_PER_SCREEN (20) images per paired screen per month; a trial AI_TRIAL_BOARDS (10) +
- * AI_TRIAL_IMAGES (10) for the whole trial (counted from its first day, not the month); no plan
+ * AI_IMAGES_PER_SCREEN (20) images per paired screen per month; a trial AI_TRIAL_BOARDS (2) +
+ * AI_TRIAL_IMAGES (2) for the whole trial (counted from its first day, not the month); no plan
  * nothing. IMAGES are a third count (`images()`): one ledger row per image on our key
  * (feature 'image'), also metered in dollars. The dollar allowance (now $2.50 per screen) stays
  * the hard ceiling over everything that is not the board pipeline.
@@ -481,7 +481,7 @@ export class AiAllowanceService {
   }
 
   /**
-   * A free trial's boards: ONE total for the whole trial (AI_TRIAL_BOARDS, default 10), counted
+   * A free trial's boards: ONE total for the whole trial (AI_TRIAL_BOARDS, default 2), counted
    * from the trial's first day — never reset by a month turning mid-trial. No packs on a trial.
    */
   private async trialBoards(orgTenantId: string, ent: AiEntitlement, now: Date): Promise<BoardSnapshot> {
@@ -517,7 +517,7 @@ export class AiAllowanceService {
 
   /**
    * The organisation's AI IMAGE allowance on our key (2026-10-12): the AI plan gets
-   * AI_IMAGES_PER_SCREEN (20) × paired screens per UTC month, a trial AI_TRIAL_IMAGES (10) for the
+   * AI_IMAGES_PER_SCREEN (20) × paired screens per UTC month, a trial AI_TRIAL_IMAGES (2) for the
    * whole trial, no plan none. Counted from the ledger (`feature = 'image'`, our key), pooled at
    * the organisation. A read failure reports nothing left — an image is the costliest call we make.
    */

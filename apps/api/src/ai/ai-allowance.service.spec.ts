@@ -521,22 +521,22 @@ describe('AiAllowanceService — the VenueOS + AI plan (2026-10-12)', () => {
     expect((await svc.entitlement('solo')).plan).toBe('ai');
   });
 
-  it('TRIAL: 10 boards and 10 images for the WHOLE trial — counted from the trial start, not the month', async () => {
+  it('TRIAL: 2 boards and 2 images for the WHOLE trial — counted from the trial start, not the month', async () => {
     const lic = trialLicense(4);
     const tree: Row[] = [{ id: 'try', parentId: null, license: lic }];
     const { prisma, events } = makePrisma(tree, [{ tenantId: 'try', pairedAt: new Date() }, { tenantId: 'try', pairedAt: new Date() }]);
-    // 3 boards drawn 9 days ago (inside the 14-day trial, possibly last month) + 2 today; one image
+    // 1 board drawn 9 days ago (inside the 14-day trial, possibly last month); one image today
     const earlier = new Date(Date.now() - 9 * DAY);
-    events.push(ev('try', 'designer', earlier), ev('try', 'designer', earlier), ev('try', 'designer-revise', earlier));
-    events.push(ev('try', 'designer'), ev('try', 'designer'), ev('try', 'image'));
+    events.push(ev('try', 'designer', earlier));
+    events.push(ev('try', 'image'));
     // a row from BEFORE the trial began never counts
     events.push(ev('try', 'designer', new Date(Date.now() - 30 * DAY)));
     const svc = new AiAllowanceService(prisma);
     const b = await svc.boards('try');
-    expect(b).toMatchObject({ plan: 'trial', period: 'trial', included: 10, used: 5, left: 5, purchasedRemaining: 0 });
+    expect(b).toMatchObject({ plan: 'trial', period: 'trial', included: 2, used: 1, left: 1, purchasedRemaining: 0 });
     expect(b.resetAt).toBe(lic.trialEndsAt.toISOString());
     const img = await svc.images('try');
-    expect(img).toMatchObject({ plan: 'trial', period: 'trial', included: 10, used: 1, left: 9 });
+    expect(img).toMatchObject({ plan: 'trial', period: 'trial', included: 2, used: 1, left: 1 });
     // a trial cannot buy packs (they open with the AI plan)
     expect(await svc.purchaseAvailabilityFor('try')).toMatchObject({ enabled: false, reasonCode: 'TRIAL' });
   });

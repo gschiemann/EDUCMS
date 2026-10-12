@@ -13,8 +13,8 @@
  * LIMITS ON OUR KEY (per organisation, pooled across its schools / locations):
  *   AI plan   boards  AI_BOARDS_PER_SCREEN (10) × paired screens, per UTC month
  *             images  AI_IMAGES_PER_SCREEN (20) × paired screens, per UTC month
- *   trial     boards  AI_TRIAL_BOARDS (10) for the whole trial
- *             images  AI_TRIAL_IMAGES (10) for the whole trial
+ *   trial     boards  AI_TRIAL_BOARDS (2) for the whole trial
+ *             images  AI_TRIAL_IMAGES (2) for the whole trial
  *   both      the dollar allowance (ai-allowance.service.ts) stays the hard ceiling.
  *
  * Everything here is a function of its arguments (env and clock are passed in), so every state is
@@ -180,8 +180,8 @@ export function aiPlanLimits(env: NodeJS.ProcessEnv = process.env): AiPlanLimits
   return {
     boardsPerScreen: envInt(env, 'AI_BOARDS_PER_SCREEN', 10),
     imagesPerScreen: envInt(env, 'AI_IMAGES_PER_SCREEN', 20),
-    trialBoards: envInt(env, 'AI_TRIAL_BOARDS', 10),
-    trialImages: envInt(env, 'AI_TRIAL_IMAGES', 10),
+    trialBoards: envInt(env, 'AI_TRIAL_BOARDS', 2),
+    trialImages: envInt(env, 'AI_TRIAL_IMAGES', 2),
   };
 }
 
