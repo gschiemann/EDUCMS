@@ -4584,7 +4584,8 @@
     "restore": "恢复",
     "delete": "删除",
     "resetPositionOf": "重置 {label} 的位置",
-    "resetPosition": "重置位置"
+    "resetPosition": "重置位置",
+    "addImage": "添加图片"
   },
   "uploadFormats": {
     "thisFile": "此文件",
@@ -5220,5 +5221,39 @@
     "doneOffBody": "您的套餐不再包含 AI。您可以随时在此重新开启。",
     "failedTitle": "无法更改您的套餐",
     "failedBody": "请重试；如果问题持续，请联系我们。"
+  },
+  "brandKitPanel": {
+    "logoHint": "将您的徽标放在左上角。如果模板中已有徽标组件，则替换其图片。",
+    "placingLogo": "正在添加徽标…",
+    "logoAdded": "徽标已添加到左上角。",
+    "logoSwapped": "徽标已替换到您的徽标组件中。",
+    "applyColorTo": "颜色应用于",
+    "targetText": "文字",
+    "targetBackground": "背景",
+    "colorMenuTitle": "使用 {color}",
+    "useAsBackground": "用作背景",
+    "gradientWith": "与 {color} 组成渐变",
+    "allTextColor": "设为所有文字的颜色",
+    "swatchHint": "点击颜色可将其用作背景、渐变或所有文字的颜色。先选择一个组件，则只为该组件着色。",
+    "swatchHintSelected": "点击颜色可将其应用到所选组件。按住 Shift 点击可快速设为背景。",
+    "textColorApplied": "已将 {color} 应用到 {widget} 的文字。",
+    "bgColorApplied": "已将 {color} 应用到 {widget} 的背景。",
+    "nWidgets": "{count} 个组件",
+    "bgSet": "背景已设为 {color}。",
+    "gradientSet": "已应用背景渐变。",
+    "allTextColored": "已为 {count} 个文字组件设置文字颜色。",
+    "noTextYet": "画布上还没有文字。点击品牌字体即可添加。",
+    "fontHint": "点击字体可添加使用该字体的文本框；或先选择一个组件来更改其字体。",
+    "sampleHeadline": "您的标题",
+    "sampleBody": "在此输入文字",
+    "textBoxAdded": "已添加使用 {font} 的文本框。点击文字即可编辑。",
+    "fontApplied": "已应用字体：{font}。",
+    "applySummary": "品牌已应用：{parts}。",
+    "applyWidgets": "已更新 {total} 个组件中的 {count} 个",
+    "applyLogos": "已填充 {count} 个徽标",
+    "applyFonts": "文字使用品牌字体",
+    "applyBgGradient": "品牌渐变背景",
+    "applyBgSolid": "品牌颜色背景",
+    "applyNothing": "无需更改，模板已与品牌一致。"
   }
 }

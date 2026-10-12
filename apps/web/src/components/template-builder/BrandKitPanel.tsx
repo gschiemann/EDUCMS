@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate, useAdoptTemplateBrandKit, useClearTemplateBrandKit } from '@/hooks/use-api';
 import { cn } from '@/lib/utils';
 import { logoBackdrop, readLogoBackground } from '@/components/branding/logo-backdrop';
+import { readMediaDimensions } from './media-sizing';
+import { BRAND_TEXT_WIDGETS, brandGradient, brandTextBox, logoCornerGeometry, nextBrandColor } from './brand-kit-actions';
+import type { Zone } from './types';
 
 /**
  * Per-template Brand Kit panel.
@@ -58,6 +63,16 @@ interface BrandKit {
   scrapedAt?: string | null;
 }
 
+interface BrandApplySummary {
+  /** Zones whose config actually changed. */
+  widgets: number;
+  /** Non-placeholder zones on the canvas. */
+  total: number;
+  background: 'gradient' | 'solid' | null;
+  fonts: boolean;
+  logos: number;
+}
+
 export function BrandKitPanel() {
   const templateId = useBuilderStore((s) => s.templateId);
   const isSystem = useBuilderStore((s) => s.isSystem);
@@ -92,11 +107,47 @@ export function BrandKitPanel() {
   // clobbering the other.
   const [actionToast, setActionToast] = useState<{ kind: 'ok' | 'info'; text: string } | null>(null);
 
-  /** Show a one-shot toast under the panel actions. */
-  const flash = (kind: 'ok' | 'info', text: string) => {
+  const t = useTranslations('brandKitPanel');
+  // Owner 2026-10-12: "picking colors and fonts I don't see anything happen".
+  // Every Brand action now (a) changes the canvas visibly, (b) raises a
+  // global toast (the inline one below the Apply button scrolls out of view
+  // once the operator is down at the swatches) and (c) pulses the control.
+  /** Swatch menu shown when a colour is clicked with nothing selected. */
+  const [colorMenu, setColorMenu] = useState<{ hex: string; label: string } | null>(null);
+  /** With a widget selected: does a swatch click colour its text or its background? */
+  const [colorTarget, setColorTarget] = useState<'text' | 'background'>('text');
+  /** The swatch / font that just did something — pulses for a moment. */
+  const [pulse, setPulse] = useState<string | null>(null);
+  const [placingLogo, setPlacingLogo] = useState(false);
+
+  useEffect(() => {
+    if (!colorMenu) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setColorMenu(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [colorMenu]);
+
+  /** Show a one-shot toast under the panel actions AND in the global stack. */
+  const flash = (kind: 'ok' | 'info', text: string, pulseKey?: string) => {
     setActionToast({ kind, text });
-    setTimeout(() => setActionToast((t) => (t?.text === text ? null : t)), 3000);
+    setTimeout(() => setActionToast((cur) => (cur?.text === text ? null : cur)), 3000);
+    if (kind === 'ok') toast.success(text, { duration: 2500 });
+    else toast(text, { duration: 3500 });
+    if (pulseKey) {
+      setPulse(pulseKey);
+      setTimeout(() => setPulse((cur) => (cur === pulseKey ? null : cur)), 900);
+    }
   };
+
+  /**
+   * The zones a Brand click acts on. The seeded full-screen EMPTY
+   * placeholder does not count — on a blank board "nothing selected" is
+   * what the operator sees, so a font click must ADD a text box there.
+   */
+  const targetZones = (): Zone[] =>
+    selectedIds
+      .map((id) => zones.find((z) => z.id === id))
+      .filter((z): z is Zone => !!z && z.widgetType !== 'EMPTY' && !z.locked);
 
   /** Friendly name for a widget type so toasts read naturally. */
   const widgetLabel = (wt?: string) => {
@@ -144,16 +195,17 @@ export function BrandKitPanel() {
    * zones — so Cmd-Z after brand-apply reverted only the background and
    * the widget recolor stuck.
    */
-  const applyBrandToAllZones = (kit: BrandKit) => {
+  const applyBrandToAllZones = (kit: BrandKit): BrandApplySummary => {
     beginTransaction();
     try {
-      applyBrandToAllZonesInner(kit);
+      return applyBrandToAllZonesInner(kit);
     } finally {
       endTransaction();
     }
   };
 
-  const applyBrandToAllZonesInner = (kit: BrandKit) => {
+  const applyBrandToAllZonesInner = (kit: BrandKit): BrandApplySummary => {
+    const summary: BrandApplySummary = { widgets: 0, total: zones.filter((z) => z.widgetType !== 'EMPTY').length, background: null, fonts: false, logos: 0 };
     const palette = kit.palette || {};
     const fontHeading = kit.fontHeading || null;
     const fontBody = kit.fontBody || fontHeading;
@@ -183,13 +235,16 @@ export function BrandKitPanel() {
       // gets the brand's gradient ready for the first drop.
       if (primary && accent) {
         setMeta({ bgGradient: `linear-gradient(135deg, ${primary} 0%, ${accent} 100%)`, bgColor: surface || '' });
+        summary.background = 'gradient';
       } else if (primary) {
         setMeta({ bgGradient: '', bgColor: primary });
+        summary.background = 'solid';
       }
-      return;
+      return summary;
     }
 
     updateZones(allIds, (z) => {
+      const before = JSON.stringify(z.defaultConfig || {});
       const cfg: Record<string, any> = { ...(z.defaultConfig || {}) };
       const wt = z.widgetType;
 
@@ -315,6 +370,13 @@ export function BrandKitPanel() {
           break;
       }
 
+      if (JSON.stringify(cfg) !== before) {
+        summary.widgets += 1;
+        if (fontHeading || fontBody) {
+          if (cfg.fontFamily || cfg.brand?.fontDisplay || cfg.brand?.fontBody) summary.fonts = true;
+        }
+        if (wt === 'LOGO' && logoUrl) summary.logos += 1;
+      }
       return { defaultConfig: cfg };
     });
 
@@ -327,14 +389,29 @@ export function BrandKitPanel() {
         bgColor: surface || '',
         bgImage: '',
       });
+      summary.background = 'gradient';
     } else if (surface) {
       setMeta({ bgGradient: '', bgColor: surface, bgImage: '' });
+      summary.background = 'solid';
     }
 
     // Apply the brand's heading font to the template name itself if
     // the operator hasn't customized it (cosmetic — name is shown in
     // the toolbar).
     void primaryHover; // reserved for future hover-state widgets
+    return summary;
+  };
+
+  /** One sentence naming what "Apply brand" actually changed. */
+  const describeApply = (sum: BrandApplySummary): string => {
+    const parts: string[] = [];
+    if (sum.total > 0) parts.push(t('applyWidgets', { count: sum.widgets, total: sum.total }));
+    if (sum.logos > 0) parts.push(t('applyLogos', { count: sum.logos }));
+    if (sum.fonts) parts.push(t('applyFonts'));
+    if (sum.background === 'gradient') parts.push(t('applyBgGradient'));
+    else if (sum.background === 'solid') parts.push(t('applyBgSolid'));
+    if (parts.length === 0) return t('applyNothing');
+    return t('applySummary', { parts: parts.join(' · ') });
   };
 
   /** Re-apply after manual tweaks. Idempotent. */
@@ -342,14 +419,10 @@ export function BrandKitPanel() {
     if (!brandKit || isSystem) return;
     setApplyingBrand(true);
     try {
-      applyBrandToAllZones(brandKit);
-      const widgetCount = zones.length;
-      setApplyToast(
-        widgetCount === 0
-          ? 'Brand applied to template background. Add widgets to see more.'
-          : `Brand applied to ${widgetCount} ${widgetCount === 1 ? 'widget' : 'widgets'}.`,
-      );
-      setTimeout(() => setApplyToast(null), 3500);
+      const text = describeApply(applyBrandToAllZones(brandKit));
+      setApplyToast(text);
+      toast.success(text, { duration: 4000 });
+      setTimeout(() => setApplyToast(null), 4000);
     } finally {
       setApplyingBrand(false);
     }
@@ -408,13 +481,10 @@ export function BrandKitPanel() {
         palette: preview.palette,
       };
       try {
-        applyBrandToAllZones(adopted);
-        setApplyToast(
-          zones.length === 0
-            ? 'Brand applied to template background. Add widgets to see more.'
-            : `Brand applied to ${zones.length} ${zones.length === 1 ? 'widget' : 'widgets'}.`,
-        );
-        setTimeout(() => setApplyToast(null), 3500);
+        const text = describeApply(applyBrandToAllZones(adopted));
+        setApplyToast(text);
+        toast.success(text, { duration: 4000 });
+        setTimeout(() => setApplyToast(null), 4000);
       } catch {
         // Non-fatal — operator can hit "Re-apply" manually.
       }
@@ -450,101 +520,165 @@ export function BrandKitPanel() {
     }
   };
 
+  /** Colour one zone's text or background (EXTERNAL_HTML boards read `brand`). */
+  const colorPatch = (zone: Zone, hex: string, target: 'text' | 'background'): Partial<Zone> => {
+    const cfg: Record<string, unknown> = { ...(zone.defaultConfig || {}) };
+    if (zone.widgetType === 'EXTERNAL_HTML') {
+      // The board shim maps brand.text → --text and brand.background → --bg.
+      cfg.brand = { ...((cfg.brand as Record<string, unknown> | undefined) || {}), [target === 'text' ? 'text' : 'background']: hex };
+    } else {
+      cfg[target === 'text' ? 'color' : 'bgColor'] = hex;
+    }
+    return { defaultConfig: cfg };
+  };
+
   /**
-   * 2026-05-04 — operator: "i tried to drag the logo didnt work, i
-   * tried to select a color didnt work, make this a useful window
-   * here....i still can only apply a background, what else can i
-   * test?"
-   *
-   * Pre-fix: handleColorClick only applied if zone.defaultConfig.color
-   * was already defined (which is rare — most widgets render with
-   * inline-styled colors and never declare cfg.color). Falsely silent.
-   *
-   * Post-fix: applies cfg.color to ANY selected widget. Most widgets
-   * either consume cfg.color directly, or have a brand-fallback path
-   * that picks it up. If shift is held when clicking, applies as
-   * background instead (cfg.bgColor) — covers tickers, callouts,
-   * announcement zones where the user wants a colored stripe.
-   * Always shows a toast confirming what happened.
+   * Swatch click.
+   *   - widget(s) selected → colour them (text by default; the visible
+   *     "Apply color to: Text | Background" toggle switches; Shift+click
+   *     stays a shortcut for background). ONE undo step.
+   *   - nothing selected → open the small menu: use as background,
+   *     gradient with the next brand colour, colour every text widget.
    */
   const handleColorClick = (hex: string, label: string, e?: React.MouseEvent) => {
-    const wantsBg = !!e?.shiftKey;
-    if (selectedIds.length === 1) {
-      const zoneId = selectedIds[0];
-      const zone = zones.find((z) => z.id === zoneId);
-      if (zone) {
-        const key = wantsBg ? 'bgColor' : 'color';
-        updateZone(zoneId, {
-          defaultConfig: { ...(zone.defaultConfig || {}), [key]: hex },
-        }, true); // committed: one undo step (Codex T05 — a swatch click used to be un-undoable)
-        flash('ok', `Applied ${label.toLowerCase()} to ${widgetLabel(zone.widgetType)} ${wantsBg ? 'background' : 'text'}.`);
-        return;
-      }
+    const targets = targetZones();
+    if (targets.length === 0) {
+      if (e?.shiftKey) { applyAsBackground(hex); return; }
+      setColorMenu((cur) => (cur?.hex === hex ? null : { hex, label }));
+      return;
     }
-    // No selection → fall back to copying the hex so the operator can
-    // paste it into a custom field manually.
-    navigator.clipboard.writeText(hex).then(
-      () => flash('info', `${hex} copied. Select a widget on the canvas first to apply directly.`),
-      () => flash('info', `Select a widget on the canvas first to apply this color.`),
+    setColorMenu(null);
+    const target = e?.shiftKey ? 'background' : colorTarget;
+    if (targets.length === 1) {
+      updateZone(targets[0].id, colorPatch(targets[0], hex, target), true); // committed: one undo step (Codex T05)
+    } else {
+      updateZones(targets.map((z) => z.id), (z) => colorPatch(z, hex, target), true);
+    }
+    const name = targets.length === 1 ? widgetLabel(targets[0].widgetType) : t('nWidgets', { count: targets.length });
+    flash(
+      'ok',
+      target === 'text'
+        ? t('textColorApplied', { color: label, widget: name })
+        : t('bgColorApplied', { color: label, widget: name }),
+      `swatch:${hex}`,
     );
   };
 
-  /**
-   * Pre-fix: handleFontClick only applied if widgetType === 'TEXT'.
-   * Skipped RICH_TEXT, ANNOUNCEMENT, TICKER, COUNTDOWN — every other
-   * text-bearing widget the operator might select.
-   *
-   * Post-fix: applies fontFamily to ANY selected widget. Widgets that
-   * don't honor fontFamily simply ignore it (no visible regression).
-   */
-  const handleFontClick = (fontName: string, fontType: 'heading' | 'body') => {
-    if (selectedIds.length !== 1) {
-      flash('info', `Select a widget on the canvas first, then click a font.`);
+  const applyAsBackground = (hex: string) => {
+    setMeta({ bgColor: hex, bgGradient: '', bgImage: '' });
+    setColorMenu(null);
+    flash('ok', t('bgSet', { color: hex }), `swatch:${hex}`);
+  };
+
+  const applyAsGradient = (hex: string, to: string) => {
+    setMeta({ bgGradient: brandGradient(hex, to), bgColor: hex, bgImage: '' });
+    setColorMenu(null);
+    flash('ok', t('gradientSet'), `swatch:${hex}`);
+  };
+
+  const colorAllText = (hex: string) => {
+    setColorMenu(null);
+    const ids = zones
+      .filter((z) => !z.locked && (BRAND_TEXT_WIDGETS.has(z.widgetType) || z.widgetType === 'EXTERNAL_HTML'))
+      .map((z) => z.id);
+    if (ids.length === 0) {
+      flash('info', t('noTextYet'));
       return;
     }
-    const zoneId = selectedIds[0];
-    const zone = zones.find((z) => z.id === zoneId);
-    if (!zone) return;
-    updateZone(zoneId, {
-      defaultConfig: { ...(zone.defaultConfig || {}), fontFamily: fontName },
-    }, true);
-    flash('ok', `Applied ${fontType} font (${fontName}) to ${widgetLabel(zone.widgetType)}.`);
+    updateZones(ids, (z) => colorPatch(z, hex, 'text'), true);
+    flash('ok', t('allTextColored', { count: ids.length }), `swatch:${hex}`);
   };
 
   /**
-   * 2026-05-04 — "i tried to drag the logo didnt work". HTML5 drag
-   * isn't wired to the canvas's drop handler so dragging a brand-kit
-   * logo into a zone is currently a no-op. Until that's plumbed
-   * through (separate change), the explicit button below is the
-   * working path:
-   *
-   *   - If the operator has a LOGO zone selected, replace its
-   *     assetUrl + logoUrl with the brand logo.
-   *   - Else create a new LOGO zone pre-filled with the brand logo,
-   *     select it (so the operator can immediately reposition).
+   * Font click.
+   *   - widget(s) selected → apply the font ("Font applied" toast).
+   *   - nothing selected → ADD a text box in that font ("Your headline" /
+   *     "Your text here"), selected and ready to edit.
    */
-  const handleInsertLogoWidget = () => {
-    const url = brandKit?.logoUrl;
-    if (!url) return;
-    // Selected logo zone → fill it with the brand logo
-    if (selectedIds.length === 1) {
-      const zoneId = selectedIds[0];
-      const zone = zones.find((z) => z.id === zoneId);
-      if (zone && zone.widgetType === 'LOGO') {
-        updateZone(zoneId, {
-          defaultConfig: { ...(zone.defaultConfig || {}), assetUrl: url, logoUrl: url },
-        }, true);
-        flash('ok', `Logo applied to existing LOGO widget.`);
-        return;
-      }
+  const handleFontClick = (fontName: string, fontType: 'heading' | 'body') => {
+    const targets = targetZones();
+    const pulseKey = `font:${fontType}`;
+    if (targets.length === 0) {
+      const box = brandTextBox(fontType);
+      // addZone pushes the ONE undo snapshot and selects the new zone; the
+      // follow-up placement/config patch rides along (commit=false), the
+      // same shape as addMediaZone.
+      const newId = addZone('TEXT', undefined, { w: box.width, h: box.height }, { replacePlaceholder: true });
+      const seeded = useBuilderStore.getState().zones.find((z) => z.id === newId);
+      updateZone(newId, {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        defaultConfig: {
+          ...(seeded?.defaultConfig || {}),
+          content: fontType === 'heading' ? t('sampleHeadline') : t('sampleBody'),
+          fontFamily: fontName,
+          fontSize: box.fontSize,
+          ...(fontType === 'heading' ? { bold: true } : {}),
+          ...(brandKit?.palette?.ink ? { color: brandKit.palette.ink } : {}),
+        },
+      }, false);
+      select([newId]);
+      flash('ok', t('textBoxAdded', { font: fontName }), pulseKey);
+      return;
     }
-    // Else create a fresh LOGO zone pre-filled and select it.
-    const newId = addZone('LOGO');
-    updateZone(newId, {
-      defaultConfig: { assetUrl: url, logoUrl: url },
-    });
-    select([newId]);
-    flash('ok', `Logo widget added to canvas. Drag to reposition.`);
+    const patch = (z: Zone): Partial<Zone> => {
+      const cfg: Record<string, unknown> = { ...(z.defaultConfig || {}) };
+      if (z.widgetType === 'EXTERNAL_HTML') {
+        cfg.brand = { ...((cfg.brand as Record<string, unknown> | undefined) || {}), [fontType === 'heading' ? 'fontDisplay' : 'fontBody']: fontName };
+      } else {
+        cfg.fontFamily = fontName;
+      }
+      return { defaultConfig: cfg };
+    };
+    if (targets.length === 1) updateZone(targets[0].id, patch(targets[0]), true);
+    else updateZones(targets.map((z) => z.id), patch, true);
+    flash('ok', t('fontApplied', { font: fontName }), pulseKey);
+  };
+
+  /**
+   * "Insert as logo widget".
+   *   - a LOGO zone exists (the selected one first, else the first on the
+   *     canvas) → swap its image and select it.
+   *   - otherwise → a new LOGO zone in the TOP-LEFT corner, sized to the
+   *     logo's own aspect ratio, selected so the operator sees it at once.
+   */
+  const handleInsertLogoWidget = async () => {
+    const url = brandKit?.logoUrl;
+    if (!url || placingLogo) return;
+    const selectedLogo = targetZones().find((z) => z.widgetType === 'LOGO');
+    const existing = selectedLogo ?? zones.find((z) => z.widgetType === 'LOGO' && !z.locked);
+    if (existing) {
+      updateZone(existing.id, {
+        defaultConfig: { ...(existing.defaultConfig || {}), assetUrl: url, logoUrl: url },
+      }, true);
+      select([existing.id]);
+      flash('ok', t('logoSwapped'), 'logo');
+      return;
+    }
+    setPlacingLogo(true);
+    try {
+      const dims = await readMediaDimensions(url, 'image');
+      const st = useBuilderStore.getState();
+      if (st.templateId !== templateId) return;
+      const geo = logoCornerGeometry(dims, { width: st.meta.screenWidth, height: st.meta.screenHeight });
+      const newId = st.addZone('LOGO', undefined, { w: geo.width, h: geo.height }, { replacePlaceholder: true });
+      const seeded = useBuilderStore.getState().zones.find((z) => z.id === newId);
+      useBuilderStore.getState().updateZone(newId, {
+        ...geo,
+        defaultConfig: {
+          ...(seeded?.defaultConfig || {}),
+          assetUrl: url,
+          logoUrl: url,
+          ...(dims ? { _mediaWidth: dims.width, _mediaHeight: dims.height } : {}),
+        },
+      }, false);
+      useBuilderStore.getState().select([newId]);
+      flash('ok', t('logoAdded'), 'logo');
+    } finally {
+      setPlacingLogo(false);
+    }
   };
 
   if (isLoading || !templateId) {
@@ -686,9 +820,10 @@ export function BrandKitPanel() {
                 nothing stored it keeps the original slate-50 card. */}
             <div
               className={cn(
-                'w-24 h-24 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0',
+                'w-24 h-24 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 transition-shadow',
                 logoChipBackdrop.className || 'border border-slate-200',
                 logoChipBackdrop.inkClass,
+                pulse === 'logo' && 'ring-2 ring-emerald-400 ring-offset-2',
               )}
               style={
                 Object.keys(logoChipBackdrop.style).length
@@ -705,15 +840,16 @@ export function BrandKitPanel() {
             </div>
             <div className="flex-1 space-y-2 min-w-0">
               <button
-                onClick={handleInsertLogoWidget}
-                disabled={isSystem}
+                type="button"
+                onClick={() => void handleInsertLogoWidget()}
+                disabled={isSystem || placingLogo}
                 className="w-full px-2 py-1.5 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                title="If a LOGO widget is selected, fills it with this logo. Otherwise adds a new LOGO widget to the canvas."
+                title={t('logoHint')}
               >
-                Insert as logo widget
+                {placingLogo ? t('placingLogo') : 'Insert as logo widget'}
               </button>
               <div className="text-[10px] text-slate-500 leading-relaxed">
-                Adds a LOGO widget pre-filled with this image. Or select an existing LOGO widget first to swap its image.
+                {t('logoHint')}
               </div>
             </div>
           </div>
@@ -721,41 +857,111 @@ export function BrandKitPanel() {
       )}
 
       {/* Palette */}
-      {brandKit.palette && (
-        <div className="border-b border-slate-200/50 p-4 space-y-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Brand colors
-          </div>
-          <div className="grid grid-cols-6 gap-2">
-            {[
-              { label: 'Primary', hex: brandKit.palette.primary },
-              { label: 'Primary Hover', hex: brandKit.palette.primaryHover },
-              { label: 'Accent', hex: brandKit.palette.accent },
-              { label: 'Text', hex: brandKit.palette.ink },
-              { label: 'Surface', hex: brandKit.palette.surface },
-              { label: 'Surface Alt', hex: brandKit.palette.surfaceAlt },
-            ].filter((c) => !!c.hex).map((item) => (
-              <button
-                key={item.label}
-                onClick={(e) => handleColorClick(item.hex as string, item.label, e)}
-                title={`${item.label}: ${item.hex} — click to set selected widget's text color, Shift+click for background, or copy the hex.`}
-                className="group relative w-8 h-8 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-indigo-400 transition-all"
-                style={{ backgroundColor: item.hex }}
-              >
-                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-800 text-white text-[9px] px-1 py-0.5 rounded whitespace-nowrap pointer-events-none z-10">
-                  {item.label}
+      {brandKit.palette && (() => {
+        const swatches = [
+          { label: 'Primary', hex: brandKit.palette.primary },
+          { label: 'Primary Hover', hex: brandKit.palette.primaryHover },
+          { label: 'Accent', hex: brandKit.palette.accent },
+          { label: 'Text', hex: brandKit.palette.ink },
+          { label: 'Surface', hex: brandKit.palette.surface },
+          { label: 'Surface Alt', hex: brandKit.palette.surfaceAlt },
+        ].filter((c): c is { label: string; hex: string } => !!c.hex);
+        const hasSelection = targetZones().length > 0;
+        const gradientTo = colorMenu ? nextBrandColor(swatches.map((c) => c.hex), colorMenu.hex) : null;
+        return (
+          <div className="border-b border-slate-200/50 p-4 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Brand colors
+            </div>
+            {hasSelection && (
+              <div className="flex items-center gap-2" role="group" aria-label={t('applyColorTo')}>
+                <span className="text-[10px] text-slate-500">{t('applyColorTo')}</span>
+                <div className="inline-flex rounded-md border border-slate-200 p-0.5">
+                  {(['text', 'background'] as const).map((target) => (
+                    <button
+                      key={target}
+                      type="button"
+                      aria-pressed={colorTarget === target}
+                      onClick={() => setColorTarget(target)}
+                      className={cn(
+                        'px-2 py-0.5 rounded text-[10px] font-semibold transition-colors',
+                        colorTarget === target ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+                      )}
+                    >
+                      {target === 'text' ? t('targetText') : t('targetBackground')}
+                    </button>
+                  ))}
                 </div>
-              </button>
-            ))}
+              </div>
+            )}
+            <div className="grid grid-cols-6 gap-2">
+              {swatches.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={(e) => handleColorClick(item.hex, item.label, e)}
+                  aria-haspopup={hasSelection ? undefined : 'menu'}
+                  aria-expanded={hasSelection ? undefined : colorMenu?.hex === item.hex}
+                  title={`${item.label}: ${item.hex}`}
+                  className={cn(
+                    'group relative w-8 h-8 rounded cursor-pointer border border-black/10 hover:ring-2 hover:ring-offset-1 hover:ring-indigo-400 transition-all',
+                    (colorMenu?.hex === item.hex || pulse === `swatch:${item.hex}`) && 'ring-2 ring-offset-1 ring-indigo-500 scale-110',
+                  )}
+                  style={{ backgroundColor: item.hex }}
+                >
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-800 text-white text-[9px] px-1 py-0.5 rounded whitespace-nowrap pointer-events-none z-10">
+                    {item.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {colorMenu && !hasSelection && (
+              <div
+                role="menu"
+                aria-label={t('colorMenuTitle', { color: colorMenu.hex })}
+                className="mt-1 rounded-lg border border-slate-200 bg-white shadow-md p-1 space-y-0.5"
+              >
+                <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                  <span className="w-3 h-3 rounded-sm border border-black/10" style={{ backgroundColor: colorMenu.hex }} aria-hidden />
+                  {t('colorMenuTitle', { color: colorMenu.hex })}
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => applyAsBackground(colorMenu.hex)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-[11px] text-slate-700 hover:bg-indigo-50"
+                >
+                  <span className="w-5 h-3.5 rounded-sm border border-black/10" style={{ backgroundColor: colorMenu.hex }} aria-hidden />
+                  {t('useAsBackground')}
+                </button>
+                {gradientTo && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => applyAsGradient(colorMenu.hex, gradientTo)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-[11px] text-slate-700 hover:bg-indigo-50"
+                  >
+                    <span className="w-5 h-3.5 rounded-sm border border-black/10" style={{ background: brandGradient(colorMenu.hex, gradientTo) }} aria-hidden />
+                    {t('gradientWith', { color: gradientTo })}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => colorAllText(colorMenu.hex)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-[11px] text-slate-700 hover:bg-indigo-50"
+                >
+                  <span className="w-5 text-center text-[12px] font-bold" style={{ color: colorMenu.hex }} aria-hidden>A</span>
+                  {t('allTextColor')}
+                </button>
+              </div>
+            )}
+            <div className="text-[10px] text-slate-500 leading-relaxed">
+              {hasSelection ? t('swatchHintSelected') : t('swatchHint')}
+            </div>
           </div>
-          <div className="text-[10px] text-slate-500 leading-relaxed space-y-0.5">
-            <div>Select a widget on the canvas first, then:</div>
-            <div className="pl-2"><span className="font-mono bg-slate-100 px-1 rounded">click</span> a swatch → set text color</div>
-            <div className="pl-2"><span className="font-mono bg-slate-100 px-1 rounded">shift+click</span> a swatch → set background color</div>
-            <div className="pl-2">No selection? The hex copies to your clipboard.</div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Fonts */}
       {(brandKit.fontHeading || brandKit.fontBody) && (
@@ -766,9 +972,13 @@ export function BrandKitPanel() {
           <div className="space-y-2">
             {brandKit.fontHeading && (
               <button
+                type="button"
                 onClick={() => handleFontClick(brandKit.fontHeading!, 'heading')}
-                className="w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-colors text-left"
-                title="Click to apply this font to the selected widget."
+                className={cn(
+                  'w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-all text-left',
+                  pulse === 'font:heading' && 'ring-2 ring-emerald-400 bg-emerald-50',
+                )}
+                title={t('fontHint')}
               >
                 <div className="text-sm font-semibold" style={{ fontFamily: brandKit.fontHeading }}>
                   {brandKit.fontHeading}
@@ -778,9 +988,13 @@ export function BrandKitPanel() {
             )}
             {brandKit.fontBody && (
               <button
+                type="button"
                 onClick={() => handleFontClick(brandKit.fontBody!, 'body')}
-                className="w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-colors text-left"
-                title="Click to apply this font to the selected widget."
+                className={cn(
+                  'w-full px-3 py-3 rounded border border-slate-200 hover:bg-slate-50 transition-all text-left',
+                  pulse === 'font:body' && 'ring-2 ring-emerald-400 bg-emerald-50',
+                )}
+                title={t('fontHint')}
               >
                 <div className="text-sm" style={{ fontFamily: brandKit.fontBody }}>
                   {brandKit.fontBody}
@@ -790,7 +1004,7 @@ export function BrandKitPanel() {
             )}
           </div>
           <div className="text-[10px] text-slate-500 leading-relaxed">
-            Select a widget on the canvas, then click a font to apply it.
+            {t('fontHint')}
           </div>
         </div>
       )}

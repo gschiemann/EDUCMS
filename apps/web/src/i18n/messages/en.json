@@ -4584,7 +4584,8 @@
     "restore": "Restore",
     "delete": "Delete",
     "resetPositionOf": "Reset {label} position",
-    "resetPosition": "Reset position"
+    "resetPosition": "Reset position",
+    "addImage": "Add an image"
   },
   "uploadFormats": {
     "thisFile": "This file",
@@ -5220,5 +5221,39 @@
     "doneOffBody": "Your plan no longer includes AI. You can turn it back on here any time.",
     "failedTitle": "Couldn't change your plan",
     "failedBody": "Try again, or contact us if it keeps happening."
+  },
+  "brandKitPanel": {
+    "logoHint": "Places your logo in the top-left corner. If the template already has a logo widget, its image is swapped.",
+    "placingLogo": "Adding logo…",
+    "logoAdded": "Logo added to the top-left corner.",
+    "logoSwapped": "Logo swapped into your logo widget.",
+    "applyColorTo": "Apply color to",
+    "targetText": "Text",
+    "targetBackground": "Background",
+    "colorMenuTitle": "Use {color}",
+    "useAsBackground": "Use as background",
+    "gradientWith": "Gradient with {color}",
+    "allTextColor": "Set text color on all text",
+    "swatchHint": "Click a color to use it as the background, a gradient, or the color of all text. Select a widget first to color just that widget.",
+    "swatchHintSelected": "Click a color to apply it to the selected widget. Shift+click is a shortcut for background.",
+    "textColorApplied": "{color} applied to the {widget} text.",
+    "bgColorApplied": "{color} applied to the {widget} background.",
+    "nWidgets": "{count, plural, one {# widget} other {# widgets}}",
+    "bgSet": "Background set to {color}.",
+    "gradientSet": "Background gradient applied.",
+    "allTextColored": "Text color set on {count, plural, one {# text widget} other {# text widgets}}.",
+    "noTextYet": "There is no text on the canvas yet. Click a brand font to add some.",
+    "fontHint": "Click a font to add a text box in it, or select a widget first to change its font.",
+    "sampleHeadline": "Your headline",
+    "sampleBody": "Your text here",
+    "textBoxAdded": "Text box added in {font}. Click the text to edit it.",
+    "fontApplied": "Font applied: {font}.",
+    "applySummary": "Brand applied: {parts}.",
+    "applyWidgets": "{count} of {total} widgets restyled",
+    "applyLogos": "{count, plural, one {# logo} other {# logos}} filled",
+    "applyFonts": "brand fonts on text",
+    "applyBgGradient": "brand gradient background",
+    "applyBgSolid": "brand color background",
+    "applyNothing": "Nothing to change. The template already matches the brand."
   }
 }
