@@ -126,6 +126,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
   // An app zone still waiting for its link / account (app-zone.ts).
   const appInfo = appZoneInfo(zone);
   const pendingApp = appInfo?.pending ? appInfo : null;
+  // A hotspot linked to a page shows WHICH page ("→ Menu"), not "goto-scene".
+  const linkedTarget = zone.touchAction?.type === 'goto-scene' ? String((zone.touchAction as { target?: string }).target || '') : '';
+  const linkedPageName = useBuilderStore((s) => (linkedTarget ? s.scenes.find((sc) => sc.id === linkedTarget)?.name ?? '' : ''));
 
   // 2026-06-01 — a full-bleed EXTERNAL_HTML zone (a self-contained signage
   // template that IS the whole board, e.g. the Domino's pizza board) needs
@@ -839,7 +842,9 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
             }}
           >
             <Hand className="w-3 h-3" aria-hidden />
-            {zone.touchAction ? zone.touchAction.type : 'Tap target'}
+            {zone.touchAction
+              ? (zone.touchAction.type === 'goto-scene' && linkedPageName ? `→ ${linkedPageName}` : zone.touchAction.type)
+              : 'Tap target'}
           </div>
           {!zone.touchAction && (
             <p className="mt-1.5 text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'var(--brand-primary, #7c3aed)' }}>

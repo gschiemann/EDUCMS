@@ -24,6 +24,11 @@ jest.mock('@/hooks/use-api', () => ({
   usePlaylists: () => ({ data: [] }),
   useTemplates: () => ({ data: [] }),
   useTemplateBackdrops: () => ({ data: [] }),
+  // 2026-10-12 — a touch point's "When tapped → Go to page" reads pages.
+  useTemplateScenes: () => ({ data: undefined, isFetching: false }),
+  useCreateScene: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useUpdateScene: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useDeleteScene: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
 // Test-noise silencer: the builder UI mounts the AI affordances

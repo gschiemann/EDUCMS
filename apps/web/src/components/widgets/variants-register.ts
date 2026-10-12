@@ -1338,7 +1338,7 @@ const TOUCH_VARIANTS: Array<{ id: string; name: string; description: string; ext
   { id: 'back',        name: 'Back Chip',           description: 'Labeled "← Back" pill — bigger touch target', extraConfig: { label: 'Back' } },
   { id: 'next',        name: 'Next Chip',           description: 'Labeled "Next →" pill — primary advance', extraConfig: { label: 'Next' } },
   { id: 'close',       name: 'Close Button',        description: 'X-icon dismiss button — high-contrast on any bg' },
-  { id: 'menu',        name: 'Menu Button',         description: 'Hamburger icon — open a sub-menu via goto-scene' },
+  { id: 'menu',        name: 'Menu Button',         description: 'Hamburger icon — open a menu page (Go to page)' },
   { id: 'help',        name: 'Help Button',         description: 'Amber "?" — opens help overlay or request-help action' },
   { id: 'play',        name: 'Play Button',         description: 'Big play triangle — pair with play-video Tap Action' },
   // Communication actions

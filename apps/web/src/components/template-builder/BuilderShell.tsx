@@ -51,6 +51,8 @@ import { addAppZone } from '../apps/app-zone';
 import { getApp } from '../apps/app-registry';
 import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';
+import { PageStrip, EmptyPageHint } from './PageStrip';
+import { isInteractiveTemplate } from './pages';
 import { PropertiesPanel } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
 import { SuggestionsPanel } from './SuggestionsPanel';
@@ -1049,7 +1051,17 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [isDirty, template.isSystem, previewMode]);
 
-  const panels: Array<{ key: PanelKey; label: string; icon: LucideIcon }> = [
+  // 2026-10-12 (owner) — Scenes are "Pages", and they only exist for an
+  // interactive (touch) template: the Pages tab and the page strip under the
+  // canvas are hidden otherwise. Existing multi-page templates stay
+  // interactive by definition (pages.ts), so no saved page goes unreachable.
+  const tPages = useTranslations('builderPages');
+  const interactive = useBuilderStore((s) => isInteractiveTemplate(s));
+  useEffect(() => {
+    if (!interactive && panel === 'scenes') setPanel('widgets');
+  }, [interactive, panel]);
+
+  const allPanels: Array<{ key: PanelKey; label: string; icon: LucideIcon }> = [
     { key: 'widgets', label: 'Widgets', icon: Plus },
     // Phase 1 App Library (2026-06-30) — curated integrations (YouTube,
     // Slides, Weather, Calendar, QR, etc). Separate tab from Widgets so the
@@ -1061,13 +1073,14 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     // Phase D2.5 — Scenes panel slots between Layers and Properties so
     // the operator's mental model is "layers within this scene → drill
     // out to scenes → drill into a specific zone."
-    { key: 'scenes', label: 'Scenes', icon: Layers3 },
+    { key: 'scenes', label: tPages('tab'), icon: Layers3 },
     { key: 'properties', label: 'Properties', icon: Settings2 },
     { key: 'brand', label: 'Brand', icon: Palette },
     // Flagship Slice 1a — deterministic "Review" checks (off-screen, tap
     // targets, hairline elements) with one-tap, undoable fixes.
     { key: 'review', label: 'Review', icon: Sparkles },
   ];
+  const panels = interactive ? allPanels : allPanels.filter((p) => p.key !== 'scenes');
 
   const handleDragStart = (event: any) => {
     const { active } = event;
@@ -1492,19 +1505,27 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               ONE persistent BuilderBottomBar (font / size / color + layer /
               duplicate / delete + zoom / grid / undo). Two surfaces now:
               left panel + this bottom bar. */}
-          <BuilderCanvas />
-          <MediaInsertPicker />
-          <ExternalBoardFieldBridge />
-          {!previewMode && <BuilderBottomBar />}
-          {/* A6 — right-click context menu on zones + canvas. Shares the
-              shell's ⌘C/⌘V clipboard so both surfaces stay in sync. */}
-          {!previewMode && (
-            <CanvasContextMenu
-              clipboard={clipboard}
-              onCopy={(z) => setClipboard(z)}
-              onPaste={pasteClipboard}
-            />
-          )}
+          {/* The canvas + its floating bottom bar share one positioned box so
+              the page strip (below) never sits under the bar. */}
+          <div className="flex flex-col flex-1 min-h-0 relative">
+            <BuilderCanvas />
+            <MediaInsertPicker />
+            <ExternalBoardFieldBridge />
+            {!previewMode && interactive && <EmptyPageHint />}
+            {!previewMode && <BuilderBottomBar />}
+            {/* A6 — right-click context menu on zones + canvas. Shares the
+                shell's ⌘C/⌘V clipboard so both surfaces stay in sync. */}
+            {!previewMode && (
+              <CanvasContextMenu
+                clipboard={clipboard}
+                onCopy={(z) => setClipboard(z)}
+                onPaste={pasteClipboard}
+              />
+            )}
+          </div>
+          {/* 2026-10-12 — Pages, like Canva / PowerPoint: every page as a
+              thumbnail under the canvas. Interactive templates only. */}
+          {!previewMode && interactive && <PageStrip />}
         </div>
       </div>
 

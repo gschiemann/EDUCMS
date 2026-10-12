@@ -203,6 +203,8 @@ import { isFromDocumentFrame } from '@/lib/board-message-source';
 import { AppZoneSetup } from '@/components/apps/AppZoneSetup';
 import { appZoneInfo } from '@/components/apps/app-zone';
 import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
+import { GoToPageSelect, WhenTappedGoToPage } from './GoToPage';
+import { isInteractiveTemplate, isTapTargetZone, sortPages } from './pages';
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -906,6 +908,9 @@ export function PropertiesPanel() {
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const updateZone = useBuilderStore((s) => s.updateZone);
   const meta = useBuilderStore((s) => s.meta);
+  const isTouchEnabledForPages = useBuilderStore((s) => s.isTouchEnabled);
+  const scenesForPages = useBuilderStore((s) => s.scenes);
+  const builderTouchState = { isTouchEnabled: isTouchEnabledForPages, scenes: scenesForPages, zones };
   const nameId = useId();
 
   // 2026-05-15 — operator: "we dont have a way to resize template
@@ -1143,6 +1148,10 @@ export function PropertiesPanel() {
         </div>
       </section>
 
+      {/* 2026-10-12 (owner) — every button / touch widget on an interactive
+          template: "When tapped → Go to page". */}
+      {isInteractiveTemplate(builderTouchState) && isTapTargetZone(zone) && <WhenTappedGoToPage zone={zone} />}
+
       <ContentFields zone={zone} updateZone={updateZone} />
 
       {/* Phase D2.5 — Scene assignment. Lets the operator move this
@@ -1373,6 +1382,7 @@ function TemplateProperties() {
   const endTransaction = useBuilderStore((s) => s.endTransaction);
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+  const tPagesTpl = useTranslations('builderPages');
   const zones = useBuilderStore((s) => s.zones);
   const updateZones = useBuilderStore((s) => s.updateZones);
   const nameId = useId();
@@ -1469,7 +1479,8 @@ function TemplateProperties() {
             label-has-associated-control.js). aria-label on the label
             itself is checked directly, independent of nesting depth. */}
         <label
-          aria-label={isTouchEnabled ? 'Touch mode: ON' : 'Touch mode: OFF'}
+          aria-label={tPagesTpl('interactive')}
+          data-interactive-toggle="true"
           className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${isTouchEnabled ? 'bg-violet-50/50 border-violet-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'}`}>
           <input
             type="checkbox"
@@ -1478,11 +1489,12 @@ function TemplateProperties() {
             className="w-3.5 h-3.5 rounded border-slate-300 text-violet-600 focus:ring-2 focus:ring-violet-400 shrink-0"
           />
           <span className="flex-1 min-w-0">
+            {/* 2026-10-12 (owner) — the switch that turns on Pages. */}
             <span className={`block text-[11px] font-bold ${isTouchEnabled ? 'text-violet-800' : 'text-slate-600'}`}>
-              {isTouchEnabled ? 'Touch mode: ON' : 'Touch mode: OFF'}
+              {tPagesTpl('interactive')}
             </span>
             <span className="block text-[10px] text-slate-500 leading-snug">
-              Auto-enables when you drop any widget from the <strong>Touch</strong> palette.
+              {tPagesTpl('interactiveHint')}
             </span>
           </span>
         </label>
@@ -2028,35 +2040,9 @@ function TapActionTargetPicker({
   const currentIsTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const [showAllTemplates, setShowAllTemplates] = useState(false);
 
+  // 2026-10-12 — scenes are "Pages"; the picker offers "+ New page…" too.
   if (kind === 'scene') {
-    if (!scenes.length) {
-      return (
-        <>
-          <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5 mb-1.5">
-            No scenes yet — add one in the Scenes panel, then pick it here.
-          </div>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="or paste a scene ID…"
-            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-        </>
-      );
-    }
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      >
-        <option value="">— Pick a scene —</option>
-        {scenes.map((s) => (
-          <option key={s.id} value={s.id}>{s.name}</option>
-        ))}
-      </select>
-    );
+    return <GoToPageSelect value={value} onChange={onChange} ariaLabel={placeholder} />;
   }
 
   if (kind === 'template') {
@@ -2178,15 +2164,15 @@ const ACTION_DEFS: Array<{
     targetLabel: 'URL',          targetPlaceholder: 'https://example.com',         needsTarget: true,  picker: 'url' },
   { type: 'play-video',       label: 'Play video',         icon: Play,         hint: 'Play an asset, auto-return when it ends.',                   example: 'e.g. tap a poster to play a 30-second tour video',
     targetLabel: 'Video asset',  targetPlaceholder: 'Pick a video…',               needsTarget: true,  picker: 'asset-video' },
-  { type: 'goto-scene',       label: 'Go to scene',        icon: Layers,       hint: 'Switch to another scene IN this template (no network call).',example: 'e.g. tap "Check In" to show the visitor sign-in scene',
-    targetLabel: 'Scene',        targetPlaceholder: 'Pick a scene…',               needsTarget: true,  picker: 'scene' },
+  { type: 'goto-scene',       label: 'Go to page',         icon: Layers,       hint: 'Open another page of this template (no network call).',      example: 'e.g. tap "Check In" to show the visitor sign-in page',
+    targetLabel: 'Page',         targetPlaceholder: 'Pick a page…',               needsTarget: true,  picker: 'scene' },
   { type: 'goto-template',    label: 'Go to template',     icon: Layers,       hint: 'Switch to another template entirely.',                       example: 'e.g. tap a building tile to show that building’s directory',
     targetLabel: 'Template',     targetPlaceholder: 'Pick a template…',            needsTarget: true,  picker: 'template' },
   { type: 'show-overlay',     label: 'Show overlay',       icon: ShieldAlert,  hint: 'Modal image/video; tap-outside dismisses.',                  example: 'e.g. tap a thumbnail to enlarge a poster or video clip',
     targetLabel: 'Asset',        targetPlaceholder: 'Pick an image or video…',     needsTarget: true,  picker: 'asset-media' },
   { type: 'reset-idle',       label: 'Reset idle timer',   icon: RefreshCw,    hint: '"Stay on this page" — restarts the auto-return countdown.', example: 'e.g. a "Need more time?" button on a long-form info page',
     needsTarget: false,  picker: 'text' },
-  { type: 'sound-toggle',     label: 'Toggle sound',       icon: Volume2,      hint: 'Mute / unmute audio for the current scene.',                 example: 'e.g. an accessibility "🔊 Sound on" / "🔇 Mute" toggle',
+  { type: 'sound-toggle',     label: 'Toggle sound',       icon: Volume2,      hint: 'Mute / unmute audio for the current page.',                  example: 'e.g. an accessibility "🔊 Sound on" / "🔇 Mute" toggle',
     needsTarget: false,  picker: 'text' },
   { type: 'webhook',          label: 'Call webhook',       icon: Webhook,      hint: 'POST to an external URL (POS, booking, etc.).',              example: 'e.g. tap "Order coffee" → POSTs to Square POS',
     targetLabel: 'Webhook URL',  targetPlaceholder: 'https://api.example.com/hook',needsTarget: true,  picker: 'url' },
@@ -2206,13 +2192,18 @@ function ZoneSceneAssignment({
   zone: { id: string; sceneId?: string | null };
   updateZone: (id: string, patch: any, commit?: boolean) => void;
 }) {
+  const t = useTranslations('builderPages');
   const scenes = useBuilderStore((s) => s.scenes);
-  if (!scenes || scenes.length < 1) return null;
+  // 2026-10-12 — "Pages" exist only on an interactive template.
+  const interactive = useBuilderStore((s) => isInteractiveTemplate(s));
+  const selectId = useId();
+  if (!interactive || !scenes || scenes.length < 1) return null;
   const value = zone.sceneId ?? '__shared__';
   return (
     <section className="space-y-2">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Scene</div>
+      <label htmlFor={selectId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{t('pageField')}</label>
       <select
+        id={selectId}
         value={value}
         onChange={(e) => {
           const v = e.target.value;
@@ -2220,14 +2211,12 @@ function ZoneSceneAssignment({
         }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >
-        <option value="__shared__">Shared (every scene)</option>
-        {scenes.map((s) => (
-          <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ' · default' : ''}</option>
+        <option value="__shared__">{t('sharedEvery')}</option>
+        {sortPages(scenes).map((s) => (
+          <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ` · ${t('startPage')}` : ''}</option>
         ))}
       </select>
-      <p className="text-[10px] text-slate-400">
-        Move this widget between scenes, or mark it Shared to keep it visible everywhere.
-      </p>
+      <p className="text-[10px] text-slate-500">{t('pageFieldHint')}</p>
     </section>
   );
 }
@@ -2241,6 +2230,7 @@ function TapActionEditor({
 }) {
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
+  const tPages = useTranslations('builderPages');
   // 2026-05-28 — associate the "Do this" label with its <select> so
   // screen readers announce the control AND so it's addressable by
   // accessible name. Previously the label was visually adjacent but
@@ -2265,10 +2255,10 @@ function TapActionEditor({
           className="w-full bg-gradient-to-br from-indigo-50 to-violet-50 rounded-xl p-4 border border-indigo-100 hover:from-indigo-100 hover:to-violet-100 transition-all text-left group"
         >
           <div className="text-[11px] font-bold text-indigo-700 mb-1 flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" /> Make this template interactive
+            <Sparkles className="w-3 h-3" /> {tPages('interactive')}
           </div>
           <div className="text-[10px] text-indigo-700/70 leading-relaxed">
-            Turn on touch mode to let visitors tap zones — open a URL, play a video, request help, jump to another scene.
+            Turn on touch mode to let visitors tap zones — open a URL, play a video, request help, jump to another page.
           </div>
         </button>
       </section>
@@ -2376,7 +2366,7 @@ function TapActionEditor({
               onChange={(e) => setAction({ ...(action as any), returnOnEnd: e.target.checked })}
               className="w-3.5 h-3.5 accent-indigo-500"
             />
-            Return to this scene when the video ends
+            Return to this page when the video ends
           </label>
         )}
         {action?.type === 'goto-template' && (

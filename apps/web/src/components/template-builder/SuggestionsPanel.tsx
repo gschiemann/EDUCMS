@@ -58,7 +58,7 @@ export function SuggestionsPanel() {
           </div>
           <p className="text-sm font-semibold text-slate-700">No layout issues detected by these checks</p>
           <p className="text-[11px] text-slate-400 max-w-[240px]">
-            Checked, per scene: off-screen elements, hairline sizes, tap-target size, overlapping text.
+            Checked, per page: off-screen elements, hairline sizes, tap-target size, overlapping text.
             Not checked: contrast, font size, brand palette, what the words say.
           </p>
         </div>

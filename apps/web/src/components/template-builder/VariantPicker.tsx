@@ -930,7 +930,7 @@ function QuickLayoutsSection() {
 
   const onPick = async (preset: LayoutPreset) => {
     if (hasRealContent) {
-      const scoped = sceneCount > 1 ? ' on this scene' : '';
+      const scoped = sceneCount > 1 ? ' on this page' : '';
       const ok = await appConfirm({
         title: `Apply "${preset.label}" layout?`,
         message: `This will replace your current ${doomed.length} zone${doomed.length === 1 ? '' : 's'}${scoped} with ${preset.rects.length} new one${preset.rects.length === 1 ? '' : 's'} — your existing content will be removed. You can undo with Cmd/Ctrl+Z.`,

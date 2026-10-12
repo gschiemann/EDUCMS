@@ -1,259 +1,139 @@
 "use client";
 
 /**
- * ScenesPanel — Phase D2.5 (2026-05-12).
+ * ScenesPanel — the PAGES tab (Phase D2.5 scenes, renamed 2026-10-12).
  *
- * Sidebar panel for the multi-scene model. Lets the operator:
- *   - See every scene in the current template, ordered by sortOrder
- *   - Click a scene to switch which one the canvas is editing
- *   - Star (mark default) — sets which scene the player boots on
- *   - Rename inline
- *   - Add a new scene
- *   - Delete a scene (blocked on default; you must reassign first)
+ * Operator-facing these are "Pages" (owner: "rename everywhere
+ * user-facing"); the data is still `TemplateScene`. The page strip under the
+ * canvas (PageStrip.tsx) is the primary surface; this tab is the same list as
+ * rows, for renaming / reordering / choosing the start page with more room.
+ * Both run through usePages so they can never disagree.
  *
- * Scenes live as their own DB rows (TemplateScene) — every CRUD action
- * hits the API and the parent useTemplate() query gets invalidated.
- * The builder store mirrors the latest scenes via setScenes() so the
- * goto-scene picker and canvas filter stay in sync.
- *
- * NOTE: this panel intentionally does NOT manage zone-to-scene
- * assignment (that lives in PropertiesPanel where the selected zone
- * already has context). It only manages the scene list itself.
+ * Zone-to-page assignment lives in Properties (the selected zone has the
+ * context); "When tapped → Go to page" too.
  */
-
-import { useEffect, useState } from 'react';
-import { Plus, Star, Trash2, Pencil, Check, X, Loader2, Layers3 } from 'lucide-react';
+import { useId, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { Plus, Star, Trash2, Pencil, Check, X, Loader2, Layers3, ChevronUp, ChevronDown } from 'lucide-react';
 import { useBuilderStore } from './useBuilderStore';
-import {
-  useTemplateScenes,
-  useCreateScene,
-  useUpdateScene,
-  useDeleteScene,
-} from '@/hooks/use-api';
-import { appConfirm } from '@/components/ui/app-dialog';
+import { usePages } from './usePages';
+import { zonesOnPage } from './pages';
 
 export function ScenesPanel() {
-  const templateId = useBuilderStore((s) => s.templateId);
-  const scenes = useBuilderStore((s) => s.scenes);
-  const activeSceneId = useBuilderStore((s) => s.activeSceneId);
-  const setScenes = useBuilderStore((s) => s.setScenes);
-  const setActiveSceneId = useBuilderStore((s) => s.setActiveSceneId);
+  const t = useTranslations('builderPages');
+  const p = usePages();
   const zones = useBuilderStore((s) => s.zones);
-
-  const { data: serverScenes, isFetching } = useTemplateScenes(templateId);
-  const createScene = useCreateScene(templateId);
-  const updateScene = useUpdateScene(templateId);
-  const deleteScene = useDeleteScene(templateId);
-
-  // Keep the store in sync with server. Whenever React Query hands us
-  // a new list, mirror it into the builder store so other components
-  // (PropertiesPanel goto-scene picker, canvas filter) see the change.
-  useEffect(() => {
-    if (Array.isArray(serverScenes)) setScenes(serverScenes);
-  }, [serverScenes, setScenes]);
-
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const beginRename = (sceneId: string, currentName: string) => {
-    setRenamingId(sceneId);
-    setRenameValue(currentName);
-    setError(null);
-  };
+  const renameInputId = useId();
 
   const commitRename = async () => {
     if (!renamingId) return;
-    const name = renameValue.trim();
-    if (!name) {
-      setError('Scene name cannot be empty.');
-      return;
-    }
-    try {
-      await updateScene.mutateAsync({ sceneId: renamingId, patch: { name } });
-      setRenamingId(null);
-      setRenameValue('');
-      setError(null);
-    } catch (e: any) {
-      setError(e?.message || 'Rename failed.');
-    }
+    if (await p.renamePage(renamingId, renameValue)) setRenamingId(null);
   };
 
-  const onAdd = async () => {
-    setError(null);
-    try {
-      const next = await createScene.mutateAsync({ name: `Scene ${(scenes?.length || 0) + 1}` });
-      // Switch the canvas to the new scene so the operator can start
-      // building immediately — same UX pattern as "Add slide" in Slides.
-      if (next?.id) setActiveSceneId(next.id);
-    } catch (e: any) {
-      setError(e?.message || 'Could not create scene.');
-    }
-  };
-
-  const onSetDefault = async (sceneId: string) => {
-    setError(null);
-    try {
-      await updateScene.mutateAsync({ sceneId, patch: { isDefault: true } });
-    } catch (e: any) {
-      setError(e?.message || 'Could not set default.');
-    }
-  };
-
-  const onDelete = async (sceneId: string, name: string) => {
-    // Player + builder both protect the default scene at the API; bail
-    // early on the client so the operator gets a friendly nudge rather
-    // than a 400.
-    const scene = scenes.find((s) => s.id === sceneId);
-    if (scene?.isDefault) {
-      setError('Cannot delete the default scene. Pick a different default first.');
-      return;
-    }
-    const zonesOnScene = zones.filter((z) => z.sceneId === sceneId).length;
-    // Controller behavior: zones on the deleted scene get moved to
-    // the DEFAULT scene (NOT marked shared — that would inadvertently
-    // duplicate them onto every scene). Match the message to the
-    // actual outcome so the operator isn't surprised.
-    const detail = zonesOnScene > 0
-      ? `Its ${zonesOnScene} widget${zonesOnScene === 1 ? '' : 's'} move${zonesOnScene === 1 ? 's' : ''} to the default scene.`
-      : 'This scene is empty.';
-    const ok = await appConfirm({
-      title: `Delete "${name}"?`,
-      message: detail,
-      tone: 'danger',
-      confirmLabel: 'Delete scene',
-    });
-    if (!ok) return;
-    try {
-      await deleteScene.mutateAsync(sceneId);
-    } catch (e: any) {
-      setError(e?.message || 'Could not delete scene.');
-    }
-  };
-
-  // Counts so the operator can spot scenes that accidentally have zero
-  // widgets (and so "shared" stands out as a real entity).
-  const zoneCountFor = (sceneId: string | null) =>
-    zones.filter((z) => (z.sceneId ?? null) === sceneId).length;
-
-  const sharedCount = zoneCountFor(null);
+  const sharedCount = zonesOnPage(zones, null).length;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+    <div className="flex-1 overflow-y-auto p-4 space-y-3 text-sm" data-pages-panel="true">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2 text-slate-600">
-          <Layers3 className="w-4 h-4 text-indigo-500" />
-          <span className="text-xs font-bold uppercase tracking-wider">Scenes</span>
-          {isFetching && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+          <Layers3 className="w-4 h-4 text-indigo-500" aria-hidden />
+          <h2 className="text-xs font-bold uppercase tracking-wider">{t('title')}</h2>
+          {p.isFetching && <Loader2 className="w-3 h-3 animate-spin text-slate-400" aria-hidden />}
         </div>
         <button
           type="button"
-          onClick={onAdd}
-          disabled={createScene.isPending}
+          onClick={() => void p.addPage()}
+          disabled={p.adding}
           className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
         >
-          {createScene.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-          New
+          {p.adding ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden /> : <Plus className="w-3 h-3" aria-hidden />}
+          {t('addPage')}
         </button>
       </div>
 
-      <p className="text-[11px] text-slate-500 leading-snug">
-        Scenes split one template into multiple screens. Use the "Go to scene" touch action to navigate between them. Widgets you place while a scene is selected belong to that scene.
-      </p>
+      <p className="text-[11px] text-slate-500 leading-snug">{t('intro')}</p>
 
-      {error && (
-        <div className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-md px-2.5 py-1.5">
-          {error}
+      {p.error && (
+        <div role="alert" className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-md px-2.5 py-1.5">
+          {p.error}
         </div>
       )}
 
       <div className="space-y-1.5">
-        {scenes.map((scene) => {
-          const isActive = scene.id === activeSceneId;
-          const isRenaming = renamingId === scene.id;
-          const count = zoneCountFor(scene.id);
+        {p.pages.map((page, i) => {
+          const isActive = page.id === p.activeSceneId;
+          const isRenaming = renamingId === page.id;
+          const count = zonesOnPage(zones, page.id).length;
           return (
             <div
-              key={scene.id}
+              key={page.id}
               className={`group rounded-lg border px-2.5 py-2 transition-colors ${
-                isActive
-                  ? 'border-indigo-300 bg-indigo-50/70'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                isActive ? 'border-indigo-300 bg-indigo-50/70' : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => onSetDefault(scene.id)}
-                  className={`shrink-0 ${scene.isDefault ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
-                  title={scene.isDefault ? 'Default scene (loads first)' : 'Set as default scene'}
-                  disabled={updateScene.isPending}
+                  onClick={() => void p.makeStartPage(page.id)}
+                  className={`shrink-0 ${page.isDefault ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
+                  title={page.isDefault ? t('startPage') : t('makeStart')}
+                  aria-label={page.isDefault ? t('startPage') : t('makeStart')}
+                  disabled={p.busy || page.isDefault}
                 >
-                  <Star className={`w-3.5 h-3.5 ${scene.isDefault ? 'fill-amber-400' : ''}`} />
+                  <Star className={`w-3.5 h-3.5 ${page.isDefault ? 'fill-amber-400' : ''}`} aria-hidden />
                 </button>
                 {isRenaming ? (
                   <>
+                    <label htmlFor={renameInputId} className="sr-only">{t('rename')}</label>
                     <input
+                      id={renameInputId}
                       autoFocus
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitRename();
-                        if (e.key === 'Escape') { setRenamingId(null); setError(null); }
+                        if (e.key === 'Enter') void commitRename();
+                        if (e.key === 'Escape') { setRenamingId(null); p.clearError(); }
                       }}
                       maxLength={80}
                       className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
-                    <button
-                      type="button"
-                      onClick={commitRename}
-                      disabled={updateScene.isPending}
-                      className="shrink-0 p-1 rounded text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
-                      aria-label="Save name"
-                    >
-                      {updateScene.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <button type="button" onClick={() => void commitRename()} disabled={p.busy}
+                      className="shrink-0 p-1 rounded text-emerald-600 hover:bg-emerald-50 disabled:opacity-50" aria-label={t('save')}>
+                      <Check className="w-3.5 h-3.5" aria-hidden />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { setRenamingId(null); setError(null); }}
-                      className="shrink-0 p-1 rounded text-slate-400 hover:bg-slate-100"
-                      aria-label="Cancel rename"
-                    >
-                      <X className="w-3.5 h-3.5" />
+                    <button type="button" onClick={() => { setRenamingId(null); p.clearError(); }}
+                      className="shrink-0 p-1 rounded text-slate-400 hover:bg-slate-100" aria-label={t('cancel')}>
+                      <X className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   </>
                 ) : (
                   <>
                     <button
                       type="button"
-                      onClick={() => setActiveSceneId(scene.id)}
+                      onClick={() => p.setActiveSceneId(page.id)}
                       className="flex-1 min-w-0 text-left flex items-center gap-2"
                     >
-                      <span className={`truncate text-xs font-bold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>
-                        {scene.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                        {count} {count === 1 ? 'zone' : 'zones'}
-                      </span>
+                      <span className={`truncate text-xs font-bold ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{page.name}</span>
+                      <span className="text-[10px] text-slate-500 shrink-0">{t('widgets', { count })}</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => beginRename(scene.id, scene.name)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                      aria-label="Rename scene"
-                      title="Rename"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
+                    <button type="button" onClick={() => void p.movePage(page.id, -1)} disabled={i === 0 || p.busy}
+                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30" aria-label={t('moveLeft')} title={t('moveLeft')}>
+                      <ChevronUp className="w-3.5 h-3.5" aria-hidden />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(scene.id, scene.name)}
-                      disabled={scene.isDefault || deleteScene.isPending}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Delete scene"
-                      title={scene.isDefault ? 'Default scene — pick a new default first' : 'Delete'}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button type="button" onClick={() => void p.movePage(page.id, 1)} disabled={i === p.pages.length - 1 || p.busy}
+                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30" aria-label={t('moveRight')} title={t('moveRight')}>
+                      <ChevronDown className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                    <button type="button" onClick={() => { setRenamingId(page.id); setRenameValue(page.name); p.clearError(); }}
+                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100" aria-label={t('rename')} title={t('rename')}>
+                      <Pencil className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                    <button type="button" onClick={() => void p.deletePage(page.id)} disabled={page.isDefault || p.busy}
+                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label={t('delete')} title={page.isDefault ? t('cantDeleteStart') : t('delete')}>
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   </>
                 )}
@@ -262,35 +142,19 @@ export function ScenesPanel() {
           );
         })}
 
-        {/* "Shared" pseudo-scene — represents zones with sceneId === null
-            that render on every scene (corner logos, persistent UI, etc).
-            Clicking it filters the canvas to show ONLY shared zones so
-            the operator can audit what's "always visible."
-
-            UX audit 2026-05-12 (B1) — hide the row entirely on
-            single-scene templates UNLESS there are already shared
-            zones. A lone "Scene 1" + "Shared" pseudo-row reads as
-            two scenes to first-time operators. Show it once there's
-            an actual multi-scene workflow OR the operator has
-            already opted into shared zones via the properties panel. */}
-        {(scenes.length >= 2 || sharedCount > 0) && (
-          <button
-            type="button"
-            onClick={() => setActiveSceneId(null)}
-            className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors flex items-center gap-2 ${
-              activeSceneId === null
-                ? 'border-slate-400 bg-slate-100'
-                : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'
-            }`}
-          >
-            <Layers3 className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs font-bold text-slate-600">Shared</span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {sharedCount} {sharedCount === 1 ? 'zone' : 'zones'}
-            </span>
-            <span className="ml-auto text-[10px] text-slate-400">shown on every scene</span>
-          </button>
-        )}
+        {/* The shared layer — widgets on every page (corner logo, nav bar). */}
+        <button
+          type="button"
+          onClick={() => p.setActiveSceneId(null)}
+          className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors flex items-center gap-2 ${
+            p.activeSceneId === null ? 'border-slate-400 bg-slate-100' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'
+          }`}
+        >
+          <Layers3 className="w-3.5 h-3.5 text-slate-400" aria-hidden />
+          <span className="text-xs font-bold text-slate-600">{t('shared')}</span>
+          <span className="text-[10px] text-slate-500">{t('widgets', { count: sharedCount })}</span>
+          <span className="ml-auto text-[10px] text-slate-500">{t('sharedHint')}</span>
+        </button>
       </div>
     </div>
   );
