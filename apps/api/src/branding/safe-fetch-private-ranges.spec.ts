@@ -118,3 +118,28 @@ describe('validatePublicUrl — literals reachable through the URL parser', () =
     expect(validatePublicUrl('https://example.com/page').hostname).toBe('example.com');
   });
 });
+
+describe('isPrivateIp — IPv6 transition prefixes + non-canonical spellings (2026-10-11, H-6)', () => {
+  it.each([
+    ['6to4 wrapping loopback', '2002:7f00:1::'],
+    ['6to4 wrapping a public v4', '2002:0808:0808::1'],
+    ['Teredo', '2001:0:4136:e378:8000:63bf:3fff:fdd2'],
+    ['Teredo compressed', '2001::1'],
+    ['NAT64 local-use', '64:ff9b:1::a00:1'],
+    ['NAT64 zero-padded', '0064:ff9b::7f00:1'],
+    ['documentation', '2001:db8::1'],
+    ['discard', '100::1'],
+    ['expanded loopback', '0:0:0:0:0:0:0:1'],
+    ['expanded v4-mapped loopback', '0:0:0:0:0:ffff:7f00:1'],
+    ['expanded link-local', 'fe80:0:0:0:0:0:0:1'],
+  ])('denies %s (%s)', (_label, ip) => {
+    expect(isPrivateIp(ip)).toBe(true);
+  });
+
+  it.each([
+    ['google dns v6', '2001:4860:4860::8888'],
+    ['cloudflare v6', '2606:4700:4700::1111'],
+  ])('allows %s (%s)', (_label, ip) => {
+    expect(isPrivateIp(ip)).toBe(false);
+  });
+});

@@ -128,7 +128,60 @@ function isPrivateV6(ip: string): boolean {
     const dotted = mappedV4FromHexTail(norm, prefix);
     if (dotted && isPrivateV4(dotted)) return true;
   }
+  // 2026-10-11 (launch security re-audit H-6): judge the EXPANDED address so a
+  // non-canonical spelling (`0:0:0:0:0:ffff:7f00:1`, `0064:ff9b::…`) cannot slip
+  // past the string-prefix checks above, and refuse the transition prefixes
+  // whose low bits tunnel to some other (possibly private) IPv4 network.
+  const g = expandV6(norm);
+  if (!g) return true; // isIP said v6 but we cannot parse it — fail closed
+  if (g.every((x) => x === 0)) return true;                              // ::
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true;   // ::1
+  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
+    const v4 = `${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`;
+    if (isPrivateV4(v4)) return true;                                    // v4-mapped / -compatible
+  }
+  if (g[0] === 0x0064 && g[1] === 0xff9b) return true;                   // NAT64 64:ff9b::/96 + 64:ff9b:1::/48
+  if (g[0] === 0x2002) return true;                                      // 6to4 2002::/16
+  if (g[0] === 0x2001 && g[1] === 0x0000) return true;                   // Teredo 2001::/32
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return true;                   // documentation 2001:db8::/32
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true; // discard 100::/64
+  if ((g[0] & 0xffc0) === 0xfe80) return true;                           // link-local fe80::/10
+  if ((g[0] & 0xfe00) === 0xfc00) return true;                           // ULA fc00::/7
+  if ((g[0] & 0xff00) === 0xff00) return true;                           // multicast
   return false;
+}
+
+/**
+ * Expand an IPv6 literal (already lower-cased, zone stripped) to its eight
+ * 16-bit groups. Handles `::` compression and a dotted IPv4 tail. Returns null
+ * for anything it cannot parse.
+ */
+export function expandV6(addr: string): number[] | null {
+  let s = addr;
+  const dotted = s.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (dotted) {
+    const o = dotted[2].split('.').map(Number);
+    if (o.some((n) => n > 255)) return null;
+    s = `${dotted[1]}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const parse = (part: string): number[] | null => {
+    if (part === '') return [];
+    const out: number[] = [];
+    for (const h of part.split(':')) {
+      if (!/^[0-9a-f]{1,4}$/.test(h)) return null;
+      out.push(parseInt(h, 16));
+    }
+    return out;
+  };
+  const head = parse(halves[0]);
+  const tail = halves.length === 2 ? parse(halves[1]) : [];
+  if (!head || !tail) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const fill = 8 - head.length - tail.length;
+  if (fill < 1) return null;
+  return [...head, ...new Array(fill).fill(0), ...tail];
 }
 
 /** True if an IP literal falls inside any private / unsafe range. */
@@ -347,6 +400,13 @@ export interface SafePostOptions {
   headers?: Record<string, string>;
   maxBytes?: number;         // default 64 KB — we only need a small status echo
   timeoutMs?: number;        // default 8000
+  /**
+   * Return the (bounded, at most `maxBytes`) response body as UTF-8 text
+   * (2026-10-11, V-1). Only for a caller that NEEDS the answer — an OAuth
+   * token exchange against a pinned vendor host. A webhook-delivery caller
+   * must leave this off (anti-exfil, see below).
+   */
+  captureBody?: boolean;
 }
 
 /**
@@ -368,8 +428,8 @@ export interface SafePostOptions {
 export async function safeFetchPost(
   rawUrl: string,
   opts: SafePostOptions,
-): Promise<{ status: number }> {
-  const { body, headers = {}, maxBytes = 64 * 1024, timeoutMs = 8000 } = opts;
+): Promise<{ status: number; body?: string }> {
+  const { body, headers = {}, maxBytes = 64 * 1024, timeoutMs = 8000, captureBody = false } = opts;
 
   // Throws SsrfError on bad scheme / port / private IP literal. This is the
   // first gate; the connect-time pin below is the rebind-proof second gate.
@@ -398,7 +458,7 @@ export async function safeFetchPost(
   const lib = isHttps ? https : http;
   const payload = Buffer.from(body, 'utf8');
 
-  return await new Promise<{ status: number }>((resolve, reject) => {
+  return await new Promise<{ status: number; body?: string }>((resolve, reject) => {
     const req = lib.request(
       url,
       {
@@ -416,14 +476,19 @@ export async function safeFetchPost(
         // receiver stream forever, then discard — callers store only the
         // status, never the body (anti-exfil).
         let total = 0;
+        const kept: Buffer[] = [];
         res.on('data', (c: Buffer) => {
           total += c.length;
           if (total > maxBytes) {
             res.destroy();
+            return;
           }
+          if (captureBody) kept.push(c);
         });
-        res.on('end', () => resolve({ status }));
-        res.on('close', () => resolve({ status }));
+        const done = () =>
+          resolve(captureBody ? { status, body: Buffer.concat(kept).toString('utf8') } : { status });
+        res.on('end', done);
+        res.on('close', done);
         res.on('error', (e) => reject(new SsrfError(`Read failed: ${e.message}`)));
       },
     );

@@ -47,6 +47,8 @@
 import { Logger } from '@nestjs/common';
 import type { CatalogSnapshot, NormalizedItem, NormalizedCategory } from './square';
 
+import { vendorTokenPost } from './vendor-post';
+
 const log = new Logger('ShopifyProvider');
 
 /**
@@ -66,13 +68,22 @@ export function shopifyApiVersion(): string {
  */
 export function shopifyHost(shop: string): string {
   let s = String(shop || '').trim().toLowerCase();
-  // Strip scheme + any path/trailing slash.
-  s = s.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  // Strip scheme + any trailing slash (a bare `https://acme.myshopify.com/`).
+  s = s.replace(/^https?:\/\//, '').replace(/\/+$/, '');
   if (!s) return '';
   // Bare subdomain → append the canonical myshopify.com suffix.
-  if (!s.includes('.')) s = `${s}.myshopify.com`;
+  if (/^[a-z0-9][a-z0-9-]*$/.test(s)) s = `${s}.myshopify.com`;
+  // 2026-10-11 (V-1): ONLY a `<store>.myshopify.com` host, checked here at the
+  // point of use so every caller (authorize, token exchange, catalog) is
+  // covered. Anything else — another domain, a userinfo `@`, a port, a path,
+  // a query — throws: this host receives our platform client secret.
+  if (!SHOPIFY_HOST_RE.test(s)) {
+    throw new Error('Shopify shop domain must be <store>.myshopify.com');
+  }
   return s;
 }
+
+const SHOPIFY_HOST_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 
 /**
  * Origin for a shop's Admin API calls — normally `https://{host}`.
@@ -154,20 +165,19 @@ export async function shopifyExchangeCode(opts: {
       'Shopify OAuth not configured: set SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET',
     );
   }
-  const res = await fetch(`${shopifyOrigin(host)}/admin/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await vendorTokenPost(`${shopifyOrigin(host)}/admin/oauth/access_token`, {
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       client_id: clientId,
       client_secret: clientSecret,
       code: opts.code,
     }),
+    devOverride: !!process.env.SHOPIFY_API_BASE,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Shopify token exchange failed: ${res.status} ${text.slice(0, 300)}`);
+    throw new Error(`Shopify token exchange failed: ${res.status} ${res.text.slice(0, 300)}`);
   }
-  const json: any = await res.json();
+  const json: any = JSON.parse(res.text || '{}');
   return {
     accessToken: String(json.access_token || ''),
     // Offline tokens carry no refresh token; surface it if Shopify ever does.

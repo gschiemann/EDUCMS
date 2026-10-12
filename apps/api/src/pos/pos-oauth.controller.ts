@@ -51,6 +51,7 @@ import { MenuService } from './menu.service';
 import { newOAuthStateToken, verifySquareSignature } from './providers/square';
 import { getConnector } from './providers/registry';
 import { getPosProvider } from '@cms/api-types';
+import { publicApiBase } from '../security/public-api-base';
 
 /** Where the provider redirects the operator after they approve. Derived
  *  from the public API origin so dev + staging + prod all work without per-
@@ -60,10 +61,9 @@ import { getPosProvider } from '@cms/api-types';
 function resolveRedirectUri(req: Request, provider: string): string {
   // Prefer the explicit env var if set; otherwise reconstruct from the
   // incoming Host header (covers dev + Railway's tunnel hostnames).
-  const apiBase =
-    process.env.PUBLIC_API_BASE_URL ||
-    `${req.protocol || 'https'}://${req.headers.host}`;
-  return `${apiBase.replace(/\/$/, '')}/api/v1/pos/oauth/${provider}/callback`;
+  // H-5 (2026-10-11): never the Host header in production.
+  const apiBase = publicApiBase(req);
+  return `${apiBase}/api/v1/pos/oauth/${provider}/callback`;
 }
 
 function resolveWebReturnUrl(): string {
@@ -223,10 +223,27 @@ export class PosOAuthController {
     // the provider's callback query (Clover merchant_id / Lightspeed
     // domain_prefix), or only on the token response (Square — stays empty
     // here and is filled from `tokens.storeId` below).
+    //
+    // 2026-10-11 (launch security re-audit V-1): the store id decides the HOST
+    // our platform client secret is POSTed to, and this route is public. So:
+    //   - a store id bound to the signed state at /authorize (Shopify) is
+    //     FINAL — the callback query can never override it; a different value
+    //     on the query fails closed;
+    //   - a store id that only the callback carries (Clover merchant_id,
+    //     Lightspeed domain_prefix) must pass the provider's own validator.
     let storeId = entry.storeId || '';
     if (connector.callbackStoreIdParam) {
-      const fromQuery = String(query[connector.callbackStoreIdParam] || '');
-      if (fromQuery) storeId = fromQuery;
+      const fromQuery = String(query[connector.callbackStoreIdParam] || '').trim();
+      if (entry.storeId) {
+        if (fromQuery) {
+          const normalized = connector.normalizeStoreId ? connector.normalizeStoreId(fromQuery) : null;
+          if (normalized !== entry.storeId) return failRedirect('store-mismatch');
+        }
+      } else if (fromQuery) {
+        const normalized = connector.normalizeStoreId ? connector.normalizeStoreId(fromQuery) : null;
+        if (!normalized) return failRedirect('invalid-store');
+        storeId = normalized;
+      }
     }
 
     const redirectUri = resolveRedirectUri(req, provider);

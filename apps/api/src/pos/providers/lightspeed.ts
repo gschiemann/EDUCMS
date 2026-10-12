@@ -60,6 +60,8 @@
 import { Logger } from '@nestjs/common';
 import type { CatalogSnapshot, NormalizedItem, NormalizedCategory } from './square';
 
+import { vendorTokenPost } from './vendor-post';
+
 const log = new Logger('LightspeedProvider');
 
 /** The fixed host that serves the OAuth authorize page (retailer-agnostic). */
@@ -80,9 +82,15 @@ export function lightspeedEnv(): 'production' | 'sandbox' {
  * `domain_prefix`. Throws if the prefix is missing (we never guess a host).
  */
 export function lightspeedApiBase(ctx: { domainPrefix?: string }): string {
-  const prefix = String(ctx?.domainPrefix || '').trim();
+  const prefix = String(ctx?.domainPrefix || '').trim().toLowerCase();
   if (!prefix) {
     throw new Error('Lightspeed API host needs a domainPrefix (captured during OAuth)');
+  }
+  // 2026-10-11 (V-1): the prefix becomes a HOSTNAME label that receives our
+  // platform client secret. A single DNS label only — no dots, slashes, `?`,
+  // `#`, `@` or `:` that could move the request to another host.
+  if (!/^[a-z0-9-]{1,63}$/.test(prefix)) {
+    throw new Error('Lightspeed domainPrefix must be a single host label');
   }
   // Dev-only sandbox-harness override (2026-08-04) — see
   // scripts/pos-sandbox/. Never honored in production.
@@ -178,16 +186,15 @@ export async function lightspeedExchangeCode(opts: {
     grant_type: 'authorization_code',
     redirect_uri: opts.redirectUri,
   });
-  const res = await fetch(`${base}/api/1.0/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const res = await vendorTokenPost(`${base}/api/1.0/token`, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: body.toString(),
+    devOverride: !!process.env.LIGHTSPEED_API_BASE,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Lightspeed token exchange failed: ${res.status} ${text.slice(0, 300)}`);
+    throw new Error(`Lightspeed token exchange failed: ${res.status} ${res.text.slice(0, 300)}`);
   }
-  const json: any = await res.json();
+  const json: any = JSON.parse(res.text || '{}');
   return {
     accessToken: String(json.access_token || ''),
     refreshToken: String(json.refresh_token || ''),
@@ -216,16 +223,15 @@ export async function lightspeedRefreshAccessToken(
     client_secret: clientSecret,
     grant_type: 'refresh_token',
   });
-  const res = await fetch(`${base}/api/1.0/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const res = await vendorTokenPost(`${base}/api/1.0/token`, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: body.toString(),
+    devOverride: !!process.env.LIGHTSPEED_API_BASE,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Lightspeed token refresh failed: ${res.status} ${text.slice(0, 300)}`);
+    throw new Error(`Lightspeed token refresh failed: ${res.status} ${res.text.slice(0, 300)}`);
   }
-  const json: any = await res.json();
+  const json: any = JSON.parse(res.text || '{}');
   return {
     accessToken: String(json.access_token || ''),
     refreshToken: String(json.refresh_token || refreshToken),

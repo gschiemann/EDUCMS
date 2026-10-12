@@ -23,6 +23,7 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { SsoConfigSchema } from './sso.types';
 import type { SsoConfigDto } from './sso.types';
 import { assertSupportReach } from '../support-access/support-access.context';
+import { publicApiBase } from '../security/public-api-base';
 
 /**
  * SSO endpoints — SAML + OIDC scaffold.
@@ -317,11 +318,8 @@ export class SsoController {
   }
 
   private baseUrl(req: Request): string {
-    const envUrl = process.env.PUBLIC_API_BASE_URL;
-    if (envUrl) return envUrl.replace(/\/$/, '');
-    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-    const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
-    return `${proto}://${host}`;
+    // H-5 (2026-10-11): never the Host header in production.
+    return publicApiBase(req);
   }
 
   private redirectWithToken(

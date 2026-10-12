@@ -56,6 +56,17 @@ export interface PosConnector {
   needsStoreIdAtAuthorize: boolean;
   /** False when tokens never expire (Shopify offline tokens). */
   refreshable: boolean;
+  /**
+   * 2026-10-11 (V-1): canonicalise + validate a store id that arrived on the
+   * (unauthenticated) OAuth callback. Returns null when it is not a legal id
+   * for this provider — the callback then fails closed. Absent = the provider
+   * never takes a store id from the callback.
+   */
+  normalizeStoreId?(raw: string): string | null;
+}
+
+function tryOrNull(fn: () => string): string | null {
+  try { const v = fn(); return v || null; } catch { return null; }
 }
 
 // Keyed by the POS provider `id` in @cms/api-types (NOT the module name) —
@@ -90,6 +101,7 @@ export const POS_CONNECTORS: Record<string, PosConnector> = {
     fetchCatalog: (at, ctx) => clover.cloverFetchCatalog(at, { merchantId: ctx.storeId }),
     envPrefix: 'CLOVER',
     callbackStoreIdParam: 'merchant_id',
+    normalizeStoreId: (raw) => (clover.isCloverMerchantId(raw) ? raw : null),
     needsStoreIdAtAuthorize: false,
     refreshable: true,
   },
@@ -100,6 +112,12 @@ export const POS_CONNECTORS: Record<string, PosConnector> = {
     fetchCatalog: (at, ctx) => lightspeed.lightspeedFetchCatalog(at, { domainPrefix: ctx.storeId }),
     envPrefix: 'LIGHTSPEED',
     callbackStoreIdParam: 'domain_prefix',
+    normalizeStoreId: (raw) =>
+      tryOrNull(() => {
+        const p = String(raw || '').trim().toLowerCase();
+        lightspeed.lightspeedApiBase({ domainPrefix: p }); // throws on a non-label
+        return p;
+      }),
     needsStoreIdAtAuthorize: false,
     refreshable: true,
   },
@@ -110,6 +128,7 @@ export const POS_CONNECTORS: Record<string, PosConnector> = {
     fetchCatalog: (at, ctx) => shopify.shopifyFetchCatalog(at, { shop: ctx.storeId }),
     envPrefix: 'SHOPIFY',
     callbackStoreIdParam: 'shop',
+    normalizeStoreId: (raw) => tryOrNull(() => shopify.shopifyHost(raw)),
     needsStoreIdAtAuthorize: true,
     refreshable: false,
   },

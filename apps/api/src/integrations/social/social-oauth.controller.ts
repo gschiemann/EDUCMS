@@ -51,6 +51,7 @@ import {
 } from './social.service';
 import * as instagram from './instagram';
 import * as facebook from './facebook';
+import { publicApiBase } from '../../security/public-api-base';
 
 /** The operator has 10 minutes to finish Meta's approve screen. */
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -71,10 +72,9 @@ interface StateEntry {
  * .env.example).
  */
 function resolveRedirectUri(req: Request, provider: string): string {
-  const apiBase =
-    process.env.PUBLIC_API_BASE_URL ||
-    `${req.protocol || 'https'}://${req.headers.host}`;
-  return `${apiBase.replace(/\/$/, '')}/api/v1/integrations/social/oauth/${provider}/callback`;
+  // H-5 (2026-10-11): never the Host header in production.
+  const apiBase = publicApiBase(req);
+  return `${apiBase}/api/v1/integrations/social/oauth/${provider}/callback`;
 }
 
 /** Where we send the operator's browser when the handshake finishes. Same

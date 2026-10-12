@@ -100,6 +100,11 @@ function expiryToIso(seconds: unknown): string | null {
   return new Date(n * 1000).toISOString();
 }
 
+/** Clover merchant ids are short upper-case alphanumerics (13 today). */
+export function isCloverMerchantId(v: string): boolean {
+  return /^[A-Za-z0-9]{1,32}$/.test(String(v || ''));
+}
+
 /**
  * Exchange the one-shot `code` for an access/refresh pair. `merchantId`
  * comes from the OAuth callback query (`merchant_id`) and is threaded
@@ -179,6 +184,10 @@ export async function cloverFetchCatalog(
   const merchantId = String(ctx?.merchantId || '');
   if (!merchantId) {
     throw new Error('Clover catalog fetch needs a merchantId (captured during OAuth)');
+  }
+  // 2026-10-11 (V-1): the id is interpolated into a URL PATH — alphanumeric only.
+  if (!isCloverMerchantId(merchantId)) {
+    throw new Error('Clover merchantId must be alphanumeric');
   }
   const base = cloverApiBase();
   const headers = { Authorization: `Bearer ${accessToken}` };
