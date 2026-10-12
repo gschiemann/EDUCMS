@@ -139,7 +139,8 @@ describe('native video engine (protocol 2) — descriptor', () => {
     ['emergency', (f: any) => (f.manifest.isEmergency = true)],
     ['frame-locked sync', (f: any) => (f.manifest.sync = { enabled: true })],
     ['template', (f: any) => (f.manifest.playlists[0].template = { id: 't' })],
-    ['two playlists', (f: any) => f.manifest.playlists.push(f.manifest.playlists[0])],
+    ['an append row mixes items in', (f: any) => f.manifest.playlists.push({ ...f.manifest.playlists[0], schedule: { ...f.manifest.playlists[0].schedule, mode: 'append' } })],
+    ['the winner has a day/time window', (f: any) => (f.manifest.playlists[0].schedule = { ...f.manifest.playlists[0].schedule, timeStart: '08:00', timeEnd: '15:00' })],
     ['audio', (f: any) => (f.item.muted = false)],
     ['canvas override', (f: any) => (f.manifest.canvasW = 1920)],
     ['revoked', (f: any) => (f.screen.status = 'REVOKED')],
@@ -155,6 +156,13 @@ describe('native video engine (protocol 2) — descriptor', () => {
     const f = fixture();
     mutate(f);
     expect(build(f)).toBeNull();
+  });
+
+  it('two REPLACE playlists: describes the winner (first in manifest order), like the player', () => {
+    // VisionCore 2026-10-12: a screen-pinned playlist + an older group one.
+    const f = fixture();
+    f.manifest.playlists.push({ id: 'group-older', schedule: { mode: 'replace', pin: 'group', priority: 0 }, items: [] });
+    expect(build(f)).not.toBeNull();
   });
 
   it('the shared asset gate did not change the protocol-1 pair descriptor', () => {

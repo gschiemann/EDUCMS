@@ -135,10 +135,30 @@ export async function nativeVideoEnrolled(
  * Cheap pre-check on the built payload: is the CONTENT a native candidate at
  * all? Lets the controller skip the enrollment lookup for everything else.
  */
-export function nativeVideoCandidate(manifest: Record<string, any>): boolean {
+/**
+ * The playlist the player will actually show: the first REPLACE row in the
+ * manifest's deterministic order (screen pin > group, priority, newest —
+ * effective-schedule.ts), exactly the player's own pick. Conservative: an
+ * APPEND row would mix items in, and a winner with a day/time window could be
+ * closed right now (this descriptor carries no clock), so both → null.
+ * (2026-10-12: VisionCore had a pinned playlist AND an older group one; the
+ * old `length !== 1` rule silently sent no descriptor.)
+ */
+export function nativeVideoWinner(manifest: Record<string, any>): Record<string, any> | null {
   const pls = manifest?.playlists;
-  if (!Array.isArray(pls) || pls.length !== 1) return false;
-  const items = pls[0]?.items;
+  if (!Array.isArray(pls) || pls.length === 0) return null;
+  if (pls.some((p: any) => p?.schedule?.mode === 'append')) return null;
+  const winner = pls.find((p: any) => (p?.schedule?.mode ?? 'replace') === 'replace');
+  if (!winner || !obj(winner.schedule)) return null;
+  const sc = winner.schedule;
+  if (sc.daysOfWeek || sc.timeStart || sc.timeEnd) return null;
+  return winner;
+}
+
+export function nativeVideoCandidate(manifest: Record<string, any>): boolean {
+  const winner = nativeVideoWinner(manifest);
+  if (!winner) return false;
+  const items = winner.items;
   return (
     Array.isArray(items) &&
     items.length >= 1 &&
@@ -186,7 +206,7 @@ export function buildNativeVideoDescriptor(input: {
     s.faceOfScreenId != null ? (s.faceIndex === 1 ? 1 : null) : 0;
   if (faceIndex === null) return null;
   if (!nativeVideoCandidate(m)) return null;
-  const pl = m.playlists[0];
+  const pl = nativeVideoWinner(m)!;
   if (pl.template || !obj(pl.schedule) || pl.schedule.mode !== 'replace')
     return null;
   // A solo video: one item, or N copies of the same file (the player

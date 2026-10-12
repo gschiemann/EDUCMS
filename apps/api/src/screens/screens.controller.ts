@@ -1,5 +1,5 @@
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
-import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled } from './native-video';
+import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
 import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
@@ -7224,7 +7224,7 @@ export class ScreensController {
           })) > 0,
         );
         if (enrolled) {
-          const item = dynamicPlaylists[0]?.items[0];
+          const item = (nativeVideoWinner(manifestPayload) as any)?.items?.[0];
           const asset = item && schedules.flatMap((s: any) => s.playlist.items).find((pi: any) => pi.assetId === item.asset_id)?.asset;
           const native = buildNativeVideoDescriptor({ screen, manifest: manifestPayload, asset });
           if (native) manifestPayload.nativeVideo = native;
