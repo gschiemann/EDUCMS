@@ -4,7 +4,7 @@ import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeV
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
-import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistMediaFit, type MediaFit } from './mediaFit';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -12269,7 +12269,7 @@ function PlayerPage() {
         >
           {useVideoPlaylistDeck && currentItem ? (
             <PlaylistVideoDeck key={playlist?.id ?? 'video-playlist'} active={playlistVideoSource(currentItem)}
-              fit={playlistMediaFit(playlist?.isEmergency === true)}
+              fit={playlistItemFit(playlist?.isEmergency === true, currentItem as { media_w?: number; media_h?: number })}
               next={activeSlot.nextIndex !== null ? playlistVideoSource(sorted[activeSlot.nextIndex]) : null}
               onPlaying={markItemSucceeded}
               onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
@@ -12343,7 +12343,7 @@ function PlayerPage() {
             const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency && !syncLocked) ? 'NONE' : item.transitionType || 'FADE';
             // 2026-10-11 — crop-to-fill for normal content; an emergency
             // playlist keeps its historical `fill` (mediaFit.ts).
-            const slideFit = playlistMediaFit(playlist?.isEmergency === true);
+            const slideFit = playlistItemFit(playlist?.isEmergency === true, item as { media_w?: number; media_h?: number });
             let classes = `absolute top-0 right-0 bottom-0 left-0 w-full h-full ${mediaFitClass(slideFit)} transition-all duration-[1000ms] ease-in-out `;
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";

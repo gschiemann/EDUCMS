@@ -83,3 +83,47 @@ export function visibleSourceRect(fit: MediaFit, srcW: number, srcH: number, box
   const sh = srcW / boxAspect;
   return { sx: 0, sy: (srcH - sh) / 2, sw: srcW, sh };
 }
+
+/**
+ * Shape-aware fit (owner 2026-10-12: a portrait 1080×1920 clip on a landscape
+ * 1920×1080 screen was "crazy zoomed in" under `cover` — it trims ~70 % of the
+ * picture). Fill the screen (cover) only when the file's shape is CLOSE to the
+ * screen's; when the shapes are far apart (portrait file on a landscape screen
+ * or the reverse) show the whole file (contain). Unknown size → the base fit.
+ * Emergency is unchanged (always contain).
+ */
+export const COVER_MAX_ASPECT_MISMATCH = 1.35;
+
+export function shapeAwareFit(
+  base: MediaFit,
+  mediaW: number | null | undefined,
+  mediaH: number | null | undefined,
+  screenW: number | null | undefined,
+  screenH: number | null | undefined,
+): MediaFit {
+  if (base !== 'cover') return base;
+  if (!mediaW || !mediaH || !screenW || !screenH || mediaW <= 0 || mediaH <= 0 || screenW <= 0 || screenH <= 0) return base;
+  const a = mediaW / mediaH;
+  const b = screenW / screenH;
+  const mismatch = Math.max(a, b) / Math.min(a, b);
+  return mismatch <= COVER_MAX_ASPECT_MISMATCH ? 'cover' : 'contain';
+}
+
+/** The player's logical canvas shape (body is rotated for portrait-on-landscape). */
+export function playerCanvasSize(): { w: number; h: number } | null {
+  try {
+    const b = typeof document !== 'undefined' ? document.body : null;
+    const w = b?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 0);
+    const h = b?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 0);
+    return w > 0 && h > 0 ? { w, h } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fit for one playlist item, using the manifest's media_w/media_h when present. */
+export function playlistItemFit(isEmergency: boolean, item: { media_w?: number | null; media_h?: number | null } | null | undefined): MediaFit {
+  const base = playlistMediaFit(isEmergency);
+  const c = playerCanvasSize();
+  return shapeAwareFit(base, item?.media_w, item?.media_h, c?.w, c?.h);
+}

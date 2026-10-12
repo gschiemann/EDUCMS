@@ -6950,6 +6950,11 @@ export class ScreensController {
         asset_hash: selected.sha256,
         asset_size: selected.size,
         url: selected.url,
+        // 2026-10-12 — the file's displayed shape, so the player can fill the
+        // screen when shapes are close and show the whole file when they are
+        // far apart (a portrait clip on a landscape screen). Content-derived:
+        // stable across polls, safe in the hashed manifest.
+        ...manifestMediaDims((pi.asset as { processingMeta?: unknown } | null)?.processingMeta),
         // 2026-09-26 (Greg) — NO lower-resolution stand-in. bdb3f59a sent a
         // >1080p screen its 1080p rendition as fallback_url; the player showed
         // it until the 4K file cached, then switched up at the loop — viewers
@@ -8002,3 +8007,17 @@ export class ScreensController {
     };
   }
 }
+
+/** `{ media_w, media_h }` from an asset's measured processedDimensions, or nothing. */
+export function manifestMediaDims(processingMeta: unknown): { media_w?: number; media_h?: number } {
+  try {
+    const pm = (typeof processingMeta === 'string' ? JSON.parse(processingMeta) : processingMeta) as
+      { processedDimensions?: { w?: unknown; h?: unknown } } | null;
+    const w = Number(pm?.processedDimensions?.w);
+    const h = Number(pm?.processedDimensions?.h);
+    return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? { media_w: Math.round(w), media_h: Math.round(h) } : {};
+  } catch {
+    return {};
+  }
+}
+
