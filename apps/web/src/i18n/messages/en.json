@@ -1890,19 +1890,25 @@
       "playing": "{count} playing",
       "offline": "{count} offline",
       "offlineSince": "{count} offline (since {since} ago)",
-      "noPicture": "{count} not showing content",
-      "needsUpdate": "{count, plural, one {# needs an update} other {# need an update}}",
+      "noPicture": "{count} with no picture confirmed",
+      "needsUpdate": "{count, plural, one {# update not confirmed} other {# updates not confirmed}}",
       "filterHint": "Show only these on the map",
       "showAll": "Show everything again",
       "minutes": "{count, plural, one {# minute} other {# minutes}}",
       "hours": "{count, plural, one {# hour} other {# hours}}",
       "days": "{count, plural, one {# day} other {# days}}",
-      "actionOffline": "{count, plural, one {# screen} other {# screens}} offline at {location} — check power and network.",
-      "actionDark": "{count, plural, one {# screen} other {# screens}} at {location} not showing content — open to check the player.",
-      "actionEmergency": "{location} can’t show an emergency alert — add alert content.",
-      "actionDrift": "{count, plural, one {# screen} other {# screens}} at {location} haven’t picked up the latest content yet.",
+      "actionOffline": "{count, plural, one {# screen is offline} other {# screens are offline}} — check power and network.",
+      "actionDark": "{count, plural, one {# screen hasn’t confirmed a picture} other {# screens haven’t confirmed a picture}} in over 5 minutes.",
+      "actionEmergency": "{count, plural, one {# location can’t} other {# locations can’t}} show an emergency alert yet.",
+      "actionDrift": "{count, plural, one {# screen hasn’t confirmed the update it was sent.} other {# screens haven’t confirmed the update they were sent.}}",
       "allGood": "Everything is playing. Nothing needs you right now.",
-      "noScreens": "No screens here yet."
+      "noScreens": "No screens here yet.",
+      "syncing": "{count, plural, one {# screen is confirming an update it was just sent.} other {# screens are confirming an update they were just sent.}}",
+      "appUpdating": "{count, plural, one {# screen is playing on the previous web player — it updates itself.} other {# screens are playing on the previous web player — they update themselves.}}",
+      "placeLine": "{location} · {count, plural, one {# screen} other {# screens}}",
+      "fix": "Fix",
+      "placesAria": "Where to fix it",
+      "morePlaces": "+{count} more — show them on the map"
     }
   },
   "screens": {
@@ -5449,5 +5455,58 @@
     "stripLabel": "Pages",
     "openPage": "Open page {name}",
     "showShared": "Show the shared layer"
+  },
+  "fleetMap": {
+    "unplaced": "Screens without an address",
+    "filters": {
+      "all": "All",
+      "healthy": "Healthy",
+      "offline": "Offline",
+      "drift": "Content drift",
+      "push": "Push issues",
+      "emergency": "Emergency gaps"
+    },
+    "tile": {
+      "offline": "Offline",
+      "no-picture": "No picture",
+      "behind": "Not confirmed",
+      "syncing": "Syncing",
+      "playing": "Playing",
+      "unconfirmed": "Unconfirmed"
+    },
+    "tileAppUpdating": "Playing on the previous web player — it updates itself.",
+    "panel": {
+      "playing": "{count} playing",
+      "behind": "{count} not confirmed",
+      "syncing": "{count} syncing",
+      "offline": "{count} offline",
+      "noPicture": "{count} no picture",
+      "unconfirmed": "{count} unconfirmed"
+    },
+    "fix": {
+      "aria": "What to fix here",
+      "title": "Fix it here",
+      "emergencyGap": "This location can’t show an emergency alert yet.",
+      "addAlertContent": "Add alert content",
+      "askAdmin": "This needs an admin — ask one to do it.",
+      "offlineTitle": "{count, plural, one {# screen offline} other {# screens offline}}",
+      "lastAnswered": "Last answered {ago} ago",
+      "notAnswering": "Not answering check-ins",
+      "troubleshoot": "Troubleshoot",
+      "offlineHint": "A reload can’t reach an offline screen. Check its power and network at the site — it picks up everything waiting when it’s back.",
+      "behindTitle": "{count, plural, one {# screen hasn’t confirmed its update} other {# screens haven’t confirmed their update}}",
+      "updateSent": "Update sent {ago} ago, not confirmed",
+      "updateSentUndated": "Update sent, not confirmed",
+      "lastPicture": "last picture confirmed {ago} ago",
+      "darkTitle": "{count, plural, one {# screen with no picture confirmed} other {# screens with no picture confirmed}}",
+      "noPictureYet": "No picture confirmed yet",
+      "openScreen": "Open screen",
+      "sendUpdate": "{count, plural, one {Send update now} other {Send update to # screens}}",
+      "sending": "Sending…",
+      "sent": "{count, plural, one {Sent to # screen} other {Sent to # screens}}",
+      "sentHint": "Sent. Each screen reloads and confirms within about a minute.",
+      "sendFailed": "{count, plural, one {Couldn’t send to {names}.} other {Couldn’t send to # screens: {names}.}} Try again.",
+      "syncing": "{count, plural, one {# screen is confirming an update it was just sent.} other {# screens are confirming an update they were just sent.}}"
+    }
   }
 }

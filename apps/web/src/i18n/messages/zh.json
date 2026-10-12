@@ -1890,19 +1890,25 @@
       "playing": "{count} 块正在播放",
       "offline": "{count} 块离线",
       "offlineSince": "{count} 块离线（已 {since}）",
-      "noPicture": "{count} 块未显示内容",
-      "needsUpdate": "{count, plural, other {# 块需要更新}}",
+      "noPicture": "{count} 块未确认画面",
+      "needsUpdate": "{count, plural, other {# 个更新未确认}}",
       "filterHint": "在地图上只显示这些",
       "showAll": "重新显示全部",
       "minutes": "{count, plural, other {# 分钟}}",
       "hours": "{count, plural, other {# 小时}}",
       "days": "{count, plural, other {# 天}}",
-      "actionOffline": "{location} 有 {count, plural, other {# 块屏幕}}离线——请检查电源和网络。",
-      "actionDark": "{location} 有 {count, plural, other {# 块屏幕}}未显示内容——打开查看播放器。",
-      "actionEmergency": "{location} 无法显示紧急警报——请添加警报内容。",
-      "actionDrift": "{location} 有 {count, plural, other {# 块屏幕}}尚未收到最新内容。",
+      "actionOffline": "{count, plural, other {# 块屏幕离线}}——请检查电源和网络。",
+      "actionDark": "{count, plural, other {# 块屏幕超过 5 分钟未确认画面}}。",
+      "actionEmergency": "{count, plural, other {# 个地点}}尚无法显示紧急警报。",
+      "actionDrift": "{count, plural, other {# 块屏幕尚未确认已发送的更新。}}",
       "allGood": "一切正常播放，目前无需处理。",
-      "noScreens": "这里还没有屏幕。"
+      "noScreens": "这里还没有屏幕。",
+      "syncing": "{count, plural, other {# 块屏幕正在确认刚发送的更新。}}",
+      "appUpdating": "{count, plural, other {# 块屏幕正在用上一版网页播放器播放——会自动更新。}}",
+      "placeLine": "{location} · {count, plural, other {# 块屏幕}}",
+      "fix": "处理",
+      "placesAria": "需要处理的地点",
+      "morePlaces": "另有 {count} 个——在地图上显示"
     }
   },
   "screens": {
@@ -5449,5 +5455,58 @@
     "stripLabel": "页面",
     "openPage": "打开页面 {name}",
     "showShared": "显示共享层"
+  },
+  "fleetMap": {
+    "unplaced": "没有地址的屏幕",
+    "filters": {
+      "all": "全部",
+      "healthy": "正常",
+      "offline": "离线",
+      "drift": "内容未同步",
+      "push": "推送问题",
+      "emergency": "紧急设置缺口"
+    },
+    "tile": {
+      "offline": "离线",
+      "no-picture": "无画面",
+      "behind": "未确认",
+      "syncing": "同步中",
+      "playing": "播放中",
+      "unconfirmed": "未确认画面"
+    },
+    "tileAppUpdating": "正在用上一版网页播放器播放——会自动更新。",
+    "panel": {
+      "playing": "{count} 块播放中",
+      "behind": "{count} 块未确认",
+      "syncing": "{count} 块同步中",
+      "offline": "{count} 块离线",
+      "noPicture": "{count} 块无画面",
+      "unconfirmed": "{count} 块未确认画面"
+    },
+    "fix": {
+      "aria": "此处需要处理的问题",
+      "title": "在这里处理",
+      "emergencyGap": "此地点尚无法显示紧急警报。",
+      "addAlertContent": "添加警报内容",
+      "askAdmin": "此操作需要管理员——请联系管理员处理。",
+      "offlineTitle": "{count, plural, other {# 块屏幕离线}}",
+      "lastAnswered": "最后响应于 {ago}前",
+      "notAnswering": "未响应签到",
+      "troubleshoot": "排查问题",
+      "offlineHint": "重新加载无法到达离线屏幕。请到现场检查电源和网络——恢复后会自动获取所有待处理内容。",
+      "behindTitle": "{count, plural, other {# 块屏幕尚未确认更新}}",
+      "updateSent": "更新已于 {ago}前发送，尚未确认",
+      "updateSentUndated": "更新已发送，尚未确认",
+      "lastPicture": "最后确认画面于 {ago}前",
+      "darkTitle": "{count, plural, other {# 块屏幕未确认画面}}",
+      "noPictureYet": "尚未确认画面",
+      "openScreen": "打开屏幕",
+      "sendUpdate": "{count, plural, other {立即向 # 块屏幕发送更新}}",
+      "sending": "发送中…",
+      "sent": "{count, plural, other {已发送到 # 块屏幕}}",
+      "sentHint": "已发送。每块屏幕会在约一分钟内重新加载并确认。",
+      "sendFailed": "{count, plural, other {无法发送到 # 块屏幕：{names}。}}请重试。",
+      "syncing": "{count, plural, other {# 块屏幕正在确认刚发送的更新。}}"
+    }
   }
 }

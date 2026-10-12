@@ -20,8 +20,9 @@ import { Loader2, QrCode, Wifi, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   usePlaylists, useSchedules, useScreenGroups, useScreens, useFleet, useFleetOperations,
-  useUpdateScreenGroup, useUpdateScreenLocation,
+  useUpdateScreenGroup, useUpdateScreenLocation, useDistrictReadiness,
 } from '@/hooks/use-api';
+import { emergencyGapOf } from '@/components/fleet-map/mapAlerts';
 import { apiFetch } from '@/lib/api-client';
 import { useBranding } from '@/lib/branding-context';
 import { useUIStore } from '@/store/ui-store';
@@ -94,6 +95,12 @@ export default function ScreensPage() {
   // enabled buttons the API answers with 403.
   const canControlDisplay =
     userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
+  // This location's emergency readiness, for the map's "Emergency gaps" chip and
+  // alert (2026-10-12) — the same report the organisation map grades, which
+  // for a single location is its own one row. Admin-only server-side; any
+  // other role reads no gap (unknown is never a gap).
+  const readinessQuery = useDistrictReadiness({ enabled: canControlDisplay && !companyMode });
+  const ownReadiness = readinessQuery.data?.schools.find((s) => s.isSelf) ?? null;
 
 
   // ── deep links, read once and stripped (§7 + the dashboard's link) ──
@@ -325,7 +332,10 @@ export default function ScreensPage() {
             onOpenScreen={navigation.onOpenScreen} onLocationList={(id) => { changeLocation([id]); navigation.onList(); }} />
         ) : (
           <ScreenLocationAtlas screens={visible} rows={navigation.rows} groups={groups}
-            logoUrl={branding?.logoUrl ?? null} onOpenScreen={navigation.onOpenScreen} onList={navigation.onList} />
+            logoUrl={branding?.logoUrl ?? null} onOpenScreen={navigation.onOpenScreen} onList={navigation.onList}
+            deployedSha={deployed.sha} deployedBundleId={deployed.bundleId}
+            locationName={ownReadiness?.name ?? branding?.displayName ?? ''}
+            emergencyGap={emergencyGapOf(ownReadiness?.verdict, screens.length > 0)} />
         )}
         floorSlot={companyMode ? null : <FloorPlansView embedded />}
         connectSlot={

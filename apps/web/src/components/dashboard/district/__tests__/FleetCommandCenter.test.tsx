@@ -395,7 +395,7 @@ describe('FleetCommandCenter', () => {
     // "City, ST" from the address tail — the mock's second line.
     expect(panel).toHaveTextContent('Walnut Creek, CA');
     // The mock's stat rows, off the SAME LocationRow the table reads.
-    expect(panel).toHaveTextContent('1 current');
+    expect(panel).toHaveTextContent('1 playing');
     expect(panel).toHaveTextContent('1 offline');
     // Emergency is its own row and its own verdict — never inferred.
     expect(panel).toHaveTextContent('Emergency cache');
@@ -1048,7 +1048,7 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(pinTones()).toContain('Peak North=ok');
   });
 
-  it('the live summary counts what the map shows, filters it, and names the first fix (2026-10-12)', () => {
+  it('the live summary covers EVERY location, its chips filter only the pins, and an alert opens the card on the fix (2026-10-12)', () => {
     renderAtlas();
     // jsdom doesn't apply responsive CSS; both placements carry the same data.
     const cards = rtl.getAllByRole('group', { name: 'Live screen summary' });
@@ -1058,17 +1058,25 @@ describe('FleetCommandCenter · map stat cards', () => {
     expect(card.getByText('2 playing')).toBeInTheDocument();
     // The old static legend is gone — it carried no data.
     expect(rtl.queryByRole('group', { name: 'Status guide' })).not.toBeInTheDocument();
-    // The single most important action: the offline screen, by location.
-    const action = card.getByRole('button', { name: /1 screen offline at Peak West/ });
-    // Count chips filter the map (same predicate as the map chips).
-    fireEvent.click(card.getByRole('button', { name: '1 not showing content' }));
+    // The single most important problem, and EVERY location that has it.
+    expect(card.getByText('1 screen is offline — check power and network.')).toBeInTheDocument();
+    const action = card.getByRole('button', { name: /Peak West · 1 screen/ });
+    // A count chip filters the PINS — never the summary (the old card shrank
+    // to the chip's subset and could not name a second location).
+    fireEvent.click(card.getByRole('button', { name: '1 with no picture confirmed' }));
     expect(pinTones()).toEqual(['Iron Peak HQ=bad']);
-    expect(within(rtl.getAllByRole('group', { name: 'Live screen summary' })[0]).getByText('1 screen')).toBeInTheDocument();
-    fireEvent.click(within(rtl.getAllByRole('group', { name: 'Live screen summary' })[0]).getByRole('button', { name: '1 not showing content' }));
-    expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pins', '3');
-    // The action line SELECTS the location — it never navigates away.
+    expect(within(rtl.getAllByRole('group', { name: 'Live screen summary' })[0]).getByText('4 screens')).toBeInTheDocument();
+    // The alert is a door: it selects Peak West, puts it back on the map
+    // (its own problem's chip) and opens its card ON the fix — no navigation.
     fireEvent.click(action);
     expect(rtl.getByTestId('fleet-map')).toHaveAttribute('data-pin-selected', 'Peak West');
+    expect(pinTones()).toContain('Peak West=bad');
+    const panel = rtl.getByRole('group', { name: 'Peak West details' });
+    const fix = within(panel).getByRole('region', { name: 'What to fix here' });
+    expect(fix).toHaveTextContent('1 screen offline');
+    // Offline's fix is the Screens drawer (a reload cannot reach it).
+    fireEvent.click(within(fix).getByRole('button', { name: 'Troubleshoot' }));
+    expect(mockRouterPush).toHaveBeenCalledWith(expect.stringContaining('screen=w-dark'));
     expect(switchToTenant).not.toHaveBeenCalled();
     // Our wire vocabulary must not leak into the operator's map.
     expect(rtl.queryByText(/paint/i)).not.toBeInTheDocument();

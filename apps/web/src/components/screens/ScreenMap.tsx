@@ -983,13 +983,34 @@ function FlyToTarget({ target, nonce }: { target: [number, number] | null; nonce
  * should keep that frame when a list row brings a store into view. `nonce`
  * re-runs it for a repeat click on the same store.
  */
-function PanTo({ target }: { target: { lat: number; lng: number; nonce: number } | null }) {
+/**
+ * With `zoom` (2026-10-12 — a map alert or a pin click "takes you to fix the
+ * issue"): fly IN to at least that zoom, never out, and centre the place in
+ * the part of the map the selected-location card (372 px, top-right) does not
+ * cover, so the pin and its card are both in view.
+ */
+export type MapPanTarget = { lat: number; lng: number; nonce: number; zoom?: number };
+
+/** Width the floating selected-location card covers on the right. */
+const SELECTED_CARD_PX = 384;
+
+function PanTo({ target }: { target: MapPanTarget | null }) {
   const map = useMap();
   const nonce = target?.nonce;
   const lat = target?.lat;
   const lng = target?.lng;
+  const zoom = target?.zoom;
   useEffect(() => {
     if (lat == null || lng == null) return;
+    if (zoom != null && map.getZoom() < zoom) {
+      const size = map.getSize();
+      // Shift the centre right by half the card, so the pin sits in the
+      // uncovered left part — only when the map is wide enough for both.
+      const shift = size.x > SELECTED_CARD_PX * 1.8 ? SELECTED_CARD_PX / 2 : 0;
+      const centre = map.unproject(map.project(L.latLng(lat, lng), zoom).add([shift, 0]), zoom);
+      map.flyTo(centre, zoom, { animate: true, duration: 0.6 });
+      return;
+    }
     // Already comfortably in frame → leave the view alone. Panning a pin the
     // operator can already see throws their whole region away for nothing.
     // The negative pad shrinks the test box by 20% a side, which is roughly
@@ -997,7 +1018,7 @@ function PanTo({ target }: { target: { lat: number; lng: number; nonce: number }
     // counts as NOT visible and does get centred.
     if (map.getBounds().pad(-0.2).contains(L.latLng(lat, lng))) return;
     map.panTo([lat, lng], { animate: true, duration: 0.5 });
-  }, [map, lat, lng, nonce]);
+  }, [map, lat, lng, zoom, nonce]);
   return null;
 }
 
@@ -1036,7 +1057,7 @@ interface Props {
   /** Override the space reserved for the Atlas's top-left overlay. */
   fitPadTopLeft?: [number, number];
   /** Centre the map here (keeping the current zoom). `nonce` re-fires it. */
-  panTo?: { lat: number; lng: number; nonce: number } | null;
+  panTo?: MapPanTarget | null;
 }
 
 export function ScreenMap({

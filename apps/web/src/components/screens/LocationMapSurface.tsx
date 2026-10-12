@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
-import type { LocationPin } from "./ScreenMap";
+import type { LocationPin, MapPanTarget } from "./ScreenMap";
 import { ScreenMapClient } from "./ScreenMapClient";
 
 /** Compact cards leave the map's width available to the locations. */
@@ -24,7 +24,7 @@ export function LocationMapSurface({
   locationPins: LocationPin[];
   total: number;
   onLocationClick: (id: string) => void;
-  panTo?: { lat: number; lng: number; nonce: number } | null;
+  panTo?: MapPanTarget | null;
   /** Fleet dashboard opens with collapsed cards; Screens keeps its navigation rail. */
   compact?: boolean;
   empty: ReactNode;

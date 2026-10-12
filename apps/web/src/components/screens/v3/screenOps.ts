@@ -51,7 +51,7 @@ import {
   type OpsMessage,
 } from '../contentDownload';
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
-import { contentBehindCause } from '@/components/dashboard/district/fleetCommand';
+import { contentBehindCause, PUSH_CONFIRM_GRACE_MS } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
 import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
@@ -334,8 +334,11 @@ export interface DeriveStatusInput {
  * confirmation it reports afterwards — up to ~70 s on a player build that
  * predates the immediate confirmation (2026-09-28) — so 90 s covers that with
  * slack and a genuinely stuck screen still goes red within two minutes.
+ *
+ * Defined once in fleetCommand.ts (2026-10-12) so the fleet map's "syncing"
+ * and this page's "syncing" are the same window.
  */
-export const PUSH_CONFIRM_GRACE_MS = 90_000;
+export { PUSH_CONFIRM_GRACE_MS };
 
 /**
  * Collapse every independent truth about one screen into the single

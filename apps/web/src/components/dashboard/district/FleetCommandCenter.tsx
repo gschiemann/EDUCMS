@@ -57,22 +57,29 @@ import type {
   FleetPulseResponse, FleetPulsePoint,
 } from '@/hooks/use-api';
 import {
-  buildFleetCommand, buildLocationPanel, groupInbox, isContentBehind,
+  buildFleetCommand, buildLocationPanel, groupInbox,
   atlasRowLines, parseCityState,
   // Shared with the phone's Fleet Command (2026-09-01) — see fleetCommand.ts.
   ASSURANCE_LABEL, worstLine, locationTone, worstPath,
-  type AssuranceState, type ExceptionRow, type LocationRow,
+  type AssuranceState, type ExceptionRow, type FleetCommandScreen, type LocationRow,
 } from './fleetCommand';
 import { AnchoredMenu } from '@/components/ui/anchored-menu';
-import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 import { ProofDrawer, timeAgo, type ProofDrawerScreen } from './ProofDrawer';
 import { computeUptime, type DisplayScheduleRow } from './uptime';
 import { UptimeCard } from './UptimeCard';
-import { FleetLiveSummary, summarizeLiveFleet } from './FleetLiveSummary';
+import { FleetLiveSummary } from './FleetLiveSummary';
 import { LocationMapSurface, LocationMapFilters } from '@/components/screens/LocationMapSurface';
 // Type-only — erased at compile time, so the dashboard bundle still reaches
 // Leaflet exclusively through the ssr:false dynamic import above.
-import type { LocationPin } from '@/components/screens/ScreenMap';
+import type { LocationPin, MapPanTarget } from '@/components/screens/ScreenMap';
+import { useTranslations } from 'next-intl';
+import {
+  ALERT_FILTER, MAP_FILTER_CHIPS, emergencyGapOf, matchesMapFilter, placeTone, summarizeMapAlerts,
+  toMapAlertScreen, type MapAlertKind, type MapAlertScreen, type MapFilterKey, type MapPlace,
+} from '@/components/fleet-map/mapAlerts';
+import { MapPlaceFix } from '@/components/fleet-map/MapPlaceFix';
+import { MAP_STATE_STYLE, useMapStateLabel } from '@/components/fleet-map/MapScreenBadge';
+import { FOCUS_ZOOM, useFocusOnNonce } from '@/components/fleet-map/focus';
 
 /** The mock's card: white on the page's slate ground, hairline, barely a shadow. */
 const CARD = 'min-w-0 max-w-full bg-white rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(15,23,42,0.05)]';
@@ -196,34 +203,11 @@ function initialsOf(name: string): string {
  * the table and the ring read, so a chip can never select a set the rest of
  * the page would grade differently.
  */
-// 'dark' has no chip of its own — the live summary's "not showing content"
-// count is its way in (2026-10-12).
-type AtlasFilterKey = 'all' | 'healthy' | 'offline' | 'drift' | 'push' | 'emergency' | 'dark';
-const ATLAS_FILTERS: Array<{ key: AtlasFilterKey; label: string; dot?: string; Icon?: typeof ShieldAlert }> = [
-  { key: 'all', label: 'All' },
-  { key: 'healthy', label: 'Healthy', dot: '#10b981' },
-  { key: 'offline', label: 'Offline', dot: '#f43f5e' },
-  { key: 'drift', label: 'Content drift', dot: '#f59e0b' },
-  { key: 'push', label: 'Push issues', dot: '#f43f5e' },
-  { key: 'emergency', label: 'Emergency gaps', Icon: ShieldAlert },
-];
-
-/** Does this location belong in the chip's slice? */
-function matchesAtlasFilter(row: LocationRow, key: AtlasFilterKey): boolean {
-  switch (key) {
-    case 'all': return true;
-    case 'healthy': return locationTone(row) === 'ok';
-    // 2026-09-14 (Greg: "make it easier on the map to find a problem screen") — the
-    // most common problem had no chip: a location with an expected screen not answering.
-    case 'offline': return row.screensOffline > 0;
-    case 'drift': return row.contentBehind > 0;
-    case 'push': return row.pushStale > 0;
-    case 'dark': return row.notPainting > 0;
-    // "Isn't Ready" — but never UNKNOWN: a readiness check that has not
-    // answered is not evidence of a gap (never cry wolf).
-    case 'emergency': return row.readiness === 'NEEDS_ATTENTION' || row.readiness === 'NOT_CONFIGURED';
-  }
-}
+// 2026-10-12 — the chips, their matcher and the summary are the SHARED map
+// path (`@/components/fleet-map/mapAlerts`), the same one the Screens map a
+// standard account sees uses. A location is a `MapPlace` built from its
+// screens graded by `gradeMapScreen`; the LocationRow's counts come from the
+// same grader, so chips, ring, table and card agree.
 
 /** Dot colors for the grouped inbox headings — semantic, never brand. */
 const GROUP_DOT: Record<'bad' | 'warn' | 'muted', string> = {
@@ -545,12 +529,19 @@ export function FleetCommandCenter({
   const deployedSha = deployed.sha;
   const deployedBundleId = deployed.bundleId;
 
+  // ONE clock read per payload: the location counts, the map's per-screen
+  // grades and the summary are all measured against this instant, so a
+  // "syncing" screen cannot be syncing in one and behind in another.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when the data changes, never on a timer
+  const gradedAt = useMemo(() => Date.now(), [scoped, deployedSha, deployedBundleId]);
+
   const fc = useMemo(
     () =>
       buildFleetCommand({
         screens: scoped.fleet.screens as any,
         deployedSha,
         deployedBundleId,
+        now: gradedAt,
         rollupInput: {
           locations: scoped.fleet.locations,
           rootId: fleet.root?.id ?? null,
@@ -559,7 +550,7 @@ export function FleetCommandCenter({
           approvals: scoped.approvals,
         },
       }),
-    [scoped, fleet.root?.id, deployedSha, deployedBundleId],
+    [scoped, fleet.root?.id, deployedSha, deployedBundleId, gradedAt],
   );
 
   const vertical = normalizeVertical((fleet.root as { vertical?: string | null } | null)?.vertical);
@@ -607,36 +598,37 @@ export function FleetCommandCenter({
   const visible = fc.locations as LocationRow[];
 
   // ── Atlas pin filter (Network Atlas mock parity) ──────────────────
-  // The mock's five chips float over the map. Every one of them is a slice of
-  // the SAME LocationRow the table and the pin rings read (matchesAtlasFilter
-  // above), so a chip can never select a set the rest of the page grades
-  // differently.
-  const [atlasFilter, setAtlasFilter] = useState<AtlasFilterKey>('all');
-  const needsAttention = useMemo(() => {
-    return (s: FleetResponse['screens'][number]) =>
-      s.status !== 'ONLINE' ||
-      deriveRenderTrustGrade({
-        status: s.status,
-        renderHealth: s.renderHealth ?? null,
-        renderStale: s.renderStale ?? null,
-      }) !== 'painting' ||
-      isContentBehind(
-        {
-          status: s.status,
-          lastBundleSha: s.lastBundleSha ?? null,
-          lastBundleId: s.lastBundleId ?? null,
-          pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
-          refreshAckMs: s.refreshAckMs ?? null,
-        },
-        deployedSha,
-        deployedBundleId,
-      );
-  }, [deployedSha, deployedBundleId]);
-  /** Screens the map's own predicate says need someone — also the stat card. */
-  const attentionCount = useMemo(
-    () => scoped.fleet.screens.filter(needsAttention).length,
-    [scoped.fleet.screens, needsAttention],
+  // The chips float over the map. Each is a slice of the SAME MapPlace the
+  // ring, the card and the summary read (`matchesMapFilter`, shared with the
+  // Screens map), so a chip can never select a set the page grades otherwise.
+  const tMap = useTranslations('fleetMap');
+  const mapStateLabel = useMapStateLabel();
+  const [atlasFilter, setAtlasFilter] = useState<MapFilterKey>('all');
+  const atlasFilters = useMemo(
+    () => MAP_FILTER_CHIPS.map((f) => ({
+      key: f.key,
+      label: tMap(`filters.${f.key}`),
+      dot: f.dot,
+      Icon: f.shield ? ShieldAlert : undefined,
+    })),
+    [tMap],
   );
+  /** Every screen in scope, graded ONCE by `gradeMapScreen`. */
+  const mapScreenById = useMemo(() => {
+    const m = new Map<string, MapAlertScreen>();
+    for (const s of scoped.fleet.screens) {
+      m.set(s.id, toMapAlertScreen(s as unknown as FleetCommandScreen, deployedSha, deployedBundleId, gradedAt));
+    }
+    return m;
+  }, [scoped.fleet.screens, deployedSha, deployedBundleId, gradedAt]);
+  /** Screens that need someone — offline, no picture, update not confirmed. */
+  const attentionCount = useMemo(() => {
+    let n = 0;
+    for (const s of mapScreenById.values()) {
+      if (s.grade.state === 'offline' || s.grade.state === 'no-picture' || s.grade.state === 'behind') n += 1;
+    }
+    return n;
+  }, [mapScreenById]);
 
   // ── Selected location (Network Atlas mock parity) ─────────────────
   // A pin click NEVER teleports: it SELECTS. The card names the location,
@@ -656,6 +648,25 @@ export function FleetCommandCenter({
     }
     return m;
   }, [scoped.fleet.screens]);
+
+  /**
+   * The map's places — one per location, worst first (the rollup's order).
+   * Built from the graded screens, exactly as the Screens map builds its own.
+   */
+  const places = useMemo<MapPlace[]>(
+    () =>
+      fc.locations.map((row) => ({
+        id: row.tenantId,
+        name: row.name,
+        screens: (screensByTenant.get(row.tenantId) ?? [])
+          .map((s) => mapScreenById.get(s.id))
+          .filter((s): s is MapAlertScreen => !!s),
+        pushStale: row.pushStale,
+        emergencyGap: emergencyGapOf(row.readiness, row.hasScreens),
+      })),
+    [fc.locations, screensByTenant, mapScreenById],
+  );
+  const placeById = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
 
   // ── Where each location sits ──────────────────────────────────────
   // Coordinates come from a SCREEN's effective geo first (screen pin > group
@@ -712,42 +723,33 @@ export function FleetCommandCenter({
         lat: at.lat,
         lng: at.lng,
         // Solid ring in the worst active tone (2026-09-14) — see LocationPin.tone.
-        tone: locationTone(row),
+        // `placeTone` is the shared map ring (Screens map too); a test pins it
+        // to `locationTone`, which the table and the card print.
+        tone: placeById.has(row.tenantId) ? placeTone(placeById.get(row.tenantId)!) : locationTone(row),
         logoUrl: locationMeta.get(row.tenantId)?.logoUrl ?? logoUrl ?? null,
         initials: initialsOf(row.name),
         selected: selectedTenantId === row.tenantId,
       });
     }
     return pins;
-  }, [locationGeo, locationMeta, fc.locations, logoUrl, selectedTenantId]);
+  }, [locationGeo, locationMeta, fc.locations, logoUrl, selectedTenantId, placeById]);
 
-  /** Pins after the chips — filtered on the LocationRow, never re-graded. */
+  /** Pins after the chips — filtered on the shared MapPlace, never re-graded. */
   const locationPins = useMemo(() => {
     if (atlasFilter === 'all') return allLocationPins;
-    const keep = new Set(
-      fc.locations.filter((row) => matchesAtlasFilter(row, atlasFilter)).map((row) => row.tenantId),
-    );
-    return allLocationPins.filter((p) => keep.has(p.id));
-  }, [allLocationPins, fc.locations, atlasFilter]);
+    return allLocationPins.filter((p) => {
+      const place = placeById.get(p.id);
+      return !!place && matchesMapFilter(place, atlasFilter);
+    });
+  }, [allLocationPins, placeById, atlasFilter]);
   const mappableCount = locationPins.length;
   /**
-   * Live summary for exactly what the map is showing (2026-10-12 — replaces
-   * the static "Status guide"). Rows are the chip-filtered LocationRows;
-   * "playing" is the same per-screen predicate as the "Need attention" card.
+   * Live summary for EVERY location in scope (2026-10-12). It used to cover
+   * only the chip-filtered rows, so with "Content drift" on it could never
+   * name a second location; and "playing" meant "needs nothing", so a screen
+   * playing on the previous web player counted as not playing.
    */
-  const liveSummary = useMemo(
-    () =>
-      summarizeLiveFleet(
-        fc.locations.filter((row) => matchesAtlasFilter(row, atlasFilter)),
-        scoped.fleet.screens.map((s) => ({
-          tenantId: s.sourceTenant?.id ?? null,
-          status: s.status,
-          lastPingAt: s.lastPingAt ?? null,
-          needsAttention: needsAttention(s),
-        })),
-      ),
-    [fc.locations, atlasFilter, scoped.fleet.screens, needsAttention],
-  );
+  const liveSummary = useMemo(() => summarizeMapAlerts(places), [places]);
   /** Pins BEFORE the filter — separates "no addresses" from "no match". */
   const mappableTotal = allLocationPins.length;
 
@@ -847,46 +849,43 @@ export function FleetCommandCenter({
   // A pin click and an inbox-row click do the SAME thing: select. The map
   // pans to keep the selection in view — at the CURRENT zoom, so an operator
   // who framed their region keeps that frame.
-  const [panTarget, setPanTarget] = useState<{ lat: number; lng: number; nonce: number } | null>(null);
+  const [panTarget, setPanTarget] = useState<MapPanTarget | null>(null);
   const panNonce = useRef(0);
-  const panToLocation = (tenantId: string) => {
+  const panToLocation = (tenantId: string, zoom?: number) => {
     const at = locationGeo.get(tenantId);
     if (!at) return;
     panNonce.current += 1;
-    setPanTarget({ lat: at.lat, lng: at.lng, nonce: panNonce.current });
+    setPanTarget({ lat: at.lat, lng: at.lng, nonce: panNonce.current, ...(zoom ? { zoom } : {}) });
   };
-  /** Pin click — select only, never a teleport out of the map. */
-  const selectLocation = (tenantId: string) => {
+  /**
+   * The ONE way into a location's fix (2026-10-12 — owner: "the button clicks
+   * took me zoomed in to the location and i think it should have auto popped
+   * the card as well"). A pin and a summary alert both: select the location
+   * (its card opens), zoom the map to it, and move focus onto the card's fix
+   * block — which sits at the top of the card, so the problem is in view.
+   */
+  const [fixFocusNonce, setFixFocusNonce] = useState(0);
+  const fixRef = useFocusOnNonce<HTMLDivElement>(fixFocusNonce);
+  const focusLocation = (tenantId: string) => {
     setSelectedTenantId(tenantId);
     setSelectedRowKey(null);
+    panToLocation(tenantId, FOCUS_ZOOM);
+    setFixFocusNonce((n) => n + 1);
+  };
+  /** Pin click. */
+  const selectLocation = (tenantId: string) => focusLocation(tenantId);
+  /** Summary alert: keep the chosen location drawn, then focus it. */
+  const onSummaryAlert = (kind: MapAlertKind, tenantId: string) => {
+    const place = placeById.get(tenantId);
+    if (place && atlasFilter !== 'all' && !matchesMapFilter(place, atlasFilter)) {
+      setAtlasFilter(ALERT_FILTER[kind]);
+    }
+    focusLocation(tenantId);
   };
   const selectInboxRow = (row: ExceptionRow, key: string) => {
     setSelectedRowKey(key);
     setSelectedTenantId(row.tenantId);
     panToLocation(row.tenantId);
-  };
-
-  /** A screen tile's badge — the same three graded facts the table prints. */
-  const screenTileState = (s: FleetResponse['screens'][number]) => {
-    if (s.status !== 'ONLINE') return { label: 'OFFLINE', cls: 'text-rose-600', Icon: MonitorX };
-    if (isContentBehind(
-      {
-        status: s.status,
-        lastBundleSha: s.lastBundleSha ?? null,
-        lastBundleId: s.lastBundleId ?? null,
-        pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
-        refreshAckMs: s.refreshAckMs ?? null,
-      },
-      deployedSha,
-      deployedBundleId,
-    )) return { label: 'BEHIND', cls: 'text-amber-600', Icon: AlertCircle };
-    const grade = deriveRenderTrustGrade({
-      status: s.status,
-      renderHealth: s.renderHealth ?? null,
-      renderStale: s.renderStale ?? null,
-    });
-    if (grade === 'not-painting') return { label: 'NO PICTURE', cls: 'text-rose-600', Icon: MonitorX };
-    return { label: 'CURRENT', cls: 'text-emerald-600', Icon: CheckCircle2 };
   };
 
   /**
@@ -1590,7 +1589,7 @@ export function FleetCommandCenter({
 
                 {/* ── Filter chips, floating top-right (mock parity) ──── */}
                 {mappableTotal > 0 && (
-                  <LocationMapFilters filters={ATLAS_FILTERS} selected={atlasFilter} onChange={setAtlasFilter} />
+                  <LocationMapFilters filters={atlasFilters} selected={atlasFilter} onChange={setAtlasFilter} />
                 )}
 
                 {/* No pins matched the chip. The map stays put and stays
@@ -1749,6 +1748,7 @@ export function FleetCommandCenter({
                   const city = parseCityState(selectedAddress);
                   const lastPush = lastPushByTenant.get(selectedLocation.tenantId);
                   const mine = screensByTenant.get(selectedLocation.tenantId) ?? [];
+                  const place = placeById.get(selectedLocation.tenantId);
                   return (
                     <div
                       className="absolute top-[60px] lg:top-[60px] right-3 z-[1000] w-[372px] max-w-[calc(100%-1.5rem)] max-h-[calc(100%-4.75rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.16)] overflow-hidden flex flex-col"
@@ -1798,23 +1798,41 @@ export function FleetCommandCenter({
                           </span>
                         </div>
 
+                        {/* The fix — first thing under the name, so an alert
+                            that opens this card lands ON the problem. Shared
+                            with the Screens map. */}
+                        {place && (
+                          <MapPlaceFix
+                            ref={fixRef}
+                            screens={place.screens}
+                            emergencyGap={place.emergencyGap != null}
+                            onOpenScreen={(id) => openScreen(selectedLocation, id)}
+                            onFixEmergency={() => enter(selectedLocation, 'settings/emergency')}
+                            now={gradedAt}
+                          />
+                        )}
+
                         <dl className="px-4 pb-3 border-t border-slate-100 pt-2.5 space-y-2">
                           <PanelStat Icon={MonitorPlay} label="Screens">
                             {panel.screensTotal === 0 ? '—' : (
+                              // Every count is `gradeMapScreen` (via the row) —
+                              // the same verdicts the tiles below print.
                               <>
-                                <span className="text-emerald-600">{panel.screensCurrent} current</span>
-                                {panel.screensBehind > 0 && (
-                                  <>
-                                    <span className="text-slate-300"> · </span>
-                                    <span className="text-amber-600">{panel.screensBehind} behind</span>
-                                  </>
-                                )}
-                                {panel.screensOffline > 0 && (
-                                  <>
-                                    <span className="text-slate-300"> · </span>
-                                    <span className="text-rose-600">{panel.screensOffline} offline</span>
-                                  </>
-                                )}
+                                {([
+                                  ['playing', panel.screensCurrent, 'text-emerald-600'],
+                                  ['syncing', panel.screensSyncing, 'text-slate-500'],
+                                  ['behind', panel.screensBehind, 'text-amber-600'],
+                                  ['noPicture', panel.screensNoPicture, 'text-rose-600'],
+                                  ['offline', panel.screensOffline, 'text-rose-600'],
+                                  ['unconfirmed', panel.screensUnconfirmed, 'text-slate-500'],
+                                ] as const)
+                                  .filter(([key, n]) => n > 0 || key === 'playing')
+                                  .map(([key, n, cls], i) => (
+                                    <span key={key}>
+                                      {i > 0 && <span className="text-slate-300"> · </span>}
+                                      <span className={cls}>{tMap(`panel.${key}`, { count: n })}</span>
+                                    </span>
+                                  ))}
                               </>
                             )}
                           </PanelStat>
@@ -1864,14 +1882,18 @@ export function FleetCommandCenter({
                             </div>
                             <div className="px-4 pb-3 grid grid-cols-3 gap-2">
                               {mine.slice(0, ATLAS_SCREEN_TILES).map((s) => {
-                                const st = screenTileState(s);
+                                const graded = mapScreenById.get(s.id);
+                                const st = graded
+                                  ? mapStateLabel(graded.grade)
+                                  : { label: tMap('tile.unconfirmed'), note: null, ...MAP_STATE_STYLE.unconfirmed };
                                 const preview = previewForScreen(s);
                                 return (
                                   <button
                                     key={s.id}
                                     type="button"
                                     onClick={() => openScreen(selectedLocation, s.id)}
-                                    title={`${s.name} — open this screen`}
+                                    title={st.note ? `${s.name} — ${st.note}` : `${s.name} — open this screen`}
+                                    data-map-state={graded?.grade.state}
                                     className="text-left min-w-0"
                                   >
                                     <span className="block aspect-video rounded-lg overflow-hidden border border-slate-200 relative bg-slate-100">
@@ -1986,7 +2008,7 @@ export function FleetCommandCenter({
                     summary={liveSummary}
                     filter={atlasFilter}
                     onFilter={setAtlasFilter}
-                    onSelectLocation={setSelectedTenantId}
+                    onAlert={onSummaryAlert}
                     className="hidden lg:block absolute bottom-3 right-3 z-[1000] w-[300px] max-w-[calc(100%-1.5rem)] bg-white rounded-2xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.14)] px-4 py-3"
                   />
                 )}
@@ -1996,7 +2018,7 @@ export function FleetCommandCenter({
                   summary={liveSummary}
                   filter={atlasFilter}
                   onFilter={setAtlasFilter}
-                  onSelectLocation={setSelectedTenantId}
+                  onAlert={onSummaryAlert}
                   className={`${CARD} lg:hidden px-4 py-3`}
                 />
               )}

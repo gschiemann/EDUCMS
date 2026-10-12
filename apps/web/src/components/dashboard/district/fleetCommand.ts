@@ -147,8 +147,20 @@ export interface ConvergenceSummary {
 }
 
 export interface LocationRow extends SchoolScorecard {
-  /** Screens behind on content (bundle stale or unacked refresh), online only. */
+  /**
+   * Screens `gradeMapScreen` grades 'behind': an update was sent and is not
+   * confirmed past the grace window. A screen on the previous web player is
+   * NOT behind — it plays its content and updates itself.
+   */
   contentBehind: number;
+  /** `gradeMapScreen` → 'playing' (online, picture confirmed). */
+  screensPlaying: number;
+  /** `gradeMapScreen` → 'syncing' (update sent moments ago, confirmation due). */
+  screensSyncing: number;
+  /** `gradeMapScreen` → 'unconfirmed' (answering, no picture proof yet). */
+  screensUnconfirmed: number;
+  /** Playing on the previous web player — calm and self-healing, never an ask. */
+  screensAppUpdating: number;
   /** Online screens on the polling backstop (no live push channel). */
   pushStale: number;
   /**
@@ -246,7 +258,7 @@ function pingMs(s: Pick<FleetCommandScreen, 'lastPingAt'>): number | null {
  * count. (`authState` reached this read only through a cast until the fleet
  * payload carried it — 2026-09-27; absent still reads as null.)
  */
-function gradeOf(s: FleetCommandScreen) {
+function gradeOf(s: FleetCommandScreen, nowMs?: number) {
   return deriveRenderTrustGrade({
     status: s.status,
     renderHealth: s.renderHealth ?? null,
@@ -254,6 +266,7 @@ function gradeOf(s: FleetCommandScreen) {
     lastRenderedAtMs: s.lastRenderedAt ? new Date(s.lastRenderedAt).getTime() : null,
     lastRenderedHash: s.lastRenderedHash ?? null,
     authState: s.authState ?? null,
+    ...(nowMs != null ? { nowMs } : {}),
   });
 }
 
@@ -332,6 +345,70 @@ export function isContentBehind(
 }
 
 /**
+ * How long an outstanding push may go unconfirmed before it is a fault
+ * (2026-09-28). A screen reloads within seconds of a Resync, but its
+ * confirmation is a report it makes AFTER it is back — so for this window the
+ * honest word is "syncing", never "behind". The Screens page (`screenOps.ts`)
+ * re-exports this same constant.
+ */
+export const PUSH_CONFIRM_GRACE_MS = 90_000;
+
+/**
+ * THE per-screen verdict the fleet map prints (2026-10-12).
+ *
+ * Owner, RIOT Cleveland: the location card said "2 current · 1 behind", its
+ * three screen tiles each said BEHIND, and the summary under the map said
+ * "3 screens · 0 playing · 1 needs an update". Three graders were answering
+ * three different questions:
+ *   - the location row counted only an UNCONFIRMED PUSH as behind
+ *     (`push-unacked`, the 2026-09-21 rule);
+ *   - the tiles called `isContentBehind`, which ALSO counts a screen that is
+ *     merely running the previous web player (`stale-bundle` — it plays its
+ *     content and updates itself; after every web deploy that is nearly the
+ *     whole fleet);
+ *   - "playing" meant "needs nothing at all", so a stale-bundle screen that
+ *     was showing its content counted as NOT playing.
+ * Every map consumer — location counts, tiles, pin ring, chips, the summary
+ * and "playing" — now reads THIS function. The states are mutually
+ * exclusive, so a location's counts add up to its screen total.
+ *
+ * Precedence: offline > no picture > behind (an update was sent and is not
+ * confirmed past the grace window) > syncing (inside it) > playing (online,
+ * picture confirmed) > unconfirmed (answering but no picture proof — idle,
+ * downloading, checking, chronic silence, re-pair … — or never paired).
+ */
+export type MapScreenState = 'offline' | 'no-picture' | 'behind' | 'syncing' | 'playing' | 'unconfirmed';
+
+export interface MapScreenGrade {
+  state: MapScreenState;
+  /** Running the previous web player — content plays, it updates itself. */
+  appUpdating: boolean;
+  /** When the unconfirmed update was sent (behind / syncing only). */
+  pushSentAtMs: number | null;
+}
+
+export function gradeMapScreen(
+  s: FleetCommandScreen,
+  deployedSha: string | null,
+  deployedBundleId: string | null | undefined,
+  now: number,
+): MapScreenGrade {
+  if (s.status === 'OFFLINE') return { state: 'offline', appUpdating: false, pushSentAtMs: null };
+  const cause = contentBehindCause(s, deployedSha, deployedBundleId);
+  const appUpdating = cause === 'stale-bundle';
+  const render = gradeOf(s, now);
+  if (render === 'not-painting') return { state: 'no-picture', appUpdating, pushSentAtMs: null };
+  if (cause === 'push-unacked') {
+    const at = s.pendingRefreshAtMs ?? null;
+    const since = at == null ? null : now - at;
+    const syncing = since != null && since >= 0 && since < PUSH_CONFIRM_GRACE_MS;
+    return { state: syncing ? 'syncing' : 'behind', appUpdating: false, pushSentAtMs: at };
+  }
+  if (s.status === 'ONLINE' && render === 'painting') return { state: 'playing', appUpdating, pushSentAtMs: null };
+  return { state: 'unconfirmed', appUpdating, pushSentAtMs: null };
+}
+
+/**
  * Does this screen hold emergency content locally? Fails closed: a missing
  * report, a missing `emergency` block, or a zero count all read as NOT cached.
  * Never infer readiness from silence.
@@ -396,7 +473,14 @@ export function buildFleetCommand(input: {
   // not … be asking me to do shit all the time". Only the unconfirmed push
   // is an inbox row and a location's "behind" count. The "App current" pill
   // still reads `behind`: it is a statement about app version, not an ask.
-  const pushUnacked = behind.filter((s) => contentBehindCause(s, deployedSha, deployedBundleId) === 'push-unacked');
+  //
+  // 2026-10-12: a push still inside its confirmation window is 'syncing', not
+  // behind — same rule, same constant, as the Screens page and the map.
+  const pushUnacked = behind.filter(
+    (s) =>
+      contentBehindCause(s, deployedSha, deployedBundleId) === 'push-unacked'
+      && gradeMapScreen(s, deployedSha, deployedBundleId, now).state !== 'syncing',
+  );
   const gradeable = online.filter((s) => isContentGradeable(s, deployedSha, deployedBundleId));
   const pushStale = online.filter((s) => s.pushChannel === 'stale');
   const painting = online.filter((s) => gradeOf(s) === 'painting');
@@ -410,10 +494,22 @@ export function buildFleetCommand(input: {
   const notPainting = rollup.needsAction.notPaintingScreens;
 
   // ── per-location extension of the scorecards ─────────────────────
-  const behindByTenant = new Map<string, number>();
-  for (const s of pushUnacked) {
+  // Every per-screen count on a location comes from ONE grader
+  // (`gradeMapScreen`) — the tiles, chips, pin ring and summary read the same
+  // numbers, so the card can never say "1 behind" over three BEHIND tiles.
+  type MapCounts = Record<MapScreenState, number> & { appUpdating: number };
+  const mapCountsByTenant = new Map<string, MapCounts>();
+  for (const s of screens) {
     const t = s.sourceTenant?.id;
-    if (t) behindByTenant.set(t, (behindByTenant.get(t) ?? 0) + 1);
+    if (!t) continue;
+    let c = mapCountsByTenant.get(t);
+    if (!c) {
+      c = { offline: 0, 'no-picture': 0, behind: 0, syncing: 0, playing: 0, unconfirmed: 0, appUpdating: 0 };
+      mapCountsByTenant.set(t, c);
+    }
+    const g = gradeMapScreen(s, deployedSha, deployedBundleId, now);
+    c[g.state] += 1;
+    if (g.appUpdating && g.state === 'playing') c.appUpdating += 1;
   }
   const pushStaleByTenant = new Map<string, number>();
   for (const s of pushStale) {
@@ -431,7 +527,14 @@ export function buildFleetCommand(input: {
   const locations: LocationRow[] = rollup.schools
     .map((sc) => ({
       ...sc,
-      contentBehind: behindByTenant.get(sc.tenantId) ?? 0,
+      // Same verdict the rollup reached (both are the graded not-painting
+      // call); re-read here so every per-screen count on the row has ONE source.
+      notPainting: mapCountsByTenant.get(sc.tenantId)?.['no-picture'] ?? 0,
+      contentBehind: mapCountsByTenant.get(sc.tenantId)?.behind ?? 0,
+      screensPlaying: mapCountsByTenant.get(sc.tenantId)?.playing ?? 0,
+      screensSyncing: mapCountsByTenant.get(sc.tenantId)?.syncing ?? 0,
+      screensUnconfirmed: mapCountsByTenant.get(sc.tenantId)?.unconfirmed ?? 0,
+      screensAppUpdating: mapCountsByTenant.get(sc.tenantId)?.appUpdating ?? 0,
       pushStale: pushStaleByTenant.get(sc.tenantId) ?? 0,
       emergencyCached: cachedByTenant.get(sc.tenantId) ?? 0,
       hasScreens: sc.screensTotal > 0,
@@ -839,9 +942,15 @@ export interface LocationPanelStats {
   screensTotal: number;
   screensOnline: number;
   screensOffline: number;
-  /** Online and confirmed on the published content. */
+  /** `gradeMapScreen` → playing (online, picture confirmed). */
   screensCurrent: number;
+  /** `gradeMapScreen` → behind (update sent, not confirmed past the grace window). */
   screensBehind: number;
+  screensSyncing: number;
+  screensUnconfirmed: number;
+  screensNoPicture: number;
+  /** Of the playing screens, those on the previous web player (self-healing). */
+  screensAppUpdating: number;
   /** Live channel vs the ~10s polling backstop vs nothing to grade. */
   push: 'live' | 'slow' | 'unknown';
   emergencyCached: number;
@@ -938,13 +1047,18 @@ export function worstPath(row: LocationRow): string {
  * so the panel's status line can never disagree with the ring beside it.
  */
 export function buildLocationPanel(row: LocationRow, tone: 'ok' | 'warn' | 'bad'): LocationPanelStats {
-  const behind = Math.min(row.screensOnline, Math.max(0, row.contentBehind));
+  // Straight off the row's `gradeMapScreen` counts — never "online minus
+  // behind", which called every unconfirmed or syncing screen "current".
   return {
     screensTotal: row.screensTotal,
     screensOnline: row.screensOnline,
     screensOffline: row.screensOffline,
-    screensCurrent: Math.max(0, row.screensOnline - behind),
-    screensBehind: behind,
+    screensCurrent: row.screensPlaying,
+    screensBehind: row.contentBehind,
+    screensSyncing: row.screensSyncing,
+    screensUnconfirmed: row.screensUnconfirmed,
+    screensNoPicture: row.notPainting,
+    screensAppUpdating: row.screensAppUpdating,
     push: !row.hasScreens || row.screensOnline === 0 ? 'unknown' : row.pushStale > 0 ? 'slow' : 'live',
     emergencyCached: row.emergencyCached,
     readiness: row.readiness,

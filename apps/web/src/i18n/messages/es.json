@@ -1890,19 +1890,25 @@
       "playing": "{count} reproduciendo",
       "offline": "{count} sin conexión",
       "offlineSince": "{count} sin conexión (desde hace {since})",
-      "noPicture": "{count} sin mostrar contenido",
-      "needsUpdate": "{count, plural, one {# necesita actualizarse} other {# necesitan actualizarse}}",
+      "noPicture": "{count} sin imagen confirmada",
+      "needsUpdate": "{count, plural, one {# actualización sin confirmar} other {# actualizaciones sin confirmar}}",
       "filterHint": "Mostrar solo estas en el mapa",
       "showAll": "Volver a mostrar todo",
       "minutes": "{count, plural, one {# minuto} other {# minutos}}",
       "hours": "{count, plural, one {# hora} other {# horas}}",
       "days": "{count, plural, one {# día} other {# días}}",
-      "actionOffline": "{count, plural, one {# pantalla sin conexión} other {# pantallas sin conexión}} en {location}: revise la alimentación y la red.",
-      "actionDark": "{count, plural, one {# pantalla} other {# pantallas}} en {location} sin mostrar contenido: ábrala para revisar el reproductor.",
-      "actionEmergency": "{location} no puede mostrar una alerta de emergencia: agregue contenido de alerta.",
-      "actionDrift": "{count, plural, one {# pantalla} other {# pantallas}} en {location} aún no tienen el contenido más reciente.",
+      "actionOffline": "{count, plural, one {# pantalla está sin conexión} other {# pantallas están sin conexión}}: revise la alimentación y la red.",
+      "actionDark": "{count, plural, one {# pantalla no ha confirmado imagen} other {# pantallas no han confirmado imagen}} en más de 5 minutos.",
+      "actionEmergency": "{count, plural, one {# ubicación aún no puede} other {# ubicaciones aún no pueden}} mostrar una alerta de emergencia.",
+      "actionDrift": "{count, plural, one {# pantalla no ha confirmado la actualización que se le envió.} other {# pantallas no han confirmado la actualización que se les envió.}}",
       "allGood": "Todo se está reproduciendo. Nada requiere su atención ahora.",
-      "noScreens": "Aún no hay pantallas aquí."
+      "noScreens": "Aún no hay pantallas aquí.",
+      "syncing": "{count, plural, one {# pantalla está confirmando una actualización recién enviada.} other {# pantallas están confirmando una actualización recién enviada.}}",
+      "appUpdating": "{count, plural, one {# pantalla reproduce con el reproductor web anterior; se actualiza sola.} other {# pantallas reproducen con el reproductor web anterior; se actualizan solas.}}",
+      "placeLine": "{location} · {count, plural, one {# pantalla} other {# pantallas}}",
+      "fix": "Resolver",
+      "placesAria": "Dónde resolverlo",
+      "morePlaces": "+{count} más: verlas en el mapa"
     }
   },
   "screens": {
@@ -5449,5 +5455,58 @@
     "stripLabel": "Páginas",
     "openPage": "Abrir la página {name}",
     "showShared": "Mostrar la capa compartida"
+  },
+  "fleetMap": {
+    "unplaced": "Pantallas sin dirección",
+    "filters": {
+      "all": "Todas",
+      "healthy": "En buen estado",
+      "offline": "Sin conexión",
+      "drift": "Contenido desfasado",
+      "push": "Problemas de envío",
+      "emergency": "Faltas de emergencia"
+    },
+    "tile": {
+      "offline": "Sin conexión",
+      "no-picture": "Sin imagen",
+      "behind": "Sin confirmar",
+      "syncing": "Sincronizando",
+      "playing": "Reproduciendo",
+      "unconfirmed": "No confirmada"
+    },
+    "tileAppUpdating": "Reproduce con el reproductor web anterior; se actualiza sola.",
+    "panel": {
+      "playing": "{count} reproduciendo",
+      "behind": "{count} sin confirmar",
+      "syncing": "{count} sincronizando",
+      "offline": "{count} sin conexión",
+      "noPicture": "{count} sin imagen",
+      "unconfirmed": "{count} no confirmadas"
+    },
+    "fix": {
+      "aria": "Qué resolver aquí",
+      "title": "Resuélvalo aquí",
+      "emergencyGap": "Esta ubicación aún no puede mostrar una alerta de emergencia.",
+      "addAlertContent": "Agregar contenido de alerta",
+      "askAdmin": "Esto requiere un administrador; pídale que lo haga.",
+      "offlineTitle": "{count, plural, one {# pantalla sin conexión} other {# pantallas sin conexión}}",
+      "lastAnswered": "Respondió por última vez hace {ago}",
+      "notAnswering": "No responde a las comprobaciones",
+      "troubleshoot": "Solucionar problemas",
+      "offlineHint": "Una recarga no llega a una pantalla sin conexión. Revise su alimentación y red en el sitio; recibirá todo lo pendiente al volver.",
+      "behindTitle": "{count, plural, one {# pantalla no ha confirmado su actualización} other {# pantallas no han confirmado su actualización}}",
+      "updateSent": "Actualización enviada hace {ago}, sin confirmar",
+      "updateSentUndated": "Actualización enviada, sin confirmar",
+      "lastPicture": "última imagen confirmada hace {ago}",
+      "darkTitle": "{count, plural, one {# pantalla sin imagen confirmada} other {# pantallas sin imagen confirmada}}",
+      "noPictureYet": "Aún no hay imagen confirmada",
+      "openScreen": "Abrir pantalla",
+      "sendUpdate": "{count, plural, one {Enviar actualización ahora} other {Enviar actualización a # pantallas}}",
+      "sending": "Enviando…",
+      "sent": "{count, plural, one {Enviado a # pantalla} other {Enviado a # pantallas}}",
+      "sentHint": "Enviado. Cada pantalla se recarga y lo confirma en aproximadamente un minuto.",
+      "sendFailed": "{count, plural, one {No se pudo enviar a {names}.} other {No se pudo enviar a # pantallas: {names}.}} Inténtelo de nuevo.",
+      "syncing": "{count, plural, one {# pantalla está confirmando una actualización recién enviada.} other {# pantallas están confirmando una actualización recién enviada.}}"
+    }
   }
 }

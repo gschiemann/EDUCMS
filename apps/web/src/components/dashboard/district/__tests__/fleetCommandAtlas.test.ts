@@ -47,6 +47,10 @@ function loc(over: Partial<LocationRow> = {}): LocationRow {
     pendingApprovals: 0,
     needsAttention: false,
     contentBehind: 0,
+    screensPlaying: 3,
+    screensSyncing: 0,
+    screensUnconfirmed: 0,
+    screensAppUpdating: 0,
     pushStale: 0,
     emergencyCached: 3,
     hasScreens: true,
@@ -121,8 +125,10 @@ describe('atlasRowLines — LOCATION on top, screen underneath', () => {
 });
 
 describe('buildLocationPanel — the selected-location numbers', () => {
-  it('splits current vs behind out of the ONLINE screens', () => {
-    const p = buildLocationPanel(loc({ screensTotal: 3, screensOnline: 3, contentBehind: 1 }), 'warn');
+  // 2026-10-12: straight off the row's gradeMapScreen counts — never
+  // "online minus behind", which called unconfirmed screens current.
+  it('prints the row graded counts, never online-minus-behind', () => {
+    const p = buildLocationPanel(loc({ screensTotal: 3, screensOnline: 3, contentBehind: 1, screensPlaying: 2 }), 'warn');
     expect(p.screensCurrent).toBe(2);
     expect(p.screensBehind).toBe(1);
     expect(p.statusLabel).toBe('Needs a look');

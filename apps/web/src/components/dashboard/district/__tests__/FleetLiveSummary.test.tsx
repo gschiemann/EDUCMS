@@ -1,88 +1,94 @@
 /**
- * FleetLiveSummary (2026-10-12) — the map's live summary. The pure counts and
- * the "do this first" priority are pinned here; FleetCommandCenter.test.tsx
- * proves it is mounted and that its counts filter the map.
+ * FleetLiveSummary (2026-10-12) — the map's live summary card. The counts and
+ * the alert priority are pinned in fleet-map/__tests__/mapAlerts.test.ts;
+ * FleetCommandCenter.test.tsx and fleetMapParity.test.tsx prove it is mounted
+ * on both maps. This suite pins the card's own behaviour: plural copy, the
+ * chips toggling the map filter, and every alert row being a door.
  */
 import * as React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { FleetLiveSummary, summarizeLiveFleet } from '../FleetLiveSummary';
-import type { LocationRow } from '../fleetCommand';
-
-function row(over: Partial<LocationRow>): LocationRow {
-  return {
-    tenantId: 'x', name: 'X', slug: 'x', isSelf: false,
-    screensTotal: 1, screensOnline: 1, screensOffline: 0, notPainting: 0,
-    readiness: 'READY', missingTypes: [], lockdownWired: true, emergencyEnabled: true,
-    emergencyVerticalStated: true, pendingApprovals: 0, needsAttention: false,
-    contentBehind: 0, pushStale: 0, emergencyCached: 0, hasScreens: true,
-    ...over,
-  } as LocationRow;
-}
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { FleetLiveSummary } from '../FleetLiveSummary';
+import { summarizeMapAlerts, type MapAlertScreen, type MapPlace } from '@/components/fleet-map/mapAlerts';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
 
-describe('summarizeLiveFleet', () => {
-  it('counts only the locations shown and dates the oldest offline screen', () => {
-    const rows = [row({ tenantId: 'hou', name: 'Houston', screensOffline: 2 })];
-    const s = summarizeLiveFleet(rows, [
-      { tenantId: 'hou', status: 'OFFLINE', lastPingAt: '2026-10-12T09:00:00Z', needsAttention: true },
-      { tenantId: 'hou', status: 'OFFLINE', lastPingAt: '2026-10-12T11:00:00Z', needsAttention: true },
-      { tenantId: 'hou', status: 'ONLINE', needsAttention: false },
-      { tenantId: 'chi', status: 'OFFLINE', lastPingAt: '2026-10-01T00:00:00Z', needsAttention: true },
-    ]);
-    expect(s.total).toBe(3);
-    expect(s.playing).toBe(1);
-    expect(s.offline).toBe(2);
-    expect(s.offlineSinceMs).toBe(Date.parse('2026-10-12T09:00:00Z'));
-    expect(s.action).toEqual({ kind: 'offline', count: 2, tenantId: 'hou', location: 'Houston' });
-  });
-
-  it('ranks offline > no picture > emergency gap > needs update, and is null when all is well', () => {
-    const dark = row({ tenantId: 'a', name: 'A', notPainting: 1 });
-    const gap = row({ tenantId: 'b', name: 'B', readiness: 'NOT_CONFIGURED' });
-    const drift = row({ tenantId: 'c', name: 'C', contentBehind: 3 });
-    expect(summarizeLiveFleet([drift, gap, dark], []).action?.kind).toBe('dark');
-    expect(summarizeLiveFleet([drift, gap], []).action?.kind).toBe('emergency');
-    expect(summarizeLiveFleet([drift], []).action).toEqual({ kind: 'drift', count: 3, tenantId: 'c', location: 'C' });
-    // A screenless location's missing alert content is setup, not an alarm.
-    expect(summarizeLiveFleet([row({ readiness: 'NOT_CONFIGURED', hasScreens: false })], []).action).toBeNull();
-  });
-});
+function s(id: string, state: MapAlertScreen['grade']['state'], over: Partial<MapAlertScreen> = {}): MapAlertScreen {
+  return {
+    id, name: id, status: state === 'offline' ? 'OFFLINE' : 'ONLINE', lastPingAt: null, lastRenderedAt: null,
+    grade: { state, appUpdating: false, pushSentAtMs: null },
+    ...over,
+  };
+}
+function place(id: string, name: string, screens: MapAlertScreen[], over: Partial<MapPlace> = {}): MapPlace {
+  return { id, name, screens, pushStale: 0, emergencyGap: null, ...over };
+}
 
 describe('<FleetLiveSummary>', () => {
+  it('pluralises correctly — "1 screen hasn’t", never "1 screen … haven’t"', () => {
+    const summary = summarizeMapAlerts([place('cle', 'RIOT Cleveland', [s('a', 'playing'), s('b', 'playing'), s('c', 'behind')])]);
+    render(<FleetLiveSummary summary={summary} filter="all" onFilter={jest.fn()} onAlert={jest.fn()} now={NOW} />);
+    expect(screen.getByText('3 screens')).toBeInTheDocument();
+    expect(screen.getByText('2 playing')).toBeInTheDocument();
+    expect(screen.getByText('1 screen hasn’t confirmed the update it was sent.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 update not confirmed' })).toBeInTheDocument();
+  });
+
   it('says when the offline screens went quiet and toggles the map filter', () => {
     const onFilter = jest.fn();
-    const onSelect = jest.fn();
-    const summary = summarizeLiveFleet(
-      [row({ tenantId: 'hou', name: 'Houston', screensOffline: 2 })],
-      [
-        { tenantId: 'hou', status: 'OFFLINE', lastPingAt: '2026-10-12T09:00:00Z', needsAttention: true },
-        { tenantId: 'hou', status: 'OFFLINE', lastPingAt: null, needsAttention: true },
-      ],
-    );
+    const summary = summarizeMapAlerts([
+      place('hou', 'Houston', [
+        s('a', 'offline', { lastPingAt: '2026-10-12T09:00:00Z' }),
+        s('b', 'offline'),
+      ]),
+    ]);
     const { rerender } = render(
-      <FleetLiveSummary summary={summary} filter="all" onFilter={onFilter} onSelectLocation={onSelect} now={NOW} />,
+      <FleetLiveSummary summary={summary} filter="all" onFilter={onFilter} onAlert={jest.fn()} now={NOW} />,
     );
     expect(screen.getByText('0 playing')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '2 offline (since 3 hours ago)' }));
     expect(onFilter).toHaveBeenCalledWith('offline');
-    rerender(<FleetLiveSummary summary={summary} filter="offline" onFilter={onFilter} onSelectLocation={onSelect} now={NOW} />);
+    rerender(<FleetLiveSummary summary={summary} filter="offline" onFilter={onFilter} onAlert={jest.fn()} now={NOW} />);
     const chip = screen.getByRole('button', { name: '2 offline (since 3 hours ago)' });
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(chip);
     expect(onFilter).toHaveBeenLastCalledWith('all');
-    fireEvent.click(screen.getByRole('button', { name: /2 screens offline at Houston — check power and network/ }));
-    expect(onSelect).toHaveBeenCalledWith('hou');
   });
 
-  it('says plainly when nothing needs anyone', () => {
-    render(
-      <FleetLiveSummary
-        summary={summarizeLiveFleet([row({})], [{ tenantId: 'x', status: 'ONLINE', needsAttention: false }])}
-        filter="all" onFilter={() => {}} onSelectLocation={() => {}}
-      />,
+  it('lists EVERY location with the problem, each one a door to its fix', () => {
+    const onAlert = jest.fn();
+    const summary = summarizeMapAlerts([
+      place('cle', 'RIOT Cleveland', [s('a', 'behind')]),
+      place('hou', 'RIOT Houston', [s('b', 'behind'), s('c', 'behind')]),
+      place('chi', 'RIOT Chicago', [s('d', 'playing')]),
+    ]);
+    render(<FleetLiveSummary summary={summary} filter="drift" onFilter={jest.fn()} onAlert={onAlert} now={NOW} />);
+    expect(screen.getByText('3 screens haven’t confirmed the update they were sent.')).toBeInTheDocument();
+    const rows = within(screen.getByRole('list', { name: 'Where to fix it' })).getAllByRole('button');
+    // Worst first.
+    expect(rows.map((r) => r.textContent)).toEqual(['RIOT Houston · 2 screensFix', 'RIOT Cleveland · 1 screenFix']);
+    fireEvent.click(rows[1]);
+    expect(onAlert).toHaveBeenCalledWith('drift', 'cle');
+  });
+
+  it('a calm, self-healing state is visible but never an alert', () => {
+    const summary = summarizeMapAlerts([
+      place('hou', 'RIOT Houston', [
+        s('a', 'playing', { grade: { state: 'playing', appUpdating: true, pushSentAtMs: null } }),
+        s('b', 'syncing'),
+      ]),
+    ]);
+    render(<FleetLiveSummary summary={summary} filter="all" onFilter={jest.fn()} onAlert={jest.fn()} now={NOW} />);
+    expect(screen.getByText('1 screen is playing on the previous web player — it updates itself.')).toBeInTheDocument();
+    expect(screen.getByText('1 screen is confirming an update it was just sent.')).toBeInTheDocument();
+    expect(screen.getByText('Everything is playing. Nothing needs you right now.')).toBeInTheDocument();
+  });
+
+  it('says plainly when nothing needs anyone, and when there is nothing at all', () => {
+    const { rerender } = render(
+      <FleetLiveSummary summary={summarizeMapAlerts([place('x', 'X', [s('a', 'playing')])])} filter="all" onFilter={jest.fn()} onAlert={jest.fn()} now={NOW} />,
     );
     expect(screen.getByText('Everything is playing. Nothing needs you right now.')).toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    rerender(<FleetLiveSummary summary={summarizeMapAlerts([])} filter="all" onFilter={jest.fn()} onAlert={jest.fn()} now={NOW} />);
+    expect(screen.getByText('No screens here yet.')).toBeInTheDocument();
   });
 });

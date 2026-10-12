@@ -3,89 +3,28 @@
 /**
  * Fleet map — live summary (2026-10-12, replaces the static "Status guide").
  *
- * Owner: the old box ("Device online · App current · Push live · Picture
- * proof", labelled "not live status") was a legend with no data in it. This
- * card answers the question an operator opens the map with — "is everything
- * playing, and if not, what do I do first?" — for exactly the locations the
- * map is currently showing (the chip filter applies).
+ * Answers the question an operator opens the map with — "is everything
+ * playing, and if not, what do I do first?" — for EVERY place in scope (the
+ * chips filter the pins, never this card: with "Content drift" on, the old
+ * card could not mention a second location at all).
  *
- * Every number is read from data the page already holds: the per-location
- * rollup rows (the same ones the chips, pin rings and table grade) and the
- * per-screen render-trust grade the "Need attention" card uses. Nothing is
- * fetched and nothing is guessed: a count we cannot back is simply absent.
+ * Shared by the organisation map (a pin per location) and the Screens map a
+ * standard account sees (a pin per address): both build the summary with
+ * `summarizeMapAlerts` from screens graded by `gradeMapScreen`, so the two can
+ * never word the same fleet differently.
+ *
+ * Every alert row is a door: it selects its place, which zooms the map to it
+ * and opens the selected card on the fix. Never a dead click.
  */
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
-import type { LocationRow } from './fleetCommand';
+import type { LiveSummary, MapAlertKind, MapFilterKey } from '@/components/fleet-map/mapAlerts';
 
-export type LiveSummaryFilter = 'offline' | 'dark' | 'drift';
+export type { LiveSummary } from '@/components/fleet-map/mapAlerts';
 
-export interface LiveSummaryScreen {
-  tenantId: string | null;
-  status: string;
-  lastPingAt?: string | null;
-  /** The page's own "needs someone" predicate, already evaluated. */
-  needsAttention: boolean;
-}
-
-export interface LiveSummary {
-  total: number;
-  playing: number;
-  offline: number;
-  /** Oldest last-heartbeat among the offline screens (ms), when any is dated. */
-  offlineSinceMs: number | null;
-  noPicture: number;
-  needsUpdate: number;
-  /** The single most important thing to do, or null when nothing needs anyone. */
-  action:
-    | { kind: 'offline' | 'dark' | 'drift'; count: number; tenantId: string; location: string }
-    | { kind: 'emergency'; tenantId: string; location: string }
-    | null;
-}
-
-/** Pure: the summary for the locations currently shown. */
-export function summarizeLiveFleet(rows: LocationRow[], screens: LiveSummaryScreen[]): LiveSummary {
-  const shown = new Set(rows.map((r) => r.tenantId));
-  const mine = screens.filter((s) => s.tenantId != null && shown.has(s.tenantId));
-  let offlineSinceMs: number | null = null;
-  for (const s of mine) {
-    if (s.status !== 'OFFLINE' || !s.lastPingAt) continue;
-    const at = Date.parse(s.lastPingAt);
-    if (!Number.isFinite(at)) continue;
-    if (offlineSinceMs == null || at < offlineSinceMs) offlineSinceMs = at;
-  }
-  const sum = (pick: (r: LocationRow) => number) => rows.reduce((n, r) => n + pick(r), 0);
-  // The location with the most of one problem — ties keep the rollup's own
-  // worst-first order, so the card and the table never disagree.
-  const worst = (pick: (r: LocationRow) => number) => {
-    let best: LocationRow | null = null;
-    for (const r of rows) if (pick(r) > 0 && (!best || pick(r) > pick(best))) best = r;
-    return best;
-  };
-
-  let action: LiveSummary['action'] = null;
-  const off = worst((r) => r.screensOffline);
-  const dark = worst((r) => r.notPainting);
-  const gap = rows.find(
-    (r) => r.hasScreens && (r.readiness === 'NEEDS_ATTENTION' || r.readiness === 'NOT_CONFIGURED'),
-  );
-  const drift = worst((r) => r.contentBehind);
-  if (off) action = { kind: 'offline', count: off.screensOffline, tenantId: off.tenantId, location: off.name };
-  else if (dark) action = { kind: 'dark', count: dark.notPainting, tenantId: dark.tenantId, location: dark.name };
-  else if (gap) action = { kind: 'emergency', tenantId: gap.tenantId, location: gap.name };
-  else if (drift) action = { kind: 'drift', count: drift.contentBehind, tenantId: drift.tenantId, location: drift.name };
-
-  return {
-    total: mine.length,
-    playing: mine.filter((s) => !s.needsAttention).length,
-    offline: sum((r) => r.screensOffline),
-    offlineSinceMs,
-    noPicture: sum((r) => r.notPainting),
-    needsUpdate: sum((r) => r.contentBehind),
-    action,
-  };
-}
+/** Places listed under the alert before "+N more" (which filters the map). */
+const ALERT_PLACES_SHOWN = 4;
 
 /** "3 hours" style age for the "since" note, localized. Null when undatable. */
 function useAgo() {
@@ -101,18 +40,26 @@ function useAgo() {
   };
 }
 
+const ALERT_KEY: Record<MapAlertKind, string> = {
+  offline: 'actionOffline',
+  dark: 'actionDark',
+  drift: 'actionDrift',
+  emergency: 'actionEmergency',
+};
+
 export function FleetLiveSummary({
   summary,
   filter,
   onFilter,
-  onSelectLocation,
+  onAlert,
   className,
   now,
 }: {
   summary: LiveSummary;
   filter: string;
-  onFilter: (key: LiveSummaryFilter | 'all') => void;
-  onSelectLocation: (tenantId: string) => void;
+  onFilter: (key: MapFilterKey) => void;
+  /** Select the place, zoom to it and open its card on the problem. */
+  onAlert: (kind: MapAlertKind, placeId: string) => void;
   className?: string;
   /** Fixed clock for tests; live it is read when the summary changes. */
   now?: number;
@@ -129,18 +76,15 @@ export function FleetLiveSummary({
   }, [summary, now]);
   const since = summary.offline > 0 ? ago(summary.offlineSinceMs, now ?? clock) : null;
 
-  const chips: Array<{ key: LiveSummaryFilter; n: number; label: string; dot: string }> = [
+  const chips: Array<{ key: MapFilterKey; n: number; label: string; dot: string }> = [
     { key: 'offline', n: summary.offline, label: since ? t('offlineSince', { count: summary.offline, since }) : t('offline', { count: summary.offline }), dot: '#f43f5e' },
     { key: 'dark', n: summary.noPicture, label: t('noPicture', { count: summary.noPicture }), dot: '#f97316' },
-    { key: 'drift', n: summary.needsUpdate, label: t('needsUpdate', { count: summary.needsUpdate }), dot: '#f59e0b' },
+    { key: 'drift', n: summary.behind, label: t('needsUpdate', { count: summary.behind }), dot: '#f59e0b' },
   ];
 
   const a = summary.action;
-  const actionText = !a
-    ? null
-    : a.kind === 'emergency'
-      ? t('actionEmergency', { location: a.location })
-      : t(a.kind === 'offline' ? 'actionOffline' : a.kind === 'dark' ? 'actionDark' : 'actionDrift', { count: a.count, location: a.location });
+  const shown = a ? a.places.slice(0, ALERT_PLACES_SHOWN) : [];
+  const hidden = a ? a.places.length - shown.length : 0;
 
   return (
     <div className={className} role="group" aria-label={t('aria')} data-testid="fleet-live-summary">
@@ -174,16 +118,52 @@ export function FleetLiveSummary({
           })}
         </div>
       )}
+      {/* Calm facts — states that heal themselves are visible, never an ask. */}
+      {(summary.syncing > 0 || summary.appUpdating > 0) && (
+        <ul className="mt-1.5 space-y-0.5 text-[11px] font-semibold text-slate-500">
+          {summary.syncing > 0 && <li>{t('syncing', { count: summary.syncing })}</li>}
+          {summary.appUpdating > 0 && <li>{t('appUpdating', { count: summary.appUpdating })}</li>}
+        </ul>
+      )}
       <div className="mt-2 pt-2 border-t border-slate-100">
-        {actionText && a ? (
-          <button
-            type="button"
-            onClick={() => onSelectLocation(a.tenantId)}
-            className="w-full text-left inline-flex items-start gap-1.5 text-[12px] font-bold text-slate-800 hover:underline underline-offset-2"
-          >
-            <span className="min-w-0">{actionText}</span>
-            <ArrowRight className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
-          </button>
+        {a ? (
+          <>
+            <p className="text-[12px] font-bold text-slate-800">
+              {a.kind === 'emergency'
+                ? t('actionEmergency', { count: a.count })
+                : t(ALERT_KEY[a.kind], { count: a.count })}
+            </p>
+            <ul className="mt-1 space-y-0.5" aria-label={t('placesAria')}>
+              {shown.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => onAlert(a.kind, p.id)}
+                    className="w-full flex items-center gap-1.5 rounded-lg px-1.5 py-1 -mx-1.5 text-left text-[12px] font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                    data-testid="fleet-live-summary-place"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {a.kind === 'emergency' ? p.name : t('placeLine', { location: p.name, count: p.count })}
+                    </span>
+                    <span className="shrink-0 text-[11.5px] font-black" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
+                      {t('fix')}
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {hidden > 0 && (
+              <button
+                type="button"
+                onClick={() => onFilter(a.kind === 'emergency' ? 'emergency' : a.kind)}
+                className="mt-0.5 text-[11.5px] font-black hover:underline underline-offset-2"
+                style={{ color: 'var(--brand-primary, #4f46e5)' }}
+              >
+                {t('morePlaces', { count: hidden })}
+              </button>
+            )}
+          </>
         ) : (
           <p className="text-[12px] font-semibold text-emerald-700">{summary.total > 0 ? t('allGood') : t('noScreens')}</p>
         )}
