@@ -59,4 +59,15 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387599,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38315564358',
   },
+  // Signed CI run 38451639426, source d0d7a99e. First-frame solo layer
+  // promotion with operator/blackout retirement; whole-content P2 fit.
+  // Verified non-debuggable, universal ABIs, release certificate
+  // e45adf50…3d1897 matches stable 1.1.29. Private two-screen field test.
+  '1.1.34-field.1': {
+    versionName: '1.1.34-field.1',
+    versionCode: 10134,
+    sha256: 'e6a173f22fbe10149fa2aa2656f6c55b2e8f0e7b1453f1a273d23a8c47ce021a',
+    size: 2387599,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38451639426',
+  },
 };
