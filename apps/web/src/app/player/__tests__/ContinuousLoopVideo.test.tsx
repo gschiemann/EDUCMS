@@ -79,12 +79,12 @@ async function presentFrame() {
   await settle();
 }
 
-it('crops to fill by default — the video and its held recovery frame never stretch (2026-10-11)', () => {
+it('shows the whole file by default in both video and retained recovery frame', () => {
   const { video, container, unmount } = mount();
-  expect(video.style.objectFit).toBe('cover');
+  expect(video.style.objectFit).toBe('contain');
   expect(video.style.objectPosition).toBe('50% 50%');
   const frame = container.querySelector('canvas[data-recovery-frame]') as HTMLCanvasElement;
-  expect(frame.style.objectFit).toBe('cover');
+  expect(frame.style.objectFit).toBe('contain');
   unmount();
 });
 

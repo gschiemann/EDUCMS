@@ -1,4 +1,4 @@
-import { shapeAwareFit } from '../mediaFit';
+import { DEFAULT_PLAYLIST_MEDIA_FIT, shapeAwareFit } from '../mediaFit';
 
 describe('shape-aware playlist fit (2026-10-12)', () => {
   it('portrait clip on a landscape screen shows the whole clip (no 3x zoom)', () => {
@@ -17,7 +17,7 @@ describe('shape-aware playlist fit (2026-10-12)', () => {
   });
 
   it('the playlist default contains close, mismatched, and unknown shapes', () => {
-    const base = 'contain' as const;
+    const base = DEFAULT_PLAYLIST_MEDIA_FIT;
     expect(shapeAwareFit(base, 1080, 1668, 1080, 1920)).toBe('contain');
     expect(shapeAwareFit(base, 1920, 1080, 1080, 1920)).toBe('contain');
     expect(shapeAwareFit(base, null, null, 1920, 1080)).toBe('contain');

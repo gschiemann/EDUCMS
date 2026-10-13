@@ -305,6 +305,7 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
     ok(route, { paired: true, screenId: id.screenId, name: 'Proof Screen', tenantId: 'test-tenant-proof' }),
   );
   await page.route('**/api/v1/emergency/status*', (route) => ok(route, { active: [] }));
+  await page.route('**/api/v1/emergency/messages*', (route) => ok(route, []));
   await page.route('**/api/v1/notifications/**', (route) => route.fulfill({ status: 204, body: '' }));
   await page.route('**/api/v1/analytics/**', (route) => route.fulfill({ status: 204, body: '' }));
   await page.route('**/api/v1/player/latest-version-public', (route) => ok(route, {}));

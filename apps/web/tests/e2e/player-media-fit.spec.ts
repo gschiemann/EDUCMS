@@ -1,8 +1,8 @@
 /**
  * Show full playlist media without stretching (2026-10-13, mediaFit.ts).
  *
- * Greg's case: a 1080×1668 portrait video on a 1080×1920 panel was drawn
- * the previous cover policy cropped its edges. Playlist media now uses
+ * Greg's case: the previous cover policy cropped the edges of a
+ * 1080×1668 portrait video on a 1080×1920 panel. Playlist media now uses
  * `object-fit: contain`, so every source pixel remains visible.
  *
  * Each case puts a file of the WRONG shape on the glass — a 16:9 clip on a
@@ -39,6 +39,28 @@ function guardPageErrors(page: Page) {
 }
 
 test.describe('playlist media shows whole frame by default', () => {
+  test('near-matching portrait art keeps all four edge markers', async ({ page }, testInfo) => {
+    guardPageErrors(page);
+    await page.setViewportSize({ width: 540, height: 960 });
+    const url = 'http://api.invalid/assets/whole-frame-1080x1668.svg';
+    const m = playerManifest(playerIds('fit-near').screenId, 'images');
+    m.playlists[0].items = [{ item_id: 'near', asset_id: 'near-art', url,
+      duration_ms: 60000, sequence: 0, mime_type: 'image/svg+xml', muted: true,
+      media_w: 1080, media_h: 1668, transition_type: 'NONE' }] as unknown as typeof m.playlists[0]['items'];
+    const art = '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1668" viewBox="0 0 1080 1668">' +
+      '<rect width="1080" height="1668" fill="#dde9f2"/><rect x="4" y="4" width="1072" height="1660" fill="none" stroke="#123e68" stroke-width="8"/>' +
+      '<g font-family="sans-serif" font-size="58" font-weight="bold" fill="#123e68">' +
+      '<text x="16" y="72">TOP LEFT</text><text x="1064" y="72" text-anchor="end">TOP RIGHT</text>' +
+      '<text x="16" y="1642">BOTTOM LEFT</text><text x="1064" y="1642" text-anchor="end">BOTTOM RIGHT</text>' +
+      '<text x="540" y="840" text-anchor="middle">WHOLE FRAME</text></g></svg>';
+    await bootMockPlayer(page, { tag: 'fit-near', kind: 'images', manifest: m,
+      extraRoutes: async p => { await p.route(url, route => route.fulfill({ status: 200,
+        contentType: 'image/svg+xml', headers: { 'Access-Control-Allow-Origin': '*' }, body: art })); } });
+    const image = page.locator('img[data-slide-id]');
+    await expect(image).toHaveCSS('object-fit', 'contain');
+    await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalHeight)).toBe(1668);
+    await page.screenshot({ path: testInfo.outputPath('whole-near-match.png') });
+  });
   test('a 16:9 video on a portrait screen (single-element path) is object-fit: contain, centred, full screen', async ({ page }) => {
     test.setTimeout(90_000);
     guardPageErrors(page);
