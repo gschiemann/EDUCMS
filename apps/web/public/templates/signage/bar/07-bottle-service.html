@@ -116,6 +116,25 @@
 .stage[data-orient=portrait] .service-col>.col-title{grid-column:1;grid-row:1}
 .stage[data-orient=portrait] .service-col>.col-sub{grid-column:2;grid-row:1;text-align:right}
 .stage[data-orient=portrait] .bottle-items,.stage[data-orient=portrait] .packages{grid-column:1/3;grid-row:2}
+
+/* Reserve two description lines without crossing the price/service baseline. */
+.stage[data-orient=landscape] .frame{grid-template-rows:185px minmax(0,1fr) 380px 170px 70px}
+.stage[data-orient=landscape] .brand-name{height:100px}
+.stage[data-orient=landscape] .brand-tagline{height:75px}
+.stage[data-orient=landscape] .service-eye{margin-bottom:5px}
+.stage[data-orient=landscape] .board-heading .title{height:105px}
+.stage[data-orient=landscape] .top{padding-bottom:0}
+.stage[data-orient=landscape] .service-col{grid-template-columns:2fr 3fr;grid-template-rows:100px minmax(0,1fr)}
+.stage[data-orient=landscape] .service-col>.col-title{grid-column:1;grid-row:1}
+.stage[data-orient=landscape] .service-col>.col-sub{grid-column:2;grid-row:1;text-align:right}
+.stage[data-orient=landscape] .bottle-items,.stage[data-orient=landscape] .packages{grid-column:1/3;grid-row:2}
+.stage[data-orient=landscape] .bottle{grid-template-rows:85px minmax(0,1fr) 85px;gap:4px 20px;padding:0}
+.stage[data-orient=landscape] .b-name,.stage[data-orient=landscape] .b-price,.stage[data-orient=landscape] .b-svc{height:85px}
+.stage[data-orient=landscape] .b-svc{padding-top:10px}
+.stage[data-orient=landscape] .foot-value{height:85px}
+.service-note{line-height:1.2}
+.stage[data-orient=portrait] .top{padding-top:16px;grid-template-rows:210px 100px;gap:10px 40px}
+.stage[data-orient=portrait] .frame{grid-template-rows:350px minmax(0,1fr) 660px 255px 90px;gap:26px}
 </style><script>/*EDUCMS-SHIM-V5*/(function(){try{
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
