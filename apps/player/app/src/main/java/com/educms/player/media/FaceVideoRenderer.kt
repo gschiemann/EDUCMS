@@ -80,6 +80,19 @@ internal class FaceVideoRenderer(
                     val v = info.getCapabilitiesForType("video/avc").videoCapabilities
                     v.areSizeAndRateSupported(d.width, d.height, fps) || v.areSizeAndRateSupported(d.height, d.width, fps)
                 }.getOrDefault(false)
+            } ?: hardwareAvc.firstOrNull { info ->
+                // Rockchip decoders only report sizes aligned to 16, so a
+                // 1080×1668 portrait copy "fails" the size check while the same
+                // decoder plays it in the WebView (field 2026-10-13, DH43
+                // rk3288 Android 7). Accept it when the 16-aligned size fits in
+                // either orientation — a native signage player (Goodview) never
+                // asks at all. A real decode failure still ends the session.
+                runCatching {
+                    val v = info.getCapabilitiesForType("video/avc").videoCapabilities
+                    val aw = (d.width + 15) / 16 * 16
+                    val ah = (d.height + 15) / 16 * 16
+                    v.isSizeSupported(aw, ah) || v.isSizeSupported(ah, aw)
+                }.getOrDefault(false)
             } ?: error("hardware-codec-unavailable")
             codecName = info.name
             advertisedInstances = runCatching { info.getCapabilitiesForType("video/avc").maxSupportedInstances }.getOrDefault(0)
