@@ -1,0 +1,98 @@
+[
+  {
+    "path": "apps/web/public/holiday-templates/es-christmas.html",
+    "fields": 60,
+    "slots": 4,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/holiday-templates/hs-christmas.html",
+    "fields": 59,
+    "slots": 2,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/holiday-templates/ms-christmas.html",
+    "fields": 61,
+    "slots": 4,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/bar/07-bottle-service.html",
+    "fields": 92,
+    "slots": 5,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/corporate/04-new-hires.html",
+    "fields": 45,
+    "slots": 5,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/06-patient-education.html",
+    "fields": 44,
+    "slots": 1,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/healthcare/07-mychart-signup.html",
+    "fields": 36,
+    "slots": 2,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/03-events-board.html",
+    "fields": 74,
+    "slots": 1,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/hospitality/08-checkin-status.html",
+    "fields": 70,
+    "slots": 1,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/qsr/10-now-hiring.html",
+    "fields": 41,
+    "slots": 3,
+    "new": false,
+    "missingFields": [],
+    "missingSlots": [],
+    "scriptsIdentical": true
+  },
+  {
+    "path": "apps/web/public/templates/signage/retail/09-service-counter.html",
+    "fields": 41,
+    "slots": 3,
+    "new": true
+  }
+]
