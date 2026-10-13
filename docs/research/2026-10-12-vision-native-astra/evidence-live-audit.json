@@ -1,0 +1,55 @@
+{
+  "screenId": "13eb0b62-d420-4517-922e-e17700716fae",
+  "tenantId": "81554fbe-ba69-4cea-ae6d-49c11ee15133",
+  "fetchedAt": "2026-10-13T05:50:00Z",
+  "rows": [
+    {
+      "created_at": "2026-10-12 22:26:49.262",
+      "log": "2026-10-12T22:26:45.578Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] PLAYER_NATIVE_VIDEO_FALLBACK reason=activity-paused next=stay attempt=0 proto=2 face=0 sha=331a260d stage=presenting (web fallback)"
+    },
+    {
+      "created_at": "2026-10-12 20:03:25.706",
+      "log": "2026-10-12T16:54:37.372Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#22): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 20:03:25.639",
+      "log": "2026-10-12T16:53:37.356Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#1): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.769",
+      "log": "2026-10-12T18:10:02.429Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] PLAYER_NATIVE_VIDEO_SKIPPED desc=no proto=3 choice=no solo=true muted=true active=true sha=n/a asset=n/a sync=false preview=false emergency=false (web fallback)"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.694",
+      "log": "2026-10-12T17:01:38.570Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#676): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.615",
+      "log": "2026-10-12T17:00:38.462Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#544): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.54",
+      "log": "2026-10-12T16:59:38.349Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#426): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.46",
+      "log": "2026-10-12T16:58:38.335Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#316): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.385",
+      "log": "2026-10-12T16:57:38.203Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#226): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.31",
+      "log": "2026-10-12T16:56:38.153Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#137): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 18:10:04.139",
+      "log": "2026-10-12T16:55:37.462Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#66): Manifest fetch failed: HTTP 403"
+    },
+    {
+      "created_at": "2026-10-12 17:03:37.775",
+      "log": "2026-10-12T17:02:38.739Z [WARN] PlayerWeb: PLAYER_PLAYBACK_FAILURE [Player] fetchContent failed (#799): Manifest fetch failed: HTTP 403"
+    }
+  ]
+}
