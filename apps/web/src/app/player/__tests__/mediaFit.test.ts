@@ -1,6 +1,6 @@
 /**
- * Playlist media fit (2026-10-11, owner decision): crop to fill, centred,
- * never stretch — emergency playlists keep `fill` pending sign-off.
+ * Playlist media fit (2026-10-13): show the whole file, centred, without
+ * stretching; explicit cover/fill choices and emergency containment remain.
  */
 import {
   DEFAULT_PLAYLIST_MEDIA_FIT,
@@ -12,10 +12,10 @@ import {
 } from '../mediaFit';
 
 describe('playlistMediaFit', () => {
-  it('normal content crops to fill; an emergency is shown whole (contain), never cropped or stretched', () => {
-    expect(DEFAULT_PLAYLIST_MEDIA_FIT).toBe('cover');
+  it('normal content and emergency content both show the whole frame by default', () => {
+    expect(DEFAULT_PLAYLIST_MEDIA_FIT).toBe('contain');
     expect(EMERGENCY_PLAYLIST_MEDIA_FIT).toBe('contain');
-    expect(playlistMediaFit(false)).toBe('cover');
+    expect(playlistMediaFit(false)).toBe('contain');
     expect(playlistMediaFit(true)).toBe('contain');
   });
 
@@ -26,6 +26,8 @@ describe('playlistMediaFit', () => {
   });
 
   it('style and class agree, centred', () => {
+    expect(mediaFitStyle('contain')).toEqual({ objectFit: 'contain', objectPosition: '50% 50%' });
+    expect(mediaFitClass('contain')).toBe('object-contain');
     expect(mediaFitStyle('cover')).toEqual({ objectFit: 'cover', objectPosition: '50% 50%' });
     expect(mediaFitStyle('fill')).toEqual({ objectFit: 'fill', objectPosition: '50% 50%' });
     expect(mediaFitClass('cover')).toBe('object-cover');
@@ -39,7 +41,7 @@ describe('playlistMediaFit', () => {
 });
 
 describe('visibleSourceRect', () => {
-  it("Greg's case: a 1080×1668 portrait clip on a 1080×1920 panel trims the sides instead of stretching", () => {
+  it("Greg's case: explicit cover still crops a 1080×1668 clip on a 1080×1920 panel", () => {
     const r = visibleSourceRect('cover', 1080, 1668, 1080, 1920);
     // Panel (0.5625) is narrower than the clip (0.6475): keep full height, trim width.
     expect(r.sy).toBe(0);

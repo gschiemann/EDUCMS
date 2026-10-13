@@ -1,14 +1,14 @@
 /**
- * Crop to fill, never stretch (2026-10-11, owner decision — mediaFit.ts).
+ * Show full playlist media without stretching (2026-10-13, mediaFit.ts).
  *
  * Greg's case: a 1080×1668 portrait video on a 1080×1920 panel was drawn
- * `object-fit: fill` and stretched ~15 %. Playlist media that is not the
- * screen's exact shape must now cover the screen, centred, proportions kept.
+ * the previous cover policy cropped its edges. Playlist media now uses
+ * `object-fit: contain`, so every source pixel remains visible.
  *
  * Each case puts a file of the WRONG shape on the glass — a 16:9 clip on a
  * portrait viewport, a 2:3 portrait picture on a landscape viewport — and
  * proves from the rendered DOM (computed style, not source) that the element
- * covers the whole viewport with `object-fit: cover` at the centre. Video is
+ * spans the viewport with `object-fit: contain` at the centre. Video is
  * checked on the single-element path and on the two-deck loop path.
  */
 import { test, expect, type Page } from '@playwright/test';
@@ -38,8 +38,8 @@ function guardPageErrors(page: Page) {
   });
 }
 
-test.describe('playlist media crops to fill — never stretched', () => {
-  test('a 16:9 video on a portrait screen (single-element path) is object-fit: cover, centred, full screen', async ({ page }) => {
+test.describe('playlist media shows whole frame by default', () => {
+  test('a 16:9 video on a portrait screen (single-element path) is object-fit: contain, centred, full screen', async ({ page }) => {
     test.setTimeout(90_000);
     guardPageErrors(page);
     await page.setViewportSize({ width: 540, height: 960 });
@@ -48,7 +48,7 @@ test.describe('playlist media crops to fill — never stretched', () => {
     await expect.poll(async () => (await fitOf(page, 'video')).length, { timeout: 20_000 }).toBeGreaterThan(0);
     const vids = await fitOf(page, 'video');
     for (const v of vids) {
-      expect(v.fit).toBe('cover');
+      expect(v.fit).toBe('contain');
       expect(v.pos).toBe('50% 50%');
       expect(v.w).toBe(540);
       expect(v.h).toBe(960);
@@ -61,7 +61,7 @@ test.describe('playlist media crops to fill — never stretched', () => {
     if (shape.w && shape.h) expect(shape.w / shape.h).toBeGreaterThan(1.5);
   });
 
-  test('the two-deck loop path covers too', async ({ page }) => {
+  test('the two-deck loop path contains too', async ({ page }) => {
     test.setTimeout(90_000);
     guardPageErrors(page);
     await page.setViewportSize({ width: 540, height: 960 });
@@ -70,12 +70,12 @@ test.describe('playlist media crops to fill — never stretched', () => {
     const decks = await fitOf(page, '[data-loop-deck]');
     expect(decks.length).toBe(2);
     for (const d of decks) {
-      expect(d.fit).toBe('cover');
+      expect(d.fit).toBe('contain');
       expect(d.pos).toBe('50% 50%');
     }
   });
 
-  test('a 2:3 portrait image on a landscape screen is object-fit: cover, centred, full screen', async ({ page }) => {
+  test('a 2:3 portrait image on a landscape screen is object-fit: contain, centred, full screen', async ({ page }) => {
     test.setTimeout(90_000);
     guardPageErrors(page);
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -102,7 +102,7 @@ test.describe('playlist media crops to fill — never stretched', () => {
     });
     const img = page.locator('img[data-slide-id]');
     await expect(img).toHaveCount(1, { timeout: 45_000 });
-    await expect(img).toHaveCSS('object-fit', 'cover');
+    await expect(img).toHaveCSS('object-fit', 'contain');
     await expect(img).toHaveCSS('object-position', '50% 50%');
     await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBe(800);
     const box = await img.boundingBox();

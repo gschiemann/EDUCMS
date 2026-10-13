@@ -7,12 +7,19 @@ describe('shape-aware playlist fit (2026-10-12)', () => {
   it('landscape clip on a portrait screen shows the whole clip', () => {
     expect(shapeAwareFit('cover', 1920, 1080, 1080, 1920)).toBe('contain');
   });
-  it('close shapes still fill edge to edge (1080x1668 on 1080x1920)', () => {
+  it('an explicit cover choice still fills close shapes edge to edge (1080x1668 on 1080x1920)', () => {
     expect(shapeAwareFit('cover', 1080, 1668, 1080, 1920)).toBe('cover');
     expect(shapeAwareFit('cover', 1920, 1080, 1920, 1080)).toBe('cover');
   });
   it('unknown size keeps the base fit; emergency contain is untouched', () => {
     expect(shapeAwareFit('cover', null, null, 1920, 1080)).toBe('cover');
     expect(shapeAwareFit('contain', 1080, 1920, 1920, 1080)).toBe('contain');
+  });
+
+  it('the playlist default contains close, mismatched, and unknown shapes', () => {
+    const base = 'contain' as const;
+    expect(shapeAwareFit(base, 1080, 1668, 1080, 1920)).toBe('contain');
+    expect(shapeAwareFit(base, 1920, 1080, 1080, 1920)).toBe('contain');
+    expect(shapeAwareFit(base, null, null, 1920, 1080)).toBe('contain');
   });
 });

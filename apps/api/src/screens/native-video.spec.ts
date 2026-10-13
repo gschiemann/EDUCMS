@@ -105,7 +105,7 @@ describe('native video engine (protocol 2) — descriptor', () => {
         tenantId: tenant,
         faceIndex: id === back ? 1 : 0,
         asset: { id: assetId, url, sha256: hash, size: 84_000_000, width: 1080, height: 1920, fps: 30 },
-        transform: { orientation: 'PORTRAIT', fit: 'cover' },
+        transform: { orientation: 'PORTRAIT', fit: 'contain' },
       });
       expect(d).not.toHaveProperty('peerScreenId');
     }
@@ -123,7 +123,11 @@ describe('native video engine (protocol 2) — descriptor', () => {
   });
 
   it('is deterministic (safe in the hashed, hot-cached manifest)', () => {
-    expect(build(fixture())).toEqual(build(fixture()));
+    const first = build(fixture());
+    const second = build(fixture());
+    expect(first).toEqual(second);
+    expect(first?.transform.fit).toBe('contain');
+    expect(first?.revision).toBe(second?.revision);
   });
 
   it('accepts N copies of the same file (player collapses them) but not a mixed playlist', () => {
@@ -220,7 +224,7 @@ describe('field 2026-10-12 — the T982 pair is enrolled and gets a descriptor',
     expect(build({ screen, manifest, asset, env })).toMatchObject({
       version: 2, screenId: id, faceIndex: 0,
       asset: { id: asset.id, url, sha256: sha, size: 186_954_348, width: 2160, height: 3338, fps: 30 },
-      transform: { orientation, fit: 'cover' },
+      transform: { orientation, fit: 'contain' },
     });
   });
 });

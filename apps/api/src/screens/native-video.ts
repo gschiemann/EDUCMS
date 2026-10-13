@@ -215,9 +215,9 @@ export function buildNativeVideoDescriptor(input: {
   if (!pl.items.every((i: any) => i.muted === true)) return null;
   const asset = nativeVideoAsset(item, a, env);
   if (!asset) return null;
-  // Normal content crops to fill, never stretches (owner decision
-  // 2026-10-11, mediaFit.ts DEFAULT_PLAYLIST_MEDIA_FIT).
-  const transform = { orientation: m.orientation, fit: 'cover' as const };
+  // Preserve the full video frame on native protocol 2, matching the web
+  // player's default playlist fit. FaceVideoDescriptor.FITS supports contain.
+  const transform = { orientation: m.orientation, fit: 'contain' as const };
   const revision = createHash('sha256')
     .update(JSON.stringify([s.tenantId, s.id, faceIndex, pl.id, asset, transform]))
     .digest('hex');

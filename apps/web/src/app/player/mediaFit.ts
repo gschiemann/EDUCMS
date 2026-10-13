@@ -1,28 +1,24 @@
 /**
  * mediaFit — how full-screen playlist media meets a screen of another shape
- * (2026-10-11, owner decision).
+ * (2026-10-13, owner decision).
  *
- * Until now every playlist picture and video was drawn `object-fit: fill`:
- * the file's corners pinned to the screen's corners. A file of the screen's
- * exact shape looked perfect; any other shape was STRETCHED — a 1080×1668
- * portrait clip on a 1080×1920 panel was pulled ~15 % taller, faces and logos
- * visibly distorted.
+ * The former `cover` default cropped files whose shape differed from the
+ * screen. Even the near-match 1080×1668 portrait clip on a 1080×1920 panel
+ * loses part of its width, including edge logos and faces. Unknown dimensions
+ * also cannot prove that cropping is safe.
  *
- * Greg's rule: media that is not the screen's exact shape must FILL the screen
- * WITHOUT stretching. That is `object-fit: cover`, centred — the picture keeps
- * its proportions, covers the whole screen edge to edge, and the overhang on
- * the long axis is trimmed equally from both sides. A file of the screen's
- * exact shape is pixel-identical under `fill` and `cover`, so correctly-made
- * content does not change at all.
+ * Default full-screen playlist media shows the whole file without stretching:
+ * `object-fit: contain`, centred, with bars where the shapes differ. This is
+ * safe for close, mismatched, and unknown aspect ratios. Explicit authored
+ * `cover` and `fill` choices remain supported by the fit helpers.
  *
  * SCOPE. Only the DEFAULT for full-screen playlist media changes. There is no
  * per-item fit setting on a playlist item today (PlaylistItem has no such
  * column); widgets inside templates keep their own fit config untouched.
  *
- * EMERGENCY PLAYLISTS ARE UNCHANGED (still `fill`). Cropping can cut words
- * off the edge of a lockdown / evacuation slide, and emergency rendering
- * changes need explicit sign-off (CLAUDE.md, Emergency System). The emergency
- * overlay's own inline media (EmergencyOverlay.tsx) was already `cover`.
+ * Emergency playlists remain `contain`; cropping can cut words off the edge
+ * of a lockdown / evacuation slide. Emergency endpoints and safeguards are
+ * untouched. The emergency overlay's own inline media is also unchanged.
  *
  * Every player media path takes its fit from here so they can never disagree:
  * the single-element video + image slides (page.tsx), the two-deck loop
@@ -38,13 +34,10 @@
 
 export type MediaFit = 'cover' | 'contain' | 'fill';
 
-/** The default for full-screen playlist media: crop to fill, centred, never stretch. */
-export const DEFAULT_PLAYLIST_MEDIA_FIT: MediaFit = 'cover';
+/** The default for full-screen playlist media: show the whole file, centred. */
+export const DEFAULT_PLAYLIST_MEDIA_FIT: MediaFit = 'contain';
 
-/** An emergency playlist keeps the historical `fill` (no crop) pending owner sign-off. */
-// 2026-10-11 (owner decision): an alert is shown WHOLE — fitted with bars where
-// the file's shape differs from the screen — never cropped (cropping can cut an
-// instruction off the edge) and never stretched (the old `fill`).
+/** Emergency media also shows the whole frame; alerts must not lose instructions to cropping. */
 export const EMERGENCY_PLAYLIST_MEDIA_FIT: MediaFit = 'contain';
 
 export function playlistMediaFit(isEmergency: boolean): MediaFit {
@@ -65,7 +58,7 @@ export interface CropRect { sx: number; sy: number; sw: number; sh: number }
 
 /**
  * The region of a srcW×srcH source that `object-fit: cover` (centred) shows in
- * a boxW×boxH box. With `fill`, or with no usable box, it is the whole source.
+ * a boxW×boxH box. With `contain`/`fill`, or with no usable box, it is the whole source.
  * Pure: used by the update cover frame so its picture matches the glass.
  */
 export function visibleSourceRect(fit: MediaFit, srcW: number, srcH: number, boxW: number, boxH: number): CropRect {
@@ -85,7 +78,7 @@ export function visibleSourceRect(fit: MediaFit, srcW: number, srcH: number, box
 }
 
 /**
- * Shape-aware fit (owner 2026-10-12: a portrait 1080×1920 clip on a landscape
+ * Shape-aware fit for an explicit cover choice (owner 2026-10-12: a portrait 1080×1920 clip on a landscape
  * 1920×1080 screen was "crazy zoomed in" under `cover` — it trims ~70 % of the
  * picture). Fill the screen (cover) only when the file's shape is CLOSE to the
  * screen's; when the shapes are far apart (portrait file on a landscape screen
