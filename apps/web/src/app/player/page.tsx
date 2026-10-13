@@ -2150,8 +2150,8 @@ function PlayerVideoSlide({
         top: 0, left: 0, right: 0, bottom: 0,
         width: '100%',
         height: '100%',
-        // 2026-10-11 (owner decision) — crop to fill, centred, never stretch
-        // (mediaFit.ts). Was `fill` (stretch) since 2026-06-26. Inline wins
+        // The manifest's admitted pilot may stretch to fill; otherwise use
+        // the established fit from mediaFit.ts. Inline wins
         // over the utility class on WebViews where Tailwind may not apply.
         ...mediaFitStyle(fit),
         background: '#000',
@@ -4044,6 +4044,7 @@ function PlayerPage() {
   // how a SOLO, muted video repeats. null = the manifest did not say (older
   // API) → the native loop, exactly as before. See loopEligibility.ts.
   const [playbackLoopMode, setPlaybackLoopMode] = useState<'native' | 'twodeck' | 'continuous' | null>(null);
+  const [manifestMediaFit, setManifestMediaFit] = useState<'fill' | null>(null);
   // Tier-3 camera calibration (2026-07-28): the dashboard wizard remotely
   // flips group screens into a full-screen synced flash pattern
   // (CALIBRATE_FLASH signed device message) so a phone camera can measure
@@ -6600,12 +6601,20 @@ function PlayerPage() {
         }
         setSyncEnabled(enabled);
       }
-      // 2026-09-29 — per-screen playback switches. Absent on an older API
-      // and on the emergency branch → keep what we have (default: native).
+      // 2026-09-29 — per-screen playback switches. Loop mode keeps its legacy
+      // absent-block behavior. Full-screen fill is deliberately different:
+      // every manifest replaces it, so a normal manifest without the exact
+      // pilot value clears the opt-in; emergency decisions above always win.
       if (manifest.playback && typeof manifest.playback === 'object') {
         const lm = (manifest.playback as { loopMode?: unknown }).loopMode;
         setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' || lm === 'continuous' ? lm : null);
       }
+      setManifestMediaFit(
+        !em && !cachedNormalWouldClearLiveAlert && !pushedEmergencyMessageRef.current && !pendingOverrideConfirmRef.current &&
+          manifest.playback?.mediaFit === 'fill'
+          ? 'fill'
+          : null,
+      );
       // ── DISPLAY CONTROL — install the on/off schedule + vendor recipe ──
       //
       // This is the ONLY delivery path for the feature's headline capability.
@@ -12441,7 +12450,7 @@ function PlayerPage() {
         >
           {useVideoPlaylistDeck && currentItem ? (
             <PlaylistVideoDeck key={playlist?.id ?? 'video-playlist'} active={playlistVideoSource(currentItem)}
-              fit={playlistItemFit(playlist?.isEmergency === true, currentItem as { media_w?: number; media_h?: number })}
+              fit={playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || !!pushedEmergencyMessage, currentItem as { media_w?: number; media_h?: number }, manifestMediaFit)}
               next={activeSlot.nextIndex !== null ? playlistVideoSource(sorted[activeSlot.nextIndex]) : null}
               onPlaying={markItemSucceeded}
               onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
@@ -12516,9 +12525,9 @@ function PlayerPage() {
 
             // Compute physics class limits
             const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency && !syncLocked) ? 'NONE' : item.transitionType || 'FADE';
-            // 2026-10-11 — crop-to-fill for normal content; an emergency
-            // playlist keeps its historical `fill` (mediaFit.ts).
-            const slideFit = playlistItemFit(playlist?.isEmergency === true, item as { media_w?: number; media_h?: number });
+            // Normal playlists use the admitted manifest fit; every emergency
+            // source is forced to contain by playlistItemFit.
+            const slideFit = playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || !!pushedEmergencyMessage, item as { media_w?: number; media_h?: number }, manifestMediaFit);
             let classes = `absolute top-0 right-0 bottom-0 left-0 w-full h-full ${mediaFitClass(slideFit)} transition-all duration-[1000ms] ease-in-out `;
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
@@ -12817,11 +12826,9 @@ function PlayerPage() {
                 data-slide-id={String(item.id)}
                 alt=""
                 className={classes}
-                // 2026-10-11 (owner decision) — crop to fill, centred, never
-                // stretch (mediaFit.ts). A correctly-sized image is
-                // pixel-identical to the old `fill`; a wrong aspect is now
-                // trimmed on its long axis instead of stretched. Emergency
-                // playlists keep `fill`. Inline wins over the utility class;
+                // The admitted pilot can stretch this full-screen image;
+                // every other screen keeps its existing fit. Inline wins over
+                // the utility class;
                 // belt-and-suspenders for Taurus WebViews.
                 style={{
                   position: 'absolute',

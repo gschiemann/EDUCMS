@@ -8,6 +8,7 @@ import {
   mediaFitClass,
   mediaFitStyle,
   playlistMediaFit,
+  playlistItemFit,
   visibleSourceRect,
 } from '../mediaFit';
 
@@ -32,6 +33,16 @@ describe('playlistMediaFit', () => {
     expect(mediaFitStyle('fill')).toEqual({ objectFit: 'fill', objectPosition: '50% 50%' });
     expect(mediaFitClass('cover')).toBe('object-cover');
     expect(mediaFitClass('fill')).toBe('object-fill');
+  });
+
+  it('accepts only an explicit fill override for normal media and never for emergency', () => {
+    expect(playlistMediaFit(false, 'fill')).toBe('fill');
+    expect(playlistMediaFit(false, 'cover')).toBe('contain');
+    expect(playlistItemFit(false, { media_w: 1920, media_h: 1080 }, 'fill')).toBe('fill');
+    expect(playlistItemFit(false, { media_w: 1080, media_h: 1920 }, 'fill')).toBe('fill');
+    expect(playlistItemFit(false, undefined, 'fill')).toBe('fill');
+    expect(playlistItemFit(true, { media_w: 1920, media_h: 1080 }, 'fill')).toBe('contain');
+    expect(playlistItemFit(false, { media_w: 1920, media_h: 1080 })).toBe('contain');
   });
 
   it('never emits the inset shorthand or a box side (Taurus)', () => {

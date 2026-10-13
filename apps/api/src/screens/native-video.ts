@@ -215,9 +215,12 @@ export function buildNativeVideoDescriptor(input: {
   if (!pl.items.every((i: any) => i.muted === true)) return null;
   const asset = nativeVideoAsset(item, a, env);
   if (!asset) return null;
-  // Preserve the full video frame on native protocol 2, matching the web
-  // player's default playlist fit. FaceVideoDescriptor.FITS supports contain.
-  const transform = { orientation: m.orientation, fit: 'contain' as const };
+  // Preserve the full video frame by default. Exact-screen pilot manifests
+  // may opt into full-viewport stretch; protocol 2 supports both transforms.
+  const transform = {
+    orientation: m.orientation,
+    fit: m.playback?.mediaFit === 'fill' ? 'fill' as const : 'contain' as const,
+  };
   const revision = createHash('sha256')
     .update(JSON.stringify([s.tenantId, s.id, faceIndex, pl.id, asset, transform]))
     .digest('hex');

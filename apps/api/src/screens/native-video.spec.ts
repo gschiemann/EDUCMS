@@ -139,6 +139,21 @@ describe('native video engine (protocol 2) — descriptor', () => {
     expect(build(f)).toBeNull();
   });
 
+  it('uses the exact manifest fill pilot in the transform and revision only when requested', () => {
+    const f = fixture();
+    const base = build(f)!;
+    f.manifest.playback = { mediaFit: 'fill' };
+    const fill = build(f)!;
+    expect(base.transform.fit).toBe('contain');
+    expect(fill.transform.fit).toBe('fill');
+    expect(fill.revision).not.toBe(base.revision);
+    f.manifest.playback = { mediaFit: 'cover' };
+    expect(build(f)?.transform.fit).toBe('contain');
+    f.manifest.playback = { mediaFit: 'fill' };
+    f.manifest.isEmergency = true;
+    expect(build(f)).toBeNull();
+  });
+
   it.each([
     ['emergency', (f: any) => (f.manifest.isEmergency = true)],
     ['frame-locked sync', (f: any) => (f.manifest.sync = { enabled: true })],

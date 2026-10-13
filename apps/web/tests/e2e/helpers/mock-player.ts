@@ -37,7 +37,7 @@ export function playerIds(tag: string) {
 
 export type MockKind = 'images' | 'website' | 'video';
 
-export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode: string }, copies = 1, mp4 = false, mp4Fixture = 'loop-clip.mp4') {
+export function playerManifest(screenId: string, kind: MockKind, playback?: { loopMode?: string; mediaFit?: string }, copies = 1, mp4 = false, mp4Fixture = 'loop-clip.mp4') {
   const items =
     kind === 'video'
       ? // `copies` > 1 is the same clip added several times (RIOT Cleveland's playlist).
@@ -108,7 +108,7 @@ export interface BootOptions {
   identity?: ReturnType<typeof playerIds>;
   kind: MockKind;
   /** The manifest's `playback` block (per-screen switches), e.g. `{ loopMode: 'twodeck' }`. */
-  playback?: { loopMode: string };
+  playback?: { loopMode?: string; mediaFit?: string };
   /** For kind 'video': answer every request for the clip AFTER the first with this status (a standby that cannot load). */
   videoFailAfterFirst?: number;
   /** For kind 'video': how many requests the clip has had. */
