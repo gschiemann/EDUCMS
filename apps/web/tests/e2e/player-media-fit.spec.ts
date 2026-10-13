@@ -71,36 +71,37 @@ test.describe('playlist media fit policy', () => {
   test('fill pilot stretches all four source edges to the viewport with no bars', async ({ page }, testInfo) => {
     guardPageErrors(page);
     await page.setViewportSize({ width: 540, height: 960 });
-    const url = 'http://api.invalid/assets/fill-edge-markers.svg';
+    const url = 'http://api.invalid/assets/fill-edge-markers.png';
     const m = playerManifest(playerIds('fit-fill-edge').screenId, 'images', { mediaFit: 'fill' });
     m.playlists[0].items = [{ item_id: 'fill-edge', asset_id: 'fill-edge-art', url,
-      duration_ms: 60000, sequence: 0, mime_type: 'image/svg+xml', muted: true,
+      duration_ms: 60000, sequence: 0, mime_type: 'image/png', muted: true,
       media_w: 1080, media_h: 1668, transition_type: 'NONE' }] as unknown as typeof m.playlists[0]['items'];
-    const art = '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1668" viewBox="0 0 1080 1668">' +
-      '<rect width="1080" height="1668" fill="#dde9f2"/><rect x="4" y="4" width="1072" height="1660" fill="none" stroke="#123e68" stroke-width="8"/>' +
-      '<g font-family="sans-serif" font-size="58" font-weight="bold" fill="#123e68">' +
-      '<text x="16" y="72">TOP LEFT</text><text x="1064" y="72" text-anchor="end">TOP RIGHT</text>' +
-      '<text x="16" y="1642">BOTTOM LEFT</text><text x="1064" y="1642" text-anchor="end">BOTTOM RIGHT</text>' +
-      '<text x="540" y="840" text-anchor="middle">WHOLE FRAME</text></g></svg>';
+    // Real bitmap media, matching the uploaded photo/Goodview fitXY path.
+    // An SVG's own preserveAspectRatio adds internal padding independently of object-fit.
+    const art = fs.readFileSync(path.join(__dirname, '../fixtures/full-frame-corners-1080x1668.png'));
     await bootMockPlayer(page, { tag: 'fit-fill-edge', kind: 'images', manifest: m,
       extraRoutes: async p => { await p.route(url, route => route.fulfill({ status: 200,
-        contentType: 'image/svg+xml', headers: { 'Access-Control-Allow-Origin': '*' }, body: art })); } });
+        contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: art })); } });
     const image = page.locator('img[data-slide-id]');
     await expect(image).toHaveCSS('object-fit', 'fill');
+    await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBe(1080);
     const bounds = await image.boundingBox();
     expect(bounds).toMatchObject({ x: 0, y: 0, width: 540, height: 960 });
     const shot = PNG.sync.read(await page.screenshot({ path: testInfo.outputPath('fill-four-edge-proof.png') }));
     const pixel = (x: number, y: number) => {
-      const i = (y * shot.width + x) * 4;
+      // WebKit screenshots use device pixels (DPR 2); coordinates above use CSS pixels.
+      const sx = Math.round(x * shot.width / 540);
+      const sy = Math.round(y * shot.height / 960);
+      const i = (sy * shot.width + sx) * 4;
       return [shot.data[i], shot.data[i + 1], shot.data[i + 2]];
     };
     // Distinct inset corner markers sit within the first/last 2% of source
     // dimensions. They reach all four viewport corners under fill; under
     // contain the top and bottom samples land in letterbox bars instead.
-    expect(pixel(6, 6)[0]).toBeGreaterThan(180); // top-left red
-    expect(pixel(533, 6)[1]).toBeGreaterThan(130); // top-right green
-    expect(pixel(6, 953)[2]).toBeGreaterThan(150); // bottom-left blue
-    expect(pixel(533, 953)[0]).toBeGreaterThan(180); // bottom-right yellow
+    expect(pixel(6, 6)).toEqual([225, 29, 72]); // top-left red
+    expect(pixel(533, 6)).toEqual([22, 163, 74]); // top-right green
+    expect(pixel(6, 953)).toEqual([37, 99, 235]); // bottom-left blue
+    expect(pixel(533, 953)).toEqual([250, 204, 21]); // bottom-right yellow
   });
   test('a 16:9 video on a portrait screen (single-element path) is object-fit: contain, centred, full screen', async ({ page }) => {
     test.setTimeout(90_000);
@@ -138,7 +139,7 @@ test.describe('playlist media fit policy', () => {
     }
   });
 
-  test('fill pilot reaches mismatched video on single-element and two-deck paths', async ({ page }) => {
+  test('fill pilot reaches mismatched video on the single-element path', async ({ page }) => {
     test.setTimeout(90_000);
     guardPageErrors(page);
     await page.setViewportSize({ width: 540, height: 960 });
@@ -151,11 +152,15 @@ test.describe('playlist media fit policy', () => {
       expect(v.h).toBe(960);
     }
 
-    const deckPage = await page.context().newPage();
-    await deckPage.setViewportSize({ width: 540, height: 960 });
-    await bootMockPlayer(deckPage, { tag: 'fit-video-fill-twodeck', kind: 'video', playback: { loopMode: 'twodeck', mediaFit: 'fill' } });
-    await expect(deckPage.locator('[data-loop-deck]').first()).toBeAttached({ timeout: 45_000 });
-    const decks = await fitOf(deckPage, '[data-loop-deck]');
+  });
+
+  test('fill pilot reaches the two-deck video path', async ({ page }) => {
+    test.setTimeout(90_000);
+    guardPageErrors(page);
+    await page.setViewportSize({ width: 540, height: 960 });
+    await bootMockPlayer(page, { tag: 'fit-video-fill-twodeck', kind: 'video', playback: { loopMode: 'twodeck', mediaFit: 'fill' } });
+    await expect(page.locator('[data-loop-deck]').first()).toBeAttached({ timeout: 45_000 });
+    const decks = await fitOf(page, '[data-loop-deck]');
     expect(decks.length).toBe(2);
     for (const d of decks) {
       expect(d.fit).toBe('fill');

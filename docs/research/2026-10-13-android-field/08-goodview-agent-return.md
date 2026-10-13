@@ -1,0 +1,3 @@
+Full substantive return from low-cost Goodview research agent:
+
+Both supplied APKs package com.wuhan.goodview.gtv_master. Playback layouts give image/GIF views match_parent and android:scaleType="fitXY", independent-axis stretch filling viewport with no bars/crop (may alter proportions). Video surface match_parent and Java binds MediaPlayer setDisplay(surfaceHolder); no app-selected aspect mode found. Vendor MMediaPlayer modes are availability only. Do not extrapolate image/GIF proof to video pixels; hardware probe required. Full report includes exact code/resource locations, hashes and manual distinction. Read-only, no APK execution or repository mutation by agent.
