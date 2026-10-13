@@ -1,0 +1,13 @@
+# Final source review — native output candidate
+
+Reviewed commit `1738ab2d95a9090fb471fb35ceba0085903baacc`, read-only, on 2026-10-13. Scope: the three previously identified blockers and the new solo-video promotion/retirement lifecycle. No builds, app execution, device commands, or source changes were performed by this reviewer.
+
+**No remaining actionable blocker found within this scope.**
+
+- Native blackout now calls `sharedVideoHost?.yieldToUi()` before becoming visible. The primary host ownership predicate also rejects a visible `displayBlackoutView`, preventing promotion during an already-active blackout.
+- Web native eligibility now excludes update prompts, soft blank, nonzero soft dim, canvas editing, and touch overlays. The render conditional therefore removes `NativeDualVideo` when those surfaces need the window; its existing cleanup stops the owning native session. This closes the web-composition blocker without relying on CSS z-index.
+- UI retirement now uses the existing `page-stopped` code throughout, which the existing web and native reason policies already treat as transient. Opening ordinary UI no longer introduces an unknown reason that persists a 24-hour file block.
+- Preparation remains below the window. Only the first valid renderer callback queues promotion; the queued UI-thread action rechecks live session identity, attachment/valid surface, emergency hold, and UI ownership before setting the above-window layer. Failed detached-output checks are classified separately. The presenting state is set after the promotion call succeeds.
+- Retirement invalidates the session and layer before output removal. On the UI thread the surface is hidden and removed immediately; off-thread retirement posts this work. Delayed callbacks cannot promote a retired session. Decoder stop remains asynchronous, avoiding a join on the UI thread. No additional monitor-order or per-face cleanup blocker was found in this bounded review.
+
+This review does **not** establish that Android's compositor displayed the frame, that a particular APK is installed on either Brookfield device, or that the hardware is qualified. Root's Android unit/lint/build checks were running separately and were not reviewed as completed here. First-frame takeover, native/web Blank and Dim, update prompt, Back/raw Escape, pause/wake, and emergency trigger/all-clear still require physical acceptance on both L55VEC and M43 with verified candidate provenance. The web eligibility fix must be deployed together with the candidate's validation; an older web bundle does not contain these overlay exclusions.
