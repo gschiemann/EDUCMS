@@ -79,4 +79,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387607,
     sourceUrl: "https://github.com/gschiemann/EDUCMS/actions/runs/38465765964",
   },
+  // Signed CI run 38469499321 (Rockchip 16-aligned decoder check + solo layer above window).
+  // Mirror read back + verified; certificate e45adf50…3d1897 = installed fleet.
+  '1.1.36-field.1': {
+    versionName: '1.1.36-field.1',
+    versionCode: 10136,
+    sha256: '6228d788df4d300935c61e8b29fb7edb3788db475bebc3d10913593f53ff1e35',
+    size: 2387607,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38469499321',
+  },
 };
