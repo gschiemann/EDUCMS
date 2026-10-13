@@ -32,11 +32,6 @@
  * Anything else — including a typo — reads as `off`, the direction a
  * misconfiguration has to fail here.
  *
- * `PLAYER_FULLSCREEN_FILL_SCREEN_IDS` is a separate visual pilot allowlist.
- * It accepts only comma-separated exact UUIDs; `all`, wildcards and malformed
- * IDs never enroll a screen. Empty/unset means every screen keeps its previous
- * manifest shape and media-fit behavior.
- *
  * MEASURED ON REAL HARDWARE (2026-09-29, `lastVideoReport.loop`) — why this is a
  * legacy two-deck switch and not `all`:
  *   - Amlogic T982 / Android 13 / WebView 101 (Brookfield "M43", 4K clip): the
@@ -57,23 +52,6 @@ export type LoopMode = 'native' | 'twodeck' | 'continuous';
 
 export interface PlaybackConfig {
   loopMode: LoopMode;
-  /** Exact-screen full-frame stretch pilot; absent everywhere else. */
-  mediaFit?: 'fill';
-}
-
-const SCREEN_UUID_RE = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
-
-function fullscreenFillEnrolled(
-  screenId: string | null | undefined,
-  env: Record<string, string | undefined>,
-): boolean {
-  const id = typeof screenId === 'string' ? screenId.trim() : '';
-  if (!SCREEN_UUID_RE.test(id)) return false;
-  const ids = (env.PLAYER_FULLSCREEN_FILL_SCREEN_IDS ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => SCREEN_UUID_RE.test(value));
-  return ids.some((value) => value.toLowerCase() === id.toLowerCase());
 }
 
 export function resolveLoopMode(
@@ -107,7 +85,5 @@ export function resolvePlaybackConfig(
   screenId: string | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): PlaybackConfig {
-  const config: PlaybackConfig = { loopMode: resolveLoopMode(screenId, env) };
-  if (fullscreenFillEnrolled(screenId, env)) config.mediaFit = 'fill';
-  return config;
+  return { loopMode: resolveLoopMode(screenId, env) };
 }

@@ -105,7 +105,7 @@ describe('native video engine (protocol 2) — descriptor', () => {
         tenantId: tenant,
         faceIndex: id === back ? 1 : 0,
         asset: { id: assetId, url, sha256: hash, size: 84_000_000, width: 1080, height: 1920, fps: 30 },
-        transform: { orientation: 'PORTRAIT', fit: 'contain' },
+        transform: { orientation: 'PORTRAIT', fit: 'fill' },
       });
       expect(d).not.toHaveProperty('peerScreenId');
     }
@@ -126,7 +126,7 @@ describe('native video engine (protocol 2) — descriptor', () => {
     const first = build(fixture());
     const second = build(fixture());
     expect(first).toEqual(second);
-    expect(first?.transform.fit).toBe('contain');
+    expect(first?.transform.fit).toBe('fill');
     expect(first?.revision).toBe(second?.revision);
   });
 
@@ -136,21 +136,6 @@ describe('native video engine (protocol 2) — descriptor', () => {
     expect(build(f)).not.toBeNull();
     f.manifest.playlists[0].items = [f.item, { ...f.item, mime_type: 'image/png' }];
     expect(nativeVideoCandidate(f.manifest)).toBe(false);
-    expect(build(f)).toBeNull();
-  });
-
-  it('uses the exact manifest fill pilot in the transform and revision only when requested', () => {
-    const f = fixture();
-    const base = build(f)!;
-    f.manifest.playback = { mediaFit: 'fill' };
-    const fill = build(f)!;
-    expect(base.transform.fit).toBe('contain');
-    expect(fill.transform.fit).toBe('fill');
-    expect(fill.revision).not.toBe(base.revision);
-    f.manifest.playback = { mediaFit: 'cover' };
-    expect(build(f)?.transform.fit).toBe('contain');
-    f.manifest.playback = { mediaFit: 'fill' };
-    f.manifest.isEmergency = true;
     expect(build(f)).toBeNull();
   });
 
@@ -239,7 +224,7 @@ describe('field 2026-10-12 — the T982 pair is enrolled and gets a descriptor',
     expect(build({ screen, manifest, asset, env })).toMatchObject({
       version: 2, screenId: id, faceIndex: 0,
       asset: { id: asset.id, url, sha256: sha, size: 186_954_348, width: 2160, height: 3338, fps: 30 },
-      transform: { orientation, fit: 'contain' },
+      transform: { orientation, fit: 'fill' },
     });
   });
 });

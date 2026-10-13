@@ -16,10 +16,11 @@ describe('shape-aware playlist fit (2026-10-12)', () => {
     expect(shapeAwareFit('contain', 1080, 1920, 1920, 1080)).toBe('contain');
   });
 
-  it('the playlist default contains close, mismatched, and unknown shapes', () => {
+  it('the playlist default fills close, mismatched, and unknown shapes', () => {
     const base = DEFAULT_PLAYLIST_MEDIA_FIT;
-    expect(shapeAwareFit(base, 1080, 1668, 1080, 1920)).toBe('contain');
-    expect(shapeAwareFit(base, 1920, 1080, 1080, 1920)).toBe('contain');
-    expect(shapeAwareFit(base, null, null, 1920, 1080)).toBe('contain');
+    expect(base).toBe('fill');
+    expect(shapeAwareFit(base, 1080, 1668, 1080, 1920)).toBe('fill');
+    expect(shapeAwareFit(base, 1920, 1080, 1080, 1920)).toBe('fill');
+    expect(shapeAwareFit(base, null, null, 1920, 1080)).toBe('fill');
   });
 });

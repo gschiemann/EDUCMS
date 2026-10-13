@@ -128,25 +128,4 @@ describe('resolveLoopMode', () => {
       }),
     ).toEqual({ loopMode: 'twodeck' });
   });
-
-  describe('full-screen fill pilot', () => {
-    const target = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-    it('adds only the exact opted-in valid UUID and keeps all other output unchanged', () => {
-      expect(resolvePlaybackConfig(target, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: ` ${target} ` })).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
-      expect(resolvePlaybackConfig(other, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: target })).toEqual({ loopMode: 'continuous' });
-      expect(resolvePlaybackConfig(`${target}-extra`, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: target })).toEqual({ loopMode: 'continuous' });
-    });
-
-    it.each([undefined, '', ' ', 'all', '*', 'not-a-uuid', `${target}-suffix`])(
-      'does not enroll for unsafe or malformed selector %s', (selector) => {
-        expect(resolvePlaybackConfig(target, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: selector })).toEqual({ loopMode: 'continuous' });
-        expect(resolvePlaybackConfig(other, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: selector })).toEqual({ loopMode: 'continuous' });
-      },
-    );
-
-    it('ignores malformed list entries while honoring an exact valid ID', () => {
-      expect(resolvePlaybackConfig(target, { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: `all, ${target}, ${other}-suffix` }).mediaFit).toBe('fill');
-    });
-  });
 });
