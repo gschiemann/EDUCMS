@@ -70,4 +70,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387599,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38451639426',
   },
+  // Signed private CI run 38465765964, source b44b97ee; native lifecycle readiness.
+  // Private mirror read back; release certificate matches stable 1.1.29.
+  '1.1.35-field.1': {
+    versionName: "1.1.35-field.1",
+    versionCode: 10135,
+    sha256: "b2dfd82ff50984052f69355091480f3ff8585a2250f145349de5f47356009ed1",
+    size: 2387607,
+    sourceUrl: "https://github.com/gschiemann/EDUCMS/actions/runs/38465765964",
+  },
 };
