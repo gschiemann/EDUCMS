@@ -14,6 +14,7 @@ import {
   type AnyNativeVideoDescriptor,
 } from "./nativeSharedVideo";
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, type MediaFit } from "./mediaFit";
+import { NativeVideoResumeWaiter, probeNativeVideoAvailability, queryNativeVideoAvailability } from "./nativeVideoReadiness";
 
 /**
  * What a native end means for the NEXT attempt (protocol 2 only; protocol 1
@@ -30,8 +31,12 @@ export function nativeVideoNext(
   attempt: number,
   /** Native already took the glass (the browser player was handed off). */
   wasOnGlass = false,
-): "retry" | "block" | "stay" {
+  hasAvailability = false,
+): "retry" | "block" | "stay" | "wait" {
   if (protocol !== 2) return "stay";
+  // A verified native readiness edge is a lifecycle recovery, not a periodic
+  // decoder retry. Older APKs retain their existing policy.
+  if (hasAvailability && (reason === "activity-paused" || reason === "page-stopped")) return "wait";
   // Owner rule 2026-10-12: content must never flip web → native → web → native.
   // A retry is invisible only while the browser is still the picture; once
   // native has been on the glass and ended, this content stays on the browser
@@ -93,6 +98,7 @@ export function NativeDualVideo({
   const playing = useRef(onPlaying);
   playing.current = onPlaying;
   const controller = useRef<SharedVideoController | null>(null);
+  const commitGate = useRef<(() => void) | null>(null);
   const [phase, setPhase] = useState<{
     identity: string;
     stage: "browser" | "handoff" | "presenting";
@@ -109,8 +115,61 @@ export function NativeDualVideo({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let waitingForBoundary = false;
     let boundaryTimer: ReturnType<typeof setTimeout> | null = null;
-    const handOver = () => {
-      if (!alive) return;
+    let cancelBoundary: (() => void) | null = null;
+    let resumeWaiter: NativeVideoResumeWaiter | null = null;
+    let availabilitySupported = false;
+    let preparedEpoch = -1;
+    let ended = false;
+    let gateTimer: ReturnType<typeof setTimeout> | null = null;
+    let unknownHandoffReads = 0;
+    const readAvailability = () => nativeCall("sharedVideoState");
+    const visible = () => document.visibilityState === "visible";
+    const waitForReady = (after: number, ready: (epoch: number) => void) => {
+      resumeWaiter?.stop();
+      resumeWaiter = new NativeVideoResumeWaiter(readAvailability, visible, after, a => {
+        if (alive) ready(a.epoch);
+      });
+      resumeWaiter.start();
+    };
+    const fallback = (reason?: string) => {
+      if (!alive || ended) return;
+      ended = true;
+      if (gateTimer !== null) { clearTimeout(gateTimer); gateTimer = null; }
+      cancelBoundary?.();
+      c.stop();
+      nativeSharedVideoEvidence.clear(owner);
+      setPhase({ identity, stage: "browser" });
+      const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN,
+        seen === "ready" || seen === "presenting", availabilitySupported);
+      reportNativeFallback(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
+      if (next === "block") blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());
+      else if (next === "wait") waitForReady(preparedEpoch, () => setAttempt({ base: baseIdentity, n: attemptN + 1 }));
+      else if (next === "retry") retryTimer = setTimeout(() => {
+        if (alive) setAttempt({ base: baseIdentity, n: attemptN + 1 });
+      }, NATIVE_VIDEO_RETRY_MS);
+    };
+    const canHandoff = async (): Promise<"ready" | "defer" | "ended"> => {
+      if (!availabilitySupported) return alive && !ended ? "ready" : "ended";
+      const a = await queryNativeVideoAvailability(readAvailability);
+      if (!alive || ended) return "ended";
+      if (!a) {
+        // Keep the SAME prepared attempt during a brief bridge timeout. No
+        // fictitious lifecycle edge, and no new decoder is allocated.
+        if (++unknownHandoffReads <= 3) return "defer";
+        fallback();
+        return "ended";
+      }
+      unknownHandoffReads = 0;
+      if (!a.ready || a.epoch !== preparedEpoch) {
+        fallback("page-stopped");
+        return "ended";
+      }
+      return visible() ? "ready" : "defer";
+    };
+    const handOver = async () => {
+      const gate = await canHandoff();
+      if (gate === "defer") { gateTimer = setTimeout(() => { void handOver(); }, 500); return; }
+      if (gate !== "ready") return;
       const videos = container.current?.querySelectorAll("video");
       const current = videos
         ? Array.from(videos).find((v) => !v.paused && v.readyState >= 2)
@@ -162,13 +221,14 @@ export function NativeDualVideo({
           if (playingNow && playingNow.currentTime > 0.25 && !playingNow.ended) {
             waitingForBoundary = true;
             let last = playingNow.currentTime;
-            const go = () => {
+            cancelBoundary = () => {
               playingNow.removeEventListener("educms-loop-boundary", go);
               playingNow.removeEventListener("timeupdate", onTime);
               playingNow.removeEventListener("ended", go);
               if (boundaryTimer !== null) { clearTimeout(boundaryTimer); boundaryTimer = null; }
-              handOver();
+              cancelBoundary = null;
             };
+            const go = () => { cancelBoundary?.(); void handOver(); };
             const onTime = () => {
               const t = playingNow.currentTime;
               if (t < last - 0.25) go();
@@ -180,10 +240,10 @@ export function NativeDualVideo({
             boundaryTimer = setTimeout(go, NATIVE_HANDOFF_BOUNDARY_WAIT_MS);
             return;
           }
-          handOver();
+          void handOver();
         },
         update: (state, fresh) => {
-          if (!alive) return;
+          if (!alive || ended) return;
           nativeSharedVideoEvidence.update(owner, state, fresh, Date.now());
           if (fresh && !playingReported) {
             playingReported = true;
@@ -197,32 +257,39 @@ export function NativeDualVideo({
                 : p,
             );
         },
-        fallback: (reason) => {
-          if (!alive) return;
-          nativeSharedVideoEvidence.clear(owner);
-          // The browser subtree remounts and plays the same verified file.
-          setPhase({ identity, stage: "browser" });
-          const next = nativeVideoNext(descriptor.version === 2 ? 2 : 1, reason, attemptN, seen === "ready" || seen === "presenting");
-          reportNativeFallback(nativeVideoFallbackLine({ reason, next, attempt: attemptN, protocol: descriptor.version === 2 ? 2 : 1, faceIndex: descriptor.faceIndex, sha256: descriptor.asset.sha256, stage: seen }));
-          if (next === "block")
-            blockNativeVideo(localStore(), descriptor.asset.sha256, descriptor.faceIndex, Date.now());
-          else if (next === "retry")
-            retryTimer = setTimeout(() => {
-              if (alive) setAttempt({ base: baseIdentity, n: attemptN + 1 });
-            }, NATIVE_VIDEO_RETRY_MS);
-        },
+        fallback,
       },
     );
     controller.current = c;
-    c.start();
+    // Queryable readiness also handles a resume that preceded our failed-state
+    // poll. A newer APK waits for native UI; an older APK starts as before.
+    const discover = async () => {
+      if (descriptor.version !== 2) { c.start(); return; }
+      const p = await probeNativeVideoAvailability(readAvailability);
+      if (!alive) return;
+      if (p.kind === "unknown") { gateTimer = setTimeout(() => { void discover(); }, 500); return; }
+      availabilitySupported = p.kind === "supported";
+      if (p.kind === "supported") waitForReady(-1, epoch => { preparedEpoch = epoch; c.start(); });
+      else c.start();
+    };
+    void discover();
+    const commitWhenReady = () => { void canHandoff().then(gate => {
+      if (gate === "ready") c.commit();
+      else if (gate === "defer") gateTimer = setTimeout(commitWhenReady, 500);
+    }); };
+    commitGate.current = commitWhenReady;
     // A failed attempt is not retried on re-renders/manifest polls with the same identity.
     return () => {
       alive = false;
       if (retryTimer !== null) clearTimeout(retryTimer);
+      if (gateTimer !== null) clearTimeout(gateTimer);
       if (boundaryTimer !== null) clearTimeout(boundaryTimer);
+      cancelBoundary?.();
+      resumeWaiter?.stop();
       c.stop();
       nativeSharedVideoEvidence.clear(owner);
       if (controller.current === c) controller.current = null;
+      if (commitGate.current === commitWhenReady) commitGate.current = null;
     };
     // Identity includes every safety-relevant descriptor field; callbacks do not restart playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +298,7 @@ export function NativeDualVideo({
   useEffect(() => {
     // This effect runs after the browser subtree has unmounted. Native starts its decoder only
     // after this page has surrendered its own; its first output remains behind our hold.
-    if (stage === "handoff") controller.current?.commit();
+    if (stage === "handoff") commitGate.current?.();
   }, [stage, identity]);
 
   return (

@@ -3,10 +3,10 @@ import { resolveLoopMode, resolvePlaybackConfig } from './playback-config';
 describe('resolveLoopMode', () => {
   it('pins only named screens to the same-file native backend without changing default enrollment', () => {
     const env = { PLAYER_LOOP_NATIVE: ' front , back ', PLAYER_LOOP_CONTINUOUS: 'all', PLAYER_LOOP_TWODECK: 'all' };
-    expect(resolvePlaybackConfig('front', env)).toEqual({ loopMode: 'native' });
-    expect(resolvePlaybackConfig('back', env)).toEqual({ loopMode: 'native' });
-    expect(resolvePlaybackConfig('other', env)).toEqual({ loopMode: 'continuous' });
-    expect(resolvePlaybackConfig('newly-paired', env)).toEqual({ loopMode: 'continuous' });
+    expect(resolvePlaybackConfig('front', env)).toEqual({ loopMode: 'native', mediaFit: 'fill' });
+    expect(resolvePlaybackConfig('back', env)).toEqual({ loopMode: 'native', mediaFit: 'fill' });
+    expect(resolvePlaybackConfig('other', env)).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
+    expect(resolvePlaybackConfig('newly-paired', env)).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
     for (const value of [undefined, '', ' ', 'all', 'fro', 'front-other']) {
       expect(resolveLoopMode('front', { PLAYER_LOOP_NATIVE: value })).toBe('continuous');
     }
@@ -26,6 +26,7 @@ describe('resolveLoopMode', () => {
     for (const screen of [S, newlyPaired]) {
       expect(resolvePlaybackConfig(screen, {})).toEqual({
         loopMode: 'continuous',
+        mediaFit: 'fill',
       });
       expect(resolveLoopMode(screen, { PLAYER_LOOP_CONTINUOUS: '  ' })).toBe(
         'continuous',
@@ -126,6 +127,10 @@ describe('resolveLoopMode', () => {
         PLAYER_LOOP_CONTINUOUS: 'off',
         PLAYER_LOOP_TWODECK: 'all',
       }),
-    ).toEqual({ loopMode: 'twodeck' });
+    ).toEqual({ loopMode: 'twodeck', mediaFit: 'fill' });
+  });
+  it('keeps full-screen fit explicit after removing temporary enrollment', () => {
+    expect(resolvePlaybackConfig(S, {})).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
+    expect(resolvePlaybackConfig('another-screen', { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: '' }).mediaFit).toBe('fill');
   });
 });

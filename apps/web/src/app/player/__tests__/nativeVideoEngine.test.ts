@@ -10,6 +10,7 @@ import {
   pickNativeVideo,
   readNativeVideoDescriptor,
   readNativeVideoProtocol,
+  readNativeSharedVideoState,
   readNativeSharedVideoDescriptor,
   SharedVideoController,
   sharedVideoEligible,
@@ -183,6 +184,10 @@ describe("protocol 2 controller", () => {
 });
 
 describe("what a native end means next", () => {
+  it("reports native decoder drops separately from browser loop evidence", () => {
+    expect(readNativeSharedVideoState(state("presenting", 100, { drops: 7 }))?.drops).toBe(7);
+    expect(readNativeSharedVideoState(state("presenting", 100, { drops: -1 }))?.drops).toBeUndefined();
+  });
   it("transient ends retry (bounded); a native fault blocks the file; protocol 1 is unchanged", () => {
     expect(nativeVideoNext(2, "activity-paused", 0)).toBe("retry");
     expect(nativeVideoNext(2, undefined, 0)).toBe("retry");

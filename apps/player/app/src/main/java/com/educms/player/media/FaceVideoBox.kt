@@ -146,6 +146,7 @@ internal object FaceVideoBox {
             host.faceSessions[session.slot] = session
             host.engine = SharedVideoHost.ENGINE_FACE
             if (DisplayEmergency.isHeld(host.ctx)) { stopSession(host, session, "emergency-held"); return null }
+            if (session.protocol == 2 && !host.lifecycleReady) { stopSession(host, session, "activity-paused"); return null }
         }
         // The pair engine and this one never share a face (outside our monitor — lock order).
         SharedVideoBox.suppress("engine-switched")
@@ -306,6 +307,8 @@ internal object FaceVideoBox {
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isHeld(host.ctx)) return@post
+                host.refreshReadiness()
+                if (s.protocol == 2 && !host.lifecycleReady) { stopSession(host, s, "page-stopped"); return@post }
                 if (s.layer.eligible && !host.canOwnWindow()) {
                     stopSession(host, s, "page-stopped"); return@post
                 }
@@ -418,6 +421,7 @@ internal object FaceVideoBox {
             val sv = s.surface
             val why = when {
                 DisplayEmergency.isHeld(host.ctx) -> "emergency-held"
+                s.protocol == 2 && s.startedAt > 0 && !host.lifecycleReady -> "page-stopped"
                 s.layer.eligible && s.startedAt > 0 && !host.canOwnWindow() -> "page-stopped"
                 NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(host.ctx, host.face)) != screen -> "credential-identity"
                 s.attached && (sv == null || !sv.isAttachedToWindow || !host.web.isAttachedToWindow) -> "output-detached"

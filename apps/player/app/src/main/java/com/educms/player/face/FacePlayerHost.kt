@@ -190,7 +190,12 @@ class FacePlayerHost(
 
     @Suppress("DEPRECATION")
     private fun configureWebView(wv: WebView) {
-        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(faceIndex, wv)
+        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(faceIndex, wv,
+            foreground = { com.educms.player.MainActivity.isInForeground }, focusRequired = false) {
+            !destroyed && wv.isAttachedToWindow && wv.isShown &&
+                recoveryOverlay?.visibility != View.VISIBLE &&
+                (activity as? com.educms.player.MainActivity)?.nativeVideoUiClear() == true
+        }
         sharedVideoHost = sharedMedia
         // Deliberately the same settings the primary uses. A face is a
         // screen; it renders the same bundle and must not quietly differ.
@@ -601,6 +606,7 @@ class FacePlayerHost(
     // ─── lifecycle ───────────────────────────────────────────────────
 
     fun onResume() {
+        sharedVideoHost?.refreshReadiness()
         runCatching {
             webView?.onResume()
             webView?.resumeTimers()
@@ -608,6 +614,7 @@ class FacePlayerHost(
     }
 
     fun onPause() {
+        sharedVideoHost?.refreshReadiness()
         runCatching { webView?.onPause() }
     }
 

@@ -52,6 +52,8 @@ export type LoopMode = 'native' | 'twodeck' | 'continuous';
 
 export interface PlaybackConfig {
   loopMode: LoopMode;
+  /** Keep the fitting decision explicit for already-running web bundles. */
+  mediaFit: 'fill';
 }
 
 export function resolveLoopMode(
@@ -85,5 +87,7 @@ export function resolvePlaybackConfig(
   screenId: string | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): PlaybackConfig {
-  return { loopMode: resolveLoopMode(screenId, env) };
+  // API and web deploy independently. Older running pages read this field;
+  // omitting it would reset their fit before the new default bundle loads.
+  return { loopMode: resolveLoopMode(screenId, env), mediaFit: 'fill' };
 }

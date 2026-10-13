@@ -2483,14 +2483,17 @@ class MainActivity : ComponentActivity() {
 
     private var sharedVideoHost: com.educms.player.media.SharedVideoHost? = null
 
+    /** UI-thread predicate shared with secondary faces; excludes the prepare-cleared operator latch. */
+    internal fun nativeVideoUiClear(): Boolean =
+        !nativeCardOwnsRemote() && !managerGateShown &&
+            displayBlackoutView?.visibility != View.VISIBLE &&
+            binding.recoveryOverlay.visibility != View.VISIBLE &&
+            (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE)
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
-        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv) {
-            !nativeCardOwnsRemote() && !managerGateShown &&
-                displayBlackoutView?.visibility != View.VISIBLE &&
-                binding.recoveryOverlay.visibility != View.VISIBLE &&
-                (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE)
-        }
+        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv,
+            foreground = { isInForeground }, operatorUiClear = ::nativeVideoUiClear)
         sharedVideoHost = sharedMedia
         wv.settings.apply {
             javaScriptEnabled = true
@@ -4025,6 +4028,7 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
+        sharedVideoHost?.refreshReadiness()
         // 1.1.23 — whoever left the setup card for a system screen is back.
         runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }
         // USER STANDBY — resumed with the panel lit means whatever turned it
@@ -4182,8 +4186,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        com.educms.player.media.SharedVideoHost.suspendAll()
         isInForeground = false
+        sharedVideoHost?.refreshReadiness()
+        runCatching { faceHosts?.onPause() }
+            .onFailure { PlayerLogger.w("MainActivity", "face onPause failed: ${it.message}") }
+        com.educms.player.media.SharedVideoHost.suspendAll()
         isResumedForLockTask = false
         // 1.1.23 — pausing WITH the setup card on glass means a person just
         // left it for a system screen (a page the card opened, or their own
@@ -4205,8 +4212,6 @@ class MainActivity : ComponentActivity() {
             urlOverlayView.onPause()
         }
         webView.onPause()
-        runCatching { faceHosts?.onPause() }
-            .onFailure { PlayerLogger.w("MainActivity", "face onPause failed: ${it.message}") }
         super.onPause()
     }
 
@@ -5019,6 +5024,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        sharedVideoHost?.refreshReadiness()
         if (hasFocus) reapplyImmersive()
     }
 

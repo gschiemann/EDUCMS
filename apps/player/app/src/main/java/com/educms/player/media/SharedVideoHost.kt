@@ -20,7 +20,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /** Activity/Presentation-owned adapter. No JS-supplied face index or credential is accepted. */
-class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean) {
+class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean, private val foreground: (() -> Boolean)?, private val focusRequired: Boolean) {
     internal val ctx: Context = web.context.applicationContext
     internal val surfaceView = SurfaceView(web.context)
     internal var attached = false
@@ -49,7 +49,19 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     /** Which engine this face last used: the one `sharedVideoState` reports. */
     @Volatile internal var engine = ENGINE_SHARED
     @Volatile private var operatorUiRequested = false
-    internal fun canOwnWindow(): Boolean = !operatorUiRequested && operatorUiClear()
+    private val readiness = NativeVideoReadiness()
+    internal val lifecycleReady: Boolean get() = foreground == null || readiness.snapshot.ready
+    /** View/window properties are observed only on the UI thread. No bridge wait or lock inversion. */
+    fun refreshReadiness() {
+        if (foreground == null) return
+        if (Looper.myLooper() != Looper.getMainLooper()) { web.post { refreshReadiness() }; return }
+        val interactive = (ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
+        readiness.observe(!detached && foreground.invoke(), interactive, web.hasWindowFocus(), operatorUiClear(), focusRequired)
+    }
+    internal fun canOwnWindow(): Boolean {
+        refreshReadiness()
+        return !operatorUiRequested && lifecycleReady && operatorUiClear()
+    }
     private val windowGuard = ViewTreeObserver.OnPreDrawListener {
         if (!canOwnWindow()) FaceVideoBox.yieldToUi(this, "page-stopped")
         true
@@ -79,7 +91,14 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
      * and `sessions[]` (FaceVideoBox.state) prove the positioned-slot engine.
      */
     fun stateJson(): String {
+        refreshReadiness()
         val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", FaceVideoBox.PROTOCOL_MAX)
+        if (foreground != null) {
+            val s = readiness.snapshot
+            j.put("availability", JSONObject().put("version", 1).put("foreground", s.foreground)
+                .put("interactive", s.interactive).put("focused", s.focused).put("focusRequired", s.focusRequired).put("uiClear", s.uiClear)
+                .put("ready", s.ready).put("epoch", s.epoch))
+        }
         return j.put("protocol",2).toString()
     }
     fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
@@ -94,8 +113,9 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
 
     companion object {
         /** Called on UI thread, including renderer replacement. Surface stays below the WebView. */
-        fun attach(face: Int, web: WebView, operatorUiClear: () -> Boolean = { false }): SharedVideoHost {
-            val host = SharedVideoHost(face,web,operatorUiClear)
+        fun attach(face: Int, web: WebView, foreground: (() -> Boolean)? = null, focusRequired: Boolean = true, operatorUiClear: () -> Boolean = { false }): SharedVideoHost {
+            val host = SharedVideoHost(face,web,operatorUiClear,foreground,focusRequired)
+            host.refreshReadiness()
             SharedVideoBox.attach(host)
             FaceVideoBox.attach(host)
             web.viewTreeObserver.addOnPreDrawListener(host.windowGuard)

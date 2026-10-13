@@ -561,7 +561,7 @@ export function readNativeSharedVideoState(
     /^[a-z0-9_.-]{1,128}$/i.test(v.codecName)
   )
     s.codecName = v.codecName;
-  for (const k of ["elapsedMs", "stalls", "loops"] as const)
+  for (const k of ["elapsedMs", "stalls", "loops", "drops"] as const)
     if (count(v[k])) s[k] = v[k];
   return s;
 }

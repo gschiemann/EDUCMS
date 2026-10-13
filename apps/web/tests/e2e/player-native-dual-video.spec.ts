@@ -13,9 +13,9 @@ const url =
 const clip = fs.readFileSync(path.join(__dirname, "fixtures", "loop-clip.mp4"));
 const sha256 = createHash("sha256").update(clip).digest("hex");
 
-async function bootDual(page: Page) {
+async function bootDual(page: Page, lifecycle = false) {
   await page.addInitScript(
-    ({ sha256 }) => {
+    ({ sha256, lifecycle }) => {
       const w = window as any;
       w.__eduCmsBridgeNonce = "fake-test-nonce";
       const d = (w.__dualTest = {
@@ -26,9 +26,16 @@ async function bootDual(page: Page) {
         frames: 0,
         commits: [] as number[],
         stops: 0,
+        prepares: 0,
+        available: true,
+        epoch: 1,
+        reason: "codec-failed",
       });
       w.EduCmsNative = {
-        sharedVideoPrepare() {},
+        sharedVideoPrepare() {
+          d.prepares++;
+          if (lifecycle) { d.fail = false; d.committed = false; }
+        },
         sharedVideoCommit() {
           d.commits.push(document.querySelectorAll("video").length);
           d.committed = true;
@@ -40,6 +47,10 @@ async function bootDual(page: Page) {
           if (d.committed && d.advance) d.frames += 15;
           return JSON.stringify({
             version: 1,
+            ...(lifecycle ? { protocol: 2, availability: {
+              version: 1, foreground: d.available, interactive: true, focused: true,
+              focusRequired: true, uiClear: true, ready: d.available, epoch: d.epoch,
+            } } : {}),
             state: d.fail
               ? "failed"
               : d.committed
@@ -51,7 +62,7 @@ async function bootDual(page: Page) {
             revision: "test-revision",
             sha256,
             faceIndex: 0,
-            reason: d.fail ? "codec-failed" : undefined,
+            reason: d.fail ? d.reason : undefined,
             codecName: "OMX.test.avc",
             elapsedMs: (d.frames * 1000) / 30,
             loops: 0,
@@ -71,7 +82,7 @@ async function bootDual(page: Page) {
         },
       };
     },
-    { sha256 },
+    { sha256, lifecycle },
   );
   const manifest = {
     ...playerManifest(screen, "video", { loopMode: "native" }, 1, true),
@@ -102,6 +113,10 @@ async function bootDual(page: Page) {
     asset_hash: sha256,
     asset_size: clip.length,
   });
+  if (lifecycle) {
+    (manifest as any).nativeVideo = { ...manifest.nativeSharedVideo, version: 2 };
+    delete (manifest as any).nativeSharedVideo;
+  }
   const manifestRef: { value: typeof manifest } = { value: manifest };
   await bootMockPlayer(page, {
     tag: "native-dual",
@@ -133,6 +148,29 @@ async function bootDual(page: Page) {
   });
   return { manifestRef, manifest };
 }
+
+test("a real native readiness epoch restores protocol-2 after menu pause without restarting the page", async ({ page }) => {
+  await bootDual(page, true);
+  await page.evaluate(() => ((window as any).__dualTest.ready = true));
+  await expect(page.locator("[data-native-shared-video]")).toHaveAttribute("data-native-shared-video", "presenting");
+  const before = page.url();
+  await page.evaluate(() => {
+    const d = (window as any).__dualTest;
+    d.available = false; d.reason = "activity-paused"; d.fail = true;
+  });
+  await expect(page.locator("video")).toHaveCount(1);
+  await page.waitForTimeout(1500);
+  expect(await page.evaluate(() => (window as any).__dualTest.prepares)).toBe(1);
+  await page.evaluate(() => {
+    const d = (window as any).__dualTest;
+    d.available = true; d.epoch++;
+  });
+  await expect(page.locator("[data-native-shared-video]")).toHaveAttribute("data-native-shared-video", "presenting");
+  await expect(page.locator("video")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__dualTest.prepares)).toBe(2);
+  expect(await page.evaluate(() => (window as any).__dualTest.commits)).toEqual([0, 0]);
+  expect(page.url()).toBe(before);
+});
 
 async function push(page: Page, type: string) {
   await expect

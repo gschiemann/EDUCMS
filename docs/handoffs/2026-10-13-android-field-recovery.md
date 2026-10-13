@@ -2,7 +2,21 @@
 
 ## Current outcome
 
-Template work is paused and preserved. Android1.1.34-field.1 is installed ONLY on Brookfield L55VEC and M43. Both physically passed the owner's white-screen check and full-screen beach-clip check: neither turnswhite; bothfillcorrectly with edgecontentintact. The verified full-screen mapping is now the final normal-playlist web/nativeP2 default, tested and ready for the final production deployment. Final deployment/CI verification is still pending at this source checkpoint; see Desktop LIVE-DELIVERY-CHECKPOINT.md for later runtime evidence. Stable APK remains1.1.29; no new fleet APK tag/catalogue was published.
+Template work is paused and preserved. Android 1.1.34-field.1 is installed on Brookfield L55VEC and M43. The owner confirmed no white screens and full-screen fill with edges intact. Normal media fill is live at c20f9db3. A rolling API/web deployment briefly restored bars on older open pages; this change keeps the API fit explicit so that cannot recur. Stable fleet APK remains 1.1.29.
+
+The owner used remotes/menus, exposing a separate native resume defect: Android retired native on Activity pause, and the web policy kept that content on HTML video. Both .34 units had genuine above-window native first-frame logs; their later rVFC reports were browser playback, not native decoder proof. A private .35 readiness/epoch correction is implemented and source-reviewed by Astra; signed build, delivery, and physical acceptance are pending at this checkpoint.
+
+The owner explicitly added Brookfield DH43 on 2026-10-13. Authorized physical devices are now L55VEC, M43, and DH43 (both faces). DH43 primary screen 40864836-9367-47a3-b349-ba1c3378f814; back screen 80bf9b8d-1271-4b21-bb5b-0626ce6a8092. The two faces share one Android 7.1/SDK25 APK installation. At 20:36Z, HTML samples dropped 833/1569 front (~53%) and 755/1550 back (~49%); the primary's .29 native attempt at 16:32Z failed hardware-codec-unavailable before presenting and wrote a genuine build-scoped block. Do not clear that block manually. The newer APK inherits the already-reviewed size/rate check in either video orientation. Its actual codec acceptance and two-face performance remain to be measured.
+
+## Native pause/resume correction
+
+Additive read-only availability on sharedVideoState publishes UI-thread observations of Activity foreground, panel interactivity, actual window focus, physical native UI clearance, and a monotonically increasing ready epoch. The operator-request latch is kept separate and only the existing eligible prepare clears it. Secondary Presentation reports focusRequired=false because it need not own remote input; its readiness still requires foreground, a visible attached host, clear recovery UI, and the primary's clear native UI predicate.
+
+Pause sets foreground false and refreshes primary/secondary snapshots BEFORE retiring native sessions. Protocol-2 prepare, commit and watch enforce readiness independently of above-window layer eligibility. The SDK33 primary layer promotion remains unchanged; Android7 and secondary window layering are not generalized blindly.
+
+The web keeps the browser alive while waiting. Exact activity-paused/page-stopped failures on a supporting APK receive one recovery attempt per newer ready epoch, including resume-before-failure-poll. A missing/invalid bridge reply is unknown, never proof of an old APK; valid legacy absence preserves old behavior. A handoff timeout rechecks the SAME prepared attempt rather than inventing a pause. Boundary listeners, timers and late callbacks are canceled on retirement/identity change. All other post-presenting transient policies and genuine codec/digest/file fault blocks remain intact. Native decoder drops are now carried in protocol-2 telemetry separately from HTML loop evidence.
+
+Astra's two initial review blockers were corrected and covered by mounted React regressions; follow-up found no remaining actionable blocker in scope. Tests: Android 903 tests/82 suites, lint and debug build PASS; focused web 85 tests/5 suites PASS; full preflight PASS. Chromium/WebKit lifecycle, decoder-release/fallback, and mocked emergency/all-clear browser checks PASS (6/6). These are software checks, not hardware qualification.
 
 ## Exact private APK scope and provenance
 
