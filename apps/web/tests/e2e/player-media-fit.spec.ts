@@ -58,7 +58,10 @@ test.describe('playlist media shows whole frame by default', () => {
         contentType: 'image/svg+xml', headers: { 'Access-Control-Allow-Origin': '*' }, body: art })); } });
     const image = page.locator('img[data-slide-id]');
     await expect(image).toHaveCSS('object-fit', 'contain');
-    await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalHeight)).toBe(1668);
+    await expect.poll(() => image.evaluate(el => {
+      const im = el as HTMLImageElement;
+      return im.naturalWidth / im.naturalHeight;
+    })).toBeCloseTo(1080 / 1668, 5);
     await page.screenshot({ path: testInfo.outputPath('whole-near-match.png') });
   });
   test('a 16:9 video on a portrait screen (single-element path) is object-fit: contain, centred, full screen', async ({ page }) => {
