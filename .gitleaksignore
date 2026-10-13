@@ -71,3 +71,6 @@ db1042afc0ae6cda7a838fbc47559cdc6a76bf99:packages/api-types/src/pdf-pages.ts:gen
 9a84e65d45456e918cccc679ce44df44a7a6f977:.gitleaksignore:generic-api-key:68
 # APK sha256 digest of private field build 1.1.33-field.1 (public hash, not a secret)
 15f35cc8748c98ad43e412c89d5dd28081855c02:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:58
+
+# Verified APK SHA256 of private 1.1.34-field.1, CI run 38451639426; integrity metadata, not a signing secret.
+4bdba05bc1403db3f63814f47b94414000d04f3b:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:69
