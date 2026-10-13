@@ -9,6 +9,7 @@ import android.view.SurfaceView
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.WebView
 import android.widget.FrameLayout
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
@@ -19,7 +20,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 /** Activity/Presentation-owned adapter. No JS-supplied face index or credential is accepted. */
-class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView) {
+class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean) {
     internal val ctx: Context = web.context.applicationContext
     internal val surfaceView = SurfaceView(web.context)
     internal var attached = false
@@ -47,6 +48,14 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     internal val faceSessions = LinkedHashMap<String, FaceVideoSession>()
     /** Which engine this face last used: the one `sharedVideoState` reports. */
     @Volatile internal var engine = ENGINE_SHARED
+    @Volatile private var operatorUiRequested = false
+    internal fun canOwnWindow(): Boolean = !operatorUiRequested && operatorUiClear()
+    private val windowGuard = ViewTreeObserver.OnPreDrawListener {
+        if (!canOwnWindow()) FaceVideoBox.yieldToUi(this, "page-stopped")
+        true
+    }
+    /** Native escape does not depend on the page handling the key promptly. */
+    fun yieldToUi() { operatorUiRequested = true; FaceVideoBox.yieldToUi(this, "page-stopped") }
 
     /**
      * `version: 3` (an op on a positioned slot) and `version: 2` (the solo)
@@ -58,7 +67,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
             is FaceZoneMessage.Prepare -> FaceVideoBox.prepare(this, m.request)
             is FaceZoneMessage.Layout -> FaceVideoBox.layout(this, m.sessionId, m.layout)
             is FaceZoneMessage.Play -> FaceVideoBox.play(this, m.sessionId)
-            null -> if (FaceVideoRequest.parse(json) != null) FaceVideoBox.prepare(this,json)
+            null -> if (FaceVideoRequest.parse(json) != null) { operatorUiRequested = false; FaceVideoBox.prepare(this,json) }
                 else if (!FaceVideoBox.anyActive()) { engine = ENGINE_SHARED; SharedVideoBox.prepare(this,json) }
         }
     }
@@ -75,6 +84,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     }
     fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
     fun detach() {
+        if (web.viewTreeObserver.isAlive) web.viewTreeObserver.removeOnPreDrawListener(windowGuard)
         SharedVideoBox.invalidate(this,"host-detached")
         synchronized(SharedVideoBox) { detached = true }
         (surfaceView.parent as? ViewGroup)?.removeView(surfaceView)
@@ -84,10 +94,11 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
 
     companion object {
         /** Called on UI thread, including renderer replacement. Surface stays below the WebView. */
-        fun attach(face: Int, web: WebView): SharedVideoHost {
-            val host = SharedVideoHost(face,web)
+        fun attach(face: Int, web: WebView, operatorUiClear: () -> Boolean = { false }): SharedVideoHost {
+            val host = SharedVideoHost(face,web,operatorUiClear)
             SharedVideoBox.attach(host)
             FaceVideoBox.attach(host)
+            web.viewTreeObserver.addOnPreDrawListener(host.windowGuard)
             val parent = web.parent as? ViewGroup
             if (parent == null || face !in 0..1) { host.detached = true; return host }
             // No default-fleet surface allocation. Attach only after authenticated descriptors agree.

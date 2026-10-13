@@ -12580,7 +12580,10 @@ function PlayerPage() {
               const nativeEligible = sharedVideoEligible(nativeChoice, {
                 screenId,tenantId,assetId:item.asset.id,sha256:item.asset.fileHash ?? '',
                 solo:isSoloPlaylist && sorted.length === 1,muted:(item as {muted?:boolean|null}).muted !== false,
-                active:isActive,emergency:!!activeEmergency || playlist?.isEmergency === true,
+                // A solo surface above the Android window must yield before
+                // web controls, dim/blank or visitor/editor overlays are shown.
+                active:isActive && !showUpdatePrompt && !softBlank && softDim <= 0 && !showCanvasEditor && !touchOverlay,
+                emergency:!!activeEmergency || playlist?.isEmergency === true,
                 sync:syncConfigRef.current.enabled,preview:isPreviewMode(),
               });
               // Why native did NOT mount, once per page load (2026-10-12: VisionCore

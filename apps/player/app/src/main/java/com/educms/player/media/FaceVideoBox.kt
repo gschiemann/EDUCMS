@@ -1,6 +1,7 @@
 package com.educms.player.media
 
 import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -12,6 +13,7 @@ import android.widget.FrameLayout
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.face.FaceTokenStore
+import com.educms.player.logging.PlayerLogger
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -26,9 +28,10 @@ import java.util.concurrent.Executors
  * Mutable fields are guarded by the FaceVideoBox monitor; views are touched on
  * the UI thread only.
  */
-internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, val zone: FaceZoneRequest?) {
+internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, val zone: FaceZoneRequest?, face: Int) {
     val slot: String = zone?.slot ?: ""
     val protocol: Int = if (zone != null) 3 else 2
+    val layer = SoloVideoLayer(SoloVideoLayer.eligible(protocol, face, Build.VERSION.SDK_INT))
     val screenId: String = zone?.screenId ?: request!!.screenId
     val revision: String = zone?.revision ?: request!!.revision
     val sha256: String = zone?.sha256 ?: request!!.sha256
@@ -107,6 +110,9 @@ internal object FaceVideoBox {
     @Synchronized fun anyActive(): Boolean = hosts.values.any { h -> h.faceSessions.values.any { it.alive } }
     @Synchronized fun invalidate(host: SharedVideoHost, why: String) { host.faceSessions.values.toList().forEach { stopSession(host, it, why) } }
     @Synchronized fun suppress(why: String) { hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } } }
+    @Synchronized fun yieldToUi(host: SharedVideoHost, why: String) {
+        host.faceSessions.values.toList().filter { it.layer.eligible }.forEach { stopSession(host, it, why) }
+    }
 
     private fun live(host: SharedVideoHost, s: FaceVideoSession): Boolean =
         s.alive && hosts[host.face] === host && !host.detached && host.faceSessions[s.slot] === s
@@ -116,12 +122,12 @@ internal object FaceVideoBox {
     /** Protocol 2: the solo slot. */
     fun prepare(host: SharedVideoHost, json: String) {
         val req = FaceVideoRequest.parse(json) ?: return
-        begin(host, FaceVideoSession(UUID.randomUUID().toString(), req, null)) ?: return
+        begin(host, FaceVideoSession(UUID.randomUUID().toString(), req, null, host.face)) ?: return
     }
 
     /** Protocol 3: one positioned slot. */
     fun prepare(host: SharedVideoHost, req: FaceZoneRequest) {
-        begin(host, FaceVideoSession(UUID.randomUUID().toString(), null, req)) ?: return
+        begin(host, FaceVideoSession(UUID.randomUUID().toString(), null, req, host.face)) ?: return
     }
 
     /** Registers the session (or re-uses a live identical one) and starts the authenticated fetch. */
@@ -230,16 +236,10 @@ internal object FaceVideoBox {
         val container = s.container ?: FrameLayout(host.web.context).also { s.container = it }
         val box = s.box ?: FrameLayout(host.web.context).also { it.setBackgroundColor(Color.BLACK); s.box = it }
         val surface = s.surface ?: SurfaceView(host.web.context).also { sv ->
-            // A SOLO full-screen video (protocol 2) sits ABOVE the page, the
-            // way a native signage player (Goodview's CMS) draws it: nothing
-            // has to turn transparent, so it shows on every ROM. Field
-            // 2026-10-12 VisionCore (Rockchip rk3328, Android 11): behind the
-            // page the decoder rendered 29.8 fps, visible=true, while the glass
-            // stayed WHITE (the window never turned see-through). Emergency
-            // stops native before an alert paints (FaceVideoBox hold + 1 s
-            // watch), so nothing the page must show is ever covered. Protocol-3
-            // zones stay UNDER the page — widgets draw above them.
-            if (s.protocol == 2) sv.setZOrderMediaOverlay(true) else sv.setZOrderOnTop(false)
+            // Prepare below the window: the live web clip may still be waiting
+            // up to 60 seconds for its boundary. A real rendered frame promotes
+            // qualified solo output later; media-overlay is still BELOW a window.
+            sv.setZOrderOnTop(false)
             sv.isFocusable = false
             sv.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) { surfaceReady(host, s) }
@@ -306,7 +306,10 @@ internal object FaceVideoBox {
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isHeld(host.ctx)) return@post
-                host.web.setBackgroundColor(Color.TRANSPARENT)
+                if (s.layer.eligible && !host.canOwnWindow()) {
+                    stopSession(host, s, "page-stopped"); return@post
+                }
+                host.web.setBackgroundColor(if (s.layer.eligible) Color.BLACK else Color.TRANSPARENT)
                 s.startedAt = SystemClock.elapsedRealtime()
                 s.renderer?.start()
             }
@@ -384,7 +387,27 @@ internal object FaceVideoBox {
         s.updates++
         if (stamp != s.lastStamp) { s.unique++; s.lastStamp = stamp; s.ptsUs = pts }
         s.lastUpdate = SystemClock.elapsedRealtime()
-        s.state = "presenting"
+        if (!s.layer.eligible || s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
+            s.state = "presenting"
+        } else if (s.layer.request(started = true, validFrame = true)) {
+            main.post {
+                synchronized(this) {
+                    val held = DisplayEmergency.isHeld(host.ctx)
+                    val attached = s.attached && sv.isAttachedToWindow && sv.holder.surface.isValid
+                    val uiClear = host.canOwnWindow()
+                    if (!s.layer.promote(live(host, s), attached, held, uiClear)) {
+                        if (live(host, s)) stopSession(host, s,
+                            if (held) "emergency-held" else if (!attached) "output-detached" else "page-stopped")
+                        return@post
+                    }
+                    try {
+                        sv.setZOrderOnTop(true)
+                        s.state = "presenting"
+                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=2 mode=above-window phase=first-render sha=${s.sha256.take(8)}")
+                    } catch (_: Exception) { stopSession(host, s, "output-unavailable") }
+                }
+            }
+        }
     }
 
     private fun watch(host: SharedVideoHost, s: FaceVideoSession) {
@@ -395,6 +418,7 @@ internal object FaceVideoBox {
             val sv = s.surface
             val why = when {
                 DisplayEmergency.isHeld(host.ctx) -> "emergency-held"
+                s.layer.eligible && s.startedAt > 0 && !host.canOwnWindow() -> "page-stopped"
                 NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(host.ctx, host.face)) != screen -> "credential-identity"
                 s.attached && (sv == null || !sv.isAttachedToWindow || !host.web.isAttachedToWindow) -> "output-detached"
                 now - s.lastPoll > 10_000 -> "page-lease-expired"
@@ -411,11 +435,15 @@ internal object FaceVideoBox {
     private fun stopSession(host: SharedVideoHost, s: FaceVideoSession, why: String) {
         if (!s.alive) return
         s.alive = false
+        s.layer.retire()
         s.stoppedAt = SystemClock.elapsedRealtime()
         s.renderer?.stop(); s.renderer = null
         s.state = "failed"; s.reason = why
-        main.post {
+        val removeOutput = Runnable {
             synchronized(this) {
+                // Hide an elevated surface before the alert/operator window can
+                // draw. A main-thread retirement must not wait for another post.
+                s.surface?.visibility = View.GONE
                 (s.surface?.parent as? ViewGroup)?.removeView(s.surface)
                 (s.box?.parent as? ViewGroup)?.removeView(s.box)
                 (s.container?.parent as? ViewGroup)?.removeView(s.container)
@@ -423,12 +451,14 @@ internal object FaceVideoBox {
                 if (host.faceSessions.values.none { it.alive && it.attached }) host.web.setBackgroundColor(Color.BLACK)
             }
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) removeOutput.run() else main.post(removeOutput)
     }
 
     private fun sessionJson(host: SharedVideoHost, s: FaceVideoSession): JSONObject {
         val sv = s.surface
         val attached = s.attached && !host.detached && sv != null && sv.isAttachedToWindow
         val output = JSONObject().put("attached", attached)
+            .put("layerMode", s.layer.phase.name.lowercase())
             .put("visible", attached && sv!!.isShown && sv.windowVisibility == View.VISIBLE)
             .put("hardwareAccelerated", host.web.isHardwareAccelerated)
             .put("viewUpdates", s.updates).put("uniqueFrames", s.unique).put("sourcePtsUs", s.ptsUs)

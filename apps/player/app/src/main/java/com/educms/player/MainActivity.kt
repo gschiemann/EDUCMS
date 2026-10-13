@@ -1216,6 +1216,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             if (!::binding.isInitialized) return@runCatching
             if (visible) {
+                sharedVideoHost?.yieldToUi()
                 val view = displayBlackoutView ?: View(this).also { v ->
                     v.setBackgroundColor(android.graphics.Color.BLACK)
                     // Swallow taps so a blanked screen cannot be poked
@@ -1863,6 +1864,7 @@ class MainActivity : ComponentActivity() {
                 // Tell the web player to show its Stop/Exit overlay.
                 // The bridge method already exists for the dashboard's
                 // "Stop screen" action; we just trigger it locally.
+                sharedVideoHost?.yieldToUi()
                 try {
                     webView.evaluateJavascript(
                         "window.dispatchEvent(new CustomEvent('edu-show-stop-overlay'))",
@@ -2138,6 +2140,7 @@ class MainActivity : ComponentActivity() {
                 // A finger still resting on the corner must not re-fire the
                 // hold the moment the list is dismissed.
                 setupCornerHold.cancel()
+                sharedVideoHost?.yieldToUi()
                 com.educms.player.setup.SetupCeremony.open(this, ::applyRemoteFocus)
             }.onFailure {
                 PlayerLogger.w("SetupCeremony", "open ($source) threw: ${it.message}")
@@ -2482,7 +2485,12 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
-        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv)
+        val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv) {
+            !nativeCardOwnsRemote() && !managerGateShown &&
+                displayBlackoutView?.visibility != View.VISIBLE &&
+                binding.recoveryOverlay.visibility != View.VISIBLE &&
+                (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE)
+        }
         sharedVideoHost = sharedMedia
         wv.settings.apply {
             javaScriptEnabled = true
@@ -3504,6 +3512,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         urlOverlayCurrentUrl = cleanUrl
+        sharedVideoHost?.yieldToUi()
         PlayerLogger.i("MainActivity", "Showing URL overlay: $cleanUrl")
         urlOverlayView.loadUrl(cleanUrl)
         urlOverlayView.visibility = View.VISIBLE
@@ -3588,6 +3597,7 @@ class MainActivity : ComponentActivity() {
         // A NEW session starts with no remembered sign-in hosts.
         if (!wasActive) webTabsLearnedHosts.clear()
         webTabsActive = true
+        sharedVideoHost?.yieldToUi()
         webTabsAllowHosts = req.allowHosts
         webTabsCopy = req.copy
         webTabsIncognito = req.incognito
@@ -4319,6 +4329,7 @@ class MainActivity : ComponentActivity() {
      */
     private var managerGateShown = false
     private fun showManagerGate(status: String) {
+        sharedVideoHost?.yieldToUi()
         managerGateShown = true
         // 2026-09-01 — `elapsedRealtime`, replacing `currentTimeMillis`:
         // signage boxes step the wall clock on first NTP sync, and a
