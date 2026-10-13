@@ -130,3 +130,7 @@ CSS reserves42px after the eyebrow, prevents headline flex shrink, uses1.15 head
 |WebKit|Portrait|[]|[]|[]|[]|64px Georgia|
 
 The longer headline is “All your care, in one app. — welcome.” Existing data-fit floors remain unchanged (body60px/support50px); all scripts, field keys and image-slot keys are byte-identical. Evidence: `scratch/astra-finish/mychart-final-verify.log`, `mychart-headline-verify.log`, and four final `healthcare-07-mychart-signup-{orientation}-{engine}.png` screenshots. Lead retains injection/posters/integration/CI. No other source edited.
+
+### MyChart panel containment refinement
+
+Final visual QA found feature labels touching the landscape lead panel bottom despite collision-free text. Reallocated the lead to a550px headline box and300px description box in both orientations. Final default and both long-copy variants remain collision-free in all4 cases; all saved64px Georgia checks pass. Added DOM Range containment check for every lead field: minimum bottom clearance95.8px Chromium landscape,85.8px Chromium portrait,94.5px WebKit landscape,84.5px WebKit portrait. Minimum lead text66px. Final screenshots inspected after rerender. Evidence: `scratch/astra-finish/mychart-containment.log`.
