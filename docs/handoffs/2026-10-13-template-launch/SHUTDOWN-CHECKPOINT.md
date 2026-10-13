@@ -26,6 +26,6 @@ Finish registration of both orientations, industry tags, current injected bridge
 
 Source branches, reports and ignored scratch evidence are backed up under `/Users/gschiemann/Desktop/template-flagship-audit/shutdown-2026-10-13/`. The incremental Git bundle requires the recorded upstream base; existing local branches/worktrees remain the primary saved source. No environment files or secrets are included.
 
-Lead static server on 8768 and production Next server on 3192 were stopped. Astra is stopping its own source test/server on 8767 after saving. On resume, restart only needed servers. Do not trust stale `.next` output for new component changes; final preflight must rebuild.
+Lead static server on 8768 and production Next server on 3192 were stopped. Astra was interrupted after saving source and results; its source server on 8767 was stopped. All agents for this task are paused. Full saved verification is `docs/research/2026-10-13-template-launch/03-bottle-saved-verification.md`. On resume, restart only needed servers. Do not trust stale `.next` output for new component changes; final preflight must rebuild.
 
 Last usage reading: 57% primary window, 25% weekly. Preserve source/report/evidence at every accepted milestone. Native Android diagnosis is saved separately and is not the current task.

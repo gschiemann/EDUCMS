@@ -1,0 +1,740 @@
+[
+  {
+    "engine": "chromium",
+    "o": "landscape",
+    "variant": "default",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.5
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "o": "landscape",
+    "variant": "long",
+    "errors": [],
+    "fields": 76,
+    "collisions": [
+      [
+        "b.0.p",
+        "b.0.d"
+      ],
+      [
+        "b.0.d",
+        "b.0.svc"
+      ]
+    ],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.5
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "o": "landscape",
+    "variant": "manual",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.5
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 10
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.inc": {
+        "font": 64,
+        "family": "Georgia"
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "o": "portrait",
+    "variant": "default",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 6
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 8.5
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 60.99,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 62,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "o": "portrait",
+    "variant": "long",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 6
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 8.5
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 60.99,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 62,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "chromium",
+    "o": "portrait",
+    "variant": "manual",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 6
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 8.5
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.inc": {
+        "font": 64,
+        "family": "Georgia"
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "landscape",
+    "variant": "default",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.1
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11.2
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5.5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 61.203094,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "landscape",
+    "variant": "long",
+    "errors": [],
+    "fields": 76,
+    "collisions": [
+      [
+        "b.0.p",
+        "b.0.d"
+      ],
+      [
+        "b.0.d",
+        "b.0.svc"
+      ]
+    ],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.1
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11.2
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5.5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "landscape",
+    "variant": "manual",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.tagline",
+        "parent": "top",
+        "overflow": 7.1
+      },
+      {
+        "key": "board.title",
+        "parent": "top",
+        "overflow": 11.2
+      },
+      {
+        "key": "foot.reservations",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.cover",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.minspend",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.server",
+        "parent": "footer",
+        "overflow": 11
+      },
+      {
+        "key": "foot.note",
+        "parent": "frame",
+        "overflow": 5.5
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.inc": {
+        "font": 64,
+        "family": "Georgia"
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "portrait",
+    "variant": "default",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 5
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 7.8
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 61.999969,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 61.999969,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "portrait",
+    "variant": "long",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 5
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 7.8
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 61.999969,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.d": {
+        "font": 61.999969,
+        "family": "\"DM Sans\""
+      },
+      "pkg.2.inc": {
+        "font": 60,
+        "family": "\"DM Sans\""
+      }
+    }
+  },
+  {
+    "engine": "webkit",
+    "o": "portrait",
+    "variant": "manual",
+    "errors": [],
+    "fields": 76,
+    "collisions": [],
+    "containment": [
+      {
+        "key": "brand.name",
+        "parent": "top",
+        "overflow": 5
+      },
+      {
+        "key": "board.eyebrow",
+        "parent": "top",
+        "overflow": 7.8
+      },
+      {
+        "key": "t.0.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.1.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.2.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.3.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      },
+      {
+        "key": "t.4.who",
+        "parent": "table-row",
+        "overflow": 4.8
+      }
+    ],
+    "floors": [],
+    "fonts": {
+      "b.0.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.d": {
+        "font": 64,
+        "family": "Georgia"
+      },
+      "pkg.2.inc": {
+        "font": 64,
+        "family": "Georgia"
+      }
+    }
+  }
+]
