@@ -7,11 +7,9 @@
  * loses part of its width, including edge logos and faces. Unknown dimensions
  * also cannot prove that cropping is safe.
  *
- * Default full-screen playlist media shows the whole file without stretching:
- * `object-fit: contain`, centred, with bars where the shapes differ. This is
- * safe for close, mismatched, and unknown aspect ratios. A narrowly scoped
- * manifest pilot may opt normal full-screen media into `fill`; invalid values
- * leave the default unchanged.
+ * Normal full-screen playlist media uses `object-fit: fill`, which scales both
+ * axes to the playback surface. Every source edge remains visible, with no
+ * crop or bars; sources with a different aspect ratio can be stretched.
  *
  * SCOPE. Only the DEFAULT for full-screen playlist media changes. There is no
  * per-item fit setting on a playlist item today (PlaylistItem has no such
@@ -35,15 +33,14 @@
 
 export type MediaFit = 'cover' | 'contain' | 'fill';
 
-/** The default for full-screen playlist media: show the whole file, centred. */
-export const DEFAULT_PLAYLIST_MEDIA_FIT: MediaFit = 'contain';
+/** Normal full-screen playlist media fills the complete playback surface. */
+export const DEFAULT_PLAYLIST_MEDIA_FIT: MediaFit = 'fill';
 
 /** Emergency media also shows the whole frame; alerts must not lose instructions to cropping. */
 export const EMERGENCY_PLAYLIST_MEDIA_FIT: MediaFit = 'contain';
 
-export function playlistMediaFit(isEmergency: boolean, override?: unknown): MediaFit {
-  if (isEmergency) return EMERGENCY_PLAYLIST_MEDIA_FIT;
-  return override === 'fill' ? 'fill' : DEFAULT_PLAYLIST_MEDIA_FIT;
+export function playlistMediaFit(isEmergency: boolean): MediaFit {
+  return isEmergency ? EMERGENCY_PLAYLIST_MEDIA_FIT : DEFAULT_PLAYLIST_MEDIA_FIT;
 }
 
 /** Inline style half — inline wins over any utility class on old WebViews. */
@@ -117,8 +114,8 @@ export function playerCanvasSize(): { w: number; h: number } | null {
 }
 
 /** Fit for one playlist item, using the manifest's media_w/media_h when present. */
-export function playlistItemFit(isEmergency: boolean, item: { media_w?: number | null; media_h?: number | null } | null | undefined, override?: unknown): MediaFit {
-  const base = playlistMediaFit(isEmergency, override);
+export function playlistItemFit(isEmergency: boolean, item: { media_w?: number | null; media_h?: number | null } | null | undefined): MediaFit {
+  const base = playlistMediaFit(isEmergency);
   const c = playerCanvasSize();
   return shapeAwareFit(base, item?.media_w, item?.media_h, c?.w, c?.h);
 }

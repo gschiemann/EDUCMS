@@ -79,12 +79,12 @@ async function presentFrame() {
   await settle();
 }
 
-it('shows the whole file by default in both video and retained recovery frame', () => {
+it('fills the viewport by default in both video and retained recovery frame', () => {
   const { video, container, unmount } = mount();
-  expect(video.style.objectFit).toBe('contain');
+  expect(video.style.objectFit).toBe('fill');
   expect(video.style.objectPosition).toBe('50% 50%');
   const frame = container.querySelector('canvas[data-recovery-frame]') as HTMLCanvasElement;
-  expect(frame.style.objectFit).toBe('contain');
+  expect(frame.style.objectFit).toBe('fill');
   unmount();
 });
 

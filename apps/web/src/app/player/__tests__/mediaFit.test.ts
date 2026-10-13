@@ -1,6 +1,6 @@
 /**
- * Playlist media fit (2026-10-13): show the whole file, centred, without
- * stretching; explicit cover/fill choices and emergency containment remain.
+ * Playlist media fit: normal full-screen content fills both viewport axes;
+ * emergency content retains its full-frame contain behavior.
  */
 import {
   DEFAULT_PLAYLIST_MEDIA_FIT,
@@ -13,17 +13,18 @@ import {
 } from '../mediaFit';
 
 describe('playlistMediaFit', () => {
-  it('normal content and emergency content both show the whole frame by default', () => {
-    expect(DEFAULT_PLAYLIST_MEDIA_FIT).toBe('contain');
+  it('normal content fills the viewport and emergency content contains', () => {
+    expect(DEFAULT_PLAYLIST_MEDIA_FIT).toBe('fill');
     expect(EMERGENCY_PLAYLIST_MEDIA_FIT).toBe('contain');
-    expect(playlistMediaFit(false)).toBe('contain');
+    expect(playlistMediaFit(false)).toBe('fill');
     expect(playlistMediaFit(true)).toBe('contain');
   });
 
-  it('contain keeps the whole source frame for the cover capture', () => {
+  it('normal fit keeps the whole source frame for cover capture with no bars or crop', () => {
+    expect(visibleSourceRect('fill', 1080, 1668, 1080, 1920)).toEqual({ sx: 0, sy: 0, sw: 1080, sh: 1668 });
     expect(visibleSourceRect('contain', 1080, 1668, 1080, 1920)).toEqual({ sx: 0, sy: 0, sw: 1080, sh: 1668 });
-    expect(mediaFitStyle('contain')).toEqual({ objectFit: 'contain', objectPosition: '50% 50%' });
-    expect(mediaFitClass('contain')).toBe('object-contain');
+    expect(mediaFitStyle('fill')).toEqual({ objectFit: 'fill', objectPosition: '50% 50%' });
+    expect(mediaFitClass('fill')).toBe('object-fill');
   });
 
   it('style and class agree, centred', () => {
@@ -36,13 +37,10 @@ describe('playlistMediaFit', () => {
   });
 
   it('accepts only an explicit fill override for normal media and never for emergency', () => {
-    expect(playlistMediaFit(false, 'fill')).toBe('fill');
-    expect(playlistMediaFit(false, 'cover')).toBe('contain');
-    expect(playlistItemFit(false, { media_w: 1920, media_h: 1080 }, 'fill')).toBe('fill');
-    expect(playlistItemFit(false, { media_w: 1080, media_h: 1920 }, 'fill')).toBe('fill');
-    expect(playlistItemFit(false, undefined, 'fill')).toBe('fill');
-    expect(playlistItemFit(true, { media_w: 1920, media_h: 1080 }, 'fill')).toBe('contain');
-    expect(playlistItemFit(false, { media_w: 1920, media_h: 1080 })).toBe('contain');
+    expect(playlistItemFit(false, { media_w: 1920, media_h: 1080 })).toBe('fill');
+    expect(playlistItemFit(false, { media_w: 1080, media_h: 1920 })).toBe('fill');
+    expect(playlistItemFit(false, undefined)).toBe('fill');
+    expect(playlistItemFit(true, { media_w: 1920, media_h: 1080 })).toBe('contain');
   });
 
   it('never emits the inset shorthand or a box side (Taurus)', () => {
