@@ -115,3 +115,18 @@ Minimum visible support text remains >=51.8px; the long portrait headline fits a
 ### Same-file landscape follow-up
 
 Reserved guide-number height and increased landscape guide gap to35px after WebKit DOM Range exposed number/title intersections. Final existing full-field collision check: **collisions=[] for default and longer copy in Chromium + WebKit, landscape + portrait (all four cases)**. Saved64px Georgia remains absolute in all four cases. All script blocks and editable keys remain byte-identical. Final evidence: `scratch/astra-finish/education-final-verify.log` and final `healthcare-06-patient-education-{orientation}-{engine}.png` screenshots. No other board was edited in this follow-up. Remaining: lead injection/posters/integration/CI and separately queued boards.
+
+## One-file follow-up: MyChart headline spacing
+
+Scope: only `apps/web/public/templates/signage/healthcare/07-mychart-signup.html`; existing 21×3 coverage map applies. Covered here: scoped rendering, editability and verification portions of15/18/19/20/21. Other app domains remain deferred.
+
+CSS reserves42px after the eyebrow, prevents headline flex shrink, uses1.15 headline line-height, and reserves50px before the description. The final change addresses both eyebrow/title overlap and WebKit long-headline/description overlap, preserving the existing visual concept. Source CSS was checkpointed in e7008fd9; final verification follows the additional headline stress test.
+
+|Engine|Orientation|Default collisions|Long brand-copy collisions|Long headline collisions|Errors|Saved font|
+|---|---|---|---|---|---|---|
+|Chromium|Landscape|[]|[]|[]|[]|64px Georgia|
+|Chromium|Portrait|[]|[]|[]|[]|64px Georgia|
+|WebKit|Landscape|[]|[]|[]|[]|64px Georgia|
+|WebKit|Portrait|[]|[]|[]|[]|64px Georgia|
+
+The longer headline is “All your care, in one app. — welcome.” Existing data-fit floors remain unchanged (body60px/support50px); all scripts, field keys and image-slot keys are byte-identical. Evidence: `scratch/astra-finish/mychart-final-verify.log`, `mychart-headline-verify.log`, and four final `healthcare-07-mychart-signup-{orientation}-{engine}.png` screenshots. Lead retains injection/posters/integration/CI. No other source edited.
