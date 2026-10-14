@@ -135,6 +135,27 @@
 .service-note{line-height:1.2}
 .stage[data-orient=portrait] .top{padding-top:16px;grid-template-rows:210px 100px;gap:10px 40px}
 .stage[data-orient=portrait] .frame{grid-template-rows:350px minmax(0,1fr) 660px 255px 90px;gap:26px}
+/* Let edited package copy claim real space while short packages share the remainder. */
+.packages{grid-template-rows:repeat(3,minmax(min-content,1fr))}
+.pkg{min-height:min-content}
+.package-copy{grid-template-rows:100px auto auto;align-content:start}
+.pkg-name,.pkg-price{height:100px}
+.pkg-desc,.pkg-inc{height:auto;min-height:84px}
+.stage[data-orient=portrait] .packages{grid-template-rows:repeat(3,minmax(min-content,1fr))}
+.stage[data-orient=portrait] .pkg-name,.stage[data-orient=portrait] .pkg-price{height:100px}
+.stage[data-orient=portrait] .pkg-desc,.stage[data-orient=portrait] .pkg-inc{height:auto}
+.stage[data-orient=portrait] .b-meta{display:contents}
+.stage[data-orient=portrait] .bottle{grid-template-rows:85px minmax(0,1fr) 85px;gap:4px 20px;padding:0}
+.stage[data-orient=portrait] .b-name,.stage[data-orient=portrait] .b-price,.stage[data-orient=portrait] .b-svc{height:85px}
+.stage[data-orient=portrait] .b-svc{padding-top:10px}
+/* Preserve readable copy by reclaiming outer rhythm, not text size. */
+.stage[data-orient=landscape] .frame{top:35px;bottom:35px;gap:12px;grid-template-rows:185px minmax(0,1fr) 380px 170px 70px}
+.stage[data-orient=portrait] .frame{top:40px;bottom:40px;gap:12px;grid-template-rows:350px minmax(0,1fr) 660px 205px 90px}
+.stage[data-orient=portrait] .service-main{grid-template-rows:1fr 1.05fr}
+.stage[data-orient=portrait] .foot-label{height:68px}
+.stage[data-orient=portrait] .foot-value{height:122px}
+/* Availability belongs in the price lane, clear of the full-width bottle name. */
+.bottle.row[data-soldout="1"] [data-soldout-badge]{top:auto;right:auto;bottom:12px;left:0}
 </style><script>/*EDUCMS-SHIM-V5*/(function(){try{
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
