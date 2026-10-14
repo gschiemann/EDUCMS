@@ -79,3 +79,5 @@ db1042afc0ae6cda7a838fbc47559cdc6a76bf99:packages/api-types/src/pdf-pages.ts:gen
 a45810e26d825d1cdf6deee1513a7e360f44d160:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:78
 # Verified APK integrity digest of private 1.1.36-field.1, signed CI run 38469499321.
 6496fbe821f2c98882270c1f7306c535cd4c0aa0:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:87
+# Verified APK integrity digest of private 1.1.37-field.1, signed CI run 38518351926; private mirror read-back matches.
+ffa3763a8217b6bb65477a56151a564a9e6c8e04:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:96
