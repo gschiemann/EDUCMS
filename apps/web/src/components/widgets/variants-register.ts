@@ -484,6 +484,9 @@ registerVariant({
   id: 'text-basic', name: 'Text', widgetType: 'TEXT', category: 'MINIMAL',
   description: 'Plain editable text. Choose your font, size, color and alignment.',
   render: lazyWidget(loadRendererWidgets, 'TextWidget'),
+  // The picker previews the real component; the canvas uses the existing
+  // TEXT dispatch, so its content hotspot is present on the first render.
+  previewOnly: true,
   defaultConfig: { content: 'Click to edit text', fontSize: 48, fontFamily: 'Inter, sans-serif', color: '#172033', bgColor: 'transparent', alignment: 'left' },
 });
 const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;

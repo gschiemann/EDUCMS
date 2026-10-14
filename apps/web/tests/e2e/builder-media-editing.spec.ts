@@ -292,7 +292,7 @@ test('adding media to a standard React template keeps the original design and us
 });
 
 test('the full widget list leads with everyday media and understands plural searches; quick Text replaces the empty starter', async ({ page }, testInfo) => {
-  await openEditor(page);
+  const state = await openEditor(page);
   const start = page.locator('section').filter({ has: page.getByRole('heading', { name: /^Start here/ }) });
   const entries = start.getByRole('button', { name: /^Add / });
   await expect(entries.nth(0)).toHaveAccessibleName('Add Image to your empty board');
@@ -315,6 +315,16 @@ test('the full widget list leads with everyday media and understands plural sear
   await expect(page.locator('[data-zone-id]')).toContainText('Click to edit text');
   await page.locator('[data-builder-bottom-bar]').getByRole('button', { name: /Undo/ }).click();
   await expect(page.locator('[data-zone-id="blank"]')).toHaveCount(1);
+  await page.locator('[data-builder-bottom-bar]').getByRole('button', { name: /Redo/ }).click();
+  const text = page.locator('[data-zone-id] [data-field="content"]');
+  await text.dblclick();
+  await expect(text).toHaveAttribute('contenteditable', 'true');
+  await text.fill('Our welcome message');
+  await text.press('Enter');
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => state.saved().zones[0]?.defaultConfig?.content).toBe('Our welcome message');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-zone-id] [data-field="content"]')).toHaveText('Our welcome message');
 });
 for (const portrait of [false, true]) {
   test(`holiday photos replace, rotate, restore, undo and save (${portrait ? 'portrait' : 'landscape'})`, async ({ page }, testInfo) => {
