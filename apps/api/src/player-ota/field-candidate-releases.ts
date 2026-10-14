@@ -88,4 +88,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2387607,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38469499321',
   },
+  // Signed CI run 38518351926, source ad5704cd; Android 11 solo surface ownership.
+  // Immutable private mirror verified; production certificate matches stable 1.1.29.
+  '1.1.37-field.1': {
+    versionName: '1.1.37-field.1',
+    versionCode: 10137,
+    sha256: '83ebe2268a590a1a2a87dda34d23362836d609e692a307bfaaa790edd6317321',
+    size: 2403983,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38518351926',
+  },
 };
