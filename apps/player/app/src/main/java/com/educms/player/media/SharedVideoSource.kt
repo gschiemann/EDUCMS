@@ -3,6 +3,7 @@ package com.educms.player.media
 import android.content.Context
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.face.FaceTokenStore
+import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import org.json.JSONObject
 import java.io.File
@@ -15,6 +16,16 @@ import java.util.UUID
 
 /** Native does not read browser CacheStorage and never receives a token/URL from the page. */
 internal class SharedVideoSource(private val ctx: Context) {
+    /** Native handoff diagnostics use the same face identity and API trust boundary. */
+    fun uploadDiagnostics(face: Int, expectedScreen: String) {
+        val token = FaceTokenStore.read(ctx, face) ?: return
+        if (NativeAlertWatchPolicy.screenIdOf(token) != expectedScreen) return
+        val saved = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE).getString("api_root", null) ?: return
+        val root = SharedVideoSourcePolicy.apiBase(saved)
+        if (!HostAllowlist.isApiHost(root)) return
+        PlayerLogger.uploadRecent(root, token, expectedScreen)
+    }
+
     fun descriptor(face: Int, expectedScreen: String): SharedVideoDescriptor {
         val d = SharedVideoDescriptor.parse(manifest(face, expectedScreen).getJSONObject("nativeSharedVideo"))
         require(d.screenId == expectedScreen && d.faceIndex == face) { "descriptor-identity" }

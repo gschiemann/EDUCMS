@@ -80,8 +80,8 @@ internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, 
  *  • native plays only what THIS face's own authenticated manifest selected,
  *    and only from a file whose length and SHA-256 were verified on disk;
  *  • nothing starts while an emergency hold is in force, and a hold (or the
- *    1 s watch noticing one) stops every face at once — the WebView, which
- *    is always ABOVE every surface, then shows the alert;
+ *    1 s watch noticing one) stops every face at once — including hiding
+ *    an elevated solo surface before the WebView shows the alert;
  *  • a page that stops polling (10 s lease), a credential that changes
  *    identity, a detached surface or 8 s without a rendered frame retires
  *    the session and restores the opaque WebView background;
@@ -96,6 +96,8 @@ internal object FaceVideoBox {
     private val meta = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-meta").apply { isDaemon = true } }
     private val downloads = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-download").apply { isDaemon = true } }
     private val hosts = mutableMapOf<Int, SharedVideoHost>()
+    private val diagnosticsPending = mutableSetOf<Int>()
+    private val lastDiagnostics = mutableMapOf<Int, Long>()
     const val NAMESPACE = "native-video-v2"
     const val PROTOCOL_MAX = 3
 
@@ -218,7 +220,7 @@ internal object FaceVideoBox {
     }
 
     /**
-     * UI thread. Three views per session, all below the WebView: a transparent
+     * UI thread. Three views per session, prepared below the WebView: a transparent
      * full-size container, a black BOX at the slot's rect (the letterbox of
      * `contain`; for protocol 2 the whole face), and the SurfaceView inside it.
      */
@@ -392,6 +394,20 @@ internal object FaceVideoBox {
         s.lastUpdate = SystemClock.elapsedRealtime()
         if (!s.layer.eligible || s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
             s.state = "presenting"
+        } else if (s.layer.phase == SoloVideoLayer.Phase.REVEALING) {
+            val held = DisplayEmergency.isHeld(host.ctx)
+            val attached = s.attached && sv.isAttachedToWindow && sv.holder.surface.isValid
+            val uiClear = host.canOwnWindow()
+            if (s.layer.confirm(stamp, live(host, s), attached, held, uiClear)) {
+                s.state = "presenting"
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=2 mode=above-window phase=post-request-render sdk=${Build.VERSION.SDK_INT} requestNs=${s.layer.revealRequestedNs} renderNs=$stamp ptsUs=$pts frames=${s.unique} size=${sv.width}x${sv.height} codec=${s.codecName} sha=${s.sha256.take(8)}")
+                queueDiagnostics(host, s)
+                probeOutput(host, s, sv)
+                main.postDelayed({ probeOutput(host, s, sv) }, 10_000)
+                main.postDelayed({ probeOutput(host, s, sv) }, 60_000)
+            } else if (s.layer.phase == SoloVideoLayer.Phase.RETIRED && live(host, s)) {
+                stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else "page-stopped")
+            }
         } else if (s.layer.request(started = true, validFrame = true)) {
             main.post {
                 synchronized(this) {
@@ -405,8 +421,13 @@ internal object FaceVideoBox {
                     }
                     try {
                         sv.setZOrderOnTop(true)
-                        s.state = "presenting"
-                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=2 mode=above-window phase=first-render sha=${s.sha256.take(8)}")
+                        s.layer.revealRequested(System.nanoTime())
+                        // Force a host draw: Android R applies the relative
+                        // surface-layer transaction on a RenderThread frame.
+                        // Completion waits for a post-request codec render.
+                        sv.invalidate()
+                        host.web.invalidate()
+                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=2 mode=above-window phase=reveal-request sdk=${Build.VERSION.SDK_INT} sha=${s.sha256.take(8)}")
                     } catch (_: Exception) { stopSession(host, s, "output-unavailable") }
                 }
             }
@@ -423,6 +444,7 @@ internal object FaceVideoBox {
                 DisplayEmergency.isHeld(host.ctx) -> "emergency-held"
                 s.protocol == 2 && s.startedAt > 0 && !host.lifecycleReady -> "page-stopped"
                 s.layer.eligible && s.startedAt > 0 && !host.canOwnWindow() -> "page-stopped"
+                s.layer.revealTimedOut(System.nanoTime()) -> "output-unavailable"
                 NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(host.ctx, host.face)) != screen -> "credential-identity"
                 s.attached && (sv == null || !sv.isAttachedToWindow || !host.web.isAttachedToWindow) -> "output-detached"
                 now - s.lastPoll > 10_000 -> "page-lease-expired"
@@ -438,11 +460,13 @@ internal object FaceVideoBox {
     /** Called under the monitor. Invalidate first; the view work happens on the UI thread. */
     private fun stopSession(host: SharedVideoHost, s: FaceVideoSession, why: String) {
         if (!s.alive) return
+        val previousLayer = s.layer.phase.name.lowercase()
         s.alive = false
         s.layer.retire()
         s.stoppedAt = SystemClock.elapsedRealtime()
         s.renderer?.stop(); s.renderer = null
         s.state = "failed"; s.reason = why
+        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=${s.protocol} reason=$why layer=$previousLayer sdk=${Build.VERSION.SDK_INT} frames=${s.unique} loops=${s.loops} sha=${s.sha256.take(8)}")
         val removeOutput = Runnable {
             synchronized(this) {
                 // Hide an elevated surface before the alert/operator window can
@@ -456,6 +480,33 @@ internal object FaceVideoBox {
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) removeOutput.run() else main.post(removeOutput)
+        queueDiagnostics(host, s)
+    }
+
+    /** Under the monitor: coalesce handoff/retirement logs, at most one upload per face per minute. */
+    private fun queueDiagnostics(host: SharedVideoHost, s: FaceVideoSession) {
+        if (!s.layer.eligible || !diagnosticsPending.add(host.face)) return
+        val delay = maxOf(2000L, (lastDiagnostics[host.face] ?: 0L) + 60_000L - SystemClock.elapsedRealtime())
+        main.postDelayed({
+            synchronized(this) {
+                diagnosticsPending.remove(host.face)
+                lastDiagnostics[host.face] = SystemClock.elapsedRealtime()
+            }
+            runCatching { SharedVideoSource(host.ctx).uploadDiagnostics(host.face, s.screenId) }
+        }, delay)
+    }
+
+    /** Three tiny buffer samples per handoff; a retired session can never report them. */
+    private fun probeOutput(host: SharedVideoHost, s: FaceVideoSession, surface: SurfaceView) {
+        NativeVideoSurfaceProbe.capture(surface, main,
+            current = { synchronized(this) { live(host, s) && s.surface === surface &&
+                s.state == "presenting" && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW } },
+            report = { sample -> synchronized(this) {
+                if (live(host, s) && s.surface === surface && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_OUTPUT face=${host.face} proto=2 sample=surface-buffer $sample frames=${s.unique} ptsUs=${s.ptsUs} sha=${s.sha256.take(8)}")
+                    queueDiagnostics(host, s)
+                }
+            } })
     }
 
     private fun sessionJson(host: SharedVideoHost, s: FaceVideoSession): JSONObject {
@@ -463,6 +514,7 @@ internal object FaceVideoBox {
         val attached = s.attached && !host.detached && sv != null && sv.isAttachedToWindow
         val output = JSONObject().put("attached", attached)
             .put("layerMode", s.layer.phase.name.lowercase())
+            .put("revealRequestedNs", s.layer.revealRequestedNs)
             .put("visible", attached && sv!!.isShown && sv.windowVisibility == View.VISIBLE)
             .put("hardwareAccelerated", host.web.isHardwareAccelerated)
             .put("viewUpdates", s.updates).put("uniqueFrames", s.unique).put("sourcePtsUs", s.ptsUs)
