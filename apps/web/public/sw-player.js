@@ -582,7 +582,11 @@ async function shellNavigate(req) {
   }
   try {
     const res = await fetch(req);
-    if (res && res.ok) cache.put(docKey, res.clone()).catch(() => {});
+    // A reachable host can still be unavailable (Vercel 402, throttling,
+    // deploy 5xx). fetch resolves for these responses: use the same saved
+    // player as a disconnected network, never replace it with an error page.
+    if (!res || !res.ok) throw new Error('player-shell-http-unavailable');
+    cache.put(docKey, res.clone()).catch(() => {});
     return res;
   } catch (e) {
     const cached = await cache.match(docKey);
