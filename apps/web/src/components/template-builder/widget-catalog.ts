@@ -412,7 +412,7 @@ export const EVERYDAY_WIDGET_TYPES: readonly string[] = [
   'IMAGE', 'VIDEO', 'TEXT', 'IMAGE_CAROUSEL', 'VIDEO_CAROUSEL', 'LOGO', 'SHAPE',
 ];
 
-const BASIC_MEDIA_IDS = new Set(['image-basic', 'video-basic', 'image-carousel-basic', 'video-carousel-basic']);
+const BASIC_MEDIA_IDS = new Set(['image-basic', 'video-basic', 'text-basic', 'image-carousel-basic', 'video-carousel-basic']);
 
 /** Put one everyday tool first, before a long run of its styled variants. */
 export function orderWidgetVariants(visible: readonly WidgetVariant[]): WidgetVariant[] {

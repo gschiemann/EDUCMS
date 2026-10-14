@@ -480,6 +480,12 @@ registerVariant({
 // is registered below with the rest. If that connector is ever removed, take
 // the tile with it.
 const loadRendererWidgets = () => import('./WidgetRenderer') as Promise<Record<string, unknown>>;
+registerVariant({
+  id: 'text-basic', name: 'Text', widgetType: 'TEXT', category: 'MINIMAL',
+  description: 'Plain editable text. Choose your font, size, color and alignment.',
+  render: lazyWidget(loadRendererWidgets, 'TextWidget'),
+  defaultConfig: { content: 'Click to edit text', fontSize: 48, fontFamily: 'Inter, sans-serif', color: '#172033', bgColor: 'transparent', alignment: 'left' },
+});
 const loadFamilyWidgets = () => import('./widget-families') as Promise<Record<string, unknown>>;
 
 const REACHABILITY_TILES: Array<{

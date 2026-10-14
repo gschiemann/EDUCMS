@@ -1783,7 +1783,7 @@ function CountdownWidget({ config, compact, onConfigChange }: { config: any; com
 // TEXT — Renders actual styled text
 // ═══════════════════════════════════════════════════════
 
-function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
+export function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: (patch: Record<string, any>) => void }) {
   // NOTE: every themed renderer must receive onConfigChange so its
   // EditableText (or data-field) inline-edit hook can write back to
   // config. Earlier this prop was dropped for ~7 themes — partner saw

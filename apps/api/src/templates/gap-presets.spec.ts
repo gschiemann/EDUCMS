@@ -4,7 +4,7 @@ import { ALL_PRESETS, QUARANTINED_PRESET_IDS, resolvePresetVerticalTag, vertical
 
 describe('new workflow gallery availability', () => {
   it('offers each workflow in both orientations with unique, registered ids', () => {
-    expect(GAP_TEMPLATE_PRESETS).toHaveLength(6);
+    expect(GAP_TEMPLATE_PRESETS).toHaveLength(8);
     const ids = ALL_PRESETS.map((preset) => preset.id);
     for (const preset of GAP_TEMPLATE_PRESETS) {
       expect(ids.filter((id) => id === preset.id)).toHaveLength(1);
@@ -23,10 +23,33 @@ describe('new workflow gallery availability', () => {
     }
   });
 
+  it('offers collection and returns to Retail and Fashion without leaking to schools', () => {
+    for (const suffix of ['', '-portrait']) {
+      const tag = resolvePresetVerticalTag('preset-sig-retail-09' + suffix);
+      expect(verticalTagIncludes(tag, 'RETAIL')).toBe(true);
+      expect(verticalTagIncludes(tag, 'FASHION')).toBe(true);
+      expect(verticalTagIncludes(tag, 'K12')).toBe(false);
+    }
+  });
+
   it('keeps care and school content in the intended galleries, including portrait', () => {
     for (const suffix of ['', '-portrait']) {
       expect(resolvePresetVerticalTag('preset-sig-clinic-02' + suffix)).toBe('HEALTHCARE');
       expect(resolvePresetVerticalTag('preset-school-commencement-guide' + suffix)).toBe('K12');
+    }
+  });
+
+  it('publishes the reviewed corporate and healthcare boards in both galleries and orientations', () => {
+    for (const base of ['preset-sig-corporate-04', 'preset-sig-healthcare-06', 'preset-sig-healthcare-07']) {
+      for (const suffix of ['', '-portrait']) {
+        const preset = ALL_PRESETS.find(p => p.id === base + suffix)!;
+        expect(preset).toBeDefined();
+        expect(QUARANTINED_PRESET_IDS.has(preset.id)).toBe(false);
+        expect(preset.orientation).toBe(suffix ? 'PORTRAIT' : 'LANDSCAPE');
+        expect([preset.screenWidth, preset.screenHeight]).toEqual(suffix ? [2160, 3840] : [3840, 2160]);
+        expect(preset.zones[0].defaultConfig?.url).toEqual(expect.stringMatching(suffix ? /\?o=portrait$/ : /\.html$/));
+        expect(resolvePresetVerticalTag(preset.id)).toBe(base.includes('corporate') ? 'CORPORATE' : 'HEALTHCARE');
+      }
     }
   });
 });

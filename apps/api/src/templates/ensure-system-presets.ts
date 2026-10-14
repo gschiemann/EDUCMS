@@ -270,6 +270,10 @@ SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
 // PRESET_VERTICALS overrides PRESET_VERTICAL for ids it lists — the value
 // is the full set of verticals that preset should appear under.
 const PRESET_VERTICALS: Map<string, string[]> = new Map();
+for (const id of ['preset-sig-retail-09', 'preset-sig-retail-09-portrait']) {
+  PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
+}
+
 
 // Ordinary service notices apply to every venue. Keep one preset per
 // orientation and use the established multi-vertical gallery matching.

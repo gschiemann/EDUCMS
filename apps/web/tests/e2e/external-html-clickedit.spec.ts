@@ -53,6 +53,10 @@ import path from 'path';
  */
 
 const BOARDS = [
+  '/templates/signage/retail/09-service-counter.html',
+  '/templates/signage/corporate/04-new-hires.html',
+  '/templates/signage/healthcare/06-patient-education.html',
+  '/templates/signage/healthcare/07-mychart-signup.html',
   '/templates/signage/corporate/20-service-update.html',
   '/templates/signage/clinic/02-services-booking-guide.html',
   '/templates/school/commencement-guest-guide.html',

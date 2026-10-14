@@ -1853,7 +1853,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-sig-corporate-04',
     name: "Corporate · New Hires",
-    description: "New Hires — 3840×2160 industry digital-signage template.",
+    description: "Welcome new team members with editable portraits, names, roles, departments and conversation starters. Replace the photos, fonts, colors and every word.",
     category: 'INTERNAL', orientation: 'LANDSCAPE',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/04-new-hires.html' } }],
@@ -2752,7 +2752,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-sig-healthcare-06',
     name: "Healthcare · Patient Education",
-    description: "Patient Education — 3840×2160 industry digital-signage template.",
+    description: "Guide visitors to four patient-education topics, printed guides, digital copies and staff help. Edit the topics, instructions, logo, fonts and colors for your practice.",
     category: 'HEALTHCARE', orientation: 'LANDSCAPE',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/healthcare/06-patient-education.html' } }],
@@ -2760,7 +2760,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'preset-sig-healthcare-07',
     name: "Healthcare · MyChart",
-    description: "MyChart — 3840×2160 industry digital-signage template.",
+    description: "Help patients get started with your portal using editable benefits and sign-up instructions. Add your own QR image, logo, fonts, colors and patient guidance.",
     category: 'HEALTHCARE', orientation: 'LANDSCAPE',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/healthcare/07-mychart-signup.html' } }],
@@ -3447,9 +3447,27 @@ const RETIRED_LEGACY_WIDGET_TYPES = new Set<string>([
   'MS_ATLAS', 'MS_ATLAS_PORTRAIT', 'MS_ARCADE', 'MS_ARCADE_PORTRAIT',
 ]);
 
+// These reviewed boards have independent portrait compositions in the same
+// editable source. Register them so the portrait gallery can actually find them.
+const REVIEWED_BOARD_PORTRAITS: SystemPreset[] = RAW_SYSTEM_PRESETS
+  .filter(p => ['preset-sig-corporate-04', 'preset-sig-healthcare-06', 'preset-sig-healthcare-07'].includes(p.id))
+  .map(p => ({
+    ...p,
+    id: `${p.id}-portrait`,
+    name: `${p.name} — Portrait`,
+    orientation: 'PORTRAIT',
+    screenWidth: 2160,
+    screenHeight: 3840,
+    zones: p.zones.map(zone => ({
+      ...zone,
+      defaultConfig: { ...zone.defaultConfig, url: `${zone.defaultConfig?.url}?o=portrait` },
+    })),
+  }));
+
 export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   ...RAW_SYSTEM_PRESETS.filter((p) => !(p.zones || []).some((z) => RETIRED_LEGACY_WIDGET_TYPES.has(z.widgetType))),
   ...MODERN_SCHOOL_PRESETS,
+  ...REVIEWED_BOARD_PORTRAITS,
   ...HOMEBUILDER_TEMPLATE_PRESETS,
   ...GAP_TEMPLATE_PRESETS,
 ];

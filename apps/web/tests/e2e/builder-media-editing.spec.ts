@@ -23,7 +23,7 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.addInitScript(() => localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'));
+  await page.addInitScript(() => { if (window === window.top) localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'); });
   await page.route('**/test-media/**', route => {
     if (route.request().method() === 'PUT') return route.fulfill({ status: 200, body: '{}' });
     const name = new URL(route.request().url()).pathname.split('/').pop()!;
@@ -58,13 +58,13 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
   });
   await page.goto('/e2e-school/templates/builder/media-editor', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('tab', { name: /^Widgets$/i })).toBeVisible({ timeout: 60_000 });
-  if (!initialZones) await expect(page.getByRole('group', { name: 'Add to your design' })).toBeVisible();
+  if (!initialZones) await expect(page.getByRole('button', { name: 'Add Image to your empty board', exact: true }).first()).toBeVisible();
   return { saved: () => template };
 }
 
 async function addImage(page: Page, name: string) {
   await page.getByRole('tab', { name: /^Widgets$/i }).click();
-  await page.getByRole('group', { name: 'Add to your design' }).getByRole('button', { name: 'Image', exact: true }).click();
+  await page.getByRole('button', { name: /^Add Image(?: to your empty board)?$/ }).first().click();
   const dialog = page.getByRole('dialog').filter({ hasText: 'Pick an image' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: `${name}.png`, exact: true }).click();
@@ -77,10 +77,10 @@ test('media starts at the top; cancel leaves the design alone; three pictures ha
   // Keep each assertion's normal bound and allow the composed flow to finish.
   test.setTimeout(120_000);
   const state = await openEditor(page);
-  const quick = page.getByRole('group', { name: 'Add to your design' });
-  for (const label of ['Image', 'Video', 'Text']) await expect(quick.getByRole('button', { name: label, exact: true })).toBeInViewport();
+  const quick = page.locator('section').filter({ has: page.getByRole('heading', { name: /^Start here/ }) });
+  for (const label of ['Image', 'Video', 'Text']) await expect(quick.getByRole('button', { name: `Add ${label} to your empty board`, exact: true })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('blank-editor.png') });
-  await quick.getByRole('button', { name: 'Image', exact: true }).click();
+  await quick.getByRole('button', { name: 'Add Image to your empty board', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.locator('[data-zone-id]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Rotate selection' })).toHaveCount(0);
@@ -143,7 +143,7 @@ test('rotation handle drags and supports keyboard; resize preserves proportions;
 
 test('video picker adds the actual clip in a tight frame; portrait editor keeps the toolbar accessible', async ({ page }, testInfo) => {
   await openEditor(page, true);
-  await page.getByRole('group', { name: 'Add to your design' }).getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: /^Add Video(?: to your empty board)?$/ }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: /clip.mp4/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const zone = page.locator('[data-zone-id]');
@@ -160,7 +160,7 @@ test('video picker adds the actual clip in a tight frame; portrait editor keeps 
 
 test('upload from the computer and drop a batch over an existing picture creates three separate images', async ({ page }) => {
   await openEditor(page);
-  await page.getByRole('group', { name: 'Add to your design' }).getByRole('button', { name: 'Image', exact: true }).click();
+  await page.getByRole('button', { name: /^Add Image(?: to your empty board)?$/ }).first().click();
   await page.getByRole('dialog').locator('input[type="file"]').setInputFiles(path.join(__dirname, 'fixtures/editor-landscape.png'));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const zone = page.locator('[data-zone-id]');
@@ -203,6 +203,14 @@ test('Fit frame repairs a saved image with empty borders; toolbar and panel fit 
 });
 
 for (const [board, key, portrait = false] of [
+  ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', false],
+  ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', true],
+  ['/templates/signage/corporate/04-new-hires.html', 'brand.logo', false],
+  ['/templates/signage/corporate/04-new-hires.html', 'brand.logo', true],
+  ['/templates/signage/healthcare/06-patient-education.html', 'brand.logo', false],
+  ['/templates/signage/healthcare/06-patient-education.html', 'brand.logo', true],
+  ['/templates/signage/healthcare/07-mychart-signup.html', 'brand.logo', false],
+  ['/templates/signage/healthcare/07-mychart-signup.html', 'brand.logo', true],
   ['/templates/school/elem-news-storybook.html', 'school.logo'],
   ['/templates/signage/qsr/01-drive-thru-flagship.html', 'hero'],
   ['/templates/kiosk/school.html', 'staff.reyes.photo'],
@@ -302,7 +310,7 @@ test('the full widget list leads with everyday media and understands plural sear
   }
   await search.fill('');
   await page.screenshot({ path: testInfo.outputPath('everyday-widgets-first.png') });
-  await page.getByRole('group', { name: 'Add to your design' }).getByRole('button', { name: 'Text', exact: true }).click();
+  await page.getByRole('button', { name: /^Add Text(?: to your empty board)?$/ }).first().click();
   await expect(page.locator('[data-zone-id]')).toHaveCount(1);
   await expect(page.locator('[data-zone-id]')).toContainText('Click to edit text');
   await page.locator('[data-builder-bottom-bar]').getByRole('button', { name: /Undo/ }).click();
