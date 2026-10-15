@@ -52,6 +52,18 @@ const settle = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
 describe("optional native output handoff", () => {
+  it("preserves actual composition and session facts without promoting capability to presentation proof", () => {
+    const base = state("ready");
+    const parsed = readNativeSharedVideoState({ ...base, sessionProtocol: 2,
+      output: { ...base.output, layerMode: "revealing", compositionMode: "static_above" } });
+    expect(parsed?.sessionProtocol).toBe(2);
+    expect(parsed?.output).toMatchObject({ layerMode: "revealing", compositionMode: "static_above", uniqueFrames: 0 });
+    const unknown = readNativeSharedVideoState({ ...base, sessionProtocol: 99,
+      output: { ...base.output, layerMode: "invented", compositionMode: "secret-url" } });
+    expect(unknown?.sessionProtocol).toBeUndefined();
+    expect(unknown?.output?.layerMode).toBeUndefined();
+    expect(unknown?.output?.compositionMode).toBeUndefined();
+  });
   it("carries bounded scheduling diagnostics separately from rendered-frame evidence", () => {
     const timing = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
       maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };

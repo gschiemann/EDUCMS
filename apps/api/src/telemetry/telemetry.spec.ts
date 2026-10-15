@@ -442,6 +442,20 @@ describe('POST /screens/:id/telemetry', () => {
       await expect(controller.report(SCREEN_ID,makeReq(),{nativeVideo})).rejects.toMatchObject({status:400});
     }
   });
+  it('stores actual native composition without confusing it with protocol capability or render proof',async()=>{
+    const sample = nativeSample('ready',0);
+    const nativeVideo = {...sample,sessionProtocol:2,
+      output:{...sample.output,layerMode:'revealing',compositionMode:'static_above'}};
+    expect(screenTelemetrySchema.safeParse({nativeVideo}).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo});
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{sessionProtocol:2,
+      output:{layerMode:'revealing',compositionMode:'static_above'}}});
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+    for (const bad of [{...nativeVideo,sessionProtocol:99},
+      {...nativeVideo,output:{...nativeVideo.output,compositionMode:'invented'}}]) {
+      expect(screenTelemetrySchema.safeParse({nativeVideo:bad}).success).toBe(false);
+    }
+  });
 
   it('sanitizeVideoReport keeps the rebuffer counters only as bounded non-negative ints, and only when sent', () => {
     const base = { url: 'x', totalFrames: 1830, droppedFrames: 0 };

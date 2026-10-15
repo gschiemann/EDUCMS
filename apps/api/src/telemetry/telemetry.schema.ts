@@ -214,6 +214,7 @@ const nativeVideoSchema = z.strictObject({
   sha256: z.string().regex(/^[a-f0-9]{64}$/), faceIndex: z.number().int().min(0).max(1),
   reason: z.string().regex(/^[a-z0-9-]{1,64}$/i).optional(),
   codecName: z.string().regex(/^[a-z0-9_.-]{1,128}$/i).optional(),
+  sessionProtocol: z.union([z.literal(2), z.literal(3)]).optional(),
   elapsedMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   stalls: z.number().int().min(0).max(1_000_000).optional(),
   loops: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
@@ -239,6 +240,8 @@ const nativeVideoSchema = z.strictObject({
   })).max(8).optional(),
   output: z.strictObject({
     attached: z.boolean(), visible: z.boolean(), hardwareAccelerated: z.boolean(),
+    layerMode: z.enum(['under_window','queued','revealing','above_window','retired']).optional(),
+    compositionMode: z.enum(['under_window','dynamic_above','static_above']).optional(),
     viewUpdates: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     uniqueFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     sourcePtsUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),

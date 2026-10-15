@@ -32,6 +32,8 @@ export interface NativeSharedVideoState {
   sha256: string;
   faceIndex: number;
   reason?: string;
+  /** Actual active session, distinct from the APK's advertised protocol maximum. */
+  sessionProtocol?: 2 | 3;
   output?: {
     attached: boolean;
     visible: boolean;
@@ -43,6 +45,8 @@ export interface NativeSharedVideoState {
     lastUpdateElapsedMs: number;
     hardwareAccelerated: boolean;
     ageMs: number;
+    layerMode?: "under_window" | "queued" | "revealing" | "above_window" | "retired";
+    compositionMode?: "under_window" | "dynamic_above" | "static_above";
   };
   codecName?: string;
   elapsedMs?: number;
@@ -542,6 +546,7 @@ export function readNativeSharedVideoState(
   // Diagnostic reasons are codes, not native exception text/URLs/credentials.
   if (typeof v.reason === "string" && /^[a-z0-9-]{1,64}$/i.test(v.reason))
     s.reason = v.reason;
+  if (v.sessionProtocol === 2 || v.sessionProtocol === 3) s.sessionProtocol = v.sessionProtocol;
   const o = v.output;
   if (
     record(o) &&
@@ -570,6 +575,10 @@ export function readNativeSharedVideoState(
       height: o.height as number,
       lastUpdateElapsedMs: o.lastUpdateElapsedMs as number,
     };
+    if (["under_window", "queued", "revealing", "above_window", "retired"].includes(String(o.layerMode)))
+      s.output.layerMode = o.layerMode as NonNullable<NativeSharedVideoState["output"]>["layerMode"];
+    if (["under_window", "dynamic_above", "static_above"].includes(String(o.compositionMode)))
+      s.output.compositionMode = o.compositionMode as NonNullable<NativeSharedVideoState["output"]>["compositionMode"];
   }
   if (
     typeof v.codecName === "string" &&
