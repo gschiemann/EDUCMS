@@ -81,3 +81,5 @@ a45810e26d825d1cdf6deee1513a7e360f44d160:apps/api/src/player-ota/field-candidate
 6496fbe821f2c98882270c1f7306c535cd4c0aa0:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:87
 # Verified APK integrity digest of private 1.1.37-field.1, signed CI run 38518351926; private mirror read-back matches.
 ffa3763a8217b6bb65477a56151a564a9e6c8e04:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:96
+# Verified APK integrity digest of private 1.1.38-field.1, signed CI run 38743322973; private mirror read-back matches.
+1bcf812932c6738871214738d7f6a30652e75e4e:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:105
