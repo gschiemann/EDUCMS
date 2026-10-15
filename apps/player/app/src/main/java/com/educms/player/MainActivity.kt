@@ -1882,6 +1882,15 @@ class MainActivity : ComponentActivity() {
                     PlayerLogger.i("MainActivity", "back-press: dismissing URL asset and returning to player controls")
                     hideUrlOverlay()
                     if (!nativeCardOwnsRemote()) webView.requestFocus()
+                    sharedVideoHost?.yieldToUi()
+                    try {
+                        webView.evaluateJavascript(
+                            "window.dispatchEvent(new CustomEvent('edu-show-stop-overlay'))",
+                            null,
+                        )
+                    } catch (e: Exception) {
+                        PlayerLogger.w("MainActivity", "back-press: failed to show player Stop/Exit after URL dismissal", e)
+                    }
                     return
                 }
                 // Tell the web player to show its Stop/Exit overlay.
@@ -3519,7 +3528,8 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
                 super.onPageFinished(view, url)
                 if (view === urlOverlayView && !webTabsActive && urlOverlayRecoveryInFlight &&
-                    url != null && url == overlayLastStartedUrl
+                    !urlOverlayRecoveryFailed && url != null && url == overlayLastStartedUrl &&
+                    HostAllowlist.isSafeWebUrl(url)
                 ) {
                     clearUrlOverlayRecovery()
                 }

@@ -34,7 +34,10 @@ class UrlOverlayRecoveryWiringTest {
         val escape = back.substringAfter("back-press: dismissing URL asset").substringBefore("Tell the web player")
         assertTrue(escape.contains("hideUrlOverlay()"))
         assertTrue(escape.contains("webView.requestFocus()"))
-        assertFalse(escape.contains("evaluateJavascript"))
+        assertTrue(escape.contains("webView.evaluateJavascript"))
+        assertTrue(escape.contains("edu-show-stop-overlay"))
+        assertFalse(escape.contains("urlOverlayView.evaluateJavascript"))
+        assertTrue(escape.indexOf("hideUrlOverlay()") < escape.indexOf("edu-show-stop-overlay"))
     }
 
     @Test fun `local offline card is excluded from spatial navigation injection`() {
@@ -43,6 +46,9 @@ class UrlOverlayRecoveryWiringTest {
             .substringBefore("\n            }\n        }")
         assertTrue(finished.contains("urlOverlayRecoveryFailed"))
         assertTrue(finished.contains("SpatialNavigation.inject(it)"))
+        val success = finished.substringBefore("// The local offline document")
+        assertTrue(success.contains("!urlOverlayRecoveryFailed"))
+        assertTrue(success.contains("HostAllowlist.isSafeWebUrl(url)"))
         val config = src.substringAfter("private fun configureUrlOverlay(").substringBefore("private fun registerUrlOverlayNetworkRecovery(")
             .replace(Regex("""/\*[\s\S]*?\*/"""), "")
             .lines().filterNot { it.trimStart().startsWith("//") }.joinToString("\n")
