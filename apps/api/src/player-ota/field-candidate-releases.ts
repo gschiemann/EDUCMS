@@ -106,4 +106,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2403987,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38743322973',
   },
+  // Signed CI 38786943327, source f47885d3; native pacing and URL recovery.
+  // Private mirror, production certificate and new DEX feature markers verified.
+  '1.1.39-field.1': {
+    versionName: '1.1.39-field.1',
+    versionCode: 10139,
+    sha256: 'a7bc9672883ca5b087f2b4958d644d8716837f0aa07c80dfbff963ca83c7e078', // gitleaks:allow -- verified public APK integrity digest
+    size: 2403987,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38786943327',
+  },
 };
