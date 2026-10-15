@@ -6,6 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -98,6 +102,14 @@ class MainActivity : ComponentActivity() {
     private val deviceStore by lazy { DeviceStore(applicationContext) }
     private lateinit var recovery: NetworkRecoveryController
     private var urlOverlayCurrentUrl: String? = null
+    private val urlOverlayRecoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var urlOverlayRecoveryFailed = false
+    private var urlOverlayRecoveryInFlight = false
+    private var urlOverlayRecoveryFailures = 0
+    private var urlOverlayRetryRunnable: Runnable? = null
+    private var urlOverlayLoadTimeoutRunnable: Runnable? = null
+    private var urlOverlayNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var urlOverlayConnectivityManager: ConnectivityManager? = null
 
     // ── Website Tabs (2026-09-28) — the overlay WebView's second OWNER ──────
     // While `webTabsActive`, `urlOverlayView` belongs to the Website Tabs
@@ -694,6 +706,7 @@ class MainActivity : ComponentActivity() {
          * a page that has proven its JS runs is never preempted.
          */
         private const val BACK_WEB_ANSWER_GRACE_MS = 1_500L
+        private const val URL_OVERLAY_LOAD_TIMEOUT_MS = 30_000L
 
         /**
          * 2026-09-01 — is THIS Activity resumed right now?
@@ -1636,6 +1649,7 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+        registerUrlOverlayNetworkRecovery()
 
         // Start the safety-net watchdog after recovery is ready. First
         // tick fires WATCHDOG_TICK_MS from now; gives the initial
@@ -1860,6 +1874,15 @@ class MainActivity : ComponentActivity() {
                         webView.requestFocus()
                         return
                     }
+                }
+                // A plain URL asset owns the visible glass and remote while it is up. Back
+                // must return focus and pixels to the primary player's menus, never dispatch
+                // a stop event into the hidden WebView.
+                if (!webTabsActive && urlOverlayView.visibility == View.VISIBLE && urlOverlayCurrentUrl != null) {
+                    PlayerLogger.i("MainActivity", "back-press: dismissing URL asset and returning to player controls")
+                    hideUrlOverlay()
+                    if (!nativeCardOwnsRemote()) webView.requestFocus()
+                    return
                 }
                 // Tell the web player to show its Stop/Exit overlay.
                 // The bridge method already exists for the dashboard's
@@ -3454,11 +3477,33 @@ class MainActivity : ComponentActivity() {
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 super.onReceivedError(view, request, error)
-                if (!request.isForMainFrame || !webTabsActive) return
+                if (!request.isForMainFrame) return
+                if (!webTabsActive) {
+                    if (view === urlOverlayView && urlOverlayCurrentUrl != null &&
+                        request.url.toString() == overlayLastStartedUrl
+                    ) {
+                        failUrlOverlayLoad("${error.errorCode}: ${error.description}")
+                    }
+                    return
+                }
                 // Chromium's own "Webpage not available" interstitial is not a
                 // kiosk surface; paint the widget's localised copy instead.
                 PlayerLogger.w("MainActivity", "web tabs main-frame error ${error.errorCode} on ${HostAllowlist.describe(request.url?.toString())}")
                 view.loadDataWithBaseURL(null, WebTabsPolicy.offlinePageHtml(webTabsCopy), "text/html", "utf-8", null)
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: android.webkit.WebResourceResponse,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request.isForMainFrame && !webTabsActive && view === urlOverlayView &&
+                    urlOverlayCurrentUrl != null && request.url.toString() == overlayLastStartedUrl &&
+                    errorResponse.statusCode !in 200..299
+                ) {
+                    failUrlOverlayLoad("HTTP ${errorResponse.statusCode}")
+                }
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -3473,6 +3518,14 @@ class MainActivity : ComponentActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
                 super.onPageFinished(view, url)
+                if (view === urlOverlayView && !webTabsActive && urlOverlayRecoveryInFlight &&
+                    url != null && url == overlayLastStartedUrl
+                ) {
+                    clearUrlOverlayRecovery()
+                }
+                // The local offline document is intentionally inert; never run the site
+                // navigation shim against it or against a failed navigation's error page.
+                if (urlOverlayRecoveryFailed || url?.startsWith("data:") == true || url?.startsWith("about:") == true) return
                 // 2026-05-07 — D-pad spatial navigation. Operator: "Goodview's
                 // player tabs around websites with the remote, ours doesn't."
                 // Android System WebView ignores the chromium
@@ -3487,6 +3540,117 @@ class MainActivity : ComponentActivity() {
                 view?.let { SpatialNavigation.inject(it) }
             }
         }
+    }
+
+    /** A separate retry owner is needed because the player WebView can stay healthy underneath a failed URL asset. */
+    private fun registerUrlOverlayNetworkRecovery() {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        urlOverlayConnectivityManager = manager
+        try {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    urlOverlayRecoveryHandler.post {
+                        if (UrlOverlayRecoveryPolicy.shouldRetry(
+                                urlOverlayView.visibility == View.VISIBLE,
+                                webTabsActive,
+                                urlOverlayCurrentUrl,
+                                urlOverlayRecoveryFailed,
+                            )
+                        ) {
+                            PlayerLogger.i("MainActivity", "Network restored — retrying failed URL overlay")
+                            retryUrlOverlayNow()
+                        }
+                    }
+                }
+            }
+            manager.registerNetworkCallback(request, callback)
+            urlOverlayNetworkCallback = callback
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "URL overlay network recovery registration failed: ${t.message}")
+        }
+    }
+
+    private fun failUrlOverlayLoad(reason: String) {
+        val target = urlOverlayCurrentUrl ?: return
+        if (webTabsActive || urlOverlayView.visibility != View.VISIBLE || !HostAllowlist.isSafeWebUrl(target)) return
+        if (urlOverlayRecoveryFailed && !urlOverlayRecoveryInFlight) return
+        PlayerLogger.w("MainActivity", "URL overlay load failed (${HostAllowlist.describe(target)}): $reason")
+        urlOverlayRecoveryFailed = true
+        urlOverlayRecoveryInFlight = false
+        urlOverlayLoadTimeoutRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayLoadTimeoutRunnable = null
+        urlOverlayRecoveryFailures += 1
+        // Local, bridge-free document replaces Chromium's generic error page. The assigned target remains
+        // in urlOverlayCurrentUrl and is the only destination the retry path will load.
+        urlOverlayView.loadDataWithBaseURL(
+            null,
+            "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>" +
+                "html,body{margin:0;width:100%;height:100%;background:#101820;color:#fff;font:24px sans-serif}" +
+                "body{display:grid;place-content:center;text-align:center;padding:24px;box-sizing:border-box}" +
+                "small{opacity:.75;margin-top:12px}</style><body><div>Connection lost</div>" +
+                "<small>Reconnecting automatically…</small></body>",
+            "text/html",
+            "utf-8",
+            null,
+        )
+        scheduleUrlOverlayRetry(target)
+    }
+
+    private fun scheduleUrlOverlayRetry(target: String) {
+        urlOverlayRetryRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        val delay = UrlOverlayRecoveryPolicy.retryDelayMs(urlOverlayRecoveryFailures)
+        val retry = Runnable {
+            if (urlOverlayCurrentUrl != target || !UrlOverlayRecoveryPolicy.shouldRetry(
+                    urlOverlayView.visibility == View.VISIBLE,
+                    webTabsActive,
+                    urlOverlayCurrentUrl,
+                    urlOverlayRecoveryFailed,
+                )
+            ) return@Runnable
+            retryUrlOverlayNow()
+        }
+        urlOverlayRetryRunnable = retry
+        urlOverlayRecoveryHandler.postDelayed(retry, delay)
+    }
+
+    private fun retryUrlOverlayNow() {
+        val target = urlOverlayCurrentUrl ?: return
+        if (!UrlOverlayRecoveryPolicy.shouldRetry(
+                urlOverlayView.visibility == View.VISIBLE,
+                webTabsActive,
+                target,
+                urlOverlayRecoveryFailed,
+            ) || !HostAllowlist.isSafeWebUrl(target)
+        ) return
+        urlOverlayRetryRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayRetryRunnable = null
+        urlOverlayRecoveryFailed = false
+        urlOverlayRecoveryInFlight = true
+        urlOverlayView.loadUrl(target)
+        val timeout = Runnable {
+            if (urlOverlayRecoveryInFlight && urlOverlayCurrentUrl == target) {
+                failUrlOverlayLoad("retry timed out")
+            }
+        }
+        urlOverlayLoadTimeoutRunnable = timeout
+        urlOverlayRecoveryHandler.postDelayed(timeout, URL_OVERLAY_LOAD_TIMEOUT_MS)
+    }
+
+    private fun clearUrlOverlayRecovery() {
+        urlOverlayRetryRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayLoadTimeoutRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayRetryRunnable = null
+        urlOverlayLoadTimeoutRunnable = null
+        urlOverlayRecoveryFailed = false
+        urlOverlayRecoveryInFlight = false
+        urlOverlayRecoveryFailures = 0
+    }
+
+    private fun cancelUrlOverlayRecovery() {
+        clearUrlOverlayRecovery()
     }
 
     private fun showUrlOverlay(url: String) {
@@ -3514,6 +3678,7 @@ class MainActivity : ComponentActivity() {
         if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
             return
         }
+        cancelUrlOverlayRecovery()
         urlOverlayCurrentUrl = cleanUrl
         sharedVideoHost?.yieldToUi()
         PlayerLogger.i("MainActivity", "Showing URL overlay: $cleanUrl")
@@ -3564,6 +3729,7 @@ class MainActivity : ComponentActivity() {
         }
         if (urlOverlayView.visibility != View.VISIBLE && urlOverlayCurrentUrl == null) return
         PlayerLogger.i("MainActivity", "Hiding URL overlay")
+        cancelUrlOverlayRecovery()
         urlOverlayCurrentUrl = null
         urlOverlayView.visibility = View.GONE
         urlOverlayView.loadUrl("about:blank")
@@ -3597,6 +3763,7 @@ class MainActivity : ComponentActivity() {
         }
         val wasActive = webTabsActive
         val urlChanged = urlOverlayCurrentUrl != req.url
+        cancelUrlOverlayRecovery()
         // A NEW session starts with no remembered sign-in hosts.
         if (!wasActive) webTabsLearnedHosts.clear()
         webTabsActive = true
@@ -3652,6 +3819,7 @@ class MainActivity : ComponentActivity() {
     /** The teardown both `hideWebTabs` and a URL asset taking over share. */
     private fun endWebTabsSession(wipe: Boolean) {
         PlayerLogger.i("MainActivity", "web tabs: ending session (wipe=$wipe)")
+        cancelUrlOverlayRecovery()
         webTabsActive = false
         webTabsAllowHosts = null
         // The sign-in hosts the site took us to are forgotten with the session.
@@ -4257,6 +4425,11 @@ class MainActivity : ComponentActivity() {
         runCatching { com.educms.player.boot.BootDiagnostics.detach(this) }
         stopBootWatchdog()
         watchdogHandler.removeCallbacks(watchdogTicker)
+        cancelUrlOverlayRecovery()
+        urlOverlayNetworkCallback?.let { callback ->
+            runCatching { urlOverlayConnectivityManager?.unregisterNetworkCallback(callback) }
+        }
+        urlOverlayNetworkCallback = null
         try {
             if (managerInstallReceiverRegistered) {
                 unregisterReceiver(managerInstallReceiver)
