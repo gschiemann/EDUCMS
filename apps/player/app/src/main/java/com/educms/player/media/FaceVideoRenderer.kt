@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
+import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -46,6 +47,7 @@ internal class FaceVideoRenderer(
     private val holdFirst: Boolean = false,
     private val firstFrame: () -> Unit = {},
     private val ended: () -> Unit = {},
+    private val refreshRate: Float = 60f,
 ) {
     private val stopped = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
@@ -54,6 +56,8 @@ internal class FaceVideoRenderer(
     var codecName: String? = null; private set
     /** The decoder's own advertised concurrent-instance limit (0 = unknown). */
     var advertisedInstances: Int = 0; private set
+    @Volatile private var timingSnapshot: JSONObject? = null
+    fun timing(): JSONObject? = timingSnapshot
 
     /** Throws a reason code on anything this box cannot play natively. */
     fun prepare() {
@@ -145,68 +149,114 @@ internal class FaceVideoRenderer(
             } catch (e: MediaCodec.CodecException) { throw IllegalStateException(if (e.isTransient || e.isRecoverable) "decoder-unavailable" else "codec-failed", e) }
                 catch (e: IllegalStateException) { throw IllegalStateException("decoder-unavailable", e) }
             val frameUs = (1_000_000.0 / d.fps).toLong().coerceAtLeast(1)
-            val frameNs = frameUs * 1000
             val timeline = LoopTimeline(frameUs)
+            val schedule = VideoFrameSchedule(frameUs, refreshRate)
             val info = MediaCodec.BufferInfo()
-            var originNs = 0L; var firstPts = 0L; var previousDropped = false
             var inputDone = false; var heldOnce = false
+            var pendingOutput = -1; var completed = false
+            var endDeadlineNs = 0L; var endedNotified = false
+            var decodedFrames = 0L; var submittedFrames = 0L
+            var nextTimingAt = 0L
             var lastProgress = SystemClock.elapsedRealtime()
-            while (!stopped.get() && current()) {
+            fun checkLive() {
+                check(!stopped.get() && current()) { "session-retired" }
                 require(surface.isValid) { "output-detached" }
-                val input = if (inputDone) -1 else c.dequeueInputBuffer(10_000)
-                if (input >= 0) {
-                    val buffer = c.getInputBuffer(input) ?: error("codec-input")
-                    var size = extractor.readSampleData(buffer, 0)
-                    if (size < 0 && loop) {
-                        // End of this lap on INPUT: rewind and keep feeding.
-                        require(timeline.wrap()) { "empty-lap" }
-                        extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-                        looped()
-                        size = extractor.readSampleData(buffer, 0)
-                        require(size >= 0) { "empty-lap" }
-                    }
-                    if (size < 0) {
-                        // Play once: tell the decoder the clip is over, then drain.
-                        c.queueInputBuffer(input, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        inputDone = true
-                    } else {
-                        c.queueInputBuffer(input, 0, size, timeline.queue(extractor.sampleTime), 0)
-                        extractor.advance()
-                    }
+            }
+            fun feed(): Boolean {
+                checkLive()
+                if (inputDone || completed) return false
+                val input = c.dequeueInputBuffer(0)
+                if (input < 0) return false
+                val buffer = c.getInputBuffer(input) ?: error("codec-input")
+                var size = extractor.readSampleData(buffer, 0)
+                if (size < 0 && loop) {
+                    // End of this lap on INPUT: rewind and keep feeding.
+                    require(timeline.wrap()) { "empty-lap" }
+                    extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                    looped()
+                    size = extractor.readSampleData(buffer, 0)
+                    require(size >= 0) { "empty-lap" }
                 }
-                val index = c.dequeueOutputBuffer(info, 10_000)
-                if (index >= 0) {
-                    val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                    if (SharedVideoCodecPolicy.render(info.size, info.flags)) {
-                        if (holdFirst && !heldOnce) {
-                            // First picture: show it now, then wait for the page's `play`.
-                            heldOnce = true
-                            c.releaseOutputBuffer(index, true)
-                            firstFrame()
-                            while (!released && !stopped.get() && current()) Thread.sleep(5)
-                            check(!stopped.get() && current()) { "session-retired" }
-                            originNs = System.nanoTime(); firstPts = info.presentationTimeUs
-                            lastProgress = SystemClock.elapsedRealtime()
+                if (size < 0) {
+                    // Play once: tell the decoder the clip is over, then drain.
+                    c.queueInputBuffer(input, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    inputDone = true
+                } else {
+                    c.queueInputBuffer(input, 0, size, timeline.queue(extractor.sampleTime), 0)
+                    extractor.advance()
+                }
+                return true
+            }
+            fun drain(): Boolean {
+                checkLive()
+                if (completed) return false
+                if (pendingOutput < 0) {
+                    pendingOutput = c.dequeueOutputBuffer(info, 0)
+                    if (pendingOutput < 0) return pendingOutput != MediaCodec.INFO_TRY_AGAIN_LATER
+                    if (SharedVideoCodecPolicy.render(info.size, info.flags)) decodedFrames++
+                }
+                val index = pendingOutput
+                val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                if (SharedVideoCodecPolicy.render(info.size, info.flags)) {
+                    if (holdFirst && !heldOnce) {
+                        // First picture: show it now, then wait for the page's `play`.
+                        heldOnce = true
+                        c.releaseOutputBuffer(index, true)
+                        submittedFrames++
+                        firstFrame()
+                        while (!released && !stopped.get() && current()) Thread.sleep(5)
+                        check(!stopped.get() && current()) { "session-retired" }
+                        schedule.start(info.presentationTimeUs, System.nanoTime())
+                        lastProgress = SystemClock.elapsedRealtime()
+                    } else {
+                        val now = System.nanoTime()
+                        val due = schedule.due(info.presentationTimeUs, now)
+                        // Keep an early output pending, but continue feeding input.
+                        // SurfaceView needs about two VSYNCs of scheduled lead time;
+                        // sleeping until due used to starve OEM decoders and miss VSYNC.
+                        if (due - now > schedule.leadNs) return false
+                        schedule.observe(due, now)
+                        if (schedule.shouldDrop(due, now)) {
+                            c.releaseOutputBuffer(index, false); dropped()
                         } else {
-                            if (originNs == 0L) { originNs = System.nanoTime(); firstPts = info.presentationTimeUs }
-                            val due = originNs + (info.presentationTimeUs - firstPts) * 1000
-                            while (!stopped.get() && current() && due - System.nanoTime() > 2_000_000L) Thread.sleep(1)
-                            check(!stopped.get() && current()) { "session-retired" }
-                            val now = System.nanoTime()
-                            if (FaceVideoPolicy.shouldDrop(now - due, frameNs, previousDropped)) {
-                                c.releaseOutputBuffer(index, false); previousDropped = true; dropped()
-                            } else {
-                                c.releaseOutputBuffer(index, maxOf(due, now)); previousDropped = false
-                            }
-                            lastProgress = SystemClock.elapsedRealtime()
+                            c.releaseOutputBuffer(index, maxOf(due, now))
+                            submittedFrames++
+                            schedule.submitted(now, maxOf(due, now))
                         }
-                    } else c.releaseOutputBuffer(index, false)
-                    if (eos) {
-                        // The last picture stays on the surface; the decoder idles until stop.
-                        ended()
-                        while (!stopped.get() && current()) Thread.sleep(50)
-                        return
+                        lastProgress = SystemClock.elapsedRealtime()
                     }
+                } else c.releaseOutputBuffer(index, false)
+                pendingOutput = -1
+                if (eos) {
+                    // The last picture stays on the surface; the decoder idles until stop.
+                    endDeadlineNs = schedule.endDeadline(System.nanoTime())
+                    completed = true
+                }
+                return true
+            }
+            val pump = VideoDecodePump(::feed, ::drain)
+            while (!stopped.get() && current()) {
+                checkLive()
+                if (completed) {
+                    // Do not advance the slide while its last picture is still
+                    // scheduled for a future VSYNC, or before its frame ends.
+                    if (!endedNotified && System.nanoTime() >= endDeadlineNs) {
+                        endedNotified = true
+                        ended()
+                    }
+                    Thread.sleep(if (endedNotified) 50 else 1)
+                    continue
+                }
+                if (!pump.step()) Thread.sleep(1)
+                val nowMs = SystemClock.elapsedRealtime()
+                if (nowMs >= nextTimingAt) {
+                    // Immutable once published; low-cost aggregate snapshot, not render proof.
+                    timingSnapshot = JSONObject().put("decodedFrames", decodedFrames)
+                        .put("submittedFrames", submittedFrames).put("lateFrames", schedule.lateFrames)
+                        .put("lastLateUs", schedule.lastLateUs).put("maxLateUs", schedule.maxLateUs)
+                        .put("maxSubmitGapMs", schedule.maxSubmitGapMs).put("leadUs", schedule.leadNs / 1000)
+                        .put("sourceWidth", d.width).put("sourceHeight", d.height)
+                    nextTimingAt = nowMs + 1000
                 }
                 require(SystemClock.elapsedRealtime() - lastProgress < 15_000) { "codec-stalled" }
             }

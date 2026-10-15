@@ -118,15 +118,6 @@ internal object FaceVideoPolicy {
     }
 
     /**
-     * Late-frame policy: a frame more than three frame periods late is
-     * dropped to catch up — but never two in a row, so a decoder that is
-     * merely slow still shows pictures (and the stall watchdog, not this,
-     * decides when native has failed).
-     */
-    fun shouldDrop(lateNs: Long, frameNs: Long, previousDropped: Boolean): Boolean =
-        !previousDropped && frameNs > 0 && lateNs > 3 * frameNs
-
-    /**
      * Files to delete from a face-video cache directory before a download:
      * everything not pinned by a live session on ANY face, except the newest
      * [keepExtra] unpinned copies (a quick switch back costs no download).

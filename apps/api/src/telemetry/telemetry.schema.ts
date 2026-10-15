@@ -198,6 +198,17 @@ export const refreshAckSchema = z.strictObject({
 
 /** Own native SurfaceView output callbacks; never HTML dropped-frame counters or panel illumination. */
 const nativeVideoSchema = z.strictObject({
+  timing: z.strictObject({
+    decodedFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    submittedFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    lateFrames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    lastLateUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    maxLateUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    maxSubmitGapMs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    leadUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    sourceWidth: z.number().int().min(1).max(16_384),
+    sourceHeight: z.number().int().min(1).max(16_384),
+  }).optional(),
   version: z.literal(1), state: z.enum(['preparing','ready','presenting','failed']),
   sessionId: z.string().uuid(), revision: z.string().min(1).max(128),
   sha256: z.string().regex(/^[a-f0-9]{64}$/), faceIndex: z.number().int().min(0).max(1),

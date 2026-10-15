@@ -284,7 +284,8 @@ internal object FaceVideoBox {
             loop = s.loop,
             holdFirst = s.protocol == 3,
             firstFrame = { synchronized(this) { if (live(host, s)) { s.held = true; s.heldAt = SystemClock.elapsedRealtime() } } },
-            ended = { synchronized(this) { if (live(host, s)) s.ended = true } })
+            ended = { synchronized(this) { if (live(host, s)) s.ended = true } },
+            refreshRate = sv.display?.refreshRate ?: 60f)
         meta.execute {
             try {
                 r.prepare()
@@ -525,6 +526,7 @@ internal object FaceVideoBox {
             .put("revision", s.revision).put("sha256", s.sha256)
             .put("faceIndex", host.face).put("reason", reason ?: JSONObject.NULL).put("output", output)
             .put("codecName", s.codecName ?: JSONObject.NULL).put("loops", s.loops).put("drops", s.drops)
+            .put("timing", s.renderer?.timing() ?: JSONObject.NULL)
             .put("elapsedMs", if (s.startedAt > 0) SystemClock.elapsedRealtime() - s.startedAt else 0)
             .put("stalls", if (s.reason == "output-stalled") 1 else 0)
     }

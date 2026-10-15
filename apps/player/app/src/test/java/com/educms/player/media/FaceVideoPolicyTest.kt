@@ -85,13 +85,6 @@ class FaceVideoPolicyTest {
         assertFalse(FaceVideoPolicy.decoderAllowed(1, 0))
     }
 
-    @Test fun lateFramesCatchUpButASlowDecoderStillShowsPictures() {
-        val frame = 33_333_333L
-        assertFalse(FaceVideoPolicy.shouldDrop(frame, frame, false))
-        assertTrue(FaceVideoPolicy.shouldDrop(4 * frame, frame, false))
-        assertFalse(FaceVideoPolicy.shouldDrop(10 * frame, frame, true))
-    }
-
     @Test fun twoFacesPlayingDifferentFilesNeverEvictEachOther() {
         val files = listOf("a" to 1L, "b" to 2L, "c" to 3L, "d" to 4L)
         assertEquals(setOf("a", "b"), FaceVideoPolicy.prune(files, pinned = setOf("x"), keepExtra = 2))

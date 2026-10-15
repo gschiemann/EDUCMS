@@ -35,6 +35,7 @@
 import {
   NATIVE_VIDEO_MAX_ATTEMPTS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
+  readNativeVideoTiming,
   type NativeSharedVideoState,
 } from "./nativeSharedVideo";
 
@@ -79,6 +80,7 @@ export interface ZoneLayout {
 }
 
 export interface NativeZoneState {
+  timing?: NativeSharedVideoState["timing"];
   slot: string;
   state: "preparing" | "ready" | "presenting" | "failed";
   sessionId: string;
@@ -447,6 +449,8 @@ function readZoneState(v: unknown): NativeZoneState | null {
   if (typeof v.reason === "string" && /^[a-z0-9-]{1,64}$/i.test(v.reason)) s.reason = v.reason;
   if (typeof v.codecName === "string" && /^[a-z0-9_.-]{1,128}$/i.test(v.codecName)) s.codecName = v.codecName;
   for (const k of ["loops", "drops", "elapsedMs"] as const) if (count(v[k])) s[k] = v[k];
+  const timing = readNativeVideoTiming(v.timing);
+  if (timing) s.timing = timing;
   const o = v.output;
   if (
     record(o) &&
@@ -486,6 +490,7 @@ export function zoneStateAsSharedState(s: NativeZoneState, faceIndex: number): N
   if (s.loops !== undefined) out.loops = s.loops;
   if (s.elapsedMs !== undefined) out.elapsedMs = s.elapsedMs;
   if (s.output) out.output = s.output;
+  if (s.timing) out.timing = s.timing;
   return out;
 }
 

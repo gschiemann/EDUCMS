@@ -48,6 +48,12 @@ export interface NativeSharedVideoState {
   elapsedMs?: number;
   stalls?: number;
   loops?: number;
+  /** Decoder scheduling diagnostics; submitted frames are not display proof. */
+  timing?: {
+    decodedFrames: number; submittedFrames: number; lateFrames: number;
+    lastLateUs: number; maxLateUs: number; maxSubmitGapMs: number; leadUs: number;
+    sourceWidth: number; sourceHeight: number;
+  };
   /** Protocol 3 telemetry (nativeZones.ts): native's late-frame drops, the
    *  protocol the APK answered, and one bounded row per live slot. Sent only
    *  while the API accepts the video extras (same back-off as `video`). */
@@ -71,6 +77,15 @@ export interface NativeSharedVideoState {
 
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
+
+export function readNativeVideoTiming(value: unknown): NativeSharedVideoState["timing"] {
+  const keys = ["decodedFrames", "submittedFrames", "lateFrames", "lastLateUs", "maxLateUs",
+    "maxSubmitGapMs", "leadUs", "sourceWidth", "sourceHeight"] as const;
+  if (!record(value) || !keys.every(k => count(value[k]))) return undefined;
+  const width = value.sourceWidth as number, height = value.sourceHeight as number;
+  if (width <= 0 || width > 16384 || height <= 0 || height > 16384) return undefined;
+  return Object.fromEntries(keys.map(k => [k, value[k]])) as NativeSharedVideoState["timing"];
+}
 const text = (v: unknown, max = 128): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= max;
 const uuid = (v: unknown): v is string =>
@@ -563,6 +578,8 @@ export function readNativeSharedVideoState(
     s.codecName = v.codecName;
   for (const k of ["elapsedMs", "stalls", "loops", "drops"] as const)
     if (count(v[k])) s[k] = v[k];
+  const timing = readNativeVideoTiming(v.timing);
+  if (timing) s.timing = timing;
   return s;
 }
 

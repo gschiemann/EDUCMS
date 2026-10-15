@@ -1,5 +1,6 @@
 import {
   readNativeSharedVideoDescriptor,
+  readNativeSharedVideoState,
   SharedVideoController,
   SharedVideoEvidence,
   type NativeSharedVideoDescriptor,
@@ -51,6 +52,15 @@ const settle = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
 describe("optional native output handoff", () => {
+  it("carries bounded scheduling diagnostics separately from rendered-frame evidence", () => {
+    const timing = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
+      maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
+    const parsed = readNativeSharedVideoState({ ...state("ready"), timing });
+    expect(parsed?.timing).toEqual(timing);
+    expect(parsed?.output?.uniqueFrames).toBe(0);
+    expect(readNativeSharedVideoState({ ...state(), timing: { ...timing, maxLateUs: -1 } })?.timing).toBeUndefined();
+    expect(readNativeSharedVideoState(state())?.timing).toBeUndefined();
+  });
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
   it("accepts fill and cover (2026-10-11 crop-to-fill), refuses any other fit", () => {

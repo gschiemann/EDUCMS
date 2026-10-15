@@ -31,7 +31,7 @@ import {
   TELEMETRY_MIN_ACCEPT_INTERVAL_MS,
   REFRESH_ACK_MIN_ACCEPT_INTERVAL_MS,
 } from './telemetry.controller';
-import { TELEMETRY_MAX_BODY_BYTES } from './telemetry.schema';
+import { TELEMETRY_MAX_BODY_BYTES, screenTelemetrySchema } from './telemetry.schema';
 import { SCREEN_ONLINE_GRACE_MS } from './online-grace';
 import { TELEMETRY_INTERVAL_MS } from './telemetry.types';
 import {
@@ -407,6 +407,18 @@ describe('POST /screens/:id/telemetry', () => {
     codecName:'OMX.rk.video_decoder.avc',elapsedMs:60000,loops:1,
     output:{attached:true,visible:true,hardwareAccelerated:true,viewUpdates:frames,uniqueFrames:frames,
       sourcePtsUs:3000000,width:1080,height:1920,lastUpdateElapsedMs:999999,ageMs:0}});
+  it('accepts optional decoder scheduling diagnostics without turning them into frame proof', async () => {
+    const timing = {decodedFrames:120,submittedFrames:115,lateFrames:5,lastLateUs:0,
+      maxLateUs:150000,maxSubmitGapMs:180,leadUs:33333,sourceWidth:2160,sourceHeight:3338};
+    const body = {nativeVideo:{...nativeSample('ready',0),timing}};
+    expect(screenTelemetrySchema.safeParse(body).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),body);
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{timing}});
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+    for (const bad of [{...timing,lastLateUs:-1},{...timing,sourceWidth:99999},{...timing,unknown:1}]) {
+      expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:bad}}).success).toBe(false);
+    }
+  });
   it.each(['preparing','ready','failed'])('native %s never refreshes render or HTML frame-quality timestamps',async state=>{
     await controller.report(SCREEN_ID,makeReq(),{nativeVideo:nativeSample(state),render:{frames:99,hash:'pl:test'}});
     expect(writtenData()).not.toHaveProperty('lastRenderedAt');
