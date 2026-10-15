@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
+import com.educms.player.logging.PlayerLogger
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -134,6 +135,12 @@ internal class FaceVideoRenderer(
             val format = extractor.getTrackFormat(track); validate(format)
             // Clockwise output rotation onto THIS face's physical panel.
             format.setInteger(MediaFormat.KEY_ROTATION, degrees)
+            fun formatFacts(f: MediaFormat): String = listOf("width", "height", "stride", "slice-height",
+                "crop-left", "crop-top", "crop-right", "crop-bottom", "rotation-degrees",
+                "color-format", "color-standard", "color-range", "color-transfer").mapNotNull { key ->
+                runCatching { if (f.containsKey(key)) "$key=${f.getInteger(key)}" else null }.getOrNull()
+            }.joinToString(" ")
+            PlayerLogger.i("FaceVideoRenderer", "PLAYER_NATIVE_VIDEO_FORMAT face=${d.faceIndex} stage=input ${formatFacts(format)} sha=${d.sha256.take(8)}")
             // A decoder the box cannot open right now (another session holds
             // the hardware, a transient OMX refusal) is not a fault of the file.
             val c = try {
@@ -158,6 +165,7 @@ internal class FaceVideoRenderer(
             var decodedFrames = 0L; var submittedFrames = 0L
             var nextTimingAt = 0L
             var lastProgress = SystemClock.elapsedRealtime()
+            var formatReports = 0
             fun checkLive() {
                 check(!stopped.get() && current()) { "session-retired" }
                 require(surface.isValid) { "output-detached" }
@@ -192,7 +200,17 @@ internal class FaceVideoRenderer(
                 if (completed) return false
                 if (pendingOutput < 0) {
                     pendingOutput = c.dequeueOutputBuffer(info, 0)
-                    if (pendingOutput < 0) return pendingOutput != MediaCodec.INFO_TRY_AGAIN_LATER
+                    if (pendingOutput == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED ||
+                        pendingOutput == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                        // OEM codecs may reset scaling when their output buffers change.
+                        // Never treat these informational events as output-buffer indices.
+                        c.setVideoScalingMode(FaceVideoPolicy.scalingMode(d.fit))
+                        if (formatReports++ < 4) PlayerLogger.i("FaceVideoRenderer",
+                            "PLAYER_NATIVE_VIDEO_FORMAT face=${d.faceIndex} stage=output ${formatFacts(c.outputFormat)} sha=${d.sha256.take(8)}")
+                        pendingOutput = -1
+                        return true
+                    }
+                    if (pendingOutput < 0) return false
                     if (SharedVideoCodecPolicy.render(info.size, info.flags)) decodedFrames++
                 }
                 val index = pendingOutput
