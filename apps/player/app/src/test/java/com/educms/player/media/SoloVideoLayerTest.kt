@@ -192,4 +192,17 @@ class SoloVideoLayerTest {
         assertFalse(SoloVideoLayer.geometryMatches(intArrayOf(0, 0, 0, 1920), intArrayOf(0, 0, 0, 1920)))
     }
 
+    @Test fun parkingIncludesFittedOverhangAndPhysicalDisplayBeyondNarrowParent() {
+        assertEquals(1161, SoloVideoLayer.parkingLeft(1080, 1080, 0, -80))
+        assertEquals(1081, SoloVideoLayer.parkingLeft(1080, 1080, 0, 80))
+        assertEquals(1161, SoloVideoLayer.parkingLeft(600, 1080, 0, -80))
+        assertEquals(1061, SoloVideoLayer.parkingLeft(600, 1080, 100, -80))
+        assertEquals(1261, SoloVideoLayer.parkingLeft(600, 1080, -100, -80))
+        for (parentW in listOf(600, 1080)) for (parentX in listOf(-100, 0, 100)) for (fitLeft in listOf(-80, 0, 80)) {
+            val parked = SoloVideoLayer.parkingLeft(parentW, 1080, parentX, fitLeft)
+            assertTrue(parentX + parked > 1080) // box is off display
+            assertTrue(parentX + parked + fitLeft > 1080) // surface is off display too
+        }
+    }
+
 }

@@ -83,6 +83,10 @@ internal class SoloVideoLayer(val mode: Mode) {
 
         fun eligible(protocol: Int, face: Int, sdk: Int): Boolean = mode(protocol, face, sdk) != Mode.UNDER_WINDOW
 
+        /** Keep both the box and an overhanging fitted surface beyond the physical display. */
+        fun parkingLeft(parentW: Int, displayW: Int, parentScreenX: Int, fittedLeft: Int): Int =
+            maxOf(parentW, displayW - parentScreenX - minOf(0, fittedLeft) + 1)
+
         /** Positions are in the same window coordinate space; moving only a parent can leave local bounds unchanged. */
         fun geometryMatches(expected: IntArray, actual: IntArray): Boolean =
             expected.size == 4 && actual.size == 4 && expected[2] > 0 && expected[3] > 0 && expected.contentEquals(actual)

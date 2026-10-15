@@ -237,15 +237,16 @@ internal object FaceVideoBox {
         if (parent == null || parent.width <= 0 || parent.height <= 0) {
             synchronized(this) { if (live(host, s)) stopSession(host, s, "output-unavailable") }; return
         }
+        val degrees = s.layout?.degrees ?: SharedVideoTransform.degrees(d.orientation, 0, parent.width, parent.height)
         if (s.layer.staticAbove) {
-            // Park beyond the physical display even if the content parent is narrower.
+            // Park both box and surface beyond the display, including any fitted overhang.
             val displaySize = Point()
             parent.display?.getRealSize(displaySize)
             val parentScreen = IntArray(2)
             parent.getLocationOnScreen(parentScreen)
-            s.parkLeft = maxOf(parent.width, displaySize.x - parentScreen[0] + 1)
+            val fitted = FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, parent.width, parent.height)
+            s.parkLeft = SoloVideoLayer.parkingLeft(parent.width, displaySize.x, parentScreen[0], fitted[0])
         }
-        val degrees = s.layout?.degrees ?: SharedVideoTransform.degrees(d.orientation, 0, parent.width, parent.height)
         val rect = boxRect(s, parent.width, parent.height)
         if (rect[2] <= 0 || rect[3] <= 0) {
             synchronized(this) { if (live(host, s)) stopSession(host, s, "output-unavailable") }; return
