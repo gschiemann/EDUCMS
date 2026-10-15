@@ -97,4 +97,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2403983,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38518351926',
   },
+  // Signed CI 38743322973, source 3a98877a; skip foreground watchdog relaunch.
+  // Private mirror verified against the APK and production signing certificate.
+  '1.1.38-field.1': {
+    versionName: '1.1.38-field.1',
+    versionCode: 10138,
+    sha256: 'a1bb3935e7e48d0f3e73a2b844cf34e4fbfec7d59f2ca297fe3a757492382a2f',
+    size: 2403987,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38743322973',
+  },
 };
