@@ -104,6 +104,22 @@ class UserStandbyWiringTest {
     }
 
     @Test
+    fun `watchdog maintenance does not relaunch a foreground player every fifteen minutes`() {
+        val src = code(watchdog)
+        val guard = src.indexOf("if (MainActivity.isInForeground)")
+        val launch = src.indexOf("ctx.startActivity(launch)")
+        assertTrue("foreground playback must be left alone", guard >= 0)
+        assertTrue("foreground guard must precede the Activity launch", launch > guard)
+        assertTrue("foreground branch must return", src.substring(guard, src.indexOf("}", guard)).contains("return"))
+        for (maintenance in listOf("HeartbeatService.ensureRunning(", "UserStandby.onWatchdogTick(", "NativeAlertWatch.kick(")) {
+            val call = src.indexOf(maintenance)
+            assertTrue("$maintenance must still run for a foreground player", call >= 0 && call < guard)
+        }
+        assertTrue("standby protection must still run", src.indexOf("UserStandby.relaunchMode(") < guard)
+        assertTrue("setup UI must retain its relaunch protection", src.indexOf("SetupCeremony.relaunchShouldYield(") < guard)
+    }
+
+    @Test
     fun `post-OTA escalation never escalates in standby`() {
         val attempt = body(code(escalation), "fun attempt(")
         val ask = attempt.indexOf("UserStandby.relaunchMode(")

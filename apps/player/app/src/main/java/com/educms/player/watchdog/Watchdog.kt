@@ -111,8 +111,17 @@ class WatchdogReceiver : android.content.BroadcastReceiver() {
             PlayerLogger.i("Watchdog", "Tick — a person is in a system screen from the setup card; not relaunching over it")
             return
         }
-        // Only re-launch the activity if it's been idle for a while; otherwise
-        // we'd steal focus. Best-effort — Android 10+ background launch
+        // A new Intent pauses even an already-resumed singleTask Activity
+        // before onNewIntent/onResume. The old unconditional launch therefore
+        // tore down native playback every 15 minutes (Vision Core field.37).
+        // Keep the service, standby and alert-watch maintenance above running,
+        // but leave a foreground Activity alone. Content health is checked by
+        // the separate content watchdog; being foreground is not render proof.
+        if (MainActivity.isInForeground) {
+            PlayerLogger.i("Watchdog", "Tick — player already foreground; not relaunching")
+            return
+        }
+        // Recover a background/missing Activity. Best-effort — Android 10+ launch
         // restrictions might block this, but on rooted Taurus / Device-Owner
         // kiosks it's allowed.
         try {
