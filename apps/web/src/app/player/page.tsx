@@ -1,9 +1,10 @@
 'use client';
 import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
 import { committedNativeVideo } from './nativeMediaCommit';
+import { discoverNativeVideoProtocol } from './nativeVideoProtocolProbe';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
-import { readNativeSharedVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
+import { readNativeSharedVideoDescriptor, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -2923,21 +2924,12 @@ function PlayerPage() {
   const scalerLayoutRef = useRef<{ scale: number; align: 'center' | 'left' }>({ scale: 0, align: 'center' });
   const templateRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    // One question at boot (plus one retry): does this APK run independent
-    // per-face native sessions? No bridge / no answer = web, as today.
-    if (!nativeHas('sharedVideoState')) return;
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const ask = (retry: boolean) => {
-      nativeCall('sharedVideoState').then(raw => {
-        if (!alive) return;
-        const p = readNativeVideoProtocol(raw);
-        if (p !== null) setNativeVideoProtocol(p);
-        else if (retry) timer = setTimeout(() => ask(false), 5000);
-      }, () => { if (alive && retry) timer = setTimeout(() => ask(false), 5000); });
-    };
-    ask(true);
-    return () => { alive = false; if (timer !== null) clearTimeout(timer); };
+    // Ordinary browsers remain inert. On an APK, discover a late-injected
+    // bridge within a bounded startup window while browser content plays.
+    if (!isAndroidWebView() && !nativeHas('sharedVideoState')) return;
+    return discoverNativeVideoProtocol({
+      has: () => nativeHas('sharedVideoState'), state: () => nativeCall('sharedVideoState'),
+    }, setNativeVideoProtocol);
   }, []);
   const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
