@@ -351,6 +351,10 @@ describe('Pairing gate (LicenseService.assertSeatAvailable)', () => {
 });
 
 describe('Read-only gate (locked trial / cancelled plan)', () => {
+  // Trial fixtures use NOW; the interceptor must observe that same clock.
+  beforeAll(() => { jest.useFakeTimers({ now: NOW }); });
+  afterAll(() => jest.useRealTimers());
+
   const ctx = (req: Lic) =>
     ({ getType: () => 'http', switchToHttp: () => ({ getRequest: () => req }) }) as any;
   const next = { handle: () => of('passed') };
