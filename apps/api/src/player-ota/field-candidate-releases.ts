@@ -115,4 +115,13 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2403987,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38786943327',
   },
+  // Signed CI 38824589080, source becb845f; legacy Rockchip solo surface ownership.
+  // Signature, new DEX markers and immutable private mirror verified; hardware qualification pending.
+  '1.1.40-field.1': {
+    versionName: '1.1.40-field.1',
+    versionCode: 10140,
+    sha256: 'bda5ad6b361dd3602b9e22b667f7bc4313050e9de81a363a59d36105c23ba2e9', // gitleaks:allow -- verified public APK integrity digest
+    size: 2403987,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38824589080',
+  },
 };
