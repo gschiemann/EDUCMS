@@ -1,8 +1,9 @@
 'use client';
 import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
+import { committedNativeVideo } from './nativeMediaCommit';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
-import { readNativeSharedVideoDescriptor, readNativeVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
+import { readNativeSharedVideoDescriptor, readNativeVideoProtocol, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -6270,8 +6271,10 @@ function PlayerPage() {
   // applyManifest when a file is ready, or from the readiness effect once a
   // deferred playlist's first file lands. State setters and refs only, so the
   // identity is stable for the life of the page.
-  const commitMediaPlaylist = useCallback((commit: PendingPlaylistCommit) => {
+  const commitMediaPlaylist = useCallback((commit: PendingPlaylistCommit, nativeHeld = !!activeEmergencyRef.current) => {
     playbackManifestRef.current = commit.manifest;
+    setNativeVideoDescriptor(committedNativeVideo(commit.manifest.m.nativeVideo, commit.items,
+      commit.isEmergency || nativeHeld));
     // Fix #2 (2026-05-04) — clamp instead of reset when the playlist size
     // didn't shrink past the current index. If the operator ADDED items at
     // the end (length grew), we can keep going from where we are. If they
@@ -6408,7 +6411,10 @@ function PlayerPage() {
       void preloadPlayerRenderer();
 
       setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
-      setNativeVideoDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoDescriptor(manifest.nativeVideo));
+      // A replacement can wait for download/loop-boundary readiness. Keep its
+      // native descriptor with those bytes until commitMediaPlaylist applies
+      // both together; advancing it here tears down a healthy native session.
+      if (em || cachedNormalWouldClearLiveAlert) setNativeVideoDescriptor(null);
       setNativeVideoItems(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoItems(manifest.nativeVideoItems));
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
@@ -6928,6 +6934,7 @@ function PlayerPage() {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
         }
         if (templateWinner) {
+          setNativeVideoDescriptor(null);
           emptyManifestStreakRef.current = 0; // real content applied (B-P2-10)
           // B-P2-9 (2026-08-30): a template takeover ignores append
           // playlists by design (a full-screen template has no item
@@ -7065,6 +7072,8 @@ function PlayerPage() {
             .join('||');
           const isEmergencyContent = manifest.isEmergency === true;
           if (newSig === currentPlaylistSigRef.current) {
+            setNativeVideoDescriptor(committedNativeVideo(manifest.nativeVideo, combinedItems,
+              isEmergencyContent || !!em || cachedNormalWouldClearLiveAlert));
             playbackManifestRef.current = { m: manifest, fromCache };
             if (!fromCache && renderStateRef.current.rendering) cacheManifest(manifest, screenId, true);
             // Same content, but the emergency FLAG may have flipped (e.g. a
@@ -7130,7 +7139,9 @@ function PlayerPage() {
             return true;
           }
           pendingPlaylistCommitRef.current = null;
-          commitMediaPlaylist(commit);
+          // The current manifest decides immediate all-clear; React's alert
+          // ref still holds the preceding render until its effect runs.
+          commitMediaPlaylist(commit, holdNow || cachedNormalWouldClearLiveAlert);
           return true;
         }
       }
@@ -7178,6 +7189,7 @@ function PlayerPage() {
         emptyManifestStreakRef.current = 0;
         currentPlaylistSigRef.current = '';
         contentIsEmergencyRef.current = false;
+        setNativeVideoDescriptor(null);
         setPlaylist(null);
         setCurrentIndex(0);
       }

@@ -1003,6 +1003,47 @@ describe('deriveVideoPlayback', () => {
     expect(bad.detail.startsWith('312 of 1,830 frames dropped (17%)')).toBe(true);
   });
 
+  const nativeSample = (over: Record<string, unknown> = {}) => ({
+    state: 'presenting', evidence: 'surface-render-callback',
+    at: new Date(NOW - 30_000).toISOString(), sha256: 'native-file', drops: 2, stalls: 0, loops: 145,
+    output: { uniqueFrames: 425970, attached: true, visible: true, hardwareAccelerated: true,
+      ageMs: 115, width: 1080, height: 1920 }, ...over,
+  });
+
+  it('replaces stale browser drop alarms with current native facts, without claiming smoothness', () => {
+    const v = deriveVideoPlayback(scr({ lastVideoReport: sample({ droppedFrames: 1000,
+      stalls: 254, native: nativeSample() }) }), NOW)!;
+    expect(v.grade).toBe('native');
+    expect(v.headline).toBe('Native player reporting frames');
+    expect(v.detail).toContain('425,970 frame callbacks · 2 app frame drops · 0 reported stalls · 145 loops');
+    expect(v.detail).not.toContain('254');
+    expect(v.droppedPct).toBeNull();
+    expect(v.name).toBe('Native video');
+  });
+
+  it('shows native-only reports, including a loop count of zero', () => {
+    const v = deriveVideoPlayback(scr({ lastVideoReport: { native: nativeSample({ loops: 0 }) } }), NOW)!;
+    expect(v.grade).toBe('native');
+    expect(v.detail).toContain('0 loops');
+  });
+
+  it.each([
+    { state: 'ready' }, { state: 'failed' }, { drops: undefined },
+    { evidence: 'submitted' }, { at: new Date(NOW - 3 * MIN).toISOString() },
+    { at: new Date(NOW + MIN).toISOString() },
+    { output: { ...nativeSample().output, ageMs: 3000 } },
+    { output: { ...nativeSample().output, attached: false } },
+    { output: { ...nativeSample().output, uniqueFrames: 0 } },
+  ])('keeps web warnings when native output is unproven or stale: %j', (over) => {
+    expect(deriveVideoPlayback(scr({ lastVideoReport: sample({ droppedFrames: 1000,
+      native: nativeSample(over) }) }), NOW)!.grade).toBe('stuttering');
+  });
+
+  it('lets a newer web fallback report supersede the old native session', () => {
+    expect(deriveVideoPlayback(scr({ lastVideoReport: sample({ at: new Date(NOW - 1000).toISOString(),
+      droppedFrames: 1000, native: nativeSample() }) }), NOW)!.grade).toBe('stuttering');
+  });
+
   it('refuses to judge a clip shorter than five seconds, and never lets dropped exceed total', () => {
     const short = deriveVideoPlayback(scr({ lastVideoReport: sample({ totalFrames: 90, droppedFrames: 200 }) }), NOW)!;
     expect(short.grade).toBe('short');

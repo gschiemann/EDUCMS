@@ -1457,6 +1457,9 @@ export interface OpsRow {
 // ── Video playback quality ─────────────────────────────────────────────
 
 export interface VideoPlaybackSample {
+  sha256?: string | null;
+  /** Native callbacks are separate evidence from the retained HTML counters. */
+  native?: unknown;
   url?: string | null;
   totalFrames?: number | null;
   droppedFrames?: number | null;
@@ -1473,7 +1476,7 @@ export interface VideoPlaybackSample {
   at?: string | null;
 }
 
-export type VideoPlaybackGrade = 'smooth' | 'hitching' | 'stuttering' | 'short';
+export type VideoPlaybackGrade = 'smooth' | 'hitching' | 'stuttering' | 'short' | 'native';
 
 export interface VideoPlayback {
   grade: VideoPlaybackGrade;
@@ -1483,7 +1486,7 @@ export interface VideoPlayback {
   headline: string;
   /** "12 of 1,830 frames dropped (0.7%) · 1920 × 1080 · 2m ago", then " · paused 4 times to buffer (9 s)" when it did. */
   detail: string;
-  droppedPct: number;
+  droppedPct: number | null;
   totalFrames: number;
   droppedFrames: number;
   /** Compact age of the sample, e.g. "2m". */
@@ -1510,6 +1513,7 @@ export {
 } from '@cms/api-types';
 
 const VIDEO_HEADLINE: Record<VideoPlaybackGrade, string> = {
+  native: 'Native player reporting frames',
   smooth: 'Played smoothly on this screen',
   hitching: 'Hitched a little on this screen',
   stuttering: 'Stuttered on this screen',
@@ -1547,6 +1551,37 @@ export function videoSampleName(url: string | null | undefined): string {
 export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayback | null {
   const s = screen.lastVideoReport;
   if (!s || typeof s !== 'object') return null;
+  const native = s.native as Record<string, unknown> | null | undefined;
+  const output = native?.output as Record<string, unknown> | null | undefined;
+  const nativeAt = typeof native?.at === 'string' ? Date.parse(native.at) : NaN;
+  const webAt = (s.at ? Date.parse(s.at) : msOf(screen.lastVideoReportAt)) ?? NaN;
+  const callbacks = sampleCount(output?.uniqueFrames);
+  const drops = sampleCount(native?.drops);
+  const nativeStalls = sampleCount(native?.stalls);
+  // A native takeover leaves the last HTML sample intact on purpose. It can
+  // be hours old and describe the decoder that was stopped during handoff.
+  // Show current native facts without turning callbacks into a smoothness
+  // verdict: OEMs can omit callbacks, and app drops aren't panel refreshes.
+  if (native?.state === 'presenting' && native.evidence === 'surface-render-callback' &&
+      Number.isFinite(nativeAt) && now >= nativeAt && now - nativeAt <= 120_000 &&
+      (!Number.isFinite(webAt) || nativeAt >= webAt) &&
+      output?.attached === true && output.visible === true && output.hardwareAccelerated === true &&
+      typeof output.ageMs === 'number' && output.ageMs >= 0 && output.ageMs <= 2500 &&
+      callbacks !== null && callbacks > 0 && drops !== null && nativeStalls !== null) {
+    const age = compactAge(nativeAt, now);
+    const loops = sampleCount(native.loops);
+    const size = sampleCount(output.width) && sampleCount(output.height)
+      ? `${output.width} × ${output.height}` : null;
+    const detail = [
+      `${callbacks.toLocaleString('en-US')} frame callbacks`,
+      `${drops.toLocaleString('en-US')} app frame drops`,
+      `${nativeStalls.toLocaleString('en-US')} reported stalls`,
+      loops !== null ? `${loops.toLocaleString('en-US')} loops` : null,
+      size, age ? `${age} ago` : null,
+    ].filter(Boolean).join(' · ');
+    return { grade: 'native', name: s.sha256 && s.sha256 === native.sha256 ? videoSampleName(s.url) : 'Native video',
+      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age };
+  }
   const total = typeof s.totalFrames === 'number' && Number.isFinite(s.totalFrames) ? Math.max(0, Math.floor(s.totalFrames)) : 0;
   if (total <= 0) return null;
   const dropped = Math.min(

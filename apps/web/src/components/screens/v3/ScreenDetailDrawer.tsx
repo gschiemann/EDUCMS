@@ -92,6 +92,7 @@ function toneClasses(tone: string) {
 
 /** Tint for the "Last video" block — semantic, never brand. */
 const VIDEO_TONE: Record<VideoPlaybackGrade, { wrap: string; ink: string }> = {
+  native: { wrap: 'border-slate-200 bg-slate-50', ink: 'text-slate-800' },
   smooth: { wrap: 'border-emerald-200 bg-emerald-50/60', ink: 'text-emerald-800' },
   hitching: { wrap: 'border-amber-200 bg-amber-50/70', ink: 'text-amber-800' },
   stuttering: { wrap: 'border-rose-200 bg-rose-50/70', ink: 'text-rose-800' },
@@ -672,7 +673,7 @@ export function ScreenDetailDrawer({
                     data-testid="screen-video-playback"
                     data-video-grade={video.grade}
                   >
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Last video</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{video.grade === 'native' ? 'Native playback' : 'Last web video sample'}</p>
                     <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${VIDEO_TONE[video.grade].ink}`}>
                       {video.headline}
                     </p>
