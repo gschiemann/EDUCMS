@@ -139,7 +139,7 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
-    fun `a positioned-slot request is refused by the class table before any work, with its stable reason`() {
+    fun `a session the class table refuses is stopped with its stable reason before any work`() {
         val b = code(box)
         val begin = body(b, "private fun begin(")
         val refusal = begin.indexOf("session.refusal?.let { stopSession(host, session, it); return null }")
@@ -151,6 +151,33 @@ class FaceVideoBoxContractTest {
         assertTrue("the advertised protocolMax is the class table's", body(b, "fun state(host: SharedVideoHost)").contains("DeviceClassPolicy.current(host.ctx).protocolMax"))
         assertTrue("the host reply carries the resolved class", body(code(host), "fun stateJson()").contains("policy.toJson()"))
         assertTrue("a refused session never uploads diagnostics", body(b, "private fun queueDiagnostics(").contains("s.refusal != null"))
+    }
+
+    @Test
+    fun `a positioned slot is above the window from creation, parked beyond the display, and revealed only at play`() {
+        val b = code(box)
+        val attach = body(b, "private fun attachSurface(")
+        // The slot's layer is the static shape, so the same creation-time z-order line serves it.
+        assertTrue(attach.contains("sv.setZOrderOnTop(s.layer.staticAbove)"))
+        assertTrue("a slot is parked by the display-aware rule, not merely right of the WebView",
+            attach.contains("SoloVideoLayer.parkingLeft(parent.width, displaySize.x, parentScreen[0], fitted[0])"))
+        val rect = body(b, "private fun boxRect(")
+        assertTrue(rect.contains("if (s.onGlass) r else FaceZonePolicy.parked(r, maxOf(parentW, s.parkLeft))"))
+        // The reveal is `play`: supersede the on-glass session it covers and move the box in ONE UI pass.
+        val play = body(b, "fun play(")
+        val superseded = play.indexOf("stopSession(host, it, \"superseded\")")
+        val onGlass = play.indexOf("s.onGlass = true")
+        val moved = play.indexOf("applyRect(host, s)")
+        val released = play.indexOf("s.renderer?.release()")
+        assertTrue(superseded >= 0 && onGlass > superseded && moved > onGlass && released > moved)
+        // A slot never enters the solo reveal state machine: its first frame is "presenting" while parked.
+        val updated = body(b, "private fun updated(")
+        val slot = updated.indexOf("if (s.protocol == 3) {")
+        assertTrue(slot >= 0 && slot < updated.indexOf("s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {"))
+        assertTrue(updated.substring(slot, updated.indexOf("} else if", slot)).contains("s.state = \"presenting\""))
+        // No hole, no transparency: the WebView is never touched for a slot.
+        assertFalse(play.contains("setBackgroundColor"))
+        assertFalse(play.contains("visibility"))
     }
 
     @Test

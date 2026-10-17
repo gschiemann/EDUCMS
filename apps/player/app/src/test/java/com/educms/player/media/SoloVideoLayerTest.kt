@@ -54,15 +54,21 @@ class SoloVideoLayerTest {
         for (sdk in 24..29) for (face in 0..1) {
             assertEquals("sdk $sdk face $face", SoloVideoLayer.Mode.STATIC_ABOVE, SoloVideoLayer.mode(2, face, sdk))
         }
-        // Below minSdk, a face this box does not host, or anything but protocol 2: never native.
+        // A positioned slot (protocol 3) is the static shape on every class: above the window
+        // from creation, parked beyond the display until `play`.
+        for (sdk in listOf(24, 25, 28, 29, 30, 33, 34)) for (face in 0..1) {
+            assertEquals("slot sdk $sdk face $face", SoloVideoLayer.Mode.STATIC_ABOVE, SoloVideoLayer.mode(3, face, sdk))
+        }
+        // Below minSdk, a face this box does not host, or any other protocol: never native.
         assertNull(SoloVideoLayer.mode(2, 0, 23))
+        assertNull(SoloVideoLayer.mode(3, 0, 23))
         assertNull(SoloVideoLayer.mode(2, 2, 33))
+        assertNull(SoloVideoLayer.mode(3, 2, 33))
         assertNull(SoloVideoLayer.mode(2, -1, 25))
-        for (protocol in listOf(1, 3)) for (sdk in listOf(25, 33)) assertNull(SoloVideoLayer.mode(protocol, 0, sdk))
+        for (protocol in listOf(0, 1, 4)) for (sdk in listOf(25, 33)) assertNull(SoloVideoLayer.mode(protocol, 0, sdk))
         // UNDER_WINDOW is a PHASE (prepared, not yet shown), never a composition mode.
         assertEquals(setOf("DYNAMIC_ABOVE", "STATIC_ABOVE"), SoloVideoLayer.Mode.values().map { it.name }.toSet())
         assertEquals("composition-unavailable", SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE)
-        assertEquals("protocol3-disabled", SoloVideoLayer.REASON_PROTOCOL3_DISABLED)
     }
 
     @Test fun aDelayedPreRequestRenderCannotHideTheWebHold() {

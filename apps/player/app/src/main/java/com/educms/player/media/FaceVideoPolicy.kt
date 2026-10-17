@@ -148,6 +148,14 @@ internal object FaceVideoPolicy {
  *    plays ONCE and keeps its last frame (`ended`) until the page stops it.
  *  • `zone:<id>` — a template VIDEO zone: same hold/play hand-off, loops.
  *
+ * 1.1.41 — ONE COMPOSITING CONTRACT (SoloVideoLayer.kt): a slot's surface is
+ * ABOVE the window from creation, parked beyond the physical display while it
+ * pre-rolls, and moved onto its rect at `play`; the WebView stays opaque
+ * black beneath it (no transparent hole any more). The one limitation: page
+ * content cannot draw over a native slot, so a zone that another zone
+ * overlaps stays web (`zone-overlap`, decided by the API and the page), and
+ * a native→native transition is a hard cut handed over by the held frame.
+ *
  * Same four bridge methods: a `version: 3` message on sharedVideoPrepare
  * carries an `op` (prepare / layout / play); commit / stop address the
  * session id; state adds `protocolMax: 3` + `sessions[]` and keeps its

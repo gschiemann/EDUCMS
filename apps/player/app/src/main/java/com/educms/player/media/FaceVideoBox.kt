@@ -28,10 +28,11 @@ import java.util.concurrent.Executors
  * One face's native session. Protocol 2 = the solo slot "" (full face, loops,
  * plays as soon as it is committed). Protocol 3 = a positioned slot
  * (`item:<id>` / `zone:<id>`): committed into a HELD first frame on a surface
- * parked off-screen, moved onto its rect and released on `play` — OFF on
- * every class in 1.1.41 ([DeviceClassPolicy]); such a request is registered
- * only to be refused with `protocol3-disabled`, so the page keeps its own
- * engine for templates and mixed playlists.
+ * that is ABOVE the window from the moment its child window exists, parked
+ * beyond the physical display, moved onto its rect and released on `play`
+ * (1.1.41: the same compositing contract as the solo — the WebView stays
+ * opaque black beneath it; page content cannot draw over a native slot, so
+ * native→native transitions are hard cuts handed over by the held frame).
  * Mutable fields are guarded by the FaceVideoBox monitor; views are touched on
  * the UI thread only.
  */
@@ -43,7 +44,7 @@ internal class FaceVideoSession(
     val protocol: Int = if (zone != null) 3 else 2
     /** The stable reason this session may not run on this box, decided before any work; null = it may. */
     val refusal: String? = policy.refusal(protocol, face)
-    /** ONE COMPOSITING CONTRACT: above the window, dynamic (R+) or static (24–29); a refused session never uses it. */
+    /** ONE COMPOSITING CONTRACT: above the window — a solo dynamic (R+) or static (24–29), a slot always static; a refused session never uses it. */
     val layer = SoloVideoLayer(policy.composition(protocol, face) ?: SoloVideoLayer.Mode.DYNAMIC_ABOVE)
     val screenId: String = zone?.screenId ?: request!!.screenId
     val revision: String = zone?.revision ?: request!!.revision
@@ -119,7 +120,8 @@ internal class FaceVideoSession(
  *    identity, a detached surface or 8 s without a rendered frame retires
  *    the session and restores the opaque WebView background;
  *  • a pre-rolled slot is never on glass before the page's `play`: its
- *    surface waits entirely outside the WebView's bounds;
+ *    surface — above the window from creation — waits entirely beyond the
+ *    physical display, held first frame and all;
  *  • one slot on glass per face region: `play` removes the previous on-glass
  *    session of the same face in the same UI pass that moves the new one in,
  *    so native→native shows no gap and two surfaces never compete for z-order.
@@ -256,11 +258,11 @@ internal object FaceVideoBox {
     @Synchronized private fun pinned(): Set<String> =
         hosts.values.flatMap { h -> h.faceSessions.values.filter { it.alive }.map { it.sha256 } }.toSet()
 
-    /** The rect of this session's black box inside the WebView's parent, as [l, t, w, h]; protocol 2 = the whole face. */
+    /** The rect of this session's black box inside the WebView's parent, as [l, t, w, h]; protocol 2 = the whole face. A slot not yet on glass is parked beyond the display. */
     private fun boxRect(s: FaceVideoSession, parentW: Int, parentH: Int): IntArray {
         val l = s.layout ?: return s.layer.soloRect(parentW, parentH, s.parkLeft)
         val r = FaceZonePolicy.rect(l, parentW, parentH)
-        return if (s.onGlass) r else FaceZonePolicy.parked(r, parentW)
+        return if (s.onGlass) r else FaceZonePolicy.parked(r, maxOf(parentW, s.parkLeft))
     }
 
     /**
@@ -278,12 +280,14 @@ internal object FaceVideoBox {
         }
         val degrees = s.layout?.degrees ?: SharedVideoTransform.degrees(d.orientation, 0, parent.width, parent.height)
         if (s.layer.staticAbove) {
-            // Park both box and surface beyond the display, including any fitted overhang.
+            // Park both box and surface beyond the display, including any fitted
+            // overhang (a slot's fitted frame never overhangs its own box).
             val displaySize = Point()
             parent.display?.getRealSize(displaySize)
             val parentScreen = IntArray(2)
             parent.getLocationOnScreen(parentScreen)
-            val fitted = FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, parent.width, parent.height)
+            val fitted = if (s.protocol == 3) intArrayOf(0, 0, 0, 0)
+                else FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, parent.width, parent.height)
             s.parkLeft = SoloVideoLayer.parkingLeft(parent.width, displaySize.x, parentScreen[0], fitted[0])
         }
         val rect = boxRect(s, parent.width, parent.height)
@@ -294,8 +298,9 @@ internal object FaceVideoBox {
         val box = s.box ?: FrameLayout(host.web.context).also { it.setBackgroundColor(Color.BLACK); s.box = it }
         val surface = s.surface ?: SurfaceView(host.web.context).also { sv ->
             // Legacy z-order is fixed when this SurfaceView creates its child
-            // window. Static solo starts above, parked entirely off display;
-            // Android R's dynamic path still prepares beneath the web hold.
+            // window. Static solo and EVERY positioned slot start above, parked
+            // entirely off display; Android R's dynamic solo path still
+            // prepares beneath the web hold and re-orders after its first frame.
             sv.setZOrderOnTop(s.layer.staticAbove)
             sv.isFocusable = false
             sv.holder.addCallback(object : SurfaceHolder.Callback {
@@ -464,14 +469,19 @@ internal object FaceVideoBox {
         if (!sv.holder.surface.isValid || !sv.isShown) return
         if (!SharedVideoCodecPolicy.validRenderStamp(stamp, pts)) return
         s.updates++
+        val onGlass = if (s.protocol == 3) s.onGlass else s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW
         if (stamp != s.lastStamp) {
             // The interval between consecutive render callbacks, counted once the
             // surface is on the glass: the cadence the compositor actually produced.
-            if (s.lastStamp > 0L && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) s.intervals?.observe(stamp - s.lastStamp)
+            if (s.lastStamp > 0L && onGlass) s.intervals?.observe(stamp - s.lastStamp)
             s.unique++; s.lastStamp = stamp; s.ptsUs = pts
         }
         s.lastUpdate = SystemClock.elapsedRealtime()
-        if (s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
+        if (s.protocol == 3) {
+            // A slot is already above the window: its held first frame is "presenting"
+            // (parked, `held`) and `play` moves it onto its rect. No solo reveal here.
+            s.state = "presenting"
+        } else if (s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
             s.state = "presenting"
         } else if (s.layer.phase == SoloVideoLayer.Phase.REVEALING) {
             val held = DisplayEmergency.isHeld(host.ctx)
@@ -731,8 +741,11 @@ internal object FaceVideoBox {
     private fun sessionJson(host: SharedVideoHost, s: FaceVideoSession): JSONObject {
         val sv = s.surface
         val attached = s.attached && !host.detached && sv != null && sv.isAttachedToWindow
+        // A slot's layer is the static shape without the solo reveal: queued while parked, above the window once played.
+        val layerMode = if (s.protocol != 3) s.layer.phase.name.lowercase(Locale.ROOT)
+            else if (!s.alive) "retired" else if (s.onGlass) "above_window" else "queued"
         val output = JSONObject().put("attached", attached)
-            .put("layerMode", s.layer.phase.name.lowercase(Locale.ROOT))
+            .put("layerMode", layerMode)
             .put("compositionMode", s.layer.mode.name.lowercase(Locale.ROOT))
             .put("moveRequestedNs", s.layer.moveRequestedNs)
             .put("revealRequestedNs", s.layer.revealRequestedNs)

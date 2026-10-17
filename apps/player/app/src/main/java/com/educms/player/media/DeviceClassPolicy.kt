@@ -15,14 +15,26 @@ import java.util.Locale
  *  • does solo native video run at all ([Resolved.nativeSolo]);
  *  • how it is composed ([Resolved.composition], the one compositing contract
  *    of [SoloVideoLayer]: above the window or not native);
- *  • whether positioned slots (protocol 3) are allowed ([Resolved.protocol3] —
- *    OFF on every class in 1.1.41; it comes back class by class once a class
- *    is qualified with the transparent WebView it needs);
+ *  • whether positioned slots (protocol 3 — a template VIDEO zone, a video
+ *    inside a mixed playlist) run natively ([Resolved.protocol3]): on every
+ *    class that runs solo video, on the same above-window contract (the
+ *    slot's surface is above the window at the zone rect, parked beyond the
+ *    display until its held first frame, revealed at `play`; the WebView
+ *    stays opaque black beneath it). The one limitation: page content cannot
+ *    draw OVER a native slot, so a zone another zone overlaps stays web
+ *    (`zone-overlap`, decided by the API and the page, which know the
+ *    template) and transitions between native items are hard cuts handed
+ *    over by the held first frame;
  *  • which unattended-update path this box can take ([Resolved.silentUpdate]).
  *
  * The APK reports what it resolved on every `sharedVideoState` reply
  * (`device`), so the dashboard can show which class a screen is in and what
  * that class does — no new bridge method (CLAUDE.md player rule 9).
+ *
+ * Owner rule (2026-10-17): every screen runs the BEST engine for the viewer —
+ * native on every class with a hardware AVC decoder (only a NovaStar Taurus
+ * is web-only), and the web engine is the AUTOMATIC FALLBACK on a refused or
+ * failed native session, never the first choice.
  *
  * The decision ([resolve]) is pure and tested per fleet class
  * (DeviceClassPolicyTest); [current] gathers the Build/WebView/installer
@@ -79,17 +91,17 @@ internal object DeviceClassPolicy {
         val qualified: String?,
     ) {
         /** The mode a session on [face] gets, or null = refuse it (the caller names the reason). */
-        fun composition(protocol: Int, face: Int): SoloVideoLayer.Mode? =
-            if (!nativeSolo || protocol != 2) null else SoloVideoLayer.mode(protocol, face, sdk)
-
-        /** The stable refusal for a session that may not run, or null when it may. */
-        fun refusal(protocol: Int, face: Int): String? = when {
-            protocol == 3 && !protocol3 -> SoloVideoLayer.REASON_PROTOCOL3_DISABLED
-            composition(protocol, face) == null -> SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE
+        fun composition(protocol: Int, face: Int): SoloVideoLayer.Mode? = when {
+            protocol == 2 && nativeSolo -> SoloVideoLayer.mode(protocol, face, sdk)
+            protocol == 3 && protocol3 -> SoloVideoLayer.mode(protocol, face, sdk)
             else -> null
         }
 
-        /** The advertised positioned-slot capability: 3 only where the table allows it. */
+        /** The stable refusal for a session that may not run, or null when it may. */
+        fun refusal(protocol: Int, face: Int): String? =
+            if (composition(protocol, face) == null) SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE else null
+
+        /** The advertised positioned-slot capability: 3 wherever the table runs slots. */
         val protocolMax: Int get() = if (protocol3) 3 else 2
 
         /** Bounded, for `sharedVideoState.device`; never free text from the ROM. */
@@ -161,8 +173,8 @@ internal object DeviceClassPolicy {
             webviewMajor = f.webviewMajor,
             nativeSolo = nativeSolo,
             composition = if (nativeSolo) SoloVideoLayer.mode(2, 0, sdk) else null,
-            // Positioned slots are OFF on every class in this build (plan §4A).
-            protocol3 = false,
+            // Positioned slots run wherever solo video does, on the same contract (owner rule 2026-10-17).
+            protocol3 = nativeSolo,
             silentUpdate = silentUpdate,
             qualified = QUALIFIED[className],
         )

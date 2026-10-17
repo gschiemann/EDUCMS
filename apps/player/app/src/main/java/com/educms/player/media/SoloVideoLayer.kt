@@ -97,22 +97,24 @@ internal class SoloVideoLayer(val mode: Mode) {
         const val REVEAL_TIMEOUT_NS = 3_500_000_000L
         /** The stable end code of a session this box cannot compose above the window. */
         const val REASON_COMPOSITION_UNAVAILABLE = "composition-unavailable"
-        /** The stable end code of a positioned-slot (protocol 3) request while that engine is off. */
-        const val REASON_PROTOCOL3_DISABLED = "protocol3-disabled"
 
         /**
-         * How a solo (protocol 2) session on [face] is composed on an Android
-         * [sdk] box, or null when it may not be native at all: dynamic
+         * How a session on [face] is composed on an Android [sdk] box, or null
+         * when it may not be native at all. A SOLO (protocol 2): dynamic
          * re-ordering on R+, the static parked start on 24–29 — on ANY
-         * hardware (the .40 rule limited the static path to Rockchip and
-         * left every other legacy box under the window). Protocol 3 and a
-         * face this box does not host are never native here.
+         * hardware (the .40 rule limited the static path to Rockchip and left
+         * every other legacy box under the window). A POSITIONED SLOT
+         * (protocol 3) is always the static shape: above the window from the
+         * moment its child window exists, parked beyond the display with its
+         * held first frame, moved onto its rect at `play` (FaceVideoBox.play).
+         * A face this box does not host, or any other protocol, is never native.
          */
         fun mode(protocol: Int, face: Int, sdk: Int): Mode? = when {
-            protocol != 2 || face !in 0..1 -> null
+            face !in 0..1 || sdk < 24 -> null
+            protocol == 3 -> Mode.STATIC_ABOVE
+            protocol != 2 -> null
             sdk >= 30 -> Mode.DYNAMIC_ABOVE
-            sdk in 24..29 -> Mode.STATIC_ABOVE
-            else -> null
+            else -> Mode.STATIC_ABOVE
         }
 
         /** Keep both the box and an overhanging fitted surface beyond the physical display. */

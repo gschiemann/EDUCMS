@@ -29,8 +29,9 @@ class DeviceClassPolicyTest {
         assertTrue(r.nativeSolo)
         assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, r.composition)
         assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, r.composition(2, 0))
-        assertFalse(r.protocol3)
-        assertEquals(2, r.protocolMax)
+        assertTrue(r.protocol3)
+        assertEquals(3, r.protocolMax)
+        assertEquals(SoloVideoLayer.Mode.STATIC_ABOVE, r.composition(3, 0))
         assertEquals(SilentUpdate.INSTALLER_OF_RECORD, r.silentUpdate)
         assertNull("nothing is qualified on this contract until Tuesday's glass says so", r.qualified)
     }
@@ -41,7 +42,7 @@ class DeviceClassPolicyTest {
         assertTrue(r.fleet!!.contains("GUQ55"))
         assertTrue(r.nativeSolo)
         assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, r.composition)
-        assertFalse(r.protocol3)
+        assertTrue(r.protocol3)
         // API 30: the silent-install hint is API 31; installer-of-record alone is not enough.
         assertEquals(SilentUpdate.TAP, DeviceClassPolicy.resolve(t982a11.copy(selfInstaller = true)).silentUpdate)
         assertEquals(SilentUpdate.DEVICE_OWNER, DeviceClassPolicy.resolve(t982a11.copy(managerDeviceOwner = true)).silentUpdate)
@@ -65,7 +66,7 @@ class DeviceClassPolicyTest {
         assertEquals("rockchip/android-11", r.className)
         assertTrue(r.fleet!!.contains("VisionCore"))
         assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, r.composition)
-        assertFalse(r.protocol3)
+        assertTrue(r.protocol3)
         assertEquals(SilentUpdate.TAP, r.silentUpdate)
     }
 
@@ -95,18 +96,28 @@ class DeviceClassPolicyTest {
         }
     }
 
-    @Test fun protocol3IsRefusedOnEveryClassInThisBuildWithItsOwnStableReason() {
-        for (f in listOf(t982a13, t982a11, rk3288a7, rk3328a11, android9, taurus)) {
+    @Test fun positionedSlotsRunWhereverSoloDoesOnTheSameContractAndNowhereElse() {
+        // Owner rule 2026-10-17: the best engine for the viewer on every class; web is the fallback.
+        for (f in listOf(t982a13, t982a11, rk3288a7, rk3328a11, android9)) {
             val r = DeviceClassPolicy.resolve(f)
-            assertFalse(r.protocol3)
-            assertEquals(2, r.protocolMax)
-            assertEquals(SoloVideoLayer.REASON_PROTOCOL3_DISABLED, r.refusal(3, 0))
-            assertNull(r.composition(3, 0))
+            assertTrue(r.nativeSolo)
+            assertTrue(r.protocol3)
+            assertEquals(3, r.protocolMax)
+            for (face in 0..1) {
+                assertEquals(SoloVideoLayer.Mode.STATIC_ABOVE, r.composition(3, face))
+                assertNull(r.refusal(3, face))
+                assertNull(r.refusal(2, face))
+            }
+            assertNull(r.composition(1, 0))
+            assertEquals(SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE, r.refusal(1, 0))
         }
-        // A solo session on a native class carries no refusal at all.
-        for (f in listOf(t982a13, t982a11, rk3288a7, rk3328a11, android9)) assertNull(DeviceClassPolicy.resolve(f).refusal(2, 0))
-        // A face this box cannot host is refused as composition, never as protocol.
+        val t = DeviceClassPolicy.resolve(taurus)
+        assertFalse(t.protocol3)
+        assertEquals(2, t.protocolMax)
+        assertEquals(SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE, t.refusal(3, 0))
+        // A face this box cannot host is refused as composition.
         assertEquals(SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE, DeviceClassPolicy.resolve(t982a13).refusal(2, 2))
+        assertEquals(SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE, DeviceClassPolicy.resolve(t982a13).refusal(3, 2))
     }
 
     @Test fun anUnlistedBoxGetsTheSdkRuleAndNoFleetLabel() {
@@ -139,7 +150,7 @@ class DeviceClassPolicyTest {
         assertEquals(87, j.getInt("webviewMajor"))
         assertTrue(j.getBoolean("nativeSolo"))
         assertEquals("static_above", j.getString("composition"))
-        assertFalse(j.getBoolean("protocol3"))
+        assertTrue(j.getBoolean("protocol3"))
         assertEquals("tap", j.getString("silentUpdate"))
         assertTrue(j.isNull("qualified"))
         assertTrue(j.getString("fleet").length <= 96)

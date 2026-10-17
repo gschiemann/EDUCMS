@@ -23,16 +23,17 @@ import {
 
 /**
  * NativeZoneVideo — one protocol-3 SLOT (a mixed-playlist video item or a
- * template VIDEO zone) that may be decoded natively BELOW the WebView
- * (design: docs/research/2026-10-12-native-video/02-protocol-3.md).
+ * template VIDEO zone) that may be decoded natively on a surface ABOVE the
+ * WebView (1.1.41, one compositing contract — nativeZones.ts has the why).
  *
  * The children are the web element (the `<video>` the page renders today).
  * They stay mounted — the web keeps playing — until native has the first
- * frame of the same verified file rendered and HELD on its surface AND this
- * slot is on glass. Only then, in ONE React commit, the children unmount, the
- * owner opens the hole (`onHole`), and `play` is sent: the frame where the
- * web pixels vanish is the frame the held native picture shows through.
- * Nothing black is ever painted in between.
+ * frame of the same verified file rendered and HELD on its parked surface AND
+ * this slot is on glass. Then `play` goes out: native moves the surface onto
+ * the rect (above the page, covering the web element) and releases the clip;
+ * only once native reports the slot on its rect (`revealed`) do the children
+ * unmount, hidden under the native picture. Nothing black is ever painted in
+ * between, and the WebView stays opaque — there is no hole to open.
  *
  *  • `prerollOnly` (playlist items): native is prepared while the slide is
  *    the hidden next-up; if the slide reaches the glass before native holds
@@ -40,17 +41,17 @@ import {
  *    in mid-clip (that would restart the picture). Next showing retries.
  *  • template zones: the hand-off waits for the web loop's boundary (bounded
  *    by HANDOFF_BOUNDARY_WAIT_MS) so the picture does not jump.
- *  • when the slide leaves the glass the native frame LINGERS for
- *    HANDOFF_OVERLAP_MS behind the next slide's fade (`onLinger` asks the
- *    page to keep this element mounted), then the hole closes and the
- *    session stops.
+ *  • when the slide leaves the glass the session stops at once: a native
+ *    surface above the window would hide the next slide, so transitions out
+ *    of a native slot are hard cuts (the owner's accepted limitation), and
+ *    native→native is handed over by the next slot's held first frame
+ *    (`superseded`).
  *
  * Fallback: any native end remounts the web element; a transient end retries
  * (30 s, bounded attempts) and a native fault blocks the file on this face
  * for 24 h — the protocol-2 pattern (NativeDualVideo.tsx).
  */
 
-export const HANDOFF_OVERLAP_MS = 1200;
 export const HANDOFF_BOUNDARY_WAIT_MS = 60_000;
 const MEASURE_EVERY_MS = 1000;
 
@@ -93,7 +94,6 @@ export function NativeZoneVideo({
   active,
   prerollOnly,
   measure,
-  localRect,
   onHole,
   onLinger,
   onPlaying,
@@ -113,10 +113,10 @@ export function NativeZoneVideo({
   prerollOnly: boolean;
   /** The viewport rect the APK positions its surface at (null = not measurable yet). */
   measure: (el: HTMLElement | null) => ZoneLayout | null;
-  /** The hole in the owner's backdrop, in the backdrop's own px (null = whole backdrop). */
+  /** Kept for the page's backdrop machinery; a native slot sits above the window, so no hole is ever opened (1.1.41). */
   localRect?: () => Rect | null;
   onHole: (slot: string, open: boolean, rect: Rect | null) => void;
-  /** Keep me mounted while my last native frame lingers behind the next slide. */
+  /** Kept for compatibility; a native slot never lingers above the next slide (1.1.41). */
   onLinger?: (slot: string, lingering: boolean) => void;
   onPlaying: () => void;
   onEnded?: () => void;
@@ -135,8 +135,8 @@ export function NativeZoneVideo({
   const controller = useRef<NativeZoneController | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
-  const cb = useRef({ onHole, onLinger, onPlaying, onEnded, onAttempt, measure, localRect });
-  cb.current = { onHole, onLinger, onPlaying, onEnded, onAttempt, measure, localRect };
+  const cb = useRef({ onHole, onLinger, onPlaying, onEnded, onAttempt, measure });
+  cb.current = { onHole, onLinger, onPlaying, onEnded, onAttempt, measure };
   const [phase, setPhase] = useState<{ identity: string; stage: NativeZoneStage }>({ identity: "", stage: "browser" });
   const stage: NativeZoneStage = phase.identity === identity ? phase.stage : "browser";
   // Per-identity mutable facts shared by the effects below.
@@ -147,12 +147,11 @@ export function NativeZoneVideo({
     skipped: boolean;
     playingReported: boolean;
     owner: object;
-    lingerTimer: ReturnType<typeof setTimeout> | null;
     boundaryTimer: ReturnType<typeof setTimeout> | null;
     boundaryCleanup: (() => void) | null;
     /** Hand off now (or at the web loop's boundary); set once the attempt runs. */
     handoff: (() => void) | null;
-    /** End a played session cleanly (linger over, or native superseded it): no web remount. */
+    /** End a played session cleanly (the slide left, or native superseded it): no web remount. */
     finish: (() => void) | null;
     done: boolean;
   } | null>(null);
@@ -160,15 +159,15 @@ export function NativeZoneVideo({
   // One native attempt per identity.
   useEffect(() => {
     const owner = {};
-    const r: NonNullable<typeof run.current> = { identity, held: false, played: false, skipped: false, playingReported: false, owner, lingerTimer: null, boundaryTimer: null, boundaryCleanup: null, handoff: null, finish: null, done: false };
+    const r: NonNullable<typeof run.current> = { identity, held: false, played: false, skipped: false, playingReported: false, owner, boundaryTimer: null, boundaryCleanup: null, handoff: null, finish: null, done: false };
     run.current = r;
     let alive = true;
     let c: NativeZoneController | null = null;
     let measureTimer: ReturnType<typeof setInterval> | null = null;
     let startTimer: ReturnType<typeof setTimeout> | null = null;
     let lastLayout: ZoneLayout | null = null;
-    let lastLocal: Rect | null = null;
 
+    // No hole is ever open under the above-window contract; closing is a no-op that keeps the page's state empty.
     const closeHole = () => cb.current.onHole(slot, false, null);
     const fallback = (reason?: string) => {
       if (!alive) return;
@@ -190,13 +189,13 @@ export function NativeZoneVideo({
         }, NATIVE_VIDEO_RETRY_MS);
     };
 
-    const openAndPlay = () => {
+    const play = () => {
       if (!alive || r.played || !r.held) return;
       r.played = true;
       if (evidence) nativeSharedVideoEvidence.select(owner);
-      cb.current.onHole(slot, true, cb.current.localRect ? cb.current.localRect() : null);
-      // The children unmount in this commit; the effect below sends `play` after it.
-      setPhase({ identity, stage: "presenting" });
+      // Native moves its surface onto the rect, above the still-mounted web
+      // element; `revealed` below unmounts the children once it is there.
+      c?.play();
     };
 
     /** Hand off at the web loop's boundary when the web is mid-clip (template zones), else now. */
@@ -204,12 +203,12 @@ export function NativeZoneVideo({
       if (!alive || r.played) return;
       const video = container.current?.querySelector("video");
       const midClip = !!video && !video.paused && video.readyState >= 2 && video.currentTime > 0.25 && !video.ended;
-      if (!midClip || prerollOnly) { openAndPlay(); return; }
+      if (!midClip || prerollOnly) { play(); return; }
       let last = video.currentTime;
       const onTime = () => {
         if (!alive) return;
         const t = video.currentTime;
-        if (t < last - 0.25 || video.ended) { cleanup(); openAndPlay(); }
+        if (t < last - 0.25 || video.ended) { cleanup(); play(); }
         last = t;
       };
       const cleanup = () => {
@@ -221,13 +220,12 @@ export function NativeZoneVideo({
       r.boundaryCleanup = cleanup;
       video.addEventListener("timeupdate", onTime);
       video.addEventListener("ended", onTime);
-      r.boundaryTimer = setTimeout(() => { cleanup(); openAndPlay(); }, HANDOFF_BOUNDARY_WAIT_MS);
+      r.boundaryTimer = setTimeout(() => { cleanup(); play(); }, HANDOFF_BOUNDARY_WAIT_MS);
     };
     r.handoff = handoffWhenSeamless;
     r.finish = () => {
       if (!alive || r.done) return;
       r.done = true;
-      if (r.lingerTimer !== null) { clearTimeout(r.lingerTimer); r.lingerTimer = null; }
       nativeSharedVideoEvidence.clear(owner);
       nativeZoneTelemetry.delete(slot);
       closeHole();
@@ -242,7 +240,6 @@ export function NativeZoneVideo({
       const layout = cb.current.measure(container.current);
       if (!layout) return; // not laid out yet; the measure tick retries
       lastLayout = layout;
-      lastLocal = cb.current.localRect ? cb.current.localRect() : null;
       c = new NativeZoneController(
         descriptor,
         item,
@@ -261,6 +258,11 @@ export function NativeZoneVideo({
             r.held = true;
             if (activeRef.current) handoffWhenSeamless();
           },
+          revealed: () => {
+            if (!alive || !r.played || r.done) return;
+            // The native picture is on the rect, above the page: the web element may go.
+            setPhase({ identity, stage: "presenting" });
+          },
           update: (state, fresh) => {
             if (!alive) return;
             nativeZoneTelemetry.set(slot, state);
@@ -276,8 +278,8 @@ export function NativeZoneVideo({
           fallback,
           superseded: () => {
             if (!alive) return;
-            // The next native slot took the glass: finish now if we were
-            // lingering; if we were still the active slide, the web takes over.
+            // The next native slot took the glass: finish now if this slide has
+            // left; if we were still the active slide, the web takes over.
             if (!activeRef.current) r.finish?.(); else fallback("superseded");
           },
         },
@@ -295,20 +297,12 @@ export function NativeZoneVideo({
         lastLayout = layout;
         c.layout(layout);
       }
-      if (r.played && cb.current.localRect) {
-        const local = cb.current.localRect();
-        if (JSON.stringify(local) !== JSON.stringify(lastLocal)) {
-          lastLocal = local;
-          cb.current.onHole(slot, true, local);
-        }
-      }
     }, MEASURE_EVERY_MS);
 
     return () => {
       alive = false;
       if (measureTimer !== null) clearInterval(measureTimer);
       if (startTimer !== null) clearTimeout(startTimer);
-      if (r.lingerTimer !== null) clearTimeout(r.lingerTimer);
       if (r.boundaryTimer !== null) clearTimeout(r.boundaryTimer);
       if (r.boundaryCleanup) r.boundaryCleanup();
       c?.stop();
@@ -328,23 +322,14 @@ export function NativeZoneVideo({
     const r = run.current;
     if (!r || r.identity !== identity) return;
     if (active) {
-      if (r.lingerTimer !== null) { clearTimeout(r.lingerTimer); r.lingerTimer = null; cb.current.onLinger?.(slot, false); }
-      // Pre-rolled and waiting for the glass: open now.
+      // Pre-rolled and waiting for the glass: hand off now.
       if (r.held && !r.played) r.handoff?.();
       return;
     }
-    if (r.played && r.lingerTimer === null && !r.done) {
-      // Keep the last native frame behind the next slide's fade, then let go.
-      cb.current.onLinger?.(slot, true);
-      r.lingerTimer = setTimeout(() => { r.lingerTimer = null; r.finish?.(); }, HANDOFF_OVERLAP_MS);
-    }
+    // A native surface above the window would hide the next slide: stop at once (a hard cut).
+    if (r.played && !r.done) r.finish?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, identity]);
-
-  // After the commit that removed the web element: release the held frame.
-  useEffect(() => {
-    if (stage === "presenting") controller.current?.play();
-  }, [stage, identity]);
 
   return (
     <div ref={container} className={className} style={style} data-native-zone={stage} data-native-slot={slot}>

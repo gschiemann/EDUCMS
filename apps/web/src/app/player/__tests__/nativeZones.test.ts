@@ -11,6 +11,7 @@ import {
   nativeZoneEligible,
   nativeZoneItemFor,
   nativeZoneNext,
+  overlappedTemplateZoneIds,
   playMessage,
   prepareMessage,
   readNativeVideoItems,
@@ -219,17 +220,27 @@ describe("fallback discipline", () => {
     expect(nativeZoneNext("activity-paused", 19)).toBe("stay");
   });
 
-  it("1.1.41: an APK that refuses positioned slots is a web decision for the document — no retry storm, no 24 h block", () => {
-    for (const reason of ["protocol3-disabled", "protocol"]) {
+  it("1.1.41: a verdict about the box or the layout is a web decision for the document — no retry storm, no 24 h block", () => {
+    for (const reason of ["protocol", "zone-overlap"]) {
       for (const attempt of [0, 5, 19]) for (const onGlass of [false, true]) {
         expect({ reason, attempt, onGlass, next: nativeZoneNext(reason, attempt, onGlass) }).toEqual({ reason, attempt, onGlass, next: "stay" });
       }
     }
-    // A 1.1.41 APK advertises protocolMax 2, so the page never even starts a slot: every zone is web.
+    // An APK without protocol 3 (1.1.29, or a Taurus-class table) answers protocolMax 2: every zone is web.
     const ctx = { screenId: screen, tenantId: tenant, protocol: readNativeVideoProtocol(JSON.stringify({ version: 1, state: "idle", protocol: 2, sessions: [] })), sha256: null, emergency: false, sync: false, preview: false, blocked: false };
     expect(ctx.protocol).toBe(2);
     expect(nativeZoneEligible(descriptor, descriptor.items[0], ctx)).toBe(false);
     expect(nativeZoneEligible(descriptor, descriptor.items[1], ctx)).toBe(false);
+  });
+
+  it("1.1.41: a template zone that ANY other zone overlaps stays web (a native slot is above the window)", () => {
+    const z = (id: string, x: number, y: number, width: number, height: number) => ({ id, x, y, width, height });
+    expect(overlappedTemplateZoneIds([z("v", 10, 10, 50, 50), z("logo", 50, 50, 20, 20)])).toEqual(new Set(["v", "logo"]));
+    expect(overlappedTemplateZoneIds([z("v", 10, 10, 50, 50), z("logo", 60, 60, 20, 20)])).toEqual(new Set());
+    // Touching edges do not overlap; a zone with no geometry, no id or a zero size is ignored.
+    expect(overlappedTemplateZoneIds([z("v", 0, 0, 50, 100), z("side", 50, 0, 50, 100)])).toEqual(new Set());
+    expect(overlappedTemplateZoneIds([z("v", 0, 0, 50, 100), { id: "ghost" }, { x: 0, y: 0, width: 100, height: 100 }, z("flat", 0, 0, 0, 100), null, 7])).toEqual(new Set());
+    expect(overlappedTemplateZoneIds([])).toEqual(new Set());
   });
 });
 
@@ -239,7 +250,7 @@ describe("protocol 3 controller — hand-off sequencing", () => {
 
   function harness(states: () => unknown) {
     const fire = jest.fn((_m: string, _a: string) => true);
-    const cb = { ready: jest.fn(), held: jest.fn(), update: jest.fn(), ended: jest.fn(), fallback: jest.fn() };
+    const cb = { ready: jest.fn(), held: jest.fn(), update: jest.fn(), ended: jest.fn(), fallback: jest.fn(), revealed: jest.fn() };
     const c = new NativeZoneController(descriptor, descriptor.items[0], layout, { has: () => true, fire, state: async () => states() }, cb, () => Date.now());
     return { c, fire, cb };
   }
@@ -276,11 +287,19 @@ describe("protocol 3 controller — hand-off sequencing", () => {
     expect(cb.fallback).not.toHaveBeenCalled();
     c.play();
     expect(JSON.parse(fire.mock.calls[fire.mock.calls.length - 1][1])).toEqual({ version: 3, op: "play", sessionId: session });
+    expect(cb.revealed).not.toHaveBeenCalled();
+    // Still held on the next poll (native has not moved the box yet): no reveal.
+    s = zoneState("presenting", 1, { held: true });
+    await tick();
+    expect(cb.revealed).not.toHaveBeenCalled();
     let frames = 1;
     s = zoneState("presenting", (frames += 15), { held: false });
     await tick();
+    // 1.1.41: the slot is on its rect above the page — the web element may go. Once.
+    expect(cb.revealed).toHaveBeenCalledTimes(1);
     s = zoneState("presenting", (frames += 15), { held: false });
     await tick();
+    expect(cb.revealed).toHaveBeenCalledTimes(1);
     expect(c.currentStage()).toBe("playing");
     expect(cb.update).toHaveBeenLastCalledWith(expect.objectContaining({ state: "presenting" }), true);
     s = zoneState("presenting", frames, { held: false, ended: true });
@@ -338,13 +357,6 @@ describe("protocol 3 controller — hand-off sequencing", () => {
     await tick();
     expect(a.cb.fallback).toHaveBeenCalledWith("protocol");
     expect(nativeZoneNext(a.cb.fallback.mock.calls[0][0], 0)).toBe("stay");
-    // A 1.1.41 APK that still registers the refused slot (`protocol3-disabled`) answers the same way.
-    const refused = harness(() => JSON.stringify({ version: 1, state: "idle", protocol: 2, protocolMax: 3,
-      sessions: [zoneState("failed", 0, { reason: "protocol3-disabled" })] }));
-    refused.c.start();
-    await tick();
-    expect(refused.cb.fallback).toHaveBeenCalledWith("protocol3-disabled");
-    expect(nativeZoneNext("protocol3-disabled", 0)).toBe("stay");
     let s: unknown[] = [zoneState("ready")];
     const b = harness(() => reply(s));
     b.c.start();
@@ -395,7 +407,7 @@ describe("protocol 3 controller — hand-off sequencing", () => {
   });
 
   it("without the four bridge methods nothing is sent and the owner keeps the web element", () => {
-    const cb = { ready: jest.fn(), held: jest.fn(), update: jest.fn(), ended: jest.fn(), fallback: jest.fn() };
+    const cb = { ready: jest.fn(), held: jest.fn(), update: jest.fn(), ended: jest.fn(), fallback: jest.fn(), revealed: jest.fn() };
     const fire = jest.fn(() => true);
     const c = new NativeZoneController(descriptor, descriptor.items[0], layout, { has: (m) => m !== "sharedVideoCommit", fire, state: async () => reply() }, cb);
     c.start();
