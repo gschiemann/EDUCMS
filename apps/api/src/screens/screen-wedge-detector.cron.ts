@@ -173,6 +173,112 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  way, "ONLINE" and content-dead, for 37 hours. (2026-08-30, audit P0-6) */
   static readonly RENDER_STALE_MS = 10 * 60_000;
 
+  /**
+   * A SCREEN WHOSE PLAYER PROVES ITS MEDIA IS ADVANCING IS NOT WEDGED
+   * (2026-10-17, player rock-solid §4B — the interruption gate).
+   *
+   * The unified telemetry POST is the player page's own report, and three of
+   * its stamps can only move while the page is alive AND its content plays: a
+   * render proof (the paint counter advanced), a video sample (frames were
+   * presented — a decoder that only dropped them proves nothing), and the
+   * hardware engine's own report while it presents on the glass. Any of them
+   * inside this window means the page is doing its job, whatever its cache
+   * report says. A page whose JavaScript runs but whose compositor froze
+   * still qualifies: it sends none of the three.
+   */
+  static readonly TELEMETRY_FRESH_MS = 2 * 60_000;
+
+  static hasFreshPlaybackTelemetry(
+    screen: { lastRenderedAt?: Date | null; lastVideoReportAt?: Date | null; lastVideoReport?: unknown },
+    nowMs: number,
+  ): boolean {
+    const fresh = (t: unknown): boolean => {
+      const ms = t instanceof Date ? t.getTime() : typeof t === 'string' ? new Date(t).getTime() : NaN;
+      return Number.isFinite(ms) && nowMs - ms <= ScreenWedgeDetectorCron.TELEMETRY_FRESH_MS && ms <= nowMs + 60_000;
+    };
+    if (fresh(screen.lastRenderedAt)) return true;
+    const report = screen.lastVideoReport && typeof screen.lastVideoReport === 'object' && !Array.isArray(screen.lastVideoReport)
+      ? (screen.lastVideoReport as Record<string, any>)
+      : null;
+    if (report && fresh(screen.lastVideoReportAt)) {
+      const total = Number(report.totalFrames);
+      const dropped = Number(report.droppedFrames);
+      if (Number.isFinite(total) && Number.isFinite(dropped) && total - dropped > 0) return true;
+    }
+    const native = report?.native;
+    return !!native && typeof native === 'object' && native.state === 'presenting' &&
+      native.output?.visible === true && fresh(native.at);
+  }
+
+  /** The Asset type a URL asset carries (`POST /assets/url`). */
+  static readonly URL_MIME_TYPE = 'text/html';
+  /** Template widgets that show a live web page — the player's own `hasWebpageZone` set. */
+  static readonly URL_WIDGET_TYPES: readonly string[] = ['WEBPAGE', 'WEBSITE_TABS'];
+
+  /**
+   * A SCREEN SHOWING A WEB PAGE IS NOT WEDGED (2026-10-17). A URL asset is
+   * drawn by the APK's own overlay WebView (or an iframe): the player page
+   * underneath has nothing to repaint and no file to cache, so its render
+   * proof stalls and it never posts a cache report at all. The detector read
+   * that as a wedge and reloaded TC32 7× and G75 7× in seven days
+   * (`AUTO_REFRESH_WEB`, `cache-report stale` 7,000+ min) — throwing away the
+   * page each time, and a reload cannot help an overlay it does not own.
+   *
+   * "Showing" = an active schedule for the screen (pinned, its group, or the
+   * primary a face mirrors) whose playlist holds a URL item or a template
+   * with a web-page zone. The player chooses among a screen's schedules by
+   * day/time window on its own clock, so any such schedule counts. One
+   * bounded query for the whole candidate set; a failure exempts nobody
+   * (today's behaviour).
+   */
+  private async urlContentScreens(
+    candidates: ReadonlyArray<{ id: string; tenantId: string | null; screenGroupId?: string | null; faceOfScreenId?: string | null }>,
+    nowMs: number,
+  ): Promise<Set<string>> {
+    const out = new Set<string>();
+    const tenantIds = [...new Set(candidates.map((c) => c.tenantId).filter((t): t is string => !!t))];
+    if (tenantIds.length === 0) return out;
+    const screenIds = [...new Set(candidates.flatMap((c) => [c.id, c.faceOfScreenId]).filter((x): x is string => !!x))];
+    const groupIds = [...new Set(candidates.map((c) => c.screenGroupId).filter((x): x is string => !!x))];
+    const now = new Date(nowMs);
+    try {
+      const rows: Array<{ tenantId: string; screenId: string | null; screenGroupId: string | null }> =
+        await this.prisma.client.schedule.findMany({
+          where: {
+            tenantId: { in: tenantIds },
+            isActive: true,
+            startTime: { lte: now },
+            AND: [
+              { OR: [{ endTime: null }, { endTime: { gte: now } }] },
+              { OR: [{ screenId: { in: screenIds } }, ...(groupIds.length ? [{ screenGroupId: { in: groupIds } }] : [])] },
+              {
+                playlist: {
+                  OR: [
+                    { items: { some: { asset: { mimeType: ScreenWedgeDetectorCron.URL_MIME_TYPE } } } },
+                    { template: { zones: { some: { widgetType: { in: [...ScreenWedgeDetectorCron.URL_WIDGET_TYPES] } } } } },
+                  ],
+                },
+              },
+            ],
+          },
+          select: { tenantId: true, screenId: true, screenGroupId: true },
+          take: 500,
+        });
+      for (const c of candidates) {
+        const shows = rows.some(
+          (r) =>
+            r.tenantId === c.tenantId &&
+            ((!!r.screenId && (r.screenId === c.id || r.screenId === c.faceOfScreenId)) ||
+              (!!r.screenGroupId && r.screenGroupId === c.screenGroupId)),
+        );
+        if (shows) out.add(c.id);
+      }
+    } catch (e) {
+      this.logger.warn(`[wedge-detector] URL-content check failed, nobody exempted: ${(e as Error).message}`);
+    }
+    return out;
+  }
+
   /** How many AUTO_REFRESH_WEB fires in this window trigger escalation.
    *
    *  ⚠️ TIMER MATH (2026-08-30, audit P0-6): with a 15-min per-screen
@@ -355,12 +461,28 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         // 1.1.24+). A panel Android reports asleep is not wedged.
         nativeRuntimeReport: true,
         nativeRuntimeReportAt: true,
+        // 2026-10-17 — what the page's own telemetry proves, and where the
+        // screen's content comes from (the URL-content exemption).
+        lastVideoReport: true,
+        lastVideoReportAt: true,
+        screenGroupId: true,
+        faceOfScreenId: true,
       },
     });
 
     if (candidates.length === 0) {
       return { scanned: 0, recovered: 0, cooldownSkipped: 0, backoffSkipped: 0, escalated: 0 };
     }
+
+    // NOT A WEDGE (2026-10-17): fresh playback telemetry, or a web page on
+    // the glass — see hasFreshPlaybackTelemetry / urlContentScreens. Cache-
+    // report staleness alone never qualifies. LOG only, like the asleep skip.
+    const notFresh = candidates.filter((s) => {
+      if (!ScreenWedgeDetectorCron.hasFreshPlaybackTelemetry(s, now)) return true;
+      this.logger.log(`[wedge-detector] screen=${s.id} posts fresh playback telemetry — not a wedge, skipped`);
+      return false;
+    });
+    const urlScreens = notFresh.length > 0 ? await this.urlContentScreens(notFresh, now) : new Set<string>();
 
     // Stage 2: batch-load every relevant audit row for the candidate
     // set in one query. Cheaper than N queries; the index on
@@ -401,7 +523,11 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     let escalated = 0;
 
     let pushDeadFlagged = 0;
-    for (const screen of candidates) {
+    for (const screen of notFresh) {
+      if (urlScreens.has(screen.id)) {
+        this.logger.log(`[wedge-detector] screen=${screen.id} is showing a web page — not a wedge, skipped`);
+        continue;
+      }
       // A PANEL ANDROID REPORTS ASLEEP IS NOT WEDGED (2026-10-11). Its
       // render proof is stale because its panel is off — a person's remote,
       // the after-alert restore, a vendor timer — and a REFRESH_WEB cannot

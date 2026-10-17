@@ -35,6 +35,8 @@ function makeCron(candidates: any[]) {
         deleteMany: jest.fn(async () => ({ count: 0 })),
       },
       deployment: { deleteMany: jest.fn(async () => ({ count: 0 })) },
+      // The URL-content exemption's lookup (2026-10-17): no web pages here.
+      schedule: { findMany: jest.fn(async () => []) },
     },
   };
   const redis: any = { publish: jest.fn(async () => undefined) };
