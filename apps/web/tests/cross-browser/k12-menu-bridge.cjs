@@ -396,6 +396,21 @@ async function auditLayout(page) {
     };
     const activeSlide = (page) => page.evaluate(() =>
       [...document.querySelectorAll('.slide')].findIndex((el) => el.classList.contains('active')));
+    // Arm editor mode and return only once the board has HANDLED it.
+    // `postMessage` is delivered as a later task, so a `page.clock.fastForward`
+    // sent right after it could run the 6 s carousel interval twice before the
+    // board paused — a slow runner then sat on slide 1 and the slide-2 click
+    // timed out (CI 2026-10-12 and 2026-10-17). A listener added after the
+    // board's runs after it, so resolving there proves the pause happened.
+    const enterEditMode = (page) => page.evaluate(() => new Promise((done) => {
+      const seen = (e) => {
+        if (!e.data || e.data.type !== 'educms-edit-mode') return;
+        removeEventListener('message', seen);
+        done();
+      };
+      addEventListener('message', seen);
+      window.postMessage({ type: 'educms-edit-mode', on: true }, '*');
+    }));
 
     for (const board of MS_BOARDS) {
       for (const orientation of ['landscape', 'portrait']) {
@@ -486,7 +501,7 @@ async function auditLayout(page) {
 
         if (orientation === 'landscape') {
           // Editor mode: carousel pauses; click-to-edit reports key/kind.
-          await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
+          await enterEditMode(page);
           await page.clock.fastForward(12_500);
           const pausedIdx = await activeSlide(page);
           if (pausedIdx !== 2) problems.push(`carousel did not pause in editor mode (moved to ${pausedIdx})`);

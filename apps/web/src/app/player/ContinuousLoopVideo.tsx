@@ -176,12 +176,24 @@ export function ContinuousLoopVideo({ src, sourceHash, videoKey, isActive, class
         await firstFrame;
         if (disposed || fellBack) return;
         preparationPhase = 'imports';
-        const [{ prepareLoopPackage }, { startContinuousLoop }] = await Promise.all([
+        const [{ prepareLoopPackage }, loop] = await Promise.all([
           import('./continuousLoopPackage'), import('./continuousLoop'),
         ]);
+        const { startContinuousLoop } = loop;
         if (disposed || fellBack) return;
         preparationPhase = 'package';
         const p = await prepareLoopPackage(src, sourceHash, life.signal);
+        if (disposed || fellBack) return;
+        // Take over at the clip's OWN loop point (2026-10-17): the stream starts
+        // at frame 0, so attaching mid-clip jumped back to the start — after
+        // every reload, on every screen. The element keeps its native loop until
+        // that loop wraps (bounded: one lap + 5 s), and never while the hardware
+        // engine is handing over this element (NativeDualVideo). Same phase as
+        // preparing: a stall now recovers the native element exactly as before.
+        preparationPhase = 'boundary';
+        await loop.waitForLoopBoundary(video, loop.attachBoundaryWaitMs(p), life.signal, {
+          nativeHandoffPending: () => loop.nativeHandoffPendingFor(video),
+        });
         if (disposed || fellBack) return;
         continuous = new ContinuousBoundaryDetector(p.durationTicks, p.timescale);
         diagnostics.reset(Date.now(), readVideoQuality(video));

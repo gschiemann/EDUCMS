@@ -131,9 +131,20 @@ export function NativeDualVideo({
       });
       resumeWaiter.start();
     };
+    // While native is ready and taking over, the browser's one-stream engine
+    // must not attach (it waits for the same loop point and would leave this
+    // hand-off no playing frame to hold — continuousLoop.ts). An attribute in
+    // place on our own node, never a detached one (CLAUDE.md cross-browser 6).
+    const markHandoff = (on: boolean) => {
+      try {
+        if (on) container.current?.setAttribute("data-native-handoff", "pending");
+        else container.current?.removeAttribute("data-native-handoff");
+      } catch { /* a flag only */ }
+    };
     const fallback = (reason?: string) => {
       if (!alive || ended) return;
       ended = true;
+      markHandoff(false);
       if (gateTimer !== null) { clearTimeout(gateTimer); gateTimer = null; }
       cancelBoundary?.();
       c.stop();
@@ -211,6 +222,7 @@ export function NativeDualVideo({
       {
         ready: () => {
           if (!alive || waitingForBoundary) return;
+          markHandoff(true);
           // Hand over at the web clip's own loop point: native starts from frame
           // 0, so switching mid-clip showed as a jump back to the start (owner,
           // VisionCore 2026-10-12). Bounded; the controller keeps polling, so
@@ -281,6 +293,7 @@ export function NativeDualVideo({
     // A failed attempt is not retried on re-renders/manifest polls with the same identity.
     return () => {
       alive = false;
+      markHandoff(false);
       if (retryTimer !== null) clearTimeout(retryTimer);
       if (gateTimer !== null) clearTimeout(gateTimer);
       if (boundaryTimer !== null) clearTimeout(boundaryTimer);

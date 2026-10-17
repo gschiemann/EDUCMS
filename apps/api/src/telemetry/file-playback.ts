@@ -23,15 +23,23 @@
  *     the VISIBLE-stutter streak (`visibleBadStreak`: settled, cached samples
  *     in a row that dropped ≥ 5 % or froze ≥ 250 ms; one good sample resets
  *     it), which the closed loop (`PlaybackDemotionService.evaluate`) reads.
+ *   • Since 2026-10-17 a sample inside the warm-up of a page load, an engine
+ *     change, a hand-off or a player update — or one the browser played while
+ *     the screen should be on its hardware engine — is RECORDED (counted, its
+ *     reason kept for the dashboard) and never graded: it moves no verdict and
+ *     no streak, so it can never demote (`playbackSampleExclusion`).
  */
 
 import {
   EMPTY_FILE_PLAYBACK,
   MEDIA_CAPS_CONFIGS,
+  asPlaybackSampleExclusion,
   classifyVisibleStutterSample,
   foldPlaybackSample,
   nextVisibleBadStreak,
+  playbackSampleExclusion,
   visibleStutterThresholds,
+  type PlaybackSampleExclusion,
   type VisibleSampleClass,
   type VisibleStutterThresholds,
   playbackDeviceClass,
@@ -56,6 +64,8 @@ export interface FilePlaybackDb {
 export interface StoredVideoSample extends PlaybackSampleInput {
   url: string;
   sha256?: string;
+  /** Wall-clock span the counters cover, ms — dates the sample's start. */
+  elapsedMs?: number | null;
 }
 
 export function webviewMajorFromUserAgent(ua: unknown): number | null {
@@ -128,10 +138,31 @@ function columnsFromRecord(r: FilePlaybackRecord) {
  */
 /** The folded record plus the visible-stutter facts the closed loop needs. */
 export type IngestedFilePlayback = FilePlaybackRecord & {
-  /** This sample under the visible-stutter rule. */
+  /** This sample under the visible-stutter rule — `ignored` whenever it was excluded. */
   visibleClass: VisibleSampleClass;
   /** BAD samples in a row after this one (stored as `visible_bad_streak`). */
   visibleBadStreak: number;
+  /** Why this sample was recorded without grading; null when it graded. */
+  excludedReason: PlaybackSampleExclusion | null;
+};
+
+/** What the telemetry POST knows about the moments a sample must not be graded across. */
+export interface SampleGuardContext {
+  /** The screen's last page load — every proven register rotates `credentialEpochRotatedAt`. */
+  pageLoadAt?: Date | null;
+  /** The hardware engine's session in this report differs from the one on record. */
+  nativeSessionChanged?: boolean;
+  /** The engine this screen is supposed to play this file on (`expectedPlaybackEngine`). */
+  expectedEngine?: 'native' | 'web';
+}
+
+const timeMs = (d: unknown): number | null => {
+  if (d instanceof Date) return Number.isFinite(d.getTime()) ? d.getTime() : null;
+  if (typeof d === 'string' || typeof d === 'number') {
+    const t = new Date(d).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  return null;
 };
 
 export async function ingestFilePlayback(
@@ -145,6 +176,8 @@ export async function ingestFilePlayback(
     now: Date;
     /** Default: from the environment (`VIDEO_DEMOTION_*`). */
     thresholds?: VisibleStutterThresholds;
+    /** Page load / hand-off / engine facts (2026-10-17). Absent = none known, graded as before. */
+    guard?: SampleGuardContext;
   },
 ): Promise<IngestedFilePlayback | null> {
   const { screenId, tenantId, sample, now } = args;
@@ -173,10 +206,35 @@ export async function ingestFilePlayback(
   // ten-ok: self-scoped device write — the composite key starts with the
   // screen id the device token proved; tenantId comes from that live row.
   const existing = await db.screenFilePlayback.findUnique({ where: key });
-  const next = foldPlaybackSample(recordFromRow(existing), sample, { unitConcurrent: ownConcurrent + siblings });
-  const visibleClass = classifyVisibleStutterSample(sample, args.thresholds ?? visibleStutterThresholds(process.env));
+  // The demotion sample guard (2026-10-17): decided BEFORE the fold, so an
+  // excluded sample never reaches a settled counter, a verdict or the streak.
+  const guard = args.guard ?? {};
+  const exclusion = playbackSampleExclusion({
+    nowMs: now.getTime(),
+    elapsedMs: sample.elapsedMs ?? null,
+    first: sample.first ?? null,
+    engine: sample.engine ?? null,
+    playerVersionCode: args.playerVersionCode,
+    pageLoadAtMs: timeMs(guard.pageLoadAt),
+    previous: existing
+      ? {
+          engine: existing.engine ?? null,
+          playerVersionCode: typeof existing.playerVersionCode === 'number' ? existing.playerVersionCode : null,
+          excludedUntilMs: timeMs(existing.excludedUntil),
+          excludedReason: existing.excludedReason ?? null,
+        }
+      : null,
+    nativeSessionChanged: guard.nativeSessionChanged === true,
+    expectedEngine: guard.expectedEngine ?? 'web',
+  });
+  const excluded = exclusion.reason !== null;
+  const next = foldPlaybackSample(recordFromRow(existing), sample, { unitConcurrent: ownConcurrent + siblings, excluded });
+  const visibleClass: VisibleSampleClass = excluded
+    ? 'ignored'
+    : classifyVisibleStutterSample(sample, args.thresholds ?? visibleStutterThresholds(process.env));
   const prevStreak = typeof existing?.visibleBadStreak === 'number' ? existing.visibleBadStreak : 0;
   const visibleBadStreak = nextVisibleBadStreak(prevStreak, visibleClass);
+  const prevExcluded = typeof existing?.excludedSamples === 'number' ? existing.excludedSamples : 0;
   const cols = {
     ...columnsFromRecord(next),
     visibleBadStreak,
@@ -186,6 +244,12 @@ export async function ingestFilePlayback(
     playerVersionCode: args.playerVersionCode,
     webviewMajor: args.webviewMajor,
     lastAt: now,
+    // The most recent excluded sample stays on the row after grading resumes,
+    // so the dashboard can still say what was left out and why.
+    excludedReason: excluded ? exclusion.reason : asPlaybackSampleExclusion(existing?.excludedReason),
+    excludedAt: excluded ? now : (existing?.excludedAt ?? null),
+    excludedUntil: exclusion.windowUntilMs !== null ? new Date(exclusion.windowUntilMs) : null,
+    excludedSamples: Math.min(prevExcluded + (excluded ? 1 : 0), 2_147_483_647),
   };
   // ten-ok: same self-scoped composite key as the read above.
   await db.screenFilePlayback.upsert({
@@ -194,7 +258,40 @@ export async function ingestFilePlayback(
     update: cols,
     select: { screenId: true },
   });
-  return { ...next, visibleClass, visibleBadStreak };
+  return { ...next, visibleClass, visibleBadStreak, excludedReason: exclusion.reason };
+}
+
+/**
+ * The engine a screen is SUPPOSED to play a file on (2026-10-17, plan §4B):
+ * `native` whenever its current manifest hands the Android hardware engine
+ * this very file (`nativeVideo`, protocol 2, or the protocol-1 pair's
+ * `nativeSharedVideo`) — otherwise `web`. Owner direction, 2026-10-17: native
+ * hardware video is the target engine on every class and the browser is only
+ * its automatic fallback, so the descriptor alone decides; no player-version
+ * or capability guess overrides it. A sample the browser took of a file the
+ * hardware engine owns comes from a hand-off or a fallback (an engine fault
+ * the browser covered for, or an APK that cannot run the engine yet); it is
+ * never evidence that the FILE stutters, so it never demotes.
+ *
+ * `manifest` is the screen's cached manifest payload (in-process hot cache),
+ * or null when this replica has none; `evidenceSha` is the file the hardware
+ * engine reported in this POST or last on record — without a manifest, the
+ * hardware engine's own report is the evidence.
+ */
+export function expectedPlaybackEngine(args: {
+  sha256: string;
+  manifest: Record<string, any> | null | undefined;
+  evidenceSha: string | null | undefined;
+}): 'native' | 'web' {
+  const sha = args.sha256.toLowerCase();
+  const m = args.manifest;
+  if (m && typeof m === 'object') {
+    const handed = [m.nativeVideo?.asset?.sha256, m.nativeSharedVideo?.asset?.sha256].some(
+      (x) => typeof x === 'string' && x.toLowerCase() === sha,
+    );
+    return handed ? 'native' : 'web';
+  }
+  return typeof args.evidenceSha === 'string' && args.evidenceSha.toLowerCase() === sha ? 'native' : 'web';
 }
 
 /**

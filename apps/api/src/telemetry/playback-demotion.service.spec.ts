@@ -226,6 +226,19 @@ describe('PlaybackDemotionService.evaluate', () => {
     expect((await s.svc.evaluate(input({ visibleBadStreak: 5 }))).kind).toBe('demote');
   });
 
+  it.each(['on', 'observe'])('an excluded sample never acts in mode=%s — not even an OBSERVE line (2026-10-17 guard)', async (mode) => {
+    process.env.VIDEO_PLAYBACK_DEMOTION = mode;
+    const x = world();
+    for (const excludedReason of ['page-load', 'engine-change', 'handoff', 'player-update', 'fallback-engine']) {
+      expect(await x.svc.evaluate(input({ excludedReason, visibleBadStreak: 9 }))).toEqual({ kind: 'none', why: 'excluded-sample' });
+    }
+    expect(x.w.demotions).toHaveLength(0);
+    expect(x.w.audits).toHaveLength(0);
+    expect(x.redis.publish).not.toHaveBeenCalled();
+    // The same streak from graded samples still acts, in the mode's own way.
+    expect((await world().svc.evaluate(input({ excludedReason: null }))).kind).toBe(mode === 'on' ? 'demote' : 'observe');
+  });
+
   it('a screen of another tenant is never acted on', async () => {
     const { svc, w } = world();
     expect((await svc.evaluate(input({ tenantId: 'tenant-b' }))).kind).toBe('none');
@@ -280,7 +293,8 @@ describe('ingest → evaluate: only VISIBLE stutter, 3 in a row', () => {
     url: 'https://cdn/promo.mp4', sha256: SHA, totalFrames: 1800, droppedFrames: 0, stalls: 0, stalledMs: 0,
     cached: true, first: false, concurrent: 1, width: 3840, height: 2160, ...over,
   });
-  const go = (db: any, s: any) => ingestFilePlayback(db, { screenId: S, tenantId: T, sample: s, playerVersionCode: 30, webviewMajor: 120, now: NOW });
+  const go = (db: any, s: any, now: Date = NOW) => ingestFilePlayback(db, { screenId: S, tenantId: T, sample: s, playerVersionCode: 30, webviewMajor: 120, now });
+  const minutes = (m: number) => new Date(NOW.getTime() + m * 60_000);
 
   it('bad, bad, good, bad, bad → streak 2 (never demotes); a third consecutive bad → 3', async () => {
     const { db, row } = ingestDb();
@@ -295,10 +309,22 @@ describe('ingest → evaluate: only VISIBLE stutter, 3 in a row', () => {
 
   it('uncached, first-lap and short samples never move the streak; 4.9 % never counts', async () => {
     const { db } = ingestDb();
-    await go(db, sample({ droppedFrames: 900 }));
-    expect((await go(db, sample({ cached: false, droppedFrames: 1800, stalls: 9, stalledMs: 30_000 })))!.visibleBadStreak).toBe(1);
-    expect((await go(db, sample({ first: true, droppedFrames: 900 })))!.visibleBadStreak).toBe(1);
-    expect((await go(db, sample({ totalFrames: 800, droppedFrames: 800 })))!.visibleBadStreak).toBe(1);
-    expect((await go(db, sample({ totalFrames: 2000, droppedFrames: 98 })))!).toMatchObject({ visibleClass: 'good', visibleBadStreak: 0 });
+    await go(db, sample({ droppedFrames: 900 }), minutes(0));
+    expect((await go(db, sample({ cached: false, droppedFrames: 1800, stalls: 9, stalledMs: 30_000 }), minutes(1)))!.visibleBadStreak).toBe(1);
+    expect((await go(db, sample({ first: true, droppedFrames: 900 }), minutes(2)))!.visibleBadStreak).toBe(1);
+    expect((await go(db, sample({ totalFrames: 800, droppedFrames: 800 }), minutes(3)))!.visibleBadStreak).toBe(1);
+    // After the first lap's 3-minute warm-up (the 2026-10-17 sample guard).
+    expect((await go(db, sample({ totalFrames: 2000, droppedFrames: 98 }), minutes(6)))!).toMatchObject({ visibleClass: 'good', visibleBadStreak: 0 });
+  });
+
+  it('a sample the guard excluded never acts, even if a caller passes it as BAD (second lock)', async () => {
+    const db: any = { screen: { findFirst: jest.fn() } };
+    const svc = new PlaybackDemotionService({ client: db } as any);
+    const out = await svc.evaluate({
+      screenId: S, tenantId: T, sha256: SHA, fileUrl: 'u', sampleClass: 'bad', visibleBadStreak: 9,
+      unitConcurrentMax: 1, lastPct: 11.6, settledSamples: 50, excludedReason: 'page-load', now: NOW,
+    });
+    expect(out).toEqual({ kind: 'none', why: 'excluded-sample' });
+    expect(db.screen.findFirst).not.toHaveBeenCalled();
   });
 });

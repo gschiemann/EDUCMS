@@ -224,18 +224,22 @@ const clampConcurrent = (n: unknown): number | null => {
  * is the server's count of videos decoding across the faces of the physical
  * unit at that moment (this face's own count plus siblings that reported video
  * in the last few minutes) — never less than the face's own count.
+ *
+ * `excluded` (2026-10-17, `playbackSampleExclusion`): the sample is counted and
+ * shown as the latest one, but it is never decode evidence — it touches no
+ * settled counter, no streak and no verdict.
  */
 export function foldPlaybackSample(
   prev: Readonly<FilePlaybackRecord> | null,
   sample: PlaybackSampleInput,
-  opts: { unitConcurrent?: number | null } = {},
+  opts: { unitConcurrent?: number | null; excluded?: boolean } = {},
 ): FilePlaybackRecord {
   const p = prev ?? EMPTY_FILE_PLAYBACK;
   const total = nonNegInt(sample.totalFrames) ?? 0;
   const dropped = Math.min(total, nonNegInt(sample.droppedFrames) ?? 0);
   const pct = droppedPercent(total, dropped);
   const grade = gradePlaybackSample(sample);
-  const settled = isSettledSample(sample);
+  const settled = opts.excluded !== true && isSettledSample(sample);
   const concurrent = clampConcurrent(sample.concurrent);
   const unit = Math.max(clampConcurrent(opts.unitConcurrent) ?? 1, concurrent ?? 1);
   const w = nonNegInt(sample.width);
@@ -765,6 +769,143 @@ export function nextVisibleBadStreak(prev: number, cls: VisibleSampleClass): num
   return p;
 }
 
+// ── Samples that are recorded but never graded (2026-10-17, player
+// rock-solid program §4B; docs/research/2026-10-17-player-rock-solid/).
+//
+// Three of the first four demotions were caused by our own engines, not by
+// the file: a handoff minute, a native-engine fault the web player covered
+// for, or the minute after a page load. M43 was one bad minute from a second
+// demotion on 2026-10-17 because the nightly bundle apply reloads the page and
+// its first minute (11.6 % dropped) ran on the browser before the native
+// engine took the glass again. A sample inside such a warm-up is RECORDED
+// (counted, shown with its reason) and never moves a verdict or a streak.
+//
+// ⚠️ Every `video` sample is a measurement of a browser <video> element.
+// `engine: 'native'` there means the BROWSER's own loop, not the Android
+// hardware engine — that one reports its own `nativeVideo` block and no
+// sample. So a screen the manifest hands the hardware engine for a file has
+// no gradable `video` sample for that file at all: any one that arrives was
+// played by the fallback while the hardware engine was starting, stopped or
+// blocked (`fallback-engine`).
+
+/** How long after a page load, engine change, hand-off or player update a sample is not graded. */
+export const PLAYBACK_SAMPLE_EXCLUSION_WINDOW_MS = 3 * 60_000;
+
+export const PLAYBACK_SAMPLE_EXCLUSIONS = [
+  'page-load',
+  'engine-change',
+  'handoff',
+  'player-update',
+  'fallback-engine',
+] as const;
+export type PlaybackSampleExclusion = (typeof PLAYBACK_SAMPLE_EXCLUSIONS)[number];
+
+const EXCLUSION_SET: ReadonlySet<string> = new Set(PLAYBACK_SAMPLE_EXCLUSIONS);
+
+/** A stored reason, checked — anything else reads as null. */
+export function asPlaybackSampleExclusion(v: unknown): PlaybackSampleExclusion | null {
+  return typeof v === 'string' && EXCLUSION_SET.has(v) ? (v as PlaybackSampleExclusion) : null;
+}
+
+/** The longest stretch a sample may claim (the player reports ~60 s windows). */
+const MAX_SAMPLE_ELAPSED_MS = 10 * 60_000;
+
+export interface SampleExclusionInput {
+  /** When the server received the sample. */
+  nowMs: number;
+  /** The stretch the sample covers (`elapsedMs`), when the player sent it. */
+  elapsedMs?: number | null;
+  /** The player's own "first report after this clip went on glass". */
+  first?: boolean | null;
+  /** The browser engine that played it (`continuous`, `native`, `twodeck`, `deck`). */
+  engine?: string | null;
+  /** The player version this report came from. */
+  playerVersionCode?: number | null;
+  /** The screen's last page load — the register that rotated its credential. */
+  pageLoadAtMs?: number | null;
+  /** The previous sample of this screen × file (the stored row); null for the first one. */
+  previous?: {
+    engine?: string | null;
+    playerVersionCode?: number | null;
+    /** A window an earlier sample opened, and why. */
+    excludedUntilMs?: number | null;
+    excludedReason?: string | null;
+  } | null;
+  /** The hardware engine's session in this report is not the one on record (a hand-off). */
+  nativeSessionChanged?: boolean;
+  /** The engine this screen is supposed to play this file on. */
+  expectedEngine?: 'native' | 'web';
+  windowMs?: number;
+}
+
+export interface SampleExclusionVerdict {
+  /** Why this sample is not graded; null when it is graded as before. */
+  reason: PlaybackSampleExclusion | null;
+  /** The end of the exclusion window still open after this sample (ms), else null. */
+  windowUntilMs: number | null;
+}
+
+/**
+ * Is this sample graded? A sample is excluded when its stretch overlaps the
+ * three minutes after a page load, after an engine change or a hand-off it
+ * reveals, or after a player update — or when the screen is supposed to play
+ * the file on the hardware engine. Detected events open a window that later
+ * samples of the same file inherit (`windowUntilMs`, stored on the row).
+ *
+ * Event times: a page load is dated by the server (the rotation stamp); a clip
+ * start or engine change by the sample's own start (`now − elapsedMs`, when
+ * the new element took over); a native session change or a version change by
+ * the report that revealed it (the event itself happened before, unknown when,
+ * so the window errs long). A sample overlaps a window [a, a + W] when it
+ * started before a + W and ended at or after a.
+ */
+export function playbackSampleExclusion(i: SampleExclusionInput): SampleExclusionVerdict {
+  const w = typeof i.windowMs === 'number' && Number.isFinite(i.windowMs) && i.windowMs > 0
+    ? i.windowMs
+    : PLAYBACK_SAMPLE_EXCLUSION_WINDOW_MS;
+  const now = i.nowMs;
+  const elapsed = Math.min(nonNegInt(i.elapsedMs) ?? 0, MAX_SAMPLE_ELAPSED_MS);
+  const start = now - elapsed;
+  const overlaps = (at: number) => start < at + w && now >= at;
+  const prev = i.previous ?? null;
+
+  // Windows THIS report reveals.
+  const opened: Array<{ reason: PlaybackSampleExclusion; at: number }> = [];
+  const vc = nonNegInt(i.playerVersionCode);
+  const prevVc = prev ? nonNegInt(prev.playerVersionCode) : null;
+  if (vc !== null && vc > 0 && prevVc !== null && prevVc > 0 && vc !== prevVc) opened.push({ reason: 'player-update', at: now });
+  if (i.nativeSessionChanged === true) opened.push({ reason: 'handoff', at: now });
+  if (i.first === true) opened.push({ reason: 'handoff', at: start });
+  const engine = typeof i.engine === 'string' && i.engine ? i.engine : null;
+  const prevEngine = prev && typeof prev.engine === 'string' && prev.engine ? prev.engine : null;
+  if (engine && prevEngine && engine !== prevEngine) opened.push({ reason: 'engine-change', at: start });
+
+  const page = typeof i.pageLoadAtMs === 'number' && Number.isFinite(i.pageLoadAtMs) ? i.pageLoadAtMs : null;
+  const carriedUntil = prev && typeof prev.excludedUntilMs === 'number' && Number.isFinite(prev.excludedUntilMs)
+    ? prev.excludedUntilMs
+    : null;
+
+  // Most specific cause first: an update reloads the page, a page load starts
+  // the clip again, a clip start is how an engine change shows up.
+  const has = (r: PlaybackSampleExclusion) => opened.some((e) => e.reason === r);
+  const causes: Array<PlaybackSampleExclusion | null> = [
+    has('player-update') ? 'player-update' : null,
+    page !== null && overlaps(page) ? 'page-load' : null,
+    has('handoff') ? 'handoff' : null,
+    has('engine-change') ? 'engine-change' : null,
+    carriedUntil !== null && start < carriedUntil
+      ? asPlaybackSampleExclusion(prev?.excludedReason) ?? 'handoff'
+      : null,
+    i.expectedEngine === 'native' ? 'fallback-engine' : null,
+  ];
+  const reason = causes.find((c): c is PlaybackSampleExclusion => c !== null) ?? null;
+
+  let until: number | null = null;
+  for (const e of opened) until = Math.max(until ?? -Infinity, e.at + w);
+  if (carriedUntil !== null) until = Math.max(until ?? -Infinity, carriedUntil);
+  return { reason, windowUntilMs: until !== null && until > now ? until : null };
+}
+
 export type PlaybackDemotionMode = 'on' | 'observe' | 'off';
 
 /** `VIDEO_PLAYBACK_DEMOTION`: default ON; `off`/`0`/`false`/`no` off; `observe` logs only. */
@@ -786,7 +927,7 @@ export function playbackGateMode(env: Record<string, string | undefined> = {}): 
 }
 
 export type StutterAction =
-  | { kind: 'none'; why: 'below-threshold' | 'emergency' | 'already-demoted' | 'demotion-off' }
+  | { kind: 'none'; why: 'below-threshold' | 'emergency' | 'already-demoted' | 'demotion-off' | 'excluded-sample' }
   | { kind: 'demote' }
   | { kind: 'observe' }
   | { kind: 'record-two-sided' }

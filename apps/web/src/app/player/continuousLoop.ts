@@ -42,6 +42,96 @@ export function pruneEnd(nowS: number, p: Pick<LoopPackage, 'durationTicks' | 't
   return Math.max(0, cycle * p.durationTicks + p.keyframeTicks[lo] - 1) / p.timescale;
 }
 
+// ── WHEN the one stream takes over (2026-10-17, player rock-solid §4B) ────
+//
+// Attaching the MSE stream sets a new `src`, and the stream starts at the
+// clip's first frame. Attached the moment the package was ready, that was a
+// jump back to frame 0 in the middle of the clip — on every GUQ at the nightly
+// bundle apply and on every operator refresh. So the element keeps playing the
+// file with the browser's own loop until that loop wraps (`NativeWrapDetector`
+// → `educms-loop-boundary`), and the stream takes over exactly there: its own
+// frame 0 lands on the clip's own loop point. The held-frame canvas still
+// covers the hand-over. Bounded: no wrap within one full lap plus slack (a
+// stalled or paused element never wraps) → attach anyway, as before.
+
+/** Slack beyond one full lap before the stream attaches without a loop point. */
+export const ATTACH_BOUNDARY_SLACK_MS = 5_000;
+/** The browser-native loop's wrap, dispatched by ContinuousLoopVideo's frame callback. */
+export const LOOP_BOUNDARY_EVENT = 'educms-loop-boundary';
+
+/** How long to wait for the clip's own loop point: one full lap plus slack. */
+export function attachBoundaryWaitMs(p: Pick<LoopPackage, 'durationTicks' | 'timescale'>): number {
+  const lapMs = p.timescale > 0 ? (p.durationTicks / p.timescale) * 1000 : NaN;
+  return Number.isFinite(lapMs) && lapMs > 0 ? Math.ceil(lapMs) + ATTACH_BOUNDARY_SLACK_MS : ATTACH_BOUNDARY_SLACK_MS;
+}
+
+export interface AttachGate {
+  /** The native loop just wrapped (the clip's own loop point). */
+  boundary: boolean;
+  /** Time since the package became ready and the wait began. */
+  waitedMs: number;
+  /** `attachBoundaryWaitMs` for this clip. */
+  waitMs: number;
+  /** The Android hardware engine is about to take this element's glass. */
+  nativeHandoffPending: boolean;
+}
+
+/**
+ * Pure: attach the stream now, or keep waiting? A pending hardware hand-off
+ * always wins — it replaces this element at the same loop point, and a stream
+ * attached there would leave it no playing frame to hold.
+ */
+export function continuousAttachDecision(g: AttachGate): 'attach' | 'wait' {
+  if (g.nativeHandoffPending) return 'wait';
+  if (g.boundary) return 'attach';
+  return g.waitedMs >= g.waitMs ? 'attach' : 'wait';
+}
+
+/** Is this element inside a hardware-engine wrapper that is handing over (NativeDualVideo)? */
+export function nativeHandoffPendingFor(el: { closest?: (selector: string) => unknown } | null | undefined): boolean {
+  try { return !!el?.closest?.('[data-native-handoff="pending"]'); } catch { return false; }
+}
+
+/**
+ * Resolve at the element's next native loop point, or once `waitMs` has gone by
+ * without one. While a hardware hand-off is pending it keeps waiting (checked
+ * again every slack interval). Rejects with an AbortError on `signal`.
+ */
+export function waitForLoopBoundary(
+  target: EventTarget,
+  waitMs: number,
+  signal: AbortSignal,
+  opts: { nativeHandoffPending?: () => boolean; now?: () => number } = {},
+): Promise<'boundary' | 'timeout'> {
+  const now = opts.now ?? (() => Date.now());
+  const pending = opts.nativeHandoffPending ?? (() => false);
+  const startedAt = now();
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const clear = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      target.removeEventListener(LOOP_BOUNDARY_EVENT, onBoundary);
+      signal.removeEventListener('abort', onAbort);
+    };
+    const settle = (how: 'boundary' | 'timeout') => { clear(); resolve(how); };
+    const gate = (boundary: boolean) => continuousAttachDecision({
+      boundary, waitedMs: now() - startedAt, waitMs, nativeHandoffPending: pending(),
+    });
+    const onBoundary = () => { if (gate(true) === 'attach') settle('boundary'); };
+    const arm = (ms: number) => {
+      timer = setTimeout(() => {
+        if (gate(false) === 'attach') settle('timeout');
+        else arm(ATTACH_BOUNDARY_SLACK_MS);
+      }, Math.max(0, ms));
+    };
+    const onAbort = () => { clear(); reject(new DOMException('Cancelled', 'AbortError')); };
+    if (signal.aborted) { onAbort(); return; }
+    target.addEventListener(LOOP_BOUNDARY_EVENT, onBoundary);
+    signal.addEventListener('abort', onAbort, { once: true });
+    arm(waitMs);
+  });
+}
+
 function sourceEvent(target: EventTarget, event: string, signal: AbortSignal, action: () => void): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { clear(); reject(new Error('mse-operation-timeout')); }, 15_000);

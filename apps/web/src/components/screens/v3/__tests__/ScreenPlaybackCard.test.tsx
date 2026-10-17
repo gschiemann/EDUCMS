@@ -29,7 +29,7 @@ jest.mock('@/lib/store', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { ScreenPlaybackCard, capabilityKey } = require('../ScreenPlaybackCard') as typeof import('../ScreenPlaybackCard');
+const { ScreenPlaybackCard, capabilityKey, excludedReasonKey } = require('../ScreenPlaybackCard') as typeof import('../ScreenPlaybackCard');
 
 const cap = (over: Partial<ScreenPlaybackCapabilityResponse['capability']> = {}): ScreenPlaybackCapabilityResponse['capability'] => ({
   deviceClass: 'goodview/m65guq/t982/sdk30',
@@ -134,6 +134,32 @@ describe('ScreenPlaybackCard', () => {
     const { container } = render(<ScreenPlaybackCard screenId="s2" enabled={false} />);
     expect(container.innerHTML).toBe('');
     expect(calls[calls.length - 1]).toEqual(['s2', false]);
+  });
+
+  it('minutes left out by the sample guard (2026-10-17) are shown with their reason, never hidden', () => {
+    state.data = {
+      screenId: 's',
+      summary: 'smooth',
+      capability: cap({ maxShortEdge: 2160, evidence: 'measured-screen' }),
+      declared: null,
+      files: [
+        file({ excludedSamples: 3, excludedReason: 'page-load', excludedAt: '2026-10-17T09:02:04Z' }),
+        file({ sha256: 'b'.repeat(64), name: 'Other.mp4', excludedSamples: 2, excludedReason: 'fallback-engine' }),
+        file({ sha256: 'c'.repeat(64), name: 'Clean.mp4', excludedSamples: 0, excludedReason: null }),
+      ],
+    };
+    render(<ScreenPlaybackCard screenId="s" enabled />);
+    const lines = screen.getAllByTestId('screen-playback-excluded');
+    expect(lines).toHaveLength(2);
+    expect(lines[0].textContent).toBe('3 min not counted — the page had just loaded');
+    expect(lines[1].textContent).toBe('2 min not counted — the backup player was covering for the screen’s built-in video engine');
+  });
+
+  it('excludedReasonKey: nothing left out (or an older API) → no line; an unknown reason → the generic one', () => {
+    expect(excludedReasonKey({})).toBeNull();
+    expect(excludedReasonKey({ excludedSamples: 0, excludedReason: 'page-load' })).toBeNull();
+    expect(excludedReasonKey({ excludedSamples: 1, excludedReason: 'handoff' })).toBe('excludedHandoff');
+    expect(excludedReasonKey({ excludedSamples: 1, excludedReason: null })).toBe('excludedGeneric');
   });
 
   it('capabilityKey', () => {

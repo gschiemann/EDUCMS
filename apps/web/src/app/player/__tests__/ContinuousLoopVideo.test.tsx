@@ -17,7 +17,11 @@ import { render, act } from '@testing-library/react';
 const startContinuousLoop = jest.fn(() => ({ running: new Promise<void>(() => undefined), snapshot: () => ({ phase: 'buffered' }), dispose: jest.fn() }));
 let finishPackage: (p: unknown) => void = () => undefined;
 const prepareLoopPackage = jest.fn((...args: [src: string, hash: string, signal: AbortSignal]) => { void args; return new Promise(resolve => { finishPackage = resolve; }); });
-jest.mock('../continuousLoop', () => ({ startContinuousLoop: (...a: unknown[]) => (startContinuousLoop as jest.Mock)(...a) }));
+// The engine itself is mocked; WHEN it attaches (the loop-point wait) is the real code.
+jest.mock('../continuousLoop', () => ({
+  ...jest.requireActual('../continuousLoop'),
+  startContinuousLoop: (...a: unknown[]) => (startContinuousLoop as jest.Mock)(...a),
+}));
 jest.mock('../continuousLoopPackage', () => ({ prepareLoopPackage: (...a: unknown[]) => (prepareLoopPackage as jest.Mock)(...a) }));
 
 import { ContinuousLoopVideo } from '../ContinuousLoopVideo';
@@ -79,6 +83,12 @@ async function presentFrame() {
   await settle();
 }
 
+/** The browser's own loop wraps (NativeWrapDetector → `educms-loop-boundary`). */
+async function loopPoint(video: HTMLVideoElement) {
+  act(() => { video.dispatchEvent(new Event('educms-loop-boundary')); });
+  await settle();
+}
+
 it('fills the viewport by default in both video and retained recovery frame', () => {
   const { video, container, unmount } = mount();
   expect(video.style.objectFit).toBe('fill');
@@ -132,6 +142,7 @@ it('adopts the one-stream engine when preparation finishes on a healthy element 
   for (let i = 0; i < 6; i++) { clock += 4; act(() => { jest.advanceTimersByTime(4_000); }); }
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   expect(startContinuousLoop).toHaveBeenCalledTimes(1);
   expect(video.dataset.loopBackend).toBe('continuous');
 });
@@ -190,6 +201,7 @@ it('retains a 4K frame through adoption until replacement frame output, and free
   });
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   const canvas = container.querySelector('canvas')!;
   expect(canvas.style.display).toBe('block');
   expect([canvas.width, canvas.height]).toEqual([3840, 2160]);
@@ -218,6 +230,7 @@ it('a 24-second first-file load never trips the playback watchdog or competes wi
   expect(prepareLoopPackage).toHaveBeenCalledTimes(1);
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   expect(startContinuousLoop).toHaveBeenCalledTimes(1);
 });
 
@@ -251,6 +264,7 @@ it('resumes a ready but paused native startup once without reloading or blaming 
   await presentFrame();
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   expect(video.dataset.loopBackend).toBe('continuous');
 });
 
@@ -263,6 +277,7 @@ it('a failed initial native open can recover without imposing a 24-hour MSE bloc
   await presentFrame();
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   expect(startContinuousLoop).toHaveBeenCalledTimes(1);
   expect(video.dataset.loopBackend).toBe('continuous');
 });
@@ -285,6 +300,7 @@ it('the existing watchdog reports progressive failure with real waiting headroom
     snapshot: () => ({ phase: 'buffered', diagnostics: pump, quotaBackoffs: 0 }), dispose: jest.fn() }));
   await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
   await settle();
+  await loopPoint(video);
   video.dispatchEvent(new Event('playing'));
   const loadsBefore = load.mock.calls.length;
   const playsBefore = play.mock.calls.length;
@@ -305,4 +321,63 @@ it('the existing watchdog reports progressive failure with real waiting headroom
   expect(onError).not.toHaveBeenCalled();
   unmount();
   delete (HTMLVideoElement.prototype as unknown as Record<string, unknown>).getVideoPlaybackQuality;
+});
+
+/**
+ * The stream takes over at the clip's OWN loop point (2026-10-17, player
+ * rock-solid §4B). Attached the moment the package was ready, it restarted the
+ * clip from frame 0 mid-play — after every reload, on every screen.
+ */
+describe('the one stream attaches at the loop point, never mid-clip', () => {
+  async function ready(video: HTMLVideoElement) {
+    await settle();
+    await presentFrame();
+    await act(async () => { finishPackage(PACKAGE); await Promise.resolve(); });
+    await settle();
+    void video;
+  }
+
+  it('waits for the native loop to wrap, then takes over exactly there', async () => {
+    const { video } = mount();
+    await ready(video);
+    // Mid-clip: the element keeps playing the file with its own loop.
+    for (let i = 0; i < 1; i++) { clock += 4; act(() => { jest.advanceTimersByTime(4_000); }); }
+    expect(startContinuousLoop).not.toHaveBeenCalled();
+    expect(video.dataset.loopBackend).toBe('preparing-continuous');
+    expect(video.getAttribute('src')).toBe('https://media.invalid/clip.mp4');
+    await loopPoint(video);
+    expect(startContinuousLoop).toHaveBeenCalledTimes(1);
+    expect(video.dataset.loopBackend).toBe('continuous');
+  });
+
+  it('no loop point within one lap + 5 s (a 3 s clip → 8 s) → attaches anyway', async () => {
+    const { video } = mount();
+    await ready(video);
+    act(() => { clock += 4; jest.advanceTimersByTime(4_000); });
+    act(() => { clock += 3; jest.advanceTimersByTime(3_900); });
+    await settle();
+    expect(startContinuousLoop).not.toHaveBeenCalled();
+    act(() => { clock += 1; jest.advanceTimersByTime(200); });
+    await settle();
+    expect(startContinuousLoop).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pending hardware-engine hand-off holds the stream back, even at a loop point', async () => {
+    const view = render(
+      <div data-native-handoff="pending">
+        <ContinuousLoopVideo src="https://media.invalid/clip.mp4" sourceHash={HASH} videoKey="item-1" isActive classes="" onError={jest.fn()} />
+      </div>,
+    );
+    const video = view.container.querySelector('video') as HTMLVideoElement;
+    await ready(video);
+    await loopPoint(video);
+    for (let i = 0; i < 3; i++) { clock += 4; act(() => { jest.advanceTimersByTime(4_000); }); }
+    await settle();
+    expect(startContinuousLoop).not.toHaveBeenCalled();
+    // The hand-off fell back: the browser keeps the glass, so the next loop point attaches.
+    (view.container.firstChild as HTMLElement).removeAttribute('data-native-handoff');
+    await loopPoint(video);
+    expect(startContinuousLoop).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
 });
