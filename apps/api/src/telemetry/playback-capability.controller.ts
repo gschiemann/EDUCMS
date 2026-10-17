@@ -24,11 +24,13 @@
 import { Controller, Get, HttpCode, NotFoundException, Optional, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 import {
+  asPlaybackSampleExclusion,
   declaredMaxShortEdge,
   droppedPercent,
   summarizeScreenPlayback,
   type FilePlaybackVerdict,
   type PlaybackCapability,
+  type PlaybackSampleExclusion,
   type ScreenPlaybackSummary,
 } from '@cms/api-types';
 
@@ -74,6 +76,16 @@ export interface ScreenFilePlaybackView {
   unitConcurrentMax: number;
   firstAt: string;
   lastAt: string;
+  /**
+   * 2026-10-17 (demotion sample guard) — samples of this file recorded but
+   * never graded: within 3 minutes of a page load, an engine change, a
+   * hand-off or a player update, or played by the browser while the screen
+   * should be on its hardware engine. `excludedReason`/`excludedAt` describe
+   * the most recent one; 0 / null when there never was one.
+   */
+  excludedSamples: number;
+  excludedReason: PlaybackSampleExclusion | null;
+  excludedAt: string | null;
 }
 
 export interface ScreenPlaybackCapabilityResponse {
@@ -194,6 +206,9 @@ export class PlaybackCapabilityController {
         unitConcurrentMax: rec.unitConcurrentMax,
         firstAt: isoOf(r.firstAt),
         lastAt: isoOf(r.lastAt),
+        excludedSamples: typeof r.excludedSamples === 'number' && r.excludedSamples > 0 ? r.excludedSamples : 0,
+        excludedReason: asPlaybackSampleExclusion(r.excludedReason),
+        excludedAt: r.excludedAt ? isoOf(r.excludedAt) : null,
       };
     });
 

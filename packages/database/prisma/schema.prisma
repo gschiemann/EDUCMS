@@ -1989,6 +1989,16 @@ model ScreenFilePlayback {
   // When ops were last told this screen x file stutters with no fix (owner
   // decision C) — the once-a-day claim.
   stutterAlertedAt  DateTime? @map("stutter_alerted_at")
+  // 2026-10-17 (player rock-solid §4B) — samples RECORDED but never graded:
+  // inside the 3 minutes after a page load, an engine change, a hand-off or a
+  // player update, or played by the browser while the screen should be on its
+  // hardware engine (`playbackSampleExclusion`). `excludedReason`/`excludedAt`
+  // describe the most recent such sample; `excludedUntil` is the window a
+  // detected event left open for the next samples of this file.
+  excludedReason    String?   @map("excluded_reason")
+  excludedAt        DateTime? @map("excluded_at")
+  excludedUntil     DateTime? @map("excluded_until")
+  excludedSamples   Int       @default(0) @map("excluded_samples")
   firstAt           DateTime @map("first_at")
   lastAt            DateTime @map("last_at")
 

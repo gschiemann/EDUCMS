@@ -2443,7 +2443,14 @@
       "tryFullQuality": "再次尝试完整画质",
       "tryingFullQuality": "正在切换回去…",
       "tryFullQualityDone": "已恢复完整画质。屏幕会在完整文件下载完成后、在视频播放结束时切换；如果再次卡顿，会自动改回更轻量的副本。",
-      "tryFullQualityFailed": "无法切换回去，请一分钟后再试。"
+      "tryFullQualityFailed": "无法切换回去，请一分钟后再试。",
+      "excludedDetail": "{count} 分钟未计入：{reason}",
+      "excludedPageLoad": "页面刚刚加载",
+      "excludedEngineChange": "播放器刚刚切换了此视频的播放方式",
+      "excludedHandoff": "视频刚开始在屏幕上播放",
+      "excludedPlayerUpdate": "播放器应用刚刚更新",
+      "excludedFallbackEngine": "备用播放器正在代替屏幕内置的视频引擎",
+      "excludedGeneric": "屏幕刚刚在准备中"
     }
   },
   "selection": {

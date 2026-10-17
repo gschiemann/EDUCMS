@@ -2443,7 +2443,14 @@
       "tryFullQuality": "Probar de nuevo la calidad completa",
       "tryingFullQuality": "Volviendo…",
       "tryFullQualityDone": "Se restableció la calidad completa. La pantalla cambiará cuando el archivo completo se haya descargado, al final del video, y volverá a la copia más ligera si se vuelve a entrecortar.",
-      "tryFullQualityFailed": "No se pudo volver. Inténtelo de nuevo en un minuto."
+      "tryFullQualityFailed": "No se pudo volver. Inténtelo de nuevo en un minuto.",
+      "excludedDetail": "{count} min sin contar: {reason}",
+      "excludedPageLoad": "la página acababa de cargarse",
+      "excludedEngineChange": "el reproductor acababa de cambiar la forma de reproducir este video",
+      "excludedHandoff": "el video acababa de empezar en la pantalla",
+      "excludedPlayerUpdate": "la aplicación del reproductor acababa de actualizarse",
+      "excludedFallbackEngine": "el reproductor de respaldo sustituía al motor de video integrado de la pantalla",
+      "excludedGeneric": "la pantalla se estaba preparando"
     }
   },
   "selection": {
