@@ -196,6 +196,94 @@ export const refreshAckSchema = z.strictObject({
   refreshAckMs: z.number().finite().min(0).max(8_640_000_000_000_000),
 });
 
+const safeCount = () => z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const code = () => z.string().regex(/^[a-z0-9-]{1,64}$/i);
+/** `modeId:WxH@Hz` of an Android Display.Mode, as the APK formats it. */
+const displayMode = () => z.string().regex(/^[0-9]{1,6}:[0-9]{1,5}x[0-9]{1,5}@[0-9]{1,4}(?:\.[0-9]{1,3})?$/);
+/** Exactly the 16 interval buckets (NativeVideoTiming.kt): centred on k × P/4, bucket 4 = the source frame period. */
+const intervalBuckets = () => z.array(safeCount()).length(16);
+const compositionMode = () => z.enum(['dynamic_above', 'static_above']);
+const layerMode = () => z.enum(['under_window', 'queued', 'revealing', 'above_window', 'retired']);
+
+/**
+ * 1.1.41 (2026-10-17, plan §4E / Astra STAB-01) — the glass-side measurement
+ * on the native `timing` block: the render-callback interval histogram, the
+ * display the surface lands on, the decoder's own drops, and the APK's
+ * persisted history of recent sessions (bounded queue + explicit overflow).
+ * All optional — every APK before 1.1.41 sends only the nine counters.
+ * ⚠️ `strictObject`: the web reader copies only the keys named here, so an
+ * APK field this API does not know never reaches it; and a page meeting an
+ * OLDER API holds these keys back after a 400 (`videoExtrasRefused`).
+ */
+const nativeTimingMeasurement = {
+  droppedFrames: safeCount().optional(),
+  sourceFps: z.number().finite().gt(0).max(240).optional(),
+  refreshRate: z.number().finite().min(0).max(1000).optional(),
+  displayMode: displayMode().optional(),
+  intervalUnitNs: safeCount().optional(),
+  intervalBuckets: intervalBuckets().optional(),
+  intervalCount: safeCount().optional(),
+  intervalMinNs: safeCount().optional(),
+  intervalMaxNs: safeCount().optional(),
+  intervalLastNs: safeCount().optional(),
+  intervalMeanNs: safeCount().optional(),
+};
+
+const nativeTimingHistoryEntrySchema = z.strictObject({
+  at: safeCount(),
+  uptimeMs: safeCount().optional(),
+  face: z.number().int().min(0).max(1).optional(),
+  sha8: z.string().regex(/^[a-f0-9]{8}$/).optional(),
+  build: z.string().regex(/^[0-9A-Za-z.+_-]{1,40}$/).optional(),
+  protocol: z.union([z.literal(2), z.literal(3)]).optional(),
+  composition: compositionMode().optional(),
+  layer: layerMode().optional(),
+  reason: code().optional(),
+  recovered: z.boolean().optional(),
+  elapsedMs: safeCount().optional(),
+  fps: z.number().finite().gt(0).max(240).optional(),
+  decodedFrames: safeCount().optional(),
+  submittedFrames: safeCount().optional(),
+  lateFrames: safeCount().optional(),
+  maxLateUs: safeCount().optional(),
+  maxSubmitGapMs: safeCount().optional(),
+  loops: safeCount().optional(),
+  uniqueFrames: safeCount().optional(),
+  codecName: z.string().regex(/^[a-z0-9_.-]{1,128}$/i).optional(),
+  webviewInvisible: z.boolean().optional(),
+  surfaceFrameRate: code().optional(),
+  ...nativeTimingMeasurement,
+});
+
+/** The device class the APK resolved itself into (DeviceClassPolicy.kt), 1.1.41. */
+const nativeDeviceClassSchema = z.strictObject({
+  class: z.string().regex(/^[a-z]+\/android-[0-9]{1,2}$/),
+  fleet: z.string().min(1).max(96).optional(),
+  soc: z.enum(['amlogic', 'rockchip', 'novastar', 'other']),
+  sdk: z.number().int().min(0).max(100),
+  webviewMajor: z.number().int().min(0).max(10_000),
+  nativeSolo: z.boolean(),
+  composition: compositionMode().optional(),
+  protocol3: z.boolean(),
+  silentUpdate: z.enum(['installer-of-record', 'device-owner', 'tap', 'external']),
+  qualified: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).optional(),
+});
+
+const experimentFlags = z.strictObject({
+  webviewInvisible: z.literal(true).optional(),
+  surfaceFrameRate: z.literal(true).optional(),
+  decoderRotation: z.literal(true).optional(),
+});
+/** The M43 experiments on this session (1.1.41): requested, applied, and the process-wide fault guard. */
+const nativeExperimentsSchema = z.strictObject({
+  requested: experimentFlags,
+  applied: z.strictObject({ webviewInvisible: z.boolean(), surfaceFrameRate: code().optional() }),
+  guard: z.strictObject({
+    disabled: z.strictObject({ webviewInvisible: code().optional(), surfaceFrameRate: code().optional() }),
+    applied: z.strictObject({ webviewInvisible: safeCount().optional(), surfaceFrameRate: safeCount().optional() }),
+  }),
+});
+
 /** Own native SurfaceView output callbacks; never HTML dropped-frame counters or panel illumination. */
 const nativeVideoSchema = z.strictObject({
   timing: z.strictObject({
@@ -208,7 +296,15 @@ const nativeVideoSchema = z.strictObject({
     leadUs: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     sourceWidth: z.number().int().min(1).max(16_384),
     sourceHeight: z.number().int().min(1).max(16_384),
+    ...nativeTimingMeasurement,
+    history: z.strictObject({
+      entries: z.array(nativeTimingHistoryEntrySchema).max(8),
+      overflow: safeCount(),
+      capacity: z.number().int().min(1).max(64).optional(),
+    }).optional(),
   }).optional(),
+  device: nativeDeviceClassSchema.optional(),
+  experiments: nativeExperimentsSchema.optional(),
   version: z.literal(1), state: z.enum(['preparing','ready','presenting','failed']),
   sessionId: z.string().uuid(), revision: z.string().min(1).max(128),
   sha256: z.string().regex(/^[a-f0-9]{64}$/), faceIndex: z.number().int().min(0).max(1),

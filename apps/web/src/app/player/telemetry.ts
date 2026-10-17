@@ -1,4 +1,4 @@
-import type { NativeSharedVideoState } from './nativeSharedVideo';
+import { NATIVE_TIMING_EXTRA_KEYS, type NativeSharedVideoState } from './nativeSharedVideo';
 /**
  * telemetry.ts — the player's ONE routine report (2026-09-02, efficiency
  * program P0-1).
@@ -506,7 +506,9 @@ export interface DownloadSnapshotInput {
  */
 export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
   const body: TelemetryBody = {};
-  if (input.nativeVideo && input.nativeVideo.state !== 'idle') body.nativeVideo = input.nativeVideo;
+  if (input.nativeVideo && input.nativeVideo.state !== 'idle') {
+    body.nativeVideo = input.videoExtras === false ? withoutNativeExtras(input.nativeVideo) : input.nativeVideo;
+  }
 
   const versions: NonNullable<TelemetryBody['versions']> = {};
   const player = (input.playerVersion ?? '').trim();
@@ -726,6 +728,31 @@ export function mediaCapsReport(m: TelemetryMediaCaps): TelemetryMediaCaps | nul
 
 /** The per-file evidence keys the server learned on 2026-10-11. */
 const VIDEO_EXTRA_KEYS = ['sha256', 'engine', 'cached', 'first', 'concurrent'] as const;
+/** The native-block keys the server learned on 2026-10-17 (1.1.41): the resolved device class and the experiments. */
+const NATIVE_EXTRA_KEYS = ['device', 'experiments'] as const;
+
+const defined = (o: object, k: string): boolean => (o as Record<string, unknown>)[k] !== undefined;
+
+function nativeTimingHasExtras(timing: NativeSharedVideoState['timing']): boolean {
+  return !!timing && NATIVE_TIMING_EXTRA_KEYS.some((k) => defined(timing, k));
+}
+
+/**
+ * The native block as an API from before 1.1.41 accepts it: no device class,
+ * no experiments, and only the nine original timing counters. Used while the
+ * server refuses the extras (`videoExtrasRefused`), so liveness and render
+ * proof keep landing; the measurement resumes when the window ends.
+ */
+export function withoutNativeExtras(n: NativeSharedVideoState): NativeSharedVideoState {
+  const out: NativeSharedVideoState = { ...n };
+  delete out.device;
+  delete out.experiments;
+  if (n.timing) {
+    const { decodedFrames, submittedFrames, lateFrames, lastLateUs, maxLateUs, maxSubmitGapMs, leadUs, sourceWidth, sourceHeight } = n.timing;
+    out.timing = { decodedFrames, submittedFrames, lateFrames, lastLateUs, maxLateUs, maxSubmitGapMs, leadUs, sourceWidth, sourceHeight };
+  }
+  return out;
+}
 
 /**
  * Should the page hold the per-file evidence keys back for a while? Yes when
@@ -738,7 +765,11 @@ export function videoExtrasRefused(status: number | null, sent: TelemetryBody): 
   if (!!sent.video && VIDEO_EXTRA_KEYS.some((k) => k in (sent.video as object))) return true;
   // Protocol 3 (2026-10-12): the native block's `protocol` / `zones` are
   // extras too — an older API's strict schema refuses them the same way.
-  return !!sent.nativeVideo && ('protocol' in sent.nativeVideo || 'zones' in sent.nativeVideo || 'drops' in sent.nativeVideo);
+  // 1.1.41: so are the device class, the experiments and the timing measurement.
+  if (!sent.nativeVideo) return false;
+  if ('protocol' in sent.nativeVideo || 'zones' in sent.nativeVideo || 'drops' in sent.nativeVideo) return true;
+  if (NATIVE_EXTRA_KEYS.some((k) => defined(sent.nativeVideo!, k))) return true;
+  return nativeTimingHasExtras(sent.nativeVideo.timing);
 }
 
 /** Same self-heal for the declared-capability block. */

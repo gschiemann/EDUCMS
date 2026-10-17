@@ -1,6 +1,11 @@
 import {
+  nativeOrientationRequest,
+  readNativeDeviceClass,
   readNativeSharedVideoDescriptor,
   readNativeSharedVideoState,
+  readNativeVideoDescriptor,
+  readNativeVideoTiming,
+  sharedVideoIdentity,
   SharedVideoController,
   SharedVideoEvidence,
   type NativeSharedVideoDescriptor,
@@ -72,6 +77,67 @@ describe("optional native output handoff", () => {
     expect(parsed?.output?.uniqueFrames).toBe(0);
     expect(readNativeSharedVideoState({ ...state(), timing: { ...timing, maxLateUs: -1 } })?.timing).toBeUndefined();
     expect(readNativeSharedVideoState(state())?.timing).toBeUndefined();
+  });
+  it("1.1.41: copies the glass-side measurement, bounded, and drops what it does not know", () => {
+    const nine = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
+      maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
+    const buckets = Array.from({ length: 16 }, (_, i) => (i === 4 ? 1700 : 0));
+    const entry = { at: 1760700000000, face: 0, sha8: "d4d05533", build: "1.1.41-field.1", protocol: 2, composition: "static_above",
+      layer: "retired", reason: "process-ended", recovered: true, elapsedMs: 10, fps: 30, refreshRate: 60, displayMode: "1:1920x1080@60.00",
+      decodedFrames: 5, droppedFrames: 1, codecName: "OMX.rk.video_decoder.avc", webviewInvisible: true, surfaceFrameRate: "only-if-seamless",
+      intervalUnitNs: 8333333, intervalBuckets: buckets, intervalCount: 1700, url: "https://evil.example" };
+    const full = { ...nine, droppedFrames: 3, sourceFps: 30, refreshRate: 60, displayMode: "2:3840x2160@59.94", intervalUnitNs: 8333333,
+      intervalBuckets: buckets, intervalCount: 1700, intervalMinNs: 31000000, intervalMaxNs: 36000000, intervalLastNs: 33300000, intervalMeanNs: 33333333,
+      history: { entries: [entry, { at: "soon" }, { at: 1, protocol: 7, composition: "under_window", displayMode: "x" }], overflow: 2, capacity: 6 },
+      somethingNew: 1 };
+    const t = readNativeVideoTiming(full)!;
+    expect(t).toMatchObject({ ...nine, droppedFrames: 3, sourceFps: 30, refreshRate: 60, displayMode: "2:3840x2160@59.94", intervalBuckets: buckets, intervalCount: 1700 });
+    expect(t).not.toHaveProperty("somethingNew");
+    expect(t.history?.overflow).toBe(2);
+    expect(t.history?.capacity).toBe(6);
+    expect(t.history?.entries).toHaveLength(2);
+    expect(t.history?.entries[0]).toMatchObject({ at: 1760700000000, sha8: "d4d05533", build: "1.1.41-field.1", composition: "static_above", reason: "process-ended", recovered: true, intervalBuckets: buckets, webviewInvisible: true, surfaceFrameRate: "only-if-seamless" });
+    expect(t.history?.entries[0]).not.toHaveProperty("url");
+    expect(t.history?.entries[1]).toEqual({ at: 1 });
+    // Malformed measurement fields are dropped one by one; the nine counters survive.
+    const junk = readNativeVideoTiming({ ...nine, intervalBuckets: buckets.slice(0, 15), displayMode: "free text", refreshRate: -1, droppedFrames: 1.5, history: { entries: "no", overflow: 0 } })!;
+    expect(junk).toEqual(nine);
+    // An old APK's nine counters are exactly what they were.
+    expect(readNativeVideoTiming(nine)).toEqual(nine);
+    expect(readNativeVideoTiming({ ...nine, decodedFrames: -1 })).toBeUndefined();
+  });
+
+  it("1.1.41: the device class and the session experiments ride on the state, bounded", () => {
+    const device = { class: "rockchip/android-7", fleet: "Rockchip rk3288 / Android 7.1 (DH43)", soc: "rockchip", sdk: 25, webviewMajor: 87,
+      nativeSolo: true, composition: "static_above", protocol3: false, silentUpdate: "tap", qualified: null, serial: "nope" };
+    const experiments = { requested: { webviewInvisible: true, decoderRotation: "yes" }, applied: { webviewInvisible: true, surfaceFrameRate: "refused" },
+      guard: { disabled: { webviewInvisible: "page-lease-expired", other: "x" }, applied: { webviewInvisible: 2 } } };
+    const parsed = readNativeSharedVideoState({ ...state("presenting", 10), device, experiments })!;
+    expect(parsed.device).toEqual({ class: "rockchip/android-7", fleet: "Rockchip rk3288 / Android 7.1 (DH43)", soc: "rockchip", sdk: 25, webviewMajor: 87, nativeSolo: true, composition: "static_above", protocol3: false, silentUpdate: "tap" });
+    expect(parsed.experiments).toEqual({ requested: { webviewInvisible: true }, applied: { webviewInvisible: true, surfaceFrameRate: "refused" }, guard: { disabled: { webviewInvisible: "page-lease-expired" }, applied: { webviewInvisible: 2 } } });
+    expect(readNativeSharedVideoState({ ...state(), device: { ...device, class: "M43 Goodview" } })?.device).toBeUndefined();
+    expect(readNativeSharedVideoState({ ...state(), device: { ...device, silentUpdate: "magic" } })?.device).toBeUndefined();
+    expect(readNativeSharedVideoState(state())?.device).toBeUndefined();
+    expect(readNativeSharedVideoState({ ...state(), experiments: { requested: {} } })?.experiments).toBeUndefined();
+    expect(readNativeDeviceClass({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "external", qualified: "2026-10-21" }))
+      .toEqual({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "external", qualified: "2026-10-21" });
+  });
+
+  it("1.1.41: the experiment flags ride on the protocol-2 descriptor outside its identity, and only decoderRotation changes the orientation request", () => {
+    const v2 = { version: 2, screenId: primary, tenantId: "28d09f9d-0a6c-4828-b46d-38712eb69f1f", faceIndex: 0, revision: "rev",
+      asset: descriptor.asset, transform: { orientation: "PORTRAIT", fit: "fill" } };
+    const plain = readNativeVideoDescriptor(v2)!;
+    expect(plain).not.toHaveProperty("experiments");
+    const flagged = readNativeVideoDescriptor({ ...v2, experiments: { webviewInvisible: true, decoderRotation: true, surfaceFrameRate: "true", bogus: true } })!;
+    expect(flagged.experiments).toEqual({ webviewInvisible: true, decoderRotation: true });
+    expect(readNativeVideoDescriptor({ ...v2, experiments: { surfaceFrameRate: false } })).not.toHaveProperty("experiments");
+    expect(sharedVideoIdentity(flagged)).toBe(sharedVideoIdentity(plain));
+    expect(nativeOrientationRequest("PORTRAIT", flagged)).toBe("NATURAL");
+    expect(nativeOrientationRequest("LANDSCAPE", flagged)).toBe("NATURAL");
+    expect(nativeOrientationRequest("AUTO", flagged)).toBe("AUTO");
+    expect(nativeOrientationRequest("PORTRAIT", plain)).toBe("PORTRAIT");
+    expect(nativeOrientationRequest("PORTRAIT", readNativeVideoDescriptor({ ...v2, experiments: { webviewInvisible: true } }))).toBe("PORTRAIT");
+    expect(nativeOrientationRequest("PORTRAIT", null)).toBe("PORTRAIT");
   });
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());

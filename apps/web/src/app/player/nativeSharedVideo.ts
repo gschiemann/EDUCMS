@@ -53,11 +53,14 @@ export interface NativeSharedVideoState {
   stalls?: number;
   loops?: number;
   /** Decoder scheduling diagnostics; submitted frames are not display proof. */
-  timing?: {
-    decodedFrames: number; submittedFrames: number; lateFrames: number;
-    lastLateUs: number; maxLateUs: number; maxSubmitGapMs: number; leadUs: number;
-    sourceWidth: number; sourceHeight: number;
-  };
+  timing?: NativeVideoTiming;
+  /**
+   * 1.1.41 — the device class the APK resolved itself into and what that
+   * class does (DeviceClassPolicy.kt), bounded; the dashboard shows it.
+   */
+  device?: NativeDeviceClass;
+  /** 1.1.41 — the M43 experiments requested for this session, which were applied, and the fault guard. */
+  experiments?: NativeSessionExperiments;
   /** Protocol 3 telemetry (nativeZones.ts): native's late-frame drops, the
    *  protocol the APK answered, and one bounded row per live slot. Sent only
    *  while the API accepts the video extras (same back-off as `video`). */
@@ -79,16 +82,249 @@ export interface NativeSharedVideoState {
   }>;
 }
 
+/**
+ * The native `timing` block. The nine scheduling counters are what every APK
+ * since 1.1.30 sends; everything after them is 1.1.41's glass-side
+ * measurement (plan 2026-10-17 §4E, Astra STAB-01): the render-callback
+ * interval histogram (16 buckets centred on k × P/4 — bucket 4 is the source
+ * frame period ± P/8), the display the surface lands on, the decoder's own
+ * drops, and the persisted history of recent sessions with its overflow
+ * count. Every field optional: an older APK never sends them.
+ */
+export interface NativeVideoTiming {
+  decodedFrames: number; submittedFrames: number; lateFrames: number;
+  lastLateUs: number; maxLateUs: number; maxSubmitGapMs: number; leadUs: number;
+  sourceWidth: number; sourceHeight: number;
+  droppedFrames?: number;
+  sourceFps?: number;
+  refreshRate?: number;
+  /** `modeId:WxH@Hz` of the current Display.Mode. */
+  displayMode?: string;
+  intervalUnitNs?: number;
+  /** Exactly 16 counts. */
+  intervalBuckets?: number[];
+  intervalCount?: number;
+  intervalMinNs?: number;
+  intervalMaxNs?: number;
+  intervalLastNs?: number;
+  intervalMeanNs?: number;
+  history?: { entries: NativeTimingHistoryEntry[]; overflow: number; capacity?: number };
+}
+
+/** One completed (or recovered) session's summary from the APK's persisted ledger. */
+export interface NativeTimingHistoryEntry {
+  at: number;
+  uptimeMs?: number;
+  face?: number;
+  sha8?: string;
+  build?: string;
+  protocol?: 2 | 3;
+  composition?: "dynamic_above" | "static_above";
+  layer?: "under_window" | "queued" | "revealing" | "above_window" | "retired";
+  reason?: string;
+  recovered?: boolean;
+  elapsedMs?: number;
+  fps?: number;
+  refreshRate?: number;
+  displayMode?: string;
+  decodedFrames?: number;
+  submittedFrames?: number;
+  lateFrames?: number;
+  maxLateUs?: number;
+  maxSubmitGapMs?: number;
+  droppedFrames?: number;
+  loops?: number;
+  uniqueFrames?: number;
+  codecName?: string;
+  webviewInvisible?: boolean;
+  surfaceFrameRate?: string;
+  intervalUnitNs?: number;
+  intervalBuckets?: number[];
+  intervalCount?: number;
+  intervalMinNs?: number;
+  intervalMaxNs?: number;
+  intervalLastNs?: number;
+  intervalMeanNs?: number;
+}
+
+export interface NativeDeviceClass {
+  /** `<soc>/android-<N>`, derived by the APK from its Build strings. */
+  class: string;
+  /** The plan §2 fleet class label, when the box is one we know. */
+  fleet?: string;
+  soc: "amlogic" | "rockchip" | "novastar" | "other";
+  sdk: number;
+  webviewMajor: number;
+  nativeSolo: boolean;
+  composition?: "dynamic_above" | "static_above";
+  protocol3: boolean;
+  silentUpdate: "installer-of-record" | "device-owner" | "tap" | "external";
+  qualified?: string;
+}
+
+export interface NativeExperimentFlags {
+  webviewInvisible?: true;
+  surfaceFrameRate?: true;
+  decoderRotation?: true;
+}
+
+export interface NativeSessionExperiments {
+  requested: NativeExperimentFlags;
+  applied: { webviewInvisible: boolean; surfaceFrameRate?: string };
+  guard: { disabled: Partial<Record<"webviewInvisible" | "surfaceFrameRate", string>>; applied: Partial<Record<"webviewInvisible" | "surfaceFrameRate", number>> };
+}
+
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
-export function readNativeVideoTiming(value: unknown): NativeSharedVideoState["timing"] {
-  const keys = ["decodedFrames", "submittedFrames", "lateFrames", "lastLateUs", "maxLateUs",
-    "maxSubmitGapMs", "leadUs", "sourceWidth", "sourceHeight"] as const;
-  if (!record(value) || !keys.every(k => count(value[k]))) return undefined;
+const NATIVE_TIMING_BASE_KEYS = ["decodedFrames", "submittedFrames", "lateFrames", "lastLateUs", "maxLateUs",
+  "maxSubmitGapMs", "leadUs", "sourceWidth", "sourceHeight"] as const;
+const NATIVE_TIMING_COUNT_KEYS = ["droppedFrames", "intervalUnitNs", "intervalCount", "intervalMinNs", "intervalMaxNs",
+  "intervalLastNs", "intervalMeanNs"] as const;
+/** 1.1.41's timing keys — the ones an older API's strict schema refuses (telemetry.ts holds them back after a 400). */
+export const NATIVE_TIMING_EXTRA_KEYS: readonly string[] = [
+  ...NATIVE_TIMING_COUNT_KEYS, "sourceFps", "refreshRate", "displayMode", "intervalBuckets", "history",
+];
+export const NATIVE_INTERVAL_BUCKETS = 16;
+const DISPLAY_MODE_RE = /^[0-9]{1,6}:[0-9]{1,5}x[0-9]{1,5}@[0-9]{1,4}(?:\.[0-9]{1,3})?$/;
+const SHA8_RE = /^[a-f0-9]{8}$/;
+const BUILD_RE = /^[0-9A-Za-z.+_-]{1,40}$/;
+const CODE_RE = /^[a-z0-9-]{1,64}$/i;
+const CODEC_RE = /^[a-z0-9_.-]{1,128}$/i;
+const COMPOSITIONS = new Set(["dynamic_above", "static_above"]);
+const LAYERS = new Set(["under_window", "queued", "revealing", "above_window", "retired"]);
+const rate = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1000;
+
+function readIntervalBuckets(v: unknown): number[] | undefined {
+  if (!Array.isArray(v) || v.length !== NATIVE_INTERVAL_BUCKETS || !v.every(count)) return undefined;
+  return v.slice() as number[];
+}
+
+/** Only the known interval/display fields, each bounded; anything else is dropped. */
+function readTimingExtras(value: Record<string, unknown>, out: Record<string, unknown>): void {
+  for (const k of NATIVE_TIMING_COUNT_KEYS) if (count(value[k])) out[k] = value[k];
+  if (rate(value.sourceFps) && (value.sourceFps as number) > 0) out.sourceFps = value.sourceFps;
+  if (rate(value.refreshRate)) out.refreshRate = value.refreshRate;
+  if (typeof value.displayMode === "string" && DISPLAY_MODE_RE.test(value.displayMode)) out.displayMode = value.displayMode;
+  const buckets = readIntervalBuckets(value.intervalBuckets);
+  if (buckets) out.intervalBuckets = buckets;
+}
+
+function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
+  if (!record(v) || !count(v.at)) return null;
+  const e: NativeTimingHistoryEntry = { at: v.at };
+  for (const k of ["uptimeMs", "elapsedMs", "decodedFrames", "submittedFrames", "lateFrames", "maxLateUs", "maxSubmitGapMs",
+    "droppedFrames", "loops", "uniqueFrames"] as const) if (count(v[k])) e[k] = v[k];
+  if (v.face === 0 || v.face === 1) e.face = v.face;
+  if (typeof v.sha8 === "string" && SHA8_RE.test(v.sha8)) e.sha8 = v.sha8;
+  if (typeof v.build === "string" && BUILD_RE.test(v.build)) e.build = v.build;
+  if (v.protocol === 2 || v.protocol === 3) e.protocol = v.protocol;
+  if (COMPOSITIONS.has(String(v.composition))) e.composition = v.composition as NativeTimingHistoryEntry["composition"];
+  if (LAYERS.has(String(v.layer))) e.layer = v.layer as NativeTimingHistoryEntry["layer"];
+  if (typeof v.reason === "string" && CODE_RE.test(v.reason)) e.reason = v.reason;
+  if (v.recovered === true) e.recovered = true;
+  if (rate(v.fps) && (v.fps as number) > 0) e.fps = v.fps;
+  if (rate(v.refreshRate)) e.refreshRate = v.refreshRate;
+  if (typeof v.displayMode === "string" && DISPLAY_MODE_RE.test(v.displayMode)) e.displayMode = v.displayMode;
+  if (typeof v.codecName === "string" && CODEC_RE.test(v.codecName)) e.codecName = v.codecName;
+  if (typeof v.webviewInvisible === "boolean") e.webviewInvisible = v.webviewInvisible;
+  if (typeof v.surfaceFrameRate === "string" && CODE_RE.test(v.surfaceFrameRate)) e.surfaceFrameRate = v.surfaceFrameRate;
+  const extras: Record<string, unknown> = {};
+  readTimingExtras(v, extras);
+  for (const k of ["intervalUnitNs", "intervalCount", "intervalMinNs", "intervalMaxNs", "intervalLastNs", "intervalMeanNs"] as const) {
+    if (typeof extras[k] === "number") e[k] = extras[k] as number;
+  }
+  if (Array.isArray(extras.intervalBuckets)) e.intervalBuckets = extras.intervalBuckets as number[];
+  return e;
+}
+
+export function readNativeVideoTiming(value: unknown): NativeVideoTiming | undefined {
+  if (!record(value) || !NATIVE_TIMING_BASE_KEYS.every(k => count(value[k]))) return undefined;
   const width = value.sourceWidth as number, height = value.sourceHeight as number;
   if (width <= 0 || width > 16384 || height <= 0 || height > 16384) return undefined;
-  return Object.fromEntries(keys.map(k => [k, value[k]])) as NativeSharedVideoState["timing"];
+  const out = Object.fromEntries(NATIVE_TIMING_BASE_KEYS.map(k => [k, value[k]])) as Record<string, unknown>;
+  readTimingExtras(value, out);
+  const h = value.history;
+  if (record(h) && Array.isArray(h.entries) && count(h.overflow)) {
+    const entries: NativeTimingHistoryEntry[] = [];
+    for (const raw of h.entries.slice(0, 8)) {
+      const e = readHistoryEntry(raw);
+      if (e) entries.push(e);
+    }
+    out.history = { entries, overflow: h.overflow, ...(count(h.capacity) ? { capacity: h.capacity } : {}) };
+  }
+  return out as unknown as NativeVideoTiming;
+}
+
+const SOCS = new Set(["amlogic", "rockchip", "novastar", "other"]);
+const SILENT_UPDATES = new Set(["installer-of-record", "device-owner", "tap", "external"]);
+
+/** The APK's resolved device class, bounded; null when the reply carries none (every APK before 1.1.41). */
+export function readNativeDeviceClass(v: unknown): NativeDeviceClass | null {
+  if (
+    !record(v) ||
+    typeof v.class !== "string" || !/^[a-z]+\/android-[0-9]{1,2}$/.test(v.class) ||
+    !SOCS.has(String(v.soc)) ||
+    !count(v.sdk) || v.sdk > 100 ||
+    !count(v.webviewMajor) || v.webviewMajor > 10_000 ||
+    typeof v.nativeSolo !== "boolean" || typeof v.protocol3 !== "boolean" ||
+    !SILENT_UPDATES.has(String(v.silentUpdate))
+  )
+    return null;
+  const d: NativeDeviceClass = {
+    class: v.class,
+    soc: v.soc as NativeDeviceClass["soc"],
+    sdk: v.sdk,
+    webviewMajor: v.webviewMajor,
+    nativeSolo: v.nativeSolo,
+    protocol3: v.protocol3,
+    silentUpdate: v.silentUpdate as NativeDeviceClass["silentUpdate"],
+  };
+  if (typeof v.fleet === "string" && v.fleet.length > 0 && v.fleet.length <= 96) d.fleet = v.fleet;
+  if (COMPOSITIONS.has(String(v.composition))) d.composition = v.composition as NativeDeviceClass["composition"];
+  if (typeof v.qualified === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v.qualified)) d.qualified = v.qualified;
+  return d;
+}
+
+const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation"] as const;
+const GUARDED = ["webviewInvisible", "surfaceFrameRate"] as const;
+
+/** Only `true` flags, by their known names; nothing else is an experiment. */
+export function readNativeExperimentFlags(v: unknown): NativeExperimentFlags | null {
+  if (!record(v)) return null;
+  const out: NativeExperimentFlags = {};
+  for (const k of EXPERIMENT_NAMES) if (v[k] === true) out[k] = true;
+  return Object.keys(out).length ? out : null;
+}
+
+export function readNativeSessionExperiments(v: unknown): NativeSessionExperiments | null {
+  if (!record(v) || !record(v.applied) || !record(v.guard)) return null;
+  const requested = readNativeExperimentFlags(v.requested) ?? {};
+  const applied: NativeSessionExperiments["applied"] = { webviewInvisible: v.applied.webviewInvisible === true };
+  if (typeof v.applied.surfaceFrameRate === "string" && CODE_RE.test(v.applied.surfaceFrameRate)) applied.surfaceFrameRate = v.applied.surfaceFrameRate;
+  const guard: NativeSessionExperiments["guard"] = { disabled: {}, applied: {} };
+  if (record(v.guard.disabled)) for (const k of GUARDED) {
+    const r = v.guard.disabled[k];
+    if (typeof r === "string" && CODE_RE.test(r)) guard.disabled[k] = r;
+  }
+  if (record(v.guard.applied)) for (const k of GUARDED) if (count(v.guard.applied[k])) guard.applied[k] = v.guard.applied[k] as number;
+  return { requested, applied, guard };
+}
+
+/**
+ * Experiment 3 (`decoderRotation`, 1.1.41): the orientation the page asks the
+ * APK for. With the flag on, the Activity stays in the panel's NATURAL
+ * orientation (`NATURAL` → SCREEN_ORIENTATION_NOSENSOR) and the decoder
+ * rotates the picture; the page's existing body-rotation fallback lays the
+ * web content out. An APK that does not know `NATURAL` logs and keeps what
+ * it had. AUTO is never overridden (a pinned LED canvas, a sensor box).
+ */
+export function nativeOrientationRequest(
+  orientation: "LANDSCAPE" | "PORTRAIT" | "AUTO",
+  descriptor: { experiments?: NativeExperimentFlags } | null | undefined,
+): "LANDSCAPE" | "PORTRAIT" | "AUTO" | "NATURAL" {
+  if (orientation !== "AUTO" && descriptor?.experiments?.decoderRotation === true) return "NATURAL";
+  return orientation;
 }
 const text = (v: unknown, max = 128): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= max;
@@ -207,6 +443,8 @@ export interface NativeVideoDescriptor {
     orientation: "PORTRAIT" | "LANDSCAPE" | "AUTO";
     fit: "cover" | "contain" | "fill";
   };
+  /** 1.1.41 — the M43 experiments the server switched on for this screen; absent = none. Outside the identity. */
+  experiments?: NativeExperimentFlags;
 }
 
 export type AnyNativeVideoDescriptor =
@@ -289,6 +527,7 @@ export function readNativeVideoDescriptor(
       orientation: t.orientation as NativeVideoDescriptor["transform"]["orientation"],
       fit: t.fit as NativeVideoDescriptor["transform"]["fit"],
     },
+    ...(readNativeExperimentFlags(value.experiments) ? { experiments: readNativeExperimentFlags(value.experiments)! } : {}),
   };
 }
 
@@ -589,6 +828,10 @@ export function readNativeSharedVideoState(
     if (count(v[k])) s[k] = v[k];
   const timing = readNativeVideoTiming(v.timing);
   if (timing) s.timing = timing;
+  const device = readNativeDeviceClass(v.device);
+  if (device) s.device = device;
+  const experiments = readNativeSessionExperiments(v.experiments);
+  if (experiments) s.experiments = experiments;
   return s;
 }
 

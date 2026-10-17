@@ -15,9 +15,9 @@ import android.widget.FrameLayout
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.face.FaceTokenStore
+import com.educms.player.logging.PlayerLogger
 import org.json.JSONObject
 import java.util.UUID
-import java.util.concurrent.Executors
 
 /** Activity/Presentation-owned adapter. No JS-supplied face index or credential is accepted. */
 class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean, private val foreground: (() -> Boolean)?, private val focusRequired: Boolean) {
@@ -92,7 +92,10 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
      */
     fun stateJson(): String {
         refreshReadiness()
-        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", FaceVideoBox.PROTOCOL_MAX)
+        val policy = DeviceClassPolicy.current(ctx)
+        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", policy.protocolMax)
+        // 1.1.41: the resolved device class and what it does (DeviceClassPolicy), bounded, on every reply.
+        j.put("device", policy.toJson())
         if (foreground != null) {
             val s = readiness.snapshot
             j.put("availability", JSONObject().put("version", 1).put("foreground", s.foreground)
@@ -138,16 +141,21 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     }
 }
 
-/** Serialized box ownership. Network/codec work never runs while holding this monitor. */
+/**
+ * The protocol-1 PAIR engine's ownership (one mirrored file on both faces of
+ * a DH43, the 1.1.25–1.1.28 field path). Since 1.1.41 it REFUSES every
+ * request: it drew its surfaces beneath the WebView and needed the WebView
+ * transparent, which is the mechanism behind every white and hazy screen,
+ * and the WebView is now opaque black in every state (one compositing
+ * contract — SoloVideoLayer.kt). A page that still asks for protocol 1 reads
+ * `failed` + `composition-unavailable` and keeps its own player; its state,
+ * stop and emergency paths keep answering exactly as before. The per-face
+ * engine (FaceVideoBox, protocol 2) is the one native path.
+ */
 internal object SharedVideoBox {
     private val main = Handler(Looper.getMainLooper())
-    private val io = Executors.newSingleThreadExecutor { r -> Thread(r,"shared-video-source").apply { isDaemon = true } }
     private val hosts = mutableMapOf<Int,SharedVideoHost>()
-    private var renderer: SharedVideoRenderer? = null
     private var id: String? = null
-    private var gate: SharedVideoCommitGate? = null
-    private var epoch = 0L
-    private var allocating = false
 
     @Synchronized fun attach(host: SharedVideoHost) {
         hosts[host.face]?.let { old ->
@@ -166,162 +174,34 @@ internal object SharedVideoBox {
     }
     @Synchronized fun suppress(why: String) { if (id != null || hosts.values.any { it.state == "preparing" }) stopAll(why) }
 
+    /** A well-formed protocol-1 request is answered `failed` + `composition-unavailable` before any network, surface or decoder. */
     fun prepare(host: SharedVideoHost,json: String) {
         val req = runCatching {
             require(json.length <= 1024)
             val j = JSONObject(json); require(j.getInt("version") == 1)
             Triple(j.getString("screenId"),j.getString("revision"),j.getString("sha256"))
         }.getOrNull() ?: return
-        val generation: Long
         synchronized(this) {
-            if (hosts[host.face] !== host || host.detached || DisplayEmergency.isHeld(host.ctx)) return
-            if (req == host.request && host.state in setOf("preparing","ready","presenting")) return
+            if (hosts[host.face] !== host || host.detached) return
             if (id != null) stopAll("content-changed")
-            host.request = req; host.descriptor = null; host.reportRevision = req.second; host.reportSha = req.third; host.sessionId = UUID.randomUUID().toString(); host.state = "preparing"; host.reason = null
-            host.lastPoll = SystemClock.elapsedRealtime(); generation = host.generation
+            host.request = null; host.descriptor = null; host.reportRevision = req.second; host.reportSha = req.third
+            host.sessionId = UUID.randomUUID().toString(); host.state = "failed"; host.reason = SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE
+            host.lastPoll = SystemClock.elapsedRealtime()
         }
-        io.execute {
-            try {
-                val d = SharedVideoSource(host.ctx).descriptor(host.face,req.first)
-                require(d.revision == req.second && d.sha256 == req.third) { "selection-changed" }
-                synchronized(this) {
-                    if (!valid(host,generation,req)) return@execute
-                    host.descriptor = d
-                    joinIfReady()
-                }
-            } catch (_: Exception) {
-                synchronized(this) { if (valid(host,generation,req)) stopAll("authorization-failed") }
-            }
-        }
+        PlayerLogger.i("SharedVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=1 reason=${SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE} layer=under_window sha=${req.third.take(8)}")
     }
 
-    private fun valid(host: SharedVideoHost,generation: Long,request: Triple<String,String,String>) =
-        hosts[host.face] === host && !host.detached && host.generation == generation && host.request == request && host.state == "preparing"
+    /** The host's own SurfaceView never carries a session any more; nothing to prepare. */
+    fun surfaceReady() {}
 
-    /** Called under monitor; dispatches output snapshot to UI before any decoder allocation. */
-    private fun joinIfReady() {
-        if (id != null) return
-        val a = hosts[0] ?: return; val b = hosts[1] ?: return
-        val da = a.descriptor ?: return; val db = b.descriptor ?: return
-        if (a.state != "preparing" || b.state != "preparing") return
-        if (!da.agrees(db)) { stopAll("descriptor-disagreement"); return }
-        val session = UUID.randomUUID().toString(); id = session; val e = ++epoch
-        gate = SharedVideoCommitGate(session,setOf(0,1))
-        listOf(a,b).forEach {
-            it.sessionId = session; it.updates = 0; it.unique = 0; it.ptsUs = 0; it.lastStamp = 0
-            it.lastUpdate = 0; it.loops = 0; it.startedAt = 0
-        }
-        main.post {
-            if (!current(e,session)) return@post
-            listOf(a,b).forEach { h ->
-                if (!h.attached) {
-                    val parent = h.web.parent as? ViewGroup
-                    if (parent == null) { synchronized(this) { stopAll("output-detached") }; return@post }
-                    h.surfaceView.setZOrderOnTop(false)
-                    parent.addView(h.surfaceView,parent.indexOfChild(h.web),ViewGroup.LayoutParams(-1,-1))
-                    h.attached = true
-                }
-            }
-            prepareSurfaces(e,session,a,b,da)
-            main.postDelayed({ watch(e,session) },1000)
-        }
-    }
-
-    fun surfaceReady() {
-        main.post { synchronized(this) {
-            val session = id ?: return@post
-            val a = hosts[0] ?: return@post; val b = hosts[1] ?: return@post
-            val da = a.descriptor ?: return@post
-            prepareSurfaces(epoch,session,a,b,da)
-        } }
-    }
-
-    private fun prepareSurfaces(e: Long,session: String,a: SharedVideoHost,b: SharedVideoHost,da: SharedVideoDescriptor) {
-            if (!current(e,session) || allocating) return
-            if (listOf(a,b).any { !it.surfaceView.holder.surface.isValid || it.surfaceView.width <= 0 || it.surfaceView.height <= 0 }) return
-            allocating = true
-            val outputList = listOf(a,b).map { h ->
-                val s = h.surfaceView.holder.surface
-                if (!s.isValid || h.surfaceView.width <= 0 || h.surfaceView.height <= 0 || !h.web.isHardwareAccelerated) {
-                    synchronized(this) { if (current(e,session)) stopAll("output-unavailable") }; return
-                }
-                SharedVideoRenderer.Output(s,h.surfaceView.width,h.surfaceView.height,h.descriptor!!) { stamp,pts,_ ->
-                    synchronized(this) { if (current(e,session)) updated(h,stamp,pts) }
-                }
-            }
-            io.execute {
-                try {
-                    val file = SharedVideoSource(a.ctx).verifiedFile(da) { current(e,session) }
-                    if (!current(e,session)) return@execute
-                    // Re-prove BOTH credentials/selections after a potentially long download.
-                    val freshA = SharedVideoSource(a.ctx).descriptor(a.face,da.screenId)
-                    val freshB = SharedVideoSource(b.ctx).descriptor(b.face,b.descriptor?.screenId ?: error("peer-retired"))
-                    require(freshA == da && freshB == b.descriptor && freshA.agrees(freshB)) { "selection-changed" }
-                    if (!current(e,session)) return@execute
-                    val r = SharedVideoRenderer(file,da,outputList,{ current(e,session) },
-                        ready = { synchronized(this) { if (current(e,session)) {
-                            a.state = "ready"; b.state = "ready"
-                        } } },
-                        failed = { why -> synchronized(this) { if (current(e,session)) stopAll(why) } },
-                        codecInfo = { face,name -> synchronized(this) { if (current(e,session)) hosts[face]?.codecName = name } },
-                        looped = { face -> synchronized(this) { if (current(e,session)) hosts[face]?.let { it.loops++ } } })
-                    synchronized(this) { if (!current(e,session)) { r.stop(); return@execute }; renderer = r }
-                    r.prepare()
-                } catch (_: Exception) { synchronized(this) { if (current(e,session)) stopAll("source-failed") } }
-            }
-    }
-
-    @Synchronized private fun current(e: Long,session: String): Boolean = epoch == e && id == session
-
+    /** No pair session can be ready, so a commit changes nothing; the WebView stays opaque black. */
     @Synchronized fun commit(host: SharedVideoHost,session: String) {
         if (hosts[host.face] !== host || session != id || host.sessionId != session || host.state != "ready") return
         if (DisplayEmergency.isHeld(host.ctx)) { stopAll("emergency-held"); return }
-        if (gate?.commit(host.face,session) != true) return
-        val e = epoch
-        main.post {
-            synchronized(this) {
-                if (!current(e,session) || DisplayEmergency.isHeld(host.ctx)) return@post
-                hosts.values.filter { it.sessionId == session }.forEach {
-                    it.web.setBackgroundColor(Color.TRANSPARENT)
-                    it.startedAt = SystemClock.elapsedRealtime()
-                }
-                renderer?.start()
-            }
-        }
-    }
-
-    @Synchronized fun updated(host: SharedVideoHost,stamp: Long,pts: Long) {
-        if (host.sessionId != id || id == null || host.startedAt == 0L || hosts[host.face] !== host) return
-        if (!host.surfaceView.holder.surface.isValid || !host.surfaceView.isShown) return
-        if (!SharedVideoCodecPolicy.validRenderStamp(stamp,pts)) return
-        host.updates++
-        if (stamp != host.lastStamp) { host.unique++; host.lastStamp = stamp; host.ptsUs = pts }
-        host.lastUpdate = SystemClock.elapsedRealtime()
-        host.state = "presenting"
     }
 
     @Synchronized fun stop(host: SharedVideoHost,session: String) {
         if (hosts[host.face] === host && host.sessionId == session) stopAll("peer-stopped")
-    }
-
-    private fun watch(e: Long,session: String) {
-        synchronized(this) {
-            if (!current(e,session)) return
-            val now = SystemClock.elapsedRealtime()
-            for (h in hosts.values.filter { it.sessionId == session }) {
-                val sid = NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(h.ctx,h.face))
-                val why = when {
-                    DisplayEmergency.isHeld(h.ctx) -> "emergency-held"
-                    sid != h.descriptor?.screenId -> "credential-identity"
-                    h.detached || !h.surfaceView.isAttachedToWindow || !h.web.isAttachedToWindow -> "output-detached"
-                    now-h.lastPoll > 10_000 -> "page-lease-expired"
-                    h.startedAt > 0 && now-maxOf(h.startedAt,h.lastUpdate) > 8000 -> "output-stalled"
-                    else -> null
-                }
-                if (why != null) { stopAll(why); return }
-            }
-        }
-        main.postDelayed({ watch(e,session) },1000)
     }
 
     @Synchronized fun state(host: SharedVideoHost): String {
@@ -340,10 +220,9 @@ internal object SharedVideoBox {
             .put("stalls",if (host.reason == "output-stalled") 1 else 0).toString()
     }
 
-    /** Invalidate first, then stop asynchronously. The native layer can never cover the WebView. */
+    /** Invalidate first; the view work happens on the UI thread. The WebView is opaque black in every state. */
     private fun stopAll(why: String) {
-        epoch++; id = null; gate = null; allocating = false
-        val old = renderer; renderer = null; old?.stop()
+        id = null
         hosts.values.forEach { h ->
             h.generation++
             h.request = null; h.descriptor = null

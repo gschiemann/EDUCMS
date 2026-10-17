@@ -514,7 +514,20 @@ export const NATIVE_ZONE_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "superseded",
 ]);
 
+/**
+ * Verdicts about THIS BOX'S ENGINE, never about the file (1.1.41): the APK
+ * does not run positioned slots on this class (`protocol3-disabled` from the
+ * class table, or a reply without protocol 3 at all). The slot stays web for
+ * this document — no retry (nothing will change until the page reloads onto
+ * an APK that has it) and no 24 h block (the same file may be the solo video
+ * of another manifest, and the block store is shared with protocol 2).
+ * Belt and braces: the page's one-per-document protocol discovery already
+ * keeps every zone on the web when the APK advertises `protocolMax: 2`.
+ */
+export const NATIVE_ZONE_WEB_FOR_DOCUMENT_REASONS: ReadonlySet<string> = new Set(["protocol", "protocol3-disabled"]);
+
 export function nativeZoneNext(reason: string | undefined, attempt: number, wasOnGlass = false): "retry" | "block" | "stay" {
+  if (reason && NATIVE_ZONE_WEB_FOR_DOCUMENT_REASONS.has(reason)) return "stay";
   // Owner rule 2026-10-12: never flip web ↔ native on the glass. Once a slot was
   // presenting and ended, it stays web until the content changes / page reloads.
   if (wasOnGlass && (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))) return "stay";

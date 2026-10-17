@@ -4,7 +4,7 @@ import { committedNativeVideo } from './nativeMediaCommit';
 import { discoverNativeVideoProtocol } from './nativeVideoProtocolProbe';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
-import { readNativeSharedVideoDescriptor, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
+import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -6433,8 +6433,13 @@ function PlayerPage() {
           || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-led-cfg') === '1');
         const effectiveOrient = ledPinned ? 'AUTO' : orient;
         if (ledPinned && orient !== 'AUTO') console.warn(`[Player] manifest orientation ${orient} ignored on a pinned LED canvas — releasing to AUTO`);
-        // No-op off-APK — the CSS fallback effect handles it.
-        nativeFire('setOrientation', effectiveOrient);
+        // No-op off-APK — the CSS fallback effect handles it. 1.1.41 experiment 3
+        // (`decoderRotation` on this screen's nativeVideo descriptor): ask for the
+        // panel's NATURAL orientation instead; the body-rotation fallback below
+        // lays the web content out and the native decoder rotates the video.
+        const requestedOrient = nativeOrientationRequest(effectiveOrient, em ? null : readNativeVideoDescriptor(manifest.nativeVideo));
+        if (requestedOrient !== effectiveOrient) console.warn(`[Player] PLAYER_NATIVE_VIDEO_EXPERIMENT name=decoderRotation orientation=${effectiveOrient} requested=${requestedOrient}`);
+        nativeFire('setOrientation', requestedOrient);
         setManifestOrientation(effectiveOrient);
       }
 

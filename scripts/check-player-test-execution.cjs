@@ -119,6 +119,16 @@ const REQUIRED = [
   // pins that the restore runs ONLY on the committed release, never on the
   // alert path, so nothing can darken while an alert is held.
   { cls: 'com.educms.player.standby.StandbyRestoreAfterAlertTest', min: 12 },
+  // ── ONE COMPOSITING CONTRACT (2026-10-17, 1.1.41) — the white-screen family ──
+  // Every white or hazy screen in the field was a solo surface under a
+  // transparent WebView. These pin: above the window or not native (the
+  // layer), the per-class table that decides it, and the view wiring (no
+  // transparent WebView, synchronous hide on an emergency hold, protocol 3
+  // refused). The wiring class is an Assume-based source guard, so "not
+  // entirely skipped" matters.
+  { cls: 'com.educms.player.media.SoloVideoLayerTest', min: 10 },
+  { cls: 'com.educms.player.media.DeviceClassPolicyTest', min: 8 },
+  { cls: 'com.educms.player.media.FaceVideoBoxContractTest', min: 6 },
 ];
 
 /**

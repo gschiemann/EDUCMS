@@ -3,9 +3,16 @@ package com.educms.player.media
 import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * ONE COMPOSITING CONTRACT (1.1.41): a solo surface is composed above the
+ * window — dynamically on R+, statically on 24–29 — or the session is not
+ * native. There is no under-window mode left to fall into.
+ */
 class SoloVideoLayerTest {
+    private fun dynamic() = SoloVideoLayer(SoloVideoLayer.Mode.DYNAMIC_ABOVE)
+
     @Test fun boundaryWaitAndDecoderPreparationDoNotTakeTheWindow() {
-        val layer = SoloVideoLayer(true)
+        val layer = dynamic()
         assertFalse(layer.request(started = false, validFrame = true))
         assertFalse(layer.request(started = true, validFrame = false))
         assertEquals(SoloVideoLayer.Phase.UNDER_WINDOW, layer.phase)
@@ -20,7 +27,7 @@ class SoloVideoLayerTest {
     }
 
     @Test fun retirementWinsOverAQueuedFirstFrame() {
-        val layer = SoloVideoLayer(true)
+        val layer = dynamic()
         layer.request(true, true)
         layer.retire()
         assertFalse(layer.promote(true, true, false, true))
@@ -30,7 +37,7 @@ class SoloVideoLayerTest {
 
     @Test fun emergencyOrOperatorUiOrDetachedOutputPreventDelayedPromotion() {
         for (guard in 0..3) {
-            val layer = SoloVideoLayer(true)
+            val layer = dynamic()
             layer.request(true, true)
             assertFalse(layer.promote(guard != 0, guard != 1, guard == 2, guard != 3))
             assertEquals(SoloVideoLayer.Phase.RETIRED, layer.phase)
@@ -38,18 +45,28 @@ class SoloVideoLayerTest {
         }
     }
 
-    @Test fun android11SoloUsesWindowOwnershipInsteadOfWebViewTransparency() {
-        assertTrue(SoloVideoLayer.eligible(2, 0, 30))
-        assertTrue(SoloVideoLayer.eligible(2, 0, 33))
-        assertFalse(SoloVideoLayer.eligible(2, 0, 29))
-        assertFalse(SoloVideoLayer.eligible(2, 1, 33))
-        assertFalse(SoloVideoLayer.eligible(3, 0, 33))
-        assertFalse(SoloVideoLayer.eligible(1, 0, 33))
-        assertFalse(SoloVideoLayer(false).request(true, true))
+    @Test fun soloIsAboveTheWindowOnEveryClassOrNotNativeAtAll() {
+        // Android R+: dynamic re-ordering, on either face of a double-sided unit.
+        for (sdk in listOf(30, 31, 33, 34)) for (face in 0..1) {
+            assertEquals("sdk $sdk face $face", SoloVideoLayer.Mode.DYNAMIC_ABOVE, SoloVideoLayer.mode(2, face, sdk))
+        }
+        // Android 7.0–10: the static parked start — on ANY hardware, not only Rockchip (.40's rule).
+        for (sdk in 24..29) for (face in 0..1) {
+            assertEquals("sdk $sdk face $face", SoloVideoLayer.Mode.STATIC_ABOVE, SoloVideoLayer.mode(2, face, sdk))
+        }
+        // Below minSdk, a face this box does not host, or anything but protocol 2: never native.
+        assertNull(SoloVideoLayer.mode(2, 0, 23))
+        assertNull(SoloVideoLayer.mode(2, 2, 33))
+        assertNull(SoloVideoLayer.mode(2, -1, 25))
+        for (protocol in listOf(1, 3)) for (sdk in listOf(25, 33)) assertNull(SoloVideoLayer.mode(protocol, 0, sdk))
+        // UNDER_WINDOW is a PHASE (prepared, not yet shown), never a composition mode.
+        assertEquals(setOf("DYNAMIC_ABOVE", "STATIC_ABOVE"), SoloVideoLayer.Mode.values().map { it.name }.toSet())
+        assertEquals("composition-unavailable", SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE)
+        assertEquals("protocol3-disabled", SoloVideoLayer.REASON_PROTOCOL3_DISABLED)
     }
 
     @Test fun aDelayedPreRequestRenderCannotHideTheWebHold() {
-        val layer = SoloVideoLayer(true)
+        val layer = dynamic()
         layer.request(true, true)
         layer.promote(true, true, false, true)
         assertFalse(layer.confirm(2000, true, true, false, true))
@@ -64,7 +81,7 @@ class SoloVideoLayerTest {
     }
 
     @Test fun aRevealHasAnIndependentDeadlineEvenWithDecoderCallbacks() {
-        val layer = SoloVideoLayer(true)
+        val layer = dynamic()
         layer.request(true, true)
         layer.promote(true, true, false, true)
         val requested = 1_000_000_000L
@@ -78,7 +95,7 @@ class SoloVideoLayerTest {
 
     @Test fun emergencyUiOrDetachmentAfterZOrderRequestStillWins() {
         for (guard in 0..3) {
-            val layer = SoloVideoLayer(true)
+            val layer = dynamic()
             layer.request(true, true)
             layer.promote(true, true, false, true)
             layer.revealRequested(1000)
@@ -88,35 +105,17 @@ class SoloVideoLayerTest {
     }
 
     @Test fun confirmedOwnershipDoesNotTimeOutOnTheRevealDeadline() {
-        val layer = SoloVideoLayer(true)
+        val layer = dynamic()
         layer.request(true, true)
         layer.promote(true, true, false, true)
         layer.revealRequested(1000)
         assertTrue(layer.confirm(1001, true, true, false, true))
         assertFalse(layer.revealTimedOut(1000 + SoloVideoLayer.REVEAL_TIMEOUT_NS))
     }
-    @Test fun legacyRockchipSoloIsStaticOnBothFacesOnlyWithinEligibleApiRange() {
-        for (sdk in 24..29) for (face in 0..1) {
-            for ((hardware, board) in listOf("rk3288" to "", "" to "rk3399", " ROCKCHIP " to "", "" to "RK3566")) {
-                assertEquals(SoloVideoLayer.Mode.STATIC_ABOVE, SoloVideoLayer.mode(2, face, sdk, hardware, board))
-            }
-        }
-        for (sdk in listOf(23, 30, 33)) {
-            assertEquals(SoloVideoLayer.Mode.UNDER_WINDOW, SoloVideoLayer.mode(2, 1, sdk, "rk3288"))
-        }
-        for (name in listOf("", "amlogic", "mediatek", "spark3288", "rkboard", "vendor-rockchip")) {
-            assertEquals(SoloVideoLayer.Mode.UNDER_WINDOW, SoloVideoLayer.mode(2, 0, 25, name, name))
-        }
-        for (protocol in listOf(1, 3)) for (face in 0..1) {
-            assertEquals(SoloVideoLayer.Mode.UNDER_WINDOW, SoloVideoLayer.mode(protocol, face, 25, "rk3288"))
-        }
-        assertEquals(SoloVideoLayer.Mode.UNDER_WINDOW, SoloVideoLayer.mode(2, 2, 25, "rk3288"))
-        assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, SoloVideoLayer.mode(2, 0, 30, "rk3288"))
-    }
 
     @Test fun staticSoloPreservesSizeAndStaysOffscreenThroughPreparationAndQueuedRender() {
         val layer = SoloVideoLayer(SoloVideoLayer.Mode.STATIC_ABOVE)
-        assertTrue(layer.eligible)
+        assertTrue(layer.staticAbove)
         assertArrayEquals(intArrayOf(1921, 0, 1080, 1920), layer.soloRect(1080, 1920, 1921))
         assertFalse(layer.request(false, true))
         assertTrue(layer.request(true, true))
@@ -125,7 +124,9 @@ class SoloVideoLayerTest {
         assertTrue(layer.promote(true, true, false, true))
         assertFalse(layer.parked)
         assertArrayEquals(intArrayOf(0, 0, 1080, 1920), layer.soloRect(1080, 1920, 1921))
-        assertArrayEquals(intArrayOf(0, 0, 1080, 1920), SoloVideoLayer(false).soloRect(1080, 1920, 1921))
+        // The dynamic path never parks: it prepares beneath the window at its real rect.
+        assertFalse(dynamic().parked)
+        assertArrayEquals(intArrayOf(0, 0, 1080, 1920), dynamic().soloRect(1080, 1920, 1921))
     }
 
     @Test fun staticMoveWaitCannotBeExtendedByFramesOrLateGeometry() {
@@ -183,6 +184,55 @@ class SoloVideoLayerTest {
         assertFalse(layer.promote(true, true, false, true))
     }
 
+    /**
+     * A4 (1.1.41): an emergency hold during the STATIC path — at every phase a
+     * surface can be in — retires the layer, and a retired static layer is
+     * PARKED: its rect is beyond the display, so even before the UI pass that
+     * removes the view, no frame of it can sit under the alert. A later render
+     * callback, however fresh, cannot bring it back.
+     */
+    @Test fun emergencyHoldRetiresAStaticSurfaceAtEveryPhaseAndParksIt() {
+        val held = true
+        // Phase 1: prepared, parked (UNDER_WINDOW): a hold refuses promotion.
+        run {
+            val l = SoloVideoLayer(SoloVideoLayer.Mode.STATIC_ABOVE)
+            l.request(true, true)
+            assertFalse(l.promote(live = true, attached = true, emergencyHeld = held, uiClear = true))
+            assertEquals(SoloVideoLayer.Phase.RETIRED, l.phase)
+            assertTrue(l.parked)
+            assertEquals(1921, l.soloRect(1080, 1920, 1921)[0])
+        }
+        // Phase 2: moving onto its rect, geometry not yet confirmed.
+        run {
+            val l = SoloVideoLayer(SoloVideoLayer.Mode.STATIC_ABOVE)
+            l.request(true, true); l.promote(true, true, false, true); l.moveRequested(1000)
+            assertFalse(l.confirm(1500, true, true, held, true))
+            assertEquals(SoloVideoLayer.Phase.RETIRED, l.phase)
+            assertTrue(l.parked)
+        }
+        // Phase 3: geometry confirmed, waiting for the post-geometry frame.
+        run {
+            val l = SoloVideoLayer(SoloVideoLayer.Mode.STATIC_ABOVE)
+            l.request(true, true); l.promote(true, true, false, true); l.moveRequested(1000); l.revealRequested(1001)
+            assertFalse(l.confirm(1002, true, true, held, true))
+            assertEquals(SoloVideoLayer.Phase.RETIRED, l.phase)
+            assertTrue(l.parked)
+            assertFalse("a later fresh frame cannot revive it", l.confirm(5000, true, true, false, true))
+        }
+        // Phase 4: on the glass. The hold path retires it explicitly; the view pass removes it.
+        run {
+            val l = SoloVideoLayer(SoloVideoLayer.Mode.STATIC_ABOVE)
+            l.request(true, true); l.promote(true, true, false, true); l.moveRequested(1000); l.revealRequested(1001)
+            assertTrue(l.confirm(1002, true, true, false, true))
+            assertEquals(SoloVideoLayer.Phase.ABOVE_WINDOW, l.phase)
+            l.retire()
+            assertEquals(SoloVideoLayer.Phase.RETIRED, l.phase)
+            assertTrue(l.parked)
+            assertFalse(l.request(true, true))
+            assertFalse(l.confirm(9000, true, true, false, true))
+        }
+    }
+
     @Test fun geometryProofRejectsParkedOrResizedBoxAndWrongGlobalOrigin() {
         val target = intArrayOf(17, 23, 1080, 1920)
         assertTrue(SoloVideoLayer.geometryMatches(target, target.clone()))
@@ -204,5 +254,4 @@ class SoloVideoLayerTest {
             assertTrue(parentX + parked + fitLeft > 1080) // surface is off display too
         }
     }
-
 }

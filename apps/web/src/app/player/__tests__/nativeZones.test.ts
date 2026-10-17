@@ -218,6 +218,19 @@ describe("fallback discipline", () => {
     expect(nativeZoneNext("media-digest", 0)).toBe("block");
     expect(nativeZoneNext("activity-paused", 19)).toBe("stay");
   });
+
+  it("1.1.41: an APK that refuses positioned slots is a web decision for the document — no retry storm, no 24 h block", () => {
+    for (const reason of ["protocol3-disabled", "protocol"]) {
+      for (const attempt of [0, 5, 19]) for (const onGlass of [false, true]) {
+        expect({ reason, attempt, onGlass, next: nativeZoneNext(reason, attempt, onGlass) }).toEqual({ reason, attempt, onGlass, next: "stay" });
+      }
+    }
+    // A 1.1.41 APK advertises protocolMax 2, so the page never even starts a slot: every zone is web.
+    const ctx = { screenId: screen, tenantId: tenant, protocol: readNativeVideoProtocol(JSON.stringify({ version: 1, state: "idle", protocol: 2, sessions: [] })), sha256: null, emergency: false, sync: false, preview: false, blocked: false };
+    expect(ctx.protocol).toBe(2);
+    expect(nativeZoneEligible(descriptor, descriptor.items[0], ctx)).toBe(false);
+    expect(nativeZoneEligible(descriptor, descriptor.items[1], ctx)).toBe(false);
+  });
 });
 
 describe("protocol 3 controller — hand-off sequencing", () => {
@@ -324,6 +337,14 @@ describe("protocol 3 controller — hand-off sequencing", () => {
     a.c.start();
     await tick();
     expect(a.cb.fallback).toHaveBeenCalledWith("protocol");
+    expect(nativeZoneNext(a.cb.fallback.mock.calls[0][0], 0)).toBe("stay");
+    // A 1.1.41 APK that still registers the refused slot (`protocol3-disabled`) answers the same way.
+    const refused = harness(() => JSON.stringify({ version: 1, state: "idle", protocol: 2, protocolMax: 3,
+      sessions: [zoneState("failed", 0, { reason: "protocol3-disabled" })] }));
+    refused.c.start();
+    await tick();
+    expect(refused.cb.fallback).toHaveBeenCalledWith("protocol3-disabled");
+    expect(nativeZoneNext("protocol3-disabled", 0)).toBe("stay");
     let s: unknown[] = [zoneState("ready")];
     const b = harness(() => reply(s));
     b.c.start();

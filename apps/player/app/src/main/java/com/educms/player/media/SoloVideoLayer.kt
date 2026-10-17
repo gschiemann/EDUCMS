@@ -1,13 +1,37 @@
 package com.educms.player.media
 
-import java.util.Locale
-
-/** A delayed render callback cannot give a retired session the window again. */
+/**
+ * ONE COMPOSITING CONTRACT (player 1.1.41, plan 2026-10-17 §4A).
+ *
+ * Native solo video is ABOVE the window, or it is not native. Every white or
+ * hazy screen in the field (DH43, Mobile A-Frame, SAR55, VisionCore .33, G43
+ * .36) was a solo surface drawn UNDER a WebView forced transparent — every
+ * one of those stop lines reads `layer=under_window`; no above-window session
+ * has ever gone white. So "under the window" is no longer a mode here: a
+ * session that cannot be composed above the window is refused with the
+ * stable reason `composition-unavailable` (see [DeviceClassPolicy]) and the
+ * page keeps the web engine. The WebView stays opaque black throughout.
+ *
+ * Two above-window mechanisms remain, chosen by Android version only:
+ *  • [Mode.DYNAMIC_ABOVE] (SDK 30+): the surface prepares beneath the window
+ *    and is re-ordered above it with `setZOrderOnTop(true)` after its first
+ *    valid frame — Android R applies the layer change on a render frame.
+ *  • [Mode.STATIC_ABOVE] (SDK 24–29, any hardware): legacy z-order is fixed
+ *    when the SurfaceView's child window is created, so the surface starts
+ *    above the window, PARKED entirely beyond the physical display, and is
+ *    moved onto its rect only after `promote` — then confirmed by a render
+ *    callback newer than the geometry pre-draw (.40's sequence, unchanged).
+ *
+ * A delayed render callback cannot give a retired session the window again.
+ */
 internal class SoloVideoLayer(val mode: Mode) {
-    enum class Mode { UNDER_WINDOW, DYNAMIC_ABOVE, STATIC_ABOVE }
-    constructor(eligible: Boolean) : this(if (eligible) Mode.DYNAMIC_ABOVE else Mode.UNDER_WINDOW)
-    val eligible: Boolean get() = mode != Mode.UNDER_WINDOW
+    enum class Mode { DYNAMIC_ABOVE, STATIC_ABOVE }
     val staticAbove: Boolean get() = mode == Mode.STATIC_ABOVE
+    /**
+     * [Phase.UNDER_WINDOW] is the prepared-but-not-shown phase: beneath the
+     * window on the dynamic path, parked beyond the display on the static one.
+     * The wire name is kept so the dashboard's `layerMode` reads as before.
+     */
     enum class Phase { UNDER_WINDOW, QUEUED, REVEALING, ABOVE_WINDOW, RETIRED }
     var phase = Phase.UNDER_WINDOW
         private set
@@ -19,7 +43,7 @@ internal class SoloVideoLayer(val mode: Mode) {
     val parked: Boolean get() = staticAbove && phase != Phase.REVEALING && phase != Phase.ABOVE_WINDOW
 
     fun request(started: Boolean, validFrame: Boolean): Boolean {
-        if (!eligible || !started || !validFrame || phase != Phase.UNDER_WINDOW) return false
+        if (!started || !validFrame || phase != Phase.UNDER_WINDOW) return false
         phase = Phase.QUEUED
         return true
     }
@@ -71,17 +95,25 @@ internal class SoloVideoLayer(val mode: Mode) {
 
     companion object {
         const val REVEAL_TIMEOUT_NS = 3_500_000_000L
-        private val rockchipPrefix = Regex("^(?:rk[0-9]|rockchip)")
-        private fun rockchip(value: String): Boolean = rockchipPrefix.containsMatchIn(value.trim().lowercase(Locale.ROOT))
+        /** The stable end code of a session this box cannot compose above the window. */
+        const val REASON_COMPOSITION_UNAVAILABLE = "composition-unavailable"
+        /** The stable end code of a positioned-slot (protocol 3) request while that engine is off. */
+        const val REASON_PROTOCOL3_DISABLED = "protocol3-disabled"
 
-        fun mode(protocol: Int, face: Int, sdk: Int, hardware: String = "", board: String = ""): Mode = when {
-            protocol != 2 || face !in 0..1 -> Mode.UNDER_WINDOW
-            face == 0 && sdk >= 30 -> Mode.DYNAMIC_ABOVE
-            sdk in 24..29 && (rockchip(hardware) || rockchip(board)) -> Mode.STATIC_ABOVE
-            else -> Mode.UNDER_WINDOW
+        /**
+         * How a solo (protocol 2) session on [face] is composed on an Android
+         * [sdk] box, or null when it may not be native at all: dynamic
+         * re-ordering on R+, the static parked start on 24–29 — on ANY
+         * hardware (the .40 rule limited the static path to Rockchip and
+         * left every other legacy box under the window). Protocol 3 and a
+         * face this box does not host are never native here.
+         */
+        fun mode(protocol: Int, face: Int, sdk: Int): Mode? = when {
+            protocol != 2 || face !in 0..1 -> null
+            sdk >= 30 -> Mode.DYNAMIC_ABOVE
+            sdk in 24..29 -> Mode.STATIC_ABOVE
+            else -> null
         }
-
-        fun eligible(protocol: Int, face: Int, sdk: Int): Boolean = mode(protocol, face, sdk) != Mode.UNDER_WINDOW
 
         /** Keep both the box and an overhanging fitted surface beyond the physical display. */
         fun parkingLeft(parentW: Int, displayW: Int, parentScreenX: Int, fittedLeft: Int): Int =
