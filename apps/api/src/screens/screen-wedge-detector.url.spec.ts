@@ -46,7 +46,7 @@ function makeCron(candidates: any[], schedules: any[] | Error = []) {
 const tc32 = (over: Record<string, any> = {}) => ({
   id: 'screen-tc32',
   name: 'TC32',
-  tenantId: 'tenant-brookfield',
+  tenantId: 'tenant-venue',
   screenGroupId: 'group-touch',
   faceOfScreenId: null,
   lastPingAt: new Date(NOW - 32_000), // "ping fresh 32s ago"
@@ -61,7 +61,7 @@ const tc32 = (over: Record<string, any> = {}) => ({
   ...over,
 });
 
-const urlSchedule = { tenantId: 'tenant-brookfield', screenId: 'screen-tc32', screenGroupId: null };
+const urlSchedule = { tenantId: 'tenant-venue', screenId: 'screen-tc32', screenGroupId: null };
 
 beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
 afterEach(() => jest.useRealTimers());
@@ -85,7 +85,7 @@ describe('a screen showing a web page is never a wedge', () => {
   });
 
   it('a web page reached through the screen\'s group, or the primary a face mirrors, counts too', async () => {
-    const byGroup = makeCron([tc32()], [{ tenantId: 'tenant-brookfield', screenId: null, screenGroupId: 'group-touch' }]);
+    const byGroup = makeCron([tc32()], [{ tenantId: 'tenant-venue', screenId: null, screenGroupId: 'group-touch' }]);
     expectNoFire(byGroup.prisma, byGroup.redis, await byGroup.cron.sweep());
     const face = makeCron([tc32({ id: 'screen-back', faceOfScreenId: 'screen-tc32' })], [urlSchedule]);
     expectNoFire(face.prisma, face.redis, await face.cron.sweep());
@@ -96,7 +96,7 @@ describe('a screen showing a web page is never a wedge', () => {
     await cron.sweep();
     expect(prisma.client.schedule.findMany).toHaveBeenCalledTimes(1);
     const where = prisma.client.schedule.findMany.mock.calls[0][0].where;
-    expect(where.tenantId).toEqual({ in: ['tenant-brookfield'] });
+    expect(where.tenantId).toEqual({ in: ['tenant-venue'] });
     expect(where.isActive).toBe(true);
     expect(where.startTime).toEqual({ lte: new Date(NOW) });
     expect(where.AND[0]).toEqual({ OR: [{ endTime: null }, { endTime: { gte: new Date(NOW) } }] });

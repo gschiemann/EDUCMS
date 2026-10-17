@@ -27,7 +27,7 @@ const SCREEN = 'screen-resolution-001';
 const FP = 'fp-resolution-001';
 const APK_UA = 'Mozilla/5.0 (Linux; Android 11; wv) AppleWebKit/537.36 Chrome/95.0.4638.74 Safari/537.36 EduCmsPlayer/1.1.29 (Android 11)';
 
-/** A 4K original with a validated 1080p copy — the Brookfield portrait shape. */
+/** A 4K original with a validated 1080p copy — the 2160×3338 portrait shape. */
 const ASSET = {
   fileUrl: 'https://cdn.example/assets/t/clip-4k.mp4',
   fileHash: 'd'.repeat(64),
