@@ -39,6 +39,8 @@ import { Readable } from 'node:stream';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { autoUpdateEnabledFor, decideAutomaticOffer, isValidTimeZone, resolveAutoUpdateWindow, type AutomaticOfferDecision } from './auto-update-policy';
+import { pushWaitsForTap } from './ota-install-state';
+import { noteManagerCheckRefused } from './manager-lane-noise';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -471,6 +473,10 @@ export class PlayerOtaController {
     const FORCE_WINDOW_MS = 24 * 60 * 60_000;
     let allowUpdate = false;
     let allowReason = 'gated';
+    // A complete answer decided at the gate (2026-10-17): the Manager's own
+    // check, or a push the screen already said needs a tap. Returned before
+    // any release lookup — nothing is resolved, hashed or downloaded for it.
+    let earlyAnswer: Record<string, unknown> | null = null;
     let forcedPendingScreenId: string | null = null;
     // Identity of the operator push that set forcedPendingScreenId.
     let forcedPendingAt: Date | null = null;
@@ -531,6 +537,26 @@ export class PlayerOtaController {
         // players never send source='user' (no tap wiring until v1.1.5),
         // so this branch is inert for the current fleet and arms the
         // moment the tap-wired player ships.
+        // ── 2026-10-17 — the Manager's OWN check never installs the Player ──
+        // Manager 1.0.24 polls this every 30 minutes with source=manager. Its
+        // install commit is not silent anywhere in the fleet — it is neither
+        // the device owner (owner decision 2026-10-17: "we will not be the
+        // device owner") nor the Player's installer of record — so it ends at
+        // Android's "Install?" dialog raised from a notification nobody sees.
+        // Every check was a full APK download and a commit that could never
+        // land: the M24's 48 downloads of v1.1.29 on 10-15/16. The Player
+        // installs itself — silently on Android 12+ as its own installer of
+        // record, otherwise one Install prompt per build (OtaAttemptPolicy).
+        // The bootstrap call (no Player on the device yet, vc=0) is not this
+        // check and is untouched.
+        const managerCheck = !!screen && callerSource === 'manager' && callerVc > 0;
+        if (managerCheck) {
+          allowReason = 'manager-check-player-installs-itself';
+          earlyAnswer = { uptoDate: true, installVia: 'player' };
+          // Its next breath is an anonymous UP_TO_DATE about the Manager's
+          // lane, not the Player (manager-lane-noise.ts).
+          noteManagerCheckRefused(fp);
+        }
         // ── 2026-10-11 — AUTOMATIC offers are opt-in, silent-only, off-hours
         // (auto-update-policy.ts). Was: `tenant-auto-on` offered every screen
         // of the org at any hour — a panel that cannot install silently then
@@ -538,13 +564,15 @@ export class PlayerOtaController {
         // only read when the switch (screen override, else org) is ON, so
         // the default fleet pays no extra query.
         let autoDecision: AutomaticOfferDecision | null = null;
-        if (screen && !fieldTarget) {
+        if (screen && !fieldTarget && !managerCheck) {
           const sw = autoUpdateEnabledFor(screen.tenant?.autoUpdatePlayerEnabled, screen.autoUpdatePlayerOverride);
           autoDecision = sw.enabled
             ? await this.automaticOfferFor(screen, callerSource, callerVc)
             : { offer: false, reason: `auto-off-${sw.source}` };
         }
-        if (screen && deviceAuthenticated && callerSource === 'user' && !fieldTarget) {
+        if (managerCheck) {
+          // earlyAnswer set above; nothing else to decide for this caller.
+        } else if (screen && deviceAuthenticated && callerSource === 'user' && !fieldTarget) {
           lookupScreenName = screen.name ?? null;
           allowUpdate = true;
           allowReason = 'panel-user-tap';
@@ -575,7 +603,20 @@ export class PlayerOtaController {
             screen.lastOtaAt &&
             (Date.now() - new Date(screen.lastOtaAt).getTime() > STALLED_INSTALL_MS);
 
-          if (stalled) {
+          // ── 2026-10-17 — the screen SAID it needs a tap (ota-install-state.ts)
+          // Android on it is waiting for a person to tap Install; offering the
+          // push again would only re-run the same commit. Answer up to date
+          // WITH needsTap: the Player keeps its verified APK and keeps saying
+          // so, and a person pressing Update on the panel takes the
+          // panel-user-tap branch above.
+          if (ageMs < FORCE_WINDOW_MS && pushWaitsForTap({
+            pendingAt: screen.forceApkUpdatePendingAt,
+            lastOtaState: screen.lastOtaState,
+            lastOtaAt: screen.lastOtaAt,
+          })) {
+            allowReason = 'force-pending-needs-tap';
+            earlyAnswer = { uptoDate: true, needsTap: true };
+          } else if (stalled) {
             this.logger.warn(
               `[ota] auto-clearing force flag — install stalled at state=${screen.lastOtaState} ` +
               `for ${Math.round((Date.now() - new Date(screen.lastOtaAt).getTime()) / 60000)}min ` +
@@ -649,6 +690,14 @@ export class PlayerOtaController {
       // On lookup error, fall back to the safer default (no update).
       this.logger.warn(`[ota] gate-lookup-failed fp=${fpShort} err=${e?.message}`);
       allowReason = 'lookup-error';
+    }
+    if (earlyAnswer && !isBootstrapCall) {
+      this.logger.log(
+        `[ota] decision=uptoDate-${allowReason} caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+        `tenant=${lookupTenantId || '-'} fp=${fpShort} source=${callerSource || '-'} ` +
+        `answer=${JSON.stringify(earlyAnswer)}`,
+      );
+      return earlyAnswer;
     }
     if (!allowUpdate && isBootstrapCall) {
       // Bootstrap bypass — Manager just sideloaded onto a fresh

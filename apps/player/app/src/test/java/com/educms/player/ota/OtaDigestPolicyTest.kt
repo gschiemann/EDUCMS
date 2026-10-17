@@ -21,9 +21,15 @@ class OtaDigestPolicyTest {
     @Test fun `the worker refuses before it downloads, and never skips verification`() {
         val src = File("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt").readText()
         val refuse = src.indexOf("OtaDigestPolicy.acceptable(expectedSha)")
-        val download = src.indexOf("getExternalFilesDir(null), \"updates\"")
+        // 2026-10-17 — the APK's location moved into OtaAttemptStore (a
+        // verified build is kept and re-used, never downloaded twice); the
+        // rule is unchanged: nothing is resolved, re-used or downloaded before
+        // the digest gate.
+        val apkFile = src.indexOf("OtaAttemptStore.apkFile(applicationContext, latestVc)")
+        val download = src.indexOf("URL(apkUrl).openConnection()")
         assertTrue("the digest gate exists", refuse > 0)
-        assertTrue("and runs before the download directory is even opened", download > refuse)
+        assertTrue("and runs before the APK file is even resolved", apkFile > refuse)
+        assertTrue("and before the download opens", download > refuse)
         assertFalse("verification is unconditional", src.contains("if (expectedSha.isNotEmpty())"))
     }
 }

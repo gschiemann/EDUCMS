@@ -195,6 +195,66 @@ describe('player app row', () => {
     expect(rtl.queryByRole('button', { name: /Push update/ })).not.toBeInTheDocument();
   });
 
+  // ── 2026-10-17 — the screen's own terminal answer to a pending push ───
+  // An Android 9 panel downloaded one update 48 times while this row said
+  // "Updating…". A screen that says Android needs a person to tap Install
+  // (NEEDS_TAP) or that the install failed (FAILED_<CODE>) is shown as that —
+  // read off the SERVER's pending push, so it survives a page reload.
+  const pushedAt = '2026-10-16T10:00:00.000Z';
+  const after = (min: number) => new Date(Date.parse(pushedAt) + min * 60_000).toISOString();
+
+  it('NEEDS_TAP after the push → "needs an Install tap on the screen", even after a reload', () => {
+    latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
+    renderPopover({
+      playerVersion: '1.1.23',
+      forceApkUpdatePendingAt: pushedAt,
+      lastOtaState: 'NEEDS_TAP',
+      lastOtaAt: after(3),
+    });
+    const row = rtl.getByTestId('apk-update-status');
+    expect(within(row).getByText('Needs an Install tap on the screen')).toBeInTheDocument();
+    expect(within(row).getByText(/Press Install now on the screen, then tap Install/)).toBeInTheDocument();
+    // Not dressed as progress.
+    expect(within(row).queryByText(/Updating/)).not.toBeInTheDocument();
+  });
+
+  it('a NEEDS_TAP older than the push says nothing about it', () => {
+    latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
+    renderPopover({
+      playerVersion: '1.1.23',
+      forceApkUpdatePendingAt: pushedAt,
+      lastOtaState: 'NEEDS_TAP',
+      lastOtaAt: after(-5),
+    });
+    expect(rtl.queryByText('Needs an Install tap on the screen')).not.toBeInTheDocument();
+  });
+
+  it('a push from this session that the screen answered NEEDS_TAP is not stuck on "Updating…"', () => {
+    latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
+    render(
+      <ScreenSettingsSections
+        {...contentProps({ playerVersion: '1.1.23', lastOtaState: 'NEEDS_TAP', lastOtaAt: new Date(Date.now() - 1_000).toISOString() })}
+        pushState={{ at: Date.now() - 120_000, priorVersion: '1.1.23' }}
+      />,
+    );
+    expect(rtl.getByText('Needs an Install tap on the screen')).toBeInTheDocument();
+    expect(rtl.getByTestId('apk-push')).toBeEnabled();
+    expect(rtl.getByTestId('apk-push')).toHaveTextContent('Push update');
+  });
+
+  it('FAILED_<CODE> after the push → the install failed, named, with Retry', () => {
+    latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
+    renderPopover({
+      playerVersion: '1.1.23',
+      forceApkUpdatePendingAt: pushedAt,
+      lastOtaState: 'FAILED_ABORTED',
+      lastOtaAt: after(4),
+    });
+    expect(rtl.getByText('Install failed (ABORTED)')).toBeInTheDocument();
+    expect(rtl.getByText(/kept the downloaded update/)).toBeInTheDocument();
+    expect(rtl.getByTestId('apk-push')).toHaveTextContent('Retry update');
+  });
+
   it('a browser player has no APK row at all', () => {
     renderPopover({ osInfo: 'Chrome 120 on macOS', playerVersion: null, managerVersion: null });
     expect(rtl.queryByText(/Player app v/)).not.toBeInTheDocument();

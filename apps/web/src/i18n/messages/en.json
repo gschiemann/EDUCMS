@@ -2241,7 +2241,11 @@
       "sublineLastHeard": "Last heard from the screen at {time}",
       "sublineWaiting": "This can take up to 30 minutes.",
       "sublineInstalled": "v{version} installed",
-      "sublineNoVersion": "Version not reported yet"
+      "sublineNoVersion": "Version not reported yet",
+      "needsTap": "Needs an Install tap on the screen",
+      "sublineNeedsTap": "Android on this screen asks a person to confirm. Press Install now on the screen, then tap Install.",
+      "failed": "Install failed ({code})",
+      "sublineFailed": "The screen kept the downloaded update. Press Install now on the screen to try again."
     },
     "trust": {
       "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",

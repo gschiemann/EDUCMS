@@ -2241,7 +2241,11 @@
       "sublineLastHeard": "最后一次收到屏幕回应：{time}",
       "sublineWaiting": "最多可能需要 30 分钟。",
       "sublineInstalled": "已安装 v{version}",
-      "sublineNoVersion": "尚未上报版本"
+      "sublineNoVersion": "尚未上报版本",
+      "needsTap": "需要有人在屏幕上点按“安装”",
+      "sublineNeedsTap": "此屏幕上的 Android 需要有人确认。请在屏幕上按“Install now”，然后点按“安装”。",
+      "failed": "安装失败（{code}）",
+      "sublineFailed": "屏幕已保留下载的更新。请在屏幕上按“Install now”重试。"
     },
     "trust": {
       "repairTitle": "设备信任需要修复。请在此屏幕的设置中恢复信任。",

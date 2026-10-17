@@ -179,9 +179,13 @@ describe('POST /player/update-check — automatic offers', () => {
   });
 
   it("the Manager's check never gets an automatic offer (its install would prompt)", async () => {
+    // 2026-10-17: the Manager's own check is refused before the automatic
+    // rules are even consulted — it is never offered the Player APK at all
+    // (push-tracking-controller.spec.ts). decideAutomaticOffer's own
+    // 'auto-not-player-worker-manager' rule is still pinned above.
     const h = harness({ orgAuto: true });
     await call(h, 'manager');
-    expect(decision(h.lines)).toContain('auto-not-player-worker-manager');
+    expect(decision(h.lines)).toContain('decision=uptoDate-manager-check-player-installs-itself');
   });
 
   it('no org timezone → the screen schedule timezone is used; neither → held', async () => {

@@ -1252,7 +1252,24 @@ export function ScreenSettingsSections({
   // disabled during this window; lastOtaState surfacing (above)
   // gives device-truth signal in the meantime.
   const PUSH_TIMEOUT_MS = 35 * 60_000;
-  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS;
+  // 2026-10-17 — the screen's own TERMINAL answer to the operator's pending
+  // push, read off the server's push (survives a page reload, unlike
+  // pushState): NEEDS_TAP = Android is waiting for a person to tap Install on
+  // the glass (Android 11 and below), FAILED_<CODE> = the install failed. The
+  // player keeps the downloaded update and does not retry either on its own —
+  // a person presses Install now on the panel; for NEEDS_TAP the server also
+  // stops offering the push (apps/api/src/player-ota/ota-install-state.ts).
+  const serverPushAtMs = (screen as any)?.forceApkUpdatePendingAt
+    ? new Date((screen as any).forceApkUpdatePendingAt).getTime()
+    : 0;
+  const answeredAtMs = (screen as any)?.lastOtaAt ? new Date((screen as any).lastOtaAt).getTime() : 0;
+  const answerToPush =
+    (pushState && answeredAtMs > pushState.at) || (serverPushAtMs > 0 && answeredAtMs >= serverPushAtMs)
+      ? ((screen as any)?.lastOtaState ?? null) as string | null
+      : null;
+  const waitingForTap = answerToPush === 'NEEDS_TAP' && !updatedSincePush;
+  const failedCode = !updatedSincePush ? (answerToPush?.match(/^FAILED_([A-Z0-9_]+)$/)?.[1] ?? null) : null;
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS && !waitingForTap && !failedCode;
   const timedOut = pushed && !updatedSincePush && pushedMsAgo >= PUSH_TIMEOUT_MS;
   // HONESTY FIX (2026-04-27): the previous stage machine showed
   // sending → downloading → installing → restarting purely off a
@@ -1474,9 +1491,12 @@ export function ScreenSettingsSections({
             // chrome on a screen that did exactly the right thing. It must
             // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
             // healthy screen never renders as a warning.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' =
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' | 'needs-tap' | 'failed' =
               stage === 'installed' || updatedSincePush ? 'installed' :
               deviceTruth === 'INSTALLED' ? 'installed' :
+              // 2026-10-17 — terminal answers to the pending push (above).
+              waitingForTap ? 'needs-tap' :
+              failedCode ? 'failed' :
               // 2026-09-01 — install landed, Android blocked the background
               // relaunch (BAL: no HOME / no overlay / OEM device owner).
               // Matched AFTER `updatedSincePush`: a reported version bump
@@ -1497,6 +1517,8 @@ export function ScreenSettingsSections({
               effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'relaunch-blocked' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
+              effectiveStage === 'needs-tap' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
+              effectiveStage === 'failed'    ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
               ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
@@ -1516,6 +1538,8 @@ export function ScreenSettingsSections({
               effectiveStage === 'installed'   ? t('screens.apk.installed', { version: currentVersion ?? '' }) :
               effectiveStage === 'uptodate'    ? t('screens.apk.alreadyLatest', { version: currentVersion || latestVersion || '?' }) :
               effectiveStage === 'relaunch-blocked' ? t('screens.apk.relaunchBlocked') :
+              effectiveStage === 'needs-tap'   ? t('screens.apk.needsTap') :
+              effectiveStage === 'failed'      ? t('screens.apk.failed', { code: failedCode ?? '' }) :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
               effectiveStage === 'installing'  ? `${t('screens.apk.installing')}${otaMessage ? ` ${otaMessage}` : ''}` :
               effectiveStage === 'verifying'   ? t('screens.apk.verifying') :
@@ -1536,6 +1560,8 @@ export function ScreenSettingsSections({
               // in-flight-or-broken chrome.
               effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
               effectiveStage === 'relaunch-blocked' ? 'text-amber-700 font-bold' :
+              effectiveStage === 'needs-tap' ? 'text-amber-700 font-bold' :
+              effectiveStage === 'failed'    ? 'text-rose-700 font-bold' :
               effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
               effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
               isInFlight                     ? 'text-indigo-700 font-bold' :
@@ -1550,6 +1576,10 @@ export function ScreenSettingsSections({
                   // The device's own report names the missing grant; fall
                   // back to the generic remedy if the message got lost.
                   ? (otaMessage || t('screens.apk.sublineRelaunch'))
+                : effectiveStage === 'needs-tap'
+                  ? t('screens.apk.sublineNeedsTap')
+                : effectiveStage === 'failed'
+                  ? t('screens.apk.sublineFailed')
                 : isInFlight
                   ? (deviceTruth && otaAt
                       ? t('screens.apk.sublineLastHeard', { time: new Date(otaAt).toLocaleTimeString() })
@@ -1582,7 +1612,7 @@ export function ScreenSettingsSections({
                     className="shrink-0 min-h-11 px-4 py-2 rounded-lg border border-indigo-700 bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={managerStale && upToDate === true ? t('screens.apkUpdateManagerTitle') : t('screens.apkUpdateTitle')}
                   >
-                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
+                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout', 'failed'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
                   </button>
                 )}
               </div>

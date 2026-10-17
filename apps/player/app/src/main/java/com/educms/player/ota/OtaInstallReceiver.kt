@@ -23,6 +23,11 @@ class OtaInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -999)
         val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""
+        // 2026-10-17 — the build OUR OWN update session installs (0 = this
+        // status is for something else, e.g. the companion Manager install
+        // ManagerBootstrap commits through this same receiver).
+        val selfOtaVc = intent.getIntExtra(EXTRA_SELF_OTA_VERSION_CODE, 0)
+        if (selfOtaVc > 0) recordSelfOtaOutcome(context, selfOtaVc, status)
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // 2026-04-28 (v1.0.22) — Android specialist audit found
@@ -131,13 +136,67 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // seconds on screen (see InstallPromptGate).
                 com.educms.player.MainActivity.noteInstallStatusTerminal(targetPackageOf(intent))
                 PlayerLogger.w(TAG, "OTA install FAILED (status=$status): $msg")
-                reportOtaError(context, "Install failed: ${statusName(status)}${if (msg.isNotBlank()) " - $msg" else ""}")
+                // Our own update reported FAILED_<CODE> in recordSelfOtaOutcome.
+                if (selfOtaVc <= 0) {
+                    reportOtaError(context, "Install failed: ${statusName(status)}${if (msg.isNotBlank()) " - $msg" else ""}")
+                }
             }
             else -> {
                 PlayerLogger.w(TAG, "OTA install: unknown status=$status msg=$msg")
                 reportOtaError(context, "Install returned unknown status=$status${if (msg.isNotBlank()) " - $msg" else ""}")
             }
         }
+    }
+
+    /**
+     * 2026-10-17 (unattended updates) — what happened to our own update, on
+     * the record and on the dashboard:
+     *   PENDING_USER_ACTION → NEEDS_TAP. Android 11 and below (or a Player that
+     *     is not its own installer of record) wants a person to tap Install.
+     *     The kept APK stays on disk and the worker will NOT commit it again on
+     *     a timer — only a person pressing Update on the panel does
+     *     (OtaAttemptPolicy). The dialog itself is still raised below, as it
+     *     always was.
+     *   a terminal failure → FAILED_<CODE> (not retried on a timer either).
+     * Reported with the device token (OtaStateReporter): the server then stops
+     * offering the push to this screen, and the companion Manager's anonymous
+     * 30-minute reports can no longer overwrite the NEEDS_TAP.
+     */
+    private fun recordSelfOtaOutcome(context: Context, versionCode: Int, status: Int) {
+        val (outcome, state) = when (status) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION ->
+                OtaAttemptPolicy.Outcome.NEEDS_TAP to "NEEDS_TAP"
+            PackageInstaller.STATUS_FAILURE,
+            PackageInstaller.STATUS_FAILURE_ABORTED,
+            PackageInstaller.STATUS_FAILURE_BLOCKED,
+            PackageInstaller.STATUS_FAILURE_CONFLICT,
+            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
+            PackageInstaller.STATUS_FAILURE_INVALID,
+            PackageInstaller.STATUS_FAILURE_STORAGE ->
+                OtaAttemptPolicy.Outcome.FAILED to
+                    OtaAttemptPolicy.failedState(OtaAttemptPolicy.failureCode(status))
+            else -> return // SUCCESS: the next check sees the new build and clears the record.
+        }
+        val code = if (outcome == OtaAttemptPolicy.Outcome.FAILED) OtaAttemptPolicy.failureCode(status) else null
+        OtaAttemptStore.recordOutcome(context, versionCode, outcome, code)
+        val name = OtaAttemptStore.read(context)?.takeIf { it.versionCode == versionCode }?.versionName
+        val target = name?.let { "v$it" } ?: "the update"
+        val message = if (outcome == OtaAttemptPolicy.Outcome.NEEDS_TAP) {
+            "Android on this screen needs someone to tap Install for $target. Press Install now on the screen, then tap Install."
+        } else {
+            "Installing $target failed (${OtaAttemptPolicy.failureCode(status)})."
+        }
+        PlayerLogger.i(TAG, "own update vc=$versionCode → $state")
+        // Network off the main thread: a receiver runs on it, and a blocking
+        // POST there throws (NetworkOnMainThreadException) before it is sent.
+        val pending = goAsync()
+        Thread {
+            try {
+                OtaStateReporter.report(context, state, null, message)
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 
     private fun reportOtaError(context: Context, message: String) {
@@ -233,6 +292,13 @@ class OtaInstallReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "OtaInstallReceiver"
         const val ACTION_LAUNCH_INSTALL_PROMPT = "com.educms.player.LAUNCH_INSTALL_PROMPT"
+
+        /**
+         * Set by OtaUpdateWorker on its own session's status intent: the
+         * versionCode being installed. Absent on every other session this
+         * receiver hears about (the companion Manager install).
+         */
+        const val EXTRA_SELF_OTA_VERSION_CODE = "com.educms.player.extra.SELF_OTA_VERSION_CODE"
 
         /**
          * AND-006 — in-process hand-off of the system-minted install

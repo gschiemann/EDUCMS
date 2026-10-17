@@ -2241,7 +2241,11 @@
       "sublineLastHeard": "Última respuesta de la pantalla: {time}",
       "sublineWaiting": "Puede tardar hasta 30 minutos.",
       "sublineInstalled": "v{version} instalada",
-      "sublineNoVersion": "Versión aún no informada"
+      "sublineNoVersion": "Versión aún no informada",
+      "needsTap": "Necesita que alguien toque Instalar en la pantalla",
+      "sublineNeedsTap": "Android en esta pantalla pide que una persona confirme. Pulsa «Install now» en la pantalla y luego toca Instalar.",
+      "failed": "La instalación falló ({code})",
+      "sublineFailed": "La pantalla conservó la actualización descargada. Pulsa «Install now» en la pantalla para intentarlo de nuevo."
     },
     "trust": {
       "repairTitle": "Es necesario reparar la confianza del dispositivo. Restablece la confianza desde la configuración de esta pantalla.",
