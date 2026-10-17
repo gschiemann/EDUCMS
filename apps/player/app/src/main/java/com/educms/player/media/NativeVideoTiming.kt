@@ -104,6 +104,8 @@ internal class NativeTimingLedger(private val store: Store, private val capacity
 
     val size: Int get() = entries.size
     val hasLive: Boolean get() = live != null
+    /** The BOOT_COUNT the live checkpoint was written under, or null when it carries none. */
+    val liveBootCount: Long? get() = live?.let { l -> if (l.has("bootCount") && !l.isNull("bootCount")) l.optLong("bootCount", -1L).takeIf { it >= 0 } else null }
 
     /** The session the previous process never closed becomes an entry of its own; false when there was none. */
     @Synchronized fun recoverLive(reason: String, atMs: Long): Boolean {
@@ -152,6 +154,12 @@ internal class NativeTimingLedger(private val store: Store, private val capacity
         const val PREFS = "native_video_timing"
         const val KEY = "ledger"
         const val REASON_PROCESS_ENDED = "process-ended"
+        /** The panels reboot nightly on an OEM schedule (`reboot` at a round hour): a checkpoint from an earlier boot died with the device. */
+        const val REASON_DEVICE_REBOOTED = "device-rebooted"
+
+        /** Why the previous session never closed: a different boot count is a device reboot, anything else a process death. */
+        fun recoveryReason(liveBootCount: Long?, currentBootCount: Long?): String =
+            if (liveBootCount != null && currentBootCount != null && liveBootCount != currentBootCount) REASON_DEVICE_REBOOTED else REASON_PROCESS_ENDED
 
         fun prefsStore(ctx: Context): Store = object : Store {
             private val prefs = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -161,13 +169,16 @@ internal class NativeTimingLedger(private val store: Store, private val capacity
 
         @Volatile private var shared: NativeTimingLedger? = null
 
-        /** The process-wide ledger; the first use recovers a checkpoint the previous process left behind. */
+        /** The process-wide ledger; the first use recovers a checkpoint the previous process (or boot) left behind. */
         fun shared(ctx: Context): NativeTimingLedger {
             shared?.let { return it }
             synchronized(this) {
                 shared?.let { return it }
                 val l = NativeTimingLedger(prefsStore(ctx))
-                l.recoverLive(REASON_PROCESS_ENDED, System.currentTimeMillis())
+                val current = runCatching {
+                    android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT).toLong()
+                }.getOrNull()
+                l.recoverLive(recoveryReason(l.liveBootCount, current), System.currentTimeMillis())
                 shared = l
                 return l
             }

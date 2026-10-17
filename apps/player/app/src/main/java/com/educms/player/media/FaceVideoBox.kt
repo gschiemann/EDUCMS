@@ -374,6 +374,12 @@ internal object FaceVideoBox {
         }
     }
 
+    @Volatile private var bootCountMemo: Long? = null
+    /** Android's BOOT_COUNT (API 24+), read once per process; null when the setting cannot be read. */
+    private fun bootCount(ctx: android.content.Context): Long? = bootCountMemo ?: runCatching {
+        android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT).toLong()
+    }.getOrNull()?.also { bootCountMemo = it }
+
     /** `modeId:WxH@Hz` of the display the surface is on (API 23+), or "" when it cannot be read. UI thread. */
     private fun displayModeOf(sv: SurfaceView): String = runCatching {
         val m = sv.display?.mode ?: return@runCatching ""
@@ -502,9 +508,12 @@ internal object FaceVideoBox {
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=webviewInvisible applied=true sha=${s.sha256.take(8)}")
                 }
                 queueDiagnostics(host, s)
+                // Four buffer samples per handoff (at reveal, +10 s, +60 s, +5 min): the
+                // first ten seconds on the M43 read as an unreadable uniform buffer.
                 probeOutput(host, s, sv)
                 main.postDelayed({ probeOutput(host, s, sv) }, 10_000)
                 main.postDelayed({ probeOutput(host, s, sv) }, 60_000)
+                main.postDelayed({ probeOutput(host, s, sv) }, 300_000)
             } else if (s.layer.phase == SoloVideoLayer.Phase.RETIRED && live(host, s)) {
                 stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else "page-stopped")
             }
@@ -686,14 +695,14 @@ internal object FaceVideoBox {
         }, delay)
     }
 
-    /** Three tiny buffer samples per handoff; a retired session can never report them. */
+    /** Four tiny buffer samples per handoff; a retired session can never report them, and none is a verdict about the glass. */
     private fun probeOutput(host: SharedVideoHost, s: FaceVideoSession, surface: SurfaceView) {
         NativeVideoSurfaceProbe.capture(surface, main,
             current = { synchronized(this) { live(host, s) && s.surface === surface &&
                 s.state == "presenting" && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW } },
             report = { sample -> synchronized(this) {
                 if (live(host, s) && s.surface === surface && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
-                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_OUTPUT face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sample=surface-buffer $sample frames=${s.unique} ptsUs=${s.ptsUs} sha=${s.sha256.take(8)}")
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_OUTPUT face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sample=surface-buffer $sample frames=${s.unique} ptsUs=${s.ptsUs} displayMode=${s.surface?.let { displayModeOf(it) } ?: s.displayMode} sha=${s.sha256.take(8)}")
                     queueDiagnostics(host, s)
                 }
             } })
@@ -713,8 +722,10 @@ internal object FaceVideoBox {
             .put("composition", s.layer.mode.name.lowercase(Locale.ROOT)).put("layer", s.layer.phase.name.lowercase(Locale.ROOT))
             .put("reason", reason ?: JSONObject.NULL)
             .put("elapsedMs", if (s.startedAt > 0) nowMs - s.startedAt else 0)
+            .put("bootCount", bootCount(host.ctx) ?: JSONObject.NULL)
             .put("fps", s.descriptor?.fps ?: 0.0)
-            .put("refreshRate", s.displayRefreshRate.toDouble()).put("displayMode", s.displayMode)
+            .put("refreshRate", (s.surface?.display?.refreshRate ?: s.displayRefreshRate).toDouble())
+            .put("displayMode", s.surface?.let { displayModeOf(it) }?.takeIf { it.isNotEmpty() } ?: s.displayMode)
             .put("decodedFrames", base?.optLong("decodedFrames") ?: 0L).put("submittedFrames", base?.optLong("submittedFrames") ?: 0L)
             .put("lateFrames", base?.optLong("lateFrames") ?: 0L).put("maxLateUs", base?.optLong("maxLateUs") ?: 0L)
             .put("maxSubmitGapMs", base?.optLong("maxSubmitGapMs") ?: 0L)
@@ -728,10 +739,12 @@ internal object FaceVideoBox {
     /** The live `timing` block: the renderer's scheduling snapshot plus the glass-side measurement and the persisted history. */
     private fun timingJson(host: SharedVideoHost, s: FaceVideoSession): Any {
         val base = s.renderer?.timing() ?: s.finalTiming ?: return JSONObject.NULL
+        // The display's CURRENT mode and refresh rate ride on every snapshot (lead, 2026-10-17:
+        // overlay vs GPU composition is a candidate for the M43's late-frame residue).
         val j = JSONObject(base.toString())
             .put("droppedFrames", s.drops)
             .put("sourceFps", s.descriptor?.fps ?: 0.0)
-            .put("refreshRate", s.displayRefreshRate.toDouble())
+            .put("refreshRate", (s.surface?.display?.refreshRate ?: s.displayRefreshRate).toDouble())
             .put("displayMode", s.surface?.let { displayModeOf(it) }?.takeIf { it.isNotEmpty() } ?: s.displayMode)
         s.intervals?.writeTo(j)
         runCatching { j.put("history", NativeTimingLedger.shared(host.ctx).snapshot()) }

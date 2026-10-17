@@ -122,6 +122,24 @@ class NativeVideoTimingTest {
         assertEquals(3, next.snapshot().getJSONArray("entries").length())
     }
 
+    @Test fun aCheckpointFromAnEarlierBootIsADeviceRebootNotAProcessDeath() {
+        // The fleet's panels reboot nightly on an OEM schedule; the accounting must survive the device, not just the process.
+        assertEquals("device-rebooted", NativeTimingLedger.recoveryReason(41, 42))
+        assertEquals("process-ended", NativeTimingLedger.recoveryReason(42, 42))
+        assertEquals("process-ended", NativeTimingLedger.recoveryReason(null, 42))
+        assertEquals("process-ended", NativeTimingLedger.recoveryReason(41, null))
+        val store = Memory()
+        NativeTimingLedger(store, capacity = 4).live(entry(1, "running").put("bootCount", 41))
+        val next = NativeTimingLedger(store, capacity = 4)
+        assertEquals(41L, next.liveBootCount)
+        assertTrue(next.recoverLive(NativeTimingLedger.recoveryReason(next.liveBootCount, 42), 5L))
+        assertEquals("device-rebooted", next.snapshot().getJSONArray("entries").getJSONObject(0).getString("reason"))
+        assertEquals(41L, next.snapshot().getJSONArray("entries").getJSONObject(0).getLong("bootCount"))
+        // A checkpoint without a boot count, or a boot count that cannot be read, is a process death.
+        NativeTimingLedger(store, capacity = 4).live(entry(2, "running").put("bootCount", JSONObject.NULL))
+        assertNull(NativeTimingLedger(store, capacity = 4).liveBootCount)
+    }
+
     @Test fun aCleanEndClearsTheCheckpointAndGarbageOnDiskIsAnEmptyLedgerNotACrash() {
         val store = Memory()
         val ledger = NativeTimingLedger(store, capacity = 2)
