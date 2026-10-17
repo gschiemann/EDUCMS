@@ -240,6 +240,8 @@ const nativeTimingHistoryEntrySchema = z.strictObject({
   layer: layerMode().optional(),
   reason: code().optional(),
   recovered: z.boolean().optional(),
+  /** Android BOOT_COUNT at write time: tells a device reboot from a process death on recovery. */
+  bootCount: safeCount().optional(),
   elapsedMs: safeCount().optional(),
   fps: z.number().finite().gt(0).max(240).optional(),
   decodedFrames: safeCount().optional(),
@@ -265,7 +267,8 @@ const nativeDeviceClassSchema = z.strictObject({
   nativeSolo: z.boolean(),
   composition: compositionMode().optional(),
   protocol3: z.boolean(),
-  silentUpdate: z.enum(['installer-of-record', 'device-owner', 'tap', 'external']),
+  // Two values only (owner 2026-10-17: the Manager is never device owner).
+  silentUpdate: z.enum(['installer-of-record', 'tap']),
   qualified: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).optional(),
 });
 

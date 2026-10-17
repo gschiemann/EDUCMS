@@ -25,7 +25,9 @@ import java.util.Locale
  *    (`zone-overlap`, decided by the API and the page, which know the
  *    template) and transitions between native items are hard cuts handed
  *    over by the held first frame;
- *  • which unattended-update path this box can take ([Resolved.silentUpdate]).
+ *  • which update path this box has ([Resolved.silentUpdate]): silent as its
+ *    own installer of record on Android 12+, else a tap on the glass — the
+ *    Manager is never device owner (owner decision 2026-10-17).
  *
  * The APK reports what it resolved on every `sharedVideoState` reply
  * (`device`), so the dashboard can show which class a screen is in and what
@@ -44,16 +46,17 @@ import java.util.Locale
 internal object DeviceClassPolicy {
     enum class Soc { AMLOGIC, ROCKCHIP, NOVASTAR, OTHER }
 
-    /** The path an update can take without a person at the glass. */
+    /**
+     * The path an update takes. Owner decision 2026-10-17: the Manager is
+     * NEVER device owner, so there are exactly two: silent, or a tap on the
+     * glass. (A NovaStar Taurus is updated by NovaStar's ViPlex layer, not by
+     * our OTA at all; it reports `tap` like every other non-silent box.)
+     */
     enum class SilentUpdate(val wire: String) {
-        /** API 31+ and this APK is its own installer of record: USER_ACTION_NOT_REQUIRED is honoured. */
+        /** Android 12+ and this APK is its own installer of record (a previous OTA installed it): USER_ACTION_NOT_REQUIRED is honoured. */
         INSTALLER_OF_RECORD("installer-of-record"),
-        /** The Manager companion is device owner: silent installs on Android 7 through 14. */
-        DEVICE_OWNER("device-owner"),
-        /** Neither: Android's own Install dialog needs a tap on the glass. */
+        /** Everything else: Android's own Install dialog needs a tap on the glass. */
         TAP("tap"),
-        /** NovaStar's ViPlex layer installs and launches us; our OTA does not run here. */
-        EXTERNAL("external"),
     }
 
     /** What the box says about itself. Every string is already lower-cased by [resolve]. */
@@ -70,8 +73,6 @@ internal object DeviceClassPolicy {
         val posterClass: Boolean = false,
         /** The installer of record of this APK is this APK (a previous OTA installed it). */
         val selfInstaller: Boolean = false,
-        /** `com.educms.manager` (or its debug id) is device owner. */
-        val managerDeviceOwner: Boolean = false,
     )
 
     data class Resolved(
@@ -159,12 +160,7 @@ internal object DeviceClassPolicy {
         val sdk = f.sdk
         val className = "${soc.name.lowercase(Locale.ROOT)}/android-${androidMajor(sdk)}"
         val nativeSolo = soc != Soc.NOVASTAR && SoloVideoLayer.mode(2, 0, sdk) != null
-        val silentUpdate = when {
-            soc == Soc.NOVASTAR -> SilentUpdate.EXTERNAL
-            sdk >= 31 && f.selfInstaller -> SilentUpdate.INSTALLER_OF_RECORD
-            f.managerDeviceOwner -> SilentUpdate.DEVICE_OWNER
-            else -> SilentUpdate.TAP
-        }
+        val silentUpdate = if (sdk >= 31 && f.selfInstaller) SilentUpdate.INSTALLER_OF_RECORD else SilentUpdate.TAP
         return Resolved(
             className = className,
             fleet = fleet(soc, sdk),
@@ -207,7 +203,6 @@ internal object DeviceClassPolicy {
             manufacturer = Build.MANUFACTURER ?: "",
             posterClass = runCatching { com.educms.player.led.LedCanvasHost.isPosterClass(app) }.getOrDefault(false),
             selfInstaller = runCatching { installerOfRecord(app) == app.packageName }.getOrDefault(false),
-            managerDeviceOwner = runCatching { managerIsDeviceOwner(app) }.getOrDefault(false),
         )
         val resolved = resolve(facts)
         memo = resolved
@@ -230,8 +225,4 @@ internal object DeviceClassPolicy {
             ctx.packageManager.getInstallerPackageName(ctx.packageName)
         }
 
-    private fun managerIsDeviceOwner(ctx: Context): Boolean {
-        val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager ?: return false
-        return listOf("com.educms.manager", "com.educms.manager.debug").any { dpm.isDeviceOwnerApp(it) }
-    }
 }

@@ -43,9 +43,10 @@ class DeviceClassPolicyTest {
         assertTrue(r.nativeSolo)
         assertEquals(SoloVideoLayer.Mode.DYNAMIC_ABOVE, r.composition)
         assertTrue(r.protocol3)
-        // API 30: the silent-install hint is API 31; installer-of-record alone is not enough.
+        // API 30: the silent-install hint is API 31; installer-of-record alone is not enough, and
+        // there is no device-owner path (the Manager is never device owner, owner 2026-10-17).
         assertEquals(SilentUpdate.TAP, DeviceClassPolicy.resolve(t982a11.copy(selfInstaller = true)).silentUpdate)
-        assertEquals(SilentUpdate.DEVICE_OWNER, DeviceClassPolicy.resolve(t982a11.copy(managerDeviceOwner = true)).silentUpdate)
+        assertEquals(SilentUpdate.TAP, r.silentUpdate)
     }
 
     @Test fun rockchipRk3288Android7IsStaticAboveOnBothFacesAndNeverUnderTheWindow() {
@@ -58,7 +59,8 @@ class DeviceClassPolicyTest {
         for (face in 0..1) assertEquals(SoloVideoLayer.Mode.STATIC_ABOVE, r.composition(2, face))
         assertNull(r.composition(2, 2))
         assertEquals(SilentUpdate.TAP, r.silentUpdate)
-        assertEquals(SilentUpdate.DEVICE_OWNER, DeviceClassPolicy.resolve(rk3288a7.copy(managerDeviceOwner = true)).silentUpdate)
+        // Android 7 has no silent path at all, whoever installed us.
+        assertEquals(SilentUpdate.TAP, DeviceClassPolicy.resolve(rk3288a7.copy(selfInstaller = true)).silentUpdate)
     }
 
     @Test fun rockchipRk3328Android11IsDynamicAbove() {
@@ -83,7 +85,7 @@ class DeviceClassPolicyTest {
     }
 
     @Test fun novaStarTaurusIsNeverNativeWhateverTheStringsOrSwitchesSay() {
-        for (f in listOf(taurus, taurus.copy(model = "Taurus TB40", board = "rk3399"), Facts(sdk = 30, posterClass = true), Facts(sdk = 33, manufacturer = "NovaStar", selfInstaller = true, managerDeviceOwner = true))) {
+        for (f in listOf(taurus, taurus.copy(model = "Taurus TB40", board = "rk3399"), Facts(sdk = 30, posterClass = true), Facts(sdk = 33, manufacturer = "NovaStar"))) {
             val r = DeviceClassPolicy.resolve(f)
             assertEquals(Soc.NOVASTAR, r.soc)
             assertFalse(r.nativeSolo)
@@ -91,7 +93,7 @@ class DeviceClassPolicyTest {
             assertNull(r.composition(2, 0))
             assertEquals(SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE, r.refusal(2, 0))
             assertFalse(r.protocol3)
-            assertEquals(SilentUpdate.EXTERNAL, r.silentUpdate)
+            assertEquals(SilentUpdate.TAP, r.silentUpdate)
             assertTrue(r.fleet!!.contains("Taurus"))
         }
     }
@@ -155,7 +157,8 @@ class DeviceClassPolicyTest {
         assertTrue(j.isNull("qualified"))
         assertTrue(j.getString("fleet").length <= 96)
         assertTrue(DeviceClassPolicy.resolve(taurus).toJson().isNull("composition"))
-        assertEquals("external", DeviceClassPolicy.resolve(taurus).toJson().getString("silentUpdate"))
+        assertEquals("installer-of-record", DeviceClassPolicy.resolve(t982a13).toJson().getString("silentUpdate"))
+        assertEquals(setOf("INSTALLER_OF_RECORD", "TAP"), SilentUpdate.values().map { it.name }.toSet())
     }
 
     @Test fun webviewMajorAndAndroidMajorReadWhatTheyCanAndNeverInvent() {

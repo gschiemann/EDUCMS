@@ -448,7 +448,7 @@ describe('POST /screens/:id/telemetry', () => {
       sourceWidth:2160,sourceHeight:3840,droppedFrames:0,sourceFps:30,refreshRate:60,displayMode:'1:3840x2160@60.00',
       intervalUnitNs:8333333,intervalBuckets:buckets,intervalCount:1800,intervalMinNs:31000000,intervalMaxNs:52000000,intervalLastNs:33300000,intervalMeanNs:33333333,
       history:{entries:[{at:1760700000000,uptimeMs:123456,face:0,sha8:'d4d05533',build:'1.1.41-field.1',protocol:2,composition:'dynamic_above',layer:'retired',
-        reason:'process-ended',recovered:true,elapsedMs:3600000,fps:30,refreshRate:60,displayMode:'1:3840x2160@60.00',decodedFrames:108000,submittedFrames:107990,
+        reason:'device-rebooted',recovered:true,bootCount:41,elapsedMs:3600000,fps:30,refreshRate:60,displayMode:'1:3840x2160@60.00',decodedFrames:108000,submittedFrames:107990,
         lateFrames:12,maxLateUs:12000,maxSubmitGapMs:98,droppedFrames:1,loops:12,uniqueFrames:107990,codecName:'OMX.amlogic.avc.decoder.awesome2',
         webviewInvisible:false,intervalUnitNs:8333333,intervalBuckets:buckets,intervalCount:107989,intervalMinNs:1,intervalMaxNs:1,intervalLastNs:1,intervalMeanNs:1}],overflow:3,capacity:6}};
     const device = {class:'amlogic/android-13',fleet:'Amlogic t982 / Android 13 (M43, L55VEC)',soc:'amlogic',sdk:33,webviewMajor:101,nativeSolo:true,
@@ -475,6 +475,7 @@ describe('POST /screens/:id/telemetry', () => {
       ['free-text class',{...device,class:'M43 Goodview'}],
       ['unknown soc',{...device,soc:'intel'}],
       ['unknown update path',{...device,silentUpdate:'magic'}],
+      ['a device-owner path (the Manager is never device owner)',{...device,silentUpdate:'device-owner'}],
       ['extra key',{...device,serial:'x'}],
     ] as const) {
       expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:badDevice}}).success}).toEqual({name,ok:false});

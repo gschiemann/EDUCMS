@@ -83,7 +83,7 @@ describe("optional native output handoff", () => {
       maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
     const buckets = Array.from({ length: 16 }, (_, i) => (i === 4 ? 1700 : 0));
     const entry = { at: 1760700000000, face: 0, sha8: "d4d05533", build: "1.1.41-field.1", protocol: 2, composition: "static_above",
-      layer: "retired", reason: "process-ended", recovered: true, elapsedMs: 10, fps: 30, refreshRate: 60, displayMode: "1:1920x1080@60.00",
+      layer: "retired", reason: "device-rebooted", recovered: true, bootCount: 41, elapsedMs: 10, fps: 30, refreshRate: 60, displayMode: "1:1920x1080@60.00",
       decodedFrames: 5, droppedFrames: 1, codecName: "OMX.rk.video_decoder.avc", webviewInvisible: true, surfaceFrameRate: "only-if-seamless",
       intervalUnitNs: 8333333, intervalBuckets: buckets, intervalCount: 1700, url: "https://evil.example" };
     const full = { ...nine, droppedFrames: 3, sourceFps: 30, refreshRate: 60, displayMode: "2:3840x2160@59.94", intervalUnitNs: 8333333,
@@ -96,7 +96,7 @@ describe("optional native output handoff", () => {
     expect(t.history?.overflow).toBe(2);
     expect(t.history?.capacity).toBe(6);
     expect(t.history?.entries).toHaveLength(2);
-    expect(t.history?.entries[0]).toMatchObject({ at: 1760700000000, sha8: "d4d05533", build: "1.1.41-field.1", composition: "static_above", reason: "process-ended", recovered: true, intervalBuckets: buckets, webviewInvisible: true, surfaceFrameRate: "only-if-seamless" });
+    expect(t.history?.entries[0]).toMatchObject({ at: 1760700000000, sha8: "d4d05533", build: "1.1.41-field.1", composition: "static_above", reason: "device-rebooted", recovered: true, bootCount: 41, intervalBuckets: buckets, webviewInvisible: true, surfaceFrameRate: "only-if-seamless" });
     expect(t.history?.entries[0]).not.toHaveProperty("url");
     expect(t.history?.entries[1]).toEqual({ at: 1 });
     // Malformed measurement fields are dropped one by one; the nine counters survive.
@@ -119,8 +119,10 @@ describe("optional native output handoff", () => {
     expect(readNativeSharedVideoState({ ...state(), device: { ...device, silentUpdate: "magic" } })?.device).toBeUndefined();
     expect(readNativeSharedVideoState(state())?.device).toBeUndefined();
     expect(readNativeSharedVideoState({ ...state(), experiments: { requested: {} } })?.experiments).toBeUndefined();
-    expect(readNativeDeviceClass({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "external", qualified: "2026-10-21" }))
-      .toEqual({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "external", qualified: "2026-10-21" });
+    expect(readNativeDeviceClass({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "tap", qualified: "2026-10-21" }))
+      .toEqual({ class: "novastar/android-11", soc: "novastar", sdk: 30, webviewMajor: 83, nativeSolo: false, protocol3: false, silentUpdate: "tap", qualified: "2026-10-21" });
+    // Owner 2026-10-17: the Manager is never device owner, so that path is not a value a state may carry.
+    expect(readNativeDeviceClass({ class: "rockchip/android-7", soc: "rockchip", sdk: 25, webviewMajor: 87, nativeSolo: true, protocol3: true, silentUpdate: "device-owner" })).toBeNull();
   });
 
   it("1.1.41: the experiment flags ride on the protocol-2 descriptor outside its identity, and only decoderRotation changes the orientation request", () => {

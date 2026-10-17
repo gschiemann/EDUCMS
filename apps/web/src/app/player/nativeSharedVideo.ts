@@ -123,6 +123,8 @@ export interface NativeTimingHistoryEntry {
   layer?: "under_window" | "queued" | "revealing" | "above_window" | "retired";
   reason?: string;
   recovered?: boolean;
+  /** Android's BOOT_COUNT when the entry was written: a recovered entry whose count differs from the current boot died with the device, not just the process. */
+  bootCount?: number;
   elapsedMs?: number;
   fps?: number;
   refreshRate?: number;
@@ -158,7 +160,8 @@ export interface NativeDeviceClass {
   nativeSolo: boolean;
   composition?: "dynamic_above" | "static_above";
   protocol3: boolean;
-  silentUpdate: "installer-of-record" | "device-owner" | "tap" | "external";
+  /** Two values only (owner 2026-10-17: the Manager is never device owner). */
+  silentUpdate: "installer-of-record" | "tap";
   qualified?: string;
 }
 
@@ -214,7 +217,7 @@ function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
   if (!record(v) || !count(v.at)) return null;
   const e: NativeTimingHistoryEntry = { at: v.at };
   for (const k of ["uptimeMs", "elapsedMs", "decodedFrames", "submittedFrames", "lateFrames", "maxLateUs", "maxSubmitGapMs",
-    "droppedFrames", "loops", "uniqueFrames"] as const) if (count(v[k])) e[k] = v[k];
+    "droppedFrames", "loops", "uniqueFrames", "bootCount"] as const) if (count(v[k])) e[k] = v[k];
   if (v.face === 0 || v.face === 1) e.face = v.face;
   if (typeof v.sha8 === "string" && SHA8_RE.test(v.sha8)) e.sha8 = v.sha8;
   if (typeof v.build === "string" && BUILD_RE.test(v.build)) e.build = v.build;
@@ -257,7 +260,7 @@ export function readNativeVideoTiming(value: unknown): NativeVideoTiming | undef
 }
 
 const SOCS = new Set(["amlogic", "rockchip", "novastar", "other"]);
-const SILENT_UPDATES = new Set(["installer-of-record", "device-owner", "tap", "external"]);
+const SILENT_UPDATES = new Set(["installer-of-record", "tap"]);
 
 /** The APK's resolved device class, bounded; null when the reply carries none (every APK before 1.1.41). */
 export function readNativeDeviceClass(v: unknown): NativeDeviceClass | null {
