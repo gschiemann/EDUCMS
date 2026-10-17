@@ -86,3 +86,9 @@ ffa3763a8217b6bb65477a56151a564a9e6c8e04:apps/api/src/player-ota/field-candidate
 # Verified APK integrity digest of private 1.1.41-field.1, signed CI run 39074710993 on source ce7ea68b;
 # the line also carries an inline gitleaks:allow (the .39/.40 form). A public hash, never a signing secret.
 ca3d0a4449e5a95a36b25f3d339ae11987e634c6:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:137
+# The 1.1.41 APK report was force-added in ca3d0a44 and carries the same public
+# APK integrity digest in its provenance table (lines 25-26). The file is taken
+# back out of the repo (docs/research is gitignored by design); these two lines
+# keep the full-history scan on master green. Never a signing secret.
+ca3d0a4449e5a95a36b25f3d339ae11987e634c6:docs/research/2026-10-17-player-rock-solid/02-apk-1-1-41.md:venueos-hardcoded-256bit-hex-secret:25
+ca3d0a4449e5a95a36b25f3d339ae11987e634c6:docs/research/2026-10-17-player-rock-solid/02-apk-1-1-41.md:venueos-hardcoded-256bit-hex-secret:26
