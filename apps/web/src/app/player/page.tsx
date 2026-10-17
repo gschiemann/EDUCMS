@@ -3,8 +3,8 @@ import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
 import { committedNativeVideo } from './nativeMediaCommit';
 import { discoverNativeVideoProtocol } from './nativeVideoProtocolProbe';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
-import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
-import { readNativeSharedVideoDescriptor, pickNativeVideo, nativeVideoBlocked, nativeVideoBlockedNoted, sharedVideoEligible, nativeSharedVideoEvidence, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
+import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, overlappedTemplateZoneIds, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
+import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, nativeVideoFallbackLine, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
@@ -2389,9 +2389,15 @@ function getDeviceInfo() {
     pxW = parseInt(qp.get('w') || '0', 10) || 0;
     pxH = parseInt(qp.get('h') || '0', 10) || 0;
   } catch {}
+  // 2026-10-17 — say WHICH size this is. The server keeps a known panel size
+  // over a smaller report unless it is the device's own (`device`): a
+  // browser-sized `window.screen` (a face, a page that lost its query) once
+  // moved a 2160×3840 screen onto the 1080p copy (registered-resolution.ts).
+  let resolutionSource: 'device' | 'browser' = 'device';
   if (!pxW || !pxH) {
     pxW = window.screen.width;
     pxH = window.screen.height;
+    resolutionSource = 'browser';
   }
 
   // 2026-05-03 — capability snapshot. Lets the server know which
@@ -2411,6 +2417,7 @@ function getDeviceInfo() {
 
   return {
     resolution: `${pxW}×${pxH}`,
+    resolutionSource,
     osInfo: os,
     browserInfo: `${browser} ${navigator.language}`,
     userAgent: ua,
@@ -2878,6 +2885,8 @@ function PlayerPage() {
   const [nativeVideoDescriptor, setNativeVideoDescriptor] = useState<NativeVideoDescriptor | null>(null);
   const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | 3 | null>(null);
   const nativeSkipLogged = useRef(false);
+  /** Template zones already reported as `zone-overlap` this document (codes only, once each). */
+  const nativeOverlapLogged = useRef(new Set<string>());
   // ── Protocol 3 (2026-10-12, nativeZones.ts): positioned native slots for
   // mixed playlists and template VIDEO zones. `nativeHoles` is the set of
   // slots whose native picture is on glass right now, each with the hole to
@@ -6433,8 +6442,13 @@ function PlayerPage() {
           || (typeof document !== 'undefined' && document.documentElement.getAttribute('data-led-cfg') === '1');
         const effectiveOrient = ledPinned ? 'AUTO' : orient;
         if (ledPinned && orient !== 'AUTO') console.warn(`[Player] manifest orientation ${orient} ignored on a pinned LED canvas — releasing to AUTO`);
-        // No-op off-APK — the CSS fallback effect handles it.
-        nativeFire('setOrientation', effectiveOrient);
+        // No-op off-APK — the CSS fallback effect handles it. 1.1.41 experiment 3
+        // (`decoderRotation` on this screen's nativeVideo descriptor): ask for the
+        // panel's NATURAL orientation instead; the body-rotation fallback below
+        // lays the web content out and the native decoder rotates the video.
+        const requestedOrient = nativeOrientationRequest(effectiveOrient, em ? null : readNativeVideoDescriptor(manifest.nativeVideo));
+        if (requestedOrient !== effectiveOrient) console.warn(`[Player] PLAYER_NATIVE_VIDEO_EXPERIMENT name=decoderRotation orientation=${effectiveOrient} requested=${requestedOrient}`);
+        nativeFire('setOrientation', requestedOrient);
         setManifestOrientation(effectiveOrient);
       }
 
@@ -11777,6 +11791,9 @@ function PlayerPage() {
       if (!nativeVideoItems || nativeVideoProtocol !== 3 || isInteractive || tplScenes.length > 0 || !!activeEmergency || playlist?.isEmergency === true) return 0;
       return zones.filter((z: any) => z.widgetType === 'VIDEO' && !!nativeZoneItemFor(nativeVideoItems, `zone:${z.id}`)).length;
     })();
+    // 1.1.41 — a native slot sits ABOVE the window, so nothing of the page can
+    // draw over it: a VIDEO zone another zone overlaps stays web (`zone-overlap`).
+    const nativeOverlappedZones = nativeZoneCount > 0 ? overlappedTemplateZoneIds(zones) : null;
 
     // Stop splash short-circuit before rendering template widgets
     // so the whole widget tree tears down (stopping any animations,
@@ -12080,18 +12097,24 @@ function PlayerPage() {
                   />
                 </Suspense>
               );
-              // Protocol 3 (2026-10-12): an eligible VIDEO zone is decoded
-              // natively BELOW the WebView at this zone's measured rect; the
-              // web <video> stays until native holds the first frame, then
-              // this wrapper unmounts it and the backdrop above cuts the hole.
+              // Protocol 3 (2026-10-12; above-window since 1.1.41): an eligible
+              // VIDEO zone is decoded natively on a surface ABOVE the WebView at
+              // this zone's measured rect; the web <video> stays until native
+              // holds the first frame and reports the slot on its rect, then
+              // this wrapper unmounts it underneath the native picture.
               const slot = `zone:${zone.id}`;
               const zoneItem = nativeZoneCount > 0 && zone.widgetType === 'VIDEO' && templateZoneConfigEligible(cfg)
                 ? nativeZoneItemFor(nativeVideoItems, slot) : null;
+              const zoneOverlapped = !!zoneItem && !!nativeOverlappedZones?.has(String(zone.id));
+              if (zoneOverlapped && zoneItem && nativeVideoItems && !nativeOverlapLogged.current.has(slot)) {
+                nativeOverlapLogged.current.add(slot);
+                reportNativeFallback(nativeVideoFallbackLine({ reason: 'zone-overlap', next: 'stay', attempt: 0, protocol: 3, faceIndex: nativeVideoItems.faceIndex, sha256: zoneItem.asset.sha256, stage: 'zone' }));
+              }
               const zoneNative = nativeZoneEligible(nativeVideoItems, zoneItem, {
                 screenId, tenantId, protocol: nativeVideoProtocol, sha256: null,
                 emergency: !!activeEmergency || playlist?.isEmergency === true,
                 sync: syncConfigRef.current.enabled, preview: isPreviewMode(),
-                blocked: !!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0),
+                blocked: zoneOverlapped || (!!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0)),
               });
               if (!zoneNative || !nativeVideoItems || !zoneItem) return widget;
               const zoneRotation = typeof (cfg as any)._zoneRotation === 'number' ? (cfg as any)._zoneRotation : 0;
@@ -12596,10 +12619,11 @@ function PlayerPage() {
                 const d = nativeVideoDescriptor;
                 reportNativeFallback(`[Player] PLAYER_NATIVE_VIDEO_SKIPPED desc=${d ? 'yes' : 'no'} proto=${nativeVideoProtocol ?? 'none'} choice=${nativeChoice ? 'yes' : 'no'} solo=${isSoloPlaylist && sorted.length === 1} muted=${(item as { muted?: boolean | null }).muted !== false} active=${isActive} sha=${d ? (d.asset.sha256 === (item.asset.fileHash ?? '') ? 'match' : 'differ') : 'n/a'} asset=${d ? (d.asset.id === item.asset.id ? 'match' : 'differ') : 'n/a'} sync=${syncConfigRef.current.enabled} preview=${isPreviewMode()} emergency=${!!activeEmergency} (web fallback)`);
               }
-              // Protocol 3 (2026-10-12, nativeZones.ts): a video inside a
-              // MIXED playlist. Pre-rolled while this slide is the hidden
-              // next-up, shown through the media root's hole once it is
-              // active, plays once, then lingers behind the next slide's fade.
+              // Protocol 3 (2026-10-12, nativeZones.ts; above-window since
+              // 1.1.41): a video inside a MIXED playlist. Pre-rolled while this
+              // slide is the hidden next-up, moved onto its rect above the page
+              // once it is active, plays once, and stops when the slide leaves
+              // (a hard cut; the next native item's held frame takes over).
               const zoneSlot = `item:${(item as { itemId?: string | null }).itemId ?? ''}`;
               const zoneItem = !nativeEligible && (item as { itemId?: string | null }).itemId && !useVideoPlaylistDeck
                 ? nativeZoneItemFor(nativeVideoItems, zoneSlot) : null;

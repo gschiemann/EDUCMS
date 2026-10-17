@@ -9,6 +9,7 @@ import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGu
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
+import { registeredResolution } from './registered-resolution';
 import { loadDemotedSources } from './playback-demotions';
 import { NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
@@ -629,6 +630,10 @@ export class ScreensController {
   async register(@Body() body: {
     deviceFingerprint: string;
     resolution?: string;
+    /** Where `resolution` came from (2026-10-17): `device` = the URL's
+     *  `?w=&h=` (the APK's physical size, or an operator override);
+     *  `browser` = `window.screen`. Absent on older pages. */
+    resolutionSource?: string;
     osInfo?: string;
     browserInfo?: string;
     userAgent?: string;
@@ -1040,7 +1045,10 @@ export class ScreensController {
           const updated = await tx.screen.update({
             where: { id: existing.id },
             data: {
-              resolution: body.resolution || existing.resolution,
+              // A browser-sized report never shrinks a known panel size
+              // (2026-10-17, registered-resolution.ts) — it moved 4K screens
+              // onto the 1080p copy.
+              resolution: registeredResolution(existing.resolution, body.resolution, body.resolutionSource),
               osInfo: body.osInfo || existing.osInfo,
               browserInfo: body.browserInfo || existing.browserInfo,
               userAgent: body.userAgent || existing.userAgent,
@@ -1193,7 +1201,7 @@ export class ScreensController {
       const updated = await this.prisma.client.screen.update({
         where: { id: existing.id },
         data: {
-          resolution: body.resolution || existing.resolution,
+          resolution: registeredResolution(existing.resolution, body.resolution, body.resolutionSource),
           osInfo: body.osInfo || existing.osInfo,
           browserInfo: body.browserInfo || existing.browserInfo,
           userAgent: body.userAgent || existing.userAgent,

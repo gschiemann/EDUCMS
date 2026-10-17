@@ -73,6 +73,12 @@ export interface StutterEvaluationInput {
   /** Settled-aggregate dropped share and samples, for the audit evidence. */
   lastPct: number | null;
   settledSamples: number;
+  /**
+   * Why the sample was recorded without grading (2026-10-17 sample guard):
+   * a page load, engine change, hand-off or player update, or a browser
+   * sample of a file the hardware engine owns. Such a sample never acts.
+   */
+  excludedReason?: string | null;
   now: Date;
 }
 
@@ -119,6 +125,10 @@ export class PlaybackDemotionService {
    */
   async evaluate(input: StutterEvaluationInput): Promise<StutterAction> {
     const th = visibleStutterThresholds(process.env);
+    // A demotion is decided only on samples from the engine the screen is
+    // supposed to be on, outside any warm-up (2026-10-17). Ingest already
+    // classes such a sample `ignored`; this is the second lock.
+    if (input.excludedReason) return { kind: 'none', why: 'excluded-sample' };
     // Only a BAD sample can start an action; GOOD/ignored ones only move the streak.
     if (input.sampleClass !== 'bad' || input.visibleBadStreak < th.streak) {
       return { kind: 'none', why: 'below-threshold' };

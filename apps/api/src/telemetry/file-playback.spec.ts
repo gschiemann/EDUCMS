@@ -15,13 +15,14 @@
 import { TelemetryController, resetTelemetryStateForTests, sanitizeVideoReport } from './telemetry.controller';
 import { screenTelemetrySchema } from './telemetry.schema';
 import {
+  expectedPlaybackEngine,
   ingestFilePlayback,
   recordFromRow,
   sanitizeMediaCaps,
   webviewMajorFromUserAgent,
   type FilePlaybackDb,
 } from './file-playback';
-import { MANIFEST_FED_MODELS, resetManifestCacheForTests, shouldBumpManifestRev } from '../screens/manifest-hot-cache';
+import { MANIFEST_FED_MODELS, resetManifestCacheForTests, setManifestCache, shouldBumpManifestRev } from '../screens/manifest-hot-cache';
 
 jest.mock('../security/required-secret', () => ({
   requireSecret: (_name: string, opts?: { devFallback?: string }) =>
@@ -102,6 +103,107 @@ describe('ingestFilePlayback', () => {
     expect(recordFromRow({ samples: 4, settledSamples: 3, frames: BigInt(5400), dropped: BigInt(3), stalls: 0, stalledMs: BigInt(0), consecutiveGood: 3, consecutiveBad: 0, concurrentMax: 1, unitConcurrentMax: 1, verdict: 'smooth' }))
       .toMatchObject({ frames: 5400, dropped: 3, verdict: 'smooth' });
     expect(recordFromRow(null)).toMatchObject({ samples: 0, verdict: 'insufficient' });
+  });
+});
+
+/**
+ * The demotion sample guard (2026-10-17, player rock-solid §4B). A sample in
+ * the warm-up of a page load, an engine change, a hand-off or a player update,
+ * or one the browser took of a file the hardware engine owns, is recorded and
+ * never graded — so it can never move the visible-stutter streak toward a
+ * demotion. M43 (2026-10-17) was one such minute away from its second one.
+ */
+describe('ingestFilePlayback — the demotion sample guard', () => {
+  const MIN = 60_000;
+  const at = (ms: number) => new Date(NOW.getTime() + ms);
+  const bad = (over: Record<string, unknown> = {}) => sample({ totalFrames: 1580, droppedFrames: 184, elapsedMs: 60_000, ...over });
+  const ingest = (db: FilePlaybackDb, s: unknown, now: Date, guard: Record<string, unknown> = {}, vc = 10140) =>
+    ingestFilePlayback(db, { screenId: 's1', tenantId: 't1', sample: s as any, playerVersionCode: vc, webviewMajor: 101, now, guard });
+
+  it('M43: two bad minutes, the nightly reload, a bad minute inside its warm-up → streak stays at 2', async () => {
+    const { db, current } = fakeDb();
+    const reload = at(2 * MIN + 30_000);
+    let r = await ingest(db, bad(), at(0), { pageLoadAt: at(-60 * MIN) });
+    expect(r).toMatchObject({ visibleClass: 'bad', visibleBadStreak: 1, excludedReason: null });
+    r = await ingest(db, bad(), at(MIN), { pageLoadAt: at(-60 * MIN) });
+    expect(r).toMatchObject({ visibleClass: 'bad', visibleBadStreak: 2 });
+    // 11.6 % in the first minute after the page load: recorded, never graded.
+    r = await ingest(db, bad(), at(3 * MIN + 31_000), { pageLoadAt: reload });
+    expect(r).toMatchObject({ visibleClass: 'ignored', visibleBadStreak: 2, excludedReason: 'page-load', settledSamples: 2 });
+    expect(current()).toMatchObject({ excludedReason: 'page-load', excludedAt: at(3 * MIN + 31_000), excludedSamples: 1, visibleBadStreak: 2, consecutiveBad: 2, samples: 3 });
+    // A minute that STARTED inside the warm-up is still excluded…
+    r = await ingest(db, bad(), at(6 * MIN), { pageLoadAt: reload });
+    expect(r).toMatchObject({ excludedReason: 'page-load', visibleBadStreak: 2 });
+    // …a real bad minute after it still counts — the feature stays.
+    r = await ingest(db, bad(), at(7 * MIN), { pageLoadAt: reload });
+    expect(r).toMatchObject({ visibleClass: 'bad', visibleBadStreak: 3, excludedReason: null });
+    // The last exclusion stays on the row for the dashboard.
+    expect(current()).toMatchObject({ excludedReason: 'page-load', excludedSamples: 2 });
+  });
+
+  it('an engine change opens a 3-minute window the next minutes of the file inherit', async () => {
+    const { db, current } = fakeDb();
+    await ingest(db, sample({ droppedFrames: 0, engine: 'native', elapsedMs: 60_000 }), at(0));
+    const r1 = await ingest(db, bad({ engine: 'continuous' }), at(MIN));
+    expect(r1).toMatchObject({ excludedReason: 'engine-change', visibleClass: 'ignored' });
+    expect(current().excludedUntil).toEqual(at(3 * MIN)); // the new engine took over at +0:00 → +3:00
+    const r2 = await ingest(db, bad({ engine: 'continuous' }), at(2 * MIN));
+    expect(r2).toMatchObject({ excludedReason: 'engine-change', visibleBadStreak: 0 });
+    const r3 = await ingest(db, bad({ engine: 'continuous' }), at(4 * MIN));
+    expect(r3).toMatchObject({ excludedReason: null, visibleClass: 'bad', visibleBadStreak: 1 });
+    expect(current()).toMatchObject({ excludedUntil: null, excludedSamples: 2 });
+  });
+
+  it('a native hand-off (new session) and a first-on-glass sample are hand-offs', async () => {
+    const { db } = fakeDb();
+    expect(await ingest(db, bad(), at(0), { nativeSessionChanged: true })).toMatchObject({ excludedReason: 'handoff', visibleClass: 'ignored' });
+    expect(await ingest(db, bad({ first: true }), at(5 * MIN))).toMatchObject({ excludedReason: 'handoff' });
+  });
+
+  it('a player update between two samples of the file is excluded for 3 minutes', async () => {
+    const { db } = fakeDb();
+    await ingest(db, sample({ droppedFrames: 0, elapsedMs: 60_000 }), at(0), {}, 10139);
+    expect(await ingest(db, bad(), at(MIN), {}, 10140)).toMatchObject({ excludedReason: 'player-update' });
+    expect(await ingest(db, bad(), at(2 * MIN), {}, 10140)).toMatchObject({ excludedReason: 'player-update' });
+    expect(await ingest(db, bad(), at(5 * MIN), {}, 10140)).toMatchObject({ excludedReason: null, visibleClass: 'bad' });
+  });
+
+  it('a screen the manifest hands the hardware engine never grades a browser sample of that file', async () => {
+    const { db, current } = fakeDb();
+    for (let i = 0; i < 5; i += 1) {
+      const r = await ingest(db, bad(), at(i * MIN + 10 * MIN), { expectedEngine: 'native' });
+      expect(r).toMatchObject({ excludedReason: 'fallback-engine', visibleClass: 'ignored', visibleBadStreak: 0 });
+    }
+    expect(recordFromRow(current())).toMatchObject({ samples: 5, settledSamples: 0, verdict: 'insufficient' });
+    expect(current().excludedSamples).toBe(5);
+  });
+
+  it('no guard context grades exactly as before', async () => {
+    const { db } = fakeDb();
+    const r = await ingestFilePlayback(db, { screenId: 's1', tenantId: 't1', sample: bad() as any, playerVersionCode: 27, webviewMajor: 120, now: NOW });
+    expect(r).toMatchObject({ visibleClass: 'bad', visibleBadStreak: 1, excludedReason: null, settledSamples: 1 });
+  });
+});
+
+describe('expectedPlaybackEngine', () => {
+  const OTHER = 'b'.repeat(64);
+  const manifest = { nativeVideo: { version: 2, asset: { sha256: SHA } } };
+
+  it('native whenever the manifest hands the hardware engine THIS file (owner rule: native is the target on every class)', () => {
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest, evidenceSha: null })).toBe('native');
+    expect(expectedPlaybackEngine({ sha256: SHA.toUpperCase(), manifest, evidenceSha: null })).toBe('native');
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest: { nativeSharedVideo: { version: 1, asset: { sha256: SHA } } }, evidenceSha: null })).toBe('native');
+  });
+
+  it('web for another file, or a manifest without the engine — even when the APK reported this file before', () => {
+    expect(expectedPlaybackEngine({ sha256: OTHER, manifest, evidenceSha: null })).toBe('web');
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest: { playlists: [] }, evidenceSha: SHA })).toBe('web');
+  });
+
+  it('with no cached manifest, the hardware engine\'s own report for this file is the evidence', () => {
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest: null, evidenceSha: SHA })).toBe('native');
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest: null, evidenceSha: OTHER })).toBe('web');
+    expect(expectedPlaybackEngine({ sha256: SHA, manifest: null, evidenceSha: null })).toBe('web');
   });
 });
 
@@ -205,6 +307,81 @@ describe('POST /screens/:id/telemetry → evidence', () => {
       video: sample(),
       mediaCaps: { configs: [{ id: '1080p30-landscape', supported: true, smooth: true, powerEfficient: true }] },
     })).resolves.toMatchObject({ ok: true });
+  });
+
+  describe('the demotion sample guard (2026-10-17)', () => {
+    const evaluate = jest.fn(async () => ({ kind: 'none', why: 'below-threshold' }));
+    const screenRow = (over: Record<string, unknown> = {}) => ({
+      id: screenId, tenantId: 'tenant-1', name: 'M43', playerVersion: '1.1.40-field.1', playerVersionCode: 10140,
+      managerVersion: null, forceApkUpdatePendingAt: null, pendingRefreshAt: null, lastOtaState: null,
+      displayCapabilitiesAt: new Date(), lastVideoReport: null, faceIndex: null,
+      credentialEpochRotatedAt: new Date(Date.now() - 6 * 60 * 60_000), ...over,
+    });
+    // Two bad minutes already on record: one more graded BAD minute reaches the threshold.
+    const twoBad = { screenId: 'x', fileSha256: SHA, samples: 40, settledSamples: 40, frames: BigInt(60000), dropped: BigInt(3000),
+      stalls: 0, stalledMs: BigInt(0), consecutiveGood: 0, consecutiveBad: 2, concurrentMax: 1, unitConcurrentMax: 1,
+      verdict: 'hitching', engine: 'continuous', playerVersionCode: 10140, visibleBadStreak: 2, excludedSamples: 0 };
+    const badMinute = () => sample({ totalFrames: 1580, droppedFrames: 184, elapsedMs: 60_377, width: 2160, height: 3338 });
+
+    beforeEach(() => {
+      evaluate.mockClear();
+      controller = new TelemetryController(prisma, redis, { evaluate } as any);
+      prisma.client.screenFilePlayback.findUnique.mockResolvedValue(twoBad);
+    });
+
+    it('control: a graded third bad minute reaches the closed loop', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow());
+      await controller.report(screenId, req, { video: badMinute() });
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect((evaluate.mock.calls[0] as any[])[0]).toMatchObject({ sampleClass: 'bad', visibleBadStreak: 3, excludedReason: null });
+    });
+
+    it('M43 shape: the minute after the nightly page load is recorded, never evaluated', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow({ credentialEpochRotatedAt: new Date(Date.now() - 61_367) }));
+      await controller.report(screenId, req, { video: badMinute() });
+      expect(evaluate).not.toHaveBeenCalled();
+      const up = prisma.client.screenFilePlayback.upsert.mock.calls[0][0];
+      expect(up.update).toMatchObject({ excludedReason: 'page-load', excludedSamples: 1, visibleBadStreak: 2, consecutiveBad: 2 });
+    });
+
+    it('a browser minute of a file the manifest hands the hardware engine is never evaluated', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow());
+      setManifestCache(screenId, { kind: 'full', hashablePayload: { nativeVideo: { version: 2, asset: { sha256: SHA } } }, etag: 'e', boundaryAt: null }, 0);
+      await controller.report(screenId, req, { video: badMinute() });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(prisma.client.screenFilePlayback.upsert.mock.calls[0][0].update).toMatchObject({ excludedReason: 'fallback-engine' });
+    });
+
+    it('…whatever the APK version: the descriptor alone names the intended engine (owner rule 2026-10-17)', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow({ playerVersion: '1.1.23', playerVersionCode: 10123 }));
+      prisma.client.screenFilePlayback.findUnique.mockResolvedValue({ ...twoBad, playerVersionCode: 10123 });
+      setManifestCache(screenId, { kind: 'full', hashablePayload: { nativeVideo: { version: 2, asset: { sha256: SHA } } }, etag: 'e', boundaryAt: null }, 0);
+      await controller.report(screenId, req, { video: badMinute() });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(prisma.client.screenFilePlayback.upsert.mock.calls[0][0].update).toMatchObject({ excludedReason: 'fallback-engine' });
+    });
+
+    it('a manifest without the hardware engine leaves the browser as the intended engine — graded as before', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow());
+      setManifestCache(screenId, { kind: 'full', hashablePayload: { playlists: [] }, etag: 'e', boundaryAt: null }, 0);
+      await controller.report(screenId, req, { video: badMinute() });
+      expect(evaluate).toHaveBeenCalledTimes(1);
+    });
+
+    it('a new hardware-engine session in the same report is a hand-off', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(screenRow({
+        lastVideoReport: { native: { sessionId: '11111111-1111-4111-8111-111111111111', sha256: 'c'.repeat(64) } },
+      }));
+      await controller.report(screenId, req, {
+        video: badMinute(),
+        nativeVideo: {
+          version: 1, state: 'preparing', sessionId: '22222222-2222-4222-8222-222222222222', revision: 'r1',
+          sha256: 'c'.repeat(64), faceIndex: 0,
+        },
+      });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(prisma.client.screenFilePlayback.upsert.mock.calls[0][0].update).toMatchObject({ excludedReason: 'handoff' });
+    });
   });
 });
 

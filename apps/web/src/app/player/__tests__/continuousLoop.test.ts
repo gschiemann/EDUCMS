@@ -1,5 +1,8 @@
 import { sampleTimeline, restoreSampleTiming, validLoopPackage, type LoopPackage } from '../continuousLoopPackage';
-import { bufferedAhead, cycleOffset, pruneEnd } from '../continuousLoop';
+import {
+  ATTACH_BOUNDARY_SLACK_MS, attachBoundaryWaitMs, bufferedAhead, continuousAttachDecision, cycleOffset,
+  nativeHandoffPendingFor, pruneEnd, waitForLoopBoundary,
+} from '../continuousLoop';
 import { CONTINUOUS_LOOP_REVISION, continuousGuardKey } from '../continuousLoopRevision';
 import { ContinuousBoundaryDetector } from '../loopBoundary';
 import { pickLoopBackend } from '../loopEligibility';
@@ -98,4 +101,82 @@ test('cached packages require current keyframe metadata and a failed older engin
   expect(validLoopPackage({ ...p, version: 1 } as unknown as LoopPackage, hash)).toBe(false);
   expect(continuousGuardKey(hash, 'blocked')).not.toBe(`continuous:${hash}:blocked`);
   expect(continuousGuardKey(hash, 'blocked')).toBe(continuousGuardKey(hash, 'blocked'));
+});
+
+// ── The stream attaches at the clip's own loop point (2026-10-17) ─────────
+describe('continuousAttachDecision', () => {
+  const gate = { boundary: false, waitedMs: 0, waitMs: 35_000, nativeHandoffPending: false };
+  it('attaches at a loop point, never mid-clip', () => {
+    expect(continuousAttachDecision({ ...gate, boundary: true, waitedMs: 1_000 })).toBe('attach');
+    expect(continuousAttachDecision({ ...gate, waitedMs: 20_000 })).toBe('wait');
+  });
+  it('bounded: a full lap plus slack with no loop point attaches anyway', () => {
+    expect(continuousAttachDecision({ ...gate, waitedMs: 34_999 })).toBe('wait');
+    expect(continuousAttachDecision({ ...gate, waitedMs: 35_000 })).toBe('attach');
+  });
+  it('a pending hardware hand-off always wins, loop point or not', () => {
+    expect(continuousAttachDecision({ ...gate, boundary: true, nativeHandoffPending: true })).toBe('wait');
+    expect(continuousAttachDecision({ ...gate, waitedMs: 999_999, nativeHandoffPending: true })).toBe('wait');
+  });
+});
+
+test('attachBoundaryWaitMs: one lap of the PACKAGED clip plus slack; nonsense falls back to the slack', () => {
+  expect(attachBoundaryWaitMs({ durationTicks: 900_900, timescale: 30_000 })).toBe(30_030 + ATTACH_BOUNDARY_SLACK_MS);
+  expect(attachBoundaryWaitMs({ durationTicks: 90_000, timescale: 30_000 })).toBe(8_000);
+  expect(attachBoundaryWaitMs({ durationTicks: 0, timescale: 30_000 })).toBe(ATTACH_BOUNDARY_SLACK_MS);
+  expect(attachBoundaryWaitMs({ durationTicks: 100, timescale: 0 })).toBe(ATTACH_BOUNDARY_SLACK_MS);
+});
+
+describe('waitForLoopBoundary', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('resolves on the loop point and stops listening', async () => {
+    const el = new EventTarget();
+    const remove = jest.spyOn(el, 'removeEventListener');
+    const p = waitForLoopBoundary(el, 8_000, new AbortController().signal);
+    el.dispatchEvent(new Event('educms-loop-boundary'));
+    await expect(p).resolves.toBe('boundary');
+    expect(remove).toHaveBeenCalledWith('educms-loop-boundary', expect.any(Function));
+  });
+
+  it('resolves on the bound when no loop point comes', async () => {
+    const p = waitForLoopBoundary(new EventTarget(), 8_000, new AbortController().signal);
+    jest.advanceTimersByTime(8_000);
+    await expect(p).resolves.toBe('timeout');
+  });
+
+  it('keeps waiting through a pending hand-off, then attaches once it clears', async () => {
+    const el = new EventTarget();
+    let pending = true;
+    let done: string | null = null;
+    void waitForLoopBoundary(el, 8_000, new AbortController().signal, { nativeHandoffPending: () => pending }).then((v) => { done = v; });
+    el.dispatchEvent(new Event('educms-loop-boundary'));
+    jest.advanceTimersByTime(8_000 + 3 * ATTACH_BOUNDARY_SLACK_MS);
+    await Promise.resolve();
+    expect(done).toBeNull();
+    pending = false;
+    el.dispatchEvent(new Event('educms-loop-boundary'));
+    await Promise.resolve();
+    expect(done).toBe('boundary');
+  });
+
+  it('rejects on abort, including one that already happened', async () => {
+    const ctl = new AbortController();
+    const p = waitForLoopBoundary(new EventTarget(), 8_000, ctl.signal);
+    ctl.abort();
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(waitForLoopBoundary(new EventTarget(), 8_000, ctl.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
+
+test('nativeHandoffPendingFor reads the NativeDualVideo wrapper flag, and nothing else', () => {
+  const wrap = document.createElement('div');
+  const video = document.createElement('video');
+  wrap.appendChild(video);
+  expect(nativeHandoffPendingFor(video)).toBe(false);
+  wrap.setAttribute('data-native-handoff', 'pending');
+  expect(nativeHandoffPendingFor(video)).toBe(true);
+  expect(nativeHandoffPendingFor(null)).toBe(false);
+  expect(nativeHandoffPendingFor({})).toBe(false);
 });

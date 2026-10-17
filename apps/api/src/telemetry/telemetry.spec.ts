@@ -442,6 +442,47 @@ describe('POST /screens/:id/telemetry', () => {
       await expect(controller.report(SCREEN_ID,makeReq(),{nativeVideo})).rejects.toMatchObject({status:400});
     }
   });
+  it('1.1.41 accepts the bounded glass-side measurement, device class and experiments; unknown keys are still refused', async()=>{
+    const buckets = Array.from({length:16},(_,i)=>i===4?1790:i===2?5:i===6?5:0);
+    const timing = {decodedFrames:1800,submittedFrames:1800,lateFrames:3,lastLateUs:0,maxLateUs:9000,maxSubmitGapMs:40,leadUs:33333,
+      sourceWidth:2160,sourceHeight:3840,droppedFrames:0,sourceFps:30,refreshRate:60,displayMode:'1:3840x2160@60.00',
+      intervalUnitNs:8333333,intervalBuckets:buckets,intervalCount:1800,intervalMinNs:31000000,intervalMaxNs:52000000,intervalLastNs:33300000,intervalMeanNs:33333333,
+      history:{entries:[{at:1760700000000,uptimeMs:123456,face:0,sha8:'d4d05533',build:'1.1.41-field.1',protocol:2,composition:'dynamic_above',layer:'retired',
+        reason:'device-rebooted',recovered:true,bootCount:41,elapsedMs:3600000,fps:30,refreshRate:60,displayMode:'1:3840x2160@60.00',decodedFrames:108000,submittedFrames:107990,
+        lateFrames:12,maxLateUs:12000,maxSubmitGapMs:98,droppedFrames:1,loops:12,uniqueFrames:107990,codecName:'OMX.amlogic.avc.decoder.awesome2',
+        webviewInvisible:false,intervalUnitNs:8333333,intervalBuckets:buckets,intervalCount:107989,intervalMinNs:1,intervalMaxNs:1,intervalLastNs:1,intervalMeanNs:1}],overflow:3,capacity:6}};
+    const device = {class:'amlogic/android-13',fleet:'Amlogic t982 / Android 13 (M43, L55VEC)',soc:'amlogic',sdk:33,webviewMajor:101,nativeSolo:true,
+      composition:'dynamic_above',protocol3:false,silentUpdate:'installer-of-record'};
+    const experiments = {requested:{webviewInvisible:true},applied:{webviewInvisible:true},guard:{disabled:{},applied:{webviewInvisible:1}}};
+    const nativeVideo = {...nativeSample(),timing,device,experiments};
+    expect(screenTelemetrySchema.safeParse({nativeVideo}).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo,render:{frames:1800,hash:'pl:test'}});
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{timing:{intervalBuckets:buckets,history:{overflow:3}},device:{class:'amlogic/android-13'},experiments:{applied:{webviewInvisible:true}}}});
+    // Every APK before 1.1.41 still validates: the nine counters alone.
+    const nine = {decodedFrames:1,submittedFrames:1,lateFrames:0,lastLateUs:0,maxLateUs:0,maxSubmitGapMs:0,leadUs:33333,sourceWidth:1080,sourceHeight:1920};
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:nine}}).success).toBe(true);
+    for (const [name,bad] of [
+      ['15 buckets',{...timing,intervalBuckets:buckets.slice(0,15)}],
+      ['a negative bucket',{...timing,intervalBuckets:[...buckets.slice(0,15),-1]}],
+      ['free-text display mode',{...timing,displayMode:'https://evil.example'}],
+      ['a 9th history entry',{...timing,history:{entries:Array(9).fill(timing.history.entries[0]),overflow:0}}],
+      ['a history entry with an unknown key',{...timing,history:{entries:[{...timing.history.entries[0],url:'x'}],overflow:0}}],
+      ['an unknown timing key',{...timing,invented:1}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:bad}}).success}).toEqual({name,ok:false});
+    }
+    for (const [name,badDevice] of [
+      ['free-text class',{...device,class:'M43 Goodview'}],
+      ['unknown soc',{...device,soc:'intel'}],
+      ['unknown update path',{...device,silentUpdate:'magic'}],
+      ['a device-owner path (the Manager is never device owner)',{...device,silentUpdate:'device-owner'}],
+      ['extra key',{...device,serial:'x'}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:badDevice}}).success}).toEqual({name,ok:false});
+    }
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{webviewInvisible:false}}}}).success).toBe(false);
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,guard:{disabled:{webviewInvisible:'http://x'},applied:{}}}}}).success).toBe(false);
+  });
   it('stores actual native composition without confusing it with protocol capability or render proof',async()=>{
     const sample = nativeSample('ready',0);
     const nativeVideo = {...sample,sessionProtocol:2,

@@ -97,3 +97,18 @@ it("a retired boundary listener cannot hand over the browser behind UI", async (
   expect(commits()).toHaveLength(0); expect(prepares()).toHaveLength(1);
   expect(r.queryByTestId("web")).not.toBeNull(); r.unmount();
 });
+
+it("flags its wrapper while native takes over, so the browser's one-stream engine never attaches into the hand-off", async () => {
+  const r = mount(<video data-testid="web" />); await flush();
+  const wrap = r.container.firstChild as HTMLElement;
+  const v = r.getByTestId("web") as HTMLVideoElement;
+  Object.defineProperties(v, { paused: { value: false }, readyState: { value: 2 }, currentTime: { value: 10, writable: true } });
+  expect(wrap.hasAttribute("data-native-handoff")).toBe(false);
+  reply = state("ready"); await flush(500);
+  // Waiting for the web clip's loop point — the stream must hold back too.
+  expect(wrap.getAttribute("data-native-handoff")).toBe("pending");
+  // Native ends before it took the glass: the browser keeps it and may attach.
+  reply = state("failed", 1, false, { reason: "activity-paused" }); await flush(500); await flush();
+  expect(wrap.hasAttribute("data-native-handoff")).toBe(false);
+  r.unmount();
+});

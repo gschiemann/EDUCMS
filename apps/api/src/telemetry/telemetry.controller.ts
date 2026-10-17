@@ -15,6 +15,7 @@ import { withDbRetry } from '../prisma/with-db-retry';
 import { RedisService } from '../realtime/redis.service';
 import { verifyDeviceForScreen } from '../screens/device-auth';
 import {
+  getManifestCache,
   shouldSkipLastPingWrite,
   markLastPingWritten,
   shouldSkipCacheReportWrite,
@@ -32,6 +33,7 @@ import { sanitizeCacheReport } from './cache-report';
 import { TELEMETRY_INTERVAL_MS, type ScreenTelemetryResponse } from './telemetry.types';
 import { PlaybackDemotionService } from './playback-demotion.service';
 import {
+  expectedPlaybackEngine,
   ingestFilePlayback,
   sanitizeMediaCaps,
   webviewMajorFromUserAgent,
@@ -330,6 +332,9 @@ export class TelemetryController {
             // Only read to MERGE a loop-boundary block into it (below).
             lastVideoReport: true,
             faceIndex: true,
+            // The last page load (every proven register rotates it) — a video
+            // sample inside the 3 minutes after it is recorded, never graded.
+            credentialEpochRotatedAt: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -576,19 +581,36 @@ export class TelemetryController {
     const webviewMajor = webviewMajorFromUserAgent(req?.headers?.['user-agent']);
     if (videoReport && typeof videoReport.sha256 === 'string' && screen.tenantId) {
       try {
+        const playerVersionCode =
+          (data.playerVersionCode as number | undefined) ?? screen.playerVersionCode ?? null;
+        // ── DEMOTION SAMPLE GUARD (2026-10-17, player rock-solid §4B) ────
+        // A sample inside the warm-up of a page load, an engine change, a
+        // hand-off or a player update — or one the browser took of a file the
+        // hardware engine owns on this screen — is recorded, never graded.
+        // Everything here is already in hand: no extra query.
+        const cached = getManifestCache(screenId);
         const ingested = await ingestFilePlayback(this.prisma.client as any, {
           screenId,
           tenantId: screen.tenantId,
           sample: videoReport as unknown as StoredVideoSample,
-          playerVersionCode:
-            (data.playerVersionCode as number | undefined) ?? screen.playerVersionCode ?? null,
+          playerVersionCode,
           webviewMajor,
           now,
+          guard: {
+            pageLoadAt: screen.credentialEpochRotatedAt ?? null,
+            nativeSessionChanged: !!nativeVideo && nativeVideo.sessionId !== previousNative?.sessionId,
+            expectedEngine: expectedPlaybackEngine({
+              sha256: String(videoReport.sha256),
+              manifest: cached?.kind === 'full' ? cached.hashablePayload : cached?.kind === 'empty' ? {} : null,
+              evidenceSha: nativeVideo?.sha256 ?? previousNative?.sha256 ?? null,
+            }),
+          },
         });
         // ── CLOSED LOOP (2026-10-12, owner decisions A/B/C) ──────────────
         // Only a BAD sample that brings the visible-stutter streak to the
         // threshold can act (demote to the 1080p copy / record / alert);
         // everything else returns at once without a query. Best-effort.
+        // An excluded sample is never BAD (the guard above), and says so.
         if (ingested && this.playbackDemotion && ingested.visibleClass === 'bad') {
           await this.playbackDemotion.evaluate({
             screenId,
@@ -600,6 +622,7 @@ export class TelemetryController {
             unitConcurrentMax: ingested.unitConcurrentMax,
             lastPct: ingested.lastPct,
             settledSamples: ingested.settledSamples,
+            excludedReason: ingested.excludedReason,
             now,
           });
         }

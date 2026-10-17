@@ -18,6 +18,12 @@
  * (the API enforces the role; the button is hidden for others). Fetched once
  * when the Overview is open — never polled (mobile-perf standard). Dashboard
  * surface, so CSS gap is fine.
+ *
+ * 2026-10-17 (demotion sample guard): minutes the player recorded but that
+ * never counted — just after a page load, an engine change, a hand-off or an
+ * update, or played by the backup player while the built-in video engine
+ * should — are listed under their file with the latest reason, so a verdict
+ * built from fewer minutes than the screen played is never a mystery.
  */
 
 import { useState } from 'react';
@@ -66,6 +72,24 @@ const EVIDENCE: Record<ScreenPlaybackCapabilityResponse['capability']['evidence'
 /** Settled minutes behind a file's verdict (~one sample per minute of play). */
 export function measuredMinutes(f: Pick<ScreenPlaybackFile, 'settledSamples'>): number {
   return Math.max(0, Math.round(f.settledSamples));
+}
+
+/**
+ * Why the latest left-out minute was not counted (2026-10-17, the demotion
+ * sample guard): the player's own warm-up minutes are recorded and shown here,
+ * never graded. Null when nothing was ever left out (or an older API).
+ */
+const EXCLUDED_REASON: Record<NonNullable<ScreenPlaybackFile['excludedReason']>, string> = {
+  'page-load': 'excludedPageLoad',
+  'engine-change': 'excludedEngineChange',
+  handoff: 'excludedHandoff',
+  'player-update': 'excludedPlayerUpdate',
+  'fallback-engine': 'excludedFallbackEngine',
+};
+
+export function excludedReasonKey(f: Pick<ScreenPlaybackFile, 'excludedSamples' | 'excludedReason'>): string | null {
+  if (!(typeof f.excludedSamples === 'number' && f.excludedSamples > 0)) return null;
+  return (f.excludedReason && EXCLUDED_REASON[f.excludedReason]) || 'excludedGeneric';
 }
 
 /** The capability line's message key, or null when there is nothing worth saying. */
@@ -181,6 +205,7 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
               f.width && f.height ? `${f.width} × ${f.height}` : null,
               f.unitConcurrentMax >= 2 ? t('bothSides') : null,
             ].filter(Boolean);
+            const excludedKey = excludedReasonKey(f);
             return (
               <li key={f.sha256} className="flex items-start gap-2 min-w-0" data-playback-verdict={f.verdict}>
                 <span className={`shrink-0 rounded-full px-1.5 py-px text-[10px] font-bold ${TONE[v.tone].chip}`}>{t(v.key)}</span>
@@ -189,6 +214,12 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
                   <span className="block text-[10.5px] font-semibold text-slate-500 leading-snug">
                     {[detail, ...extras].join(' · ')}
                   </span>
+                  {excludedKey && (
+                    <span className="block text-[10.5px] font-semibold text-slate-400 leading-snug" data-testid="screen-playback-excluded"
+                      data-excluded-reason={f.excludedReason ?? ''}>
+                      {t('excludedDetail', { count: f.excludedSamples ?? 0, reason: t(excludedKey) })}
+                    </span>
+                  )}
                 </span>
               </li>
             );

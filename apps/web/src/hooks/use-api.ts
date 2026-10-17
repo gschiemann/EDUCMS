@@ -703,6 +703,14 @@ export interface ScreenPlaybackFile {
   unitConcurrentMax: number;
   firstAt: string;
   lastAt: string;
+  /**
+   * 2026-10-17 — samples recorded but never graded (the minutes after a page
+   * load, an engine change, a hand-off or a player update, or played by the
+   * backup player while the built-in engine should play). Absent on an older API.
+   */
+  excludedSamples?: number;
+  excludedReason?: 'page-load' | 'engine-change' | 'handoff' | 'player-update' | 'fallback-engine' | null;
+  excludedAt?: string | null;
 }
 export interface ScreenPlaybackCapabilityResponse {
   screenId: string;

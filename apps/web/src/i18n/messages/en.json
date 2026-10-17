@@ -2447,7 +2447,14 @@
       "tryFullQuality": "Try full quality again",
       "tryingFullQuality": "Switching back…",
       "tryFullQualityDone": "Full quality is back. The screen switches when the full file has downloaded, at the end of the video — and back to the lighter copy if it stutters again.",
-      "tryFullQualityFailed": "Couldn’t switch back. Try again in a minute."
+      "tryFullQualityFailed": "Couldn’t switch back. Try again in a minute.",
+      "excludedDetail": "{count} min not counted — {reason}",
+      "excludedPageLoad": "the page had just loaded",
+      "excludedEngineChange": "the player had just switched how it plays this video",
+      "excludedHandoff": "the video was just starting on the screen",
+      "excludedPlayerUpdate": "the player app had just been updated",
+      "excludedFallbackEngine": "the backup player was covering for the screen’s built-in video engine",
+      "excludedGeneric": "the screen was just getting ready"
     }
   },
   "selection": {

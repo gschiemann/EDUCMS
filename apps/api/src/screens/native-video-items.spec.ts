@@ -184,16 +184,19 @@ describe('native video protocol 3 — template VIDEO zones', () => {
     expect(templateVideoZoneConfigEligible({})).toBe(false);
     expect(templateVideoZoneConfigEligible(null)).toBe(false);
   });
-  it('a zone that a LOWER zone overlaps stays web; a zone ABOVE it is fine (the page paints above the surface)', () => {
+  it('1.1.41: a zone that ANY other zone overlaps stays web (a native slot is above the window; nothing of the page draws over it)', () => {
     const under = { id: 'bg', widgetType: 'IMAGE', x: 0, y: 0, width: 100, height: 100, zIndex: 0, defaultConfig: {} };
     const over = { ...under, id: 'logo', zIndex: 5, x: 10, y: 10, width: 20, height: 20 };
     expect(nativeTemplateVideoZones({ zones: [under, zone('z1')], scenes: [] })).toEqual([]);
-    expect(nativeTemplateVideoZones({ zones: [zone('z1'), over], scenes: [] }).map((z) => z.id)).toEqual(['z1']);
-    // Equal zIndex: document order decides — an earlier sibling is below.
+    // A zone stacked ABOVE the video used to be fine (it drew over the hole); above the window it would be hidden.
+    expect(nativeTemplateVideoZones({ zones: [zone('z1'), over], scenes: [] })).toEqual([]);
     expect(nativeTemplateVideoZones({ zones: [{ ...under, zIndex: 1 }, zone('z1')], scenes: [] })).toEqual([]);
-    expect(nativeTemplateVideoZones({ zones: [zone('z1'), { ...under, zIndex: 1 }], scenes: [] }).map((z) => z.id)).toEqual(['z1']);
-    // A lower zone that does not touch the video's rect does not matter.
+    expect(nativeTemplateVideoZones({ zones: [zone('z1'), { ...under, zIndex: 1 }], scenes: [] })).toEqual([]);
+    // A zone that does not touch the video's rect does not matter, whatever its order.
     expect(nativeTemplateVideoZones({ zones: [{ ...under, x: 60, width: 40 }, zone('z1')], scenes: [] }).map((z) => z.id)).toEqual(['z1']);
+    expect(nativeTemplateVideoZones({ zones: [zone('z1'), { ...over, x: 60, y: 60 }], scenes: [] }).map((z) => z.id)).toEqual(['z1']);
+    // Two video zones that overlap each other both stay web.
+    expect(nativeTemplateVideoZones({ zones: [zone('z1'), { ...zone('z2'), x: 5, y: 5 }], scenes: [] })).toEqual([]);
   });
   it('caps at NATIVE_VIDEO_MAX_ZONES in zone order; touch templates and multi-scene templates stay web', () => {
     const zones = [zone('a'), zone('b', { x: 50 }), zone('c', { y: 50 })];

@@ -120,6 +120,19 @@ describe('GET /screens/:id/playback-capability', () => {
     expect(out.files[0]).toMatchObject({ name: 'clip one.mp4', assetId: null, copy: null });
   });
 
+  it('samples recorded without grading (2026-10-17 guard) reach the drawer: count, last reason and when', async () => {
+    const { controller } = setup({
+      rows: [
+        row({ excludedSamples: 3, excludedReason: 'page-load', excludedAt: new Date('2026-10-17T09:02:04.329Z') }),
+        row({ fileSha256: SHA_1080, excludedReason: 'not-a-reason', excludedSamples: null }),
+      ],
+    });
+    const out = await controller.get('scr-1', user());
+    expect(out.files[0]).toMatchObject({ excludedSamples: 3, excludedReason: 'page-load', excludedAt: '2026-10-17T09:02:04.329Z' });
+    // A row from before the guard, or a value it does not know, reads as "none".
+    expect(out.files[1]).toMatchObject({ excludedSamples: 0, excludedReason: null, excludedAt: null });
+  });
+
   it('same-model evidence from other locations arrives as SQL aggregates only — no foreign row is ever read', async () => {
     const { prisma, controller } = setup({
       // A 4K-panel screen that only ever played 1080p here, and its model smooth at 4K on 3 other screens.
