@@ -2389,9 +2389,15 @@ function getDeviceInfo() {
     pxW = parseInt(qp.get('w') || '0', 10) || 0;
     pxH = parseInt(qp.get('h') || '0', 10) || 0;
   } catch {}
+  // 2026-10-17 — say WHICH size this is. The server keeps a known panel size
+  // over a smaller report unless it is the device's own (`device`): a
+  // browser-sized `window.screen` (a face, a page that lost its query) once
+  // moved a 2160×3840 screen onto the 1080p copy (registered-resolution.ts).
+  let resolutionSource: 'device' | 'browser' = 'device';
   if (!pxW || !pxH) {
     pxW = window.screen.width;
     pxH = window.screen.height;
+    resolutionSource = 'browser';
   }
 
   // 2026-05-03 — capability snapshot. Lets the server know which
@@ -2411,6 +2417,7 @@ function getDeviceInfo() {
 
   return {
     resolution: `${pxW}×${pxH}`,
+    resolutionSource,
     osInfo: os,
     browserInfo: `${browser} ${navigator.language}`,
     userAgent: ua,
