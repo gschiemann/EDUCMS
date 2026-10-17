@@ -2,6 +2,8 @@ import {
   buildNativeVideoDescriptor as build,
   nativeVideoCandidate,
   nativeVideoEnrolled,
+  nativeVideoExperimentsFor,
+  parseNativeVideoExperiments,
   parseNativeVideoRollout,
 } from './native-video';
 import { buildNativeSharedVideoDescriptor } from './native-shared-video';
@@ -175,6 +177,53 @@ describe('native video engine (protocol 2) — descriptor', () => {
     const env = { PLAYER_NATIVE_DUAL_VIDEO: `${front},${back}` } as any;
     const d = buildNativeSharedVideoDescriptor({ screen: f.screen, peer, manifest: f.manifest, asset: f.asset, env });
     expect(d).toMatchObject({ version: 1, asset: { width: 1080, height: 1920, fps: 30 }, transform: { fit: 'fill' } });
+  });
+});
+
+describe('native video engine — the three M43 experiments (1.1.41, plan §4E)', () => {
+  const env = (v?: string) => (v === undefined ? {} : { PLAYER_NATIVE_VIDEO_EXPERIMENTS: v });
+
+  it('every experiment is OFF by default and the descriptor carries no key at all', () => {
+    expect(nativeVideoExperimentsFor(front, env())).toBeNull();
+    expect(nativeVideoExperimentsFor(front, env(''))).toBeNull();
+    const d = build({ ...fixture(), env: env() as any })!;
+    expect(d).not.toHaveProperty('experiments');
+  });
+
+  it('each experiment is switchable on its own, per screen or for all', () => {
+    const r = parseNativeVideoExperiments(env(`webview-invisible:${front}, surface-frame-rate:all ,decoder-rotation:${back}`));
+    expect(r.webviewInvisible.ids.has(front)).toBe(true);
+    expect(r.webviewInvisible.all).toBe(false);
+    expect(r.surfaceFrameRate.all).toBe(true);
+    expect(r.decoderRotation.ids.has(back)).toBe(true);
+    expect(nativeVideoExperimentsFor(front, env(`webview-invisible:${front},surface-frame-rate:all`))).toEqual({ webviewInvisible: true, surfaceFrameRate: true });
+    expect(nativeVideoExperimentsFor(back, env(`webview-invisible:${front},surface-frame-rate:all`))).toEqual({ surfaceFrameRate: true });
+    expect(nativeVideoExperimentsFor(single, env(`decoder-rotation:${back}`))).toBeNull();
+    // Case-insensitive names and ids; a token's target is exact.
+    expect(nativeVideoExperimentsFor(front.toUpperCase(), env(`Decoder-Rotation:${front.toUpperCase()}`))).toEqual({ decoderRotation: true });
+  });
+
+  it('a typo, a bare name, an unknown experiment or a non-uuid target enables nothing', () => {
+    for (const v of ['webviewInvisible:all', 'webview-invisible', `webview-invisible:${front}x`, 'all', 'frame-rate:all', ':all', `surface-frame-rate:${front.slice(1)}`]) {
+      expect({ v, flags: nativeVideoExperimentsFor(front, env(v)) }).toEqual({ v, flags: null });
+    }
+  });
+
+  it('the flags ride on the hashed descriptor but stay OUTSIDE the revision (a flip never restarts a session on the glass)', () => {
+    const off = build({ ...fixture(), env: env() as any })!;
+    const on = build({ ...fixture(), env: env(`webview-invisible:${front},decoder-rotation:all`) as any })!;
+    expect(on.experiments).toEqual({ webviewInvisible: true, decoderRotation: true });
+    expect(on.revision).toBe(off.revision);
+    const { experiments: _e, ...rest } = on;
+    expect(rest).toEqual(off);
+    // Deterministic: safe inside the hashed, hot-cached manifest.
+    expect(build({ ...fixture(), env: env(`webview-invisible:${front}`) as any })).toEqual(build({ ...fixture(), env: env(`webview-invisible:${front}`) as any }));
+  });
+
+  it('a back face gets its own flags by its own id, never its primary\'s', () => {
+    const b = build({ ...fixture(back), env: env(`surface-frame-rate:${front}`) as any })!;
+    expect(b).not.toHaveProperty('experiments');
+    expect(build({ ...fixture(back), env: env(`surface-frame-rate:${back}`) as any })!.experiments).toEqual({ surfaceFrameRate: true });
   });
 });
 

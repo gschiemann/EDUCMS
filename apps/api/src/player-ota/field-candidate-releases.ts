@@ -124,4 +124,18 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2403987,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/38824589080',
   },
+  // Signed CI 39074710993, source ce7ea68b (branch claude/suspicious-moser-432bdd, never rebased):
+  // one compositing contract (opaque WebView; solo AND positioned slots above the window or
+  // refused), device-class policy table, callback-interval histogram + reboot-aware ledger,
+  // the three M43 experiments behind manifest flags. Production certificate e45adf50…3d1897,
+  // versionCode 10141, universal APK (4 ABIs), non-debuggable, 1.1.41-only DEX markers present
+  // and absent from the .40 artifact. Private mirror NOT uploaded by the registering session.
+  // Hardware qualification pending (2026-10-21).
+  '1.1.41-field.1': {
+    versionName: '1.1.41-field.1',
+    versionCode: 10141,
+    sha256: 'b0354519381b73bee6af2de35cac40f8e2175b6b0919203ee96c79b9c27a31e3', // gitleaks:allow -- verified public APK integrity digest
+    size: 2403987,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39074710993',
+  },
 };

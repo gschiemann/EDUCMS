@@ -644,6 +644,16 @@ class MainActivity : ComponentActivity() {
         const val ORIENTATION_LANDSCAPE = "LANDSCAPE"
         const val ORIENTATION_PORTRAIT = "PORTRAIT"
         const val ORIENTATION_AUTO = "AUTO"
+        /**
+         * 1.1.41, experiment 3 (plan 2026-10-17 §4E, `decoderRotation`): the
+         * panel's NATURAL orientation, sensor ignored. The window is then an
+         * unrotated overlay for the hardware composer; the page lays itself
+         * out with its existing body-rotation fallback and the native decoder
+         * rotates the picture. Requested by the page through the existing
+         * `setOrientation` bridge value — no new bridge method (rule 9). An
+         * older APK logs "unknown value" and keeps what it had.
+         */
+        const val ORIENTATION_NATURAL = "NATURAL"
 
         /**
          * AND-008 — accepted shape for the device fingerprint handed to
@@ -1067,6 +1077,8 @@ class MainActivity : ComponentActivity() {
      *   LANDSCAPE → SCREEN_ORIENTATION_LANDSCAPE
      *   PORTRAIT  → SCREEN_ORIENTATION_PORTRAIT
      *   AUTO      → SCREEN_ORIENTATION_UNSPECIFIED  (back to sensor)
+     *   NATURAL   → SCREEN_ORIENTATION_NOSENSOR     (1.1.41 experiment 3: the
+     *               panel's natural orientation; the decoder rotates the video)
      *
      * Idempotent — only calls setRequestedOrientation if the new value
      * differs from the current requestedOrientation, so a manifest poll
@@ -1087,6 +1099,7 @@ class MainActivity : ComponentActivity() {
             ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             ORIENTATION_PORTRAIT  -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             ORIENTATION_AUTO      -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ORIENTATION_NATURAL   -> ActivityInfo.SCREEN_ORIENTATION_NOSENSOR
             else -> {
                 PlayerLogger.w("Orientation", "unknown value: $orientation; ignoring")
                 return

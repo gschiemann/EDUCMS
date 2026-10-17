@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
+import com.educms.player.BuildConfig
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
 import com.educms.player.display.DisplayEmergency
 import com.educms.player.face.FaceTokenStore
@@ -19,6 +20,7 @@ import com.educms.player.logging.PlayerLogger
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
@@ -26,14 +28,24 @@ import java.util.concurrent.Executors
  * One face's native session. Protocol 2 = the solo slot "" (full face, loops,
  * plays as soon as it is committed). Protocol 3 = a positioned slot
  * (`item:<id>` / `zone:<id>`): committed into a HELD first frame on a surface
- * parked off-screen, moved onto its rect and released on `play`.
+ * that is ABOVE the window from the moment its child window exists, parked
+ * beyond the physical display, moved onto its rect and released on `play`
+ * (1.1.41: the same compositing contract as the solo — the WebView stays
+ * opaque black beneath it; page content cannot draw over a native slot, so
+ * native→native transitions are hard cuts handed over by the held frame).
  * Mutable fields are guarded by the FaceVideoBox monitor; views are touched on
  * the UI thread only.
  */
-internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, val zone: FaceZoneRequest?, face: Int) {
+internal class FaceVideoSession(
+    val id: String, val request: FaceVideoRequest?, val zone: FaceZoneRequest?, face: Int,
+    policy: DeviceClassPolicy.Resolved,
+) {
     val slot: String = zone?.slot ?: ""
     val protocol: Int = if (zone != null) 3 else 2
-    val layer = SoloVideoLayer(SoloVideoLayer.mode(protocol, face, Build.VERSION.SDK_INT, Build.HARDWARE, Build.BOARD))
+    /** The stable reason this session may not run on this box, decided before any work; null = it may. */
+    val refusal: String? = policy.refusal(protocol, face)
+    /** ONE COMPOSITING CONTRACT: above the window — a solo dynamic (R+) or static (24–29), a slot always static; a refused session never uses it. */
+    val layer = SoloVideoLayer(policy.composition(protocol, face) ?: SoloVideoLayer.Mode.DYNAMIC_ABOVE)
     val screenId: String = zone?.screenId ?: request!!.screenId
     val revision: String = zone?.revision ?: request!!.revision
     val sha256: String = zone?.sha256 ?: request!!.sha256
@@ -67,6 +79,16 @@ internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, 
     var drops = 0L
     var startedAt = 0L
     var stoppedAt = 0L
+    // Measurement (§4E): render-callback intervals on the glass side of the decoder, and the display they land on.
+    var intervals: RenderIntervalHistogram? = null
+    var displayRefreshRate = 0f
+    var displayMode = ""
+    /** The renderer's last scheduling snapshot, kept past `renderer.stop()` for the final ledger entry. */
+    var finalTiming: JSONObject? = null
+    var lastLedgerAt = 0L
+    // Experiments (§4E) applied to THIS session.
+    var webHidden = false
+    var frameRateRequested: String? = null
     // Views, created on the UI thread when the surface is attached; in the tree only while this session runs.
     var container: FrameLayout? = null
     var box: FrameLayout? = null
@@ -85,14 +107,21 @@ internal class FaceVideoSession(val id: String, val request: FaceVideoRequest?, 
  * Safety properties, each enforced here and not by the page:
  *  • native plays only what THIS face's own authenticated manifest selected,
  *    and only from a file whose length and SHA-256 were verified on disk;
+ *  • ONE COMPOSITING CONTRACT (1.1.41): the WebView is opaque BLACK in every
+ *    session state, and a solo surface is composed ABOVE the window or the
+ *    session is refused (`composition-unavailable`) — the under-window +
+ *    transparent-WebView mechanism behind every white and hazy screen is
+ *    gone; a compositor that cannot show the surface shows black, never white;
  *  • nothing starts while an emergency hold is in force, and a hold (or the
- *    1 s watch noticing one) stops every face at once — including hiding
- *    an elevated solo surface before the WebView shows the alert;
+ *    1 s watch noticing one) stops every face at once — restoring the WebView
+ *    (visible, opaque) and hiding the elevated solo surface synchronously,
+ *    before the WebView can draw the alert;
  *  • a page that stops polling (10 s lease), a credential that changes
  *    identity, a detached surface or 8 s without a rendered frame retires
  *    the session and restores the opaque WebView background;
  *  • a pre-rolled slot is never on glass before the page's `play`: its
- *    surface waits entirely outside the WebView's bounds;
+ *    surface — above the window from creation — waits entirely beyond the
+ *    physical display, held first frame and all;
  *  • one slot on glass per face region: `play` removes the previous on-glass
  *    session of the same face in the same UI pass that moves the new one in,
  *    so native→native shows no gap and two surfaces never compete for z-order.
@@ -104,8 +133,12 @@ internal object FaceVideoBox {
     private val hosts = mutableMapOf<Int, SharedVideoHost>()
     private val diagnosticsPending = mutableSetOf<Int>()
     private val lastDiagnostics = mutableMapOf<Int, Long>()
+    /** Experiment fault latch, process-wide: one flip at most (NativeVideoExperiments.kt). */
+    internal val experiments = NativeExperimentGuard()
     const val NAMESPACE = "native-video-v2"
+    /** What this engine can do; what it ADVERTISES is the class table's `protocolMax` (2 on every class in 1.1.41). */
     const val PROTOCOL_MAX = 3
+    private const val LEDGER_CHECKPOINT_MS = 60_000L
 
     @Synchronized fun attach(host: SharedVideoHost) {
         hosts[host.face]?.let { old -> old.faceSessions.values.toList().forEach { stopSession(old, it, "host-replaced") } }
@@ -118,8 +151,9 @@ internal object FaceVideoBox {
     @Synchronized fun anyActive(): Boolean = hosts.values.any { h -> h.faceSessions.values.any { it.alive } }
     @Synchronized fun invalidate(host: SharedVideoHost, why: String) { host.faceSessions.values.toList().forEach { stopSession(host, it, why) } }
     @Synchronized fun suppress(why: String) { hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } } }
+    /** Every session is above the window now, so every one yields to operator UI. */
     @Synchronized fun yieldToUi(host: SharedVideoHost, why: String) {
-        host.faceSessions.values.toList().filter { it.layer.eligible }.forEach { stopSession(host, it, why) }
+        host.faceSessions.values.toList().forEach { stopSession(host, it, why) }
     }
 
     private fun live(host: SharedVideoHost, s: FaceVideoSession): Boolean =
@@ -130,12 +164,12 @@ internal object FaceVideoBox {
     /** Protocol 2: the solo slot. */
     fun prepare(host: SharedVideoHost, json: String) {
         val req = FaceVideoRequest.parse(json) ?: return
-        begin(host, FaceVideoSession(UUID.randomUUID().toString(), req, null, host.face)) ?: return
+        begin(host, FaceVideoSession(UUID.randomUUID().toString(), req, null, host.face, DeviceClassPolicy.current(host.ctx))) ?: return
     }
 
-    /** Protocol 3: one positioned slot. */
+    /** Protocol 3: one positioned slot (refused by the class table in this build — see `begin`). */
     fun prepare(host: SharedVideoHost, req: FaceZoneRequest) {
-        begin(host, FaceVideoSession(UUID.randomUUID().toString(), null, req, host.face)) ?: return
+        begin(host, FaceVideoSession(UUID.randomUUID().toString(), null, req, host.face, DeviceClassPolicy.current(host.ctx))) ?: return
     }
 
     /** Registers the session (or re-uses a live identical one) and starts the authenticated fetch. */
@@ -153,6 +187,12 @@ internal object FaceVideoBox {
             session = candidate
             host.faceSessions[session.slot] = session
             host.engine = SharedVideoHost.ENGINE_FACE
+            // The class table's verdict comes first: a refused session is registered
+            // only so the page reads a STABLE reason, and it costs no network, no
+            // surface and no decoder. `composition-unavailable` = this box cannot
+            // compose the surface above the window; `protocol3-disabled` = the
+            // positioned-slot engine is off on every class in this build.
+            session.refusal?.let { stopSession(host, session, it); return null }
             if (DisplayEmergency.isHeld(host.ctx)) { stopSession(host, session, "emergency-held"); return null }
             if (session.protocol == 2 && !host.lifecycleReady) { stopSession(host, session, "activity-paused"); return null }
         }
@@ -218,16 +258,17 @@ internal object FaceVideoBox {
     @Synchronized private fun pinned(): Set<String> =
         hosts.values.flatMap { h -> h.faceSessions.values.filter { it.alive }.map { it.sha256 } }.toSet()
 
-    /** The rect of this session's black box inside the WebView's parent, as [l, t, w, h]; protocol 2 = the whole face. */
+    /** The rect of this session's black box inside the WebView's parent, as [l, t, w, h]; protocol 2 = the whole face. A slot not yet on glass is parked beyond the display. */
     private fun boxRect(s: FaceVideoSession, parentW: Int, parentH: Int): IntArray {
         val l = s.layout ?: return s.layer.soloRect(parentW, parentH, s.parkLeft)
         val r = FaceZonePolicy.rect(l, parentW, parentH)
-        return if (s.onGlass) r else FaceZonePolicy.parked(r, parentW)
+        return if (s.onGlass) r else FaceZonePolicy.parked(r, maxOf(parentW, s.parkLeft))
     }
 
     /**
-     * UI thread. Three views per session, prepared below the WebView: a transparent
-     * full-size container, a black BOX at the slot's rect (the letterbox of
+     * UI thread. Three views per session: a transparent full-size container
+     * (it is the SURFACE's container, never the WebView — the WebView itself
+     * stays opaque black), a black BOX at the slot's rect (the letterbox of
      * `contain`; for protocol 2 the whole face), and the SurfaceView inside it.
      */
     private fun attachSurface(host: SharedVideoHost, s: FaceVideoSession) {
@@ -239,12 +280,14 @@ internal object FaceVideoBox {
         }
         val degrees = s.layout?.degrees ?: SharedVideoTransform.degrees(d.orientation, 0, parent.width, parent.height)
         if (s.layer.staticAbove) {
-            // Park both box and surface beyond the display, including any fitted overhang.
+            // Park both box and surface beyond the display, including any fitted
+            // overhang (a slot's fitted frame never overhangs its own box).
             val displaySize = Point()
             parent.display?.getRealSize(displaySize)
             val parentScreen = IntArray(2)
             parent.getLocationOnScreen(parentScreen)
-            val fitted = FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, parent.width, parent.height)
+            val fitted = if (s.protocol == 3) intArrayOf(0, 0, 0, 0)
+                else FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, parent.width, parent.height)
             s.parkLeft = SoloVideoLayer.parkingLeft(parent.width, displaySize.x, parentScreen[0], fitted[0])
         }
         val rect = boxRect(s, parent.width, parent.height)
@@ -255,8 +298,9 @@ internal object FaceVideoBox {
         val box = s.box ?: FrameLayout(host.web.context).also { it.setBackgroundColor(Color.BLACK); s.box = it }
         val surface = s.surface ?: SurfaceView(host.web.context).also { sv ->
             // Legacy z-order is fixed when this SurfaceView creates its child
-            // window. Static solo starts above, parked entirely off display;
-            // Android R's dynamic path still prepares beneath the web hold.
+            // window. Static solo and EVERY positioned slot start above, parked
+            // entirely off display; Android R's dynamic solo path still
+            // prepares beneath the web hold and re-orders after its first frame.
             sv.setZOrderOnTop(s.layer.staticAbove)
             sv.isFocusable = false
             sv.holder.addCallback(object : SurfaceHolder.Callback {
@@ -277,7 +321,7 @@ internal object FaceVideoBox {
         val lp = FrameLayout.LayoutParams(f[2], f[3]).apply { leftMargin = f[0]; topMargin = f[1] }
         if (surface.parent == null) box.addView(surface, lp) else surface.layoutParams = lp
         synchronized(this) { if (!live(host, s)) return; s.attached = true; s.degrees = degrees }
-        if (s.layer.eligible) PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase()} phase=attached sdk=${Build.VERSION.SDK_INT} parked=${s.layer.parked} box=${rect.joinToString(",")} sha=${s.sha256.take(8)}")
+        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=attached sdk=${Build.VERSION.SDK_INT} parked=${s.layer.parked} box=${rect.joinToString(",")} sha=${s.sha256.take(8)}")
         surfaceReady(host, s)
     }
 
@@ -291,6 +335,17 @@ internal object FaceVideoBox {
             if (!sv.holder.surface.isValid || sv.width <= 0 || sv.height <= 0) return
             if (!host.web.isHardwareAccelerated) { stopSession(host, s, "output-unavailable"); return }
             s.preparingRenderer = true
+            // Measurement: the display this surface lands on, and the interval histogram sized to the source period.
+            s.intervals = s.intervals ?: RenderIntervalHistogram.forFps(d.fps)
+            s.displayRefreshRate = sv.display?.refreshRate ?: 0f
+            s.displayMode = displayModeOf(sv)
+            // Experiment 2: ask for the clip's rate ONLY if the display can switch seamlessly (API 30+).
+            if (d.experiments.surfaceFrameRate && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                experiments.allows(NativeVideoExperiments.SURFACE_FRAME_RATE)) {
+                s.frameRateRequested = Api30SurfaceFrameRate.request(sv.holder.surface, d.fps.toFloat())
+                experiments.applied(NativeVideoExperiments.SURFACE_FRAME_RATE)
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=surfaceFrameRate fps=${d.fps} result=${s.frameRateRequested} displayMode=${s.displayMode} refresh=${s.displayRefreshRate} sha=${s.sha256.take(8)}")
+            }
         }
         val r = FaceVideoRenderer(file, d, sv.holder.surface, s.degrees, { s.alive && !host.detached },
             failed = { why -> synchronized(this) { if (live(host, s)) stopSession(host, s, why) } },
@@ -319,6 +374,18 @@ internal object FaceVideoBox {
         }
     }
 
+    @Volatile private var bootCountMemo: Long? = null
+    /** Android's BOOT_COUNT (API 24+), read once per process; null when the setting cannot be read. */
+    private fun bootCount(ctx: android.content.Context): Long? = bootCountMemo ?: runCatching {
+        android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT).toLong()
+    }.getOrNull()?.also { bootCountMemo = it }
+
+    /** `modeId:WxH@Hz` of the display the surface is on (API 23+), or "" when it cannot be read. UI thread. */
+    private fun displayModeOf(sv: SurfaceView): String = runCatching {
+        val m = sv.display?.mode ?: return@runCatching ""
+        "${m.modeId}:${m.physicalWidth}x${m.physicalHeight}@${String.format(Locale.ROOT, "%.2f", m.refreshRate)}"
+    }.getOrDefault("").take(48)
+
     @Synchronized fun commit(host: SharedVideoHost, id: String) {
         val s = byId(host, id) ?: return
         if (!live(host, s) || s.state != "ready") return
@@ -328,10 +395,10 @@ internal object FaceVideoBox {
                 if (!live(host, s) || DisplayEmergency.isHeld(host.ctx)) return@post
                 host.refreshReadiness()
                 if (s.protocol == 2 && !host.lifecycleReady) { stopSession(host, s, "page-stopped"); return@post }
-                if (s.layer.eligible && !host.canOwnWindow()) {
-                    stopSession(host, s, "page-stopped"); return@post
-                }
-                host.web.setBackgroundColor(if (s.layer.eligible) Color.BLACK else Color.TRANSPARENT)
+                if (!host.canOwnWindow()) { stopSession(host, s, "page-stopped"); return@post }
+                // ONE COMPOSITING CONTRACT: the WebView is opaque black in every state. A
+                // set-to-known-value, never a toggle — nothing here can ever make it transparent.
+                host.web.setBackgroundColor(Color.BLACK)
                 s.startedAt = SystemClock.elapsedRealtime()
                 s.renderer?.start()
             }
@@ -408,9 +475,19 @@ internal object FaceVideoBox {
         if (!sv.holder.surface.isValid || !sv.isShown) return
         if (!SharedVideoCodecPolicy.validRenderStamp(stamp, pts)) return
         s.updates++
-        if (stamp != s.lastStamp) { s.unique++; s.lastStamp = stamp; s.ptsUs = pts }
+        val onGlass = if (s.protocol == 3) s.onGlass else s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW
+        if (stamp != s.lastStamp) {
+            // The interval between consecutive render callbacks, counted once the
+            // surface is on the glass: the cadence the compositor actually produced.
+            if (s.lastStamp > 0L && onGlass) s.intervals?.observe(stamp - s.lastStamp)
+            s.unique++; s.lastStamp = stamp; s.ptsUs = pts
+        }
         s.lastUpdate = SystemClock.elapsedRealtime()
-        if (!s.layer.eligible || s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
+        if (s.protocol == 3) {
+            // A slot is already above the window: its held first frame is "presenting"
+            // (parked, `held`) and `play` moves it onto its rect. No solo reveal here.
+            s.state = "presenting"
+        } else if (s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
             s.state = "presenting"
         } else if (s.layer.phase == SoloVideoLayer.Phase.REVEALING) {
             val held = DisplayEmergency.isHeld(host.ctx)
@@ -419,11 +496,24 @@ internal object FaceVideoBox {
             if (s.layer.confirm(stamp, live(host, s), attached, held, uiClear)) {
                 clearRevealWait(s)
                 s.state = "presenting"
-                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase()} phase=post-request-render sdk=${Build.VERSION.SDK_INT} requestNs=${s.layer.revealRequestedNs} renderNs=$stamp ptsUs=$pts frames=${s.unique} size=${sv.width}x${sv.height} codec=${s.codecName} sha=${s.sha256.take(8)}")
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=post-request-render sdk=${Build.VERSION.SDK_INT} requestNs=${s.layer.revealRequestedNs} renderNs=$stamp ptsUs=$pts frames=${s.unique} size=${sv.width}x${sv.height} codec=${s.codecName} displayMode=${s.displayMode} sha=${s.sha256.take(8)}")
+                // Experiment 1: with native on the glass, take the WebView off the GPU. The
+                // guard refuses it for the rest of the process after one fault, and the
+                // view is VISIBLE again, first of all, on any end (stopSession).
+                val d = s.descriptor
+                if (s.protocol == 2 && d != null && d.experiments.webviewInvisible && experiments.allows(NativeVideoExperiments.WEBVIEW_INVISIBLE)) {
+                    host.web.visibility = View.INVISIBLE
+                    s.webHidden = true
+                    experiments.applied(NativeVideoExperiments.WEBVIEW_INVISIBLE)
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=webviewInvisible applied=true sha=${s.sha256.take(8)}")
+                }
                 queueDiagnostics(host, s)
+                // Four buffer samples per handoff (at reveal, +10 s, +60 s, +5 min): the
+                // first ten seconds on the M43 read as an unreadable uniform buffer.
                 probeOutput(host, s, sv)
                 main.postDelayed({ probeOutput(host, s, sv) }, 10_000)
                 main.postDelayed({ probeOutput(host, s, sv) }, 60_000)
+                main.postDelayed({ probeOutput(host, s, sv) }, 300_000)
             } else if (s.layer.phase == SoloVideoLayer.Phase.RETIRED && live(host, s)) {
                 stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else "page-stopped")
             }
@@ -450,7 +540,7 @@ internal object FaceVideoBox {
                         // Completion waits for a post-request codec render.
                         sv.invalidate()
                         host.web.invalidate()
-                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase()} phase=reveal-request sdk=${Build.VERSION.SDK_INT} sha=${s.sha256.take(8)}")
+                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=reveal-request sdk=${Build.VERSION.SDK_INT} sha=${s.sha256.take(8)}")
                     } catch (_: Exception) { stopSession(host, s, "output-unavailable") }
                 }
             }
@@ -497,7 +587,7 @@ internal object FaceVideoBox {
                     // No frame from before this layout can release the web hold.
                     s.layer.revealRequested(System.nanoTime())
                     clearRevealListener(s)
-                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase()} phase=geometry-ready requestNs=${s.layer.revealRequestedNs} box=${boxExpected.joinToString(",")} surface=${surfaceExpected.joinToString(",")} sha=${s.sha256.take(8)}")
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=geometry-ready requestNs=${s.layer.revealRequestedNs} box=${boxExpected.joinToString(",")} surface=${surfaceExpected.joinToString(",")} sha=${s.sha256.take(8)}")
                 }
             }
             true
@@ -532,7 +622,7 @@ internal object FaceVideoBox {
             val why = when {
                 DisplayEmergency.isHeld(host.ctx) -> "emergency-held"
                 s.protocol == 2 && s.startedAt > 0 && !host.lifecycleReady -> "page-stopped"
-                s.layer.eligible && s.startedAt > 0 && !host.canOwnWindow() -> "page-stopped"
+                s.startedAt > 0 && !host.canOwnWindow() -> "page-stopped"
                 s.layer.revealTimedOut(System.nanoTime()) -> "output-unavailable"
                 NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(host.ctx, host.face)) != screen -> "credential-identity"
                 s.attached && (sv == null || !sv.isAttachedToWindow || !host.web.isAttachedToWindow) -> "output-detached"
@@ -542,6 +632,12 @@ internal object FaceVideoBox {
                 else -> null
             }
             if (why != null) { stopSession(host, s, why); return }
+            // Checkpoint the running session's timing once a minute, so a crash or an
+            // update still leaves its last minute on disk (NativeTimingLedger).
+            if (s.startedAt > 0 && now - s.lastLedgerAt >= LEDGER_CHECKPOINT_MS) {
+                s.lastLedgerAt = now
+                runCatching { NativeTimingLedger.shared(host.ctx).live(timingEntry(host, s, null, now)) }
+            }
         }
         main.postDelayed({ watch(host, s) }, 1000)
     }
@@ -549,15 +645,28 @@ internal object FaceVideoBox {
     /** Called under the monitor. Invalidate first; the view work happens on the UI thread. */
     private fun stopSession(host: SharedVideoHost, s: FaceVideoSession, why: String) {
         if (!s.alive) return
-        val previousLayer = s.layer.phase.name.lowercase()
+        val previousLayer = s.layer.phase.name.lowercase(Locale.ROOT)
         s.alive = false
         s.layer.retire()
         s.stoppedAt = SystemClock.elapsedRealtime()
+        s.finalTiming = s.renderer?.timing() ?: s.finalTiming
         s.renderer?.stop(); s.renderer = null
         s.state = "failed"; s.reason = why
-        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=${s.protocol} reason=$why layer=$previousLayer mode=${s.layer.mode.name.lowercase()} sdk=${Build.VERSION.SDK_INT} frames=${s.unique} loops=${s.loops} sha=${s.sha256.take(8)}")
+        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=${s.protocol} reason=$why layer=$previousLayer mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sdk=${Build.VERSION.SDK_INT} frames=${s.unique} loops=${s.loops} drops=${s.drops} intervals=${s.intervals?.count ?: 0} onPeriod=${s.intervals?.onPeriod() ?: 0} sha=${s.sha256.take(8)}")
+        // An experiment that was applied to a session which ended for a reason it could
+        // have caused is off for the rest of the process (one flip, never a storm).
+        if (s.webHidden && experiments.ended(NativeVideoExperiments.WEBVIEW_INVISIBLE, why))
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=webviewInvisible disabled=$why")
+        if (s.frameRateRequested != null && experiments.ended(NativeVideoExperiments.SURFACE_FRAME_RATE, why))
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=surfaceFrameRate disabled=$why")
+        if (s.startedAt > 0) runCatching { NativeTimingLedger.shared(host.ctx).record(timingEntry(host, s, why, s.stoppedAt)) }
         val removeOutput = Runnable {
             synchronized(this) {
+                // THE WEBVIEW COMES BACK FIRST: visible and opaque, whatever an
+                // experiment did to it — before the alert / operator window can draw.
+                // Set-to-known-value, so it is free on every ordinary end.
+                if (host.web.visibility != View.VISIBLE) host.web.visibility = View.VISIBLE
+                s.webHidden = false
                 // Hide an elevated surface before the alert/operator window can
                 // draw. A main-thread retirement must not wait for another post.
                 clearRevealWait(s)
@@ -565,17 +674,17 @@ internal object FaceVideoBox {
                 (s.surface?.parent as? ViewGroup)?.removeView(s.surface)
                 (s.box?.parent as? ViewGroup)?.removeView(s.box)
                 (s.container?.parent as? ViewGroup)?.removeView(s.container)
-                // The WebView goes opaque again only once no live session of this face is attached.
-                if (host.faceSessions.values.none { it.alive && it.attached }) host.web.setBackgroundColor(Color.BLACK)
+                // Opaque black in every state (one compositing contract); re-asserted, never conditional.
+                host.web.setBackgroundColor(Color.BLACK)
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) removeOutput.run() else main.post(removeOutput)
         queueDiagnostics(host, s)
     }
 
-    /** Under the monitor: coalesce handoff/retirement logs, at most one upload per face per minute. */
+    /** Under the monitor: coalesce handoff/retirement logs, at most one upload per face per minute. A refused session never uploads. */
     private fun queueDiagnostics(host: SharedVideoHost, s: FaceVideoSession) {
-        if (!s.layer.eligible || !diagnosticsPending.add(host.face)) return
+        if (s.refusal != null || !diagnosticsPending.add(host.face)) return
         val delay = maxOf(2000L, (lastDiagnostics[host.face] ?: 0L) + 60_000L - SystemClock.elapsedRealtime())
         main.postDelayed({
             synchronized(this) {
@@ -586,25 +695,71 @@ internal object FaceVideoBox {
         }, delay)
     }
 
-    /** Three tiny buffer samples per handoff; a retired session can never report them. */
+    /** Four tiny buffer samples per handoff; a retired session can never report them, and none is a verdict about the glass. */
     private fun probeOutput(host: SharedVideoHost, s: FaceVideoSession, surface: SurfaceView) {
         NativeVideoSurfaceProbe.capture(surface, main,
             current = { synchronized(this) { live(host, s) && s.surface === surface &&
                 s.state == "presenting" && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW } },
             report = { sample -> synchronized(this) {
                 if (live(host, s) && s.surface === surface && s.layer.phase == SoloVideoLayer.Phase.ABOVE_WINDOW) {
-                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_OUTPUT face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase()} sample=surface-buffer $sample frames=${s.unique} ptsUs=${s.ptsUs} sha=${s.sha256.take(8)}")
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_OUTPUT face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sample=surface-buffer $sample frames=${s.unique} ptsUs=${s.ptsUs} displayMode=${s.surface?.let { displayModeOf(it) } ?: s.displayMode} sha=${s.sha256.take(8)}")
                     queueDiagnostics(host, s)
                 }
             } })
     }
 
+    /**
+     * One bounded summary of a session's timing (the ledger entry, and the
+     * live `timing` block minus the history). Stamped when it happens, not
+     * when it is uploaded (STAB-01). Codes and a digest prefix only.
+     */
+    private fun timingEntry(host: SharedVideoHost, s: FaceVideoSession, reason: String?, nowMs: Long): JSONObject {
+        val base = s.renderer?.timing() ?: s.finalTiming
+        val j = JSONObject()
+            .put("at", System.currentTimeMillis()).put("uptimeMs", nowMs)
+            .put("face", host.face).put("sha8", s.sha256.take(8)).put("build", BuildConfig.VERSION_NAME)
+            .put("protocol", s.protocol)
+            .put("composition", s.layer.mode.name.lowercase(Locale.ROOT)).put("layer", s.layer.phase.name.lowercase(Locale.ROOT))
+            .put("reason", reason ?: JSONObject.NULL)
+            .put("elapsedMs", if (s.startedAt > 0) nowMs - s.startedAt else 0)
+            .put("bootCount", bootCount(host.ctx) ?: JSONObject.NULL)
+            .put("fps", s.descriptor?.fps ?: 0.0)
+            .put("refreshRate", (s.surface?.display?.refreshRate ?: s.displayRefreshRate).toDouble())
+            .put("displayMode", s.surface?.let { displayModeOf(it) }?.takeIf { it.isNotEmpty() } ?: s.displayMode)
+            .put("decodedFrames", base?.optLong("decodedFrames") ?: 0L).put("submittedFrames", base?.optLong("submittedFrames") ?: 0L)
+            .put("lateFrames", base?.optLong("lateFrames") ?: 0L).put("maxLateUs", base?.optLong("maxLateUs") ?: 0L)
+            .put("maxSubmitGapMs", base?.optLong("maxSubmitGapMs") ?: 0L)
+            .put("droppedFrames", s.drops).put("loops", s.loops).put("uniqueFrames", s.unique)
+            .put("codecName", s.codecName ?: JSONObject.NULL)
+            .put("webviewInvisible", s.webHidden).put("surfaceFrameRate", s.frameRateRequested ?: JSONObject.NULL)
+        s.intervals?.writeTo(j)
+        return j
+    }
+
+    /** The live `timing` block: the renderer's scheduling snapshot plus the glass-side measurement and the persisted history. */
+    private fun timingJson(host: SharedVideoHost, s: FaceVideoSession): Any {
+        val base = s.renderer?.timing() ?: s.finalTiming ?: return JSONObject.NULL
+        // The display's CURRENT mode and refresh rate ride on every snapshot (lead, 2026-10-17:
+        // overlay vs GPU composition is a candidate for the M43's late-frame residue).
+        val j = JSONObject(base.toString())
+            .put("droppedFrames", s.drops)
+            .put("sourceFps", s.descriptor?.fps ?: 0.0)
+            .put("refreshRate", (s.surface?.display?.refreshRate ?: s.displayRefreshRate).toDouble())
+            .put("displayMode", s.surface?.let { displayModeOf(it) }?.takeIf { it.isNotEmpty() } ?: s.displayMode)
+        s.intervals?.writeTo(j)
+        runCatching { j.put("history", NativeTimingLedger.shared(host.ctx).snapshot()) }
+        return j
+    }
+
     private fun sessionJson(host: SharedVideoHost, s: FaceVideoSession): JSONObject {
         val sv = s.surface
         val attached = s.attached && !host.detached && sv != null && sv.isAttachedToWindow
+        // A slot's layer is the static shape without the solo reveal: queued while parked, above the window once played.
+        val layerMode = if (s.protocol != 3) s.layer.phase.name.lowercase(Locale.ROOT)
+            else if (!s.alive) "retired" else if (s.onGlass) "above_window" else "queued"
         val output = JSONObject().put("attached", attached)
-            .put("layerMode", s.layer.phase.name.lowercase())
-            .put("compositionMode", s.layer.mode.name.lowercase())
+            .put("layerMode", layerMode)
+            .put("compositionMode", s.layer.mode.name.lowercase(Locale.ROOT))
             .put("moveRequestedNs", s.layer.moveRequestedNs)
             .put("revealRequestedNs", s.layer.revealRequestedNs)
             .put("visible", attached && sv!!.isShown && sv.windowVisibility == View.VISIBLE)
@@ -613,20 +768,30 @@ internal object FaceVideoBox {
             .put("width", sv?.width ?: 0).put("height", sv?.height ?: 0).put("lastUpdateElapsedMs", s.lastUpdate)
             .put("ageMs", if (s.lastStamp > 0) ((System.nanoTime() - s.lastStamp) / 1_000_000).coerceIn(0, 86_400_000) else 86_400_000)
         val reason = s.reason ?: if (s.caching && s.state == "preparing") "caching" else null
-        return JSONObject().put("version", 1).put("state", s.state).put("sessionId", s.id)
+        val j = JSONObject().put("version", 1).put("state", s.state).put("sessionId", s.id)
             .put("sessionProtocol", s.protocol)
             .put("revision", s.revision).put("sha256", s.sha256)
             .put("faceIndex", host.face).put("reason", reason ?: JSONObject.NULL).put("output", output)
             .put("codecName", s.codecName ?: JSONObject.NULL).put("loops", s.loops).put("drops", s.drops)
-            .put("timing", s.renderer?.timing() ?: JSONObject.NULL)
+            .put("timing", timingJson(host, s))
             .put("elapsedMs", if (s.startedAt > 0) SystemClock.elapsedRealtime() - s.startedAt else 0)
             .put("stalls", if (s.reason == "output-stalled") 1 else 0)
+        val d = s.descriptor
+        if (d != null && d.experiments.any) {
+            j.put("experiments", JSONObject().put("requested", d.experiments.toJson())
+                .put("applied", JSONObject().put(NativeVideoExperiments.WEBVIEW_INVISIBLE, s.webHidden)
+                    .put(NativeVideoExperiments.SURFACE_FRAME_RATE, s.frameRateRequested ?: JSONObject.NULL))
+                .put("guard", experiments.toJson()))
+        }
+        return j
     }
 
     /**
      * The top level is the protocol-2 solo slot exactly as 1.1.29 reported it
      * (idle when there is none); `sessions[]` lists every slot, each with its
      * `slot`, `held` and `ended`. Every poll renews every session's lease.
+     * `protocolMax` is the CLASS TABLE's answer (2 everywhere in 1.1.41), so a
+     * page never starts a positioned slot this box would only refuse.
      */
     @Synchronized fun state(host: SharedVideoHost): JSONObject {
         val now = SystemClock.elapsedRealtime()
@@ -639,6 +804,6 @@ internal object FaceVideoBox {
         host.faceSessions.values.forEach { s ->
             sessions.put(sessionJson(host, s).put("slot", s.slot).put("held", s.held).put("ended", s.ended).put("protocol", s.protocol))
         }
-        return top.put("sessions", sessions).put("protocolMax", PROTOCOL_MAX)
+        return top.put("sessions", sessions).put("protocolMax", DeviceClassPolicy.current(host.ctx).protocolMax)
     }
 }

@@ -83,3 +83,6 @@ a45810e26d825d1cdf6deee1513a7e360f44d160:apps/api/src/player-ota/field-candidate
 ffa3763a8217b6bb65477a56151a564a9e6c8e04:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:96
 # Verified APK integrity digest of private 1.1.38-field.1, signed CI run 38743322973; private mirror read-back matches.
 1bcf812932c6738871214738d7f6a30652e75e4e:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:105
+# Verified APK integrity digest of private 1.1.41-field.1, signed CI run 39074710993 on source ce7ea68b;
+# the line also carries an inline gitleaks:allow (the .39/.40 form). A public hash, never a signing secret.
+ca3d0a4449e5a95a36b25f3d339ae11987e634c6:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:137

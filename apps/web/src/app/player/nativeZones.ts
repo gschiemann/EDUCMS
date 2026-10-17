@@ -17,8 +17,19 @@
  *   • `zone:<template zone id>` — a VIDEO widget inside a template. The page
  *     measures the zone's rendered rect (TemplateScaler scale, body rotation,
  *     zone rotation) and sends it on the bridge; native positions the surface
- *     there, BELOW the WebView, and the page punches a transparent hole in
- *     its backdrop so widgets stacked above the zone still draw above it.
+ *     there.
+ *
+ * 1.1.41 — ONE COMPOSITING CONTRACT: a slot's surface is ABOVE the window
+ * (parked beyond the display with its held first frame, moved onto its rect
+ * at `play`) and the WebView stays opaque black beneath it — no transparent
+ * hole any more. The one limitation: nothing of the page can draw over a
+ * native slot, so a template zone that ANOTHER zone overlaps stays web
+ * (`zone-overlap`, decided by the API and by [overlappedTemplateZoneIds]
+ * here), and a native→native transition is a hard cut: the next slot's held
+ * first frame takes the rect in the same native pass that removes the one
+ * it covers (`superseded`). The web element of a slot is unmounted only
+ * once native reports it on its rect (`revealed`), so nothing black is ever
+ * painted in between.
  *
  * Transport (CLAUDE.md player rule 9): NO new bridge method. A `version: 3`
  * JSON on `sharedVideoPrepare` selects this engine (`op`: prepare / layout /
@@ -514,7 +525,43 @@ export const NATIVE_ZONE_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "superseded",
 ]);
 
+/**
+ * Verdicts about THIS BOX or THIS LAYOUT, never about the file (1.1.41): an
+ * APK that does not answer protocol 3 (`protocol`), or a zone that another
+ * zone overlaps (`zone-overlap`). The slot stays web for this document — no
+ * retry (nothing changes until the page reloads onto an APK that has it, or
+ * the template changes) and no 24 h block (the same file may be the solo
+ * video of another manifest, and the block store is shared with protocol 2).
+ */
+export const NATIVE_ZONE_WEB_FOR_DOCUMENT_REASONS: ReadonlySet<string> = new Set(["protocol", "zone-overlap"]);
+
+/**
+ * The ids of template zones that ANOTHER zone overlaps, in the manifest's
+ * percent geometry (the same the player lays out). A native slot is composed
+ * above the window, so neither a zone above nor one below the video may share
+ * a pixel with it: such a VIDEO zone stays web (`zone-overlap`). Mirrors the
+ * API's rule in native-video-items.ts; the page checks again because the
+ * geometry it renders is the geometry that must be true.
+ */
+export function overlappedTemplateZoneIds(zones: ReadonlyArray<unknown>): Set<string> {
+  const boxes = zones.map((z) => {
+    if (!record(z) || typeof z.id !== "string" || !z.id) return null;
+    const { x, y, width, height } = z;
+    if (![x, y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+    if ((width as number) <= 0 || (height as number) <= 0) return null;
+    return { id: z.id, x: x as number, y: y as number, w: width as number, h: height as number };
+  });
+  const out = new Set<string>();
+  boxes.forEach((a, i) => {
+    if (!a) return;
+    const hit = boxes.some((b, j) => !!b && j !== i && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
+    if (hit) out.add(a.id);
+  });
+  return out;
+}
+
 export function nativeZoneNext(reason: string | undefined, attempt: number, wasOnGlass = false): "retry" | "block" | "stay" {
+  if (reason && NATIVE_ZONE_WEB_FOR_DOCUMENT_REASONS.has(reason)) return "stay";
   // Owner rule 2026-10-12: never flip web ↔ native on the glass. Once a slot was
   // presenting and ended, it stays web until the content changes / page reloads.
   if (wasOnGlass && (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))) return "stay";
@@ -559,6 +606,7 @@ export class NativeZoneController {
   private session = "";
   private committed = false;
   private played = false;
+  private revealedFired = false;
   private playAt = 0;
   private stage: NativeZoneStage = "preparing";
   private startedAt: number;
@@ -578,6 +626,8 @@ export class NativeZoneController {
       fallback(reason?: string): void;
       /** Native replaced this played session with the next slot's (no fallback). */
       superseded?(): void;
+      /** After `play`: native reports the slot on its rect (`held` false) — the web element may go. */
+      revealed?(): void;
     },
     private now: () => number = () => performance.now(),
   ) {
@@ -714,6 +764,10 @@ export class NativeZoneController {
     if (s.state === "presenting" && s.held && !this.played && this.stage !== "held") {
       this.stage = "held";
       this.callbacks.held();
+    }
+    if (s.state === "presenting" && this.played && !s.held && !this.revealedFired) {
+      this.revealedFired = true;
+      this.callbacks.revealed?.();
     }
     let fresh = false;
     if (s.state === "presenting" && this.played) {

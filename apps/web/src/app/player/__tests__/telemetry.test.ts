@@ -588,6 +588,26 @@ describe('per-file playback evidence on the wire (2026-10-11, video guarantee st
     expect(body.video).toEqual({ url: 'https://cdn/a.mp4', totalFrames: 1800, droppedFrames: 2, cached: true, first: false });
   });
 
+  it('1.1.41: the native device class, experiments and timing measurement are extras too — held back after a 400, kept otherwise', () => {
+    const nine = { decodedFrames: 1, submittedFrames: 1, lateFrames: 0, lastLateUs: 0, maxLateUs: 0, maxSubmitGapMs: 0, leadUs: 33333, sourceWidth: 1080, sourceHeight: 1920 };
+    const native = {
+      version: 1 as const, state: 'presenting' as const, sessionId: '11111111-1111-4111-8111-111111111111', revision: 'rev', sha256: 'a'.repeat(64), faceIndex: 0,
+      timing: { ...nine, intervalBuckets: Array(16).fill(0), intervalCount: 0, history: { entries: [], overflow: 0 } },
+      device: { class: 'amlogic/android-13', soc: 'amlogic' as const, sdk: 33, webviewMajor: 101, nativeSolo: true, protocol3: false, silentUpdate: 'installer-of-record' as const },
+      experiments: { requested: {}, applied: { webviewInvisible: false }, guard: { disabled: {}, applied: {} } },
+    };
+    const sent = tel.buildTelemetryBody({ nativeVideo: native } as never);
+    expect(sent.nativeVideo).toEqual(native);
+    expect(tel.videoExtrasRefused(400, sent)).toBe(true);
+    expect(tel.videoExtrasRefused(400, tel.buildTelemetryBody({ nativeVideo: { ...native, device: undefined, experiments: undefined, timing: nine } } as never))).toBe(false);
+    expect(tel.videoExtrasRefused(400, tel.buildTelemetryBody({ nativeVideo: { ...native, timing: nine, experiments: undefined } } as never))).toBe(true);
+    // While held back: only what an API from before 1.1.41 accepts — and never the whole block, liveness still lands.
+    const held = tel.buildTelemetryBody({ nativeVideo: native, videoExtras: false } as never);
+    expect(held.nativeVideo).toEqual({ version: 1, state: 'presenting', sessionId: '11111111-1111-4111-8111-111111111111', revision: 'rev', sha256: 'a'.repeat(64), faceIndex: 0, timing: nine });
+    expect(tel.videoExtrasRefused(400, held)).toBe(false);
+    expect(tel.withoutNativeExtras(native)).toEqual(held.nativeVideo);
+  });
+
   it('videoExtrasRefused / mediaCapsRefused: only a 400 to a report that carried them', () => {
     const withExtras = tel.buildTelemetryBody({ video: sample } as never);
     const plain = tel.buildTelemetryBody({ video: sample, videoExtras: false } as never);

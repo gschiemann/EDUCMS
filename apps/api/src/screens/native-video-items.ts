@@ -15,9 +15,9 @@ import { nativeVideoCandidate } from './native-video';
  *     hands off at item boundaries (first native frame pre-rolled and held
  *     behind the page, released only once that slot is on glass);
  *   • a TEMPLATE — each eligible VIDEO zone is a slot `zone:<zone_id>`; the APK
- *     positions a hardware surface at the zone's measured rect BELOW the
- *     WebView, and the page punches a transparent hole there. At most
- *     NATIVE_VIDEO_MAX_ZONES zones; the rest stay web.
+ *     positions a hardware surface at the zone's measured rect ABOVE the
+ *     WebView (1.1.41, one compositing contract: the WebView stays opaque
+ *     black, no hole). At most NATIVE_VIDEO_MAX_ZONES zones; the rest stay web.
  *
  * The manifest carries only IDENTITY + FILE facts (url, hash, size, coded
  * size, fps): the rect, rotation and fit are measured by the page from the
@@ -29,10 +29,11 @@ import { nativeVideoCandidate } from './native-video';
  * must read false here too), frame-locked sync, repeats, canvas overrides,
  * audio-on items, interactive / multi-scene templates, zones with opacity,
  * rounded corners, a non-right-angle rotation or a background of their own,
- * and any zone that a LOWER zone overlaps (the WebView paints every page
- * pixel ABOVE the surface, so a lower zone under the hole would cover the
- * video — only zones ABOVE the video may overlap it, which is the point of
- * punching the hole instead of floating the surface on top).
+ * and any zone that ANOTHER zone overlaps (`zone-overlap`): a native slot is
+ * composed above the window, so nothing of the page — above or below the
+ * zone in the template — can draw over it. That is the one limitation of
+ * the above-window contract; transitions between native items are hard cuts
+ * handed over by the held first frame.
  *
  * The solo-video manifest keeps its protocol-2 `nativeVideo` and gets NO
  * `nativeVideoItems`, so today's payload hash does not move for those
@@ -115,11 +116,6 @@ function overlaps(a: ZoneBox, b: ZoneBox): boolean {
   );
 }
 
-/** Is `z` stacked below `video`? zIndex first, then document order (the player's zone order). */
-function below(z: ZoneBox, video: ZoneBox): boolean {
-  return z.zIndex < video.zIndex || (z.zIndex === video.zIndex && z.index < video.index);
-}
-
 /**
  * The zones of a template that may play natively, in order, capped at
  * NATIVE_VIDEO_MAX_ZONES. Pure: the geometry is the manifest's percent
@@ -137,8 +133,9 @@ export function nativeTemplateVideoZones(template: Record<string, any>): Array<R
     if (!templateVideoZoneConfigEligible(z.defaultConfig)) return;
     const box = boxes[i];
     if (!box) return;
-    const covered = boxes.some((b, j) => !!b && j !== i && below(b, box) && overlaps(b, box));
-    if (covered) return;
+    // 1.1.41: above the window, so ANY overlapping zone — above or below — keeps this one web.
+    const overlapped = boxes.some((b, j) => !!b && j !== i && overlaps(b, box));
+    if (overlapped) return;
     out.push(z);
   });
   return out.slice(0, NATIVE_VIDEO_MAX_ZONES);

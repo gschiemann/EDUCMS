@@ -51,6 +51,8 @@ internal data class FaceVideoDescriptor(
     val screenId: String, val tenantId: String, val faceIndex: Int, val revision: String,
     val assetId: String, val url: String, val sha256: String, val size: Long,
     val width: Int, val height: Int, val fps: Double, val orientation: String, val fit: String,
+    /** The M43 experiments the server switched on for THIS screen (1.1.41); absent = none. Outside `revision`. */
+    val experiments: NativeVideoExperiments = NativeVideoExperiments.NONE,
 ) {
     fun matches(r: FaceVideoRequest): Boolean =
         r.screenId == screenId && r.revision == revision && r.sha256 == sha256 && r.assetId == assetId
@@ -66,7 +68,8 @@ internal data class FaceVideoDescriptor(
             val d = FaceVideoDescriptor(id("screenId"), id("tenantId"), j.getInt("faceIndex"), j.getString("revision"),
                 a.getString("id"), a.getString("url"), a.getString("sha256"), a.getLong("size"),
                 a.getInt("width"), a.getInt("height"), a.getDouble("fps"),
-                t.getString("orientation"), t.getString("fit"))
+                t.getString("orientation"), t.getString("fit"),
+                NativeVideoExperiments.parse(j.optJSONObject("experiments")))
             require(d.faceIndex in 0..1) { "descriptor-face" }
             require(d.revision.length in 1..128 && uuid.matches(d.assetId)) { "descriptor-revision" }
             require(Regex("[a-f0-9]{64}").matches(d.sha256)) { "descriptor-digest" }
@@ -144,6 +147,14 @@ internal object FaceVideoPolicy {
  *    `play` moves the surface onto its rect and releases the clip, which
  *    plays ONCE and keeps its last frame (`ended`) until the page stops it.
  *  • `zone:<id>` — a template VIDEO zone: same hold/play hand-off, loops.
+ *
+ * 1.1.41 — ONE COMPOSITING CONTRACT (SoloVideoLayer.kt): a slot's surface is
+ * ABOVE the window from creation, parked beyond the physical display while it
+ * pre-rolls, and moved onto its rect at `play`; the WebView stays opaque
+ * black beneath it (no transparent hole any more). The one limitation: page
+ * content cannot draw over a native slot, so a zone that another zone
+ * overlaps stays web (`zone-overlap`, decided by the API and the page), and
+ * a native→native transition is a hard cut handed over by the held frame.
  *
  * Same four bridge methods: a `version: 3` message on sharedVideoPrepare
  * carries an `op` (prepare / layout / play); commit / stop address the

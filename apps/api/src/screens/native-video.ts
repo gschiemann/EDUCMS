@@ -102,6 +102,65 @@ export function parseNativeVideoRollout(
 }
 
 /**
+ * THE THREE M43 EXPERIMENTS (player 1.1.41, plan 2026-10-17 §4E), per screen,
+ * default OFF — `PLAYER_NATIVE_VIDEO_EXPERIMENTS` (Railway env), comma tokens
+ * `<experiment>:<screen uuid>` or `<experiment>:all`:
+ *   webview-invisible   the player WebView goes INVISIBLE while a solo native
+ *                       session presents (restored VISIBLE on any end, and
+ *                       FIRST on an emergency hold);
+ *   surface-frame-rate  `Surface.setFrameRate(fps, ONLY_IF_SEAMLESS)` on API 30+;
+ *   decoder-rotation    the Activity stays in the panel's natural orientation
+ *                       and the decoder rotates the picture.
+ * Each is switchable on its own; an unknown or malformed token enables nothing.
+ * The flags ride on the hashed `nativeVideo` descriptor as `experiments`
+ * (omitted when none are on, so nobody else's payload hash moves) and stay
+ * OUTSIDE `revision`: flipping one never restarts a session on the glass; it
+ * applies to the next native session. Deterministic per (screen, env).
+ */
+export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation'] as const;
+export type NativeVideoExperiment = (typeof NATIVE_VIDEO_EXPERIMENTS)[number];
+export type NativeVideoExperimentFlags = Partial<Record<NativeVideoExperiment, true>>;
+const EXPERIMENT_TOKENS: Record<string, NativeVideoExperiment> = {
+  'webview-invisible': 'webviewInvisible',
+  'surface-frame-rate': 'surfaceFrameRate',
+  'decoder-rotation': 'decoderRotation',
+};
+
+export function parseNativeVideoExperiments(
+  env: Record<string, string | undefined> = process.env,
+): Record<NativeVideoExperiment, { all: boolean; ids: Set<string> }> {
+  const r = Object.fromEntries(
+    NATIVE_VIDEO_EXPERIMENTS.map((e) => [e, { all: false, ids: new Set<string>() }]),
+  ) as Record<NativeVideoExperiment, { all: boolean; ids: Set<string> }>;
+  const raw = (env.PLAYER_NATIVE_VIDEO_EXPERIMENTS ?? '').trim();
+  if (!raw) return r;
+  for (const t0 of raw.split(',')) {
+    const t = t0.trim();
+    const at = t.indexOf(':');
+    if (at <= 0) continue;
+    const name = EXPERIMENT_TOKENS[t.slice(0, at).trim().toLowerCase()];
+    const target = t.slice(at + 1).trim();
+    if (!name) continue;
+    if (target.toLowerCase() === 'all') r[name].all = true;
+    else if (UUID_RE.test(target)) r[name].ids.add(target.toLowerCase());
+  }
+  return r;
+}
+
+/** The flags for ONE screen, or null when none is on (the descriptor then carries no `experiments` key). */
+export function nativeVideoExperimentsFor(
+  screenId: string,
+  env: Record<string, string | undefined> = process.env,
+): NativeVideoExperimentFlags | null {
+  const id = String(screenId ?? '').toLowerCase();
+  if (!UUID_RE.test(id)) return null;
+  const r = parseNativeVideoExperiments(env);
+  const out: NativeVideoExperimentFlags = {};
+  for (const e of NATIVE_VIDEO_EXPERIMENTS) if (r[e].all || r[e].ids.has(id)) out[e] = true;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
  * Is this screen enrolled? `hasBackFace` is asked ONLY when the answer turns
  * on it (a primary under `faces`), so the single-sided fleet pays no query.
  */
@@ -221,6 +280,8 @@ export function buildNativeVideoDescriptor(input: {
   const revision = createHash('sha256')
     .update(JSON.stringify([s.tenantId, s.id, faceIndex, pl.id, asset, transform]))
     .digest('hex');
+  // Outside the revision on purpose (see NATIVE_VIDEO_EXPERIMENTS); absent when none is on.
+  const experiments = nativeVideoExperimentsFor(s.id, env);
   return {
     version: 2,
     screenId: s.id,
@@ -229,5 +290,6 @@ export function buildNativeVideoDescriptor(input: {
     revision,
     asset,
     transform,
+    ...(experiments ? { experiments } : {}),
   };
 }
