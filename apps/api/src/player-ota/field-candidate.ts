@@ -12,7 +12,25 @@ const uuid = (v: unknown): v is string =>
 const MAX_BYTES = 16 * 1024 * 1024;
 const TICKET_MS = 15 * 60_000;
 
-/** Exact ids + tenant + a bounded explicit field window; never a fleet latest override. */
+const csv = (v: string | undefined): string[] =>
+  (v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * Who may be offered the private field artifact: a screen of a listed tenant,
+ * named by id or covered by `all`, inside a bounded explicit window (≤ 24 h);
+ * never a fleet latest override.
+ *
+ *   PLAYER_APK_FIELD_TENANT_ID   one tenant uuid, or a comma-separated list
+ *                                (2026-10-17: the demo account and the home
+ *                                test box live in different tenants)
+ *   PLAYER_APK_FIELD_SCREEN_IDS  comma-separated screen uuids, or `all` =
+ *                                every screen of every listed tenant (owner,
+ *                                2026-10-17: the whole demo account may be
+ *                                test screens). Anything else is ignored.
+ */
 export function isFieldCandidateTarget(
   id: string | null,
   tenant: string | null,
@@ -20,18 +38,11 @@ export function isFieldCandidateTarget(
   now = Date.now(),
 ): boolean {
   const end = Date.parse(env.PLAYER_APK_FIELD_EXPIRES_AT ?? '');
-  return (
-    uuid(id) &&
-    uuid(tenant) &&
-    tenant === env.PLAYER_APK_FIELD_TENANT_ID &&
-    (env.PLAYER_APK_FIELD_SCREEN_IDS ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .includes(id) &&
-    Number.isFinite(end) &&
-    end > now &&
-    end - now <= 24 * 60 * 60_000
-  );
+  if (!uuid(id) || !uuid(tenant)) return false;
+  if (!csv(env.PLAYER_APK_FIELD_TENANT_ID).some((t) => uuid(t) && t === tenant)) return false;
+  const screens = csv(env.PLAYER_APK_FIELD_SCREEN_IDS);
+  const named = screens.some((s) => s.toLowerCase() === 'all' || s === id);
+  return named && Number.isFinite(end) && end > now && end - now <= 24 * 60 * 60_000;
 }
 
 export function configuredFieldRelease(

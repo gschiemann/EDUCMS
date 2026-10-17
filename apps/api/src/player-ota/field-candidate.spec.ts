@@ -27,6 +27,21 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: 'fake-storage-test-key',
 };
 describe('private field admission and download capability', () => {
+  it('covers a tenant list and a tenant-wide `all` (2026-10-17), never another tenant', () => {
+    const tenant2 = '33333333-3333-4333-8333-333333333333';
+    const id2 = '44444444-4444-4444-8444-444444444444';
+    const list = { ...env, PLAYER_APK_FIELD_TENANT_ID: `${tenant}, ${tenant2}`, PLAYER_APK_FIELD_SCREEN_IDS: `${id},all` };
+    expect(isFieldCandidateTarget(id, tenant, list, now)).toBe(true);
+    expect(isFieldCandidateTarget(id2, tenant, list, now)).toBe(true);
+    expect(isFieldCandidateTarget(id2, tenant2, list, now)).toBe(true);
+    expect(isFieldCandidateTarget(id2, '55555555-5555-4555-8555-555555555555', list, now)).toBe(false);
+    const named = { ...list, PLAYER_APK_FIELD_SCREEN_IDS: id };
+    expect(isFieldCandidateTarget(id, tenant2, named, now)).toBe(true);
+    expect(isFieldCandidateTarget(id2, tenant2, named, now)).toBe(false);
+    expect(isFieldCandidateTarget(id2, tenant2, { ...list, PLAYER_APK_FIELD_SCREEN_IDS: 'ALL' }, now)).toBe(true);
+    expect(isFieldCandidateTarget(id2, tenant2, { ...list, PLAYER_APK_FIELD_SCREEN_IDS: 'everyone' }, now)).toBe(false);
+    expect(isFieldCandidateTarget(id2, tenant2, { ...list, PLAYER_APK_FIELD_TENANT_ID: 'all' }, now)).toBe(false);
+  });
   it('requires exact id, tenant and a short explicit window; default does nothing', () => {
     expect(isFieldCandidateTarget(id, tenant, {}, now)).toBe(false);
     expect(isFieldCandidateTarget(id, tenant, env, now)).toBe(true);
