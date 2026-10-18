@@ -25,9 +25,14 @@ suite('customer corporate pool — real Postgres serializable races', () => {
     db = new PrismaClient({ datasources: { db: { url } } });
     const prisma = { client: db } as any;
     licenses = new LicenseService(prisma);
-    console = new CustomerConsoleService(prisma, {} as any, licenses, {
-      invalidate() {},
-    } as any);
+    console = new CustomerConsoleService(
+      prisma,
+      { hashPassword: async () => 'scratch-only-placeholder' } as any,
+      licenses,
+      {
+        invalidate() {},
+      } as any,
+    );
     svc = new CustomerBusinessService(
       prisma,
       console,
@@ -334,5 +339,32 @@ suite('customer corporate pool — real Postgres serializable races', () => {
         pooledSeats: true,
       }),
     ]);
+  });
+  it('prebrands a real newly-created customer with a logo before its owner claims access', async () => {
+    const logoUrl = 'https://brand.example/logo.png';
+    const actor = await db.user.create({
+      data: {
+        tenantId: root,
+        email: `${randomUUID()}@example.test`,
+        passwordHash: 'scratch-only-placeholder',
+        role: 'SUPER_ADMIN',
+      },
+    });
+    const result = await console.createCustomer(
+      { name: `Logo ${randomUUID()}`, vertical: 'K12', seatLimit: 1, logoUrl },
+      actor.id,
+    );
+    expect(
+      await db.tenantBranding.findUnique({ where: { tenantId: result.id } }),
+    ).toMatchObject({ logoUrl });
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { tenantId: result.id, action: 'CUSTOMER_CREATED' },
+    });
+    expect(JSON.parse(audit.details!).branding.logoUrl).toBe(logoUrl);
+    expect(
+      await db.user.findFirst({
+        where: { tenantId: result.id, role: 'DISTRICT_ADMIN' },
+      }),
+    ).toMatchObject({ mustSetupCredentials: true });
   });
 });

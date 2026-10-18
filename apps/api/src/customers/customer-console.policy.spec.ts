@@ -134,6 +134,13 @@ describe('create customer input', () => {
     expect(policyCode(() => parseCreateCustomer({ ...ok, primaryColor: 'red' }, isVertical))).toBe('CUSTOMER_COLOR_INVALID');
     expect(policyCode(() => parseCreateCustomer({ ...ok, slug: '!!!' }, isVertical))).toBe('CUSTOMER_SLUG_INVALID');
   });
+  it('accepts optional HTTPS logo URLs and rejects URL credentials and non-HTTPS schemes', () => {
+    expect(parseCreateCustomer({ ...ok, logoUrl: '  https://brand.example/logo.png  ' }, isVertical).logoUrl).toBe('https://brand.example/logo.png');
+    expect(parseCreateCustomer(ok, isVertical).logoUrl).toBeNull();
+    for (const logoUrl of ['http://brand.example/logo.png', 'javascript:alert(1)', 'data:image/png;base64,abc', 'https://user:pass@brand.example/logo.png', '/logo.png']) {
+      expect(policyCode(() => parseCreateCustomer({ ...ok, logoUrl }, isVertical))).toBe('CUSTOMER_LOGO_URL_INVALID');
+    }
+  });
   it('COMP is free whatever price was typed', () => {
     expect(parseCreateCustomer({ ...ok, billingMode: 'COMP', monthlyPriceCents: 2500 }, isVertical).monthlyPriceCents).toBe(0);
   });

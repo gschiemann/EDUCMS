@@ -328,10 +328,27 @@ export interface CreateCustomerInput {
   renewalDate: Date | null;
   notes: string | null;
   displayName: string | null;
+  logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
   ownerFirstName: string | null;
   ownerLastName: string | null;
+}
+
+/** A saved browser image URL; never fetched by the customer setup API. */
+export function parseCustomerLogoUrl(value: unknown): string | null {
+  const logoUrl = optionalText(value, 'logoUrl', 2048) ?? null;
+  if (!logoUrl) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(logoUrl);
+  } catch {
+    throw new PolicyError('CUSTOMER_LOGO_URL_INVALID', 'Logo must be an HTTPS URL.');
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new PolicyError('CUSTOMER_LOGO_URL_INVALID', 'Logo must be an HTTPS URL.');
+  }
+  return logoUrl;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -392,6 +409,7 @@ export function parseCreateCustomer(body: unknown, isVertical: (v: string) => bo
     renewalDate: optionalDate(b.renewalDate, 'renewalDate') ?? null,
     notes: optionalText(b.notes, 'notes', MAX_NOTES) ?? null,
     displayName: optionalText(b.displayName, 'displayName', 120) ?? null,
+    logoUrl: parseCustomerLogoUrl(b.logoUrl),
     primaryColor: color(b.primaryColor, 'primaryColor'),
     accentColor: color(b.accentColor, 'accentColor'),
     ownerFirstName: optionalText(b.ownerFirstName, 'ownerFirstName', 80) ?? null,

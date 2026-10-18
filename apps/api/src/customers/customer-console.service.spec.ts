@@ -270,6 +270,15 @@ describe('CustomerConsoleService.createCustomer + the single-use owner link', ()
     expect(starterBoard.seedForNewTenant).toHaveBeenCalledWith(out.id, owner.id, 'K12', 'Riverside Unified');
   });
 
+  it('prebrands a new unclaimed customer with only a logo and audits the saved URL', async () => {
+    const { svc, db } = setup();
+    const logoUrl = 'https://brand.example/logo.png';
+    const out = await svc.createCustomer({ name: 'Logo Only', vertical: 'K12', seatLimit: 1, logoUrl }, SUPER);
+    expect(db.s.branding.find((b) => b.tenantId === out.id)).toMatchObject({ displayName: 'Logo Only', logoUrl });
+    const audit = db.s.audit.find((a) => a.tenantId === out.id && a.action === 'CUSTOMER_CREATED')!;
+    expect(JSON.parse(audit.details).branding.logoUrl).toBe(logoUrl);
+  });
+
   it('refuses a taken or reserved account URL', async () => {
     const { svc } = setup();
     expect(await code(svc.createCustomer({ ...body, slug: 'acme' }, SUPER))).toEqual({ status: 409, code: 'CUSTOMER_SLUG_TAKEN' });

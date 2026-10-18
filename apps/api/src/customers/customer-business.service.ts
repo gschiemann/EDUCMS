@@ -22,12 +22,16 @@ import {
   Principal,
 } from '../support-access/support-access.service';
 import { derivePalette } from '../branding/color-utils';
-import { CustomerConsoleService } from './customer-console.service';
+import { CustomerConsoleService, asHttp } from './customer-console.service';
 import {
   CustomerInvoiceStorageService,
   validateInvoicePdf,
 } from './customer-invoice-storage.service';
-import { INVOICE_STATUSES, slugify } from './customer-console.policy';
+import {
+  INVOICE_STATUSES,
+  parseCustomerLogoUrl,
+  slugify,
+} from './customer-console.policy';
 
 function object(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object' || Array.isArray(body))
@@ -104,16 +108,10 @@ export class CustomerBusinessService {
     } = {};
     if ('displayName' in b) data.displayName = text(b.displayName, 120);
     if ('logoUrl' in b) {
-      data.logoUrl = text(b.logoUrl, 2048);
-      if (data.logoUrl) {
-        let url: URL;
-        try {
-          url = new URL(data.logoUrl);
-        } catch {
-          throw new BadRequestException('Logo must be an HTTPS URL.');
-        }
-        if (url.protocol !== 'https:' || url.username || url.password)
-          throw new BadRequestException('Logo must be an HTTPS URL.');
+      try {
+        data.logoUrl = parseCustomerLogoUrl(b.logoUrl);
+      } catch (error) {
+        asHttp(error);
       }
     }
     for (const field of ['primaryColor', 'accentColor'])

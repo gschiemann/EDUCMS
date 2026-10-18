@@ -591,9 +591,9 @@ export class CustomerConsoleService {
             notes: input.notes,
           },
         });
-        if (input.displayName || palette) {
+        if (input.displayName || input.logoUrl || palette) {
           await tx.tenantBranding.create({
-            data: { tenantId: tenant.id, displayName: input.displayName ?? input.name, ...(palette ? { palette: palette as any } : {}) },
+            data: { tenantId: tenant.id, displayName: input.displayName ?? input.name, logoUrl: input.logoUrl, ...(palette ? { palette: palette as any } : {}) },
           });
         }
         const owner = await this.createStarterOwner(tx, tenant.id, token, expiresAt, actorId, input);
@@ -610,7 +610,7 @@ export class CustomerConsoleService {
               slug,
               vertical: input.vertical,
               license: { before: null, after: licenseSnapshot(lic) },
-              branding: { displayName: input.displayName, primary: input.primaryColor, accent: input.accentColor },
+              branding: { displayName: input.displayName, logoUrl: input.logoUrl, primary: input.primaryColor, accent: input.accentColor },
               starterOwnerUserId: owner.id,
               starterLinkExpiresAt: expiresAt.toISOString(),
             }),

@@ -6,7 +6,7 @@ Worktree: `business-customer-api`, branch `codex/business-customer-api`. No prod
 
 All owner routes below use the existing `SUPER_ADMIN` class guard and `/api/v1/super/customers` prefix.
 
-- Existing create/license patch accept `packageName`, `packagePriceCents` (fixed MONTHLY-equivalent contract total; null means per-screen monthly price × contracted seatLimit), `pooledSeats` (explicit opt-in, default false).
+- Customer creation accepts optional logoUrl (HTTPS, without credentials), saved with initial branding and CUSTOMER_CREATED audit. Existing create/license patch accept `packageName`, `packagePriceCents` (fixed MONTHLY-equivalent contract total; null means per-screen monthly price × contracted seatLimit), `pooledSeats` (explicit opt-in, default false).
 - GET `/invoices` before `/:id`, query q/status/page/pageSize, returns rows with customerId/customerName and invoice view, total/page/pageSize/pages.
 - PATCH `/:id/branding`: displayName,primaryColor,accentColor,logoUrl. Uses existing support consent.
 - POST `/:id/invites`: email, firstName?,lastName?,tenantId?. Uses existing OnboardingService invite and support consent, with existing delivery/fallback response.
@@ -40,6 +40,8 @@ No reset, discarded work, push, merge, production operation, real charge, email,
 
 The pre-existing implementation supplies owner-guarded customer branding, customer/descendant invitations through the established onboarding lifecycle, the existing gated starter credential email path, hierarchy-aware location creation, corporate reservations, Stripe payment summary and audited quantity delegation, private invoice attachments, printable saved-invoice data, and customer-owned attachment retrieval.
 
+Final setup acceptance adds optional logoUrl at customer creation, using the same HTTPS/no-credentials validation as subsequent branding changes. Logo-only branding is created transactionally and the URL is recorded in CUSTOMER_CREATED. A policy case, service persistence case, and actual PostgreSQL customer-creation case cover this path; no URL is fetched.
+
 Completion tightens new business, storage, and pool helpers to real Prisma transaction-client and model types and validates unknown request data before use. Those three production files now pass ESLint without unsafe-any suppression. Ancestor traversal is cycle-aware; breadth-first descendant traversal uses a depth map instead of searching prior rows for every child.
 
 Corporate reservations remain serializable and retry bounded. Reservations consume max(actual usage, reservation) per tenant, and unreserved locations cannot borrow reserved capacity. Disabling a pool now refuses paired descendant screens even with no explicit reservations, preventing the old standalone pilot fallback from accidentally permitting new screens. It also refuses non-cleared reservations. Independent child licenses, card billing, and overcommitted contract reductions remain rejected. No license renewal/expiry semantics were changed.
@@ -56,9 +58,9 @@ All commands ran inside the isolated worktree. Final focused suite command:
 CUSTOMER_DOMAIN_TEST_DATABASE_URL='postgresql://gschiemann@127.0.0.1:55449/customer_domain?connection_limit=10&pool_timeout=20' pnpm --filter api exec jest --runInBand --watchman=false --testPathPatterns 'customers/|license.pool|license.service|stripe.*spec|trial-to-paid|support-access'
 ```
 
-Result: **16 suites, 339 tests passed**, including **11 actual PostgreSQL tests**. Log: `/private/tmp/customer-domain-finish-all.log`.
+Result: **16 suites, 342 tests passed**, including **12 actual PostgreSQL tests**. Log: `/private/tmp/customer-domain-finish-all.log`.
 
-PostgreSQL coverage: concurrent allocations; concurrent pairings for the final corporate seat; allocation versus pairing; foreign invoice/location rejection; allocation rollback on audit FK failure; under-usage reservations; reserved capacity isolation; unsafe pool opt-out; independent license/card pool activation refusal; atomic PDF metadata rollback on audit failure with mocked external object cleanup; real roster select for fixed contract fields. Existing screen pairing handler still runs `assertSeatAvailable(..., tx)` inside its existing serializable transaction; no screen controller changes were needed.
+PostgreSQL coverage: concurrent allocations; concurrent pairings for the final corporate seat; allocation versus pairing; foreign invoice/location rejection; allocation rollback on audit FK failure; under-usage reservations; reserved capacity isolation; unsafe pool opt-out; independent license/card pool activation refusal; atomic PDF metadata rollback on audit failure with mocked external object cleanup; real roster select for fixed contract fields; and a real new customer with logo branding, an audit row, and an unclaimed owner. Existing screen pairing handler still runs `assertSeatAvailable(..., tx)` inside its existing serializable transaction; no screen controller changes were needed.
 
 Service/security coverage additionally proves support consent failures prevent branding, invites, locations, card quantity, and starter email actions; invitation role escalation is ignored; foreign invoice uploads fail before storage; customer download tenant comes only from the authenticated organization; audit failure blocks signing; card summaries expose only masked provider details; provider failures do not fabricate payment estimates; card errors do not leak provider detail; PDFs reject false signatures, missing EOF, MIME mismatch, oversized files, obvious active content, and malformed object paths; bucket provisioning/public races fail closed.
 
