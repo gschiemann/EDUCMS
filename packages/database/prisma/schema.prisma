@@ -10,6 +10,7 @@ datasource db {
 }
 
 model Tenant {
+  allocatedSeats Int? @map("allocated_seats") // Reservation from the root corporate pool, for this location’s own screens.
   id                              String             @id @default(uuid())
   parentId                        String?            @map("parent_id")
   name                            String
@@ -805,6 +806,9 @@ model AccountSetupLink {
 // register() would push currentSeats above seatLimit, we reject with a
 // LICENSE_EXHAUSTED error and instruct the admin to add seats.
 model License {
+  packageName              String?   @map("package_name")
+  packagePriceCents        Int?      @map("package_price_cents") // Fixed monthly-equivalent contract total; null = per-seat pricing.
+  pooledSeats              Boolean   @default(false) @map("pooled_seats")
   id                       String    @id @default(uuid())
   tenantId                 String    @unique @map("tenant_id")
   tier                     String // PILOT | STANDARD | ENTERPRISE | EDU_DISTRICT | RESTAURANT_CHAIN | (custom)
@@ -893,6 +897,10 @@ model License {
 // status: SENT | PAID | PAST_DUE | VOID. `number` is globally unique so a
 // mistyped duplicate is refused instead of silently double-counted.
 model CustomerInvoice {
+  pdfStoragePath String? @map("pdf_storage_path")
+  pdfFileName String? @map("pdf_file_name")
+  pdfSizeBytes Int? @map("pdf_size_bytes")
+  pdfUploadedAt DateTime? @map("pdf_uploaded_at")
   id          String    @id @default(uuid())
   tenantId    String    @map("tenant_id")
   number      String    @unique
@@ -4745,4 +4753,24 @@ model CapacityAlertState {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("capacity_alert_state")
+}
+
+// Owner-only business cost ledger; browser Data API access is denied by RLS.
+model PlatformCost {
+  id String @id @default(uuid())
+  provider String
+  service String
+  planName String? @map("plan_name")
+  monthlyCostCents Int @map("monthly_cost_cents")
+  budgetCents Int? @map("budget_cents")
+  currency String @default("usd")
+  nextBillAt DateTime? @map("next_bill_at")
+  notes String?
+  active Boolean @default(true)
+  source String @default("MANUAL")
+  observedAt DateTime @default(now()) @map("observed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_costs")
 }
