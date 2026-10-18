@@ -114,6 +114,7 @@ export class CustomerConsoleService {
         license: {
           select: {
             tier: true, status: true, billingMode: true, seatLimit: true, monthlyPriceCents: true,
+            packageName: true, packagePriceCents: true, pooledSeats: true,
             renewalDate: true, currentPeriodEnd: true, expiresAt: true,
           },
         },
@@ -201,6 +202,9 @@ export class CustomerConsoleService {
           seatsUsed: seats.get(t.id) ?? 0,
           locations: locations.get(t.id) ?? 0,
           monthlyPriceCents: lic?.monthlyPriceCents ?? null,
+          packageName: lic?.packageName ?? null,
+          packagePriceCents: lic?.packagePriceCents ?? null,
+          pooledSeats: lic?.pooledSeats === true,
           renewalDate: iso(renewalDateOf(lic)),
           lastActivityAt: last ? new Date(last).toISOString() : null,
           openInvoiceCents: inv.cents,

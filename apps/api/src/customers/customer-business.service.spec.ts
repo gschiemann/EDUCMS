@@ -179,7 +179,10 @@ describe('customer business boundaries', () => {
     db.s.licenses[0].packagePriceCents = 999999;
     const document = await svc.invoiceDocument('root', inv.id);
     expect(document.seller.name).toBe('VenueOS');
-    expect(document.lines[0]).toMatchObject({ totalCents: 100, descriptionCode: 'subscription' });
+    expect(document.lines[0]).toMatchObject({
+      totalCents: 100,
+      descriptionCode: 'subscription',
+    });
   });
   it('emails only the existing gated starter link and reports unverified delivery honestly', async () => {
     const { svc, console, email } = setup();

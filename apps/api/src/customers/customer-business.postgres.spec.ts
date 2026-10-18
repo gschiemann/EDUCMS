@@ -5,6 +5,7 @@ import { CustomerBusinessService } from './customer-business.service';
 import { CustomerConsoleService } from './customer-console.service';
 import { LicenseService } from '../license/license.service';
 import { withDbRetry } from '../prisma/with-db-retry';
+import { parseListQuery } from './customer-console.policy';
 
 const url = process.env.CUSTOMER_DOMAIN_TEST_DATABASE_URL;
 if (url && !['localhost', '127.0.0.1'].includes(new URL(url).hostname))
@@ -313,5 +314,25 @@ suite('customer corporate pool — real Postgres serializable races', () => {
         where: { tenantId: root, action: 'CUSTOMER_LICENSE_UPDATED' },
       }),
     ).toBe(0);
+  });
+  it('exposes fixed package billing and pool fields in list rows fetched by the real select', async () => {
+    await db.license.update({
+      where: { tenantId: root },
+      data: {
+        packageName: 'Enterprise',
+        packagePriceCents: 12345,
+        monthlyPriceCents: 2000,
+      },
+    });
+    const result = await console.list(parseListQuery({ q: root }));
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        id: root,
+        packageName: 'Enterprise',
+        packagePriceCents: 12345,
+        monthlyPriceCents: 2000,
+        pooledSeats: true,
+      }),
+    ]);
   });
 });

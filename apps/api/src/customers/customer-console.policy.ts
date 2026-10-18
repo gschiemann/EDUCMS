@@ -463,6 +463,9 @@ export function normalizeInvoiceWrite(input: InvoiceInput, now: Date): InvoiceIn
 // ─── List: filter / sort / paginate ────────────────────────────────────────
 
 export interface CustomerRow {
+  packageName?: string | null;
+  packagePriceCents?: number | null;
+  pooledSeats?: boolean;
   id: string;
   name: string;
   slug: string;
