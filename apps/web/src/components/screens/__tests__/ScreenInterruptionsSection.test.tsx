@@ -20,12 +20,10 @@ jest.mock('@/hooks/use-api', () => ({
   },
 }));
 jest.mock('@/lib/store', () => ({
-  useAppStore: (sel: (s: any) => any) => sel({ user: { id: 'u1', role } }),
+  useAppStore: (sel: (s: { user: { id: string; role: string } }) => unknown) => sel({ user: { id: 'u1', role } }),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { ScreenInterruptionsSection, interruptionCause, interruptionKindKey } =
-  require('../ScreenInterruptionsSection') as typeof import('../ScreenInterruptionsSection');
+import { ScreenInterruptionsSection, interruptionCause, interruptionKindKey } from '../ScreenInterruptionsSection';
 
 type Ev = ScreenInterruptionsResponse['events'][number];
 const ev = (over: Partial<Ev>): Ev => ({
@@ -152,7 +150,7 @@ describe('the words for each row', () => {
       expect(c).not.toBeNull();
       keys.add(c!.key);
     }
-    const ns = (cat: any) => cat.screens.interruptions as Record<string, string>;
+    const ns = (cat: unknown) => (cat as { screens: { interruptions: Record<string, string> } }).screens.interruptions;
     for (const key of keys) {
       for (const cat of [en, es, zh]) expect(typeof ns(cat)[key]).toBe('string');
       if (!['window24', 'window72'].includes(key)) {

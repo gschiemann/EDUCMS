@@ -8,6 +8,7 @@ import {
   LEDGER_IDENTITY_DEDUP_MS,
   LEDGER_KINDS,
   LEDGER_KIND_LIST,
+  NATIVE_START_DEDUP_MS,
   NATIVE_SWAP_WINDOW_MS,
   boundDetail,
   countsAsInterruption,
@@ -167,9 +168,14 @@ describe('native engine transitions (telemetry)', () => {
   const run = (storedReport: unknown, cur: NativeVideoLike | null, webSha: string | null = null) =>
     nativeEngineEvents({ ...ref, storedReport, native: cur, webSample: webSha ? { sha256: webSha } : null, nowMs: NOW });
 
-  it('engine-start: once per session, when it reaches presenting', () => {
+  it('engine-start: when a session reaches presenting — kept once per face × file per 6 h (a mixed playlist starts one per item)', () => {
     const [ev] = run(null, native());
-    expect(ev).toMatchObject({ kind: 'engine-start', cause: 'native', sessionId: S1, dedupMs: LEDGER_IDENTITY_DEDUP_MS });
+    expect(ev).toMatchObject({
+      kind: 'engine-start', cause: 'native', sessionId: S1,
+      dedupKey: `engine-start:0:${SHA.slice(0, 8)}`, dedupMs: NATIVE_START_DEDUP_MS,
+    });
+    expect(run(null, native({ sessionId: S2 }))[0].dedupKey).toBe(ev.dedupKey);
+    expect(run(null, native({ faceIndex: 1 }))[0].dedupKey).not.toBe(ev.dedupKey);
     expect(run(stored({ sessionId: S1, state: 'presenting', sha256: SHA, at: iso(NOW - 60_000) }), native())).toEqual([]);
     expect(run(stored({ sessionId: S1, state: 'preparing', sha256: SHA, at: iso(NOW - 60_000) }), native())[0]).toMatchObject({ kind: 'engine-start' });
     expect(run(null, native({ state: 'preparing' }))).toEqual([]);
@@ -178,6 +184,7 @@ describe('native engine transitions (telemetry)', () => {
   it('engine-swap web→native: the browser was playing this very file a moment ago', () => {
     const fresh = run(stored(null, { sha256: SHA, at: iso(NOW - 60_000) }), native());
     expect(fresh.map((e) => `${e.kind}:${e.cause}`)).toEqual(['engine-start:native', 'engine-swap:web-to-native']);
+    expect(fresh[1]).toMatchObject({ dedupKey: `engine-swap:w2n:0:${SHA.slice(0, 8)}`, dedupMs: NATIVE_START_DEDUP_MS });
     // a stale web sample, or another file, is not a swap
     expect(run(stored(null, { sha256: SHA, at: iso(NOW - NATIVE_SWAP_WINDOW_MS - 1) }), native()).map((e) => e.kind)).toEqual(['engine-start']);
     expect(run(stored(null, { sha256: SHA2, at: iso(NOW) }), native()).map((e) => e.kind)).toEqual(['engine-start']);
@@ -188,7 +195,9 @@ describe('native engine transitions (telemetry)', () => {
 
   it('engine-stop: a failed state, with the APK reason, once per session', () => {
     const [ev] = run(null, native({ state: 'failed', reason: 'output-stalled', elapsedMs: 5000 }));
-    expect(ev).toMatchObject({ kind: 'engine-stop', cause: 'output-stalled', sessionId: S1 });
+    expect(ev).toMatchObject({ kind: 'engine-stop', cause: 'output-stalled', sessionId: S1, dedupMs: LEDGER_IDENTITY_DEDUP_MS });
+    // the playlist moving on is not an interruption, and is not recorded
+    expect(run(null, native({ state: 'failed', reason: 'content-changed' }))).toEqual([]);
     expect(run(stored({ sessionId: S1, state: 'failed', sha256: SHA, at: iso(NOW - 30_000) }), native({ state: 'failed' }))).toEqual([]);
   });
 
@@ -197,7 +206,8 @@ describe('native engine transitions (telemetry)', () => {
     const old = { at: NOW - 900_000, face: 0, reason: 'content-changed' };
     const prev = stored({ sessionId: S2, state: 'presenting', sha256: SHA, at: iso(prevAt), timing: { history: { entries: [old], overflow: 0 } } });
     const ended = { at: prevAt - 5_000, face: 0, reason: 'activity-paused', sha8: 'aaaaaaaa', elapsedMs: 900000, recovered: false };
-    const evs = run(prev, native({ timing: { history: { entries: [old, ended] } } }));
+    const moved = { at: prevAt + 1_000, face: 0, reason: 'content-changed', sha8: 'aaaaaaaa' };
+    const evs = run(prev, native({ timing: { history: { entries: [old, ended, moved] } } }));
     const stops = evs.filter((e) => e.kind === 'engine-stop');
     expect(stops).toHaveLength(1);
     expect(stops[0]).toMatchObject({ cause: 'activity-paused', sessionId: null, dedupKey: `engine-stop:h:0:${ended.at}` });

@@ -18,9 +18,10 @@
  *   • a new Player version REPORTED (`ota-installed`) — the install itself is
  *     the `ota-install` row (and the restart an `app-relaunch` row);
  *   • an alert ENDING (`emergency-clear`) — the alert counted once, at its start;
- *   • a hardware-video STOP whose reason is a deliberate content change, an
- *     alert taking the glass, or an app restart that is already its own row
- *     (`NON_INTERRUPTING_STOP_REASONS`);
+ *   • a hardware-video STOP whose reason is an alert taking the glass, or an
+ *     app restart that is already its own row (`NON_INTERRUPTING_STOP_REASONS`)
+ *     — a stop because the playlist moved on (`content-changed`) is not
+ *     recorded at all (`UNRECORDED_STOP_REASONS`);
  *   • EMERGENCY DRILLS — every drill row (`detail.drill === true`) is left out
  *     of `interruptions` and counted in `drills` instead.
  *
@@ -49,7 +50,9 @@
  *     Screen column is written for the ledger.
  *   • Bounded: `detail` ≤ 2 KB, `cause` a short token, rows deduplicated per
  *     (screen, kind, session or cause) — 60 s by default — so a reporting loop
- *     cannot flood a screen's ledger; 30 days / 2,000 rows per screen
+ *     cannot flood a screen's ledger; normal playback leaves no trail (a
+ *     native session start and its hand-over once per face × file per 6 h, a
+ *     playlist moving on not at all); 30 days / 2,000 rows per screen
  *     retention (screen-events-retention.cron.ts).
  *   • `createdAt` is the event's time, on the SERVER's clock. A device time is
  *     used only clamped inside a window the server itself observed.
@@ -104,6 +107,20 @@ export const LEDGER_IDENTITY_DEDUP_MS = 24 * 60 * 60_000;
 export const LEDGER_MAX_BACKDATE_MS = 7 * 24 * 60 * 60_000;
 /** A web sample / native report this recent still describes what is on the glass now. */
 export const NATIVE_SWAP_WINDOW_MS = 3 * 60_000;
+/**
+ * A native session starting, and the hand-over from the browser that comes
+ * with it, are kept once per face × file in this window: a mixed playlist
+ * on the hardware engine starts a session per item, and a ledger that
+ * recorded each one would be a play log that pushes the real interruptions
+ * out of the per-screen cap.
+ */
+export const NATIVE_START_DEDUP_MS = 6 * 60 * 60_000;
+/**
+ * Native stop reasons that are the playlist moving on, not an interruption,
+ * and are not recorded at all (a stop the ledger can neither count nor need
+ * to explain — like `playlist-change`, which it leaves out).
+ */
+export const UNRECORDED_STOP_REASONS: ReadonlySet<string> = new Set(['content-changed']);
 
 export interface LedgerEventInput {
   screenId: string;
@@ -397,8 +414,8 @@ export function nativeEngineEvents(args: ScreenRef & {
         layer: cur.output?.layerMode ?? null,
         composition: cur.output?.compositionMode ?? null,
       },
-      dedupKey: `engine-start:${cur.sessionId}`,
-      dedupMs: LEDGER_IDENTITY_DEDUP_MS,
+      dedupKey: `engine-start:${cur.faceIndex}:${sha8(curSha)}`,
+      dedupMs: NATIVE_START_DEDUP_MS,
     });
     const webHadIt =
       (nowWebSha !== null && nowWebSha === curSha) ||
@@ -412,13 +429,17 @@ export function nativeEngineEvents(args: ScreenRef & {
         source: 'device',
         sessionId: cur.sessionId,
         detail: { face: cur.faceIndex, sha8: sha8(curSha) },
-        dedupKey: `engine-swap:w2n:${cur.sessionId}`,
-        dedupMs: LEDGER_IDENTITY_DEDUP_MS,
+        dedupKey: `engine-swap:w2n:${cur.faceIndex}:${sha8(curSha)}`,
+        dedupMs: NATIVE_START_DEDUP_MS,
       });
     }
   }
 
-  if (cur && cur.state === 'failed' && !(prev && prev.sessionId === cur.sessionId && prev.state === 'failed')) {
+  if (
+    cur && cur.state === 'failed' &&
+    !UNRECORDED_STOP_REASONS.has(ledgerToken(cur.reason, 'failed')) &&
+    !(prev && prev.sessionId === cur.sessionId && prev.state === 'failed')
+  ) {
     out.push({
       ...base,
       kind: 'engine-stop',
@@ -438,6 +459,7 @@ export function nativeEngineEvents(args: ScreenRef & {
       const e = obj(raw);
       const key = historyKey(e);
       if (!e || !key || prev.historyKeys.has(key)) continue;
+      if (UNRECORDED_STOP_REASONS.has(ledgerToken(e.reason, 'ended'))) continue;
       const deviceAt = num(e.at)!;
       out.push({
         ...base,
