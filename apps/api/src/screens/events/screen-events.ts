@@ -154,11 +154,43 @@ export interface LedgerRowData {
 
 const SOURCES: ReadonlySet<string> = new Set(['operator', 'system', 'device']);
 
-/** A short, lowercase token: `[a-z0-9_.-]`, ≤ 64 chars, never empty. */
+/** A token is read from at most this many characters of its raw value — cut BEFORE anything looks at it. */
+export const LEDGER_TOKEN_INPUT_MAX = 128;
+/** The longest token stored. */
+export const LEDGER_TOKEN_MAX = 64;
+
+const isTokenChar = (c: number): boolean =>
+  (c >= 97 && c <= 122) /* a-z */ || (c >= 48 && c <= 57) /* 0-9 */ || c === 95 /* _ */ || c === 46 /* . */;
+
+/**
+ * A short, lowercase token: `[a-z0-9_.]` with single `-` between runs, ≤ 64
+ * chars, never starting or ending with `-`, never empty (`fallback` instead).
+ *
+ * Devices and callers control these strings, so the raw value is cut to
+ * LEDGER_TOKEN_INPUT_MAX first and then read in ONE linear pass with no
+ * regular expression (CodeQL js/polynomial-redos: the earlier
+ * `/^-+|-+$/` backtracked quadratically on a long run of `-`). Anything that
+ * is not a token character — `-` included — folds into one `-` between the
+ * characters it separates.
+ */
 export function ledgerToken(value: unknown, fallback = 'unknown'): string {
   const raw = typeof value === 'string' ? value : value === null || value === undefined ? '' : String(value);
-  const t = raw.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
-  return t || fallback;
+  const input = raw.slice(0, LEDGER_TOKEN_INPUT_MAX).toLowerCase();
+  let out = '';
+  let gap = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    if (!isTokenChar(c)) {
+      gap = true;
+      continue;
+    }
+    const dash = gap && out.length > 0;
+    if (out.length + (dash ? 2 : 1) > LEDGER_TOKEN_MAX) break;
+    if (dash) out += '-';
+    out += input[i];
+    gap = false;
+  }
+  return out || fallback;
 }
 
 /** `detail` as stored: JSON, at most 2 KB. A larger one keeps its scalar fields, marked `truncated`. */
@@ -205,8 +237,9 @@ export function ledgerRow(input: LedgerEventInput, now: Date = new Date()): Ledg
     input.versionCode > 0 && input.versionCode <= 2_147_483_647
       ? input.versionCode
       : null;
-  const sessionId =
-    typeof input.sessionId === 'string' && input.sessionId.trim() ? input.sessionId.trim().slice(0, 128) : null;
+  // Cut before it is read, like every caller-controlled string here.
+  const sessionRaw = typeof input.sessionId === 'string' ? input.sessionId.slice(0, 256).trim() : '';
+  const sessionId = sessionRaw ? sessionRaw.slice(0, 128) : null;
   return {
     screenId: input.screenId,
     tenantId: input.tenantId,
@@ -555,7 +588,8 @@ export function procRelaunchEvent(args: ScreenRef & {
 
 /** Which device OTA states become a ledger kind (on a TRANSITION into them only). */
 export function otaLedgerKind(state: string): LedgerKind | null {
-  const s = String(state || '').toUpperCase();
+  // Bounded before the (linear, anchored) pattern below ever reads it.
+  const s = String(state || '').slice(0, 64).toUpperCase();
   if (s === 'DOWNLOADING') return 'ota-download';
   if (s === 'INSTALLING') return 'ota-install';
   if (s === 'NEEDS_TAP') return 'ota-needs-tap';
@@ -593,6 +627,8 @@ export function versionChangeEvent(args: ScreenRef & {
   reportedCode: number | null | undefined;
   versionName: string | null | undefined;
   pushSatisfied: boolean;
+  /** Set by a route that also takes anonymous reports (player-ota update-check): did this one prove the device? */
+  authenticated?: boolean;
 }): LedgerEventInput | null {
   const to = num(args.reportedCode);
   if (to === null || to <= 0) return null;
@@ -611,6 +647,7 @@ export function versionChangeEvent(args: ScreenRef & {
       to: Math.floor(to),
       version: str(args.versionName)?.slice(0, 40) ?? null,
       ...(changed && from !== null && to < from ? { rollback: true } : {}),
+      ...(typeof args.authenticated === 'boolean' ? { authenticated: args.authenticated } : {}),
     },
     dedupKey: `ota-installed:${Math.floor(to)}`,
     dedupMs: LEDGER_IDENTITY_DEDUP_MS,

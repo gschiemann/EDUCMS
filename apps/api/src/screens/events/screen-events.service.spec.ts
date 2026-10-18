@@ -5,7 +5,14 @@
  * retention.
  */
 import { LEDGER_KIND_LIST, LEDGER_DEDUP_MS, type LedgerEventInput } from './screen-events';
-import { LEDGER_BULK_MAX_ROWS, LEDGER_WINDOW_LIST_MAX, ScreenEventsService, writeLedgerRows } from './screen-events.service';
+import {
+  LEDGER_BULK_MAX_ROWS,
+  LEDGER_WINDOW_LIST_MAX,
+  ScreenEventsService,
+  recordScreenEvent,
+  resetScreenEventsDedupForTests,
+  writeLedgerRows,
+} from './screen-events.service';
 import { ScreenEventsRetentionCron } from './screen-events-retention.cron';
 import { LEASE } from '../../realtime/leader-lease.service';
 
@@ -22,6 +29,8 @@ function db() {
     },
   };
 }
+
+beforeEach(() => resetScreenEventsDedupForTests());
 
 const reload = (over: Partial<LedgerEventInput> = {}): LedgerEventInput => ({
   screenId: 'scr-1', tenantId: 'ten-1', kind: 'page-reload', cause: 'wedge-detector', source: 'system', ...over,
@@ -100,6 +109,19 @@ describe('record', () => {
     expect(await svc.record(reload({ tenantId: null }))).toBe(false);
     expect(await svc.record(reload({ kind: 'nope' as any }))).toBe(false);
     expect(client.screenEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('one dedup map per process: a standalone writer folds against the injected service', async () => {
+    jest.useFakeTimers().setSystemTime(NOW);
+    try {
+      const client = db();
+      expect(await new ScreenEventsService({ client } as any).record(reload())).toBe(true);
+      expect(await recordScreenEvent({ client } as any, reload())).toBe(false);
+      expect(await recordScreenEvent({ client } as any, null)).toBe(false);
+      expect(client.screenEvent.create).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('recordAll writes each independent event once, in order', async () => {

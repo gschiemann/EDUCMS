@@ -8,6 +8,7 @@ import {
   LEDGER_IDENTITY_DEDUP_MS,
   LEDGER_KINDS,
   LEDGER_KIND_LIST,
+  LEDGER_TOKEN_INPUT_MAX,
   NATIVE_START_DEDUP_MS,
   NATIVE_SWAP_WINDOW_MS,
   boundDetail,
@@ -48,9 +49,35 @@ describe('vocabulary', () => {
   it('tokens are short, lowercase and never empty', () => {
     expect(ledgerToken('FAILED_ABORTED')).toBe('failed_aborted');
     expect(ledgerToken('  Wedge Detector!! ')).toBe('wedge-detector');
+    expect(ledgerToken('activity-paused')).toBe('activity-paused');
+    expect(ledgerToken('--a--b--')).toBe('a-b');
     expect(ledgerToken('x'.repeat(200))).toHaveLength(64);
     expect(ledgerToken('')).toBe('unknown');
     expect(ledgerToken(null, 'failed')).toBe('failed');
+  });
+
+  it('a 10,000-character run of "-" is rejected in constant time (CodeQL js/polynomial-redos)', () => {
+    const tenK = '-'.repeat(10_000);
+    const oneM = '-'.repeat(1_000_000);
+    for (const input of [tenK, oneM]) {
+      const started = process.hrtime.bigint();
+      for (let i = 0; i < 200; i++) expect(ledgerToken(input)).toBe('unknown');
+      const ms = Number(process.hrtime.bigint() - started) / 1e6;
+      // The backtracking pattern this replaced needed ~n² steps per call
+      // (seconds for one 10k string); a bounded single pass needs microseconds,
+      // and the same at 1M characters as at 10k.
+      expect(ms).toBeLessThan(250);
+    }
+    expect(ledgerToken(tenK, 'failed')).toBe('failed');
+    expect(ledgerToken('-a'.repeat(5_000))).toBe(Array(32).fill('a').join('-').slice(0, 63));
+  });
+
+  it('only the first 128 characters are ever read', () => {
+    expect(LEDGER_TOKEN_INPUT_MAX).toBe(128);
+    expect(ledgerToken('-'.repeat(LEDGER_TOKEN_INPUT_MAX - 3) + 'abc')).toBe('abc');
+    expect(ledgerToken('-'.repeat(LEDGER_TOKEN_INPUT_MAX) + 'abc')).toBe('unknown');
+    // a row's cause built from such a value is bounded the same way
+    expect(ledgerRow({ ...ref, kind: 'engine-stop', cause: '-'.repeat(10_000), source: 'device' })!.cause).toBe('unknown');
   });
 });
 

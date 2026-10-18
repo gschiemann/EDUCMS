@@ -10,7 +10,7 @@
  */
 import { PlaybackDemotionService, VIDEO_PLAYBACK_DEMOTED, VIDEO_PLAYBACK_DEMOTION_CLEARED, VIDEO_PLAYBACK_STUTTER_TWO_SIDED, VIDEO_PLAYBACK_STUTTER_UNRESOLVED } from './playback-demotion.service';
 import { ingestFilePlayback } from './file-playback';
-import { ScreenEventsService } from '../screens/events/screen-events.service';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from '../screens/events/screen-events.service';
 
 const T = 'tenant-a';
 const S = 'screen-1';
@@ -332,6 +332,7 @@ describe('ingest → evaluate: only VISIBLE stutter, 3 in a row', () => {
 
 // ── Interruption ledger (2026-10-18, screens/events/screen-events.ts) ──────
 describe('interruption ledger rows', () => {
+  beforeEach(() => resetScreenEventsDedupForTests());
   /** The same world, with the real ledger service writing into a fake table. */
   function withLedger(over: Parameters<typeof world>[0] = {}) {
     const h = world(over);

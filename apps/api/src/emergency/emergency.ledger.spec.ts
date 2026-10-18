@@ -16,7 +16,7 @@
  */
 import { EmergencyController } from './emergency.controller';
 import { ScreenEmergencyController } from './screen-emergency.controller';
-import { ScreenEventsService } from '../screens/events/screen-events.service';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from '../screens/events/screen-events.service';
 import { summarizeLedgerRows } from '../screens/events/screen-events';
 import { invalidateTenantState, resetManifestCacheForTests } from '../screens/manifest-hot-cache';
 import { resetEmergencyRevForTests } from '../screens/emergency-rev';
@@ -72,6 +72,7 @@ function withLedger(opts: { createMany?: (args: any) => Promise<any> } = {}) {
 const ids = (rows: any[], kind: string) => rows.filter((r) => r.kind === kind).map((r) => r.screenId).sort();
 
 beforeEach(() => {
+  resetScreenEventsDedupForTests();
   resetManifestCacheForTests();
   resetEmergencyRevForTests('origin-ledger');
   for (const id of [DISTRICT, SCHOOL, SIBLING, OTHER]) invalidateTenantState(id);

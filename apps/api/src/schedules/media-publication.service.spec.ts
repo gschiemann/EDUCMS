@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { MediaOptimizationService } from '../storage/media-optimization.service';
 import { MediaPublicationService } from './media-publication.service';
-import { ScreenEventsService } from '../screens/events/screen-events.service';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from '../screens/events/screen-events.service';
 
 const video = {
   id: 'asset-v', mimeType: 'video/mp4', fileUrl: 'https://example.com/4k.mp4',
@@ -279,6 +279,7 @@ describe('media publication gate', () => {
 
 // ── Interruption ledger (2026-10-18, screens/events/screen-events.ts) ──────
 describe('interruption ledger: the rendition REFRESH_WEB', () => {
+  beforeEach(() => resetScreenEventsDedupForTests());
   it('page-reload server-displacement: one row for the screen it asks to reload — none for a repeat inside a minute', async () => {
     const ready = { ...video, processingMeta: {
       ...video.processingMeta,

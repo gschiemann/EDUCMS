@@ -14,6 +14,9 @@ import {
   type LedgerSummary,
 } from './screen-events';
 
+// For a standalone writer that wants one import (player-ota's update-check).
+export { versionChangeEvent } from './screen-events';
+
 /** Rows one bulk write inserts per statement. */
 const BULK_CHUNK = 1_000;
 /** Most rows one bulk write (a tenant-wide push, a district alert) may insert. */
@@ -22,6 +25,17 @@ export const LEDGER_BULK_MAX_ROWS = 10_000;
 export const LEDGER_WINDOW_LIST_MAX = 200;
 /** In-process dedup keys kept before expired ones are pruned. */
 const MEMORY_PRUNE_AT = 5_000;
+/**
+ * ONE in-process dedup map per process: the injected service and the one a
+ * standalone writer builds (`recordScreenEvent`) fold against the same keys,
+ * so the same event reported through two routes is one row even with Redis down.
+ */
+const claimedKeys = new Map<string, number>();
+
+/** Test hook: forget every in-process dedup key. */
+export function resetScreenEventsDedupForTests(): void {
+  claimedKeys.clear();
+}
 
 export interface ScreenLedgerEventView {
   id: string;
@@ -67,7 +81,6 @@ export interface ScreenLedgerWindow {
 @Injectable()
 export class ScreenEventsService {
   private readonly logger = new Logger(ScreenEventsService.name);
-  private readonly claimed = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -151,7 +164,7 @@ export class ScreenEventsService {
 
   /** True when this event's identity is new inside its window. Redis first, this process always. */
   private async claim(key: string, ttlMs: number, nowMs: number): Promise<boolean> {
-    const until = this.claimed.get(key);
+    const until = claimedKeys.get(key);
     if (until !== undefined && until > nowMs) return false;
     const client = this.redis?.isConnected?.() ? this.redis.publisher : null;
     if (client) {
@@ -170,12 +183,29 @@ export class ScreenEventsService {
   }
 
   private remember(key: string, until: number, nowMs: number): void {
-    if (this.claimed.size >= MEMORY_PRUNE_AT) {
-      for (const [k, t] of this.claimed) if (t <= nowMs) this.claimed.delete(k);
-      if (this.claimed.size >= MEMORY_PRUNE_AT) this.claimed.clear();
+    if (claimedKeys.size >= MEMORY_PRUNE_AT) {
+      for (const [k, t] of claimedKeys) if (t <= nowMs) claimedKeys.delete(k);
+      if (claimedKeys.size >= MEMORY_PRUNE_AT) claimedKeys.clear();
     }
-    this.claimed.set(key, until);
+    claimedKeys.set(key, until);
   }
+}
+
+/**
+ * One ledger event from a writer that holds the PrismaService but has no
+ * injected ScreenEventsService — player-ota's update-check, a lead-owned file
+ * that carries exactly one call to this (2026-10-18). Same rules and the same
+ * in-process dedup map as the injected service; the Redis claim when a
+ * RedisService is passed. `null` (nothing happened) and every failure answer
+ * false. Never throws.
+ */
+export async function recordScreenEvent(
+  prisma: PrismaService,
+  input: LedgerEventInput | null | undefined,
+  redis?: RedisService,
+): Promise<boolean> {
+  if (!input) return false;
+  return new ScreenEventsService(prisma, redis).record(input);
 }
 
 /**

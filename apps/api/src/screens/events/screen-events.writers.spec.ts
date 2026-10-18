@@ -19,7 +19,8 @@ jest.mock('../device-auth', () => {
   return { ...actual, verifyDeviceForScreen: jest.fn() };
 });
 
-import { ScreenEventsService } from './screen-events.service';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from './screen-events.service';
+import { PlayerOtaController } from '../../player-ota/player-ota.controller';
 import { LEDGER_KIND_LIST } from './screen-events';
 import { recordPushDeployment } from '../deployment-record';
 import { ScreenWedgeDetectorCron } from '../screen-wedge-detector.cron';
@@ -53,6 +54,7 @@ function eventTable() {
   return { screenEvent, created, rows };
 }
 
+beforeEach(() => resetScreenEventsDedupForTests());
 afterEach(() => {
   jest.useRealTimers();
 });
@@ -303,7 +305,7 @@ describe('app-relaunch + ota-installed · status heartbeat', () => {
     const a = screensHarness(row());
     await beat(a.controller, proc(300, NOW - 10_000, 7), '1.1.41', '10141', 'fp-hb-2');
     expect(a.t.rows('app-relaunch')).toEqual([expect.objectContaining({ cause: 'process-restart' })]);
-    const b = screensHarness(row({ playerVersion: '1.1.29', playerVersionCode: 10129 }));
+    const b = screensHarness(row({ id: 'hb-2', playerVersion: '1.1.29', playerVersionCode: 10129 }));
     await beat(b.controller, proc(300, NOW - 10_000, 7), '1.1.41', '10141', 'fp-hb-3');
     expect(b.t.rows('app-relaunch')).toEqual([expect.objectContaining({ cause: 'update-install', versionCode: 10141 })]);
     expect(b.t.rows('ota-installed')).toEqual([expect.objectContaining({ cause: 'version-change', detail: expect.objectContaining({ from: 10129, to: 10141 }) })]);
@@ -317,6 +319,43 @@ describe('app-relaunch + ota-installed · status heartbeat', () => {
     const { t, controller } = screensHarness(row({ tenantId: null }), false);
     await beat(controller, proc(200, NOW - 40_000, 8), '1.1.41', '10141', 'fp-hb-4');
     expect(t.rows()).toEqual([]);
+  });
+});
+
+describe('ota-installed · player-ota update-check (persistReportedVersion)', () => {
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  };
+  function otaHarness(prior: Record<string, unknown> | null) {
+    const t = eventTable();
+    const prisma: any = {
+      client: {
+        screen: { findFirst: jest.fn(async () => prior), updateMany: jest.fn(async () => ({ count: 1 })) },
+        auditLog: { create: jest.fn(async () => ({})) },
+        screenEvent: t.screenEvent,
+      },
+    };
+    const controller = new PlayerOtaController(prisma, { sismember: jest.fn(async () => false) } as any);
+    const report = (ctx: { deviceAuthenticated: boolean }) =>
+      (controller as any).persistReportedVersion({ fingerprint: 'fp-ota-check', versionName: '1.1.41', versionCode: 10141 }, ctx);
+    return { t, report };
+  }
+
+  it('a build the screen had not reported before: one row (anonymous or not), none for the repeat, none without a tenant', async () => {
+    const { t, report } = otaHarness({ id: 'scr-o', tenantId: 'ten-1', playerVersionCode: 10129, forceApkUpdatePendingAt: null, forceApkUpdateTargetVersionCode: null });
+    await report({ deviceAuthenticated: false });
+    await report({ deviceAuthenticated: true });
+    await flush();
+    expect(t.rows('ota-installed')).toEqual([
+      expect.objectContaining({
+        screenId: 'scr-o', tenantId: 'ten-1', cause: 'version-change', source: 'device', versionCode: 10141,
+        detail: { from: 10129, to: 10141, version: '1.1.41', authenticated: false },
+      }),
+    ]);
+    const unpaired = otaHarness({ id: 'scr-u', tenantId: null, playerVersionCode: 10129 });
+    await unpaired.report({ deviceAuthenticated: false });
+    await flush();
+    expect(unpaired.t.rows()).toEqual([]);
   });
 });
 
