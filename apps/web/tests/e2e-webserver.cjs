@@ -44,6 +44,9 @@
  *    BUILD_ID we build once, then start. Set `E2E_REBUILD=1` to force a
  *    rebuild after changing app code — a stale `.next` will otherwise be
  *    served silently, which is the one real footgun of this design.
+ *  • A `.next` built for ANOTHER API host (any plain `next build`, including
+ *    the pre-push `pnpm preflight`) is rebuilt locally and refused under
+ *    `E2E_PREBUILT=1` — see `buildServesApiUrl` below (2026-10-18).
  *  • `NEXT_PUBLIC_API_URL` MUST be identical at build time and at serve time.
  *    Next inlines `NEXT_PUBLIC_*` into the client bundle at BUILD time, so
  *    setting it only on the server process (which is what the old `next dev`
@@ -51,7 +54,7 @@
  *    tests instead of the deliberately-unroutable host. See playwright.config.
  */
 const { spawn, spawnSync } = require('node:child_process');
-const { existsSync } = require('node:fs');
+const { existsSync, readdirSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 
 const WEB_DIR = path.resolve(__dirname, '..');
@@ -71,9 +74,35 @@ function log(msg) {
   console.log(`[e2e-webserver] ${msg}`);
 }
 
+/**
+ * Was this `.next` built for `API_URL`? (2026-10-18.) `NEXT_PUBLIC_API_URL` is
+ * inlined into the client bundle at build time, and a plain `next build` bakes
+ * in the `http://localhost:8080` fallback. The pre-push hook's
+ * `pnpm preflight` runs exactly that build, so after any push the local
+ * `.next` calls localhost:8080: every spec that mocks only
+ * `http://api.invalid/…` then fails as if the app were broken (asset-download,
+ * 5 of 5), and specs that mock `**\/api/v1/**` still pass, which makes it
+ * look like a flaky subset. Finding the URL in one client chunk takes ~30 ms.
+ */
+function buildServesApiUrl(url) {
+  const stack = [path.join(WEB_DIR, '.next', 'static')];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(file);
+      else if (entry.name.endsWith('.js') && readFileSync(file, 'utf8').includes(url)) return true;
+    }
+  }
+  return false;
+}
+
 const prebuilt = process.env.E2E_PREBUILT === '1';
 const forceRebuild = process.env.E2E_REBUILD === '1';
 const haveBuild = existsSync(BUILD_ID);
+const wrongApiUrl = haveBuild && !buildServesApiUrl(API_URL);
 
 if (prebuilt && !haveBuild) {
   // Loud, specific failure. The alternative — silently building here — would
@@ -88,11 +117,24 @@ if (prebuilt && !haveBuild) {
   process.exit(1);
 }
 
-if (!prebuilt && (forceRebuild || !haveBuild)) {
+if (prebuilt && wrongApiUrl) {
+  // eslint-disable-next-line no-console
+  console.error(
+    `[e2e-webserver] E2E_PREBUILT=1 but apps/web/.next was not built with NEXT_PUBLIC_API_URL=${API_URL}.\n` +
+      '  Its client bundle would call another API host, so a missed mock no longer\n' +
+      '  NXDOMAINs and mocks keyed on that host never match. Build with the same\n' +
+      '  NEXT_PUBLIC_API_URL the test run uses.',
+  );
+  process.exit(1);
+}
+
+if (!prebuilt && (forceRebuild || !haveBuild || wrongApiUrl)) {
   log(
     forceRebuild
       ? 'E2E_REBUILD=1 — rebuilding apps/web…'
-      : 'no .next/BUILD_ID — building apps/web once (set E2E_REBUILD=1 to force later rebuilds)…',
+      : wrongApiUrl
+        ? `.next was built for another API host (not ${API_URL}; a plain \`next build\`, e.g. the pre-push preflight, leaves one) — rebuilding apps/web…`
+        : 'no .next/BUILD_ID — building apps/web once (set E2E_REBUILD=1 to force later rebuilds)…',
   );
   const built = spawnSync('pnpm', ['run', 'build'], {
     cwd: WEB_DIR,
