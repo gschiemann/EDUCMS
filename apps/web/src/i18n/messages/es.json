@@ -2075,6 +2075,130 @@
       "powerOffConfirmBody": "Si no vuelve a encenderse, alguien tendrá que encenderlo en la pantalla. Para solo oscurecerla, usa Apagar imagen.",
       "powerOffConfirmCta": "Apagarlo"
     },
+    "deviceSettings": {
+      "title": "Ajustes de Android",
+      "checkedAgo": "comprobado {ago}",
+      "loading": "Cargando los ajustes de Android…",
+      "notReported": "Esta pantalla aún no ha informado de sus ajustes de Android. Necesita un reproductor VenueOS actualizado con Android 13 o posterior.",
+      "needsAndroid13": "Los ajustes de Android requieren Android 13 o posterior. Esta unidad informa del nivel de API de Android {sdk}.",
+      "intro": "VenueOS los aplica en la propia pantalla y vuelve a leer lo que Android conserva. Un cambio llega a la pantalla en unos 5 minutos.",
+      "notManaged": "Sin administrar",
+      "android": "Android informa {value}",
+      "androidUnreadable": "Android no informa de este valor",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "stopManaging": "Dejar de administrar",
+      "stopManagingNote": "La pantalla conserva su valor actual.",
+      "row": {
+        "brightness": "Brillo",
+        "volume": "Volumen",
+        "screenOffTimeoutMs": "Tiempo de espera de la pantalla",
+        "rotationLock": "Rotación",
+        "autoTime": "Fecha y hora automáticas",
+        "autoTimeZone": "Zona horaria automática",
+        "ntpServer": "Servidor de hora",
+        "wifi": "Red Wi-Fi"
+      },
+      "on": "Activado",
+      "off": "Desactivado",
+      "percent": "{n} %",
+      "timeout": {
+        "never": "Nunca",
+        "minutes": "{n, plural, one {# minuto} other {# minutos}}",
+        "hours": "{n, plural, one {# hora} other {# horas}}"
+      },
+      "rotation": {
+        "locked": "Bloqueada",
+        "auto": "Girar automáticamente"
+      },
+      "ntp": {
+        "androidDefault": "El servidor propio de Android",
+        "placeholder": "time.google.com",
+        "help": "Déjalo vacío para usar el servidor propio de Android."
+      },
+      "wifi": {
+        "ssid": "Nombre de la red",
+        "security": "Seguridad",
+        "wpa2": "WPA2",
+        "wpa3": "WPA3",
+        "open": "Abierta (sin contraseña)",
+        "password": "Contraseña",
+        "passwordSaved": "Guardada: déjala vacía para conservarla",
+        "hidden": "Red oculta",
+        "note": "Android pide una vez, en la pantalla, permitir las redes de VenueOS. La pantalla conserva cualquier red que ya use.",
+        "noneSuggested": "ninguna",
+        "observed": "{ssid} · {approval}",
+        "approval": {
+          "approved": "permitida en la pantalla",
+          "pending": "esperando a que alguien la permita en la pantalla",
+          "rejected": "rechazada en la pantalla",
+          "unknown": "aprobación no informada"
+        }
+      },
+      "state": {
+        "sending": "Guardado: esperando a que la pantalla lo reciba",
+        "applied": "Aplicado en la pantalla",
+        "alreadySet": "Ya estaba aplicado en la pantalla",
+        "unverified": "Aplicado: Android no puede confirmarlo",
+        "failed": "No se pudo aplicar: {reason}",
+        "waiting": "En espera: {reason}",
+        "notPossible": "No es posible en esta unidad: {reason}",
+        "notPossibleNow": "Ahora no es posible en esta unidad: {reason}"
+      },
+      "why": {
+        "api-level": "requiere Android 13 o posterior",
+        "no-write-settings": "VenueOS no tiene permiso para modificar los ajustes del sistema: permítelo en la configuración de la pantalla o ejecuta el comando de instalación",
+        "no-secure-settings": "requiere el comando de instalación único (adb) en esta unidad",
+        "vendor-brightness": "el brillo de este panel lo controla su propio controlador, no Android",
+        "picture-only": "aquí Android no ofrece control de la retroiluminación: el control de brillo de arriba solo atenúa la imagen",
+        "volume-fixed": "el volumen es fijo (lo controla el televisor o el amplificador)",
+        "no-wifi": "esta unidad no tiene Wi-Fi",
+        "wifi-disallowed": "alguien rechazó las redes Wi-Fi de VenueOS en la pantalla",
+        "unsupported": "esta unidad no lo ofrece",
+        "emergency": "hay una alerta en esta pantalla",
+        "screen-off": "la pantalla está apagada",
+        "blanked": "la pantalla está en negro",
+        "settling": "la pantalla se acaba de encender",
+        "not-taken": "Android no conservó el nuevo valor",
+        "write-refused": "Android rechazó el cambio",
+        "invalid-value": "el valor guardado no es válido para esta unidad",
+        "error": "algo salió mal en la pantalla",
+        "needs-secret": "la pantalla está pidiendo la contraseña del Wi-Fi",
+        "already-set": "ya estaba aplicado",
+        "unverified": "Android no puede confirmarlo",
+        "wifi-rejected": "la red Wi-Fi se rechazó en la pantalla",
+        "wifi-limit": "la pantalla tiene demasiadas redes sugeridas",
+        "wifi-invalid": "Android no aceptó los datos de la red",
+        "wifi-restricted": "los cambios de Wi-Fi están restringidos en esta unidad",
+        "wifi-error": "Android no pudo añadir la red"
+      },
+      "load": {
+        "title": "Temperatura y carga",
+        "asOf": "datos de {ago}",
+        "thermal": "Temperatura: {level}",
+        "thermalChanged": "cambió {ago}",
+        "level": {
+          "none": "normal",
+          "light": "limitación leve",
+          "moderate": "limitación moderada",
+          "severe": "limitación grave",
+          "critical": "crítica",
+          "emergency": "emergencia",
+          "shutdown": "apagándose"
+        },
+        "headroom": "Margen térmico {value} (1.0 = Android empieza a limitar)",
+        "soc": "Chip {value} °C",
+        "cpu": "CPU: reproductor {player}",
+        "cpuBoth": "CPU: reproductor {player} · todo el equipo {device}",
+        "memory": "Memoria: {free} libres de {total}",
+        "memoryLow": "Android informa de poca memoria",
+        "none": "Esta unidad no informa de datos de temperatura ni de carga."
+      },
+      "errors": {
+        "save": "No se pudo guardar: {message}",
+        "passwordRequired": "Escribe la contraseña del Wi-Fi: esta red aún no tiene ninguna guardada."
+      }
+    },
     "setLocation": "Añadir dirección",
     "contentState": {
       "downloading": "Descargando contenido nuevo",
