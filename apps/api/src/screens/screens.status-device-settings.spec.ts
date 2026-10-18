@@ -55,8 +55,9 @@ function harness(opts: { proved?: boolean; paired?: boolean; id?: string; rev?: 
       report: null,
       reportChangedAt: null,
     }),
-    upsert: jest.fn().mockResolvedValue({}),
-    update: jest.fn(),
+    findFirst: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    create: jest.fn().mockResolvedValue({}),
   };
   const auditLog = { create: jest.fn().mockResolvedValue({}) };
   const controller = new ScreensController(
@@ -98,7 +99,9 @@ describe('GET /screens/status/:fp — device settings', () => {
     const { controller, screen, desiredDeviceSettings } = harness({ id: 'wall-ds-1' });
     const res = await poll(controller);
     expect(res.deviceSettings).toEqual({ schema: 1, rev: 2, items: { brightness: { id: 'r2', v: 80 } } });
-    expect(desiredDeviceSettings.upsert).toHaveBeenCalledTimes(1);
+    // Stored once, scoped by the screen's own tenant.
+    expect(desiredDeviceSettings.updateMany).toHaveBeenCalledTimes(1);
+    expect(desiredDeviceSettings.updateMany.mock.calls[0][0].where).toEqual({ screenId: 'wall-ds-1', tenantId: 'tenant-a' });
     const data = screen.update.mock.calls[0][0].data;
     expect(data.deviceSettingsReportSig).toBe(reportSignature(JSON.parse(header())));
     expect(data.deviceSettingsReportAt).toBeInstanceOf(Date);

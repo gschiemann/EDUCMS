@@ -87,8 +87,9 @@ export async function deviceSettingsHeartbeat(
   try {
     const db = prisma.client;
     let mustWrite = false;
-    // ten-ok: the caller (deviceStatus) proved this screen's device credential;
-    // the row is keyed by that screen's own id.
+    // The ONE read not scoped by tenant, and on purpose: it must see a row
+    // still filed under a previous organisation in order to reset it below.
+    // ten-ok: (b) identity-derived — the device credential proved this screen id; the row's tenant is compared with the screen's own next.
     let row = await db.desiredDeviceSettings.findUnique({ where: { screenId: screen.id } });
 
     // Re-paired into another tenant: the old tenant's intent — and its Wi-Fi
@@ -97,6 +98,7 @@ export async function deviceSettingsHeartbeat(
     if (row && row.tenantId !== tenantId) {
       // Conditional on the row this beat read: a save the new organisation
       // made in between must never be wiped, and a revision never reissued.
+      // ten-ok: (b) identity-derived — the device's own screen moved tenants; this re-files ITS row under the screen's current tenant, emptied.
       const reset = await db.desiredDeviceSettings.updateMany({
         where: { screenId: screen.id, tenantId: row.tenantId, revision: row.revision },
         data: {
@@ -107,8 +109,8 @@ export async function deviceSettingsHeartbeat(
           updatedByUserId: null,
         },
       });
-      row = await db.desiredDeviceSettings.findUnique({ where: { screenId: screen.id } });
-      if (!row || row.tenantId !== tenantId) {
+      row = await db.desiredDeviceSettings.findFirst({ where: { screenId: screen.id, tenantId } });
+      if (!row) {
         // Moved again under us: say nothing this beat; the next one re-reads.
         return { data: {}, mustWrite: false, reply: null };
       }
@@ -131,26 +133,36 @@ export async function deviceSettingsHeartbeat(
       // BEHIND the row (the unit would then be told `same` and never receive
       // that change). If a PUT moved it meanwhile, this matches nothing.
       await db.screen.updateMany({
-        where: { id: screen.id, deviceSettingsRev: markerRev },
+        where: { id: screen.id, tenantId, deviceSettingsRev: markerRev },
         data: { deviceSettingsRev: revision },
       });
     }
     const stored = row ? readStoredSettings(row.settings) : {};
 
+    let reportStored = false;
     if (reportChanged) {
+      const json = report as unknown as Prisma.InputJsonValue;
+      if (row) {
+        const written = await db.desiredDeviceSettings.updateMany({
+          where: { screenId: screen.id, tenantId },
+          data: { report: json, reportChangedAt: now },
+        });
+        reportStored = written.count === 1;
+      } else {
+        try {
+          await db.desiredDeviceSettings.create({
+            data: { screenId: screen.id, tenantId, revision: 0, settings: {}, report: json, reportChangedAt: now },
+          });
+          reportStored = true;
+        } catch (e) {
+          // A concurrent beat or save created it first: the next beat stores it.
+          if ((e as { code?: string })?.code !== 'P2002') throw e;
+        }
+      }
+    }
+    if (reportStored) {
       const previous = row ? readStoredReport(row.report) : null;
-      await db.desiredDeviceSettings.upsert({
-        where: { screenId: screen.id },
-        create: {
-          screenId: screen.id,
-          tenantId,
-          revision: 0,
-          settings: {},
-          report: report as unknown as Prisma.InputJsonValue,
-          reportChangedAt: now,
-        },
-        update: { report: report as unknown as Prisma.InputJsonValue, reportChangedAt: now },
-      });
+      // Only a STORED report moves the signature; otherwise the next beat retries.
       data.deviceSettingsReportSig = sig;
       mustWrite = true;
       for (const t of ackTransitions(previous, report).slice(0, MAX_AUDIT_ROWS)) {

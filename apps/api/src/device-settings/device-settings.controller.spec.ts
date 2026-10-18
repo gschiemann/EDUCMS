@@ -37,17 +37,25 @@ function harness(opts: { row?: Row | null; screenTenant?: string | null; face?: 
   const audits: Array<{ action: string; userId: string | null; details: Record<string, unknown> }> = [];
   const concurrent = { bumpBeforeWrite: 0 };
   const desiredDeviceSettings = {
-    findUnique: jest.fn(async () => row),
-    updateMany: jest.fn(async ({ where, data }: { where: { revision: number }; data: Partial<Row> }) => {
+    // Every read is scoped: the screen id AND the tenant.
+    findFirst: jest.fn(async ({ where }: { where: { screenId: string; tenantId: string } }) =>
+      row && row.screenId === where.screenId && row.tenantId === where.tenantId ? row : null,
+    ),
+    findUnique: jest.fn(async () => {
+      throw new Error('the operator path must never read a settings row by the bare screen id');
+    }),
+    updateMany: jest.fn(async ({ where, data }: { where: { screenId: string; tenantId: string; revision: number }; data: Partial<Row> }) => {
       if (concurrent.bumpBeforeWrite > 0) {
         concurrent.bumpBeforeWrite -= 1;
         row = { ...(row as Row), revision: (row as Row).revision + 1 };
       }
-      if (!row || row.revision !== where.revision) return { count: 0 };
+      if (!row || row.tenantId !== where.tenantId || row.revision !== where.revision) return { count: 0 };
       row = { ...row, ...data } as Row;
       return { count: 1 };
     }),
     create: jest.fn(async ({ data }: { data: Row }) => {
+      // The primary key is the screen id, whatever tenant the row is filed under.
+      if (row && row.screenId === data.screenId) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
       row = { report: null, reportChangedAt: null, ...data } as Row;
       return row;
     }),
@@ -58,9 +66,13 @@ function harness(opts: { row?: Row | null; screenTenant?: string | null; face?: 
         ? screenRow
         : null,
     ),
-    update: jest.fn(async ({ data }: { data: { deviceSettingsRev: number } }) => {
+    updateMany: jest.fn(async ({ where, data }: { where: { id: string; tenantId: string }; data: { deviceSettingsRev: number } }) => {
+      if (where.id !== screenRow.id || where.tenantId !== screenRow.tenantId) return { count: 0 };
       screenRow.deviceSettingsRev = data.deviceSettingsRev;
-      return { id: screenRow.id };
+      return { count: 1 };
+    }),
+    update: jest.fn(async () => {
+      throw new Error('the operator path must never write the screen row by the bare id');
     }),
   };
   const auditLog = {
@@ -253,23 +265,36 @@ describe('DeviceSettingsController — PUT', () => {
     });
   });
 
-  it('starts a re-paired screen from nothing and drops the old organisation’s passphrase', async () => {
-    const h = harness({
-      row: {
-        screenId: 'screen-1',
-        tenantId: 'tenant-old',
-        revision: 9,
-        settings: { brightness: { v: 20, id: 'r9', at: 'x', by: null } },
-        wifiSecret: 'sealed-old',
-        report: null,
-        reportChangedAt: null,
-      },
+  it('never reads, merges or overwrites a row still filed under the old organisation of a re-paired screen', async () => {
+    const old = {
+      screenId: 'screen-1',
+      tenantId: 'tenant-old',
+      revision: 9,
+      settings: { brightness: { v: 20, id: 'r9', at: 'x', by: null } },
+      wifiSecret: 'sealed-old',
+      report: null,
+      reportChangedAt: null,
+    };
+    const h = harness({ row: old });
+    expect(await status(h.controller.put('screen-1', admin, { volume: 40 }))).toEqual({
+      status: 409,
+      code: 'DEVICE_SETTINGS_SCREEN_MOVED',
     });
-    const res = await h.controller.put('screen-1', admin, { volume: 40 });
-    expect(res.revision).toBe(10);
-    expect(Object.keys(res.desired)).toEqual(['volume']);
-    expect(h.row!.wifiSecret).toBeNull();
-    expect(h.row!.tenantId).toBe('tenant-a');
-    expect(h.audits[0].details).toMatchObject({ before: {}, after: { volume: 40 } });
+    // Untouched — the unit's own heartbeat resets it (device-settings.heartbeat.spec.ts).
+    expect(h.row).toEqual(old);
+    expect(h.screenRow.deviceSettingsRev).toBe(9);
+    expect(h.audits).toEqual([]);
+  });
+
+  it('a screen that leaves the tenant mid-write is a 404 (the transaction rolls back)', async () => {
+    const h = harness();
+    h.screenRow.tenantId = 'tenant-a';
+    const screenApi = (h as unknown as { controller: { prisma: { client: { screen: { updateMany: jest.Mock } } } } })
+      .controller.prisma.client.screen;
+    screenApi.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await status(h.controller.put('screen-1', admin, { volume: 40 }))).toEqual({
+      status: 404,
+      code: 'SCREEN_NOT_FOUND',
+    });
   });
 });

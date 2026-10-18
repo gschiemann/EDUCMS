@@ -23,23 +23,31 @@ type Row = {
 function fakePrisma(initial: Row | null) {
   let row = initial;
   const audits: Array<{ action: string; details: Record<string, unknown> }> = [];
+  const matches = (r: Row, where: Record<string, unknown>) =>
+    Object.entries(where).every(([k, v]) => (r as Record<string, unknown>)[k] === v);
   const desiredDeviceSettings = {
     findUnique: jest.fn(async () => row),
-    updateMany: jest.fn(async ({ where, data }: { where: Partial<Row>; data: Partial<Row> }) => {
-      if (!row || row.tenantId !== where.tenantId || row.revision !== where.revision) return { count: 0 };
+    findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) => (row && matches(row, where) ? row : null)),
+    // Every write names the tenant (and the reset also the revision it read).
+    updateMany: jest.fn(async ({ where, data }: { where: Record<string, unknown>; data: Partial<Row> }) => {
+      if (!row || !('tenantId' in where) || !matches(row, where)) return { count: 0 };
       row = { ...row, ...data };
       return { count: 1 };
     }),
-    upsert: jest.fn(async ({ create, update }: { create: Row; update: Partial<Row> }) => {
-      row = row ? { ...row, ...update } : { ...create, wifiSecret: null, reportChangedAt: create.reportChangedAt };
+    create: jest.fn(async ({ data }: { data: Row }) => {
+      if (row) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      row = { wifiSecret: null, ...data };
       return row;
+    }),
+    upsert: jest.fn(async () => {
+      throw new Error('the heartbeat must not upsert by the bare screen id');
     }),
   };
   const markers: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
   const screen = {
     updateMany: jest.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       markers.push(args);
-      return { count: 1 };
+      return { count: 'tenantId' in args.where ? 1 : 0 };
     }),
   };
   const auditLog = {
@@ -155,7 +163,9 @@ describe('deviceSettingsHeartbeat', () => {
     const r = await deviceSettingsHeartbeat(f.prisma, screenAt('old-sig'), header, now);
     expect(r!.mustWrite).toBe(true);
     expect(r!.data.deviceSettingsReportSig).toBe(reportSignature(JSON.parse(header)));
-    expect(f.desiredDeviceSettings.upsert).toHaveBeenCalledTimes(1);
+    expect(f.desiredDeviceSettings.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { screenId: 'screen-1', tenantId: 'tenant-a' } }),
+    );
     expect((f.row!.report as { obs: { brightness: number } }).obs.brightness).toBe(79);
     expect(f.audits).toEqual([
       {
@@ -173,7 +183,7 @@ describe('deviceSettingsHeartbeat', () => {
     const f = fakePrisma({ ...rowAt4(), revision: 5 });
     const header = report();
     const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), header, now);
-    expect(f.markers).toEqual([{ where: { id: 'screen-1', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
+    expect(f.markers).toEqual([{ where: { id: 'screen-1', tenantId: 'tenant-a', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
     // Not folded into the heartbeat's own (later, unconditional) screen write.
     expect(r!.data).not.toHaveProperty('deviceSettingsRev');
     expect((r!.reply as { rev: number }).rev).toBe(5);
@@ -193,7 +203,7 @@ describe('deviceSettingsHeartbeat', () => {
     expect(f.row!.wifiSecret).toBeNull();
     expect(f.row!.revision).toBe(5);
     expect(r!.reply).toEqual({ schema: 1, rev: 5, items: {} });
-    expect(f.markers).toEqual([{ where: { id: 'screen-1', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
+    expect(f.markers).toEqual([{ where: { id: 'screen-1', tenantId: 'tenant-a', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
     expect(JSON.stringify(r)).not.toContain('correct horse');
     expect(f.audits[0]).toMatchObject({
       action: 'SCREEN_DEVICE_SETTINGS_CHANGED',
@@ -205,14 +215,27 @@ describe('deviceSettingsHeartbeat', () => {
     const f = fakePrisma({ ...rowAt4(), tenantId: 'tenant-old' });
     // The new organisation's PUT lands between this beat's read and its reset.
     const fresh: Row = { ...rowAt4(), tenantId: 'tenant-a', revision: 5, wifiSecret: null };
-    f.desiredDeviceSettings.findUnique
-      .mockResolvedValueOnce({ ...rowAt4(), tenantId: 'tenant-old' })
-      .mockResolvedValueOnce(fresh);
+    f.desiredDeviceSettings.findUnique.mockResolvedValueOnce({ ...rowAt4(), tenantId: 'tenant-old' });
+    f.desiredDeviceSettings.findFirst.mockResolvedValueOnce(fresh);
     f.desiredDeviceSettings.updateMany.mockResolvedValueOnce({ count: 0 });
     const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), report({ rev: 4 }), now);
     expect((r!.reply as { rev: number; items: Record<string, unknown> }).rev).toBe(5);
     expect(Object.keys((r!.reply as { items: Record<string, unknown> }).items)).toEqual(['brightness', 'autoTime', 'wifi']);
     expect(f.audits.filter((a) => a.details.reason === 'screen-moved-tenant')).toEqual([]);
+  });
+
+  it('a first report creates the row under the screen’s own tenant; a lost create race moves no signature', async () => {
+    const f = fakePrisma(null);
+    const header = report({ rev: 0 });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 0), header, now);
+    expect(f.row).toMatchObject({ screenId: 'screen-1', tenantId: 'tenant-a', revision: 0 });
+    expect(r!.data.deviceSettingsReportSig).toBe(reportSignature(JSON.parse(header)));
+
+    const g = fakePrisma(null);
+    g.desiredDeviceSettings.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
+    const lost = await deviceSettingsHeartbeat(g.prisma, screenAt(null, 0), header, now);
+    expect(lost!.data).not.toHaveProperty('deviceSettingsReportSig');
+    expect(lost!.mustWrite).toBe(false);
   });
 
   it('a database fault never fails the heartbeat: the unit hears nothing, the markers stay', async () => {

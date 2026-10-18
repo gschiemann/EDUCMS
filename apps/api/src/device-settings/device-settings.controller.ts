@@ -59,6 +59,10 @@ import {
 const MAX_WRITE_TRIES = 3;
 
 class RevisionConflict extends Error {}
+/** A row for this screen exists, filed under another organisation (a re-pair the unit has not reported since). */
+class ScreenMovedError extends Error {}
+/** The screen left the caller's tenant while the write was in flight. */
+class ScreenGoneError extends Error {}
 
 @Controller('api/v1/screens')
 export class DeviceSettingsController {
@@ -71,9 +75,18 @@ export class DeviceSettingsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async get(@Param('id') screenId: string, @Req() req: any): Promise<DeviceSettingsView> {
     const screen = await this.loadOperatorScreen(screenId, req);
-    // ten-ok: keyed by the screen id the tenant-scoped load above proved.
-    const row = await this.prisma.client.desiredDeviceSettings.findUnique({ where: { screenId: screen.id } });
-    return buildView(screen, row);
+    return buildView(screen, await this.readRow(screen.id, screen.tenantId));
+  }
+
+  /**
+   * The settings row, scoped by the screen's tenant as the caller-scoped
+   * screen load returned it. A row still filed under another organisation (a
+   * re-paired screen whose unit has not checked in since) is simply not found
+   * — the operator path never reads, merges or writes another tenant's row;
+   * the unit's own heartbeat resets it (device-settings.heartbeat.ts).
+   */
+  private readRow(screenId: string, tenantId: string) {
+    return this.prisma.client.desiredDeviceSettings.findFirst({ where: { screenId, tenantId } });
   }
 
   @Put(':id/device-settings')
@@ -118,11 +131,23 @@ export class DeviceSettingsController {
             ...(outcome.wifiPassphrase ? { wifiPassphrase: outcome.wifiPassphrase } : {}),
           });
         }
-        const row = await this.prisma.client.desiredDeviceSettings.findUnique({ where: { screenId: screen.id } });
-        return { ...buildView({ ...screen, deviceSettingsRev: outcome.revision }, row), changed: outcome.changed };
+        return { ...buildView(screen, await this.readRow(screen.id, tenantId)), changed: outcome.changed };
       } catch (e) {
         if (e instanceof WifiPassphraseRequiredError) {
           throw new HttpException({ code: e.code, message: e.message }, HttpStatus.BAD_REQUEST);
+        }
+        if (e instanceof ScreenMovedError) {
+          throw new HttpException(
+            {
+              code: 'DEVICE_SETTINGS_SCREEN_MOVED',
+              message:
+                'This screen came from another organisation. Its old Android settings are cleared the next time it checks in (within about 5 minutes) — try again then.',
+            },
+            HttpStatus.CONFLICT,
+          );
+        }
+        if (e instanceof ScreenGoneError) {
+          throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
         }
         const conflict = e instanceof RevisionConflict || (e as { code?: string })?.code === 'P2002';
         if (!conflict) throw e;
@@ -154,29 +179,26 @@ export class DeviceSettingsController {
     body: DeviceSettingsPatch,
   ) {
     return this.prisma.client.$transaction(async (tx) => {
-      // ten-ok: the caller passed the screen id its tenant-scoped load proved.
-      const row = await tx.desiredDeviceSettings.findUnique({ where: { screenId } });
-      // A row left over from another organisation (a re-paired screen) is
-      // never shown, merged or kept — this tenant starts from nothing.
-      const sameTenant = !!row && row.tenantId === tenantId;
-      const current: StoredSettings = sameTenant ? readStoredSettings(row!.settings) : {};
-      const hadSecret = sameTenant && !!row!.wifiSecret;
+      // Scoped by the screen's tenant (from the caller-scoped load) — never by
+      // the bare screen id, and never by anything in the request body.
+      const row = await tx.desiredDeviceSettings.findFirst({ where: { screenId, tenantId } });
+      const current: StoredSettings = row ? readStoredSettings(row.settings) : {};
+      const hadSecret = !!row?.wifiSecret;
       const revision = (row?.revision ?? 0) + 1;
       const now = new Date();
       const { next, changed, wifiSecret } = applyPatch(current, body, { revision, now, userId, hasSecret: hadSecret });
 
-      if (changed.length === 0 && sameTenant) {
-        return { revision: row!.revision, changed: [] as string[], before: {}, after: {}, wifiPassphrase: null };
+      if (changed.length === 0) {
+        return { revision: row?.revision ?? 0, changed: [] as string[], before: {}, after: {}, wifiPassphrase: null };
       }
 
       const sealed =
         wifiSecret.kind === 'set'
           ? JSON.stringify(sealCredentials({ passphrase: wifiSecret.passphrase }))
-          : wifiSecret.kind === 'clear' || !sameTenant
+          : wifiSecret.kind === 'clear'
             ? null
             : (row?.wifiSecret ?? null);
       const data = {
-        tenantId,
         revision,
         settings: next as unknown as Prisma.InputJsonValue,
         wifiSecret: sealed,
@@ -184,20 +206,36 @@ export class DeviceSettingsController {
       };
       if (row) {
         const written = await tx.desiredDeviceSettings.updateMany({
-          where: { screenId, revision: row.revision },
+          where: { screenId, tenantId, revision: row.revision },
           data,
         });
         if (written.count !== 1) throw new RevisionConflict();
       } else {
-        await tx.desiredDeviceSettings.create({ data: { screenId, ...data } });
+        try {
+          await tx.desiredDeviceSettings.create({ data: { screenId, tenantId, ...data } });
+        } catch (e) {
+          // The primary key is the screen id: a unique violation with nothing
+          // found under THIS tenant above means the row is filed under another
+          // organisation. Not ours to read or overwrite from here.
+          if ((e as { code?: string })?.code === 'P2002') {
+            const mine = await this.prisma.client.desiredDeviceSettings.findFirst({ where: { screenId, tenantId } });
+            if (!mine) throw new ScreenMovedError();
+          }
+          throw e;
+        }
       }
-      // The heartbeat's cheap marker. Telemetry-only for the manifest cache.
-      await tx.screen.update({ where: { id: screenId }, data: { deviceSettingsRev: revision }, select: { id: true } });
+      // The heartbeat's cheap marker, tenant-scoped. Telemetry-only for the
+      // manifest cache. No match = the screen left this tenant mid-write.
+      const marked = await tx.screen.updateMany({
+        where: { id: screenId, tenantId },
+        data: { deviceSettingsRev: revision },
+      });
+      if (marked.count !== 1) throw new ScreenGoneError();
 
       return {
         revision,
         changed: changed as string[],
-        before: sameTenant ? auditView(current, hadSecret) : {},
+        before: auditView(current, hadSecret),
         after: auditView(next, sealed !== null),
         wifiPassphrase:
           wifiSecret.kind === 'set' ? 'changed' : wifiSecret.kind === 'clear' && hadSecret ? 'removed' : null,
