@@ -22,6 +22,7 @@
  */
 
 import { useState } from 'react';
+import type * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Settings2, Thermometer } from 'lucide-react';
 import type { DeviceSettingKey, DeviceSettingsPatch, DeviceWifiSecurity } from '@cms/api-types';
@@ -50,8 +51,22 @@ function relative(locale: string, atMs: number, nowMs: number): string {
   return rtf.format(Math.round(diffSec / 86_400), 'day');
 }
 
+// `appearance-none`: WebKit (Safari, iPhone) ignores min-height on a native
+// select and draws it ~25 px tall — too small to tap. The chevron is ours.
 const SELECT_CLASS =
-  'w-full sm:w-auto min-h-[40px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed';
+  'appearance-none w-full min-h-[40px] rounded-lg border border-slate-200 bg-white pl-2 pr-7 text-[12px] text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed';
+
+function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative w-full sm:w-auto">
+      <select {...props} className={SELECT_CLASS} />
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+      />
+    </div>
+  );
+}
 const INPUT_CLASS =
   'w-full min-h-[40px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] text-slate-700 disabled:opacity-50';
 const BUTTON_CLASS =
@@ -205,16 +220,15 @@ function SettingRow({
           {label}
         </label>
         {row.editable && row.key !== 'ntpServer' && row.key !== 'wifi' && (
-          <select
+          <Select
             id={`${id}-input`}
-            className={SELECT_CLASS}
             value={selectValue(row)}
             disabled={disabled}
             onChange={(e) => onSave(patchFor(row.key, e.target.value) as DeviceSettingsPatch)}
           >
             <option value="">{t('notManaged')}</option>
             {optionsFor(t, row.key)}
-          </select>
+          </Select>
         )}
       </div>
       {row.editable && row.key === 'ntpServer' && (
@@ -425,9 +439,8 @@ function WifiEditor({
         onChange={(e) => setSsid(e.target.value)}
       />
       <div className="flex flex-wrap gap-2">
-        <select
+        <Select
           aria-label={t('wifi.security')}
-          className={SELECT_CLASS}
           value={security}
           disabled={disabled}
           onChange={(e) => setSecurity(e.target.value as DeviceWifiSecurity)}
@@ -435,7 +448,7 @@ function WifiEditor({
           <option value="wpa2">{t('wifi.wpa2')}</option>
           <option value="wpa3">{t('wifi.wpa3')}</option>
           <option value="open">{t('wifi.open')}</option>
-        </select>
+        </Select>
         {security !== 'open' && (
           <input
             type="password"
