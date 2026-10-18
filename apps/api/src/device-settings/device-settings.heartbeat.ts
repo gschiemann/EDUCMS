@@ -25,7 +25,7 @@
 
 import { Logger } from '@nestjs/common';
 
-import { parseDeviceSettingsReport, type DeviceSettingsReport } from '@cms/api-types';
+import { DEVICE_SETTING_KEYS, parseDeviceSettingsReport, type DeviceSettingsReport } from '@cms/api-types';
 import type { Prisma } from '@cms/database';
 
 import type { PrismaService } from '../prisma/prisma.service';
@@ -59,8 +59,12 @@ export interface DeviceSettingsHeartbeatScreen {
 
 const logger = new Logger('DeviceSettings');
 
-/** At most this many audit rows per report change (one per setting). */
-const MAX_AUDIT_ROWS = 8;
+/**
+ * At most one audit row per setting per report change. Tied to the key list:
+ * a fixed number here silently dropped the ninth setting's audit row the day
+ * a ninth setting was added (the stored report then hides that transition).
+ */
+const MAX_AUDIT_ROWS = DEVICE_SETTING_KEYS.length;
 
 export async function deviceSettingsHeartbeat(
   prisma: PrismaService,

@@ -217,7 +217,8 @@ object DeviceSettingsWire {
             .put("ack", ack)
         r.load?.let { out.put("load", encodeLoad(it)) }
         val text = asciiJson(out.toString())
-        // Bounded by construction (8 keys, a 253-char host, a 32-byte SSID);
+        // Bounded by construction (one entry per key — the worst case over every
+        // key is pinned by DeviceSettingsWireTest — a 253-char host, a 32-byte SSID);
         // the observed block is the one part that could ever grow, so it is
         // what gives way rather than the whole report.
         if (text.length <= MAX_REPORT_CHARS) return text

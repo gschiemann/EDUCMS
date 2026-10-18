@@ -44,8 +44,14 @@ object DeviceSettingsAppliers {
                 )
                 DeviceSettingKey.SCREEN_OFF_TIMEOUT -> when (ScreenTimeoutBlankProvider.writeBaselineTimeout(app, int(item))) {
                     ScreenTimeoutBlankProvider.BaselineWrite.WRITTEN -> DeviceSettingsPolicy.Outcome.Done
-                    // Not an attempt that failed: the next heartbeat sees the
-                    // blank through the policy and waits for the wake.
+                    // A blank started between the policy's check and this
+                    // write: this attempt is spent, and the next heartbeat
+                    // sees the blank's snapshot through the policy and waits
+                    // for the wake without spending more. A live 15 s with NO
+                    // snapshot (a blank whose snapshot was lost — or, rarely,
+                    // a factory 15 s) cannot be told apart from a blank in
+                    // force, so it is never overwritten: three attempts, then
+                    // FAILED "blanked" for this boot. Bounded, never a fight.
                     ScreenTimeoutBlankProvider.BaselineWrite.BLANK_IN_FORCE ->
                         DeviceSettingsPolicy.Outcome.Error(DeviceSettingCodes.WAIT_BLANKED)
                     ScreenTimeoutBlankProvider.BaselineWrite.REFUSED ->

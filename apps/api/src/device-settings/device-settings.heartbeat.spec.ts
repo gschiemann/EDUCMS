@@ -1,3 +1,5 @@
+import { DEVICE_SETTING_KEYS } from '@cms/api-types';
+
 import { sealCredentials } from '../streaming/creds-cipher';
 import { applyPatch, reportSignature } from './device-settings';
 import { deviceSettingsHeartbeat } from './device-settings.heartbeat';
@@ -177,6 +179,15 @@ describe('deviceSettingsHeartbeat', () => {
     const again = await deviceSettingsHeartbeat(f.prisma, screenAt(r!.data.deviceSettingsReportSig as string), header, now);
     expect(again!.mustWrite).toBe(false);
     expect(f.audits).toHaveLength(1);
+  });
+
+  it('every setting that settles in the same report gets its own audit row — all of them, none dropped', async () => {
+    const f = fakePrisma(rowAt4());
+    const ack = Object.fromEntries(DEVICE_SETTING_KEYS.map((k) => [k, { id: 'r4', st: 'applied', n: 1, at: 1_760_000_000_000 }]));
+    await deviceSettingsHeartbeat(f.prisma, screenAt('old-sig'), report({ ack }), now);
+    expect(f.audits.map((a) => a.details.setting)).toEqual([...DEVICE_SETTING_KEYS]);
+    // The old fixed bound was 8: this test is only meaningful with more keys than that.
+    expect(DEVICE_SETTING_KEYS.length).toBeGreaterThan(8);
   });
 
   it('moves a stale marker only from the value it read — never a blind write a newer PUT could lose', async () => {

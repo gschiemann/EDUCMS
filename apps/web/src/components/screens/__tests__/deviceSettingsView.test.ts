@@ -26,7 +26,7 @@ describe('buildSection — the honesty rules', () => {
     expect(m.kind).toBe('not-reported');
   });
 
-  it('an Android 12 unit collapses to one sentence instead of eight identical rows', () => {
+  it('an Android 12 unit collapses to one sentence instead of one identical row per setting', () => {
     const cap = Object.fromEntries(
       ['brightness', 'volume', 'screenOffTimeoutMs', 'attentiveTimeoutMs', 'rotationLock', 'autoTime', 'autoTimeZone', 'ntpServer', 'wifi'].map((k) => [k, 'api-level']),
     );
