@@ -31,21 +31,21 @@ const actor = { userId: 'owner', tenantId: 'owner-tenant' };
 function setup() {
   const tx = {
     platformCost: {
-      create: jest.fn(async () => cost),
-      findUnique: jest.fn(async () => cost),
-      update: jest.fn(async () => cost),
+      create: jest.fn(() => Promise.resolve(cost)),
+      findUnique: jest.fn(() => Promise.resolve(cost)),
+      update: jest.fn(() => Promise.resolve(cost)),
     },
-    auditLog: { create: jest.fn(async () => ({})) },
+    auditLog: { create: jest.fn(() => Promise.resolve({})) },
   };
   const client = {
     $transaction: jest.fn(
-      async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx),
+      (callback: (value: typeof tx) => Promise<unknown>) => callback(tx),
     ),
-    tenant: { findMany: jest.fn(async () => []) },
-    customerInvoice: { findMany: jest.fn(async () => []) },
-    platformCost: { findMany: jest.fn(async () => [cost]) },
+    tenant: { findMany: jest.fn(() => Promise.resolve([])) },
+    customerInvoice: { findMany: jest.fn(() => Promise.resolve([])) },
+    platformCost: { findMany: jest.fn(() => Promise.resolve([cost])) },
   };
-  const capacity = { getReport: jest.fn(async () => ({ metrics: [] })) };
+  const capacity = { getReport: jest.fn(() => Promise.resolve({ metrics: [] })) };
   const service = new BusinessService(
     { client } as unknown as PrismaService,
     capacity as unknown as CapacityWatchService,
@@ -63,6 +63,7 @@ describe('BusinessService cost ledger', () => {
     );
     expect(client.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.auditLog.create).toHaveBeenCalledWith({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Jest asymmetric matcher.
       data: expect.objectContaining({
         tenantId: actor.tenantId,
         userId: actor.userId,
