@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ArrowLeft, Check, Copy, Link2, Loader2, PauseCircle, PlayCircle } from 'lucide-react';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+import { CustomerPaymentCard, CustomerInviteCard, CustomerBrandingCard, CustomerLocationsCard } from './CustomerWorkspacePanels';
+import { InvoiceActions } from './InvoiceActions';
 import { SupportAccessCard } from './SupportAccessCard';
 import {
   useCreateInvoice,
@@ -42,6 +44,7 @@ const errMessage = (e: unknown, fallback: string) => (e instanceof Error && e.me
 export function CustomerView({ c }: { c: CustomerDetail }) {
   const t = useTranslations('customerConsole');
   const locale = useLocale();
+  const tb = useTranslations('businessConsole');
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6">
       <div className="max-w-5xl mx-auto space-y-4">
@@ -63,29 +66,21 @@ export function CustomerView({ c }: { c: CustomerDetail }) {
           </div>
         </header>
 
-        <LicenseCard c={c} />
+        <nav aria-label={tb('customerSections')} className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 text-sm font-medium text-slate-600">
+          {['billing', 'locations', 'people', 'branding', 'access', 'activity'].map(key => <a key={key} href={`#customer-${key}`} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3 hover:bg-indigo-50 hover:text-indigo-700">{tb(key)}</a>)}
+        </nav>
+        <div id="customer-billing" className="scroll-mt-36"><CustomerPaymentCard c={c} /></div>
+        <LicenseCard key={`${c.id}-${c.license?.packageName}-${c.license?.pooledSeats}`} c={c} />
+        <CustomerLocationsCard c={c} />
+        <CustomerInviteCard c={c} />
+        <CustomerBrandingCard c={c} />
         {/* 2026-10-11 — VenueOS reaches this customer's data only under a grant. */}
-        <SupportAccessCard orgId={c.id} orgName={c.name} />
+        <div id="customer-access" className="scroll-mt-36"><SupportAccessCard orgId={c.id} orgName={c.name} /></div>
         <SuspensionCard c={c} />
         <OwnerLinkCard c={c} />
         <InvoicesCard c={c} />
 
         <div className="grid gap-4 md:grid-cols-2">
-          <section className={CARD}>
-            <h2 className="font-semibold text-slate-900 mb-2">{t('detail.locationsSection')}</h2>
-            {c.locations.length === 0 ? (
-              <p className="text-sm text-slate-500">{t('detail.noLocations')}</p>
-            ) : (
-              <ul className="divide-y divide-slate-100 text-sm">
-                {c.locations.map((l) => (
-                  <li key={l.id} className="flex justify-between gap-2 py-2">
-                    <span className="min-w-0 break-words">{l.name}</span>
-                    <span className="tabular-nums text-slate-500">{l.seatsUsed}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
           <section className={CARD}>
             <h2 className="font-semibold text-slate-900 mb-2">{t('detail.adminsSection')}</h2>
             <ul className="divide-y divide-slate-100 text-sm">
@@ -103,7 +98,7 @@ export function CustomerView({ c }: { c: CustomerDetail }) {
           </section>
         </div>
 
-        <section className={CARD}>
+        <section id="customer-activity" className={`${CARD} scroll-mt-36`}>
           <h2 className="font-semibold text-slate-900 mb-2">{t('detail.activitySection')}</h2>
           {c.activity.length === 0 ? (
             <p className="text-sm text-slate-500">{t('detail.noActivity')}</p>
@@ -129,6 +124,10 @@ export function CustomerView({ c }: { c: CustomerDetail }) {
 function LicenseCard({ c }: { c: CustomerDetail }) {
   const t = useTranslations('customerConsole');
   const update = useUpdateCustomerLicense(c.id);
+  const tb = useTranslations('businessConsole');
+  const [packageName, setPackageName] = useState(c.license?.packageName ?? '');
+  const [packagePrice, setPackagePrice] = useState(c.license?.packagePriceCents == null ? '' : (c.license.packagePriceCents / 100).toFixed(2));
+  const [pooled, setPooled] = useState(!!c.license?.pooledSeats);
   const lic = c.license;
   const [seatLimit, setSeatLimit] = useState(String(lic?.seatLimit ?? 0));
   const [price, setPrice] = useState(lic?.monthlyPriceCents != null ? (lic.monthlyPriceCents / 100).toFixed(2) : '');
@@ -154,6 +153,11 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
     if (cents === 'invalid') return setError(t('detail.invalidPrice'));
     const body: Record<string, unknown> = { seatLimit: seats, renewalDate: fromDateInput(renewal), poNumber: po, notes };
     if (!stripe) {
+      const packageCents = parseDollarsToCents(packagePrice);
+      if (packageCents === 'invalid') return setError(t('detail.invalidPrice'));
+      body.packageName = packageName.trim() || null;
+      body.packagePriceCents = packageCents;
+      body.pooledSeats = pooled;
       body.monthlyPriceCents = cents;
       body.plan = plan;
       body.billingMode = billingMode;
@@ -182,6 +186,12 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
       <h2 id="lic-h" className="font-semibold text-slate-900">{t('detail.licenseSection')}</h2>
       {!lic && <p className="text-sm text-slate-500 mt-1">{t('detail.noLicenseYet')}</p>}
       <p className="text-sm text-slate-600 mt-1">{note}</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label><span className={LABEL}>{tb('packageName')}</span><input className={INPUT} disabled={stripe} value={packageName} onChange={e => setPackageName(e.target.value)} /></label>
+        <label><span className={LABEL}>{tb('packagePrice')}</span><input className={INPUT} disabled={stripe || billingMode === 'COMP'} value={packagePrice} onChange={e => setPackagePrice(e.target.value)} inputMode="decimal" placeholder={tb('perScreenDefault')} /></label>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">{tb('packagePriceHint')}</p>
+      <label className="mt-3 flex min-h-10 items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={pooled} disabled={stripe || billingMode === 'CARD'} onChange={e => setPooled(e.target.checked)} /><span><span className="font-medium">{tb('pooledBilling')}</span><span className="block text-xs text-slate-500">{tb('pooledBillingHint')}</span></span></label>
       <div className="grid gap-3 mt-4 sm:grid-cols-2 lg:grid-cols-4">
         <label><span className={LABEL}>{t('detail.seatLimit')}</span>
           <input className={INPUT} inputMode="numeric" value={seatLimit} onChange={(e) => setSeatLimit(e.target.value)} />
@@ -355,7 +365,7 @@ export function OneTimeLink({ url, expiresAt }: { url: string; expiresAt: string
   );
 }
 
-function InvoicesCard({ c }: { c: CustomerDetail }) {
+export function InvoicesCard({ c }: { c: CustomerDetail }) {
   const t = useTranslations('customerConsole');
   const locale = useLocale();
   const create = useCreateInvoice(c.id);
@@ -392,7 +402,7 @@ function InvoicesCard({ c }: { c: CustomerDetail }) {
 
   return (
     <section className={CARD}>
-      <h2 className="font-semibold text-slate-900">{t('detail.invoicesSection')}</h2>
+      <div className="flex items-center justify-between gap-3"><h2 className="font-semibold text-slate-900">{t('detail.invoicesSection')}</h2><Link href="/super/invoices" className="text-sm font-semibold text-indigo-700">{t('workspace.allInvoices')} →</Link></div>
       {!invoiceBilled && <p className="text-sm text-slate-500 mt-1">{t('detail.invoicesOnlyInvoice')}</p>}
       {c.invoices.length === 0 ? (
         invoiceBilled && <p className="text-sm text-slate-500 mt-2">{t('detail.noInvoices')}</p>
@@ -412,7 +422,7 @@ function InvoicesCard({ c }: { c: CustomerDetail }) {
             <tbody>
               {c.invoices.map((i) => (
                 <tr key={i.id} className="border-b border-slate-50 last:border-0" data-testid="invoice-row">
-                  <td className="py-2 pr-3 font-medium">{i.number}</td>
+                  <td className="py-2 pr-3 font-medium">{i.number}<InvoiceActions customerId={c.id} invoice={i} /></td>
                   <td className="py-2 pr-3 tabular-nums">{formatCents(i.amountCents, locale)}</td>
                   <td className="py-2 pr-3">{formatDate(i.sentAt, locale)}</td>
                   <td className="py-2 pr-3">{formatDate(i.dueAt, locale)}</td>

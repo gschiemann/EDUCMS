@@ -11,7 +11,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { AlertCircle, Loader2, Plus, Search, Users } from 'lucide-react';
+import { AlertCircle, ChevronRight, Loader2, Plus, Search, SlidersHorizontal, Users } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useCustomerList } from '@/hooks/use-customer-console';
 import {
@@ -34,6 +34,7 @@ const SELECT = 'min-h-10 rounded-lg border border-slate-200 bg-white px-2.5 text
 export default function CustomersPage() {
   const t = useTranslations('customerConsole');
   const locale = useLocale();
+  const tb = useTranslations('businessConsole');
   const user = useAppStore((s) => s.user);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -48,6 +49,10 @@ export default function CustomersPage() {
     } catch { /* nothing to read */ }
   }, []);
   const [filters, setFilters] = useState<ListFilters>(DEFAULT_FILTERS);
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    setFilters(f => ({ ...f, status: CUSTOMER_STATUSES.includes(query.get('status') as any) ? query.get('status')! : '', seats: ['over', 'full'].includes(query.get('seats') ?? '') ? query.get('seats')! : '', renewal: ['due30', 'overdue'].includes(query.get('renewal') ?? '') ? query.get('renewal')! : '' }));
+  }, []);
   const [search, setSearch] = useState('');
   // Debounce the search box so typing is one request, not one per keystroke.
   useEffect(() => {
@@ -84,6 +89,7 @@ export default function CustomersPage() {
       <div className="max-w-7xl mx-auto space-y-4">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[.18em] text-indigo-600">{tb('workspace')}</p>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <Users className="w-6 h-6 text-indigo-600" aria-hidden /> {t('title')}
             </h1>
@@ -91,7 +97,7 @@ export default function CustomersPage() {
           </div>
           <Link
             href="/super/customers/new"
-            className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+            className="inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
           >
             <Plus className="w-4 h-4" aria-hidden /> {t('newCustomer')}
           </Link>
@@ -112,7 +118,7 @@ export default function CustomersPage() {
               className="w-full min-h-10 rounded-lg border border-slate-200 pl-9 pr-3 text-sm"
             />
           </label>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
+          <details open={filtered || undefined}><summary className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-600"><SlidersHorizontal className="h-4 w-4" aria-hidden />{tb('filters')}</summary><div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
             <select aria-label={t('colIndustry')} className={SELECT} value={filters.vertical} onChange={(e) => set({ vertical: e.target.value })}>
               <option value="">{t('allIndustries')}</option>
               {VERTICAL_IDS.map((v) => <option key={v} value={v}>{t(`vertical.${v}`)}</option>)}
@@ -147,6 +153,7 @@ export default function CustomersPage() {
               <option value="desc">{t('descending')}</option>
             </select>
           </div>
+          </details>
           {filtered && (
             <button type="button" onClick={() => { setSearch(''); setFilters(DEFAULT_FILTERS); }} className="text-sm font-semibold text-indigo-700 min-h-10">
               {t('clearFilters')}
@@ -185,7 +192,7 @@ export default function CustomersPage() {
                           <Link href={`/super/customers/${r.id}`} className="font-semibold text-slate-900 hover:text-indigo-700">{r.name}</Link>
                           <div className="text-xs text-slate-500">
                             {t(`vertical.${VERTICAL_IDS.includes(r.vertical) ? r.vertical : 'K12'}`)} · /{r.slug}
-                            {r.locations > 0 && <> · {t('locations', { count: r.locations })}</>}
+                            {r.locations > 0 && <Link href={`/super/customers/${r.id}#customer-locations`} className="ml-2 inline-flex items-center text-indigo-700">{t('locations', { count: r.locations })}<ChevronRight className="h-3 w-3" aria-hidden /></Link>}
                           </div>
                         </td>
                         <td className="px-4 py-3 tabular-nums">

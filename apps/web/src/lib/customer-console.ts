@@ -49,6 +49,7 @@ export interface CustomerInvoiceView {
   number: string;
   amountCents: number;
   currency: string;
+  attachment?: { fileName: string; sizeBytes: number; uploadedAt: string } | null;
   poNumber: string | null;
   periodStart: string | null;
   periodEnd: string | null;
@@ -70,6 +71,9 @@ export interface CustomerDetail {
   status: CustomerStatus;
   seatsUsed: number;
   license: {
+    packageName?: string | null;
+    packagePriceCents?: number | null;
+    pooledSeats?: boolean;
     plan: string;
     status: string;
     billingMode: BillingMode;
@@ -86,7 +90,7 @@ export interface CustomerDetail {
     aiIncluded?: boolean;
   } | null;
   cardCheckout: boolean;
-  locations: Array<{ id: string; name: string; slug: string; archived: boolean; seatsUsed: number }>;
+  locations: Array<{ id: string; name: string; slug: string; archived: boolean; seatsUsed: number; parentId?: string; depth?: number; allocatedSeats?: number | null }>;
   admins: Array<{ id: string; email: string | null; name: string | null; role: string; status: string; awaitingSetup: boolean; atLocation: boolean }>;
   starterLogin: { state: 'pending' | 'claimed' | 'set_up' | 'expired' | null; createdAt: string | null; expiresAt: string | null; claimedAt: string | null; ownerEmail: string | null } | null;
   invoices: CustomerInvoiceView[];
@@ -190,3 +194,21 @@ export const TONE_CLASSES: Record<Tone, string> = {
 };
 
 export const isInvoiceBilled = (m: string | null | undefined) => m === 'INVOICE' || m === 'PURCHASE_ORDER';
+
+export interface PaymentSummary {
+  state: 'available' | 'unavailable' | 'not_applicable' | 'not_subscribed';
+  reason?: string;
+  card: { brand: string; last4: string; expMonth: number; expYear: number } | null;
+  nextPayment: { amountCents: number; currency: string; at: string } | null;
+  subscriptionStatus?: string;
+  observedAt: string;
+}
+export interface InvoiceListResponse {
+  rows: Array<CustomerInvoiceView & { customerId: string; customerName: string }>;
+  total: number; page: number; pageSize: number; pages: number;
+}
+export interface InvoiceDocument {
+  seller: { name: string }; customer: { name: string; slug: string };
+  invoice: CustomerInvoiceView; branding: CustomerDetail['branding'];
+  lines: Array<{ description: string; quantity: number; unitAmountCents: number; totalCents: number }>;
+}

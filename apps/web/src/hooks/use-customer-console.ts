@@ -12,6 +12,9 @@ import {
   type CustomerInvoiceView,
   type CustomerListResponse,
   type ListFilters,
+  type PaymentSummary,
+  type InvoiceListResponse,
+  type InvoiceDocument,
 } from '@/lib/customer-console';
 
 export const customerKeys = {
@@ -45,6 +48,7 @@ function useCustomerMutation<TBody, TResult = unknown>(id: string, run: (body: T
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: customerKeys.detail(id) });
       qc.invalidateQueries({ queryKey: ['super', 'customers', 'list'] });
+      qc.invalidateQueries({ queryKey: ['super', 'customers', 'invoices'] });
     },
   });
 }
@@ -92,4 +96,43 @@ export function useCreateCustomer() {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: customerKeys.all }),
   });
+}
+
+export function useCustomerPaymentSummary(id: string) {
+  return useQuery({ queryKey: [...customerKeys.detail(id), 'payment'], queryFn: () => apiFetch<PaymentSummary>(`/super/customers/${id}/payment-summary`), staleTime: 60_000 });
+}
+export function useCustomerBranding(id: string) {
+  return useCustomerMutation(id, (body: Record<string, unknown>) => apiFetch(`/super/customers/${id}/branding`, { method: 'PATCH', body: JSON.stringify(body) }));
+}
+export function useCustomerInvite(id: string) {
+  return useCustomerMutation(id, (body: { email: string; firstName?: string; lastName?: string; tenantId?: string }) => apiFetch<{ emailDelivered: boolean; acceptUrl: string; expiresAt: string }>(`/super/customers/${id}/invites`, { method: 'POST', body: JSON.stringify(body) }));
+}
+export function useCreateCustomerLocation(id: string) {
+  return useCustomerMutation(id, (body: { name: string; parentId?: string }) => apiFetch(`/super/customers/${id}/locations`, { method: 'POST', body: JSON.stringify(body) }));
+}
+export function useAllocateCustomerScreens(id: string) {
+  return useCustomerMutation(id, ({ locationId, seatLimit }: { locationId: string; seatLimit: number | null }) => apiFetch(`/super/customers/${id}/locations/${locationId}/allocation`, { method: 'PATCH', body: JSON.stringify({ seatLimit }) }));
+}
+export function useBusinessInvoices(filters: { q: string; status: string; page: number }, enabled = true) {
+  const query = new URLSearchParams();
+  if (filters.q) query.set('q', filters.q);
+  if (filters.status) query.set('status', filters.status);
+  query.set('page', String(filters.page));
+  return useQuery({ queryKey: ['super', 'customers', 'invoices', filters], queryFn: () => apiFetch<InvoiceListResponse>(`/super/customers/invoices?${query}`), enabled, placeholderData: keepPreviousData });
+}
+export function useInvoiceDocument(customerId: string, invoiceId: string) {
+  return useQuery({ queryKey: [...customerKeys.detail(customerId), 'invoice-document', invoiceId], queryFn: () => apiFetch<InvoiceDocument>(`/super/customers/${customerId}/invoices/${invoiceId}/document`), enabled: !!customerId && !!invoiceId });
+}
+export function useInvoiceAttachment(customerId: string) {
+  return useCustomerMutation(customerId, ({ invoiceId, file }: { invoiceId: string; file: File }) => {
+    const body = new FormData(); body.append('file', file);
+    return apiFetch(`/super/customers/${customerId}/invoices/${invoiceId}/pdf`, { method: 'POST', body });
+  });
+}
+
+export function useSendOwnerInvite(id: string) {
+  return useCustomerMutation(id, (body: { email: string }) => apiFetch<{ url: string; expiresAt: string; emailDelivered: boolean }>(`/super/customers/${id}/starter-link/email`, { method: 'POST', body: JSON.stringify(body) }));
+}
+export function useChangeCustomerCardScreens(id: string) {
+  return useCustomerMutation(id, (body: { quantity: number; confirmProration: true }) => apiFetch(`/super/customers/${id}/card-seats`, { method: 'POST', body: JSON.stringify(body) }));
 }

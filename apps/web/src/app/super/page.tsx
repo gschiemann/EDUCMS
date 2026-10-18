@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import { apiFetch } from '@/lib/api-client';
+import { BusinessOverview } from '@/components/super/BusinessOverview';
 import ActivationFunnelPanel from './ActivationFunnelPanel';
 import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 
@@ -20,6 +21,9 @@ import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/
 export default function SuperPage() {
   const router = useRouter();
   const tc = useTranslations('customerConsole');
+  const tb = useTranslations('businessConsole');
+  const [toolsOpen, setToolsOpen] = useState(false);
+  useEffect(() => { setToolsOpen(new URLSearchParams(window.location.search).has('tools')); }, []);
   const user = useAppStore(s => s.user);
   const { data: tenants, isLoading } = useSuperTenants();
   const comp = useCompSeats();
@@ -128,7 +132,6 @@ export default function SuperPage() {
   // stay one toggle-off away.
   const totalSeats = visibleTenants.reduce((n, t) => n + t.seatsUsed, 0);
   const totalTenants = visibleTenants.length;
-  const monthlyMrrCents = visibleTenants.reduce((n, t) => n + (t.monthlyPriceCents ?? 0) * (t.seatsUsed || 0), 0);
   const totalAvailable = tenants?.length ?? 0;
   const filterIsActive = showSelectedOnly || q.length > 0;
 
@@ -167,11 +170,15 @@ export default function SuperPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        <BusinessOverview screens={totalSeats} online={visibleTenants.reduce((n, t) => n + (t.screensOnline ?? 0), 0)} />
+        <details id="platform-tools" open={toolsOpen} onToggle={(e) => setToolsOpen(e.currentTarget.open)} className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tb('advancedTools')}</summary>
+          <p className="mt-2 mb-6 text-sm text-slate-500">{tb('advancedToolsBody')}</p>
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-              <Crown className="w-6 h-6 text-amber-500" /> Owner control panel
-            </h1>
+            <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <Crown className="w-6 h-6 text-amber-500" /> {tb('tools')}
+            </h2>
             <p className="text-sm text-slate-500 mt-1">
               Tenants, licenses, billing health.{' '}
               <a href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
@@ -211,7 +218,7 @@ export default function SuperPage() {
                 ? <Stat label="In canary" value={String(inCanary)} tone="warn" />
                 : null;
             })()}
-            <Stat label="Approx MRR" value={`$${(monthlyMrrCents / 100).toFixed(0)}`} accent />
+
           </div>
         </header>
 
@@ -464,6 +471,7 @@ export default function SuperPage() {
             /api/v1/super/storage/* so the operator never has to drop
             to curl to recover from a Supabase egress regression. */}
         <StorageAdmin />
+        </details>
       </div>
     </div>
   );
