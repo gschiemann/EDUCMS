@@ -140,10 +140,13 @@ export function relativeAgo(locale: string, atMs: number, nowMs: number): string
   return rtf.format(Math.round(diffSec / 86_400), 'day');
 }
 
-/** "24, 30, 60" in the reader's language; a plain comma list where `Intl.ListFormat` is missing. */
+/**
+ * "24, 30, 60" in the reader's language ("24, 30 y 60", "24、30、60"); a plain comma list where `Intl.ListFormat` is
+ * missing. NOT `type: 'unit'`: CLDR's Chinese unit lists have no separator at all ("243060").
+ */
 function joinRates(rates: string[], locale: string): string {
   try {
-    return new Intl.ListFormat(locale, { style: 'short', type: 'unit' }).format(rates);
+    return new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }).format(rates);
   } catch {
     return rates.join(', ');
   }

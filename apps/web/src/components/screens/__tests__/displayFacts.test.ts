@@ -681,6 +681,27 @@ describe('relativeAgo', () => {
   });
 });
 
+describe('lists of rates read as lists in every language', () => {
+  // CLDR's Chinese *unit* list has no separator at all ("243060"); the mode list must use a conjunction list instead.
+  const groups = (locale: string) => {
+    const f = facts({ timing: timing({ supportedModes: ['1:3840x2160@30.00', '2:3840x2160@60.00', '3:1920x1080@24.00', '4:1920x1080@30.00', '5:1920x1080@60.00'] }) }, locale);
+    const line = f!.rows.find((r) => r.id === 'panel')!.lines.at(-1)!.parts[0];
+    return (line.values!.list as Msg[]).map((g) => g.values!.rates as string);
+  };
+  it.each([
+    ['en', ['30, 60', '24, 30, 60']],
+    ['es', ['30 y 60', '24, 30 y 60']],
+    ['zh', ['30、60', '24、30、60']],
+  ])('%s', (locale, expected) => {
+    expect(groups(locale)).toEqual(expected);
+  });
+  it('a single rate is just the rate', () => {
+    const f = facts({ timing: timing() }, 'zh');
+    const line = f!.rows.find((r) => r.id === 'panel')!.lines.at(-1)!.parts[0];
+    expect((line.values!.list as Msg[])[0].values!.rates).toBe('30');
+  });
+});
+
 describe('numbers follow the locale; the words come from the catalogue', () => {
   it('Spanish uses the decimal comma and the dot group', () => {
     const f = facts({ timing: timing() }, 'es');
