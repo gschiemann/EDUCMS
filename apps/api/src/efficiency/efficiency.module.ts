@@ -9,6 +9,8 @@ import { CapacityController } from '../capacity/capacity.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
+import { BusinessController } from '../business/business.controller';
+import { BusinessService } from '../business/business.service';
 
 /**
  * EfficiencyModule — pluggable observability for VenueOS efficiency monitoring.
@@ -35,8 +37,9 @@ import { EmailModule } from '../email/email.module';
     SlowQueryMiddleware,
     EfficiencyAlertingService,
     CapacityWatchService,
+    BusinessService,
   ],
-  controllers: [EfficiencyController, CapacityController],
+  controllers: [EfficiencyController, CapacityController, BusinessController],
   exports: [EfficiencyMetricsService, EfficiencyInterceptor],
 })
 export class EfficiencyModule {}
