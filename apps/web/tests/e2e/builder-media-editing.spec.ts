@@ -3,6 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
+
+// Pixel ratio 1 in every engine (2026-10-18), like board-media-compatibility:
+// Desktop Safari is deviceScaleFactor 2 and Linux CI's WebKit paints the 4K
+// boards these tests load in software, 4x Chromium's pixels. Measured on one
+// commit, WebKit, one worker, no retries (PR #107): the built-in media tests
+// 35.2 s -> 14.3 s each, first-attempt timeouts 1 -> 0 (the clinic/retail
+// boards' slot not visible within 5 s — flaky in every recent run). Neither
+// these tests nor the builder read devicePixelRatio; every assertion here is in
+// CSS pixels or computed style. Chromium was already at 1.
+test.use({ deviceScaleFactor: 1 });
 const CORS = {
   'Access-Control-Allow-Origin': ORIGIN,
   'Access-Control-Allow-Credentials': 'true',
@@ -23,6 +33,14 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Hermetic, like board-media-compatibility (2026-10-18): the boards these tests load fetch
+  // their web fonts from Google and lay out (autofit) on `document.fonts.ready`, so a board's
+  // media slot settled only after a round trip to the internet — ~0.9 s for the font files in
+  // a traced CI pass, longer on a fresh runner with cold DNS and TLS. The first test of WebKit
+  // shard 3/4 missed its 5 s slot assertion that way (passed on retry). Nothing here measures
+  // text, so third-party requests are refused and fallback fonts lay out at once. Registered
+  // first, so the routes below still answer their own URLs.
+  await page.route((url) => !/^(localhost|127\.0\.0\.1|api\.invalid)$/.test(url.hostname), (route) => route.abort());
   await page.addInitScript(() => { if (window === window.top) localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'); });
   await page.route('**/test-media/**', route => {
     if (route.request().method() === 'PUT') return route.fulfill({ status: 200, body: '{}' });
@@ -57,9 +75,27 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     return json(route, []);
   });
   await page.goto('/e2e-school/templates/builder/media-editor', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('tab', { name: /^Widgets$/i })).toBeVisible({ timeout: 60_000 });
+  await editorReady(page);
   if (!initialZones) await expect(page.getByRole('button', { name: 'Add Image to your empty board', exact: true }).first()).toBeVisible();
   return { saved: () => template };
+}
+
+/** The builder has mounted: the same signal, and the same budget, for a first load and a reload. */
+async function editorReady(page: Page) {
+  await expect(page.getByRole('tab', { name: /^Widgets$/i })).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * Reopen the saved design (2026-10-18). Each reload used to be followed
+ * straight by a 5-second assertion, so that budget had to cover the whole
+ * builder booting again — the step `openEditor` gives 60 s — and on a loaded
+ * WebKit runner it did not ("Timeout 5000ms exceeded while waiting on the
+ * predicate" on the saved slot). Wait for the builder first, exactly as the
+ * first load does; the assertions after it keep their own budgets.
+ */
+async function reloadEditor(page: Page) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await editorReady(page);
 }
 
 async function addImage(page: Page, name: string) {
@@ -105,7 +141,7 @@ test('media starts at the top; cancel leaves the design alone; three pictures ha
   await page.getByRole('button', { name: /^Save$/ }).click();
   await expect.poll(() => state.saved().zones.length).toBe(3);
   await expect.poll(() => state.saved().zones[2]?.defaultConfig?._zoneRotation).toBe(25);
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await reloadEditor(page);
   await expect(page.locator('[data-zone-id]')).toHaveCount(3);
   await expect(page.locator('[data-zone-id]').filter({ has: page.locator('img[src*="/square.png"]') })).toHaveCSS('transform', /matrix/);
 });
@@ -150,6 +186,12 @@ test('video picker adds the actual clip in a tight frame; portrait editor keeps 
   await expect(zone).toHaveCount(1);
   const video = zone.locator('video');
   await expect(video).toHaveAttribute('src', /\/test-media\/clip\.mp4(?:#.*)?$/);
+  // `videoWidth` is 0 until the element has the clip's metadata
+  // (HAVE_METADATA). Reading it the moment `src` appears raced the download —
+  // the WebKit flake on 2026-10-11 and 2026-10-18. The frame itself is sized
+  // at insertion (MediaInsertPicker reads the dimensions first), so only the
+  // read needs to wait.
+  await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState), { message: 'the clip loads its metadata' }).toBeGreaterThanOrEqual(1);
   const dimensions = await video.evaluate((el: HTMLVideoElement) => ({ width: el.videoWidth, height: el.videoHeight, frameW: el.clientWidth, frameH: el.clientHeight }));
   expect(dimensions.width).toBeGreaterThan(0);
   expect(dimensions.frameW / dimensions.frameH).toBeCloseTo(dimensions.width / dimensions.height, 1);
@@ -258,7 +300,7 @@ for (const [board, key, portrait = false] of [
     await page.getByRole('button', { name: /^Save$/ }).click();
     await expect.poll(() => state.saved().zones[0]?.defaultConfig?.mediaStyles?.[key]?.rotation).toBe(90);
     expect(state.saved().zones[0].defaultConfig.imageOverrides?.[key]).toEqual([media[1].fileUrl, media[2].fileUrl]);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await reloadEditor(page);
     const savedFrame = page.locator('[data-zone-id] iframe').contentFrame();
     if (board.includes('/kiosk/')) await savedFrame.getByText('Directory', { exact: true }).click();
     const savedSlot = savedFrame.locator(`[data-imgslot="${key}"]:visible,[data-slot="${key}"]:visible,[data-img="${key}"]:visible,[data-posterslot="${key}"]:visible`).first();
@@ -287,7 +329,7 @@ test('adding media to a standard React template keeps the original design and us
   await page.getByRole('button', { name: /^Save$/ }).click();
   await expect.poll(() => state.saved().zones.length).toBe(2);
   expect(state.saved().zones[0]).toMatchObject({ ...background, id: 'saved-0', locked: false });
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await reloadEditor(page);
   await expect(page.locator('[data-zone-id]').filter({ has: page.locator('img[src*="/portrait.png"]') })).toHaveCSS('transform', /matrix\(0, 1, -1, 0,/);
 });
 
@@ -323,7 +365,7 @@ test('the full widget list leads with everyday media and understands plural sear
   await text.press('Enter');
   await page.getByRole('button', { name: /^Save$/ }).click();
   await expect.poll(() => state.saved().zones[0]?.defaultConfig?.content).toBe('Our welcome message');
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await reloadEditor(page);
   await expect(page.locator('[data-zone-id] [data-field="content"]')).toHaveText('Our welcome message');
 });
 for (const portrait of [false, true]) {
@@ -359,7 +401,7 @@ for (const portrait of [false, true]) {
     await expect.poll(() => state.saved().zones[0]?.defaultConfig?.imageOverrides?.[key]).toBe(media[1].fileUrl);
     expect(state.saved().zones[0].defaultConfig.mediaStyles?.[key]?.rotation).toBe(90);
     expect(state.saved().zones[0].defaultConfig.fields).toEqual({ 'school.name': 'Our own school' });
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await reloadEditor(page);
     const savedSlot = page.locator('[data-zone-id] iframe').contentFrame().locator(`[data-imgslot="${key}"]`);
     await expect.poll(() => savedSlot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage)).toContain('/portrait.png');
     await expect(savedSlot).toHaveCSS('transform', /matrix\(0, 1, -1, 0,/);
