@@ -59,6 +59,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
   Param,
   Post,
   Req,
@@ -80,6 +81,8 @@ import { assertAllowedEmergencyMediaUrl } from './media-url-guard';
 // polls instead of re-fetching the whole manifest every 10 s.
 import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
 import { assertSupportReach } from '../support-access/support-access.context';
+// 2026-10-18 — the interruption ledger (screens/events/screen-events.ts).
+import { ScreenEventsService } from '../screens/events/screen-events.service';
 
 const ALLOWED_TYPES = new Set([
   'LOCKDOWN', 'EVACUATE', 'WEATHER', 'HOLD', 'SECURE', 'MEDICAL', 'CUSTOM',
@@ -108,6 +111,8 @@ export class ScreenEmergencyController {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly signer: WebsocketSignerService,
+    // Optional: hand-built specs record nothing, and nothing here depends on it.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
 
   // ─── Validate + normalize an override payload ──────────────────
@@ -370,6 +375,20 @@ export class ScreenEmergencyController {
       console.warn(`[ScreenEmergency] override redis publish failed for device:${screen.id}: ${e}`);
     }
 
+    // Interruption ledger — after the override, its audit row and the
+    // dispatch; not awaited, and `record` never throws.
+    if (this.ledger) {
+      void this.ledger.record({
+        screenId: screen.id,
+        tenantId,
+        kind: 'emergency-start',
+        cause: override.type.toLowerCase(),
+        source: 'operator',
+        detail: { drill: false, overrideId, scope: 'screen', severity: override.severity },
+        dedupKey: `emergency-start:${overrideId}`,
+      });
+    }
+
     return { overrideId, payload };
   }
 
@@ -494,6 +513,20 @@ export class ScreenEmergencyController {
       await this.redis.publish(`device:${screen.id}`, signed);
     } catch (e) {
       console.warn(`[ScreenEmergency] all-clear redis publish failed for device:${screen.id}: ${e}`);
+    }
+
+    // Interruption ledger — after the delete, its audit row and the dispatch;
+    // not awaited, and `record` never throws.
+    if (this.ledger) {
+      void this.ledger.record({
+        screenId: screen.id,
+        tenantId: screen.tenantId,
+        kind: 'emergency-clear',
+        cause: 'all-clear',
+        source: 'operator',
+        detail: { drill: false, overrideRowId: existing.id, scope: 'screen' },
+        dedupKey: `emergency-clear:${existing.id}`,
+      });
     }
 
     return { success: true, screenId, cleared: true };

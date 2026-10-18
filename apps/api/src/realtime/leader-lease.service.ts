@@ -123,6 +123,10 @@ export const LEASE = {
   // and SENDS EMAIL: two replicas would double both. (Process-level metrics — RSS, event-loop lag —
   // describe the leader's own container; fine at one replica, see capacity-watch.service.ts.)
   CAPACITY_WATCH: 'capacity:watch',
+  // 2026-10-18 — hourly retention of `screen_events` (30 d + 2,000 rows per
+  // screen; screens/events/screen-events-retention.cron.ts). Leased because it
+  // is a DELETE: two replicas would race the same rows for nothing.
+  SCREEN_EVENTS_RETENTION: 'screens:events-retention',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

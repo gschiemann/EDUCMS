@@ -38,6 +38,7 @@
  *    the one moment that proves a command completed.
  */
 import { ScreensController } from './screens.controller';
+import { LEDGER_KIND_LIST } from './events/screen-events';
 import { RENDER_PROOF_STALE_MS } from './render-proof';
 
 jest.mock('../security/required-secret', () => ({
@@ -486,7 +487,10 @@ describe('GET /screens/:id/events', () => {
     expect(out.events.map((e: any) => e.id)).toEqual(['e2', 'e1']);
     expect(mockPrisma.client.screenEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { screenId: 's1' },
+        // The interruption-ledger kinds (2026-10-18) live in the same table
+        // and are left out of this timeline: they have their own `?hours=`
+        // read, and must never crowd this newest-N window.
+        where: { screenId: 's1', kind: { notIn: LEDGER_KIND_LIST } },
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),

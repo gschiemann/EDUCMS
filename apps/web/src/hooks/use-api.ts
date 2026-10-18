@@ -3761,6 +3761,41 @@ export function useScreenEvents(screenId: string | null) {
   });
 }
 
+/**
+ * The interruption ledger of one screen over the last 24 or 72 hours
+ * (2026-10-18, `GET /screens/:id/events?hours=`): every recorded
+ * interruption — reloads, app restarts, video engine stops and switches,
+ * updates, alerts — and an exact summary in which emergency drills are not
+ * counted. Fetched when the drawer asks, never polled.
+ */
+export interface ScreenInterruptionsResponse {
+  hours: number;
+  since: string;
+  summary: { interruptions: number; drills: number; byKind: Record<string, number> };
+  events: Array<{
+    id: string;
+    at: string;
+    kind: string;
+    cause: string | null;
+    source: 'operator' | 'system' | 'device' | null;
+    sessionId: string | null;
+    versionCode: number | null;
+    /** Counts toward `summary.interruptions`. */
+    interruption: boolean;
+    drill: boolean;
+    detail: unknown;
+  }>;
+  truncated: boolean;
+}
+export function useScreenInterruptions(screenId: string | null, hours: 24 | 72, enabled = true) {
+  return useQuery<ScreenInterruptionsResponse>({
+    queryKey: ['screens', 'interruptions', screenId, hours],
+    queryFn: () => apiFetch(`/screens/${screenId}/events?hours=${hours}`),
+    enabled: !!screenId && enabled,
+    staleTime: 60_000,
+  });
+}
+
 // ─── Phase 2c — publish a playlist to screens across child locations ───
 // POST /playlists/:id/publish-to-fleet — copies the playlist (+ assets) down
 // into each target child and schedules it live there. Parent/corporate only.

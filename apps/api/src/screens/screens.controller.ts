@@ -6,13 +6,21 @@ import { FAILED_STATE, isFailureState, pushWaitsForTap } from '../player-ota/ota
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
-import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { registeredResolution } from './registered-resolution';
 import { loadDemotedSources } from './playback-demotions';
 import { NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
+import { ScreenEventsService } from './events/screen-events.service';
+import {
+  LEDGER_KIND_LIST,
+  otaStateEvent,
+  procRelaunchEvent,
+  versionChangeEvent,
+  type LedgerEventInput,
+} from './events/screen-events';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -477,6 +485,9 @@ export class ScreensController {
     private readonly license: LicenseService,
     private readonly stripe: StripeService,
     private readonly menu: MenuService,
+    // Interruption ledger (2026-10-18, screens/events/screen-events.ts).
+    // Optional: the ~60 specs that build this controller by hand record nothing.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {
     // 2026-09-02 (efficiency P0-2) — hand `device-auth.ts` a cross-replica
     // home for the credential snapshot. This is where a Redis handle and that
@@ -1731,6 +1742,39 @@ export class ScreensController {
         { label: 'screen.update[heartbeat]' },
       );
     }
+    // ── INTERRUPTION LEDGER (2026-10-18, screens/events/screen-events.ts) ──
+    // Only a device-AUTHENTICATED heartbeat speaks for the screen here: a new
+    // Player process or boot count (`proc` in the native runtime report) and
+    // a Player build the screen had not reported before. Best-effort and
+    // deduplicated — it never fails or slows a heartbeat that has nothing to say.
+    if (this.ledger && paired && credential.proved) {
+      const priorCode = typeof (screen as any).playerVersionCode === 'number' ? (screen as any).playerVersionCode : null;
+      const reportedCode = typeof data.playerVersionCode === 'number' ? data.playerVersionCode : null;
+      const happened: LedgerEventInput[] = [];
+      const relaunch = nativeRuntime
+        ? procRelaunchEvent({
+            screenId: screen.id,
+            tenantId: screen.tenantId,
+            versionCode: reportedCode ?? priorCode,
+            storedReport: (screen as any).nativeRuntimeReport,
+            storedReportAt: (screen as any).nativeRuntimeReportAt,
+            report: nativeRuntime,
+            versionChanged: !!versionChanged || (reportedCode !== null && priorCode !== null && reportedCode !== priorCode),
+            nowMs: Date.now(),
+          })
+        : null;
+      if (relaunch) happened.push(relaunch);
+      const installed = versionChangeEvent({
+        screenId: screen.id,
+        tenantId: screen.tenantId,
+        previousCode: priorCode,
+        reportedCode,
+        versionName: vn || null,
+        pushSatisfied: otaCleared,
+      });
+      if (installed) happened.push(installed);
+      if (happened.length > 0) await this.ledger.recordAll(happened);
+    }
     // 2026-04-29 — operator (push went silent on v1.0.30 kiosk):
     // "pushed, nothing happened anywhere" + dashboard showed
     // "waiting for kiosk (≤ 35 min via periodic check)". WS push
@@ -2118,6 +2162,23 @@ export class ScreensController {
       }).catch(() => { /* audit best-effort */ });
     }
 
+    // ── INTERRUPTION LEDGER (2026-10-18) — a stored report that MOVES the
+    // screen into a download, an install, a tap prompt or a failure (never a
+    // progress report inside the same state). Anonymous reports count too —
+    // the shipped OTA worker sends no token — and the row says which it was.
+    if (this.ledger) {
+      const otaEvent = otaStateEvent({
+        screenId: screen.id,
+        tenantId: screen.tenantId,
+        versionCode: typeof screen.playerVersionCode === 'number' ? screen.playerVersionCode : null,
+        previousState: screen.lastOtaState,
+        state,
+        progress,
+        authenticated: deviceAuthenticated,
+      });
+      if (otaEvent) await this.ledger.record(otaEvent);
+    }
+
     console.log(
       `[ota-state] fp=${fingerprint.slice(0, 18)}… state=${state} ` +
       `progress=${progress ?? '-'} authed=${deviceAuthenticated} ` +
@@ -2257,7 +2318,8 @@ export class ScreensController {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
     const screen = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: fingerprint },
-      select: { id: true },
+      // tenantId / playerVersionCode: the interruption-ledger row below only.
+      select: { id: true, tenantId: true, playerVersionCode: true },
     });
     if (!screen) {
       throw new HttpException(
@@ -2315,6 +2377,23 @@ export class ScreensController {
       `reason=${reason} version=${oneLineLog(versionName) || '-'} ` +
       `detail=${oneLineLog(detail ?? '').slice(0, 400)}`,
     );
+
+    // Interruption ledger (2026-10-18): the Player started and its content
+    // did not — the native diagnostic card is on the glass. A paired screen
+    // only; anonymous like the route, so the row records whether the caller
+    // proved the device credential. Best-effort, one row per reason a minute.
+    if (this.ledger && screen.tenantId) {
+      await this.ledger.record({
+        screenId: screen.id,
+        tenantId: screen.tenantId,
+        versionCode: typeof screen.playerVersionCode === 'number' ? screen.playerVersionCode : null,
+        kind: 'app-relaunch',
+        cause: 'boot-diagnostic',
+        source: 'device',
+        detail: { reason, authenticated: authed, version: versionName },
+        dedupKey: `app-relaunch:boot-diagnostic:${reason}`,
+      });
+    }
 
     return { ok: true };
   }
@@ -3152,6 +3231,13 @@ export class ScreensController {
   // The "what happened to THIS screen" strip: refresh requested (by an
   // operator or the wedge cron), acked, credential lost, credential
   // restored. Newest first. Read-only.
+  //
+  // `?hours=24|72` (2026-10-18) answers the INTERRUPTION LEDGER instead:
+  // every ledger row of the window (newest 200) and its exact summary
+  // `{ interruptions, drills, byKind }` — drills left out of `interruptions`
+  // (screens/events/screen-events.ts). Without `hours` the timeline answers
+  // exactly as before: ledger rows are left out of it, so they can never
+  // crowd its newest-N window (the History tab reads its refresh ack there).
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get(':id/events')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -3159,9 +3245,17 @@ export class ScreensController {
     @Request() req: any,
     @Param('id') id: string,
     @Query('limit') limitRaw?: string,
+    @Query('hours') hoursRaw?: string,
   ) {
     const rootId = req.user.tenantId as string;
     if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const hours = hoursRaw === undefined ? null : Number(hoursRaw);
+    if (hours !== null && hours !== 24 && hours !== 72) {
+      throw new HttpException(
+        { code: 'SCREEN_EVENTS_HOURS_INVALID', message: 'hours must be 24 or 72' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 20, 1), 100);
     const tenantIds = await this.readableTenantIds(rootId);
 
@@ -3174,8 +3268,13 @@ export class ScreensController {
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
+    if (hours !== null) {
+      // Read-only: a service built here needs nothing the injected one holds.
+      return (this.ledger ?? new ScreenEventsService(this.prisma, this.redisService)).window(id, hours);
+    }
+
     const events = await this.prisma.client.screenEvent.findMany({
-      where: { screenId: id },
+      where: { screenId: id, kind: { notIn: LEDGER_KIND_LIST } },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: { id: true, kind: true, detail: true, createdAt: true },

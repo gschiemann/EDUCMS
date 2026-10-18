@@ -4476,6 +4476,11 @@ model Deployment {
 //   'refresh-acked'          — value-match clear      (POST /screens/:id/render-proof)
 //   'repair-required'        — authState stamped REPAIR_REQUIRED (register)
 //   'credential-restored'    — restore/grace re-mint of trust    (register)
+//   'update-applied'         — off-hours bundle update reported  (POST /screens/:id/telemetry)
+// plus the INTERRUPTION LEDGER kinds (2026-10-18, player rock-solid plan
+// §4B) — one row per interruption of content on a screen, with its `cause`
+// and `source`. Their vocabulary, which of them count as interruptions and
+// every writer live in apps/api/src/screens/events/screen-events.ts.
 // 2026-08-31 — Fleet pulse history (the design mock's 24h chart needs a
 // truth to draw; a chart with no stored samples would be fiction). One row
 // per tenant per sample tick (~15 min): tiny, pruned at 7 days.
@@ -4498,6 +4503,16 @@ model ScreenEvent {
   tenantId  String   @map("tenant_id")
   kind      String
   detail    Json?
+  // Interruption ledger only (2026-10-18) — null on the timeline kinds above.
+  // `cause`: why (a REFRESH_WEB origin, a native stop reason, an OTA state…);
+  // `source`: who decided ('operator' | 'system' | 'device');
+  // `sessionId`: the native video session, when the event belongs to one;
+  // `versionCode`: the Player build the screen reported at the time.
+  cause       String?
+  source      String?
+  sessionId   String?  @map("session_id")
+  versionCode Int?     @map("version_code")
+  // The ledger reads `createdAt` as the event's time ("at").
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([screenId, createdAt])

@@ -5,6 +5,7 @@ import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-leas
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { nativeReportsAsleep } from './native-runtime';
 import { PUSH_EXPIRE_MS } from '../player-ota/push-tracking';
+import { ScreenEventsService } from './events/screen-events.service';
 
 /**
  * ScreenWedgeDetectorCron — fleet-wide auto-recovery for the "alive but
@@ -362,6 +363,9 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     private readonly signer: WebsocketSignerService,
     private readonly redis: RedisService,
     @Optional() private readonly lease?: LeaderLeaseService,
+    // Interruption ledger (2026-10-18) — one `page-reload` row per durable
+    // refresh this detector stamps. Optional: hand-built specs record nothing.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
 
   onModuleInit(): void {
@@ -872,6 +876,17 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn(`[wedge-detector] screen event write failed: ${(e as Error).message}`);
     }
+    // Interruption ledger: a SYSTEM reload request — a screen that can prove
+    // it is painting declines it (refresh-request-origin.ts), and its ack does
+    // not say which it did, so the row records the request. Never throws.
+    await this.ledger?.record({
+      screenId,
+      tenantId,
+      kind: 'page-reload',
+      cause: 'wedge-detector',
+      source: 'system',
+      detail: { reason, requested: true, ...(corrId ? { corrId } : {}) },
+    });
   }
 
   /**
