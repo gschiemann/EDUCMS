@@ -37,10 +37,8 @@ describe('shouldEnforceScriptCsp', () => {
   });
 
   it('excludes EXACTLY, so a dynamic sibling of a prerendered route stays enforced', () => {
-    // `/super/bugs` is prerendered; `/super/bugs/:id` is not. A prefix rule
-    // here would have silently dropped the admin bug detail page out of the
-    // policy — which is why these live in the exact list.
-    expect(shouldEnforceScriptCsp('/super/bugs')).toBe(false);
+    // The owner layout now renders per request, including its list and detail routes.
+    expect(shouldEnforceScriptCsp('/super/bugs')).toBe(true);
     expect(shouldEnforceScriptCsp('/super/bugs/abc123')).toBe(true);
     expect(shouldEnforceScriptCsp('/reset-password/request')).toBe(false);
     expect(shouldEnforceScriptCsp('/reset-password/some-token')).toBe(true);
@@ -48,6 +46,12 @@ describe('shouldEnforceScriptCsp', () => {
     // A path that merely STARTS with an excluded name is not the excluded one.
     expect(shouldEnforceScriptCsp('/loginville')).toBe(true);
   });
+
+  it.each(['/super', '/super/customers', '/super/customers/new', '/super/invoices', '/super/profit', '/super/efficiency'])(
+    'enforces request nonces on owner route %s', (pathname) => {
+      expect(shouldEnforceScriptCsp(pathname)).toBe(true);
+    },
+  );
 });
 
 describe('scriptSrcCsp', () => {
