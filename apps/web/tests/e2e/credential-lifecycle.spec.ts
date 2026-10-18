@@ -15,9 +15,10 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * THE FOUR CONTRACTS WITH THE FUTURE:
  *   1. THE G43 STORY: a manifest 401 triggers ONE re-register with the
  *      stored prior token, the fresh credential is persisted, playback
- *      resumes, and `requiresRePair: true` surfaces as the on-glass
- *      "Re-pair required" chip. (Old code: decremented a counter, retried
- *      into the same 401 forever, told nobody — 37 h dark.)
+ *      resumes, and `requiresRePair: true` surfaces as the "Re-pair
+ *      required" chip on the operator's Back-key surface — never over live
+ *      content (glass continuity, 2026-10-11). (Old code: decremented a
+ *      counter, retried into the same 401 forever, told nobody — 37 h dark.)
  *   2. STORED TOKEN BEATS URL TOKEN: a stale native `?token=` injection
  *      can no longer clobber the fresh stored credential (the downgrade
  *      loop's root mechanism), and the token is scrubbed from the URL.
@@ -271,7 +272,7 @@ const contentImg = (page: Page) => page.locator(`img[src*="one.png"]`);
 // fixed with the bootMounted two-pass gate in page.tsx, which also ends
 // the throw-away-the-tree re-render on every real kiosk boot.
 test.describe('credential lifecycle — the G43 stories, pinned live', () => {
-  test('1. manifest 401 → one recovery re-register → playback resumes + Re-pair chip', async ({ page }) => {
+  test('1. manifest 401 → one recovery re-register → playback resumes + Re-pair chip on the operator surface', async ({ page }) => {
     test.setTimeout(120_000); // cold-compile payer — see emergency-path test 1
 
     const state = freshState();
@@ -309,11 +310,29 @@ test.describe('credential lifecycle — the G43 stories, pinned live', () => {
       .poll(() => page.evaluate(() => localStorage.getItem('edu_device_token')), { timeout: 15_000 })
       .toBe(RENEWED_TOKEN);
 
-    // And the trust state is VISIBLE, not swallowed: requiresRePair:true
-    // renders the on-glass chip.
+    // And the trust state is VISIBLE, not swallowed — on the surface a
+    // person at the screen opens, never over the customer's content.
+    //
+    // 2026-10-18 — this used to expect the amber "Re-pair required" chip
+    // over live playback. Glass continuity (c6726151, 2026-10-11) retired
+    // that: a paired screen that has shown content paints none of our chrome
+    // during normal playback (`quietGlass`, glassContinuity.ts — while it
+    // holds, `renderRepairRequiredChip` in page.tsx returns null). The state
+    // is still real and still stated: on the Back-key surface (playback
+    // paused → `shouldShowRepairChip` paints it on an operator surface,
+    // unconditionally) and on the dashboard (server-stamped authState).
+    // Pin both halves: told on the operator surface, quiet on the glass.
+    const pressBack = () => page.evaluate(() => window.dispatchEvent(new CustomEvent('edu-show-stop-overlay')));
+    await pressBack();
+    await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
     await expect(
-      page.getByText('Re-pair required', { exact: false }).first(),
+      page.getByText('Re-pair required').first(),
+      'the operator surface states the unproven credential',
     ).toBeVisible({ timeout: 20_000 });
+    // Back again resumes: content returns and the chip steps off the glass.
+    await pressBack();
+    await expect(contentImg(page), 'playback resumes after the operator surface').toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Re-pair required'), 'no admin chip over live content').toHaveCount(0);
   });
 
   test('2. a stale native ?token= no longer clobbers the stored credential, and is scrubbed', async ({ page }) => {

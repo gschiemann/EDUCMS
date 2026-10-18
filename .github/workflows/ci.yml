@@ -546,70 +546,171 @@ jobs:
           fi
           echo "Runtime image carries no package manager."
 
-  e2e:
-    # 2026-08-04 — MATRIX, not a chromium pin.
-    #
-    # First attempt at fixing the 49-minute timeout pinned this job to
-    # chromium. That was wrong: only 2 of the 13 specs (emergency-path,
-    # widget-render) have a dedicated WebKit workflow, so pinning silently
-    # dropped WebKit for the other 11 — including holiday-hotzone and
-    # external-html-clickedit, the two specs that exist BECAUSE of the
-    # 2026-05-09 Safari bug that shipped broken for two months. CLAUDE.md
-    # calls WebKit coverage non-negotiable and it is right.
-    #
-    # The real problem was never the browser count, it was doing both
-    # SERIALLY in one job (playwright.config sets workers:1 in CI). Splitting
-    # into a matrix runs them concurrently: same coverage, ~half the wall
-    # clock, and a WebKit-only failure is now legible instead of buried.
-    name: E2E Tests (Playwright / ${{ matrix.browser }})
+  # ── E2E: build once, run in shards, one verdict per browser (2026-10-18) ──
+  #
+  # From 2026-10-12 to 2026-10-18 both legs of the old one-job-per-browser
+  # matrix were CANCELLED at their 50-minute cap on every master run — no E2E
+  # verdict at all for six days. Measured from those runs' logs: 838 tests per
+  # engine, ~30 min of Chromium and ~60 min of WebKit at one worker (the
+  # builder and the 344-board media sweep are 5-8x slower on WebKit), plus
+  # ~25 minutes of retries of tests left stale by 10-11/10-12 product changes.
+  # Full measurements: docs/research/2026-10-17-player-rock-solid/10-e2e-under-cap.md
+  # (gitignored; summarised in the PR that introduced this layout).
+  #
+  # The layout:
+  #   e2e-build  builds the Next bundle ONCE and hands it to every shard as an
+  #              artifact (it used to be rebuilt in each job, ~2 min apiece).
+  #   e2e        Playwright's own sharding (`--shard=i/N`) per browser, two
+  #              workers per 4-vCPU runner. Coverage is unchanged: every test of
+  #              both projects still runs once per push.
+  #   e2e-report one job per browser that keeps the familiar check names
+  #              ("E2E Tests (Playwright / chromium|webkit)"), merges the shard
+  #              reports into one HTML report, and fails unless every listed
+  #              test of that browser ran and none failed.
+  #
+  # To re-balance, edit the `include` list in `e2e` — nothing else needs to
+  # change: e2e-report checks that the shards ran exactly the tests e2e-build
+  # listed, so a shard that never reports, or a matrix that forgets one,
+  # fails the browser's check by count instead of passing short.
+  #
+  # ⚠️ Sized for the PUBLIC 4-vCPU / 16 GB runner class. If the repo goes
+  # private (2 vCPU / 7 GB), run one worker per shard and double the shard
+  # counts, or the shards will crowd their 30-minute cap.
+  e2e-build:
+    name: E2E build (one Next bundle for every shard)
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
     # runner-image update (the same one forcing Node-24 action runtimes) wedges
     # Playwright 1.59 WebKit — WPEWebProcess launches then hangs until the job
     # timeout ("cancelled" verdict), while Chromium passes. Mixed-fleet rollout
     # made it intermittent (same commit green 08-17, hung 08-18 with no code
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
-    # this job on ubuntu-latest.
+    # this job on ubuntu-latest. (The build job follows the shards' image so
+    # the bundle is made on the OS that serves it.)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      chromium-tests: ${{ steps.collect.outputs.chromium }}
+      webkit-tests: ${{ steps.collect.outputs.webkit }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages (the web build imports @cms/* by package name)
+        # Each job is a fresh runner and @cms/* resolve to their dist/ (CLAUDE.md
+        # deploy-reliability failure mode #3).
+        run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
+
+      - name: Gate — Playwright collection must be real (audit W0-06)
+        # A broken collection (config crash, stray Jest files, mass skip) used
+        # to report "Total: 0 tests" while the job stayed green. The floor is 30
+        # discovered tests per browser; lower it ONLY with a written reason in
+        # the commit that lowers it.
+        #
+        # 2026-10-18 — this listed the REPO-ROOT suite (`pnpm exec playwright
+        # test --list` at the root: 36 tests that need a live API and that no
+        # workflow runs), not the apps/web suite this job executes, so a
+        # mass-skip of the real suite could never trip it. It now lists the
+        # suite that runs, per browser, and hands each count to e2e-report,
+        # which checks that the shards ran exactly that many tests.
+        id: collect
+        run: |
+          set -euo pipefail
+          for project in chromium webkit; do
+            pnpm --filter web exec playwright test --config playwright.config.ts --project="$project" --list > "/tmp/pw-list-$project.txt" 2>&1 || { cat "/tmp/pw-list-$project.txt"; exit 1; }
+            COUNT=$(grep -oE "Total: [0-9]+ tests" "/tmp/pw-list-$project.txt" | grep -oE "[0-9]+" || echo 0)
+            echo "Discovered $project tests: $COUNT (floor: 30)"
+            if [ "$COUNT" -lt 30 ]; then
+              tail -20 "/tmp/pw-list-$project.txt"
+              echo "FAIL: Playwright discovered $COUNT $project tests — below the floor of 30."
+              echo "Collection is broken or tests were deleted without replacing coverage."
+              exit 1
+            fi
+            echo "$project=$COUNT" >> "$GITHUB_OUTPUT"
+          done
+
+      # ── The web bundle Playwright serves (2026-09-05) ──────────────────────
+      # Playwright serves a PREBUILT production bundle (`next start`), never
+      # `next dev`: on the 2-vCPU / 7 GB private runner `next dev` compiling
+      # /board drove the cgroup to 6.83 GB and the OOM-killer took the runner
+      # ("The runner has received a shutdown signal"), while `next build`
+      # peaked at 5.23 GB and `next start` serves at 0.70 GB. Full write-up in
+      # apps/web/tests/e2e-webserver.cjs.
+      #
+      # The build is its own STEP on purpose: a build failure must be a legible
+      # red step, not an opaque webServer timeout.
+      #
+      # NEXT_PUBLIC_API_URL is set HERE because Next inlines NEXT_PUBLIC_* at
+      # BUILD time. It must match playwright.config.ts exactly, or the
+      # unroutable-host tripwire (a missed mock NXDOMAINs instead of hitting
+      # production) is silently replaced by the localhost fallback.
+      - name: Build the web app (every shard serves this build)
+        run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
+          # An explicit heap ceiling so an overrun fails as a legible V8
+          # "JavaScript heap out of memory" instead of taking the runner VM
+          # with it. 4096 was measured to complete with 5.23 GB peak RSS and
+          # no cgroup pressure events on the 7 GB runner class.
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Pack the build for the shards
+        # tar, not the artifact's own zip: `.next/node_modules` holds RELATIVE
+        # symlinks into the pnpm store (Sentry's instrumentation externals).
+        # tar keeps them as links, which resolve again under each shard's own
+        # `pnpm install` of the same lockfile; a zip would replace them with
+        # copies that cannot resolve their own dependencies. `.next/cache` is
+        # build-time only (~600 MB) and is left out.
+        run: tar -C apps/web --exclude=.next/cache -cf "$RUNNER_TEMP/e2e-next.tar" .next
+
+      - name: Upload the build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-next-build
+          path: ${{ runner.temp }}/e2e-next.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e:
+    name: E2E shard (Playwright / ${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.of }})
+    needs: e2e-build
+    runs-on: ubuntu-24.04 # see e2e-build for why this is pinned
+    # Sized so a shard finishes in ~20 minutes, setup included. The cap exists
+    # so a hang fails legibly (2026-08-04: an uncapped job ran 49 minutes and
+    # was killed with no failing step recorded).
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, webkit]
-    # 2026-08-04 — this job had NO timeout. `pnpm test:e2e` runs `playwright
-    # test` with no --project, so despite the job's name it executed BOTH
-    # chromium AND webkit (92 tests). It ran ~49 minutes and was then killed
-    # by the runner with NO failing step recorded — an opaque red that costs
-    # more to diagnose than the tests are worth. An explicit cap makes a hang
-    # fail legibly instead of mysteriously.
-    # WebKit's 385-case suite took 26.2 min plus ~4 min setup and passed
-    # every applicable test, then the 30-min job cap killed report/cleanup.
-    # Keep the complete browser matrix and a finite bound with setup margin.
-    # 2026-10-10 — the discovered 282-board media sweep and editor flows
-    # expand this to ~690 cases per engine. WebKit reached the 40-minute
-    # job cap before finishing. Keep every case and leave setup/report margin.
-    timeout-minutes: 50
-    permissions:
-      contents: read
-    # 2026-07-13 (audit W0-06): this job used to be PR-only — and this repo
-    # ships by direct push to master, so the gate NEVER ran; nobody noticed
-    # that collection was broken ("Total: 0 tests in 0 files"). It now runs
-    # on every push AND PR (repo is public — Actions minutes are free), on
-    # an ephemeral Postgres so no test can ever touch production data.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: educms_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/educms_e2e
-      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/educms_e2e
+        # Contiguous slices by TEST COUNT (Playwright's sharding), in file
+        # order — which is why WebKit needs more shards than Chromium: its
+        # expensive tests are not where its cheap ones are.
+        include:
+          - { browser: chromium, shard: 1, of: 2 }
+          - { browser: chromium, shard: 2, of: 2 }
+          - { browser: webkit, shard: 1, of: 3 }
+          - { browser: webkit, shard: 2, of: 3 }
+          - { browser: webkit, shard: 3, of: 3 }
+    # No Postgres service and no DATABASE_URL (removed 2026-10-18): nothing
+    # under apps/web reads a database — every API call in this suite is
+    # intercepted with page.route() — and emergency-path.yml has always run
+    # this same config without one.
     steps:
       - name: Checkout Code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -630,96 +731,112 @@ jobs:
       - name: Install Playwright browser (${{ matrix.browser }})
         run: pnpm exec playwright install ${{ matrix.browser }} --with-deps
 
-      - name: Build workspace packages (the API dev server imports @cms/* by package name)
-        # Same reason as build-and-test: each job is a fresh runner, and
-        # `nest start --watch` can't compile until @cms/* dist/ exists —
-        # without this the webServer boot dies on TS2307 "Cannot find
-        # module '@cms/api-types'" and Playwright times out (CLAUDE.md
-        # deploy-reliability failure mode #3, e2e-job edition).
+      - name: Build workspace packages (specs import src that imports @cms/*)
         run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
 
-      - name: Gate — Playwright collection must be real (audit W0-06)
-        # A broken collection (config crash, stray Jest files, mass skip)
-        # used to report "Total: 0 tests" while the job stayed green. The
-        # floor is 30 discovered tests; lower it ONLY with a written reason
-        # in the commit that lowers it.
-        run: |
-          set -o pipefail
-          pnpm exec playwright test --list 2>&1 | tee /tmp/pw-list.txt
-          COUNT=$(grep -oE "Total: [0-9]+ tests" /tmp/pw-list.txt | grep -oE "[0-9]+" || echo 0)
-          echo "Discovered tests: $COUNT (floor: 30)"
-          if [ "$COUNT" -lt 30 ]; then
-            echo "FAIL: Playwright discovered $COUNT tests — below the floor of 30."
-            echo "Collection is broken or tests were deleted without replacing coverage."
-            exit 1
-          fi
+      - name: Download the build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: e2e-next-build
+          path: ${{ runner.temp }}
 
-      - name: Apply Prisma schema to ephemeral Postgres
-        run: pnpm db:push
+      - name: Unpack the build
+        run: tar -C apps/web -xf "$RUNNER_TEMP/e2e-next.tar" && test -f apps/web/.next/BUILD_ID
 
-      # ── Build the web app BEFORE Playwright (2026-09-05) ─────────────────
-      # Playwright now serves a PREBUILT production bundle (`next start`)
-      # instead of compiling routes on demand with `next dev`.
-      #
-      # WHY: the repo went private on 2026-09-04, which moves the
-      # GitHub-hosted Linux runner from the public 4-vCPU / 16 GB class to the
-      # private 2-vCPU / 7 GB one. From the first push after that flip, BOTH
-      # matrix legs of this job died identically — "○ Compiling
-      # /board/[gameId]", the 180 s global-setup warm giving up, then
-      # "##[error]The runner has received a shutdown signal" with no test ever
-      # reported — on three consecutive commits AND on a re-run of an
-      # unchanged commit whose only change was Kotlin. Reproduced in a
-      # container capped to the private-runner spec (--cpus=2 --memory=7g
-      # --memory-swap=7g): `next dev` compiling /board drove the cgroup to
-      # 6.83 GB and the kernel OOM-killer fired (memory.events oom_kill 1),
-      # while the same box builds in 69 s at 5.23 GB peak with zero OOM events
-      # and then serves at 0.70 GB. Nothing regressed in the app; the machine
-      # halved. Every workflow that does NOT run `next dev` stayed green
-      # throughout, including this workflow's own `Build Application` job.
-      #
-      # The build is its own STEP on purpose: a build failure must be a
-      # legible red step, not an opaque webServer timeout.
-      #
-      # NEXT_PUBLIC_API_URL is set HERE because Next inlines NEXT_PUBLIC_* at
-      # BUILD time. It must match playwright.config.ts exactly, or the
-      # unroutable-host tripwire (a missed mock NXDOMAINs instead of hitting
-      # production) is silently replaced by the localhost fallback.
-      - name: Build the web app (Playwright serves this build)
-        run: pnpm --filter web build
-        env:
-          NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
-          # An explicit heap ceiling so an overrun fails as a legible V8
-          # "JavaScript heap out of memory" instead of taking the runner VM
-          # with it. 4096 was measured to complete with 5.23 GB peak RSS and
-          # no cgroup pressure events on the 7 GB runner class.
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      # Pinned to chromium, matching this job's NAME. webkit coverage is not
-      # lost — it is owned by dedicated workflows that run the same specs with
-      # browser-specific setup: cross-browser.yml (widget-render + holiday
-      # bridge, chromium AND webkit) and emergency-path.yml (chromium AND
-      # webkit). Running every spec on webkit here as well was a third
-      # redundant pass and roughly doubled the runtime of the job that then
-      # timed out.
-      - name: Run E2E Tests
-        run: pnpm --filter web exec playwright test --config playwright.config.ts --project=${{ matrix.browser }}
+      - name: Run E2E tests (${{ matrix.browser }} shard ${{ matrix.shard }}/${{ matrix.of }})
+        # Two workers: the runner has 4 vCPUs and these specs mock every API
+        # call per page, so the only thing two workers share is the prebuilt
+        # `next start` server. `list` keeps the per-test log; `blob` is what
+        # e2e-report merges.
+        run: >-
+          pnpm --filter web exec playwright test --config playwright.config.ts
+          --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.of }}
+          --workers=2 --reporter=list,blob
         env:
           CI: true
-          PLAYWRIGHT_ADMIN_TOKEN: ${{ secrets.PLAYWRIGHT_ADMIN_TOKEN }}
-          PLAYWRIGHT_TENANT_ID: ${{ secrets.PLAYWRIGHT_TENANT_ID }}
-          # Must equal the value the build step above used — see the note there.
+          # Must equal the value the build used — see e2e-build.
           NEXT_PUBLIC_API_URL: http://api.invalid/api/v1
-          # Serve the build made above; never compile inside the test run.
-          # tests/e2e-webserver.cjs fails loudly if .next/BUILD_ID is absent,
-          # so a dropped build step is named rather than silently re-compiled
-          # into the OOM this change exists to end.
+          # Serve the downloaded build; never compile inside the test run.
+          # tests/e2e-webserver.cjs fails loudly if .next/BUILD_ID is absent.
           E2E_PREBUILT: '1'
           NODE_OPTIONS: --max-old-space-size=2048
+          PLAYWRIGHT_BLOB_OUTPUT_FILE: blob-report/report-${{ matrix.browser }}-${{ matrix.shard }}.zip
 
-      - name: Upload Playwright HTML Report
+      - name: Upload the shard report
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: failure()
+        with:
+          name: e2e-blob-${{ matrix.browser }}-${{ matrix.shard }}-of-${{ matrix.of }}
+          path: apps/web/blob-report/
+          retention-days: 7
+          if-no-files-found: error
+
+  e2e-report:
+    # The check names the single-job layout used, kept on purpose: each means
+    # "every test of this browser ran, and none failed".
+    name: E2E Tests (Playwright / ${{ matrix.browser }})
+    needs: [e2e-build, e2e]
+    # Runs when a shard fails (that is when the merged report matters), and
+    # when e2e-build fails (so the check says so instead of being skipped).
+    # Not on a superseded, cancelled run.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Dependencies (the lockfile's Playwright merges the reports)
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the ${{ matrix.browser }} shard reports
+        # continue-on-error: when no shard reported, the verdict below says so
+        # in words instead of this step failing on an empty pattern.
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: e2e-blob-${{ matrix.browser }}-*
+          path: ${{ runner.temp }}/blob-reports
+          merge-multiple: true
+
+      - name: Merge the shard reports
+        continue-on-error: true
+        working-directory: apps/web
+        run: |
+          ls -la "$RUNNER_TEMP/blob-reports"
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$RUNNER_TEMP/merged.json" \
+            pnpm exec playwright merge-reports --reporter=html,json "$RUNNER_TEMP/blob-reports"
+
+      - name: Verdict — every listed test ran in some shard, and none failed
+        env:
+          BROWSER: ${{ matrix.browser }}
+          LISTED: ${{ matrix.browser == 'chromium' && needs.e2e-build.outputs.chromium-tests || needs.e2e-build.outputs.webkit-tests }}
+          MERGED: ${{ runner.temp }}/merged.json
+          BLOBS: ${{ runner.temp }}/blob-reports
+          E2E_BUILD_RESULT: ${{ needs.e2e-build.result }}
+        run: node apps/web/tests/e2e-shard-verdict.cjs
+
+      - name: Upload the merged HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report-${{ matrix.browser }}
           path: apps/web/playwright-report/
           retention-days: 7
+          if-no-files-found: ignore

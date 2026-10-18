@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { emptyDistrictReadiness, unknownPlaybackCapability } from '../fixtures/api-contract';
 
 const TENANT = 'e2e-preview';
 const USER = { id: 'preview-user', role: 'SCHOOL_ADMIN', email: 'preview@example.test', tenantId: TENANT };
@@ -39,6 +40,10 @@ async function setup(page: Page, command = false, kind: Kind = 'template', websi
       '/assets/storage-summary': { totalBytes: 0, totalFiles: website ? 1 : 0, images: { bytes: 0, files: 0 }, videos: { bytes: 0, files: 0 }, other: { bytes: 0, files: website ? 1 : 0 } },
       '/screens/display/faces': { faces: [] }, '/screens/display/events': { events: [] }, '/screens/display/device-inventory': { report: null },
       '/player/latest-version': { versionName: '1.1.20', versionCode: 10120 },
+      // The Screens page reads `schools.find(...)` off this and the screen drawer
+      // `capability.*` off playback-capability (2026-10-11): `[]` crashes both.
+      '/emergency/readiness/district': emptyDistrictReadiness(),
+      '/screens/display/playback-capability': unknownPlaybackCapability('display'),
     };
     return route.fulfill({ status: 200, headers, contentType: 'application/json', body: JSON.stringify(bodies[path] ?? []) });
   });
