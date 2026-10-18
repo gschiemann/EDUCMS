@@ -33,6 +33,14 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Hermetic, like board-media-compatibility (2026-10-18): the boards these tests load fetch
+  // their web fonts from Google and lay out (autofit) on `document.fonts.ready`, so a board's
+  // media slot settled only after a round trip to the internet — ~0.9 s for the font files in
+  // a traced CI pass, longer on a fresh runner with cold DNS and TLS. The first test of WebKit
+  // shard 3/4 missed its 5 s slot assertion that way (passed on retry). Nothing here measures
+  // text, so third-party requests are refused and fallback fonts lay out at once. Registered
+  // first, so the routes below still answer their own URLs.
+  await page.route((url) => !/^(localhost|127\.0\.0\.1|api\.invalid)$/.test(url.hostname), (route) => route.abort());
   await page.addInitScript(() => { if (window === window.top) localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'); });
   await page.route('**/test-media/**', route => {
     if (route.request().method() === 'PUT') return route.fulfill({ status: 200, body: '{}' });
