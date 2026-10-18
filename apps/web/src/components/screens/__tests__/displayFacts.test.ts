@@ -681,6 +681,111 @@ describe('relativeAgo', () => {
   });
 });
 
+describe('previous sessions (timing.history)', () => {
+  const HOUR = 3_600_000;
+  /** One finished session as the APK's ledger writes it (NativeTimingLedger). */
+  const entry = (over: Record<string, unknown> = {}) => ({
+    at: NOW - 3 * HOUR, face: 0, elapsedMs: 12 * 60_000, fps: 30,
+    vsyncSnap: true, prefer60hz: 'no-60hz-mode',
+    intervalUnitNs: 8_333_333, intervalBuckets: buckets(41_191, { 2: 4, 5: 5, 8: 3 }), intervalCount: 41_203,
+    ...over,
+  });
+  const past = (entries: unknown[], extra: Record<string, unknown> = {}, native: Record<string, unknown> = {}, locale = 'en') =>
+    rowLines(facts({ ...native, timing: timing({ history: { entries, overflow: 0, capacity: 6, ...extra } }) }, locale), 'history');
+
+  it('one line per finished session, newest first: when, how long, snap, the 60 Hz answer, the cadence share', () => {
+    const lines = past([
+      // the ledger appends as sessions end, so the array is oldest → newest
+      entry({ at: NOW - 26 * HOUR, vsyncSnap: false, prefer60hz: undefined, elapsedMs: 3.5 * HOUR, intervalBuckets: buckets(980, { 5: 20 }) }),
+      entry({ at: NOW - 9 * HOUR, recovered: true }),
+      entry(),
+    ]);
+    expect(lines).toEqual([
+      '3 hours ago · ran 12 min · snap on · 60 Hz mode: no 60 Hz mode offered · 99.97 % on cadence',
+      '9 hours ago · recovered after a restart · ran 12 min · snap on · 60 Hz mode: no 60 Hz mode offered · 99.97 % on cadence',
+      'yesterday · ran 3.5 hr · snap off · 98 % on cadence',
+    ]);
+  });
+
+  it('is the last row, and only exists when there is a session to list', () => {
+    const withIt = facts({ timing: timing({ history: { entries: [entry()], overflow: 0 } }) });
+    expect(withIt!.rows.map((r) => r.id)).toEqual(['panel', 'cadence', 'keepScreenOn', 'history']);
+    expect(withIt!.rows.at(-1)!.label).toEqual({ key: 'history.label' });
+    expect(facts({ timing: timing() })!.rows.map((r) => r.id)).not.toContain('history');
+  });
+
+  it('lists only this screen’s face: the ledger is the player PROCESS’s, so it holds both faces of a double-sided unit', () => {
+    const entries = [entry({ face: 1, at: NOW - 2 * HOUR }), entry({ face: 0 }), entry({ face: undefined, at: NOW - 5 * HOUR })];
+    expect(past(entries, {}, { faceIndex: 0 })).toHaveLength(2); // face 0 + the faceless one
+    expect(past(entries, {}, { faceIndex: 1 })).toHaveLength(2); // face 1 + the faceless one
+    expect(past(entries)).toHaveLength(3); // a report that names no face filters nothing
+  });
+
+  it('leaves out what an entry does not carry — an APK before 1.1.42 never reads "snap off"', () => {
+    expect(past([entry({ vsyncSnap: undefined, prefer60hz: undefined })])).toEqual(['3 hours ago · ran 12 min · 99.97 % on cadence']);
+    // no histogram, but a snap flag: still a session worth a line, without a cadence figure
+    expect(past([entry({ intervalBuckets: undefined, intervalUnitNs: undefined, prefer60hz: undefined })])).toEqual(['3 hours ago · ran 12 min · snap on']);
+  });
+
+  it('skips a session with none of the three measurements, and shows no row when all are skipped', () => {
+    expect(past([{ at: NOW - HOUR, elapsedMs: 5000, face: 0 }])).toEqual([]);
+    expect(past([])).toEqual([]);
+    expect(rowLines(facts({ timing: timing({ history: { entries: [], overflow: 4 } }) }), 'history')).toEqual([]);
+  });
+
+  it('a session shorter than a second says no duration (0 is not a length)', () => {
+    expect(past([entry({ elapsedMs: 0 })])[0]).not.toContain('ran');
+    expect(past([entry({ elapsedMs: 999 })])[0]).not.toContain('ran');
+    expect(past([entry({ elapsedMs: 45_000 })])[0]).toContain('ran 45 sec');
+  });
+
+  it('a stamp that cannot be right is "time unknown", not "20,000 days ago"; a few minutes of clock skew is just "now"', () => {
+    expect(past([entry({ at: 0 })])[0]).toMatch(/^time unknown · ran 12 min · /);
+    expect(past([entry({ at: NOW + 3 * 86_400_000 })])[0]).toMatch(/^time unknown · /);
+    expect(past([entry({ at: NOW + 60_000 })])[0]).toMatch(/^now · /);
+  });
+
+  it('says how many older sessions fell off the player’s ledger — only beside sessions that are listed', () => {
+    const lines = past([entry()], { overflow: 3 });
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('3 older sessions are no longer listed — the player keeps only its most recent ones.');
+    expect(past([entry()], { overflow: 0 })).toHaveLength(1);
+    expect(past([{ at: NOW - HOUR }], { overflow: 3 })).toEqual([]);
+    expect(facts({ timing: timing({ history: { entries: [entry()], overflow: 3 } }) })!.rows.at(-1)!.lines.map((l) => l.tone)).toEqual(['normal', 'muted']);
+  });
+
+  it.each(PREFERRED_MODE_RESULTS)('the 60 Hz answer "%s" has its own words', (code) => {
+    const line = past([entry({ prefer60hz: code, vsyncSnap: undefined, intervalBuckets: undefined })])[0];
+    expect(line).toMatch(/60 Hz mode: .+$/);
+    expect(line).not.toContain('reported “');
+  });
+
+  it('…all different, and an answer this build does not know is shown as reported', () => {
+    const texts = PREFERRED_MODE_RESULTS.map((c) => past([entry({ prefer60hz: c, vsyncSnap: undefined, intervalBuckets: undefined })])[0]);
+    expect(new Set(texts).size).toBe(PREFERRED_MODE_RESULTS.length);
+    expect(past([entry({ prefer60hz: 'brand-new-code', vsyncSnap: undefined, intervalBuckets: undefined })])[0]).toContain('60 Hz mode: reported “brand-new-code”');
+  });
+
+  it('claims nothing about whether the 60 Hz mode was requested — a history entry only knows the answer', () => {
+    for (const c of ['failed', 'reverted']) {
+      expect(past([entry({ prefer60hz: c })])[0]).not.toMatch(/\brequested\b/);
+    }
+  });
+
+  it('the share is the same truncated, cross-checked one as the headline: a session whose histogram does not match its fps makes no claim', () => {
+    expect(past([entry({ fps: 60 })])[0]).not.toContain('on cadence'); // unit says 30 fps, entry says 60
+    expect(past([entry({ intervalBuckets: buckets(99_999, { 5: 1 }) })])[0]).toContain('99.99 % on cadence');
+  });
+
+  it('speaks the reader’s language (numbers, time and duration come from Intl; the words from the catalogue)', () => {
+    const parts = (locale: string) => facts({ timing: timing({ history: { entries: [entry()], overflow: 0 } }) }, locale)!.rows.at(-1)!.lines[0].parts;
+    expect(parts('zh')[0]).toEqual({ key: 'history.when', values: { ago: '3小时前' } });
+    expect(parts('zh')[1].values).toEqual({ duration: '12分钟' });
+    expect(parts('es')[0]).toEqual({ key: 'history.when', values: { ago: 'hace 3 horas' } });
+    expect(parts('es').at(-1)!.values).toEqual({ percent: '99,97' });
+  });
+});
+
 describe('lists of rates read as lists in every language', () => {
   // CLDR's Chinese *unit* list has no separator at all ("243060"); the mode list must use a conjunction list instead.
   const groups = (locale: string) => {
@@ -781,6 +886,20 @@ describe('the catalogue and the code agree', () => {
       { state: 'failed', reason: 'output-stalled', timing: timing({ keepScreenOn: true }) },
       { state: 'failed', timing: timing() },
       { at: 'not a date', timing: timing() },
+      // Previous sessions: an impossible stamp, snap off, a restart-recovered session, every 60 Hz answer, one this build does not know, the overflow.
+      { faceIndex: 0, timing: timing({ history: { overflow: 2, capacity: 6, entries: [
+        { at: 0, face: 0, elapsedMs: 90_000, fps: 30, vsyncSnap: false, prefer60hz: 'brand-new-code', intervalUnitNs: 8_333_333, intervalBuckets: buckets(10) },
+        { at: NOW - 3_600_000, face: 0, vsyncSnap: true, prefer60hz: 'applied' },
+        { at: NOW - 3_600_000, face: 0, recovered: true, prefer60hz: 'kept', elapsedMs: 7_200_000 },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'already-60hz' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'no-60hz-mode' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'no-window' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'other-session' },
+      ] } }) },
+      { faceIndex: 0, timing: timing({ history: { overflow: 0, entries: [
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'failed' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'reverted' },
+      ] } }) },
       // An older player.
       { timing: nineCounters() },
     ];

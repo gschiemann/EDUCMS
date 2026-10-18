@@ -2522,6 +2522,30 @@
         "label": "屏幕常亮",
         "yes": "播放器窗口在最近一次报告时保持了“屏幕常亮”。",
         "no": "播放器窗口在最近一次报告时没有保持“屏幕常亮”。"
+      },
+      "history": {
+        "label": "此前的会话",
+        "when": "{ago}",
+        "unknownTime": "时间未知",
+        "recovered": "重启后恢复",
+        "ran": "运行 {duration}",
+        "snapOn": "对齐已开启",
+        "snapOff": "对齐已关闭",
+        "sixty": {
+          "line": "60 Hz 模式：{result}",
+          "result": {
+            "applied": "已向 Android 申请 60 Hz 模式",
+            "kept": "仍在向 Android 申请 60 Hz 模式",
+            "already-60hz": "面板当时已运行在 59 Hz 或更高",
+            "no-60hz-mode": "未提供 60 Hz 模式",
+            "no-window": "没有可用于申请的窗口",
+            "other-session": "这一面当时已有另一个会话",
+            "failed": "请求未能发出",
+            "reverted": "已撤回请求，已恢复 Android 自行选择",
+            "other": "报告为“{code}”"
+          }
+        },
+        "overflow": "另有 {count} 个更早的会话已不再列出——播放器只保留最近的会话。"
       }
     },
     "playback": {

@@ -22,7 +22,7 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 /** A 30 fps clip on a 4K panel whose only display mode is 30 Hz: 41,191 of 41,203 intervals on the source period. */
 const BUCKETS = [0, 0, 4, 0, 41_191, 5, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0];
 
-function nativeReport() {
+function nativeReport(history?: unknown) {
   return {
     url: 'https://example.test/media/clip.mp4',
     totalFrames: 900,
@@ -49,6 +49,7 @@ function nativeReport() {
         snappedFrames: 41_000, snapErrorMeanUs: 9, snapErrorMaxUs: 120, vsyncPeriodUs: 16_666, vsyncSamples: 1_204, clockSlewUs: -3_200,
         supportedModes: ['1:3840x2160@30.00'],
         keepScreenOn: false,
+        ...(history ? { history } : {}),
       },
       device: {
         class: 'amlogic/android-13', soc: 'amlogic', sdk: 33, webviewMajor: 120, nativeSolo: true, protocol3: false,
@@ -74,8 +75,24 @@ function screen(id: string, name: string, extra: Record<string, unknown> = {}) {
   };
 }
 
+const HOUR = 3_600_000;
+/** What the APK's ledger holds after three finished sessions (oldest first), two more having fallen off. */
+function pastSessions() {
+  const base = { face: 0, fps: 30, intervalUnitNs: 8_333_333 };
+  return {
+    overflow: 2,
+    capacity: 6,
+    entries: [
+      { ...base, at: Date.now() - 30 * HOUR, elapsedMs: 3.5 * HOUR, vsyncSnap: false, intervalBuckets: [0, 0, 0, 0, 980, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+      { ...base, at: Date.now() - 9 * HOUR, recovered: true, elapsedMs: 41 * 60_000, vsyncSnap: true, prefer60hz: 'no-60hz-mode', intervalBuckets: BUCKETS },
+      { ...base, at: Date.now() - 3 * HOUR, elapsedMs: 12 * 60_000, vsyncSnap: true, prefer60hz: 'no-60hz-mode', intervalBuckets: BUCKETS },
+    ],
+  };
+}
+
 const WITH_REPORT = screen('facts-with-report', 'Lobby test A', { lastVideoReport: nativeReport(), lastVideoReportAt: ago(10 * 60_000) });
 const WITHOUT_REPORT = screen('facts-without-report', 'Hallway test B');
+const WITH_HISTORY = screen('facts-with-history', 'Atrium test C', { lastVideoReport: nativeReport(pastSessions()), lastVideoReportAt: ago(10 * 60_000) });
 
 async function openDrawerFor(page: Page, screenId: string, firstName: string) {
   await page.addInitScript(({ user, token }) => {
@@ -97,7 +114,7 @@ async function openDrawerFor(page: Page, screenId: string, firstName: string) {
       '/auth/me': USER, '/users/me': USER, '/branding/me': {},
       '/tenants': [{ id: USER.tenantId, name: 'Display facts', slug: USER.tenantId }],
       '/tenants/accessible': [{ id: USER.tenantId, name: 'Display facts', slug: USER.tenantId }],
-      '/screens': [WITH_REPORT, WITHOUT_REPORT],
+      '/screens': [WITH_REPORT, WITHOUT_REPORT, WITH_HISTORY],
       '/screen-groups': [GROUP],
       '/schedules': [], '/playlists': [],
       // The page reads `schools.find(...)` off this: an empty list crashes it.
@@ -197,6 +214,36 @@ test.describe('Panel and playback pacing', () => {
     await section.screenshot({ path: info.outputPath('display-facts-desktop-1440.png') });
     // CSS pixels (1440 × 900), not device pixels: the whole drawer in context stays a small file.
     await page.screenshot({ path: info.outputPath('display-facts-desktop-1440-drawer.png'), scale: 'css' });
+  });
+
+  test('previous sessions: one line each, newest first, wrapping between figures on a phone', async ({ page }, info) => {
+    // Phone WIDTH, but tall: the whole card (now with its history) must fit above the drawer's sticky footer for the screenshot.
+    await page.setViewportSize({ width: 390, height: 1500 });
+    const drawer = await openDrawerFor(page, WITH_HISTORY.id, 'Atrium test C');
+    const row = drawer.getByTestId('display-facts-history');
+    await row.scrollIntoViewIfNeeded();
+    await expect(row.locator('dt')).toHaveText('Previous sessions');
+    const lines = row.locator('dd p');
+    await expect(lines).toHaveCount(4); // three finished sessions + the "older sessions" note
+    await expect(lines.nth(0)).toContainText('ran 12 min · snap on · 60 Hz mode: no 60 Hz mode offered · 99.97 % on cadence');
+    await expect(lines.nth(1)).toContainText('recovered after a restart · ran 41 min · snap on');
+    await expect(lines.nth(2)).toContainText('ran 3.5 hr · snap off · 98 % on cadence');
+    await expect(lines.nth(3)).toHaveText('2 older sessions are no longer listed — the player keeps only its most recent ones.');
+    // The newest session is first.
+    const tops = await lines.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+    expect([...tops].sort((a, b) => a - b)).toEqual(tops);
+    // Facts only, and it still fits the phone.
+    await expect(drawer.getByTestId('display-facts-section').locator('button, a, input, select, textarea, summary, [role="button"], [tabindex]')).toHaveCount(0);
+    const widths = await page.evaluate(() => ({
+      viewport: window.innerWidth,
+      doc: document.documentElement.scrollWidth,
+      card: (document.querySelector('[data-testid="display-facts-section"]') as HTMLElement).scrollWidth,
+      cardClient: (document.querySelector('[data-testid="display-facts-section"]') as HTMLElement).clientWidth,
+    }));
+    expect(widths.doc).toBeLessThanOrEqual(widths.viewport);
+    expect(widths.card).toBeLessThanOrEqual(widths.cardClient);
+    await hideDevOverlay(page);
+    await drawer.getByTestId('display-facts-section').screenshot({ path: info.outputPath('display-facts-phone-390-history.png') });
   });
 
   test('a screen with no native report gets no box at all', async ({ page }) => {

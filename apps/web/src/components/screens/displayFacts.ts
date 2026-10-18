@@ -140,6 +140,19 @@ export function relativeAgo(locale: string, atMs: number, nowMs: number): string
   return rtf.format(Math.round(diffSec / 86_400), 'day');
 }
 
+/** "12 min", "3.5 hr", "45 sec" in the reader's language. */
+export function formatDuration(locale: string, seconds: number): string {
+  const [value, unit] =
+    seconds >= 3600 ? [Math.round((seconds / 3600) * 10) / 10, 'hour'] :
+    seconds >= 60 ? [Math.round(seconds / 60), 'minute'] :
+    [seconds, 'second'];
+  try {
+    return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short' }).format(value);
+  } catch {
+    return `${value} ${unit}`;
+  }
+}
+
 /**
  * "24, 30, 60" in the reader's language ("24, 30 y 60", "24、30、60"); a plain comma list where `Intl.ListFormat` is
  * missing. NOT `type: 'unit'`: CLDR's Chinese unit lists have no separator at all ("243060").
@@ -303,7 +316,7 @@ export interface FactLine {
 }
 
 export interface FactRow {
-  id: 'panel' | 'cadence' | 'experiments' | 'keepScreenOn';
+  id: 'panel' | 'cadence' | 'experiments' | 'keepScreenOn' | 'history';
   label: Msg;
   lines: FactLine[];
 }
@@ -543,6 +556,65 @@ function preferredModeState(
   }
 }
 
+// ── Previous sessions ───────────────────────────────────────────────
+
+/** The earliest wall-clock stamp a player's ledger can plausibly carry (a box whose clock lost its battery stamps 1970). */
+const PLAUSIBLE_EPOCH_MS = Date.UTC(2020, 0, 1);
+/** A device clock can run minutes ahead of ours; a whole day ahead is not skew, it is a wrong clock. */
+const MAX_CLOCK_AHEAD_MS = 86_400_000;
+const KNOWN_SIXTY_RESULTS: ReadonlySet<string> = new Set(PREFERRED_MODE_RESULTS);
+
+/**
+ * One line per session the player has already finished (newest first): when,
+ * how long, snap on/off, what the 60 Hz request answered, and the cadence share
+ * of THAT session — from `timing.history`, the APK's persisted ledger
+ * (`NativeTimingLedger`: the last few completed sessions, a session cut short by
+ * a restart recovered as its own entry, an explicit count of what fell off).
+ *
+ * The ledger belongs to the player PROCESS, not to a face, so on a double-sided
+ * unit it holds both faces' sessions: only this screen's face is listed. A field
+ * an entry does not carry is left out, never zero — an APK before 1.1.42 has no
+ * snap / 60 Hz fields, and an entry with none of the three measurements says
+ * nothing worth a line. A recovered entry is stamped when it was recovered, which
+ * is after the session stopped, so it says so. A session ends for many reasons
+ * (the page reloaded, the clip changed, …), so a short one is a fact, not a fault.
+ */
+export function historyLines(
+  history: NativeVideoTiming['history'],
+  opts: { faceIndex: number | null; nowMs: number; locale: string },
+): FactLine[] {
+  if (!history) return [];
+  const { faceIndex, nowMs, locale } = opts;
+  const lines: FactLine[] = [];
+  // Ledger order is chronological (appended as sessions end); newest first reads best.
+  for (const e of history.entries.slice().reverse()) {
+    if (faceIndex !== null && e.face !== undefined && e.face !== faceIndex) continue;
+
+    const measured: Msg[] = [];
+    if (typeof e.vsyncSnap === 'boolean') measured.push(msg(e.vsyncSnap ? 'history.snapOn' : 'history.snapOff'));
+    if (typeof e.prefer60hz === 'string') {
+      measured.push(msg('history.sixty.line', {
+        result: KNOWN_SIXTY_RESULTS.has(e.prefer60hz)
+          ? msg(`history.sixty.result.${e.prefer60hz}`)
+          : msg('history.sixty.result.other', { code: e.prefer60hz }),
+      }));
+    }
+    const cadence = cadenceShare({ intervalBuckets: e.intervalBuckets, intervalUnitNs: e.intervalUnitNs, sourceFps: e.fps });
+    if (cadence) measured.push(msg('cadence.onCadence', { percent: formatPercent(cadence.percent, locale) }));
+    if (measured.length === 0) continue;
+
+    const known = Number.isFinite(e.at) && e.at >= PLAUSIBLE_EPOCH_MS && e.at <= nowMs + MAX_CLOCK_AHEAD_MS;
+    const parts: Msg[] = [known ? msg('history.when', { ago: relativeAgo(locale, e.at, nowMs) }) : msg('history.unknownTime')];
+    if (e.recovered) parts.push(msg('history.recovered'));
+    if (isCount(e.elapsedMs) && e.elapsedMs >= 1000) parts.push(msg('history.ran', { duration: formatDuration(locale, Math.round(e.elapsedMs / 1000)) }));
+    lines.push({ parts: [...parts, ...measured], tone: 'normal' });
+  }
+  if (lines.length > 0 && isCount(history.overflow) && history.overflow > 0) {
+    lines.push({ parts: [msg('history.overflow', { count: formatCount(history.overflow, locale) })], tone: 'muted' });
+  }
+  return lines;
+}
+
 // ── Entry point ─────────────────────────────────────────────────────
 
 /**
@@ -585,6 +657,8 @@ export function readDisplayFacts(report: unknown, opts: { nowMs: number; locale?
       lines: [{ parts: [msg(timing.keepScreenOn ? 'keepScreenOn.yes' : 'keepScreenOn.no')], tone: 'normal' }],
     });
   }
+  const past = historyLines(timing?.history, { faceIndex: isCount(native.faceIndex) ? native.faceIndex : null, nowMs: opts.nowMs, locale });
+  if (past.length > 0) rows.push({ id: 'history', label: msg('history.label'), lines: past });
   if (rows.length === 0) return null;
 
   const atMs = typeof native.at === 'string' ? Date.parse(native.at) : NaN;

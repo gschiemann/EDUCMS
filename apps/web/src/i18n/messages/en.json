@@ -2522,6 +2522,30 @@
         "label": "Keep screen on",
         "yes": "The player window held keep-screen-on at the last report.",
         "no": "The player window did not hold keep-screen-on at the last report."
+      },
+      "history": {
+        "label": "Previous sessions",
+        "when": "{ago}",
+        "unknownTime": "time unknown",
+        "recovered": "recovered after a restart",
+        "ran": "ran {duration}",
+        "snapOn": "snap on",
+        "snapOff": "snap off",
+        "sixty": {
+          "line": "60 Hz mode: {result}",
+          "result": {
+            "applied": "asked Android for a 60 Hz mode",
+            "kept": "still asking Android for a 60 Hz mode",
+            "already-60hz": "the panel already ran at 59 Hz or faster",
+            "no-60hz-mode": "no 60 Hz mode offered",
+            "no-window": "no window to ask on",
+            "other-session": "another session was on this side",
+            "failed": "the request could not be made",
+            "reverted": "request withdrawn, Android’s own choice restored",
+            "other": "reported “{code}”"
+          }
+        },
+        "overflow": "{count} older sessions are no longer listed — the player keeps only its most recent ones."
       }
     },
     "playback": {

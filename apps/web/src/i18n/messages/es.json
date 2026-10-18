@@ -2522,6 +2522,30 @@
         "label": "Mantener pantalla encendida",
         "yes": "La ventana del reproductor mantenía activo «mantener pantalla encendida» en el último informe.",
         "no": "La ventana del reproductor no mantenía activo «mantener pantalla encendida» en el último informe."
+      },
+      "history": {
+        "label": "Sesiones anteriores",
+        "when": "{ago}",
+        "unknownTime": "hora desconocida",
+        "recovered": "recuperada tras un reinicio",
+        "ran": "duró {duration}",
+        "snapOn": "alineación activada",
+        "snapOff": "alineación desactivada",
+        "sixty": {
+          "line": "Modo de 60 Hz: {result}",
+          "result": {
+            "applied": "se pidió a Android un modo de 60 Hz",
+            "kept": "se seguía pidiendo a Android un modo de 60 Hz",
+            "already-60hz": "el panel ya funcionaba a 59 Hz o más",
+            "no-60hz-mode": "no se ofrecía ningún modo de 60 Hz",
+            "no-window": "no había ventana donde pedirlo",
+            "other-session": "otra sesión estaba en este lado",
+            "failed": "no se pudo hacer la solicitud",
+            "reverted": "solicitud retirada, se restableció la elección propia de Android",
+            "other": "informó «{code}»"
+          }
+        },
+        "overflow": "{count} sesiones anteriores ya no aparecen: el reproductor solo conserva las más recientes."
       }
     },
     "playback": {

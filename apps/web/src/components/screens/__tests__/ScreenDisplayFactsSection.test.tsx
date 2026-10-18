@@ -115,6 +115,45 @@ describe('<ScreenDisplayFactsSection />', () => {
     });
   });
 
+  describe('previous sessions', () => {
+    const entry = (over: Record<string, unknown> = {}) => ({
+      at: NOW - 3 * 3_600_000, face: 0, elapsedMs: 12 * 60_000, fps: 30, vsyncSnap: true, prefer60hz: 'no-60hz-mode',
+      intervalUnitNs: 8_333_333, intervalBuckets: buckets(), intervalCount: 41_203, ...over,
+    });
+    const withHistory = (entries: unknown[], overflow = 0) =>
+      screenWith(native({ faceIndex: 0, timing: { ...native().timing, history: { entries, overflow, capacity: 6 } } }));
+
+    it('is a last row of one line per finished session, newest first, and an overflow note', () => {
+      renderSection(withHistory([
+        entry({ at: NOW - 26 * 3_600_000, vsyncSnap: false, prefer60hz: undefined }),
+        entry({ at: NOW - 9 * 3_600_000, recovered: true }),
+        entry(),
+      ], 2));
+      const row = rtl.getByTestId('display-facts-history');
+      expect(row.querySelector('dt')!.textContent).toBe('Previous sessions');
+      const lines = [...row.querySelectorAll('dd p')].map((p) => p.textContent);
+      expect(lines).toEqual([
+        '3 hours ago · ran 12 min · snap on · 60 Hz mode: no 60 Hz mode offered · 99.97 % on cadence',
+        '9 hours ago · recovered after a restart · ran 12 min · snap on · 60 Hz mode: no 60 Hz mode offered · 99.97 % on cadence',
+        'yesterday · ran 12 min · snap off · 99.97 % on cadence',
+        '2 older sessions are no longer listed — the player keeps only its most recent ones.',
+      ]);
+      // It is the last row of the card.
+      const terms = [...rtl.getByTestId('display-facts-section').querySelectorAll('dt')].map((el) => el.textContent);
+      expect(terms.at(-1)).toBe('Previous sessions');
+    });
+
+    it('stays facts only', () => {
+      renderSection(withHistory([entry()]));
+      expect(rtl.getByTestId('display-facts-section').querySelectorAll('button, a, input, select, textarea, summary, [role="button"], [tabindex]')).toHaveLength(0);
+    });
+
+    it('the other face’s sessions are not this screen’s', () => {
+      renderSection(withHistory([entry({ face: 1 })]));
+      expect(rtl.queryByTestId('display-facts-history')).not.toBeInTheDocument();
+    });
+  });
+
   describe('what it will not say', () => {
     it('a native session that had stopped is said so, with its reason code', () => {
       renderSection(screenWith(native({ state: 'failed', reason: 'output-stalled' })));
