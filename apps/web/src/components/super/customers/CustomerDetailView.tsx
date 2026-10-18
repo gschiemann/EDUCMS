@@ -7,14 +7,18 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { ArrowLeft, Check, Copy, Link2, Loader2, PauseCircle, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Check, Link2, Loader2, PauseCircle, PlayCircle } from 'lucide-react';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+import { OneTimeLink } from './OneTimeLink';
+export { OneTimeLink } from './OneTimeLink';
 import { CustomerPaymentCard, CustomerInviteCard, CustomerBrandingCard, CustomerLocationsCard } from './CustomerWorkspacePanels';
 import { InvoiceActions } from './InvoiceActions';
 import { SupportAccessCard } from './SupportAccessCard';
 import {
+  useChangeCustomerCardScreens,
   useCreateInvoice,
   useIssueStarterLink,
+  useSendOwnerInvite,
   useSuspendCustomer,
   useUpdateCustomerLicense,
   useUpdateInvoice,
@@ -23,7 +27,6 @@ import {
   BILLING_MODES,
   PLANS,
   TONE_CLASSES,
-  formatCents,
   formatDate,
   fromDateInput,
   isInvoiceBilled,
@@ -124,6 +127,7 @@ export function CustomerView({ c }: { c: CustomerDetail }) {
 function LicenseCard({ c }: { c: CustomerDetail }) {
   const t = useTranslations('customerConsole');
   const update = useUpdateCustomerLicense(c.id);
+  const cardScreens = useChangeCustomerCardScreens(c.id);
   const tb = useTranslations('businessConsole');
   const [packageName, setPackageName] = useState(c.license?.packageName ?? '');
   const [packagePrice, setPackagePrice] = useState(c.license?.packagePriceCents == null ? '' : (c.license.packagePriceCents / 100).toFixed(2));
@@ -151,13 +155,13 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
     if (!/^\d+$/.test(seatLimit.trim()) || !Number.isInteger(seats)) return setError(t('detail.invalidSeats'));
     const cents = parseDollarsToCents(price);
     if (cents === 'invalid') return setError(t('detail.invalidPrice'));
-    const body: Record<string, unknown> = { seatLimit: seats, renewalDate: fromDateInput(renewal), poNumber: po, notes };
+    const body: Record<string, unknown> = { ...(!stripe ? { seatLimit: seats } : {}), renewalDate: fromDateInput(renewal), poNumber: po, notes };
     if (!stripe) {
       const packageCents = parseDollarsToCents(packagePrice);
       if (packageCents === 'invalid') return setError(t('detail.invalidPrice'));
       body.packageName = packageName.trim() || null;
       body.packagePriceCents = packageCents;
-      body.pooledSeats = pooled;
+      body.pooledSeats = billingMode !== 'CARD' && pooled;
       body.monthlyPriceCents = cents;
       body.plan = plan;
       body.billingMode = billingMode;
@@ -186,12 +190,13 @@ function LicenseCard({ c }: { c: CustomerDetail }) {
       <h2 id="lic-h" className="font-semibold text-slate-900">{t('detail.licenseSection')}</h2>
       {!lic && <p className="text-sm text-slate-500 mt-1">{t('detail.noLicenseYet')}</p>}
       <p className="text-sm text-slate-600 mt-1">{note}</p>
+      {stripe ? <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3"><p className="text-xs text-indigo-900">{tb('cardQuantityHint')}</p><button type="button" className={`${BTN} mt-2 bg-indigo-600 text-white`} disabled={cardScreens.isPending} onClick={async () => { setError(''); const quantity = Number(seatLimit); if (!/^\d+$/.test(seatLimit) || quantity < 1) { setError(t('detail.invalidSeats')); return; } if (!await appConfirm({ title: tb('cardQuantityTitle'), message: tb('cardQuantityHint'), confirmLabel: tb('updateCardQuantity') })) return; try { await cardScreens.mutateAsync({ quantity, confirmProration: true }); setSaved(true); } catch(err) { setError(errMessage(err,t('detail.genericError'))); } }}>{tb('updateCardQuantity')}</button></div> : null}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label><span className={LABEL}>{tb('packageName')}</span><input className={INPUT} disabled={stripe} value={packageName} onChange={e => setPackageName(e.target.value)} /></label>
         <label><span className={LABEL}>{tb('packagePrice')}</span><input className={INPUT} disabled={stripe || billingMode === 'COMP'} value={packagePrice} onChange={e => setPackagePrice(e.target.value)} inputMode="decimal" placeholder={tb('perScreenDefault')} /></label>
       </div>
       <p className="mt-2 text-xs text-slate-500">{tb('packagePriceHint')}</p>
-      <label className="mt-3 flex min-h-10 items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={pooled} disabled={stripe || billingMode === 'CARD'} onChange={e => setPooled(e.target.checked)} /><span><span className="font-medium">{tb('pooledBilling')}</span><span className="block text-xs text-slate-500">{tb('pooledBillingHint')}</span></span></label>
+      <label aria-label={tb('pooledBilling')} className="mt-3 flex min-h-10 items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={pooled} disabled={stripe || billingMode === 'CARD'} onChange={e => setPooled(e.target.checked)} /><span><span className="font-medium">{tb('pooledBilling')}</span><span className="block text-xs text-slate-500">{tb('pooledBillingHint')}</span></span></label>
       <div className="grid gap-3 mt-4 sm:grid-cols-2 lg:grid-cols-4">
         <label><span className={LABEL}>{t('detail.seatLimit')}</span>
           <input className={INPUT} inputMode="numeric" value={seatLimit} onChange={(e) => setSeatLimit(e.target.value)} />
@@ -293,6 +298,10 @@ function OwnerLinkCard({ c }: { c: CustomerDetail }) {
   const t = useTranslations('customerConsole');
   const locale = useLocale();
   const issue = useIssueStarterLink(c.id);
+  const emailInvite = useSendOwnerInvite(c.id);
+  const tb = useTranslations('businessConsole');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [delivered, setDelivered] = useState<boolean | null>(null);
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
   const [error, setError] = useState('');
   const s = c.starterLogin;
@@ -320,6 +329,8 @@ function OwnerLinkCard({ c }: { c: CustomerDetail }) {
         {state}
         {s?.state === 'pending' && s.expiresAt && <> {t('detail.expiresOn', { date: formatDate(s.expiresAt, locale) })}</>}
       </p>
+      {s?.state !== 'set_up' ? <form className="mt-3 flex flex-col items-end gap-2 sm:flex-row" onSubmit={async e => { e.preventDefault(); setError(''); setDelivered(null); try { const result = await emailInvite.mutateAsync({ email: ownerEmail.trim() }); setLink(result); setDelivered(result.emailDelivered); } catch(err) { setError(errMessage(err,t('detail.genericError'))); } }}><label className="w-full text-xs font-medium text-slate-600">{tb('ownerEmail')}<input type="email" required value={ownerEmail} onChange={e => setOwnerEmail(e.target.value)} className={`${INPUT} mt-1`} /></label><button type="submit" disabled={emailInvite.isPending} className={`${BTN} shrink-0 bg-indigo-600 text-white`}>{tb('sendInvite')}</button></form> : null}
+      {delivered !== null ? <p role="status" className="mt-2 text-sm text-slate-600">{tb(delivered ? 'ownerInviteSent' : 'ownerInviteFailed')}</p> : null}
       {link ? (
         <OneTimeLink url={link.url} expiresAt={link.expiresAt} />
       ) : (
@@ -334,34 +345,6 @@ function OwnerLinkCard({ c }: { c: CustomerDetail }) {
       )}
       {error && <p role="alert" className="text-sm text-rose-700 mt-2">{error}</p>}
     </section>
-  );
-}
-
-/** The single-use owner link, shown once, with a copy button that says whether it copied. */
-export function OneTimeLink({ url, expiresAt }: { url: string; expiresAt: string }) {
-  const t = useTranslations('customerConsole');
-  const locale = useLocale();
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-  return (
-    <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3" data-testid="one-time-link">
-      <p className="text-sm font-semibold text-indigo-900">{t('detail.linkReady')}</p>
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-        <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} className={`${INPUT} font-mono text-xs`} aria-label={t('detail.linkReady')} />
-        <button type="button" onClick={copy} className={`${BTN} bg-indigo-600 text-white shrink-0`}>
-          {copied ? <Check className="w-4 h-4" aria-hidden /> : <Copy className="w-4 h-4" aria-hidden />}
-          {copied ? t('detail.copied') : t('detail.copy')}
-        </button>
-      </div>
-      <p className="text-xs text-indigo-900/80 mt-2">{t('detail.linkSingleUse', { date: formatDate(expiresAt, locale) })}</p>
-    </div>
   );
 }
 
@@ -423,7 +406,7 @@ export function InvoicesCard({ c }: { c: CustomerDetail }) {
               {c.invoices.map((i) => (
                 <tr key={i.id} className="border-b border-slate-50 last:border-0" data-testid="invoice-row">
                   <td className="py-2 pr-3 font-medium">{i.number}<InvoiceActions customerId={c.id} invoice={i} /></td>
-                  <td className="py-2 pr-3 tabular-nums">{formatCents(i.amountCents, locale)}</td>
+                  <td className="py-2 pr-3 tabular-nums">{new Intl.NumberFormat(locale, { style: 'currency', currency: i.currency }).format(i.amountCents / 100)}</td>
                   <td className="py-2 pr-3">{formatDate(i.sentAt, locale)}</td>
                   <td className="py-2 pr-3">{formatDate(i.dueAt, locale)}</td>
                   <td className="py-2 pr-3">

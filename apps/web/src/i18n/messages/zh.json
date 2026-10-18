@@ -5812,6 +5812,22 @@
     "description": "说明",
     "quantity": "数量",
     "unitPrice": "单价",
-    "total": "合计"
+    "total": "合计",
+    "healthBody": "查看设备可靠性、容量与平台运营。",
+    "onlineScreens": "{total} 块屏幕中有 {online} 块在线",
+    "cardQuantityHint": "更改银行卡订阅的屏幕数量将在下一张发票中产生按比例调整。需要客户同意。",
+    "cardQuantityTitle": "更新订阅屏幕数量？",
+    "updateCardQuantity": "更新银行卡订阅屏幕",
+    "ownerEmail": "所有者电子邮件（可选）",
+    "ownerEmailHint": "创建客户后发送一次性设置邀请。留空可自行复制和分享链接。",
+    "ownerInviteSent": "所有者设置邀请邮件已发送。",
+    "ownerInviteFailed": "客户已创建。邀请邮件未送达，请分享下方设置链接。",
+    "viewProfit": "查看财务概览",
+    "committedRevenue": "月度合同收入",
+    "estimatedContribution": "预计月度贡献",
+    "margin": "预计利润率",
+    "partialCosts": "成本数据尚不完整。贡献不含尚未录入或分配的成本。",
+    "recordedCosts": "已记录的月度成本",
+    "overdueReceivables": "逾期发票"
   }
 }

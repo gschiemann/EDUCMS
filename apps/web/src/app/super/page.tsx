@@ -1,9 +1,10 @@
 "use client";
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Loader2, Crown, Building2, AlertCircle, Search, X, Filter, HardDrive, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
@@ -170,7 +171,7 @@ export default function SuperPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <BusinessOverview screens={totalSeats} online={visibleTenants.reduce((n, t) => n + (t.screensOnline ?? 0), 0)} />
+        <BusinessOverview screens={(tenants ?? []).reduce((n, t) => n + t.seatsUsed, 0)} online={(tenants ?? []).reduce((n, t) => n + (t.screensOnline ?? 0), 0)} />
         <details id="platform-tools" open={toolsOpen} onToggle={(e) => setToolsOpen(e.currentTarget.open)} className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tb('advancedTools')}</summary>
           <p className="mt-2 mb-6 text-sm text-slate-500">{tb('advancedToolsBody')}</p>
@@ -181,12 +182,12 @@ export default function SuperPage() {
             </h2>
             <p className="text-sm text-slate-500 mt-1">
               Tenants, licenses, billing health.{' '}
-              <a href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
+              <Link href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
                 {tc('title')} →
-              </a>{' '}
-              <a href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
+              </Link>{' '}
+              <Link href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
                 AI models &amp; usage →
-              </a>
+              </Link>
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:flex-wrap shrink-0">

@@ -5812,6 +5812,22 @@
     "description": "Description",
     "quantity": "Quantity",
     "unitPrice": "Unit price",
-    "total": "Total"
+    "total": "Total",
+    "healthBody": "Review fleet reliability, capacity, and platform operations.",
+    "onlineScreens": "{online} of {total} screens online",
+    "cardQuantityHint": "Changing the card subscription screen quantity creates a prorated adjustment on the next invoice. Customer consent is required.",
+    "cardQuantityTitle": "Update subscription screens?",
+    "updateCardQuantity": "Update card subscription screens",
+    "ownerEmail": "Owner email (optional)",
+    "ownerEmailHint": "Send a single-use setup invitation after creating the customer. Leave blank to copy and share the link yourself.",
+    "ownerInviteSent": "Owner setup invitation emailed.",
+    "ownerInviteFailed": "Customer created. The invitation email could not be delivered; share the setup link below.",
+    "viewProfit": "View financial overview",
+    "committedRevenue": "Committed monthly revenue",
+    "estimatedContribution": "Estimated monthly contribution",
+    "margin": "Estimated margin",
+    "partialCosts": "Cost coverage is partial. Contribution excludes costs not yet entered or allocated.",
+    "recordedCosts": "Recorded monthly costs",
+    "overdueReceivables": "Overdue invoices"
   }
 }

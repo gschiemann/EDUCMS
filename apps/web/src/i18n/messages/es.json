@@ -5812,6 +5812,22 @@
     "description": "Descripción",
     "quantity": "Cantidad",
     "unitPrice": "Precio unitario",
-    "total": "Total"
+    "total": "Total",
+    "healthBody": "Revisa fiabilidad de dispositivos, capacidad y operaciones.",
+    "onlineScreens": "{online} de {total} pantallas en línea",
+    "cardQuantityHint": "Cambiar las pantallas de la suscripción con tarjeta genera un ajuste prorrateado en la próxima factura. Se requiere consentimiento del cliente.",
+    "cardQuantityTitle": "¿Actualizar pantallas de suscripción?",
+    "updateCardQuantity": "Actualizar pantallas de suscripción",
+    "ownerEmail": "Correo del propietario (opcional)",
+    "ownerEmailHint": "Envía una invitación de configuración de un solo uso después de crear el cliente. Deja vacío para copiar y compartir el enlace.",
+    "ownerInviteSent": "Invitación de configuración enviada por correo.",
+    "ownerInviteFailed": "Cliente creado. No se entregó el correo; comparte el enlace de configuración de abajo.",
+    "viewProfit": "Ver resumen financiero",
+    "committedRevenue": "Ingresos mensuales contratados",
+    "estimatedContribution": "Contribución mensual estimada",
+    "margin": "Margen estimado",
+    "partialCosts": "La cobertura de costos es parcial. La contribución excluye costos aún no registrados o asignados.",
+    "recordedCosts": "Costos mensuales registrados",
+    "overdueReceivables": "Facturas vencidas"
   }
 }
