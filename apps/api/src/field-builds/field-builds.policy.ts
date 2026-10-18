@@ -120,7 +120,7 @@ export function parseArmInput(body: unknown): ArmInput {
     what: 'tenantIds',
   });
   if (tenantIds.length === 0) {
-    throw new FieldBuildInputError('FIELD_BUILD_TENANTS_REQUIRED', 'Choose at least one organisation.');
+    throw new FieldBuildInputError('FIELD_BUILD_TENANTS_REQUIRED', 'Choose at least one organization.');
   }
   let allScreens = false;
   let screenIds: string[] = [];

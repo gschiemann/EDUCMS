@@ -169,7 +169,14 @@ export interface FieldScreenView {
   playerVersion: string | null;
   playerVersionCode: number | null;
   playerVersionAt: string | null;
-  push: { pendingAt: string | null; hold: string | null; offers: number; targetVersion: string | null };
+  /** The tracked push, in the dashboard's own row shape (web: trackedPush.ts deriveTrackedPush). */
+  forceApkUpdatePendingAt: string | null;
+  forceApkUpdateHold: string | null;
+  forceApkUpdateHoldAt: string | null;
+  forceApkUpdateHoldReason: string | null;
+  forceApkUpdateOfferCount: number;
+  forceApkUpdateLastOfferAt: string | null;
+  forceApkUpdateTargetVersion: string | null;
 }
 
 export interface PushResult {
@@ -390,7 +397,10 @@ export class FieldBuildsService {
         playerVersionAt: true,
         forceApkUpdatePendingAt: true,
         forceApkUpdateHold: true,
+        forceApkUpdateHoldAt: true,
+        forceApkUpdateHoldReason: true,
         forceApkUpdateOfferCount: true,
+        forceApkUpdateLastOfferAt: true,
         forceApkUpdateTargetVersion: true,
       } as any,
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -411,12 +421,13 @@ export class FieldBuildsService {
         playerVersion: s.playerVersion ?? null,
         playerVersionCode: typeof s.playerVersionCode === 'number' ? s.playerVersionCode : null,
         playerVersionAt: iso(s.playerVersionAt),
-        push: {
-          pendingAt: iso(s.forceApkUpdatePendingAt),
-          hold: s.forceApkUpdateHold ?? null,
-          offers: Number(s.forceApkUpdateOfferCount) || 0,
-          targetVersion: s.forceApkUpdateTargetVersion ?? null,
-        },
+        forceApkUpdatePendingAt: iso(s.forceApkUpdatePendingAt),
+        forceApkUpdateHold: s.forceApkUpdateHold ?? null,
+        forceApkUpdateHoldAt: iso(s.forceApkUpdateHoldAt),
+        forceApkUpdateHoldReason: s.forceApkUpdateHoldReason ?? null,
+        forceApkUpdateOfferCount: Number(s.forceApkUpdateOfferCount) || 0,
+        forceApkUpdateLastOfferAt: iso(s.forceApkUpdateLastOfferAt),
+        forceApkUpdateTargetVersion: s.forceApkUpdateTargetVersion ?? null,
       })),
     };
   }
@@ -445,7 +456,7 @@ export class FieldBuildsService {
       select: { id: true, name: true },
     });
     if (tenants.length !== input.tenantIds.length) {
-      throw http(HttpStatus.UNPROCESSABLE_ENTITY, 'FIELD_BUILD_TENANT_NOT_FOUND', 'One of those organisations does not exist.');
+      throw http(HttpStatus.UNPROCESSABLE_ENTITY, 'FIELD_BUILD_TENANT_NOT_FOUND', 'One of those organizations does not exist.');
     }
     for (const id of input.tenantIds) await assertSupportReach(user, id);
     if (!input.allScreens) {
@@ -457,7 +468,7 @@ export class FieldBuildsService {
         throw http(
           HttpStatus.UNPROCESSABLE_ENTITY,
           'FIELD_BUILD_SCREEN_NOT_IN_TENANTS',
-          'Every screen must belong to one of the chosen organisations.',
+          'Every screen must belong to one of the chosen organizations.',
         );
       }
       if (screens.some((s) => s.status === 'REVOKED')) {

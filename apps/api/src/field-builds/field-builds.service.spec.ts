@@ -521,7 +521,9 @@ describe('reads for the panel', () => {
       online: true,
       playerVersion: '1.1.29',
       playerVersionCode: 10129,
-      push: { pendingAt: null, hold: null, offers: 0 },
+      forceApkUpdatePendingAt: null,
+      forceApkUpdateHold: null,
+      forceApkUpdateOfferCount: 0,
     });
     expect(out.screens.find((s) => s.id === S2)!.online).toBe(false);
     expect(await codeOf(h.svc.listScreens(owner, 'not-a-uuid'))).toMatchObject({ status: 400, code: 'FIELD_BUILD_TENANTS_INVALID' });

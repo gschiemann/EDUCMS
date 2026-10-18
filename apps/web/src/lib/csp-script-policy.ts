@@ -129,6 +129,7 @@ export const CSP_UNNONCEABLE_EXACT = [
   '/super/bugs',
   '/super/cts-simulator',
   '/super/efficiency',
+  '/super/field-builds',
 ] as const;
 
 /**
