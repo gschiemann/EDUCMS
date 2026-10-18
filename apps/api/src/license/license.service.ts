@@ -107,8 +107,8 @@ export class LicenseService {
 
   /**
    * CUSTOMER CONSOLE (2026-10-10) — the organisation-level billing facts for a
-   * tenant: its own License and the nearest ancestor's, up to three levels
-   * (district → school → sub-site, deeper than anything the product creates).
+   * tenant: its own License and every ancestor's, including deeper location
+   * hierarchies. A corporate pool always governs from the organisation root.
    *
    *   - `governing`  the License that decides HOW this tenant is billed: its
    *                  own row if it has one, else the nearest ancestor's. A
@@ -119,8 +119,8 @@ export class LicenseService {
    *                  schools / locations.
    *   - `rootTenantId` the top-level organisation (the "customer").
    *
-   * One query. Optionally takes a transaction client (same deadlock reason as
-   * getEffective).
+   * One query for the usual three-level tree, then bounded batches for deeper
+   * chains. Optionally takes a transaction client (same deadlock reason as getEffective).
    */
   async orgAccount(tenantId: string, tx?: any): Promise<{
     rootTenantId: string;
@@ -130,14 +130,23 @@ export class LicenseService {
     const client = tx ?? this.prisma.client;
     const chain: any[] = [];
     const seen = new Set<string>();
-    let cursor: string | null = tenantId;
-    while (cursor) {
-      if (seen.has(cursor) || seen.size >= 100) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
-      seen.add(cursor);
-      const row: any = await client.tenant.findUnique({ where: { id: cursor }, include: { license: true } });
-      if (!row) break;
+    // Keep the common organisation/location path in one round trip. Deeper
+    // hierarchies continue in batches without truncating the governing root.
+    const read = (id: string): Promise<any> => client.tenant.findUnique({
+      where: { id },
+      select: { id: true, parentId: true, license: true, parent: {
+        select: { id: true, parentId: true, license: true, parent: {
+          select: { id: true, parentId: true, license: true },
+        } },
+      } },
+    });
+    let row: any = await read(tenantId);
+    while (row) {
+      if (seen.has(row.id) || seen.size >= 100) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
+      seen.add(row.id);
       chain.push(row);
-      cursor = row.parentId;
+      if (!row.parentId) break;
+      row = row.parent ?? await read(row.parentId);
     }
     if (!chain.length) return { rootTenantId: tenantId, governing: null, suspended: false };
     const rootLicense = chain[chain.length - 1].license;
