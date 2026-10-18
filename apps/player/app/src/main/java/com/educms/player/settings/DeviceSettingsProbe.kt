@@ -34,6 +34,9 @@ object DeviceSettingsProbe {
      */
     const val NTP_SERVER_KEY = "ntp_server"
 
+    /** `Settings.Secure.ATTENTIVE_TIMEOUT` is hidden too; this is its key (ms; ≤ 0 = off). */
+    const val ATTENTIVE_TIMEOUT_KEY = "attentive_timeout"
+
     fun capabilities(ctx: Context): Map<DeviceSettingKey, String> {
         val app = ctx.applicationContext
         return DeviceSettingsFacts.capabilities(
@@ -104,6 +107,8 @@ object DeviceSettingsProbe {
         o = o.copy(
             screenOffTimeoutMs = safe { Settings.System.getInt(cr, Settings.System.SCREEN_OFF_TIMEOUT) }
                 ?.takeIf { it > 0 },
+            // Unset (SettingNotFound) = the build's own default, reported as unreadable.
+            attentiveTimeoutMs = safe { Settings.Secure.getInt(cr, ATTENTIVE_TIMEOUT_KEY) },
             rotationLocked = safe { Settings.System.getInt(cr, Settings.System.ACCELEROMETER_ROTATION) }
                 ?.let { if (it == 0) true else if (it == 1) false else null },
             autoTime = safe { Settings.Global.getInt(cr, Settings.Global.AUTO_TIME) }?.let { it == 1 },

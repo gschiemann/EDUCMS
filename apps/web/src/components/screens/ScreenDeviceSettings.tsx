@@ -28,6 +28,7 @@ import { ChevronDown, ChevronRight, Settings2, Thermometer } from 'lucide-react'
 import type { DeviceSettingKey, DeviceSettingsPatch, DeviceWifiSecurity } from '@cms/api-types';
 import { useDeviceSettings, useUpdateDeviceSettings } from '@/hooks/use-device-settings';
 import {
+  ATTENTIVE_OPTIONS,
   BRIGHTNESS_OPTIONS,
   TIMEOUT_OPTIONS,
   VOLUME_OPTIONS,
@@ -237,6 +238,9 @@ function SettingRow({
       {row.editable && row.key === 'wifi' && (
         <WifiEditor row={row} disabled={disabled} onSave={onSave} inputId={`${id}-input`} />
       )}
+      {row.key === 'attentiveTimeoutMs' && row.editable && (
+        <p className="text-[10px] text-slate-400 leading-snug mt-1">{t('attentive.help')}</p>
+      )}
       <p className="text-[10px] text-slate-500 leading-snug mt-1" data-testid={`${id}-observed`}>
         {observedText(t, row)}
       </p>
@@ -263,6 +267,10 @@ function optionsFor(t: T, key: DeviceSettingKey) {
       ));
     case 'screenOffTimeoutMs':
       return TIMEOUT_OPTIONS.map((ms) => (
+        <option key={ms} value={String(ms)}>{timeoutText(t, ms)}</option>
+      ));
+    case 'attentiveTimeoutMs':
+      return ATTENTIVE_OPTIONS.map((ms) => (
         <option key={ms} value={String(ms)}>{timeoutText(t, ms)}</option>
       ));
     case 'rotationLock':
@@ -293,6 +301,7 @@ function observedText(t: T, row: DeviceSettingRow): string {
       value = t('percent', { n: Number(v) });
       break;
     case 'screenOffTimeoutMs':
+    case 'attentiveTimeoutMs':
       value = timeoutText(t, Number(v));
       break;
     case 'rotationLock':

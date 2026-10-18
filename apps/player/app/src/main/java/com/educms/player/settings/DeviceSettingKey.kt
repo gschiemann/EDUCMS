@@ -38,6 +38,13 @@ enum class DeviceSettingKey(val wire: String, val recheckAfterBoot: Boolean) {
     BRIGHTNESS("brightness", true),
     VOLUME("volume", true),
     SCREEN_OFF_TIMEOUT("screenOffTimeoutMs", true),
+    /**
+     * Android TV's inactivity sleep (`Settings.Secure` `attentive_timeout`):
+     * the box goes to sleep after this long with no remote or touch input,
+     * WHATEVER wake lock the player holds — what turned a test box off after
+     * hours. Needs WRITE_SECURE_SETTINGS. -1 = never.
+     */
+    ATTENTIVE_TIMEOUT("attentiveTimeoutMs", true),
     ROTATION_LOCK("rotationLock", true),
     AUTO_TIME("autoTime", true),
     AUTO_TIME_ZONE("autoTimeZone", true),
@@ -168,6 +175,11 @@ object DeviceSettingDomains {
     const val TIMEOUT_NEVER = Int.MAX_VALUE
     val TIMEOUTS_MS: Set<Int> = setOf(60_000, 300_000, 600_000, 1_800_000, 3_600_000, TIMEOUT_NEVER)
 
+    /** "Never" as Android's PowerManager reads `attentive_timeout` (any value ≤ 0 disables it). */
+    const val ATTENTIVE_NEVER = -1
+    /** Never, or hours — never anything short enough to surprise a venue. */
+    val ATTENTIVE_TIMEOUTS_MS: Set<Int> = setOf(ATTENTIVE_NEVER, 14_400_000, 28_800_000, 43_200_000, 86_400_000)
+
     val WIFI_SECURITY: Set<String> = setOf("open", "wpa2", "wpa3")
 
     private val HOST_LABEL = Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -205,6 +217,8 @@ object DeviceSettingDomains {
             value is DesiredValue.IntValue && value.value in 0..100
         DeviceSettingKey.SCREEN_OFF_TIMEOUT ->
             value is DesiredValue.IntValue && value.value in TIMEOUTS_MS
+        DeviceSettingKey.ATTENTIVE_TIMEOUT ->
+            value is DesiredValue.IntValue && value.value in ATTENTIVE_TIMEOUTS_MS
         DeviceSettingKey.ROTATION_LOCK, DeviceSettingKey.AUTO_TIME, DeviceSettingKey.AUTO_TIME_ZONE ->
             value is DesiredValue.BoolValue
         DeviceSettingKey.NTP_SERVER ->

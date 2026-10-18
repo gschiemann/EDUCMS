@@ -35,6 +35,14 @@ class DeviceSettingDomainsTest {
         assertEquals(Int.MAX_VALUE, DeviceSettingDomains.TIMEOUT_NEVER)
     }
 
+    @Test fun inactivitySleepIsNeverOrHoursAndNothingShorter() {
+        for (ms in DeviceSettingDomains.ATTENTIVE_TIMEOUTS_MS) assertTrue(ok(DeviceSettingKey.ATTENTIVE_TIMEOUT, DesiredValue.IntValue(ms)))
+        assertEquals(-1, DeviceSettingDomains.ATTENTIVE_NEVER)
+        assertTrue(DeviceSettingDomains.ATTENTIVE_TIMEOUTS_MS.filter { it > 0 }.all { it >= 4 * 3_600_000 })
+        for (ms in listOf(0, 60_000, 3_600_000, Int.MAX_VALUE)) assertFalse(ok(DeviceSettingKey.ATTENTIVE_TIMEOUT, DesiredValue.IntValue(ms)))
+        assertFalse(ok(DeviceSettingKey.ATTENTIVE_TIMEOUT, DesiredValue.BoolValue(false)))
+    }
+
     @Test fun switchesAreBooleans() {
         for (k in listOf(DeviceSettingKey.ROTATION_LOCK, DeviceSettingKey.AUTO_TIME, DeviceSettingKey.AUTO_TIME_ZONE)) {
             assertTrue(ok(k, DesiredValue.BoolValue(false)))

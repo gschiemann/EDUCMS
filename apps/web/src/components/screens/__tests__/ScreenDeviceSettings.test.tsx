@@ -36,6 +36,7 @@ const READY: DeviceSettingsView = {
       brightness: 'ok',
       volume: 'ok',
       screenOffTimeoutMs: 'ok',
+      attentiveTimeoutMs: 'no-secure-settings',
       rotationLock: 'ok',
       autoTime: 'no-secure-settings',
       autoTimeZone: 'no-secure-settings',
@@ -93,7 +94,8 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
       expect(rtl.queryByRole('combobox', { name: label })).not.toBeInTheDocument();
     }
     expect(rtl.queryByRole('textbox', { name: 'Time server' })).not.toBeInTheDocument();
-    expect(rtl.getAllByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveLength(3);
+    expect(rtl.getAllByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveLength(4);
+    expect(rtl.queryByRole('combobox', { name: 'Sleep after no remote use' })).not.toBeInTheDocument();
   });
 
   it('says what Android READ BACK, not what was sent', async () => {
@@ -153,6 +155,26 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
     put = apiFetchMock.mock.calls.filter((c) => c[1]?.method === 'PUT').pop();
     expect(JSON.parse(put![1].body).wifi.passphrase).toBe('correct horse');
     expect((rtl.getByLabelText('Password') as HTMLInputElement).value).toBe('');
+  });
+
+  it('with the install grant, the inactivity sleep offers Never first and says what it is', async () => {
+    const granted: DeviceSettingsView = {
+      ...READY,
+      report: { ...READY.report!, cap: { ...READY.report!.cap, attentiveTimeoutMs: 'ok' }, obs: { ...READY.report!.obs, attentiveTimeoutMs: 14_400_000 } },
+    };
+    renderSection(granted);
+    await open();
+    const select = rtl.getByLabelText('Sleep after no remote use') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Not managed', 'Never', '24 hours', '12 hours', '8 hours', '4 hours',
+    ]);
+    expect(rtl.getByTestId('device-setting-attentiveTimeoutMs')).toHaveTextContent('Android reports 4 hours');
+    expect(rtl.getByTestId('device-setting-attentiveTimeoutMs')).toHaveTextContent('whatever VenueOS is showing');
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '-1' } });
+    });
+    const put = apiFetchMock.mock.calls.filter((c) => c[1]?.method === 'PUT').pop();
+    expect(JSON.parse(put![1].body)).toEqual({ attentiveTimeoutMs: -1 });
   });
 
   it('read-only roles see every value and can change none', async () => {

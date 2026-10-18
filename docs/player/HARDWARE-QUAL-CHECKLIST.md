@@ -97,8 +97,11 @@ adb shell appops set com.educms.player WRITE_SETTINGS allow
 ```
 
 Then, in the dashboard drawer → Settings → **Android settings**, every row should read
-something other than "Needs the one-time install command". Not a release gate — record
-it in the unit's note.
+something other than "Needs the one-time install command". Set **Sleep after no remote
+use** to Never on a TV-class unit (`adb shell settings get secure attentive_timeout` → `-1`).
+If the site uses Wi-Fi, save its network for the screen and **approve VenueOS's suggested
+networks once on the glass** (Android's "Allow suggested Wi-Fi networks?" prompt) — the row
+then reads "allowed on the screen". Not a release gate — record it in the unit's note.
 
 ---
 

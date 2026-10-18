@@ -2093,11 +2093,15 @@
         "brightness": "Brightness",
         "volume": "Volume",
         "screenOffTimeoutMs": "Screen timeout",
+        "attentiveTimeoutMs": "Sleep after no remote use",
         "rotationLock": "Rotation",
         "autoTime": "Automatic date & time",
         "autoTimeZone": "Automatic time zone",
         "ntpServer": "Time server",
         "wifi": "Wi-Fi network"
+      },
+      "attentive": {
+        "help": "Android TV turns the screen off after this long without remote or touch input, whatever VenueOS is showing. Never keeps it on."
       },
       "on": "On",
       "off": "Off",

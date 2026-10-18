@@ -39,6 +39,8 @@ describe('device settings — PUT body', () => {
     expect(parse({ brightness: 80 }).success).toBe(true);
     expect(parse({ brightness: null, autoTime: true }).success).toBe(true);
     expect(parse({ screenOffTimeoutMs: DEVICE_SETTINGS_TIMEOUT_NEVER }).success).toBe(true);
+    expect(parse({ attentiveTimeoutMs: -1 }).success).toBe(true);
+    expect(parse({ attentiveTimeoutMs: 28_800_000 }).success).toBe(true);
     const ntp = parse({ ntpServer: '  Time.Google.com ' });
     expect(ntp.success && ntp.data.ntpServer).toBe('time.google.com');
   });
@@ -51,6 +53,8 @@ describe('device settings — PUT body', () => {
       { brightness: 50.5 },
       { volume: 101 },
       { screenOffTimeoutMs: 15_000 },
+      { attentiveTimeoutMs: 0 },
+      { attentiveTimeoutMs: 600_000 },
       { rotationLock: 'yes' },
       { ntpServer: 'evil host' },
       { wifi: { ssid: 'Lobby', security: 'wep' } },

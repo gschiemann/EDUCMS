@@ -44,6 +44,13 @@ describe('applyPatch — identity per changed value, nothing else moves', () => 
     expect(second.next.volume!.id).toBe('r2');
   });
 
+  it('stores the inactivity sleep like any other value, identity included', () => {
+    const r = applyPatch({}, { attentiveTimeoutMs: -1 }, ctx(4));
+    expect(r.changed).toEqual(['attentiveTimeoutMs']);
+    expect(r.next.attentiveTimeoutMs).toMatchObject({ v: -1, id: 'r4' });
+    expect(fullReply(4, r.next, null)).toEqual({ schema: 1, rev: 4, items: { attentiveTimeoutMs: { id: 'r4', v: -1 } } });
+  });
+
   it('null stops managing a setting; absent leaves it', () => {
     const base = applyPatch({}, { brightness: 80, volume: 30 }, ctx(1)).next;
     const r = applyPatch(base, { brightness: null }, ctx(2));

@@ -48,6 +48,7 @@ object DeviceSettingsFacts {
                 else -> DeviceSettingCodes.OK
             },
             DeviceSettingKey.SCREEN_OFF_TIMEOUT to writeSettings,
+            DeviceSettingKey.ATTENTIVE_TIMEOUT to secure,
             DeviceSettingKey.ROTATION_LOCK to writeSettings,
             DeviceSettingKey.AUTO_TIME to secure,
             DeviceSettingKey.AUTO_TIME_ZONE to secure,
@@ -92,6 +93,8 @@ object DeviceSettingsFacts {
         val volumeIndex: Int? = null,
         val volumeMax: Int? = null,
         val screenOffTimeoutMs: Int? = null,
+        /** `Settings.Secure` `attentive_timeout`; null = unset (the build's own default applies). */
+        val attentiveTimeoutMs: Int? = null,
         val rotationLocked: Boolean? = null,
         val autoTime: Boolean? = null,
         val autoTimeZone: Boolean? = null,
@@ -141,6 +144,12 @@ object DeviceSettingsFacts {
             }
             DeviceSettingKey.SCREEN_OFF_TIMEOUT ->
                 o.screenOffTimeoutMs?.let { it == (v as? DesiredValue.IntValue)?.value }
+            DeviceSettingKey.ATTENTIVE_TIMEOUT -> {
+                val want = (v as? DesiredValue.IntValue)?.value ?: return null
+                val have = o.attentiveTimeoutMs ?: return null
+                // Android reads any value ≤ 0 as "off": -1 and 0 are the same setting.
+                if (want <= 0) have <= 0 else have == want
+            }
             DeviceSettingKey.ROTATION_LOCK ->
                 o.rotationLocked?.let { it == (v as? DesiredValue.BoolValue)?.value }
             DeviceSettingKey.AUTO_TIME ->
@@ -165,6 +174,7 @@ object DeviceSettingsFacts {
             out[DeviceSettingKey.VOLUME] = volumePercent(o.volumeIndex, vMax)
         }
         o.screenOffTimeoutMs?.let { out[DeviceSettingKey.SCREEN_OFF_TIMEOUT] = it }
+        o.attentiveTimeoutMs?.let { out[DeviceSettingKey.ATTENTIVE_TIMEOUT] = if (it <= 0) DeviceSettingDomains.ATTENTIVE_NEVER else it }
         o.rotationLocked?.let { out[DeviceSettingKey.ROTATION_LOCK] = it }
         o.autoTime?.let { out[DeviceSettingKey.AUTO_TIME] = it }
         o.autoTimeZone?.let { out[DeviceSettingKey.AUTO_TIME_ZONE] = it }

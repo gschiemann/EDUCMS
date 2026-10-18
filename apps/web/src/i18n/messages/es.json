@@ -2093,11 +2093,15 @@
         "brightness": "Brillo",
         "volume": "Volumen",
         "screenOffTimeoutMs": "Tiempo de espera de la pantalla",
+        "attentiveTimeoutMs": "Reposo sin usar el mando",
         "rotationLock": "Rotación",
         "autoTime": "Fecha y hora automáticas",
         "autoTimeZone": "Zona horaria automática",
         "ntpServer": "Servidor de hora",
         "wifi": "Red Wi-Fi"
+      },
+      "attentive": {
+        "help": "Android TV apaga la pantalla tras este tiempo sin usar el mando ni la pantalla táctil, muestre lo que muestre VenueOS. Nunca la mantiene encendida."
       },
       "on": "Activado",
       "off": "Desactivado",

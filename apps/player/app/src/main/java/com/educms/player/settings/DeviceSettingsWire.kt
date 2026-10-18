@@ -74,7 +74,8 @@ object DeviceSettingsWire {
 
     /** A value of the wrong type becomes [DesiredValue.Invalid] — reported, never applied. */
     fun parseValue(key: DeviceSettingKey, raw: Any?): DesiredValue = when (key) {
-        DeviceSettingKey.BRIGHTNESS, DeviceSettingKey.VOLUME, DeviceSettingKey.SCREEN_OFF_TIMEOUT ->
+        DeviceSettingKey.BRIGHTNESS, DeviceSettingKey.VOLUME, DeviceSettingKey.SCREEN_OFF_TIMEOUT,
+        DeviceSettingKey.ATTENTIVE_TIMEOUT ->
             intOrNull(raw)?.let { DesiredValue.IntValue(it) } ?: DesiredValue.Invalid
         DeviceSettingKey.ROTATION_LOCK, DeviceSettingKey.AUTO_TIME, DeviceSettingKey.AUTO_TIME_ZONE ->
             (raw as? Boolean)?.let { DesiredValue.BoolValue(it) } ?: DesiredValue.Invalid

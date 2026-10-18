@@ -2093,11 +2093,15 @@
         "brightness": "亮度",
         "volume": "音量",
         "screenOffTimeoutMs": "屏幕超时",
+        "attentiveTimeoutMs": "无遥控操作后休眠",
         "rotationLock": "屏幕旋转",
         "autoTime": "自动设置日期和时间",
         "autoTimeZone": "自动设置时区",
         "ntpServer": "时间服务器",
         "wifi": "Wi-Fi 网络"
+      },
+      "attentive": {
+        "help": "Android TV 在这段时间内没有遥控器或触摸操作时会关闭屏幕，无论 VenueOS 正在显示什么。选择“永不”可保持开启。"
       },
       "on": "开",
       "off": "关",

@@ -32,7 +32,7 @@ const VIEW = {
   report: {
     schema: 1, rev: 3, sdk: 33,
     cap: {
-      brightness: 'ok', volume: 'ok', screenOffTimeoutMs: 'ok', rotationLock: 'ok',
+      brightness: 'ok', volume: 'ok', screenOffTimeoutMs: 'ok', attentiveTimeoutMs: 'no-secure-settings', rotationLock: 'ok',
       autoTime: 'no-secure-settings', autoTimeZone: 'no-secure-settings', ntpServer: 'no-secure-settings', wifi: 'ok',
     },
     obs: { brightness: 70, volume: 40, screenOffTimeoutMs: 2_147_483_647, rotationLock: false, ntpServer: '', wifi: { ssid: null, approval: 'unknown' } },
@@ -122,7 +122,7 @@ test('controls only where the unit can set it, the reason elsewhere, and one PUT
 
   await expect(section.getByTestId('device-setting-brightness')).toContainText('Android reports 70%');
   await expect(section.getByTestId('device-setting-screenOffTimeoutMs')).toContainText('Set on the screen');
-  await expect(section.getByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveCount(3);
+  await expect(section.getByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveCount(4);
   await expect(section.getByRole('combobox', { name: 'Automatic date & time' })).toHaveCount(0);
   await expect(section.getByTestId('device-load-facts')).toContainText('Heat: normal');
 

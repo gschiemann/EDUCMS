@@ -28,7 +28,7 @@ describe('buildSection — the honesty rules', () => {
 
   it('an Android 12 unit collapses to one sentence instead of eight identical rows', () => {
     const cap = Object.fromEntries(
-      ['brightness', 'volume', 'screenOffTimeoutMs', 'rotationLock', 'autoTime', 'autoTimeZone', 'ntpServer', 'wifi'].map((k) => [k, 'api-level']),
+      ['brightness', 'volume', 'screenOffTimeoutMs', 'attentiveTimeoutMs', 'rotationLock', 'autoTime', 'autoTimeZone', 'ntpServer', 'wifi'].map((k) => [k, 'api-level']),
     );
     const m = buildSection(base({ report: { schema: 1, rev: 0, sdk: 31, cap } }));
     expect(m).toEqual({ kind: 'old-android', sdk: 31 });
@@ -73,6 +73,7 @@ describe('controls ↔ PUT body', () => {
     expect(patchFor('rotationLock', 'true')).toEqual({ rotationLock: true });
     expect(patchFor('autoTime', 'false')).toEqual({ autoTime: false });
     expect(patchFor('volume', '')).toEqual({ volume: null });
+    expect(patchFor('attentiveTimeoutMs', '-1')).toEqual({ attentiveTimeoutMs: -1 });
   });
 
   it('shows the stored value in the select, "" when not managed', () => {
@@ -85,6 +86,8 @@ describe('controls ↔ PUT body', () => {
 describe('formatting helpers', () => {
   it('reads a timeout in its natural unit', () => {
     expect(timeoutParts(2_147_483_647)).toEqual({ never: true });
+    expect(timeoutParts(-1)).toEqual({ never: true });
+    expect(timeoutParts(14_400_000)).toEqual({ unit: 'hours', n: 4 });
     expect(timeoutParts(3_600_000)).toEqual({ unit: 'hours', n: 1 });
     expect(timeoutParts(1_800_000)).toEqual({ unit: 'minutes', n: 30 });
     expect(timeoutParts(60_000)).toEqual({ unit: 'minutes', n: 1 });

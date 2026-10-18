@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import {
+  DEVICE_SETTING_ATTENTIVE_TIMEOUTS_MS,
   DEVICE_SETTING_CAPABILITY_CODES,
   DEVICE_SETTING_KEYS,
   DEVICE_SETTING_STATUSES,
@@ -80,6 +81,11 @@ describe('device settings — Kotlin ↔ TypeScript vocabulary', () => {
       .map((s) => s.trim().replace(/_/g, ''))
       .map((s) => (s === 'TIMEOUTNEVER' ? 2_147_483_647 : Number(s)));
     expect(timeouts).toEqual([...DEVICE_SETTING_TIMEOUTS_MS]);
+    const attentive = keySrc.match(/val ATTENTIVE_TIMEOUTS_MS: Set<Int> = setOf\(([^)]*)\)/)![1]
+      .split(',')
+      .map((s) => s.trim().replace(/_/g, ''))
+      .map((s) => (s === 'ATTENTIVENEVER' ? -1 : Number(s)));
+    expect(attentive).toEqual([...DEVICE_SETTING_ATTENTIVE_TIMEOUTS_MS]);
     expect(read('DeviceSettings.kt')).toContain(`const val HEADER = "${DEVICE_SETTINGS_HEADER}"`);
     expect(read('DeviceSettingsWire.kt')).toContain(`const val MAX_REPORT_CHARS = ${DEVICE_SETTINGS_MAX_HEADER_CHARS}`);
     const facts = read('DeviceSettingsFacts.kt');

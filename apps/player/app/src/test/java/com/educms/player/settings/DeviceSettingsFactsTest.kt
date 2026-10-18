@@ -57,7 +57,7 @@ class DeviceSettingsFactsTest {
 
     @Test fun withoutTheInstallCommandTheTimeSettingsSayWhy() {
         val c = caps(android13.copy(hasSecureSettings = false))
-        for (k in listOf(DeviceSettingKey.AUTO_TIME, DeviceSettingKey.AUTO_TIME_ZONE, DeviceSettingKey.NTP_SERVER)) {
+        for (k in listOf(DeviceSettingKey.AUTO_TIME, DeviceSettingKey.AUTO_TIME_ZONE, DeviceSettingKey.NTP_SERVER, DeviceSettingKey.ATTENTIVE_TIMEOUT)) {
             assertEquals(DeviceSettingCodes.NO_SECURE_SETTINGS, c[k])
         }
         assertEquals(DeviceSettingCodes.OK, c[DeviceSettingKey.SCREEN_OFF_TIMEOUT])
@@ -123,6 +123,18 @@ class DeviceSettingsFactsTest {
         assertEquals("no override = Android's own server", true, DeviceSettingsFacts.matches(item(DeviceSettingKey.NTP_SERVER, DesiredValue.TextValue("")), o))
         assertEquals(true, DeviceSettingsFacts.matches(item(DeviceSettingKey.NTP_SERVER, DesiredValue.TextValue("Time.Google.com")), o.copy(ntpServer = "time.google.com")))
         assertNull(DeviceSettingsFacts.matches(item(DeviceSettingKey.AUTO_TIME, DesiredValue.BoolValue(true)), DeviceSettingsFacts.Observation()))
+    }
+
+    @Test fun inactivitySleepOffIsAnyValueAndroidReadsAsOff() {
+        val never = item(DeviceSettingKey.ATTENTIVE_TIMEOUT, DesiredValue.IntValue(-1))
+        assertEquals(true, DeviceSettingsFacts.matches(never, DeviceSettingsFacts.Observation(attentiveTimeoutMs = -1)))
+        assertEquals(true, DeviceSettingsFacts.matches(never, DeviceSettingsFacts.Observation(attentiveTimeoutMs = 0)))
+        assertEquals(false, DeviceSettingsFacts.matches(never, DeviceSettingsFacts.Observation(attentiveTimeoutMs = 14_400_000)))
+        assertNull("unset = the build's own default, which may be a 4 h sleep", DeviceSettingsFacts.matches(never, DeviceSettingsFacts.Observation()))
+        val eight = item(DeviceSettingKey.ATTENTIVE_TIMEOUT, DesiredValue.IntValue(28_800_000))
+        assertEquals(true, DeviceSettingsFacts.matches(eight, DeviceSettingsFacts.Observation(attentiveTimeoutMs = 28_800_000)))
+        assertEquals(false, DeviceSettingsFacts.matches(eight, DeviceSettingsFacts.Observation(attentiveTimeoutMs = -1)))
+        assertEquals(-1, DeviceSettingsFacts.forReport(DeviceSettingsFacts.Observation(attentiveTimeoutMs = 0))[DeviceSettingKey.ATTENTIVE_TIMEOUT])
     }
 
     @Test fun wifiCanNeverBeConfirmedByReadingBecauseAPassphraseIsNotReadable() {

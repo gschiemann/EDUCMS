@@ -51,6 +51,8 @@ object DeviceSettingsAppliers {
                     ScreenTimeoutBlankProvider.BaselineWrite.REFUSED ->
                         DeviceSettingsPolicy.Outcome.Error(DeviceSettingCodes.WRITE_REFUSED)
                 }
+                DeviceSettingKey.ATTENTIVE_TIMEOUT ->
+                    wrote(Settings.Secure.putInt(app.contentResolver, DeviceSettingsProbe.ATTENTIVE_TIMEOUT_KEY, int(item)))
                 DeviceSettingKey.ROTATION_LOCK -> rotationLock(app, bool(item))
                 DeviceSettingKey.AUTO_TIME ->
                     wrote(Settings.Global.putInt(app.contentResolver, Settings.Global.AUTO_TIME, if (bool(item)) 1 else 0))

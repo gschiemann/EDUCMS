@@ -102,8 +102,8 @@ adb shell am start -n com.educms.player/.PairingActivity
 The player build that carries the `settings/` package (code landed 2026-10-18;
 not yet released or hardware-qualified) sets a unit's basic Android settings itself
 (the screen's drawer › Settings › **Android settings**: brightness, volume,
-screen timeout, rotation lock, automatic date & time, automatic time zone,
-time server, one Wi-Fi network). It does this as an ordinary app — the
+screen timeout, Android TV's inactivity sleep, rotation lock, automatic date &
+time, automatic time zone, time server, one Wi-Fi network). It does this as an ordinary app — the
 Manager is never device owner — and only on **Android 13+**. Three of those
 settings need a permission that only an ADB session can hand out, once, at
 install time. Run these after `adb install` (or after the field install from
@@ -117,8 +117,10 @@ adb shell pm grant com.educms.player android.permission.WRITE_SECURE_SETTINGS
 adb shell appops set com.educms.player WRITE_SETTINGS allow
 ```
 
-The first unlocks **automatic date & time, automatic time zone and the time
-server**. The second is the same "Modify system settings" switch the setup
+The first unlocks **automatic date & time, automatic time zone, the time
+server and "Sleep after no remote use"** (Android TV's `attentive_timeout`: the
+box goes to sleep after hours without remote or touch input whatever the player
+holds — set it to Never on signage). The second is the same "Modify system settings" switch the setup
 checklist asks for with one tap (brightness, screen timeout, rotation lock);
 it is listed here so a cabled install can skip the tap. Check they took:
 
@@ -137,6 +139,16 @@ device admin or a system app. Without them the dashboard says, per setting,
 `com.educms.player.debug` — use that package name for a debug install. What
 the app can and cannot reach without device owner is in
 `docs/research/2026-10-17-player-rock-solid/05-android-settings-without-device-owner.md`.
+
+**Wi-Fi: one approval on the glass, once.** The first time a Wi-Fi network is
+saved for a screen, Android asks — on that screen — whether to allow VenueOS's
+suggested networks (usually a notification titled "Allow suggested Wi-Fi
+networks?"; some TV builds show a dialog). Choose **Allow** with the remote or
+by touch. The drawer row then reads "allowed on the screen"; later networks for
+that unit need no approval. If it was declined, the row says so: allow
+VenueOS's networks again in the unit's Wi-Fi settings (the menu differs by
+build), then save the network again. A suggested network never replaces the
+network the screen is using; Android joins it when it is in range.
 
 ### MDM / EMM (production)
 Recommended: **Headwind MDM**, **Hexnode** (paid), or **Android Enterprise Dedicated Devices** (free if you self-host the EMM). Push the APK silently to all enrolled devices; lock down to `com.educms.player` as the only allowed launcher (`setLockTaskPackages`).

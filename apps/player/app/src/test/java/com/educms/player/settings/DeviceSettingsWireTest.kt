@@ -26,6 +26,7 @@ class DeviceSettingsWireTest {
                   "autoTime":{"id":"r2","v":true},
                   "ntpServer":{"id":"r3","v":"time.google.com"},
                   "screenOffTimeoutMs":{"id":"r4","v":2147483647},
+                  "attentiveTimeoutMs":{"id":"r4","v":-1},
                   "wifi":{"id":"r6","v":{"ssid":"Lobby","security":"wpa2","hidden":true,"passphrase":"correct horse"}}}}""",
             ),
         ) as DeviceSettingsWire.Reply.Full
@@ -33,12 +34,14 @@ class DeviceSettingsWireTest {
         assertEquals(
             listOf(
                 DeviceSettingKey.BRIGHTNESS, DeviceSettingKey.VOLUME, DeviceSettingKey.SCREEN_OFF_TIMEOUT,
-                DeviceSettingKey.AUTO_TIME, DeviceSettingKey.NTP_SERVER, DeviceSettingKey.WIFI,
+                DeviceSettingKey.ATTENTIVE_TIMEOUT, DeviceSettingKey.AUTO_TIME, DeviceSettingKey.NTP_SERVER,
+                DeviceSettingKey.WIFI,
             ),
             r.items.map { it.key },
         )
         assertEquals(DesiredValue.IntValue(80), r.items[0].value)
         assertEquals(DesiredValue.IntValue(Int.MAX_VALUE), r.items[2].value)
+        assertEquals(DesiredValue.IntValue(-1), r.items[3].value)
         assertEquals(DesiredValue.WifiValue("Lobby", "wpa2", true, "correct horse"), r.items.last().value)
     }
 
@@ -118,6 +121,7 @@ class DeviceSettingsWireTest {
                 DeviceSettingKey.BRIGHTNESS to 100,
                 DeviceSettingKey.VOLUME to 100,
                 DeviceSettingKey.SCREEN_OFF_TIMEOUT to Int.MAX_VALUE,
+                DeviceSettingKey.ATTENTIVE_TIMEOUT to 86_400_000,
                 DeviceSettingKey.ROTATION_LOCK to true,
                 DeviceSettingKey.AUTO_TIME to false,
                 DeviceSettingKey.AUTO_TIME_ZONE to false,
@@ -135,7 +139,7 @@ class DeviceSettingsWireTest {
         val o = JSONObject(text)
         assertEquals(1, o.getInt("schema"))
         assertTrue(o.getBoolean("need"))
-        assertEquals(8, o.getJSONObject("ack").length())
+        assertEquals(DeviceSettingKey.values().size, o.getJSONObject("ack").length())
     }
 
     @Test fun theHeaderIsPrintableAsciiAndStillCarriesEveryCharacter() {

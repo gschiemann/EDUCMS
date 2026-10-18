@@ -19,6 +19,7 @@
 
 import {
   DEVICE_SETTING_KEYS,
+  DEVICE_SETTINGS_ATTENTIVE_NEVER,
   DEVICE_SETTINGS_TIMEOUT_NEVER,
   DEVICE_THERMAL_LEVELS,
   deviceSettingState,
@@ -34,6 +35,8 @@ export const BRIGHTNESS_OPTIONS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5] a
 export const VOLUME_OPTIONS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0] as const;
 /** Longest first: "Never" is what a signage screen almost always wants. */
 export const TIMEOUT_OPTIONS = [DEVICE_SETTINGS_TIMEOUT_NEVER, 3_600_000, 1_800_000, 600_000, 300_000, 60_000] as const;
+/** Android TV's inactivity sleep: Never first — what a signage screen wants. */
+export const ATTENTIVE_OPTIONS = [DEVICE_SETTINGS_ATTENTIVE_NEVER, 86_400_000, 43_200_000, 28_800_000, 14_400_000] as const;
 
 export interface DeviceSettingRow {
   key: DeviceSettingKey;
@@ -86,6 +89,7 @@ export function patchFor(key: DeviceSettingKey, raw: string): Record<string, unk
     case 'brightness':
     case 'volume':
     case 'screenOffTimeoutMs':
+    case 'attentiveTimeoutMs':
       return { [key]: Number(raw) };
     case 'rotationLock':
     case 'autoTime':
@@ -96,9 +100,9 @@ export function patchFor(key: DeviceSettingKey, raw: string): Record<string, unk
   }
 }
 
-/** A timeout as the unit it reads best in. */
+/** A timeout as the unit it reads best in. ≤ 0 (the inactivity sleep's "off") and Int max both read Never. */
 export function timeoutParts(ms: number): { never: true } | { unit: 'hours' | 'minutes'; n: number } {
-  if (ms >= DEVICE_SETTINGS_TIMEOUT_NEVER) return { never: true };
+  if (ms <= 0 || ms >= DEVICE_SETTINGS_TIMEOUT_NEVER) return { never: true };
   if (ms >= 3_600_000 && ms % 3_600_000 === 0) return { unit: 'hours', n: ms / 3_600_000 };
   return { unit: 'minutes', n: Math.max(1, Math.round(ms / 60_000)) };
 }

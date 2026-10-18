@@ -40,6 +40,7 @@ export const DEVICE_SETTING_KEYS = [
   'brightness',
   'volume',
   'screenOffTimeoutMs',
+  'attentiveTimeoutMs',
   'rotationLock',
   'autoTime',
   'autoTimeZone',
@@ -116,6 +117,21 @@ export const DEVICE_SETTING_TIMEOUTS_MS = [
   DEVICE_SETTINGS_TIMEOUT_NEVER,
 ] as const;
 
+/** Android TV's inactivity sleep off (`attentive_timeout`; Android reads any value ≤ 0 as off). */
+export const DEVICE_SETTINGS_ATTENTIVE_NEVER = -1;
+/**
+ * Android TV's inactivity sleep — the box sleeps after this long with no
+ * remote or touch input WHATEVER the player holds. Never, or hours: nothing
+ * short enough to surprise a venue. Needs the one-time install grant.
+ */
+export const DEVICE_SETTING_ATTENTIVE_TIMEOUTS_MS = [
+  DEVICE_SETTINGS_ATTENTIVE_NEVER,
+  14_400_000,
+  28_800_000,
+  43_200_000,
+  86_400_000,
+] as const;
+
 const HOST_LABEL = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 const IPV4 =
   /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
@@ -178,6 +194,12 @@ export const DeviceSettingsPatchSchema = z
       .number()
       .int()
       .refine((v) => (DEVICE_SETTING_TIMEOUTS_MS as readonly number[]).includes(v), 'Not an offered timeout.')
+      .nullable()
+      .optional(),
+    attentiveTimeoutMs: z
+      .number()
+      .int()
+      .refine((v) => (DEVICE_SETTING_ATTENTIVE_TIMEOUTS_MS as readonly number[]).includes(v), 'Not an offered value.')
       .nullable()
       .optional(),
     rotationLock: z.boolean().nullable().optional(),
@@ -248,6 +270,7 @@ export const DeviceSettingsReportSchema = z.object({
       brightness: capability.optional(),
       volume: capability.optional(),
       screenOffTimeoutMs: capability.optional(),
+      attentiveTimeoutMs: capability.optional(),
       rotationLock: capability.optional(),
       autoTime: capability.optional(),
       autoTimeZone: capability.optional(),
@@ -260,6 +283,8 @@ export const DeviceSettingsReportSchema = z.object({
       brightness: z.number().int().min(0).max(100).optional(),
       volume: z.number().int().min(0).max(100).optional(),
       screenOffTimeoutMs: z.number().int().min(1).max(DEVICE_SETTINGS_TIMEOUT_NEVER).optional(),
+      // What Android holds, whoever set it (-1 = off).
+      attentiveTimeoutMs: z.number().int().min(-1).max(2_147_483_647).optional(),
       rotationLock: z.boolean().optional(),
       autoTime: z.boolean().optional(),
       autoTimeZone: z.boolean().optional(),
@@ -277,6 +302,7 @@ export const DeviceSettingsReportSchema = z.object({
       brightness: ackSchema.optional(),
       volume: ackSchema.optional(),
       screenOffTimeoutMs: ackSchema.optional(),
+      attentiveTimeoutMs: ackSchema.optional(),
       rotationLock: ackSchema.optional(),
       autoTime: ackSchema.optional(),
       autoTimeZone: ackSchema.optional(),
