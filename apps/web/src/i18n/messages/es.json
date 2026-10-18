@@ -2245,7 +2245,30 @@
       "needsTap": "Necesita que alguien toque Instalar en la pantalla",
       "sublineNeedsTap": "Android en esta pantalla pide que una persona confirme. Pulsa «Install now» en la pantalla y luego toca Instalar.",
       "failed": "La instalación falló ({code})",
-      "sublineFailed": "La pantalla conservó la actualización descargada. Pulsa «Install now» en la pantalla para intentarlo de nuevo."
+      "sublineFailed": "La pantalla conservó la actualización descargada. Pulsa «Install now» en la pantalla para intentarlo de nuevo.",
+      "failedNoCode": "La instalación falló",
+      "push": {
+        "waiting": "Actualización enviada — esperando a que la pantalla la reciba",
+        "sent": "Enviada a la pantalla — esperando a que se instale",
+        "stalled": "Actualización detenida — la pantalla no la instaló",
+        "expired": "Actualización vencida — no se recibió en 24 horas",
+        "sublineWaiting": "La pantalla la recibirá la próxima vez que se conecte.",
+        "sublineSent": "La pantalla ya tiene la actualización. La instalación puede tardar unos minutos.",
+        "sublineNeedsTapLikely": "La actualización no se instaló. Lo más probable es que Android en esta pantalla espere que una persona confirme: pulsa «Install now» en la pantalla y luego toca Instalar.",
+        "sublineStalled": "Se ofreció y no se instaló, y la pantalla no indicó por qué. Reinicia la pantalla y vuelve a enviar la actualización.",
+        "sublineStalledLimit": "Se ofreció {count, plural, one {# vez} other {# veces}} y nunca se instaló. Reinicia la pantalla y vuelve a enviar la actualización.",
+        "sublineFailed": "La pantalla informó que la instalación falló. Pulsa «Install now» en la pantalla para intentarlo de nuevo, o vuelve a enviar la actualización.",
+        "sublineExpired": "La pantalla no recibió la actualización en las 24 horas siguientes al envío (puede que estuviera apagada, sin conexión o fuera de su horario de actualizaciones), así que no se instalará más tarde. Vuelve a enviarla si todavía la necesitas.",
+        "facts": "Enviada {ago} · {count, plural, =0 {aún no ofrecida} one {ofrecida # vez} other {ofrecida # veces}}",
+        "cancel": "Cancelar actualización",
+        "cancelling": "Cancelando…",
+        "cancelTitle": "¿Cancelar la actualización de {name}?",
+        "cancelMessage": "VenueOS deja de ofrecer esta actualización a la pantalla. Si Android ya muestra en ella un aviso de instalación, ese aviso seguirá ahí hasta que alguien lo responda.",
+        "cancelConfirm": "Cancelar actualización",
+        "cancelKeep": "Mantenerla",
+        "cancelled": "Actualización cancelada.",
+        "cancelFailed": "No se pudo cancelar la actualización. Inténtalo de nuevo."
+      }
     },
     "trust": {
       "repairTitle": "Es necesario reparar la confianza del dispositivo. Restablece la confianza desde la configuración de esta pantalla.",

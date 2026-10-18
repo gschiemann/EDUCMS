@@ -1032,6 +1032,39 @@ describe('POST /screens/:id/telemetry', () => {
     expect(shouldBumpManifestRev('Screen', 'update', Object.keys(data))).toBe(false);
   });
 
+  // ── Tracked pushes (2026-10-18, player-ota/push-tracking.ts) ─────────
+  it('the push clears when the screen runs the OFFERED build, even after the Manager already moved the stored version', async () => {
+    // The companion Manager's anonymous update-check reports the installed
+    // Player's version too, so playerVersionCode can already read 11170 when
+    // the Player's own first report arrives: no increase is visible, and
+    // since pushes no longer expire, only the recorded target proves it.
+    prisma.client.screen.findUnique.mockResolvedValue(
+      baseRow({ forceApkUpdatePendingAt: new Date(NOW - 60_000), playerVersionCode: 11170, forceApkUpdateTargetVersionCode: 11170 }),
+    );
+    await controller.report(SCREEN_ID, makeReq(), { versions: { player: '1.1.17', playerCode: 11170 } });
+    const data = writtenData() as Record<string, unknown>;
+    expect(data.forceApkUpdatePendingAt).toBeNull();
+    expect(data.lastOtaState).toBe('INSTALLED');
+  });
+
+  it('…but the same version with no recorded target is not proof of anything', async () => {
+    prisma.client.screen.findUnique.mockResolvedValue(
+      baseRow({ forceApkUpdatePendingAt: new Date(NOW - 60_000), playerVersionCode: 11170 }),
+    );
+    await controller.report(SCREEN_ID, makeReq(), { versions: { player: '1.1.17', playerCode: 11170 } });
+    expect(writtenData() as Record<string, unknown>).not.toHaveProperty('forceApkUpdatePendingAt');
+  });
+
+  it('a HELD push is not re-announced: the server will not offer it', async () => {
+    prisma.client.screen.findUnique.mockResolvedValue(
+      baseRow({ forceApkUpdatePendingAt: new Date(NOW - 60_000), forceApkUpdateHold: 'NEEDS_TAP' }),
+    );
+    const out = await controller.report(SCREEN_ID, makeReq(), {});
+    expect(out.forceUpdatePending).toBe(false);
+    // The push is still there for the dashboard to show.
+    expect(out.forceUpdatePendingAt).not.toBeNull();
+  });
+
   it('an empty manager string is the explicit "Manager uninstalled" signal', async () => {
     prisma.client.screen.findUnique.mockResolvedValue(baseRow({ managerVersion: '1.0.3' }));
     await controller.report(SCREEN_ID, makeReq(), { versions: { manager: '' } });

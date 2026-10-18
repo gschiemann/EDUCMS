@@ -129,16 +129,24 @@ describe('a push the screen said NEEDS_TAP for is answered needsTap', () => {
 
   it('the Player\'s unattended check → uptoDate + needsTap, nothing resolved or downloaded', async () => {
     const { c, lines, prisma } = harness(tapRow());
-    await expect(c.updateCheck(playerBody, req)).resolves.toEqual({ uptoDate: true, needsTap: true });
-    expect(lines.join('\n')).toContain('decision=uptoDate-force-pending-needs-tap');
+    // 2026-10-18 (tracked pushes): the same answer, now also naming the hold.
+    await expect(c.updateCheck(playerBody, req)).resolves.toEqual({ uptoDate: true, needsTap: true, pushHold: 'NEEDS_TAP' });
+    expect(lines.join('\n')).toContain('decision=uptoDate-push-device-reported-needs-tap');
     expect(global.fetch).not.toHaveBeenCalled();
-    // The push is NOT cleared: it is waiting for a person, not stalled.
+    // The push is NOT cleared: it is waiting for a person, not stalled. An
+    // authenticated check records the hold on the push (piece 3) — one write.
     expect(prisma.client.screen.update).not.toHaveBeenCalled();
+    const writes = prisma.client.screen.updateMany.mock.calls.map((x: any) => x[0].data);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].forceApkUpdateHold).toBe('NEEDS_TAP');
+    expect(writes[0]).not.toHaveProperty('forceApkUpdatePendingAt');
   });
 
   it('…for an unauthenticated caller too (holding back an offer can never install anything)', async () => {
-    const { c } = harness(tapRow(), false);
-    await expect(c.updateCheck(playerBody, req)).resolves.toEqual({ uptoDate: true, needsTap: true });
+    const { c, prisma } = harness(tapRow(), false);
+    await expect(c.updateCheck(playerBody, req)).resolves.toEqual({ uptoDate: true, needsTap: true, pushHold: 'NEEDS_TAP' });
+    // …but an anonymous check never writes the hold.
+    expect(prisma.client.screen.updateMany).not.toHaveBeenCalled();
   });
 
   it('a person pressing Update on the panel is offered (panel-user-tap precedes the push gate)', async () => {
@@ -158,12 +166,22 @@ describe('a push the screen said NEEDS_TAP for is answered needsTap', () => {
     expect(lines.join('\n')).toContain('decision=offer-latest');
   });
 
-  it('the stalled-install and 24-hour rules are unchanged for every other state', async () => {
-    const stalled = harness(screenRow({ lastOtaState: 'INSTALLING', lastOtaAt: new Date(Date.now() - 30 * MIN) }));
-    await stalled.c.updateCheck(playerBody, req);
-    expect(stalled.lines.join('\n')).toContain('force-pending-but-stalled-INSTALLING');
+  it('2026-10-18: the update-check never deletes a push any more (tracked pushes, push-tracking.ts)', async () => {
+    // The old 10-minute "stalled install" auto-clear and the silent 24-hour
+    // expiry both made a push disappear. An install that was committed and
+    // never landed is now HELD, and a push no check was handed within 24 h is
+    // EXPIRED — both visible, both kept until the build lands or a person
+    // cancels them (push-tracking-controller.spec.ts covers the holds).
+    const clears = (prisma: any) => [
+      ...prisma.client.screen.update.mock.calls,
+      ...prisma.client.screen.updateMany.mock.calls,
+    ].filter((call: any) => call[0].data.forceApkUpdatePendingAt === null);
+    const committedLongAgo = harness(screenRow({ lastOtaState: 'INSTALLING', lastOtaAt: new Date(Date.now() - 30 * MIN) }));
+    await committedLongAgo.c.updateCheck(playerBody, req);
+    expect(clears(committedLongAgo.prisma)).toEqual([]);
+    expect(committedLongAgo.lines.join('\n')).not.toContain('force-pending-but-stalled');
     const stale = harness(screenRow({ forceApkUpdatePendingAt: new Date(Date.now() - 25 * 60 * MIN) }));
-    await stale.c.updateCheck(playerBody, req);
-    expect(stale.lines.join('\n')).toContain('force-pending-stale-');
+    await expect(stale.c.updateCheck(playerBody, req)).resolves.toEqual({ uptoDate: true, needsTap: false, pushHold: 'EXPIRED' });
+    expect(clears(stale.prisma)).toEqual([]);
   });
 });

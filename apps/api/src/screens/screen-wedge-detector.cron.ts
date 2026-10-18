@@ -4,6 +4,7 @@ import { RedisService } from '../realtime/redis.service';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { nativeReportsAsleep } from './native-runtime';
+import { PUSH_EXPIRE_MS } from '../player-ota/push-tracking';
 
 /**
  * ScreenWedgeDetectorCron — fleet-wide auto-recovery for the "alive but
@@ -160,6 +161,37 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       OR: [
         { lastRenderedAt: null },
         { lastRenderedAt: { lt: new Date(nowMs - ScreenWedgeDetectorCron.RENDER_STALE_MS) } },
+      ],
+    };
+  }
+
+  /**
+   * DON'T COMPETE WITH AN IN-FLIGHT OTA. A pending push means the operator
+   * just clicked "Send update" — the player will restart when the install
+   * finishes, and firing REFRESH_WEB on top would race the install state
+   * machine.
+   *
+   * Until 2026-10-18 that was simply `forceApkUpdatePendingAt: null`, which
+   * was bounded only because the update-check silently cleared every push
+   * after 24 hours. Pushes are now TRACKED until the screen runs the offered
+   * build or an operator cancels them (player-ota/push-tracking.ts), so a push
+   * that is HELD (no install will be offered — waiting for a tap on the glass,
+   * stalled, failed, expired) or older than 24 hours is no longer an install
+   * in flight, and must not take the screen out of wedge recovery for days.
+   * The same rule as `pushIsActive`, in the shape Prisma can query.
+   */
+  static noActivePushWhere(nowMs: number): {
+    OR: [
+      { forceApkUpdatePendingAt: null },
+      { forceApkUpdateHold: { not: null } },
+      { forceApkUpdatePendingAt: { lte: Date } },
+    ];
+  } {
+    return {
+      OR: [
+        { forceApkUpdatePendingAt: null },
+        { forceApkUpdateHold: { not: null } },
+        { forceApkUpdatePendingAt: { lte: new Date(nowMs - PUSH_EXPIRE_MS) } },
       ],
     };
   }
@@ -441,12 +473,9 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         AND: [
           ScreenWedgeDetectorCron.bootGraceWhere(now),
           ScreenWedgeDetectorCron.renderNotFreshWhere(now),
+          // Don't compete with an in-flight OTA — see noActivePushWhere().
+          ScreenWedgeDetectorCron.noActivePushWhere(now),
         ],
-        // Don't compete with an in-flight OTA. force_apk_update_pending_at
-        // means the operator just clicked "Push APK update" — the player
-        // will reboot when the install finishes; firing REFRESH_WEB on
-        // top would race the install state machine.
-        forceApkUpdatePendingAt: null,
       },
       select: {
         id: true,

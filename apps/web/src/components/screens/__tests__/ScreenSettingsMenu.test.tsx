@@ -34,6 +34,14 @@ let posterStandard = {
   isLoading: false, isError: false,
 };
 const setCanvasMutate = jest.fn();
+/** POST /screens/:id/force-update/cancel (2026-10-18) — calls its handlers like React Query. */
+let cancelOutcome: 'ok' | 'error' = 'ok';
+const cancelMutate = jest.fn((id: string, h?: { onSuccess?: () => void; onError?: () => void }) => {
+  if (cancelOutcome === 'ok') h?.onSuccess?.();
+  else h?.onError?.();
+});
+const confirmMock = jest.fn(async (_opts: unknown) => true);
+jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: (opts: unknown) => confirmMock(opts) }));
 
 jest.mock('@/hooks/use-api', () => ({
   useLatestPlayerVersion: () => ({ data: latestVersionPayload }),
@@ -57,6 +65,8 @@ jest.mock('@/hooks/use-api', () => ({
   // 2026-10-11 — per-screen automatic-update switch (AutoUpdateSection).
   useScreenAutoUpdate: () => ({ data: undefined, isLoading: false }),
   useSetScreenAutoUpdate: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
+  // 2026-10-18 — "Cancel update" on a tracked push (TrackedPushFooter).
+  useCancelApkUpdate: () => ({ mutate: cancelMutate, isPending: false }),
 }));
 // Both panels have their own suites; here they only have to mount.
 jest.mock('@/components/screens/ScreenDisplayControls', () => ({
@@ -113,6 +123,9 @@ beforeEach(() => {
     isLoading: false, isError: false,
   };
   setCanvasMutate.mockClear();
+  cancelMutate.mockClear();
+  confirmMock.mockClear();
+  cancelOutcome = 'ok';
   onPushApk.mockClear();
   onRefreshWeb.mockClear();
   onClose.mockClear();
@@ -253,6 +266,181 @@ describe('player app row', () => {
     expect(rtl.getByText('Install failed (ABORTED)')).toBeInTheDocument();
     expect(rtl.getByText(/kept the downloaded update/)).toBeInTheDocument();
     expect(rtl.getByTestId('apk-push')).toHaveTextContent('Retry update');
+  });
+
+  // ── 2026-10-18 — tracked pushes: the SERVER's record of the push ──────
+  // A push no longer expires on its own. The row says what the server knows —
+  // waiting, sent N times, or why it stopped offering it — from the screen
+  // row itself (so it survives a reload), and offers Cancel.
+  const tracked = (over: Record<string, unknown> = {}) => ({
+    playerVersion: '1.1.23',
+    forceApkUpdatePendingAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+    forceApkUpdateHold: null,
+    forceApkUpdateHoldAt: null,
+    forceApkUpdateHoldReason: null,
+    forceApkUpdateOfferCount: 0,
+    forceApkUpdateLastOfferAt: null,
+    forceApkUpdateTargetVersion: null,
+    ...over,
+  });
+  const heldAt = new Date(Date.now() - 60 * 60_000).toISOString();
+
+  describe('tracked push', () => {
+    beforeEach(() => { latestVersionPayload = { versionName: '1.1.41', managerVersionName: '1.0.23' }; });
+
+    it('sent, not handed over yet → "waiting for the screen to pick it up", with when and how often', () => {
+      renderPopover(tracked());
+      const row = rtl.getByTestId('apk-update-status');
+      expect(within(row).getByText('Update sent — waiting for the screen to pick it up')).toBeInTheDocument();
+      expect(within(row).getByTestId('apk-push-facts')).toHaveTextContent('Sent 2 hours ago · not offered yet');
+      expect(within(row).getByTestId('apk-push-cancel')).toHaveTextContent('Cancel update');
+    });
+
+    it('handed over → "waiting for it to install", the offer count and the build', () => {
+      renderPopover(tracked({ forceApkUpdateOfferCount: 2, forceApkUpdateTargetVersion: '1.1.41' }));
+      expect(rtl.getByText('Sent to the screen — waiting for it to install')).toBeInTheDocument();
+      expect(rtl.getByTestId('apk-push-facts')).toHaveTextContent('Sent 2 hours ago · offered 2 times · v1.1.41');
+    });
+
+    it('held NEEDS_TAP → the tap line, never "Updating…", Push re-offered', () => {
+      renderPopover(tracked({
+        forceApkUpdateHold: 'NEEDS_TAP', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
+        forceApkUpdateHoldReason: 'device-reported-needs-tap: Android on this screen is waiting…',
+        lastOtaState: 'NEEDS_TAP', lastOtaAt: heldAt,
+      }));
+      const row = rtl.getByTestId('apk-update-status');
+      expect(within(row).getByText('Needs an Install tap on the screen')).toBeInTheDocument();
+      expect(within(row).getByText(/Press Install now on the screen, then tap Install/)).toBeInTheDocument();
+      expect(within(row).queryByText(/Updating/)).not.toBeInTheDocument();
+      expect(within(row).getByTestId('apk-push-facts')).toHaveTextContent('offered 1 time');
+    });
+
+    it('a NEEDS_TAP the server only INFERRED on a screen it cannot read says "most likely"', () => {
+      renderPopover(tracked({
+        forceApkUpdateHold: 'NEEDS_TAP', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
+        forceApkUpdateHoldReason: 'did-not-land-unknown-class: v1.1.41 did not install…',
+      }));
+      expect(rtl.getByText(/Most likely Android on this screen is waiting/)).toBeInTheDocument();
+    });
+
+    it('held STALLED at the offer limit → stalled, how many times, Retry', () => {
+      renderPopover(tracked({
+        forceApkUpdateHold: 'STALLED', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 4,
+        forceApkUpdateHoldReason: 'offer-limit-reached: v1.1.41 was offered 4 times and did not install…',
+        // The device's last words were a download that died — the hold wins.
+        lastOtaState: 'DOWNLOADING', lastOtaAt: new Date(Date.now() - 90 * 60_000).toISOString(),
+      }));
+      expect(rtl.getByText('Update stalled — the screen did not install it')).toBeInTheDocument();
+      expect(rtl.getByText(/It was offered 4 times and never installed/)).toBeInTheDocument();
+      expect(rtl.getByTestId('apk-push')).toHaveTextContent('Retry update');
+    });
+
+    it('held EXPIRED → not picked up within 24 hours, nothing installs later, Retry', () => {
+      renderPopover(tracked({
+        forceApkUpdatePendingAt: new Date(Date.now() - 26 * 60 * 60_000).toISOString(),
+        forceApkUpdateHold: 'EXPIRED', forceApkUpdateHoldAt: heldAt,
+        forceApkUpdateHoldReason: 'not-offered-within-24h: The update was not handed…',
+      }));
+      expect(rtl.getByText('Update expired — not picked up within 24 hours')).toBeInTheDocument();
+      expect(rtl.getByText(/so nothing will install later/)).toBeInTheDocument();
+      expect(rtl.getByTestId('apk-push-facts')).toHaveTextContent('Sent yesterday · not offered yet');
+      expect(rtl.getByTestId('apk-push')).toHaveTextContent('Retry update');
+    });
+
+    it('held FAILED names the code when there is one, and says "Install failed" when there is not', () => {
+      const { unmount } = renderPopover(tracked({
+        forceApkUpdateHold: 'FAILED', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
+        forceApkUpdateHoldReason: 'device-reported-failed_incompatible: Installing v1.1.41 failed…',
+      }));
+      expect(rtl.getByText('Install failed (INCOMPATIBLE)')).toBeInTheDocument();
+      unmount();
+      renderPopover(tracked({
+        forceApkUpdateHold: 'FAILED', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
+        forceApkUpdateHoldReason: 'device-reported-install-error: Installing v1.1.41 failed…',
+      }));
+      expect(rtl.getByText('Install failed')).toBeInTheDocument();
+      // An older player's install error keeps no file — don't promise one.
+      expect(rtl.getByText(/The screen reported that the install failed/)).toBeInTheDocument();
+    });
+
+    it('progress AFTER the hold (someone pressed Install now on the panel) is shown instead of the hold', () => {
+      renderPopover(tracked({
+        forceApkUpdateHold: 'NEEDS_TAP', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
+        lastOtaState: 'DOWNLOADING', lastOtaProgress: 40, lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
+      }));
+      expect(rtl.getByText('Downloading… 40%')).toBeInTheDocument();
+      expect(rtl.queryByText('Needs an Install tap on the screen')).not.toBeInTheDocument();
+    });
+
+    it('an "up to date" answer to a push that was held back is not "Already on v1.1.23 ✓" on a screen that is behind', () => {
+      renderPopover(tracked({ lastOtaState: 'UP_TO_DATE', lastOtaAt: new Date(Date.now() - 60_000).toISOString() }));
+      expect(rtl.queryByText(/Already on/)).not.toBeInTheDocument();
+      expect(rtl.getByText('Update sent — waiting for the screen to pick it up')).toBeInTheDocument();
+    });
+
+    it('a screen already on the newest release with a push still pending shows the push, not the quiet chip', () => {
+      renderPopover(tracked({ playerVersion: '1.1.41', forceApkUpdateOfferCount: 1 }));
+      expect(rtl.queryByText(/— up to date/)).not.toBeInTheDocument();
+      expect(rtl.getByTestId('apk-push-cancel')).toBeInTheDocument();
+    });
+
+    it('a push from this session is not called "No update after 35 minutes" by an API that tracks it', () => {
+      render(
+        <ScreenSettingsSections
+          {...contentProps(tracked({ forceApkUpdateOfferCount: 1 }))}
+          pushState={{ at: Date.now() - 40 * 60_000, priorVersion: '1.1.23' }}
+        />,
+      );
+      expect(rtl.queryByText(/No update after 35 minutes/)).not.toBeInTheDocument();
+      expect(rtl.getByText('Sent to the screen — waiting for it to install')).toBeInTheDocument();
+    });
+
+    it('…while an API that does not track pushes keeps the old stopwatch', () => {
+      render(
+        <ScreenSettingsSections
+          {...contentProps({ playerVersion: '1.1.23', forceApkUpdatePendingAt: new Date(Date.now() - 40 * 60_000).toISOString() })}
+          pushState={{ at: Date.now() - 40 * 60_000, priorVersion: '1.1.23' }}
+        />,
+      );
+      expect(rtl.getByText(/No update after 35 minutes/)).toBeInTheDocument();
+    });
+
+    it('Cancel asks first, then cancels THIS screen\'s push, says so, and ends the page\'s own record of it', async () => {
+      const onPushCancelled = jest.fn();
+      render(<ScreenSettingsSections {...contentProps(tracked({ forceApkUpdateHold: 'NEEDS_TAP', forceApkUpdateHoldAt: heldAt }))} onPushCancelled={onPushCancelled} />);
+      fireEvent.click(rtl.getByTestId('apk-push-cancel'));
+      await waitFor(() => expect(cancelMutate).toHaveBeenCalledTimes(1));
+      expect(cancelMutate.mock.calls[0][0]).toBe('g43');
+      const asked = confirmMock.mock.calls[0][0] as { title: string; message: string; confirmLabel: string; cancelLabel: string };
+      expect(asked.title).toBe('Cancel the update for G43?');
+      // Honest about what Cancel cannot do.
+      expect(asked.message).toMatch(/Install prompt on it, that prompt stays until someone answers it/);
+      expect(asked.cancelLabel).toBe('Keep it');
+      expect(await rtl.findByText('Update cancelled.')).toBeInTheDocument();
+      expect(onPushCancelled).toHaveBeenCalledTimes(1);
+    });
+
+    it('declining the confirm cancels nothing', async () => {
+      confirmMock.mockResolvedValueOnce(false);
+      renderPopover(tracked());
+      fireEvent.click(rtl.getByTestId('apk-push-cancel'));
+      await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+      expect(cancelMutate).not.toHaveBeenCalled();
+    });
+
+    it('a failed cancel says so and leaves the button', async () => {
+      cancelOutcome = 'error';
+      renderPopover(tracked());
+      fireEvent.click(rtl.getByTestId('apk-push-cancel'));
+      expect(await rtl.findByText("Couldn't cancel the update. Try again.")).toBeInTheDocument();
+      expect(rtl.getByTestId('apk-push-cancel')).toBeInTheDocument();
+    });
+
+    it('a role that cannot push cannot cancel either (the facts still show)', () => {
+      render(<ScreenSettingsSections {...contentProps(tracked({ forceApkUpdateOfferCount: 1 }))} displayReadOnly />);
+      expect(rtl.getByTestId('apk-push-facts')).toBeInTheDocument();
+      expect(rtl.queryByTestId('apk-push-cancel')).not.toBeInTheDocument();
+    });
   });
 
   it('a browser player has no APK row at all', () => {

@@ -4,7 +4,8 @@ import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandid
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
 import { FAILED_STATE, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
-import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
+import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
+import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
@@ -1602,8 +1603,15 @@ export class ScreensController {
       const vc = Number(versionCode);
       if (Number.isFinite(vc) && vc > 0) {
         data.playerVersionCode = vc;
-        const priorVc = Number((screen as any).playerVersionCode || 0);
-        if ((screen as any).forceApkUpdatePendingAt && vc > priorVc) {
+        // A version increase, or the build the push offered (tracked pushes,
+        // 2026-10-18 — the Manager's anonymous check may already have moved
+        // the stored version, and pushes no longer expire to hide that).
+        if (pushSatisfiedByReport({
+          pendingAt: (screen as any).forceApkUpdatePendingAt,
+          priorVersionCode: (screen as any).playerVersionCode,
+          reportedVersionCode: vc,
+          targetVersionCode: (screen as any).forceApkUpdateTargetVersionCode,
+        })) {
           data.forceApkUpdatePendingAt = null;
           data.lastOtaState = 'INSTALLED';
           data.lastOtaProgress = 100;
@@ -1735,10 +1743,15 @@ export class ScreensController {
     // within one heartbeat tick. The 24h freshness window matches
     // the server-side gate in /update-check so we don't fire
     // forever on a stale flag.
+    //
+    // A HELD push (tracked pushes, 2026-10-18) is not news for the device:
+    // the server will not offer it, so prompting a check is a wasted round
+    // trip (and, on an older web bundle, an "Update in progress" banner).
     const forceAt = (screenAfterUpdate as any)?.forceApkUpdatePendingAt;
-    const FORCE_FRESH_MS = 24 * 60 * 60 * 1000;
-    const forceUpdatePending = !!forceAt &&
-      (Date.now() - new Date(forceAt).getTime()) < FORCE_FRESH_MS;
+    const forceUpdatePending = pushIsActive({
+      pendingAt: forceAt,
+      hold: (screen as any).forceApkUpdateHold,
+    }, Date.now());
 
     // DT-09 — the pairing code goes ONLY to a caller that proved possession
     // of this screen's device credential. See heartbeatProvesDevice above for
@@ -1855,8 +1868,14 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: fingerprint },
       select: {
-        id: true, name: true, lastOtaState: true, lastOtaAt: true, playerVersionCode: true,
+        id: true, name: true, tenantId: true, lastOtaState: true, lastOtaAt: true, playerVersionCode: true,
         forceApkUpdatePendingAt: true,
+        // Tracked push (2026-10-18) — see player-ota/push-tracking.ts.
+        forceApkUpdateHold: true,
+        forceApkUpdateLastOfferAt: true,
+        forceApkUpdateOfferCount: true,
+        forceApkUpdateTargetVersion: true,
+        forceApkUpdateTargetVersionCode: true,
       },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
@@ -1991,6 +2010,45 @@ export class ScreensController {
       return { ok: true, ignored: 'needs-tap-pending' };
     }
 
+    // ── Tracked push (2026-10-18) — the push owns the status line ────────
+    // Two shapes, any caller, only CHECKING / UP_TO_DATE, and only while the
+    // screen is still below the build the push offered (the Player's own
+    // report of the new build clears the push through the version path):
+    //   * the push is HELD. The server answers its checks `uptoDate`, which
+    //     every player then reports — stored, those would tell the panel and
+    //     the dashboard that a screen still on the old build is current (the
+    //     Player from 1.1.41 signs its reports, so this cannot be anonymous-
+    //     only like the rule above);
+    //   * the screen COMMITTED the offered install (INSTALLING after the last
+    //     offer) and it has not landed. A second check is answered
+    //     `installInFlight`; its UP_TO_DATE would hide the INSTALLING the
+    //     push decision reads once the settle window is over.
+    // Real progress (DOWNLOADING after someone presses Install now on the
+    // panel, say) is still stored.
+    const push = screen as any;
+    const belowTarget = typeof push.forceApkUpdateTargetVersionCode !== 'number' ||
+      !(Number(push.playerVersionCode) >= push.forceApkUpdateTargetVersionCode);
+    const pushHeld = !!push.forceApkUpdatePendingAt && isPushHold(push.forceApkUpdateHold);
+    const offerAtMs = push.forceApkUpdateLastOfferAt ? new Date(push.forceApkUpdateLastOfferAt).getTime() : NaN;
+    const reportAtMs = push.lastOtaAt ? new Date(push.lastOtaAt).getTime() : NaN;
+    const installCommitted = !!push.forceApkUpdatePendingAt && !pushHeld &&
+      push.lastOtaState === 'INSTALLING' && Number.isFinite(offerAtMs) && reportAtMs >= offerAtMs;
+    if ((state === 'CHECKING' || state === 'UP_TO_DATE') && belowTarget && (pushHeld || installCommitted)) {
+      return { ok: true, ignored: pushHeld ? 'push-held' : 'install-in-flight' };
+    }
+    // A device that SAYS it needs a tap, or names a terminal install failure,
+    // holds an active push at once — no waiting for the next check to infer
+    // it. Device-authenticated only: holding a push stops an operator's
+    // update, so an anonymous report may not do it (the state itself is still
+    // recorded, as every report is).
+    const holdFromReport: 'NEEDS_TAP' | 'FAILED' | null =
+      !deviceAuthenticated || !push.forceApkUpdatePendingAt || pushHeld ? null
+        : state === 'NEEDS_TAP' ? 'NEEDS_TAP'
+        : FAILED_STATE.test(state) ? 'FAILED'
+        : null;
+    // Same reason vocabulary push-tracking.ts's decidePushGate uses.
+    const reportReason = state === 'NEEDS_TAP' ? 'device-reported-needs-tap' : `device-reported-${state.toLowerCase()}`;
+
     // ── OTA-02: the failure signal is STICKY ────────────────────────────
     // `lastOtaState` is last-writer-wins, and the player reports CHECKING
     // at the head of EVERY OTA cycle — so a genuine ERROR was routinely
@@ -2020,8 +2078,45 @@ export class ScreensController {
               lastOtaErrorAuthenticated: deviceAuthenticated,
             }
           : {}),
+        ...(holdFromReport
+          ? {
+              forceApkUpdateHold: holdFromReport,
+              forceApkUpdateHoldAt: new Date(),
+              forceApkUpdateHoldReason: (
+                `${reportReason}: ` +
+                holdSentence(holdFromReport, reportReason, {
+                  targetVersion: push.forceApkUpdateTargetVersion ?? null,
+                  callerVersion: null,
+                  offeredAt: null,
+                })
+              ).slice(0, 500),
+            }
+          : {}),
       } as any,
     });
+    if (holdFromReport) {
+      console.log(
+        `[ota-state] fp=${fingerprint.slice(0, 18)}… push HELD (${holdFromReport}) on the device's own ` +
+        `authenticated report state=${state}`,
+      );
+      // Same forensic row the update-check path writes for a hold it infers.
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'OTA_PUSH_HELD',
+          targetType: 'screen',
+          targetId: screen.id,
+          tenantId: push.tenantId,
+          userId: null,
+          details: JSON.stringify({
+            hold: holdFromReport,
+            reason: reportReason,
+            targetVersion: push.forceApkUpdateTargetVersion ?? null,
+            offers: Number(push.forceApkUpdateOfferCount) || 0,
+            pushAt: new Date(push.forceApkUpdatePendingAt).toISOString(),
+          }),
+        },
+      }).catch(() => { /* audit best-effort */ });
+    }
 
     console.log(
       `[ota-state] fp=${fingerprint.slice(0, 18)}… state=${state} ` +
@@ -4465,6 +4560,8 @@ export class ScreensController {
       where: { tenantId },
       data: {
         forceApkUpdatePendingAt: new Date(),
+        // A new push starts a fresh tracked record (push-tracking.ts).
+        ...FRESH_PUSH_STATE,
         // OTA-02: an operator deliberately re-pushing IS the "resolved,
         // try again" signal. It is one of only two things that clears the
         // sticky OTA failure stamp (the other is a confirmed install).
@@ -4553,6 +4650,53 @@ export class ScreensController {
       },
     }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'screen', screenId: id, corrId };
+  }
+
+  /**
+   * POST /screens/:id/force-update/cancel — "Cancel update" (tracked pushes,
+   * 2026-10-18). A push no longer expires on its own: it stays on the
+   * dashboard, with its hold and the screen's last OTA report, until the
+   * screen runs the offered build or an operator cancels it here. Same roles
+   * as sending one; audited. Nothing is sent to the screen — its next update
+   * check finds no push. A screen with no pending push answers
+   * `{ cancelled: false }`, not an error, so a double click is harmless.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/force-update/cancel')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async cancelForceUpdate(@Request() req: any, @Param('id') id: string) {
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, tenantId: true, name: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    const done = await cancelScreenApkUpdate(this.prisma, {
+      id: screen.id,
+      tenantId: screen.tenantId!,
+      name: screen.name,
+    });
+    if (done.cancelled) {
+      console.log(
+        `[OTA] force-update CANCELLED screenId=${id} pushAt=${done.pushAt} hold=${done.hold ?? '-'} ` +
+        `offers=${done.offers} by=${req.user.userId || req.user.id}`,
+      );
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'FORCE_APK_UPDATE_CANCEL',
+          targetType: 'screen',
+          targetId: id,
+          tenantId: screen.tenantId!,
+          userId: req.user.id,
+          details: JSON.stringify({
+            screenName: screen.name,
+            pushAt: done.pushAt,
+            hold: done.hold,
+            offers: done.offers,
+          }),
+        },
+      }).catch(() => { /* audit best-effort */ });
+    }
+    return { ok: true, screenId: id, cancelled: done.cancelled };
   }
 
   // ─── ADMIN: Force web-bundle reload (Sprint 11 Phase B) ───

@@ -2245,7 +2245,30 @@
       "needsTap": "需要有人在屏幕上点按“安装”",
       "sublineNeedsTap": "此屏幕上的 Android 需要有人确认。请在屏幕上按“Install now”，然后点按“安装”。",
       "failed": "安装失败（{code}）",
-      "sublineFailed": "屏幕已保留下载的更新。请在屏幕上按“Install now”重试。"
+      "sublineFailed": "屏幕已保留下载的更新。请在屏幕上按“Install now”重试。",
+      "failedNoCode": "安装失败",
+      "push": {
+        "waiting": "更新已发送 — 正在等待屏幕领取",
+        "sent": "已发送到屏幕 — 正在等待安装",
+        "stalled": "更新停滞 — 屏幕没有安装",
+        "expired": "更新已过期 — 24 小时内未被领取",
+        "sublineWaiting": "屏幕下次连线时会领取它。",
+        "sublineSent": "屏幕已收到更新。安装可能需要几分钟。",
+        "sublineNeedsTapLikely": "更新没有安装。很可能是此屏幕上的 Android 在等待有人确认：请在屏幕上按“Install now”，然后点按“安装”。",
+        "sublineStalled": "已提供更新但没有安装，屏幕也没有说明原因。请重启屏幕，然后再次发送更新。",
+        "sublineStalledLimit": "已提供 {count, plural, other {# 次}}，但始终没有安装。请重启屏幕，然后再次发送更新。",
+        "sublineFailed": "屏幕报告安装失败。请在屏幕上按“Install now”重试，或再次发送更新。",
+        "sublineExpired": "推送后 24 小时内屏幕没有收到更新（可能已关机、离线或不在其更新时段内），因此之后也不会安装。如仍需要，请再次发送更新。",
+        "facts": "{ago}发送 · {count, plural, =0 {尚未提供} other {已提供 # 次}}",
+        "cancel": "取消更新",
+        "cancelling": "正在取消…",
+        "cancelTitle": "要取消 {name} 的更新吗？",
+        "cancelMessage": "VenueOS 将不再向此屏幕提供这次更新。如果 Android 已在屏幕上显示安装提示，该提示会一直保留，直到有人处理。",
+        "cancelConfirm": "取消更新",
+        "cancelKeep": "保留",
+        "cancelled": "已取消更新。",
+        "cancelFailed": "无法取消更新，请重试。"
+      }
     },
     "trust": {
       "repairTitle": "设备信任需要修复。请在此屏幕的设置中恢复信任。",

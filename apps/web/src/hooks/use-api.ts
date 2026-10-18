@@ -3962,6 +3962,29 @@ export function useForceApkUpdate() {
   });
 }
 
+/**
+ * "Cancel update" for one screen (2026-10-18, tracked pushes): POST
+ * /screens/:id/force-update/cancel. A push no longer expires on its own, so
+ * this is how an operator ends one that is waiting for a tap, stalled, failed
+ * or expired. Audited server-side; nothing is sent to the screen. Re-reads the
+ * screens list so the row drops the push at once. The caller shows its own
+ * failure line, so the global mutation toast stays quiet.
+ */
+export function useCancelApkUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { suppressGlobalError: true },
+    mutationFn: (screenId: string) =>
+      apiFetch<{ ok: boolean; screenId: string; cancelled: boolean }>(
+        `/screens/${screenId}/force-update/cancel`,
+        { method: 'POST' },
+      ),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+    },
+  });
+}
+
 // ─── Refresh kiosk web bundle (Sprint 11 Phase B) ───
 // Pushes a signed REFRESH_WEB message that the web player's WS handler
 // turns into EduCmsNative.reload() (Android) or window.location.reload()

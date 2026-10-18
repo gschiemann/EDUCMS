@@ -297,6 +297,18 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'playerVersionAt',
     'playerVersionCode',
     'forceApkUpdatePendingAt',
+    // Tracked APK pushes (2026-10-18, player-ota/push-tracking.ts) — the
+    // push's own state, written on an offer, a hold, a cancel and an arm. No
+    // manifest branch reads any of them (nor the window override written
+    // beside them), so none of those writes may bust the manifest cache.
+    'forceApkUpdateOverrideWindow',
+    'forceApkUpdateHold',
+    'forceApkUpdateHoldAt',
+    'forceApkUpdateHoldReason',
+    'forceApkUpdateOfferCount',
+    'forceApkUpdateLastOfferAt',
+    'forceApkUpdateTargetVersion',
+    'forceApkUpdateTargetVersionCode',
     'lastOtaState',
     'lastOtaProgress',
     'lastOtaMessage',

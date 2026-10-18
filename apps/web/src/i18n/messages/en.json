@@ -2245,7 +2245,30 @@
       "needsTap": "Needs an Install tap on the screen",
       "sublineNeedsTap": "Android on this screen asks a person to confirm. Press Install now on the screen, then tap Install.",
       "failed": "Install failed ({code})",
-      "sublineFailed": "The screen kept the downloaded update. Press Install now on the screen to try again."
+      "sublineFailed": "The screen kept the downloaded update. Press Install now on the screen to try again.",
+      "failedNoCode": "Install failed",
+      "push": {
+        "waiting": "Update sent — waiting for the screen to pick it up",
+        "sent": "Sent to the screen — waiting for it to install",
+        "stalled": "Update stalled — the screen did not install it",
+        "expired": "Update expired — not picked up within 24 hours",
+        "sublineWaiting": "The screen picks it up the next time it checks in.",
+        "sublineSent": "The screen has the update. Installing can take a few minutes.",
+        "sublineNeedsTapLikely": "The update did not install. Most likely Android on this screen is waiting for a person to confirm: press Install now on the screen, then tap Install.",
+        "sublineStalled": "It was offered and did not install, and the screen did not say why. Restart the screen, then send the update again.",
+        "sublineStalledLimit": "It was offered {count, plural, one {# time} other {# times}} and never installed. Restart the screen, then send the update again.",
+        "sublineFailed": "The screen reported that the install failed. Press Install now on the screen to try again, or send the update again.",
+        "sublineExpired": "The screen was not sent the update within 24 hours of the push (it may have been off, offline or outside its update hours), so nothing will install later. Send the update again if you still want it.",
+        "facts": "Sent {ago} · {count, plural, =0 {not offered yet} one {offered # time} other {offered # times}}",
+        "cancel": "Cancel update",
+        "cancelling": "Cancelling…",
+        "cancelTitle": "Cancel the update for {name}?",
+        "cancelMessage": "VenueOS stops offering this update to the screen. If Android already shows an Install prompt on it, that prompt stays until someone answers it.",
+        "cancelConfirm": "Cancel update",
+        "cancelKeep": "Keep it",
+        "cancelled": "Update cancelled.",
+        "cancelFailed": "Couldn't cancel the update. Try again."
+      }
     },
     "trust": {
       "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",
