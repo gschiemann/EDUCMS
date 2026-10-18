@@ -17,7 +17,7 @@
  * from the same Screen columns the dashboard's screens list reads; the push
  * state is read with the dashboard's own deriveTrackedPush.
  */
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { AlertCircle, CheckCircle2, ExternalLink, FlaskConical, Loader2, Send, XCircle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
@@ -168,11 +168,14 @@ function Countdown({ ms }: { ms: number }) {
 
 // ─── The page ──────────────────────────────────────────────────────────────
 
+const subscribeNever = () => () => undefined;
+
 export function FieldBuildsPanel() {
   const t = useTranslations('fieldBuilds');
   const user = useAppStore((s) => s.user);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // false while prerendered and hydrating, true in the browser after — the
+  // signed-in user lives only in the browser's store.
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
 
   if (!mounted) {
     return (
@@ -448,7 +451,6 @@ function ArmCard({
   limits: FieldBuildWindows['limits'];
 }) {
   const t = useTranslations('fieldBuilds');
-  const fmt = useDateFormat();
   const tenantsQuery = useAccessibleTenants();
   const arm = useArmFieldWindow();
   const allowed = useMemo(() => candidates.filter((c) => c.allowed), [candidates]);
@@ -461,10 +463,8 @@ function ArmCard({
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Preselect the newest allowed build once the list arrives.
-  useEffect(() => {
-    if (!candidate && allowed.length) setCandidate(defaultCandidate(allowed));
-  }, [allowed, candidate]);
+  // Until the operator picks one, the newest allowed (and mirrored) build.
+  const chosen = candidate || defaultCandidate(allowed);
 
   const reachable = useMemo(
     () => (tenantsQuery.data?.tenants ?? []).filter((x) => x.supportAccess !== null),
@@ -478,7 +478,7 @@ function ArmCard({
   const pickable = (screensQuery.data?.screens ?? []).filter((s) => s.status !== 'REVOKED');
   // A screen stays chosen only while its organization is.
   const chosenScreens = screenIds.filter((id) => pickable.some((s) => s.id === id));
-  const selectedCandidate = candidates.find((c) => c.versionName === candidate);
+  const selectedCandidate = candidates.find((c) => c.versionName === chosen);
   const durationOk = duration >= limits.minMinutes && duration <= limits.maxMinutes;
   const valid = !!selectedCandidate && tenantIds.length > 0 && (mode === 'all' || chosenScreens.length > 0) && durationOk;
 
@@ -491,7 +491,7 @@ function ArmCard({
     setMessage(null);
     arm.mutate(
       {
-        candidate,
+        candidate: chosen,
         tenantIds,
         screens: mode === 'all' ? 'all' : chosenScreens,
         durationMinutes: duration,
@@ -514,7 +514,7 @@ function ArmCard({
           <span className="text-sm font-semibold text-slate-800">{t('arm.build')}</span>
           <select
             className="mt-1 w-full min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm"
-            value={candidate}
+            value={chosen}
             onChange={(e) => setCandidate(e.target.value)}
             disabled={candidatesLoading || allowed.length === 0}
           >
@@ -592,9 +592,9 @@ function ArmCard({
                       checked={screenIds.includes(s.id)}
                       onChange={() => setScreenIds((list) => toggle(list, s.id))}
                     />
-                    <span className="min-w-0">
-                      <span className="block break-words">{s.name}</span>
-                      <span className="block text-xs text-slate-500 break-words">
+                    <span className="min-w-0 flex flex-col break-words">
+                      {s.name}
+                      <span className="text-xs text-slate-500 break-words">
                         {s.tenantName ?? s.tenantId} ·{' '}
                         {s.playerVersion ? t('screens.version', { version: s.playerVersion }) : t('screens.versionUnknown')}
                       </span>
@@ -637,10 +637,10 @@ function ArmCard({
         {valid && (
           <p className="text-sm text-slate-700">
             {t('arm.summary', {
-              candidate,
+              candidate: chosen,
               screens: mode === 'all' ? t('now.everyScreen') : t('now.screensCount', { count: chosenScreens.length }),
               organizations: t('arm.organizationsCount', { count: tenantIds.length }),
-              when: fmt(new Date(Date.now() + duration * 60_000).toISOString()),
+              duration: durationLabel(duration),
             })}
           </p>
         )}

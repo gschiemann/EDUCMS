@@ -211,7 +211,7 @@ describe('/super/field-builds panel', () => {
     fireEvent.click(await within(form).findByRole('checkbox', { name: /Lobby/ }));
     fireEvent.change(within(form).getByRole('combobox', { name: 'Open for' }), { target: { value: '60' } });
     fireEvent.change(within(form).getByRole('textbox', { name: 'Note (optional)' }), { target: { value: '  soak  ' } });
-    expect(within(form).getByText(/Offers 1\.1\.41-field\.1 to 1 screen in 1 organization until about/)).toBeInTheDocument();
+    expect(within(form).getByText('Offers 1.1.41-field.1 to 1 screen in 1 organization for 1 hour. Nothing installs until you push a screen.')).toBeInTheDocument();
     fireEvent.click(submit);
     await within(form).findByText('Window armed. Push a screen when it is ready.');
     const post = calls.find((c) => c.method === 'POST' && c.path === '/super/field-builds/windows');

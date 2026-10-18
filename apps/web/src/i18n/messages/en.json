@@ -5629,7 +5629,7 @@
       "hours": "{count, plural, one {# hour} other {# hours}}",
       "note": "Note (optional)",
       "notePlaceholder": "What is being tested",
-      "summary": "Offers {candidate} to {screens} in {organizations} until about {when}. Nothing installs until you push a screen.",
+      "summary": "Offers {candidate} to {screens} in {organizations} for {duration}. Nothing installs until you push a screen.",
       "organizationsCount": "{count, plural, one {# organization} other {# organizations}}",
       "submit": "Arm window",
       "submitting": "Arming…",

@@ -5629,7 +5629,7 @@
       "hours": "{count, plural, other {# 小时}}",
       "note": "备注（可选）",
       "notePlaceholder": "正在测试的内容",
-      "summary": "在 {organizations} 中向 {screens} 提供 {candidate}，直到大约 {when}。只有在你推送屏幕后才会安装。",
+      "summary": "在 {organizations} 中向 {screens} 提供 {candidate}，持续 {duration}。只有在你推送屏幕后才会安装。",
       "organizationsCount": "{count, plural, other {# 个组织}}",
       "submit": "开启窗口",
       "submitting": "正在开启…",

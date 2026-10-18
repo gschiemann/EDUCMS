@@ -5629,7 +5629,7 @@
       "hours": "{count, plural, one {# hora} other {# horas}}",
       "note": "Nota (opcional)",
       "notePlaceholder": "Qué se está probando",
-      "summary": "Ofrece {candidate} a {screens} en {organizations} hasta aproximadamente {when}. No se instala nada hasta que envíes la actualización a una pantalla.",
+      "summary": "Ofrece {candidate} a {screens} en {organizations} durante {duration}. No se instala nada hasta que envíes la actualización a una pantalla.",
       "organizationsCount": "{count, plural, one {# organización} other {# organizaciones}}",
       "submit": "Abrir ventana",
       "submitting": "Abriendo…",
