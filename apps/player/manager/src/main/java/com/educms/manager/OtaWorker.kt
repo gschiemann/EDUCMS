@@ -79,6 +79,26 @@ class OtaWorker(
                 "${if (isBootstrap) "BOOTSTRAP=true" else ""}",
             )
 
+            // ── 2026-10-17 (Manager 1.0.25) — the Player installs itself ────
+            // This lane used to run every 30 minutes on every panel: full APK
+            // download, commit, Android's "Install?" dialog raised from a
+            // notification nobody sees — on 2026-10-15/16 an Android 9 panel
+            // did it 48 times for one push. The Manager is not the device
+            // owner (owner decision 2026-10-17) and not the Player's installer
+            // of record, so its commit can never be silent. The Player's own
+            // worker is the only update path: silent on Android 12+ as its own
+            // installer of record, one Install prompt per build elsewhere. The
+            // API refuses this check too (player-ota.controller.ts); not even
+            // asking keeps it from overwriting the Player's own OTA status
+            // (NEEDS_TAP) with CHECKING every 30 minutes.
+            //
+            // What stays: the BOOTSTRAP — Manager sideloaded onto a kiosk with
+            // no Player yet installs the first Player.
+            if (!isBootstrap) {
+                Log.i(TAG, "Player is installed — it updates itself; the Manager's Player lane only bootstraps")
+                return@withContext Result.success()
+            }
+
             // Report CHECKING — so dashboard sees "we're looking" even
             // before the API request lands.
             reportOtaState(apiRoot, fp, "CHECKING", null, "v$currentVn → checking")

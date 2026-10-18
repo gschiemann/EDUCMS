@@ -2,6 +2,8 @@ import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './nat
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
+import { FAILED_STATE, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
+import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { armScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
@@ -1852,7 +1854,10 @@ export class ScreensController {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
     const screen = await this.prisma.client.screen.findUnique({
       where: { deviceFingerprint: fingerprint },
-      select: { id: true, name: true, lastOtaState: true, playerVersionCode: true },
+      select: {
+        id: true, name: true, lastOtaState: true, lastOtaAt: true, playerVersionCode: true,
+        forceApkUpdatePendingAt: true,
+      },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
@@ -1892,9 +1897,16 @@ export class ScreensController {
       // running yet) — a distinct state that needs a person, not a retry.
       'RELAUNCH_BLOCKED',
       'ERROR',
+      // 2026-10-17 (unattended updates) — Android is waiting for a person to
+      // tap Install on the glass (Android 11 and below, or a Player that is
+      // not its own installer of record). The Player keeps the verified APK
+      // and stops committing it on its own; the server stops offering the
+      // push (player-ota/ota-install-state.ts). Its terminal install failures
+      // arrive as FAILED_<CODE>, matched by FAILED_STATE below.
+      'NEEDS_TAP',
     ]);
     const state = String(body?.state || '').toUpperCase().trim();
-    if (!ALLOWED.has(state)) {
+    if (!ALLOWED.has(state) && !FAILED_STATE.test(state)) {
       throw new HttpException({ code: 'SCREEN_OTA_STATE_INVALID', message: `Invalid state: ${state}` }, HttpStatus.BAD_REQUEST);
     }
     const progress = typeof body?.progress === 'number' && Number.isFinite(body.progress)
@@ -1950,6 +1962,35 @@ export class ScreensController {
       return { ok: true, ignored: 'installed-without-version-bump' };
     }
 
+    // ── 2026-10-17 — the Manager's refused Player lane is not news ───────
+    // Manager 1.0.24 still runs its Player check every 30 minutes; the API no
+    // longer offers it the APK (player-ota.controller.ts), and the CHECKING /
+    // UP_TO_DATE it reports around that refusal say nothing about the Player
+    // — the UP_TO_DATE would read "Already on v1.1.23 ✓" on a screen that is
+    // behind. Acknowledged, not stored (manager-lane-noise.ts).
+    if (!deviceAuthenticated && isManagerLaneNoise(fingerprint, state, message)) {
+      return { ok: true, ignored: 'manager-lane-noise' };
+    }
+
+    // ── 2026-10-17 — "needs a tap" is not overwritten by background noise ──
+    // Over a screen that said NEEDS_TAP for the pending push, an anonymous
+    // CHECKING / UP_TO_DATE (whatever sent it) would tell the dashboard and
+    // the panel the screen is current — it is not — and re-open the offer the
+    // NEEDS_TAP closed. Acknowledged and not stored while that is true; the
+    // Player's own (token-carrying) reports — a person pressing Update on the
+    // panel — still are.
+    if (
+      !deviceAuthenticated &&
+      (state === 'CHECKING' || state === 'UP_TO_DATE') &&
+      pushWaitsForTap({
+        pendingAt: screen.forceApkUpdatePendingAt,
+        lastOtaState: screen.lastOtaState,
+        lastOtaAt: screen.lastOtaAt,
+      })
+    ) {
+      return { ok: true, ignored: 'needs-tap-pending' };
+    }
+
     // ── OTA-02: the failure signal is STICKY ────────────────────────────
     // `lastOtaState` is last-writer-wins, and the player reports CHECKING
     // at the head of EVERY OTA cycle — so a genuine ERROR was routinely
@@ -1971,10 +2012,11 @@ export class ScreensController {
         lastOtaProgress: progress,
         lastOtaMessage: message,
         lastOtaAt: new Date(),
-        ...(state === 'ERROR'
+        // A FAILED_<CODE> is a failure exactly like ERROR (OTA-02 sticky stamp).
+        ...(isFailureState(state)
           ? {
               lastOtaErrorAt: new Date(),
-              lastOtaErrorMessage: message,
+              lastOtaErrorMessage: message ?? (FAILED_STATE.test(state) ? state : null),
               lastOtaErrorAuthenticated: deviceAuthenticated,
             }
           : {}),

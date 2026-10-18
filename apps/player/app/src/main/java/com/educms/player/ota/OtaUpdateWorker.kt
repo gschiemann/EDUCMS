@@ -160,12 +160,6 @@ class OtaUpdateWorker(
             val deviceFingerprint = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("device_fingerprint", null) ?: "unknown"
 
-            // v1.0.12 — per-phase OTA progress reporting. The dashboard
-            // and on-device overlay both subscribe to lastOtaState so
-            // operators see real progress instead of stopwatch theater.
-            // Best-effort — failure to report state shouldn't block the
-            // OTA itself.
-            reportOtaState(apiRoot, deviceFingerprint, "CHECKING", null, null)
 
             // ── 2026-08-25 (v1.1.5) — THE PANEL'S OWN UPDATE BUTTON ──────────
             //
@@ -186,6 +180,25 @@ class OtaUpdateWorker(
             // split (apps/api/src/player-ota/update-check-authz.spec.ts); do
             // not "simplify" this into an unconditional flag.
             val userInitiated = inputData.getString(KEY_SOURCE) == SOURCE_USER
+
+            // 2026-10-17 — the build this screen is already working on (a kept,
+            // verified APK and what happened to its install). See
+            // OtaAttemptPolicy for the rules.
+            val stored = OtaAttemptStore.read(applicationContext)
+
+            // v1.0.12 — per-phase OTA progress reporting. The dashboard
+            // and on-device overlay both subscribe to lastOtaState so
+            // operators see real progress instead of stopwatch theater.
+            // Best-effort — failure to report state shouldn't block the
+            // OTA itself.
+            //
+            // 2026-10-17 — not while a build is being kept for a person: a
+            // timer's CHECKING would overwrite the NEEDS_TAP the panel and the
+            // dashboard are showing. A person pressing Update still sees
+            // CHECKING.
+            if (stored == null || userInitiated) {
+                reportOtaState(apiRoot, deviceFingerprint, "CHECKING", null, null)
+            }
 
             val payload = JSONObject().apply {
                 put("fingerprint", deviceFingerprint)
@@ -269,15 +282,30 @@ class OtaUpdateWorker(
             // fleet-wide on every 6 h tick and would re-create the 25 GB/mo
             // Supabase egress the cache exists to kill.)
             val latest = json.optJSONObject("latest") ?: run {
-                PlayerLogger.i(TAG, "OTA check: server returned no newer release — Player is current")
-                reportOtaState(
-                    apiRoot, deviceFingerprint, "UP_TO_DATE", null,
-                    "v${BuildConfig.VERSION_NAME} — no newer release offered",
-                )
+                // ── 2026-10-17 — `uptoDate` + `needsTap: true` is the server
+                // holding an operator's push because this screen already said
+                // NEEDS_TAP (player-ota/ota-install-state.ts): keep the build,
+                // keep saying so. Only a plain "nothing newer" drops it.
+                when (OtaAttemptPolicy.readUpToDate(needsTap = json.optBoolean("needsTap", false))) {
+                    OtaAttemptPolicy.UpToDateMeaning.HELD_NEEDS_TAP -> {
+                        val target = stored?.versionName?.let { "v$it" } ?: "the update"
+                        PlayerLogger.i(TAG, "OTA check: push held — $target is waiting for a person to tap Install (kept file: ${stored != null})")
+                        reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage(target))
+                    }
+                    OtaAttemptPolicy.UpToDateMeaning.DROP -> {
+                        if (stored != null) OtaAttemptStore.clear(applicationContext, "server offers nothing newer")
+                        PlayerLogger.i(TAG, "OTA check: server returned no newer release — Player is current")
+                        reportOtaState(
+                            apiRoot, deviceFingerprint, "UP_TO_DATE", null,
+                            "v${BuildConfig.VERSION_NAME} — no newer release offered",
+                        )
+                    }
+                }
                 return@withContext Result.success()
             }
             val latestVc = latest.optInt("versionCode")
             if (latestVc <= BuildConfig.VERSION_CODE) {
+                if (stored != null) OtaAttemptStore.clear(applicationContext, "already on v${BuildConfig.VERSION_NAME}")
                 PlayerLogger.i(TAG, "OTA check: up to date (current=${BuildConfig.VERSION_CODE}, latest=$latestVc)")
                 reportOtaState(
                     apiRoot, deviceFingerprint, "UP_TO_DATE", null,
@@ -327,100 +355,148 @@ class OtaUpdateWorker(
             }
             val forced = latest.optBoolean("forced", false)
             val latestVn = latest.optString("versionName", "$latestVc")
-            PlayerLogger.i(TAG, "OTA update available: $latestVn (versionCode=$latestVc, forced=$forced) — downloading")
 
-            // Download into this app's external-files cache — survives
-            // app updates, auto-cleared on uninstall, no permission
-            // required on API 23+.
-            val outDir = File(applicationContext.getExternalFilesDir(null), "updates").apply { mkdirs() }
-            val outFile = File(outDir, "edu-player-$latestVc.apk")
-            val dlConn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 20_000
-                readTimeout = 60_000
+            // ── 2026-10-17 — RULE 1: a verified build is never downloaded
+            // twice. The M24 downloaded v1.1.29 48 times in 24 h because
+            // every check re-ran download → verify → commit. Keep the file;
+            // re-hash it (the kept bytes are re-verified, never trusted).
+            val outFile = OtaAttemptStore.apkFile(applicationContext, latestVc)
+            // The record for THIS build survives a lost file: what we did with
+            // it (commits, NEEDS_TAP) must not reset just because the bytes
+            // have to be fetched again.
+            var attempt = stored?.takeIf { it.isFor(latestVc, expectedSha) }
+                ?: OtaAttemptPolicy.Attempt(versionCode = latestVc, versionName = latestVn, sha256 = expectedSha, verified = false)
+            if (stored != null && !stored.isFor(latestVc, expectedSha)) {
+                OtaAttemptStore.clear(applicationContext, "a different build is offered (v$latestVn)")
             }
+            OtaAttemptStore.deleteOtherApks(applicationContext, latestVc)
 
-            // Report progress periodically during download. Reports are
-            // throttled to once every ~3 seconds to avoid hammering the
-            // API on a fast network. State="DOWNLOADING", progress=0..100.
-            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 0, "v$latestVn")
-            val totalBytes = dlConn.contentLengthLong.takeIf { it > 0 } ?: -1L
-            var downloaded = 0L
-            var lastReportAt = System.currentTimeMillis()
-            outFile.outputStream().use { out ->
-                dlConn.inputStream.use { inp ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = inp.read(buf)
-                        if (n <= 0) break
-                        out.write(buf, 0, n)
-                        downloaded += n
-                        val now = System.currentTimeMillis()
-                        if (now - lastReportAt >= 3_000) {
-                            val pct = if (totalBytes > 0) {
-                                ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 99)
-                            } else {
-                                ((downloaded / (512 * 1024)).toInt() + 1).coerceIn(1, 95)
+            val reused = OtaAttemptPolicy.canReuse(attempt, latestVc, expectedSha, outFile.exists(), outFile.length()) &&
+                sha256(outFile).equals(expectedSha, ignoreCase = true)
+            if (reused) {
+                PlayerLogger.i(TAG, "OTA update $latestVn (versionCode=$latestVc): re-using the verified APK already on disk — no download")
+            } else {
+                attempt = attempt.copy(verified = false)
+                OtaAttemptStore.write(applicationContext, attempt)
+                PlayerLogger.i(TAG, "OTA update available: $latestVn (versionCode=$latestVc, forced=$forced) — downloading")
+                // Download into this app's external-files cache — survives
+                // app updates, auto-cleared on uninstall, no permission
+                // required on API 23+.
+                val dlConn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20_000
+                    readTimeout = 60_000
+                }
+
+                // Report progress periodically during download. Reports are
+                // throttled to once every ~3 seconds to avoid hammering the
+                // API on a fast network. State="DOWNLOADING", progress=0..100.
+                reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 0, "v$latestVn")
+                val totalBytes = dlConn.contentLengthLong.takeIf { it > 0 } ?: -1L
+                var downloaded = 0L
+                var lastReportAt = System.currentTimeMillis()
+                outFile.outputStream().use { out ->
+                    dlConn.inputStream.use { inp ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = inp.read(buf)
+                            if (n <= 0) break
+                            out.write(buf, 0, n)
+                            downloaded += n
+                            val now = System.currentTimeMillis()
+                            if (now - lastReportAt >= 3_000) {
+                                val pct = if (totalBytes > 0) {
+                                    ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 99)
+                                } else {
+                                    ((downloaded / (512 * 1024)).toInt() + 1).coerceIn(1, 95)
+                                }
+                                val msg = if (totalBytes > 0) {
+                                    "v$latestVn"
+                                } else {
+                                    "v$latestVn (${String.format("%.1f", downloaded / 1048576.0)} MB)"
+                                }
+                                reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", pct, msg)
+                                lastReportAt = now
                             }
-                            val msg = if (totalBytes > 0) {
-                                "v$latestVn"
-                            } else {
-                                "v$latestVn (${String.format("%.1f", downloaded / 1048576.0)} MB)"
-                            }
-                            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", pct, msg)
-                            lastReportAt = now
                         }
                     }
                 }
-            }
-            reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 100, "v$latestVn")
+                reportOtaState(apiRoot, deviceFingerprint, "DOWNLOADING", 100, "v$latestVn")
 
-            run {
-                reportOtaState(apiRoot, deviceFingerprint, "VERIFYING", null, "v$latestVn")
-                val actual = sha256(outFile)
-                if (!actual.equals(expectedSha, ignoreCase = true)) {
-                    Log.e(TAG, "APK sha256 mismatch. expected=$expectedSha actual=$actual — discarding")
-                    PlayerLogger.e(TAG, "APK sha256 mismatch — discarding download (expected=${expectedSha.take(16)}…)")
-                    outFile.delete()
-                    reportOtaState(
-                        apiRoot,
-                        deviceFingerprint,
-                        "ERROR",
-                        null,
-                        "SHA256 mismatch (expected ${expectedSha.take(12)}…, got ${actual.take(12)}…)",
-                    )
-                    return@withContext Result.retry()
+                run {
+                    reportOtaState(apiRoot, deviceFingerprint, "VERIFYING", null, "v$latestVn")
+                    val actual = sha256(outFile)
+                    if (!actual.equals(expectedSha, ignoreCase = true)) {
+                        Log.e(TAG, "APK sha256 mismatch. expected=$expectedSha actual=$actual — discarding")
+                        PlayerLogger.e(TAG, "APK sha256 mismatch — discarding download (expected=${expectedSha.take(16)}…)")
+                        outFile.delete()
+                        reportOtaState(
+                            apiRoot,
+                            deviceFingerprint,
+                            "ERROR",
+                            null,
+                            "SHA256 mismatch (expected ${expectedSha.take(12)}…, got ${actual.take(12)}…)",
+                        )
+                        return@withContext Result.retry()
+                    }
                 }
+                attempt = attempt.copy(verified = true)
+                OtaAttemptStore.write(applicationContext, attempt)
+                PlayerLogger.i(TAG, "APK download complete and verified — kept for this build")
             }
 
-            PlayerLogger.i(TAG, "APK download complete and verified")
-
-            // v1.0.53 — fire Player's install path immediately.
-            //
-            // Previously bailed out when Manager was installed, deferring
-            // ALL install work to Manager. That hid a never-working OTA
-            // pipeline (Manager's notification BAL-bypass gets eaten by
-            // every signage OEM's battery-saver layer). With the
-            // silent-install hint (Api31SilentInstall + UPDATE_PACKAGES_
-            // WITHOUT_USER_ACTION) plus Player's MainActivity trampoline
-            // for the user-tap case, Player's own install path is the
-            // reliable one — first install needs ONE tap, every install
-            // after is silent.
-            //
-            // Manager still attempts in parallel (its own worker fires
-            // off the same dashboard trigger). If Manager somehow lands
-            // first (DEVICE_OWNER kiosks), Player's PackageInstaller
-            // commit sees "already installed at this version" and
-            // exits cleanly. No double-prompt risk because Manager's
-            // notification path doesn't actually surface in practice.
-            reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
-            triggerInstall(outFile, forced, apiRoot, deviceFingerprint)
-            // Success state is reported on next boot via the heartbeat
-            // (new versionName lands in playerVersion, dashboard infers
-            // INSTALLED from a version change). We don't report
-            // 'INSTALLED' here because the install hasn't actually
-            // completed yet — Android may still show the system prompt
-            // or the install may fail silently. The next-boot heartbeat
-            // is the only authoritative signal.
+            // ── 2026-10-17 — RULES 2–4: commit once, then wait for a person.
+            // Silent where Android allows it (Android 12+ and we are our own
+            // installer of record). Elsewhere the first unattended commit
+            // raises the system dialog through MainActivity — the path that
+            // existed before this — and every later unattended check reports
+            // NEEDS_TAP instead of committing (and downloading) again. A
+            // person pressing Update on the panel re-commits the kept file.
+            val selfSilent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                getInstallerOfRecord(applicationContext) == applicationContext.packageName
+            val route = OtaAttemptPolicy.route(
+                OtaAttemptPolicy.Facts(
+                    trigger = if (userInitiated) OtaAttemptPolicy.Trigger.USER else OtaAttemptPolicy.Trigger.UNATTENDED,
+                    selfSilent = selfSilent,
+                    attempt = attempt,
+                ),
+            )
+            PlayerLogger.i(
+                TAG,
+                "OTA install route=$route for v$latestVn (commits=${attempt.commits} outcome=${attempt.outcome} " +
+                    "selfSilent=$selfSilent trigger=${if (userInitiated) "user" else "unattended"})",
+            )
+            when (route) {
+                OtaAttemptPolicy.Route.COMMIT -> {
+                    attempt = attempt.copy(commits = attempt.commits + 1, outcome = OtaAttemptPolicy.Outcome.COMMITTED, failureCode = null)
+                    OtaAttemptStore.write(applicationContext, attempt)
+                    // v1.0.53 — fire Player's install path immediately.
+                    //
+                    // Previously bailed out when Manager was installed, deferring
+                    // ALL install work to Manager. That hid a never-working OTA
+                    // pipeline (Manager's notification BAL-bypass gets eaten by
+                    // every signage OEM's battery-saver layer). With the
+                    // silent-install hint (Api31SilentInstall + UPDATE_PACKAGES_
+                    // WITHOUT_USER_ACTION) plus Player's MainActivity trampoline
+                    // for the user-tap case, Player's own install path is the
+                    // reliable one — first install needs ONE tap, every install
+                    // after is silent.
+                    reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
+                    triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc)
+                    // Success state is reported on next boot via the heartbeat
+                    // (new versionName lands in playerVersion, dashboard infers
+                    // INSTALLED from a version change). We don't report
+                    // 'INSTALLED' here because the install hasn't actually
+                    // completed yet — Android may still show the system prompt
+                    // or the install may fail silently. The next-boot heartbeat
+                    // is the only authoritative signal.
+                }
+                OtaAttemptPolicy.Route.HOLD_NEEDS_TAP ->
+                    reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage("v$latestVn"))
+                OtaAttemptPolicy.Route.HOLD_FAILED ->
+                    // Reported as FAILED_<CODE> when it failed (OtaInstallReceiver);
+                    // only a person pressing Update on the panel retries it.
+                    PlayerLogger.i(TAG, "OTA: v$latestVn failed to install before (${attempt.failureCode}) — not retrying on a timer")
+            }
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "OTA worker failed", e)
@@ -442,7 +518,9 @@ class OtaUpdateWorker(
     /**
      * Best-effort POST to /api/v1/screens/status/:fp/ota-state. Failure
      * is logged but never throws — state reporting is observability,
-     * not load-bearing for the install itself.
+     * not load-bearing for the install itself. Carries the device token
+     * (OtaStateReporter) so a NEEDS_TAP / FAILED_<CODE> holds the push
+     * at once.
      */
     private fun reportOtaState(
         apiRoot: String,
@@ -450,32 +528,18 @@ class OtaUpdateWorker(
         state: String,
         progress: Int?,
         message: String?,
-    ) {
-        try {
-            val payload = JSONObject().apply {
-                put("state", state)
-                if (progress != null) put("progress", progress)
-                if (message != null) put("message", message)
-            }
-            val url = URL("$apiRoot/api/v1/screens/status/$fingerprint/ota-state")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
-                doOutput = true
-                connectTimeout = 5_000
-                readTimeout = 5_000
-            }
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            val rc = conn.responseCode
-            if (rc !in 200..299) {
-                PlayerLogger.w(TAG, "OTA state report HTTP $rc (state=$state)")
-            } else {
-                PlayerLogger.i(TAG, "OTA state report → $state${progress?.let { " ($it%)" } ?: ""}")
-            }
-        } catch (e: Exception) {
-            PlayerLogger.w(TAG, "OTA state report failed (state=$state): ${e.message}")
-        }
-    }
+    ) = OtaStateReporter.report(
+        applicationContext,
+        state,
+        progress,
+        message,
+        apiRootOverride = apiRoot,
+        fingerprintOverride = fingerprint,
+    )
+
+    /** What the panel and the dashboard say while a build waits for a person. */
+    private fun needsTapMessage(target: String): String =
+        "Android on this screen needs someone to tap Install for $target. Press Install now on the screen, then tap Install."
 
     private fun sha256(f: File): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
@@ -512,7 +576,7 @@ class OtaUpdateWorker(
      * The notification remains as a user-visible fallback for case 3
      * if the prompt gets dismissed.
      */
-    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String) {
+    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String, versionCode: Int) {
         val ctx = applicationContext
 
         // v1.0.55 — Schedule a post-install relaunch safety net BEFORE
@@ -598,6 +662,11 @@ class OtaUpdateWorker(
                 }
                 val resultIntent = Intent(ctx, OtaInstallReceiver::class.java).apply {
                     action = "com.educms.player.OTA_INSTALL_RESULT"
+                    // 2026-10-17 — marks this as the Player's OWN update (the
+                    // receiver also serves the companion-Manager install) and
+                    // names the build, so its outcome lands on the right
+                    // OtaAttemptStore record.
+                    putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_VERSION_CODE, versionCode)
                 }
                 val statusPi = PendingIntent.getBroadcast(
                     ctx,

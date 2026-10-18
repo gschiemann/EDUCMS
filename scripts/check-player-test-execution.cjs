@@ -129,6 +129,12 @@ const REQUIRED = [
   { cls: 'com.educms.player.media.SoloVideoLayerTest', min: 10 },
   { cls: 'com.educms.player.media.DeviceClassPolicyTest', min: 8 },
   { cls: 'com.educms.player.media.FaceVideoBoxContractTest', min: 6 },
+  // ── One download and one prompt per build (2026-10-17) ───────────
+  // An Android 9 panel downloaded one update 48 times in 24 h. This class
+  // pins the attempt rules (keep the verified APK, raise the dialog once,
+  // then NEEDS_TAP) AND Assume-based source guards that the worker, the
+  // install receiver and the Manager's 30-minute lane actually obey them.
+  { cls: 'com.educms.player.ota.OtaAttemptPolicyTest', min: 15 },
 ];
 
 /**

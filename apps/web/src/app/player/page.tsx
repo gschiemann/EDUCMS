@@ -13815,8 +13815,19 @@ function PlayerPage() {
                     case 'ERROR':
                       stage = { emoji: '⚠️', label: realMsg || 'Update failed — will retry on next OTA tick.' };
                       break;
+                    // 2026-10-17 — Android on this screen is waiting for a
+                    // person to tap Install (Android 11 and below). The player
+                    // keeps the downloaded update and will not raise the
+                    // prompt again on its own: say so, and offer the button
+                    // that raises it for the person standing here.
+                    case 'NEEDS_TAP':
+                      stage = { emoji: '👆', label: `Android needs someone to confirm the update${verLabel}. Press Install now, then tap Install.` };
+                      break;
                     default:
-                      stage = { emoji: '📡', label: `Update in progress (${realState})…` };
+                      stage = /^FAILED_[A-Z0-9_]+$/.test(realState)
+                        // A terminal install failure (FAILED_<CODE>), named.
+                        ? { emoji: '⚠️', label: realMsg || `Install failed (${realState.slice(7)}).` }
+                        : { emoji: '📡', label: `Update in progress (${realState})…` };
                   }
                 } else {
                   // 2026-05-04 — operator: "says downloading on the
@@ -13840,7 +13851,9 @@ function PlayerPage() {
                     ? { emoji: '⏳', label: `Update signal sent ${elapsedHuman} — waiting for kiosk to report progress…` }
                     : { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot or sideload manually' };
                 }
-                const isError = realState === 'ERROR';
+                const isNeedsTap = realState === 'NEEDS_TAP';
+                const isFailed = !!realState && /^FAILED_[A-Z0-9_]+$/.test(realState);
+                const isError = realState === 'ERROR' || isFailed || isNeedsTap;
                 const isDone = realState === 'INSTALLED';
                 // UP_TO_DATE is terminal too — "in progress" over a
                 // "nothing to install" sublabel read as a hang (2026-08-25).
@@ -13890,10 +13903,25 @@ function PlayerPage() {
                       <span className="text-4xl shrink-0">{stage.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-base font-bold ${titleColor}`}>
-                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isError ? 'Update issue' : 'Update in progress'}
+                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isNeedsTap ? 'Update needs a tap on this screen' : isError ? 'Update issue' : 'Update in progress'}
                         </div>
                         <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
                       </div>
+                      {(isNeedsTap || isFailed) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // A person is standing here: this raises Android's
+                            // Install prompt for the update the player kept
+                            // (the player never retries these on a timer).
+                            handleInstallUpdate();
+                          }}
+                          className="shrink-0 ml-3 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm z-20 relative"
+                        >
+                          Install now
+                        </button>
+                      )}
                       {isPermissionError && (
                         <button
                           onClick={(e) => {
@@ -13957,6 +13985,9 @@ function PlayerPage() {
                     <div className="text-sm font-bold text-amber-900">Update available</div>
                     <div className="text-xs text-amber-700 mt-0.5">
                       Player <span className="font-mono font-bold">v{latestApkVersion}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
+                      {/* 2026-10-17 — this screen already said Android needs a
+                          person to confirm; the update will not install on its own. */}
+                      {serverOtaState?.state === 'NEEDS_TAP' && ' Android on this screen needs someone to confirm: press Install now, then tap Install.'}
                     </div>
                   </div>
                   <button
