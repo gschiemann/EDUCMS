@@ -1,0 +1,193 @@
+import { sealCredentials } from '../streaming/creds-cipher';
+import { applyPatch, reportSignature } from './device-settings';
+import { deviceSettingsHeartbeat } from './device-settings.heartbeat';
+
+/**
+ * The heartbeat half against an in-memory row: what it reads, what it writes,
+ * what it says to the unit — and, above all, that an unchanged unit costs
+ * nothing and a passphrase only travels while the unit still needs it.
+ */
+
+const now = new Date('2026-10-18T12:00:00.000Z');
+
+type Row = {
+  screenId: string;
+  tenantId: string;
+  revision: number;
+  settings: unknown;
+  wifiSecret: string | null;
+  report: unknown;
+  reportChangedAt: Date | null;
+};
+
+function fakePrisma(initial: Row | null) {
+  let row = initial;
+  const audits: Array<{ action: string; details: Record<string, unknown> }> = [];
+  const desiredDeviceSettings = {
+    findUnique: jest.fn(async () => row),
+    update: jest.fn(async ({ data }: { data: Partial<Row> }) => {
+      row = { ...(row as Row), ...data };
+      return row;
+    }),
+    upsert: jest.fn(async ({ create, update }: { create: Row; update: Partial<Row> }) => {
+      row = row ? { ...row, ...update } : { ...create, wifiSecret: null, reportChangedAt: create.reportChangedAt };
+      return row;
+    }),
+  };
+  const auditLog = {
+    create: jest.fn(async ({ data }: { data: { action: string; details: string } }) => {
+      audits.push({ action: data.action, details: JSON.parse(data.details) });
+      return {};
+    }),
+  };
+  return {
+    prisma: { client: { desiredDeviceSettings, auditLog } } as never,
+    desiredDeviceSettings,
+    audits,
+    get row() {
+      return row;
+    },
+  };
+}
+
+const stored = applyPatch(
+  {},
+  { brightness: 80, autoTime: true, wifi: { ssid: 'Lobby', security: 'wpa2', passphrase: 'correct horse' } },
+  { revision: 4, now, userId: 'u-1', hasSecret: false },
+).next;
+const sealed = JSON.stringify(sealCredentials({ passphrase: 'correct horse' }));
+const rowAt4 = (): Row => ({
+  screenId: 'screen-1',
+  tenantId: 'tenant-a',
+  revision: 4,
+  settings: stored,
+  wifiSecret: sealed,
+  report: null,
+  reportChangedAt: null,
+});
+
+const report = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({ schema: 1, rev: 4, need: false, sdk: 33, cap: { brightness: 'ok' }, obs: { brightness: 80 }, ...over });
+
+const screenAt = (sig: string | null, rev = 4) => ({
+  id: 'screen-1',
+  tenantId: 'tenant-a',
+  deviceSettingsRev: rev,
+  deviceSettingsReportSig: sig,
+});
+
+describe('deviceSettingsHeartbeat', () => {
+  it('says nothing to an older player or a malformed header, and nothing for an unpaired screen', async () => {
+    const f = fakePrisma(rowAt4());
+    expect(await deviceSettingsHeartbeat(f.prisma, screenAt(null), undefined, now)).toBeNull();
+    expect(await deviceSettingsHeartbeat(f.prisma, screenAt(null), '{"schema":9}', now)).toBeNull();
+    expect(await deviceSettingsHeartbeat(f.prisma, { ...screenAt(null), tenantId: null }, report(), now)).toBeNull();
+    expect(f.desiredDeviceSettings.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('an unchanged unit holding the current set costs no query and no write', async () => {
+    const f = fakePrisma(rowAt4());
+    const header = report();
+    const sig = reportSignature(JSON.parse(header));
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(sig), header, now);
+    expect(r).toEqual({ data: { deviceSettingsReportAt: now }, mustWrite: false, reply: { schema: 1, rev: 4, same: true } });
+    expect(f.desiredDeviceSettings.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('nothing stored: an explicit empty set, still without a query', async () => {
+    const f = fakePrisma(null);
+    const header = report({ rev: 0 });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(reportSignature(JSON.parse(header)), 0), header, now);
+    expect(r!.reply).toEqual({ schema: 1, rev: 0, items: {} });
+    expect(f.desiredDeviceSettings.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('a unit on an older set gets the whole set — with the passphrase, because it has not finished that network', async () => {
+    const f = fakePrisma(rowAt4());
+    const header = report({ rev: 3 });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(reportSignature(JSON.parse(header))), header, now);
+    expect(r!.reply).toEqual({
+      schema: 1,
+      rev: 4,
+      items: {
+        brightness: { id: 'r4', v: 80 },
+        autoTime: { id: 'r4', v: true },
+        wifi: { id: 'r4', v: { ssid: 'Lobby', security: 'wpa2', hidden: false, passphrase: 'correct horse' } },
+      },
+    });
+    expect(r!.mustWrite).toBe(false);
+  });
+
+  it('once the unit reports that network applied, the passphrase stops travelling', async () => {
+    const f = fakePrisma(rowAt4());
+    const header = report({ rev: 3, ack: { wifi: { id: 'r4', st: 'applied', n: 1 } } });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null), header, now);
+    const items = (r!.reply as { items: Record<string, { v: unknown }> }).items;
+    expect(items.wifi.v).toEqual({ ssid: 'Lobby', security: 'wpa2', hidden: false });
+    expect(JSON.stringify(r)).not.toContain('correct horse');
+  });
+
+  it('a unit asking for the passphrase (need) gets the full set even on the current revision', async () => {
+    const f = fakePrisma(rowAt4());
+    const header = report({ need: true, ack: { wifi: { id: 'r4', st: 'pending', n: 0, why: 'needs-secret' } } });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(reportSignature(JSON.parse(header))), header, now);
+    expect(JSON.stringify(r!.reply)).toContain('correct horse');
+  });
+
+  it('a changed report is stored once, marks the row, and audits each newly applied or failed value', async () => {
+    const f = fakePrisma(rowAt4());
+    const header = report({
+      obs: { brightness: 79 },
+      ack: {
+        brightness: { id: 'r4', st: 'applied', n: 1, at: 1_760_000_000_000 },
+        autoTime: { id: 'r4', st: 'unsupported', n: 0, why: 'no-secure-settings' },
+      },
+    });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt('old-sig'), header, now);
+    expect(r!.mustWrite).toBe(true);
+    expect(r!.data.deviceSettingsReportSig).toBe(reportSignature(JSON.parse(header)));
+    expect(f.desiredDeviceSettings.upsert).toHaveBeenCalledTimes(1);
+    expect((f.row!.report as { obs: { brightness: number } }).obs.brightness).toBe(79);
+    expect(f.audits).toEqual([
+      {
+        action: 'SCREEN_DEVICE_SETTING_APPLIED',
+        details: expect.objectContaining({ setting: 'brightness', id: 'r4', observed: 79, desired: 80 }),
+      },
+    ]);
+    // The same report again: nothing to store, nothing to audit.
+    const again = await deviceSettingsHeartbeat(f.prisma, screenAt(r!.data.deviceSettingsReportSig as string), header, now);
+    expect(again!.mustWrite).toBe(false);
+    expect(f.audits).toHaveLength(1);
+  });
+
+  it('keeps the screen marker honest when a PUT landed between the two reads', async () => {
+    const f = fakePrisma({ ...rowAt4(), revision: 5 });
+    const header = report();
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), header, now);
+    expect(r!.data.deviceSettingsRev).toBe(5);
+    expect(r!.mustWrite).toBe(true);
+    expect((r!.reply as { rev: number }).rev).toBe(5);
+  });
+
+  it('a screen re-paired into another organisation never receives the old intent or its Wi-Fi passphrase', async () => {
+    const f = fakePrisma({ ...rowAt4(), tenantId: 'tenant-old' });
+    const header = report({ rev: 4 });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), header, now);
+    expect(f.row!.tenantId).toBe('tenant-a');
+    expect(f.row!.wifiSecret).toBeNull();
+    expect(f.row!.revision).toBe(5);
+    expect(r!.reply).toEqual({ schema: 1, rev: 5, items: {} });
+    expect(JSON.stringify(r)).not.toContain('correct horse');
+    expect(f.audits[0]).toMatchObject({
+      action: 'SCREEN_DEVICE_SETTINGS_CHANGED',
+      details: { reason: 'screen-moved-tenant', revision: 5 },
+    });
+  });
+
+  it('a database fault never fails the heartbeat: the unit hears nothing, the markers stay', async () => {
+    const f = fakePrisma(rowAt4());
+    f.desiredDeviceSettings.findUnique.mockRejectedValueOnce(new Error('pool exhausted'));
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), report({ rev: 3 }), now);
+    expect(r).toEqual({ data: {}, mustWrite: false, reply: null });
+  });
+});
