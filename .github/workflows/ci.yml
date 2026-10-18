@@ -553,7 +553,8 @@ jobs:
   # verdict at all for six days. Measured from those runs' logs: 838 tests per
   # engine, ~30 min of Chromium and ~60 min of WebKit at one worker (the
   # builder and the 344-board media sweep are 5-8x slower on WebKit), plus
-  # ~25 minutes of retries of tests left stale by 10-11/10-12 product changes.
+  # retries of tests left stale by 10-11/10-12 product changes (~19 minutes a
+  # run on Chromium alone).
   # Full measurements: docs/research/2026-10-17-player-rock-solid/10-e2e-under-cap.md
   # (gitignored; summarised in the PR that introduced this layout).
   #
@@ -710,15 +711,21 @@ jobs:
         #     page.goto) — in a 29.4-minute job. WebKit renders the 4K boards in
         #     software at Desktop Safari's deviceScaleFactor 2 (Chromium: 1), so
         #     it is CPU-bound with one worker; it gets one.
-        #   shards — WebKit ~57 single-worker minutes, slices of roughly
-        #     7 / 21 / 15 / 14; Chromium ~29 at two workers' ~1.5x, slices
-        #     4.3 / 12.3 test minutes.
+        #     With the board sweep and builder media spec at pixel ratio 1
+        #     (their specs), WebKit at two workers was tried once more (run
+        #     39161287520): no starvation, but two timing-sensitive tests
+        #     flaked (multiscreen-sync's lockstep bound, a sign-in Back step) —
+        #     clean at one worker. Reliability first: one worker.
+        #   shards — measured, one WebKit worker (run 39159514446, 0 flaky):
+        #     test minutes 5.4 / 12.2 / 11.7 / 13.6, jobs 7-15 min; Chromium at
+        #     two workers 3.6 / 13.7 (jobs 5 and 15).
         include:
           - { browser: chromium, shard: 1, of: 2, workers: 2 }
           - { browser: chromium, shard: 2, of: 2, workers: 2 }
-          - { browser: webkit, shard: 1, of: 3, workers: 2 }
-          - { browser: webkit, shard: 2, of: 3, workers: 2 }
-          - { browser: webkit, shard: 3, of: 3, workers: 2 }
+          - { browser: webkit, shard: 1, of: 4, workers: 1 }
+          - { browser: webkit, shard: 2, of: 4, workers: 1 }
+          - { browser: webkit, shard: 3, of: 4, workers: 1 }
+          - { browser: webkit, shard: 4, of: 4, workers: 1 }
     # No Postgres service and no DATABASE_URL (removed 2026-10-18): nothing
     # under apps/web reads a database — every API call in this suite is
     # intercepted with page.route() — and emergency-path.yml has always run
