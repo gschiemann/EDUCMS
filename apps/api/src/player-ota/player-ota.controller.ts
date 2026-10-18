@@ -38,8 +38,8 @@ import type { Request as ExpressReq, Response } from 'express';
 import { Readable } from 'node:stream';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
-import { autoUpdateEnabledFor, decideAutomaticOffer, isValidTimeZone, resolveAutoUpdateWindow, type AutomaticOfferDecision } from './auto-update-policy';
-import { pushWaitsForTap } from './ota-install-state';
+import { autoUpdateEnabledFor, decideAutomaticOffer, isValidTimeZone, resolveAutoUpdateWindow, silentUpdateReadiness, type AutomaticOfferDecision } from './auto-update-policy';
+import { decidePushGate, holdSentence, type PushGate, type PushHold } from './push-tracking';
 import { noteManagerCheckRefused } from './manager-lane-noise';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -247,11 +247,25 @@ export class PlayerOtaController {
       // APK URL.
       const prior = await this.prisma.client.screen.findFirst({
         where: { deviceFingerprint: fp },
-        select: { id: true, tenantId: true, playerVersionCode: true, forceApkUpdatePendingAt: true } as any,
+        select: {
+          id: true, tenantId: true, playerVersionCode: true, forceApkUpdatePendingAt: true,
+          forceApkUpdateTargetVersionCode: true,
+        } as any,
       }) as any;
       const claimsInstall = !!(
         prior && prior.forceApkUpdatePendingAt && vc !== null
         && (prior.playerVersionCode == null || vc > Number(prior.playerVersionCode))
+      );
+      // 2026-10-18 (tracked pushes) — the push is ALSO satisfied when the
+      // device reports the very build it was offered, even if the stored
+      // version already moved: the Manager's anonymous update-check reports
+      // the installed Player's version too, so it can bump playerVersionCode
+      // before the Player's own authenticated report arrives — and pushes no
+      // longer expire after 24 h to paper over that (push-tracking.ts).
+      const reachedTarget = !!(
+        prior && prior.forceApkUpdatePendingAt && vc !== null
+        && typeof prior.forceApkUpdateTargetVersionCode === 'number'
+        && vc >= prior.forceApkUpdateTargetVersionCode
       );
 
       // ── OTA-01 (2026-08-03): clearing a pending push is now PRIVILEGED ──
@@ -276,12 +290,14 @@ export class PlayerOtaController {
       // open (the fleet keeps updating) and the one DESTRUCTIVE write is
       // gated. The real fleet loses nothing: after a successful install the
       // kiosk reports the new versionName, `semverGte` returns uptoDate, so
-      // there is no re-download loop; the flag simply lingers until the
-      // existing 24 h stale sweep clears it.
+      // there is no re-download loop; the flag lingers until the kiosk's own
+      // authenticated report (update-check, telemetry or status heartbeat)
+      // shows the offered build — or an operator cancels the push. Pushes no
+      // longer expire silently after 24 h (2026-10-18, push-tracking.ts).
       //
       // Flip OTA_REQUIRE_DEVICE_AUTH=true once a token-sending player build
       // is fleet-wide to make this a hard requirement.
-      const installed = claimsInstall && ctx.deviceAuthenticated;
+      const installed = (claimsInstall || reachedTarget) && ctx.deviceAuthenticated;
 
       await this.prisma.client.screen.updateMany({
         where: { deviceFingerprint: fp },
@@ -316,7 +332,7 @@ export class PlayerOtaController {
         this.logger.warn(
           `[ota][security] UNAUTHENTICATED install claim for screen=${prior.id} ` +
           `prev=${prior.playerVersionCode || 'null'} claimed=${vc} — pending push ` +
-          `NOT cleared (OTA-01). Flag remains set; the 24h sweep will retire it.`,
+          `NOT cleared (OTA-01). Flag remains set until an authenticated report shows the offered build.`,
         );
         this.prisma.client.auditLog.create({
           data: {
@@ -396,6 +412,200 @@ export class PlayerOtaController {
     }
   }
 
+  /**
+   * The screen's latest device inventory report, or null. Read only when a
+   * push is pending — never on the fleet's ordinary no-push poll.
+   */
+  private async inventoryReportFor(screenId: string): Promise<unknown> {
+    try {
+      // ten-ok: keyed by the screen row resolved from this device's own
+      // fingerprint — the device is the principal, no narrower scope.
+      const inv = await (this.prisma.client as any).screenDeviceInventory.findUnique({
+        where: { screenId },
+        select: { report: true },
+      });
+      return inv?.report ?? null;
+    } catch (e: any) {
+      this.logger.warn(`[ota] inventory-read-failed screen=${screenId} err=${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * One operator push, one Player check: offer it, hold it, or let a committed
+   * install finish landing (push-tracking.ts decides; this gathers the facts
+   * and persists a NEW hold). `answer` = a complete update-check response,
+   * returned before any release lookup.
+   */
+  private async evaluatePush(
+    screen: any,
+    caller: { versionCode: number; versionName: string; authenticated: boolean; person: boolean },
+  ): Promise<{ offer: boolean; track: boolean; reason: string; answer?: Record<string, unknown> }> {
+    const inventory = await this.inventoryReportFor(screen.id);
+    // Can this screen install without a person? (Android 12+ AND the Player is
+    // its own installer of record.) Only used to name WHY a build did not land.
+    const readiness = silentUpdateReadiness(inventory, caller.versionCode).readiness;
+    const gate: PushGate = decidePushGate({
+      push: {
+        pendingAt: screen.forceApkUpdatePendingAt ? new Date(screen.forceApkUpdatePendingAt) : null,
+        hold: screen.forceApkUpdateHold ?? null,
+        offerCount: Number(screen.forceApkUpdateOfferCount) || 0,
+        lastOfferAt: screen.forceApkUpdateLastOfferAt ? new Date(screen.forceApkUpdateLastOfferAt) : null,
+        targetVersionCode: typeof screen.forceApkUpdateTargetVersionCode === 'number'
+          ? screen.forceApkUpdateTargetVersionCode : null,
+      },
+      callerVersionCode: caller.versionCode,
+      callerAuthenticated: caller.authenticated,
+      callerIsPerson: caller.person,
+      report: {
+        state: screen.lastOtaState ?? null,
+        message: screen.lastOtaMessage ?? null,
+        at: screen.lastOtaAt ? new Date(screen.lastOtaAt) : null,
+      },
+      readiness,
+      now: new Date(),
+    });
+
+    if (gate.action === 'hold') {
+      if (gate.record) await this.recordPushHold(screen, gate.hold, gate.reason, caller.versionName);
+      return {
+        offer: false,
+        track: false,
+        reason: `push-${gate.reason}`,
+        answer: {
+          uptoDate: true,
+          // The Player (from the build after 1.1.41-field.1) reads this to
+          // report NEEDS_TAP and keep its verified APK for the person who will
+          // tap Install now on the panel; older players ignore it and simply
+          // stop installing.
+          needsTap: gate.hold === 'NEEDS_TAP',
+          pushHold: gate.hold,
+        },
+      };
+    }
+    if (gate.action === 'in-flight') {
+      return {
+        offer: false,
+        track: false,
+        reason: `push-in-flight-${gate.reason}`,
+        answer: { uptoDate: true, installInFlight: true },
+      };
+    }
+    if (gate.action === 'satisfied' || gate.action === 'withhold') {
+      return { offer: false, track: false, reason: `push-${gate.reason}` };
+    }
+    return { offer: true, track: gate.tracked, reason: gate.reason };
+  }
+
+  /**
+   * Persist a NEW hold on the push (rare: one write per hold transition).
+   * Guarded by the push's identity (`forceApkUpdatePendingAt`): an operator
+   * who re-sends while this check is in flight gets a fresh record, never the
+   * old push's hold.
+   */
+  private async recordPushHold(screen: any, hold: PushHold, reason: string, callerVersion: string): Promise<void> {
+    const now = new Date();
+    const pushAt = screen.forceApkUpdatePendingAt ? new Date(screen.forceApkUpdatePendingAt) : null;
+    if (!pushAt) return;
+    const sentence = holdSentence(hold, reason, {
+      targetVersion: screen.forceApkUpdateTargetVersion ?? null,
+      callerVersion: callerVersion && callerVersion !== '?' ? callerVersion : null,
+      offeredAt: screen.forceApkUpdateLastOfferAt ? new Date(screen.forceApkUpdateLastOfferAt) : null,
+      offerCount: Number(screen.forceApkUpdateOfferCount) || 0,
+    });
+    // A NEEDS_TAP the SERVER inferred also becomes the screen's OTA status
+    // line — every surface (the panel card, the dashboard row) already words
+    // NEEDS_TAP, and otherwise they would keep showing the "Installing…" the
+    // device last sent. The device's own words win when it said why, and
+    // STALLED / EXPIRED are not device states: they live on the push record.
+    const inferredTap = hold === 'NEEDS_TAP' && !reason.startsWith('device-reported');
+    try {
+      const written = await this.prisma.client.screen.updateMany({
+        where: { id: screen.id, tenantId: screen.tenantId, forceApkUpdatePendingAt: pushAt, forceApkUpdateHold: null } as any,
+        data: {
+          forceApkUpdateHold: hold,
+          forceApkUpdateHoldAt: now,
+          forceApkUpdateHoldReason: `${reason}: ${sentence}`.slice(0, 500),
+          ...(inferredTap ? { lastOtaState: hold, lastOtaMessage: sentence.slice(0, 500), lastOtaAt: now } : {}),
+        } as any,
+      });
+      if (!written.count) return; // re-sent, cancelled or held meanwhile
+      this.logger.warn(`[ota] push-held screen=${screen.id} hold=${hold} reason=${reason}`);
+      this.prisma.client.auditLog.create({
+        data: {
+          action: 'OTA_PUSH_HELD',
+          targetType: 'screen',
+          targetId: screen.id,
+          tenantId: screen.tenantId,
+          userId: null,
+          details: JSON.stringify({
+            hold,
+            reason,
+            targetVersion: screen.forceApkUpdateTargetVersion ?? null,
+            offers: Number(screen.forceApkUpdateOfferCount) || 0,
+            pushAt: pushAt.toISOString(),
+          }),
+        },
+      }).catch(() => { /* audit best-effort */ });
+    } catch (e: any) {
+      // The answer still withholds the offer; the next check re-derives it.
+      this.logger.warn(`[ota] push-hold-write-failed screen=${screen.id} hold=${hold} err=${e?.message}`);
+    }
+  }
+
+  /**
+   * Count one offer against the operator's push and remember the build that
+   * was offered. Awaited before the answer goes out, so the record cannot lag
+   * the device; guarded by the push's identity like recordPushHold. A failed
+   * write still offers (today's behaviour) and logs.
+   */
+  private async recordPushOffer(
+    screenId: string,
+    tenantId: string,
+    pushAt: Date | null,
+    target: { versionName: string; versionCode: number },
+  ): Promise<void> {
+    if (!pushAt) return;
+    try {
+      await this.prisma.client.screen.updateMany({
+        where: { id: screenId, tenantId, forceApkUpdatePendingAt: pushAt } as any,
+        data: {
+          forceApkUpdateOfferCount: { increment: 1 },
+          forceApkUpdateLastOfferAt: new Date(),
+          forceApkUpdateTargetVersion: target.versionName,
+          forceApkUpdateTargetVersionCode: target.versionCode,
+        } as any,
+      });
+    } catch (e: any) {
+      this.logger.warn(`[ota] push-offer-record-failed screen=${screenId} err=${e?.message}`);
+    }
+  }
+
+  /**
+   * The screen asked, and is already on (or past) the build the push would
+   * install: nothing will ever be offered, so the push is done — not left to
+   * turn EXPIRED a day later on a screen that is current. Device-authenticated
+   * callers only (OTA-01: clearing a push is the privileged write), guarded by
+   * the push's identity.
+   */
+  private async clearPushAlreadyCurrent(
+    screenId: string,
+    tenantId: string,
+    pushAt: Date | null,
+    detail: string,
+  ): Promise<void> {
+    if (!pushAt) return;
+    try {
+      const done = await this.prisma.client.screen.updateMany({
+        where: { id: screenId, tenantId, forceApkUpdatePendingAt: pushAt } as any,
+        data: { forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false } as any,
+      });
+      if (done.count) this.logger.log(`[ota] push-cleared-already-current screen=${screenId} ${detail}`);
+    } catch (e: any) {
+      this.logger.warn(`[ota] push-clear-failed screen=${screenId} err=${e?.message}`);
+    }
+  }
+
   @Post('update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   async updateCheck(@Body() body: UpdateCheckBody, @Req() req?: ExpressReq) {
@@ -462,21 +672,19 @@ export class PlayerOtaController {
     // path the comment header alludes to but never actually implemented.
     const isBootstrapCall = callerVc === 0
       && (callerSource === 'manager' || callerSource === 'manager-self');
-    // 24-hour force-pending window. Was 30 min, but old kiosks (pre-
-    // v1.0.5, before WebAppBridge.checkForUpdates was added) can't
-    // react to the WS push instantly — they only update on their 6h
-    // periodic OtaUpdateWorker tick. With a 30-min window the
-    // periodic poll usually fires AFTER the flag has expired and
-    // returns uptoDate. 24h guarantees the periodic catches the flag
-    // exactly once. The flag clears itself the moment we hand back a
-    // download URL, so we never re-deliver the same update.
-    const FORCE_WINDOW_MS = 24 * 60 * 60_000;
+    // (The 24-hour force-pending window that used to live here — offer on
+    // every check for 24 h, then clear the push silently — is gone. A push
+    // is now tracked until the screen runs the offered build or an operator
+    // cancels it; a push no check was handed within 24 h is held as EXPIRED,
+    // visibly. See push-tracking.ts.)
     let allowUpdate = false;
     let allowReason = 'gated';
     // A complete answer decided at the gate (2026-10-17): the Manager's own
-    // check, or a push the screen already said needs a tap. Returned before
-    // any release lookup — nothing is resolved, hashed or downloaded for it.
+    // check, or a held / still-landing push. Returned before any release
+    // lookup — nothing is resolved, hashed or downloaded for it.
     let earlyAnswer: Record<string, unknown> | null = null;
+    // Count this offer against the push (an authenticated Player check).
+    let trackOffer = false;
     let forcedPendingScreenId: string | null = null;
     // Identity of the operator push that set forcedPendingScreenId.
     let forcedPendingAt: Date | null = null;
@@ -497,9 +705,16 @@ export class PlayerOtaController {
             name: true,
             forceApkUpdatePendingAt: true,
             forceApkUpdateOverrideWindow: true,
+            // Tracked push (2026-10-18) — see push-tracking.ts.
+            forceApkUpdateHold: true,
+            forceApkUpdateOfferCount: true,
+            forceApkUpdateLastOfferAt: true,
+            forceApkUpdateTargetVersion: true,
+            forceApkUpdateTargetVersionCode: true,
             autoUpdatePlayerOverride: true,
             screenGroupId: true,
             lastOtaState: true,
+            lastOtaMessage: true,
             lastOtaAt: true,
             tenant: {
               select: {
@@ -582,54 +797,32 @@ export class PlayerOtaController {
         } else if (screen?.forceApkUpdatePendingAt) {
           const ageMs = Date.now() - new Date(screen.forceApkUpdatePendingAt).getTime();
 
-          // 2026-05-12 — operator: "my signage keeps refreshing and
-          // loading the webpage out of nowhere which can not happen
-          // when we are live with customers". Root cause: The Den
-          // was stuck at last_ota_state='INSTALLING' for 2h+ because
-          // Manager's notification-based install dialog was eaten by
-          // the OEM. The forceApkUpdatePendingAt flag stayed set →
-          // every periodic worker tick re-downloaded the APK +
-          // tried to install + failed → infinite loop chewing
-          // bandwidth and triggering WebView reloads.
-          //
-          // Defensive auto-clear: if last_ota_state has been
-          // INSTALLING for > 10 minutes without a versionCode bump,
-          // we KNOW the install failed (OEM ate the prompt, signature
-          // mismatch, permission denied, whatever). Clear the flag so
-          // the kiosk stops retrying. Operator can re-push manually.
-          const STALLED_INSTALL_MS = 10 * 60_000;
-          const stalled =
-            (screen.lastOtaState === 'INSTALLING' || screen.lastOtaState === 'ERROR') &&
-            screen.lastOtaAt &&
-            (Date.now() - new Date(screen.lastOtaAt).getTime() > STALLED_INSTALL_MS);
-
-          // ── 2026-10-17 — the screen SAID it needs a tap (ota-install-state.ts)
-          // Android on it is waiting for a person to tap Install; offering the
-          // push again would only re-run the same commit. Answer up to date
-          // WITH needsTap: the Player keeps its verified APK and keeps saying
-          // so, and a person pressing Update on the panel takes the
-          // panel-user-tap branch above.
-          if (ageMs < FORCE_WINDOW_MS && pushWaitsForTap({
-            pendingAt: screen.forceApkUpdatePendingAt,
-            lastOtaState: screen.lastOtaState,
-            lastOtaAt: screen.lastOtaAt,
-          })) {
-            allowReason = 'force-pending-needs-tap';
-            earlyAnswer = { uptoDate: true, needsTap: true };
-          } else if (stalled) {
-            this.logger.warn(
-              `[ota] auto-clearing force flag — install stalled at state=${screen.lastOtaState} ` +
-              `for ${Math.round((Date.now() - new Date(screen.lastOtaAt).getTime()) / 60000)}min ` +
-              `screen=${screen.id}`,
-            );
-            this.prisma.client.screen
-              .update({
-                where: { id: screen.id, tenantId: screen.tenantId },
-                data: { forceApkUpdatePendingAt: null } as any,
-              })
-              .catch(() => { /* swallow */ });
-            allowReason = `force-pending-but-stalled-${screen.lastOtaState}`;
-          } else if (ageMs < FORCE_WINDOW_MS) {
+          // ── TRACKED PUSH (2026-10-18, push-tracking.ts) ──────────────────
+          // Replaces three rules that could not see a stuck install:
+          //   * the 10-minute stalled-install auto-clear read `lastOtaState`,
+          //     which the device overwrites with CHECKING at the head of every
+          //     check — before this request — so it never fired, and when it
+          //     did it made the push disappear (2026-05-12, The Den);
+          //   * the 24-hour window offered the install on EVERY check until it
+          //     expired, then cleared the push without a word;
+          //   * piece 2's "the screen said NEEDS_TAP" answer, now one step of
+          //     the same decision.
+          // The push remembers its own offers and holds — visibly — once an
+          // offer has had its chance to land and did not.
+          const push = await this.evaluatePush(screen, {
+            versionCode: callerVc,
+            versionName: callerVn,
+            authenticated: deviceAuthenticated,
+            // Only a field-candidate screen gets here with source=user (the
+            // panel-user-tap branch above takes every other one).
+            person: callerSource === 'user',
+          });
+          if (push.answer) {
+            allowReason = push.reason;
+            earlyAnswer = push.answer;
+          } else if (!push.offer) {
+            allowReason = push.reason;
+          } else {
             // OTA maintenance-window gate (Sprint 11 Phase A).
             // If tenant has configured a window AND the screen-level
             // override is OFF, only allow the install during the window.
@@ -654,13 +847,14 @@ export class PlayerOtaController {
 
             if (overrideWindow || insideWindow) {
               allowUpdate = true;
-              allowReason = overrideWindow
+              allowReason = (overrideWindow
                 ? `force-pending-${Math.round(ageMs / 1000)}s-ago-override-window`
                 : windowConfigured
                   ? `force-pending-${Math.round(ageMs / 1000)}s-ago-inside-window`
-                  : `force-pending-${Math.round(ageMs / 1000)}s-ago`;
+                  : `force-pending-${Math.round(ageMs / 1000)}s-ago`) + `-${push.reason}`;
               forcedPendingScreenId = screen.id;
               forcedPendingAt = new Date(screen.forceApkUpdatePendingAt);
+              trackOffer = push.track;
             } else {
               allowReason = `force-pending-but-outside-window-${t!.otaWindowStart}-${t!.otaWindowEnd}-${t!.otaWindowTimezone}`;
               this.logger.log(
@@ -669,16 +863,6 @@ export class PlayerOtaController {
                 `${t!.otaWindowTimezone}; flag stays set, will re-evaluate next poll`,
               );
             }
-          } else {
-            allowReason = `force-pending-stale-${Math.round(ageMs / 60000)}min`;
-            // 2026-04-28 (Server audit P0-3) — clean up stale flag.
-            // Without this, a permanently-failing kiosk sits forever
-            // with a 25h+ old timestamp; subsequent /update-check
-            // calls correctly return uptoDate but the dashboard never
-            // sees the flag clear.
-            this.prisma.client.screen
-              .update({ where: { id: screen.id, tenantId: screen.tenantId }, data: { forceApkUpdatePendingAt: null } as any })
-              .catch(() => { /* swallow */ });
           }
         } else {
           allowReason = screen ? `no-force-flag-${autoDecision?.reason ?? 'auto-off'}` : 'no-screen-row';
@@ -790,8 +974,9 @@ export class PlayerOtaController {
     //
     // New behavior: keep the flag until persistReportedVersion sees
     // a versionCode bump (above) — that's the only proof the install
-    // actually landed. The 24h auto-stale window still applies as a
-    // safety net so a permanently-failing kiosk doesn't loop forever.
+    // actually landed. A permanently-failing kiosk no longer loops: since
+    // 2026-10-18 the push counts its offers and is HELD (visibly) once
+    // they did not land (push-tracking.ts), instead of a silent 24h expiry.
     if (forcedPendingScreenId) {
       this.logger.log(
         `[ota] flag-kept-until-install-confirms screen=${forcedPendingScreenId}`,
@@ -818,7 +1003,12 @@ export class PlayerOtaController {
       const release = configuredFieldRelease();
       if (!deviceAuthenticated || !lookupScreenId || !lookupTenantId ||
           forcedPendingScreenId !== lookupScreenId || !release) return {uptoDate:true};
-      if (callerVc >= release.versionCode) return {uptoDate:true};
+      if (callerVc >= release.versionCode) {
+        // Already on (or past) the candidate: the push has nothing to offer.
+        await this.clearPushAlreadyCurrent(lookupScreenId, lookupTenantId, forcedPendingAt,
+          `caller=${callerVn} candidate=${release.versionName}`);
+        return {uptoDate:true};
+      }
       if (blockedBySigningCutover(callerVn,release.versionName)) return {uptoDate:true,needsManualReinstall:true};
       const origin=apiOriginFromRequest(req);
       if (!origin || !origin.startsWith('https://')) return {uptoDate:true};
@@ -831,6 +1021,10 @@ export class PlayerOtaController {
         // is pending (review P2, 2026-10-10). A failed lookup or write still
         // holds the screen (catch below).
         await this.auditFieldOfferOnce(lookupScreenId, lookupTenantId, release, forcedPendingAt, callerVn);
+        if (trackOffer) {
+          await this.recordPushOffer(lookupScreenId, lookupTenantId, forcedPendingAt,
+            { versionName: release.versionName, versionCode: release.versionCode });
+        }
         this.logger.log(`[ota] decision=install-private-field screen=${lookupScreenId} target=${release.versionName} sha=${release.sha256.slice(0,12)}`);
         return {latest:{versionCode:release.versionCode,versionName:release.versionName,
           apkUrl:`${origin}/api/v1/player/field-apk/${release.sha256}?ticket=${encodeURIComponent(ticket)}`,
@@ -891,6 +1085,12 @@ export class PlayerOtaController {
           `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +
           `reason=caller-at-or-past-latest-published-tag`,
         );
+        // An operator pushed a screen that is already current ("On latest —
+        // push anyway"): nothing will ever be offered, so the push is done.
+        if (deviceAuthenticated && forcedPendingScreenId && lookupScreenId === forcedPendingScreenId && lookupTenantId) {
+          await this.clearPushAlreadyCurrent(lookupScreenId, lookupTenantId, forcedPendingAt,
+            `caller=${callerVn} latest=${info.versionName}`);
+        }
         return { uptoDate: true, latestVersionName: info.versionName };
       }
 
@@ -993,6 +1193,12 @@ export class PlayerOtaController {
           + (downloadTag ? `?${DOWNLOAD_TAG_PARAM}=${encodeURIComponent(downloadTag)}` : '')
         : info.apkUrl;
 
+      if (trackOffer && lookupScreenId && lookupTenantId) {
+        await this.recordPushOffer(lookupScreenId, lookupTenantId, forcedPendingAt, {
+          versionName: info.versionName,
+          versionCode: info.derivedVersionCode,
+        });
+      }
       this.logger.log(
         `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
         `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +

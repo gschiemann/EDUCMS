@@ -87,6 +87,9 @@ export async function armScreenApkUpdate(
     data: {
       forceApkUpdatePendingAt: new Date(),
       forceApkUpdateOverrideWindow: opts.overrideWindow,
+      // A NEW push starts a fresh record: no hold, no offers, no target
+      // (tracked pushes, player-ota/push-tracking.ts).
+      ...FRESH_PUSH_STATE,
       // OTA-02: an operator deliberately re-pushing IS the "resolved, try
       // again" signal; it clears the sticky failure stamp.
       lastOtaErrorAt: null,
@@ -115,6 +118,59 @@ export async function armScreenApkUpdate(
     console.warn(`[OTA ${opts.corrId}] redis publish FAILED for ${screen.id}: ${(e as Error).message}`);
   }
   return { armed, published };
+}
+
+/**
+ * The tracked-push columns of a push with no history — written when a push is
+ * armed (it starts fresh) and when one is cancelled (nothing left to track).
+ * They only mean anything while `forceApkUpdatePendingAt` is set.
+ */
+export const FRESH_PUSH_STATE = {
+  forceApkUpdateHold: null,
+  forceApkUpdateHoldAt: null,
+  forceApkUpdateHoldReason: null,
+  forceApkUpdateOfferCount: 0,
+  forceApkUpdateLastOfferAt: null,
+  forceApkUpdateTargetVersion: null,
+  forceApkUpdateTargetVersionCode: null,
+} as const;
+
+/**
+ * "Cancel update" for ONE screen (tracked pushes, 2026-10-18). A push no longer
+ * expires on its own: it stays on the dashboard — with its hold and the
+ * screen's last OTA report — until the screen runs the offered build or an
+ * operator cancels it here. Nothing is sent to the screen: its next update
+ * check simply finds no push. (An Android "Install?" prompt already on the
+ * glass is not ours to take down; it stays until someone answers it.)
+ * Returns the push that was cancelled (`cancelled: false` when there was
+ * none). Never touches a screen outside `screen.tenantId` (SEC-009), and only
+ * the push it read — a push re-sent in between is left alone.
+ */
+export async function cancelScreenApkUpdate(
+  prisma: PrismaService,
+  screen: CommandScreen,
+): Promise<{ cancelled: boolean; pushAt: string | null; hold: string | null; offers: number }> {
+  const row = (await prisma.client.screen.findFirst({
+    where: { id: screen.id, tenantId: screen.tenantId },
+    select: { forceApkUpdatePendingAt: true, forceApkUpdateHold: true, forceApkUpdateOfferCount: true } as any,
+  })) as any;
+  if (!row?.forceApkUpdatePendingAt) return { cancelled: false, pushAt: null, hold: null, offers: 0 };
+  const pushAt = new Date(row.forceApkUpdatePendingAt);
+  const done = await prisma.client.screen.updateMany({
+    where: { id: screen.id, tenantId: screen.tenantId, forceApkUpdatePendingAt: pushAt } as any,
+    data: {
+      forceApkUpdatePendingAt: null,
+      forceApkUpdateOverrideWindow: false,
+      ...FRESH_PUSH_STATE,
+    } as any,
+  });
+  if (!done.count) return { cancelled: false, pushAt: null, hold: null, offers: 0 };
+  return {
+    cancelled: true,
+    pushAt: pushAt.toISOString(),
+    hold: row.forceApkUpdateHold ?? null,
+    offers: Number(row.forceApkUpdateOfferCount) || 0,
+  };
 }
 
 /**

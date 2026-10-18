@@ -60,6 +60,8 @@ import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControl
 import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
 import { ScreenSleepWakeSection } from '@/components/screens/ScreenSleepWakeSection';
 import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
+import { deriveTrackedPush, holdIsCurrent } from './trackedPush';
+import { TrackedPushFooter } from './TrackedPushFooter';
 
 /**
  * Is an installed APK at or past the latest published one?
@@ -105,7 +107,16 @@ export function useApkPushState() {
   const markPushed = useCallback((screenId: string, priorVersion: string | null) => {
     setPushState((s) => ({ ...s, [screenId]: { at: Date.now(), priorVersion: priorVersion ?? null } }));
   }, []);
-  return { pushState, markPushed };
+  /** The operator cancelled the push (2026-10-18): this session's record of it ends too. */
+  const clearPushed = useCallback((screenId: string) => {
+    setPushState((s) => {
+      if (!(screenId in s)) return s;
+      const next = { ...s };
+      delete next[screenId];
+      return next;
+    });
+  }, []);
+  return { pushState, markPushed, clearPushed };
 }
 
 /**
@@ -1108,6 +1119,12 @@ export interface ScreenSettingsContentProps {
   pushState: { at: number; priorVersion: string | null } | undefined;
   pending: boolean;
   onPushApk: () => void;
+  /**
+   * 2026-10-18 — the operator cancelled this screen's push (tracked pushes).
+   * The page clears its own `pushState` for the screen, so the row stops
+   * counting a push that no longer exists.
+   */
+  onPushCancelled?: () => void;
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
   previewHref: string | null;
@@ -1170,6 +1187,7 @@ export function ScreenSettingsSections({
   pushState,
   pending,
   onPushApk,
+  onPushCancelled,
   onRefreshWeb,
   refreshWebPending,
   previewHref,
@@ -1236,7 +1254,9 @@ export function ScreenSettingsSections({
     return (l[0] ?? 0) > 1 || ((l[0] ?? 0) === 1 && (l[1] ?? 0) >= 1); // latest >= 1.1.0
   })();
   const pushed = !!pushState;
-  const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
+  // One clock reading per render: the push age and the footer's "Sent … ago".
+  const renderNowMs = Date.now();
+  const pushedMsAgo = pushState ? renderNowMs - pushState.at : 0;
   const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
   // APK install end-to-end (WS hop + download + Android install prompt
   // + replace + restart + first heartbeat after restart) takes 1-3 min
@@ -1269,7 +1289,20 @@ export function ScreenSettingsSections({
       : null;
   const waitingForTap = answerToPush === 'NEEDS_TAP' && !updatedSincePush;
   const failedCode = !updatedSincePush ? (answerToPush?.match(/^FAILED_([A-Z0-9_]+)$/)?.[1] ?? null) : null;
-  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS && !waitingForTap && !failedCode;
+  // 2026-10-18 — the SERVER's record of the push (tracked pushes,
+  // trackedPush.ts): it survives a reload, counts how often the build was
+  // handed to the screen and — once the server stopped offering it — says
+  // why (waiting for a tap, stalled, failed, expired). A hold describes the
+  // screen until it reports real progress after it (someone pressed Install
+  // now on the panel). `tracksPushes` = the API carries the record at all;
+  // an older one sends only `forceApkUpdatePendingAt`.
+  const trackedPush = deriveTrackedPush(screen);
+  const tracksPushes = typeof screen?.forceApkUpdateOfferCount === 'number';
+  const heldKind = trackedPush && !updatedSincePush &&
+    holdIsCurrent(trackedPush, { state: screen?.lastOtaState, at: screen?.lastOtaAt })
+    ? (trackedPush.kind as 'needs-tap' | 'stalled' | 'failed' | 'expired')
+    : null;
+  const stillWaiting = pushed && !updatedSincePush && pushedMsAgo < PUSH_TIMEOUT_MS && !waitingForTap && !failedCode && !heldKind;
   const timedOut = pushed && !updatedSincePush && pushedMsAgo >= PUSH_TIMEOUT_MS;
   // HONESTY FIX (2026-04-27): the previous stage machine showed
   // sending → downloading → installing → restarting purely off a
@@ -1423,7 +1456,7 @@ export function ScreenSettingsSections({
               the button. `managerStale` is only ever true when BOTH versions
               are known, so an API that doesn't advertise the Manager version
               leaves this branch exactly as it was. */}
-          {isAndroidPlayer && upToDate === true && !pushed && !managerStale && (
+          {isAndroidPlayer && upToDate === true && !pushed && !trackedPush && !managerStale && (
             <div
               className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100"
               title={t('screens.apk.upToDateTitle', { version: latestVersion ?? '' })}
@@ -1440,7 +1473,7 @@ export function ScreenSettingsSections({
                        stages. Disabled so it can't be re-clicked
                        mid-push, but still visible as a single source
                        of truth. */}
-          {isAndroidPlayer && !(upToDate === true && !pushed && !managerStale) && (() => {
+          {isAndroidPlayer && !(upToDate === true && !pushed && !trackedPush && !managerStale) && (() => {
             // 2026-04-28 (UX audit P0-C + I) — surface the device-truth
             // signals the kiosk has been writing to lastOtaState all
             // along. The dashboard previously ignored them entirely
@@ -1453,14 +1486,17 @@ export function ScreenSettingsSections({
             const otaMessage: string | null = (screen as any)?.lastOtaMessage ?? null;
             const otaAt: string | null = (screen as any)?.lastOtaAt ?? null;
             const otaAtMs = otaAt ? new Date(otaAt).getTime() : 0;
-            const pushAtMs = pushed ? pushState.at : 0;
+            // This session's push, else the server's (a reload keeps it).
+            const pushAtMs = pushed ? pushState.at : (trackedPush?.pushedAtMs ?? 0);
             // Only trust device state newer than this push. Otherwise
             // we'd show stale state from a previous OTA cycle.
             const deviceTruth = pushAtMs > 0 && otaAtMs > pushAtMs ? otaState : null;
 
-            const isInFlight = pushed && !updatedSincePush;
+            const isInFlight = (pushed || !!trackedPush) && !updatedSincePush;
             const TIMEOUT_MS = 35 * 60_000;  // matches periodic worker cadence
-            const isTimedOut = isInFlight && pushedMsAgo > TIMEOUT_MS;
+            // The stopwatch is for an API that cannot say what became of a
+            // push. One that tracks it says so itself (a hold), on the server.
+            const isTimedOut = pushed && !updatedSincePush && pushedMsAgo > TIMEOUT_MS && !tracksPushes;
 
             // Cutover screens get an explainer, not a push button — the
             // server would answer any push with needsManualReinstall, and
@@ -1491,9 +1527,11 @@ export function ScreenSettingsSections({
             // chrome on a screen that did exactly the right thing. It must
             // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
             // healthy screen never renders as a warning.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' | 'needs-tap' | 'failed' =
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' | 'relaunch-blocked' | 'needs-tap' | 'failed' | 'stalled' | 'expired' | 'waiting' | 'sent' =
               stage === 'installed' || updatedSincePush ? 'installed' :
               deviceTruth === 'INSTALLED' ? 'installed' :
+              // 2026-10-18 — the server stopped offering the push, and why.
+              heldKind ?? (
               // 2026-10-17 — terminal answers to the pending push (above).
               waitingForTap ? 'needs-tap' :
               failedCode ? 'failed' :
@@ -1507,24 +1545,33 @@ export function ScreenSettingsSections({
               deviceTruth === 'INSTALLING' ? 'installing' :
               deviceTruth === 'VERIFYING' ? 'verifying' :
               deviceTruth === 'DOWNLOADING' ? 'downloading' :
-              deviceTruth === 'UP_TO_DATE' ? 'uptodate' :
+              // "Already on vX ✓" only when vX is not known to be behind: a
+              // push held back by a maintenance window or a staged rollout is
+              // answered "up to date" too, and the screen still needs it.
+              deviceTruth === 'UP_TO_DATE' && !(trackedPush && upToDate === false) ? 'uptodate' :
               deviceTruth === 'CHECKING' ? 'checking' :
               isTimedOut ? 'timeout' :
+              // 2026-10-18 — a push the server holds: handed over, or not yet.
+              trackedPush && trackedPush.offers > 0 ? 'sent' :
+              trackedPush && !pushed ? 'waiting' :
               isInFlight ? 'pending' :
-              'idle';
+              'idle');
 
             const stageIcon: React.ReactNode =
               effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'relaunch-blocked' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
               effectiveStage === 'needs-tap' ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
+              effectiveStage === 'stalled'   ? <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /> :
+              effectiveStage === 'expired'   ? <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" /> :
               effectiveStage === 'failed'    ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
-              ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
+              ['pending', 'checking', 'downloading', 'verifying', 'installing', 'waiting', 'sent'].includes(effectiveStage)
                 ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
                 : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
 
+            const shownFailedCode = failedCode ?? (heldKind === 'failed' ? trackedPush?.failedCode ?? null : null);
             const pendingSecs = Math.floor(pushedMsAgo / 1000);
             const pendingElapsed = pendingSecs < 60
               ? `${pendingSecs}s`
@@ -1539,7 +1586,11 @@ export function ScreenSettingsSections({
               effectiveStage === 'uptodate'    ? t('screens.apk.alreadyLatest', { version: currentVersion || latestVersion || '?' }) :
               effectiveStage === 'relaunch-blocked' ? t('screens.apk.relaunchBlocked') :
               effectiveStage === 'needs-tap'   ? t('screens.apk.needsTap') :
-              effectiveStage === 'failed'      ? t('screens.apk.failed', { code: failedCode ?? '' }) :
+              effectiveStage === 'failed'      ? (shownFailedCode ? t('screens.apk.failed', { code: shownFailedCode }) : t('screens.apk.failedNoCode')) :
+              effectiveStage === 'stalled'     ? t('screens.apk.push.stalled') :
+              effectiveStage === 'expired'     ? t('screens.apk.push.expired') :
+              effectiveStage === 'sent'        ? t('screens.apk.push.sent') :
+              effectiveStage === 'waiting'     ? t('screens.apk.push.waiting') :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
               effectiveStage === 'installing'  ? `${t('screens.apk.installing')}${otaMessage ? ` ${otaMessage}` : ''}` :
               effectiveStage === 'verifying'   ? t('screens.apk.verifying') :
@@ -1561,6 +1612,8 @@ export function ScreenSettingsSections({
               effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
               effectiveStage === 'relaunch-blocked' ? 'text-amber-700 font-bold' :
               effectiveStage === 'needs-tap' ? 'text-amber-700 font-bold' :
+              effectiveStage === 'stalled'   ? 'text-amber-700 font-bold' :
+              effectiveStage === 'expired'   ? 'text-slate-700 font-bold' :
               effectiveStage === 'failed'    ? 'text-rose-700 font-bold' :
               effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
               effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
@@ -1577,9 +1630,26 @@ export function ScreenSettingsSections({
                   // back to the generic remedy if the message got lost.
                   ? (otaMessage || t('screens.apk.sublineRelaunch'))
                 : effectiveStage === 'needs-tap'
-                  ? t('screens.apk.sublineNeedsTap')
+                  // The server inferred it from an install that never landed
+                  // on a screen whose Android it cannot read — say "most likely".
+                  ? (heldKind && trackedPush?.reason === 'did-not-land-unknown-class'
+                      ? t('screens.apk.push.sublineNeedsTapLikely')
+                      : t('screens.apk.sublineNeedsTap'))
                 : effectiveStage === 'failed'
-                  ? t('screens.apk.sublineFailed')
+                  // An older player's install ERROR keeps no file to retry.
+                  ? (heldKind && trackedPush?.reason === 'device-reported-install-error'
+                      ? t('screens.apk.push.sublineFailed')
+                      : t('screens.apk.sublineFailed'))
+                : effectiveStage === 'stalled'
+                  ? (trackedPush?.reason === 'offer-limit-reached'
+                      ? t('screens.apk.push.sublineStalledLimit', { count: trackedPush.offers })
+                      : t('screens.apk.push.sublineStalled'))
+                : effectiveStage === 'expired'
+                  ? t('screens.apk.push.sublineExpired')
+                : effectiveStage === 'sent'
+                  ? t('screens.apk.push.sublineSent')
+                : effectiveStage === 'waiting'
+                  ? t('screens.apk.push.sublineWaiting')
                 : isInFlight
                   ? (deviceTruth && otaAt
                       ? t('screens.apk.sublineLastHeard', { time: new Date(otaAt).toLocaleTimeString() })
@@ -1596,7 +1666,8 @@ export function ScreenSettingsSections({
                       ? t('screens.apk.sublineInstalled', { version: currentVersion })
                       : t('screens.apk.sublineNoVersion');
             return (
-              <div className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-xs mb-3" data-testid="apk-update-status">
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-50/60 text-xs mb-3" data-testid="apk-update-status">
+              <div className="flex items-center gap-3 p-3.5">
                 {stageIcon}
                 <span className="flex-1 min-w-0">
                   <span className={`block ${stageColor}`}>{stageLabel}</span>
@@ -1612,9 +1683,22 @@ export function ScreenSettingsSections({
                     className="shrink-0 min-h-11 px-4 py-2 rounded-lg border border-indigo-700 bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={managerStale && upToDate === true ? t('screens.apkUpdateManagerTitle') : t('screens.apkUpdateTitle')}
                   >
-                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout', 'failed'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
+                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout', 'failed', 'stalled', 'expired'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
                   </button>
                 )}
+              </div>
+              {/* The server's push: sent when, handed over how often, which
+                  build — and Cancel (2026-10-18). Gone once the build lands. */}
+              {trackedPush && effectiveStage !== 'installed' && (
+                <TrackedPushFooter
+                  screenId={screen.id}
+                  screenName={screen.name ?? null}
+                  push={trackedPush}
+                  readOnly={displayReadOnly}
+                  nowMs={renderNowMs}
+                  onCancelled={onPushCancelled}
+                />
+              )}
               </div>
             );
           })()}

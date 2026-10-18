@@ -39,6 +39,7 @@ import {
   webviewMajorFromUserAgent,
   type StoredVideoSample,
 } from './file-playback';
+import { pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 
 /**
  * POST /api/v1/screens/:id/telemetry — the ONE routine report a player
@@ -323,6 +324,10 @@ export class TelemetryController {
             playerVersionCode: true,
             managerVersion: true,
             forceApkUpdatePendingAt: true,
+            // Tracked push (2026-10-18): the offered build satisfies it, and
+            // a held push is not re-announced. Read-only here.
+            forceApkUpdateHold: true,
+            forceApkUpdateTargetVersionCode: true,
             pendingRefreshAt: true,
             lastOtaState: true,
             lastOtaProgress: true,
@@ -368,11 +373,16 @@ export class TelemetryController {
       const vc = body.versions?.playerCode;
       if (typeof vc === 'number' && vc > 0) {
         data.playerVersionCode = Math.floor(vc);
-        const priorVc = Number(screen.playerVersionCode || 0);
         // An operator's pending APK push is cleared by the INSTALL landing,
-        // proven by a version-code increase — identical rule to the legacy
-        // heartbeat, kept byte-for-byte so a mixed fleet behaves the same.
-        if (screen.forceApkUpdatePendingAt && Math.floor(vc) > priorVc) {
+        // proven by a version-code increase OR the offered build being the
+        // one now running — identical rule to the legacy heartbeat
+        // (pushSatisfiedByReport), so a mixed fleet behaves the same.
+        if (pushSatisfiedByReport({
+          pendingAt: screen.forceApkUpdatePendingAt,
+          priorVersionCode: screen.playerVersionCode,
+          reportedVersionCode: Math.floor(vc),
+          targetVersionCode: screen.forceApkUpdateTargetVersionCode,
+        })) {
           data.forceApkUpdatePendingAt = null;
           data.lastOtaState = 'INSTALLED';
           data.lastOtaProgress = 100;
@@ -685,9 +695,8 @@ export class TelemetryController {
 
     // ── RESPONSE: everything the retired GETs handed the player ─────────
     const forceAt = otaCleared ? null : screen.forceApkUpdatePendingAt;
-    const FORCE_FRESH_MS = 24 * 60 * 60 * 1000;
-    const forceUpdatePending =
-      !!forceAt && Date.now() - new Date(forceAt).getTime() < FORCE_FRESH_MS;
+    // A HELD push is not re-announced: the server will not offer it.
+    const forceUpdatePending = pushIsActive({ pendingAt: forceAt, hold: screen.forceApkUpdateHold }, Date.now());
 
     return {
       ok: true,

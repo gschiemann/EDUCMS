@@ -138,6 +138,19 @@ describe('OTA-01 — clearing a pending push is privileged', () => {
     expect(prisma.client.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('tracked pushes (2026-10-18): the OFFERED build clears the push even when the stored version already moved', async () => {
+    // The Manager's anonymous check stored 64 first; no increase is visible
+    // to the Player's own authenticated report — only the recorded target.
+    const already = { ...screenWithPendingPush(), playerVersionCode: 64, forceApkUpdateTargetVersionCode: 64 };
+    const authed = harness(already);
+    await (authed.controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: true });
+    expect(persistedData(authed.prisma).forceApkUpdatePendingAt).toBeNull();
+    // OTA-01 still holds: the same claim, unauthenticated, clears nothing.
+    const anon = harness(already);
+    await (anon.controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: false });
+    expect(persistedData(anon.prisma)).not.toHaveProperty('forceApkUpdatePendingAt');
+  });
+
   it('the fleet keeps reporting its version either way — telemetry is not gated', async () => {
     // Gating version telemetry would blind the whole fleet-version chip for
     // every kiosk on the shipped (tokenless) APK. Only the destructive

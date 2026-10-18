@@ -88,6 +88,12 @@ export class ScreenGroupsController {
             address: true, lastCacheReport: true, lastCacheReportAt: true,
             playerVersion: true, playerVersionCode: true, playerVersionAt: true,
             forceApkUpdatePendingAt: true,
+            // 2026-10-18 — the tracked push's own state (hold, offers, the
+            // build offered; player-ota/push-tracking.ts). Same proactive
+            // add, for the same 2026-04-27 reason.
+            forceApkUpdateHold: true, forceApkUpdateHoldAt: true,
+            forceApkUpdateHoldReason: true, forceApkUpdateOfferCount: true,
+            forceApkUpdateLastOfferAt: true, forceApkUpdateTargetVersion: true,
             // v1.0.12 — per-phase OTA state. Adding here proactively
             // so the dashboard chip can read it without repeating the
             // exact bug we just spent 3 hours on.

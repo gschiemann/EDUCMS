@@ -273,7 +273,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const searchRef = useRef<HTMLInputElement>(null);
   const refreshWeb = useRefreshWeb();
   const forceApk = useForceApkUpdate();
-  const { pushState, markPushed } = useApkPushState();
+  const { pushState, markPushed, clearPushed } = useApkPushState();
   const createGroup = useCreateScreenGroup();
   const uploadFloorPlan = useUploadFloorPlan();
   // New group form (2026-09-14, Greg: "an obvious button to add another screen
@@ -1380,6 +1380,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           onOpenDisplaySchedule={() =>
             onOpenDisplaySchedule({ kind: 'screen', id: selectedRow.screen.id, name: selectedRow.screen.name ?? 'Screen' })}
           pushState={pushState[selectedRow.screen.id]}
+          onPushCancelled={() => clearPushed(selectedRow.screen.id)}
           apkPending={forceApk.isPending}
           onPushApk={() => {
             const id = selectedRow.screen.id;

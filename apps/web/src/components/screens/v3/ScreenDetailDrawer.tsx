@@ -165,6 +165,8 @@ export interface ScreenDetailDrawerProps {
    */
   pushState: { at: number; priorVersion: string | null } | undefined;
   onPushApk: () => void;
+  /** The operator cancelled this screen's push (2026-10-18, tracked pushes). */
+  onPushCancelled?: () => void;
   apkPending: boolean;
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
@@ -183,7 +185,7 @@ export interface ScreenDetailDrawerProps {
 export function ScreenDetailDrawer({
   row, placeName, previewHref, canControl, groups, now,
   initialTab = 'overview', onClose, onChanged, onOpenDisplaySchedule,
-  pushState, onPushApk, apkPending, onRefreshWeb, refreshWebPending, syncActive, syncStatus, onSetLocation,
+  pushState, onPushApk, onPushCancelled, apkPending, onRefreshWeb, refreshWebPending, syncActive, syncStatus, onSetLocation,
 }: ScreenDetailDrawerProps) {
   useOverlayLock(); // mounts only while open — hides the mobile tab bar
   const { screen, status, expected, reported, video } = row;
@@ -875,6 +877,7 @@ export function ScreenDetailDrawer({
                 pushState={pushState}
                 pending={apkPending}
                 onPushApk={onPushApk}
+                onPushCancelled={() => { onPushCancelled?.(); onChanged?.(); }}
                 onRefreshWeb={onRefreshWeb}
                 refreshWebPending={refreshWebPending}
                 previewHref={previewHref}

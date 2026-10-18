@@ -1,4 +1,5 @@
 import { ScreenWedgeDetectorCron } from './screen-wedge-detector.cron';
+import { PUSH_EXPIRE_MS, pushIsActive } from '../player-ota/push-tracking';
 
 /**
  * decide() is the pure policy core of the wedge detector — these tests
@@ -146,10 +147,45 @@ describe('ScreenWedgeDetectorCron.sweep candidate query', () => {
     const cron = new ScreenWedgeDetectorCron(prisma as any, {} as any, {} as any);
     await cron.sweep();
     const where = (findMany.mock.calls[0] as any)[0].where;
-    expect(where.AND).toHaveLength(2);
+    expect(where.AND).toHaveLength(3);
     expect(where.AND[1].OR).toEqual([
       { lastRenderedAt: null },
       { lastRenderedAt: { lt: expect.any(Date) } },
     ]);
+    // Tracked pushes (2026-10-18): only an UN-held push younger than 24 h
+    // keeps a screen out of wedge recovery.
+    expect(where.AND[2].OR).toEqual([
+      { forceApkUpdatePendingAt: null },
+      { forceApkUpdateHold: { not: null } },
+      { forceApkUpdatePendingAt: { lte: expect.any(Date) } },
+    ]);
+    expect(where).not.toHaveProperty('forceApkUpdatePendingAt');
+  });
+});
+
+describe('ScreenWedgeDetectorCron.noActivePushWhere', () => {
+  const now = Date.UTC(2026, 9, 17, 18, 0, 0);
+  const where = ScreenWedgeDetectorCron.noActivePushWhere(now);
+  // Evaluate the OR the way Postgres would, for one row.
+  const eligible = (row: { pendingAt: Date | null; hold: string | null }) =>
+    row.pendingAt === null || row.hold !== null ||
+    row.pendingAt.getTime() <= (where.OR[2].forceApkUpdatePendingAt.lte as Date).getTime();
+
+  it('a screen with no push is eligible for recovery', () => {
+    expect(eligible({ pendingAt: null, hold: null })).toBe(true);
+  });
+  it('a fresh, un-held push is an install in flight — not eligible', () => {
+    expect(eligible({ pendingAt: new Date(now - 5 * 60_000), hold: null })).toBe(false);
+  });
+  it('a held push (waiting for a tap, stalled, failed, expired) is not an install in flight', () => {
+    for (const hold of ['NEEDS_TAP', 'STALLED', 'FAILED', 'EXPIRED']) {
+      expect(eligible({ pendingAt: new Date(now - 5 * 60_000), hold })).toBe(true);
+    }
+  });
+  it('an un-held push 24 h old no longer keeps the screen out of recovery — the same edge pushIsActive draws', () => {
+    expect(eligible({ pendingAt: new Date(now - PUSH_EXPIRE_MS), hold: null })).toBe(true);
+    expect(pushIsActive({ pendingAt: new Date(now - PUSH_EXPIRE_MS), hold: null }, now)).toBe(false);
+    expect(eligible({ pendingAt: new Date(now - PUSH_EXPIRE_MS + 60_000), hold: null })).toBe(false);
+    expect(pushIsActive({ pendingAt: new Date(now - PUSH_EXPIRE_MS + 60_000), hold: null }, now)).toBe(true);
   });
 });
