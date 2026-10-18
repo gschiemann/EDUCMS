@@ -100,19 +100,25 @@ async function installSafariLikeCredentials(page: Page) {
       }
       return new Promise(() => { /* the sheet is open for the rest of the test */ });
     };
-    // On the PROTOTYPE: WebKit ignores an assignment to the instance property.
-    Object.defineProperty(CredentialsContainer.prototype, 'get', { value: fakeGet, configurable: true, writable: true });
-    // Safari HAS the WebAuthn constructor; Playwright's Linux WebKit build does not, so the
-    // app's support check (`passkeysSupported` → is `PublicKeyCredential` a function) said no
-    // and "Use your passkey" was never offered — every attempt in CI WebKit, 2026-10-18. A
-    // minimal one stands in where the engine lacks it (as in passkey-other-device.spec.ts);
-    // engines that have one are left untouched.
+    // Safari has Credential Management and the WebAuthn constructor; Playwright's Linux WebKit
+    // build has neither (2026-10-18): `CredentialsContainer.prototype` threw, the rest of this
+    // script never ran, the app's support check (`passkeysSupported` → is `PublicKeyCredential`
+    // a function) said no, and "Use your passkey" was never offered — every attempt in CI
+    // WebKit (reproduced in chromium by deleting those three APIs first). Where an engine has
+    // them they are used exactly as before; where it lacks them, minimal stand-ins (as in
+    // passkey-other-device.spec.ts) make the stub the Safari it describes.
     const pkcHost = window as unknown as { PublicKeyCredential?: unknown };
     if (typeof pkcHost.PublicKeyCredential !== 'function') {
       const PKC = function PublicKeyCredential() {} as unknown as Record<string, unknown>;
       PKC.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
       PKC.isConditionalMediationAvailable = () => Promise.resolve(false);
       pkcHost.PublicKeyCredential = PKC;
+    }
+    if (typeof CredentialsContainer === 'function') {
+      // On the PROTOTYPE: WebKit ignores an assignment to the instance property.
+      Object.defineProperty(CredentialsContainer.prototype, 'get', { value: fakeGet, configurable: true, writable: true });
+    } else {
+      Object.defineProperty(navigator, 'credentials', { configurable: true, value: { get: fakeGet } });
     }
   });
 }

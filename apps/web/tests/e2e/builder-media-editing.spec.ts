@@ -3,6 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ORIGIN = process.env.E2E_BASE || 'http://localhost:3000';
+
+// Pixel ratio 1 in every engine (2026-10-18), like board-media-compatibility:
+// Desktop Safari is deviceScaleFactor 2 and Linux CI's WebKit paints the 4K
+// boards these tests load in software, 4x Chromium's pixels. Measured on one
+// commit, WebKit, one worker, no retries (PR #107): the built-in media tests
+// 35.2 s -> 14.3 s each, first-attempt timeouts 1 -> 0 (the clinic/retail
+// boards' slot not visible within 5 s — flaky in every recent run). Neither
+// these tests nor the builder read devicePixelRatio; every assertion here is in
+// CSS pixels or computed style. Chromium was already at 1.
+test.use({ deviceScaleFactor: 1 });
 const CORS = {
   'Access-Control-Allow-Origin': ORIGIN,
   'Access-Control-Allow-Credentials': 'true',
