@@ -9,11 +9,11 @@ export const businessProfitKey = ['super-business'] as const;
 export interface SavePlatformCostBody {
   provider: string;
   service: string;
-  planName?: string;
+  planName?: string | null;
   monthlyCostCents: number;
-  budgetCents?: number;
-  nextBillAt?: string;
-  notes?: string;
+  budgetCents?: number | null;
+  nextBillAt?: string | null;
+  notes?: string | null;
   active?: boolean;
 }
 

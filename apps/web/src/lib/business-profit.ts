@@ -34,6 +34,8 @@ export interface BusinessProfitResponse {
   recommendations: Array<{
     id: string;
     tone: 'info' | 'warning' | 'critical';
+    kind?: 'costs' | 'pricing' | 'collections' | 'budget' | 'stale_cost' | 'capacity' | 'capacity_unavailable';
+    values?: Record<string, string | number>;
     title: string;
     detail: string;
     href?: string;
@@ -49,7 +51,7 @@ export function dollarsToCents(value: string): number | null {
   const cents = Number((match[2] ?? '').padEnd(2, '0') || '0');
   if (!Number.isSafeInteger(dollars) || dollars > Math.floor(Number.MAX_SAFE_INTEGER / 100)) return null;
   const result = dollars * 100 + cents;
-  return Number.isSafeInteger(result) ? result : null;
+  return Number.isSafeInteger(result) && result <= 1_000_000_000 ? result : null;
 }
 
 export function centsToDollarInput(cents: number | null | undefined): string {

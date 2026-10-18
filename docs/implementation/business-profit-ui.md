@@ -1,26 +1,29 @@
 # Business profit UI implementation
 
-`/super/profit` provides a SUPER_ADMIN-only view of committed monthly revenue, tracked receivables, recorded recurring platform costs, estimated contribution profit and margin, and service capacity. It labels revenue and profit as estimates, exposes unpriced customers and partial cost coverage, and states that provider bills are not synced and no provider plan is upgraded automatically. The cost register records manual entries, budgets, next bill dates, notes, observed timestamps, and archive/restore state. The existing capacity card is reused without modification.
+`/super/profit` provides the SUPER_ADMIN-only view of committed monthly revenue, tracked receivables, recorded recurring platform costs, estimated contribution profit and margin, recommendations, and service capacity. It labels revenue and profit as estimates, exposes unpriced customers and partial cost coverage, and explains that provider bills are not automatically synced and provider plans are never upgraded automatically. The cost register records monthly estimates with budgets, next bill dates, notes, manual-source/freshness labels, and archive/restore state. Existing capacity UI is reused without modification.
 
-The data hooks use the `['super-business']` query key, are disabled until the hydrated user is confirmed as `SUPER_ADMIN`, do not poll, and invalidate the business summary after cost mutations. Amount entry converts decimal dollar strings directly to integer cents.
+The hooks use the `['super-business']` query key, are disabled until hydrated identity confirms `SUPER_ADMIN`, do not poll, and invalidate the business summary after cost mutations. Optional fields cleared in the edit form are submitted as explicit `null`. “Other” provider values remain separate from service names. Recommendation codes and values are localized in English, Spanish, and Chinese, while legacy prose remains a fallback. Currency and dates use the active locale. Dollar entry is converted directly to integer cents.
 
 ## Validation
 
 - `pnpm --filter web exec jest --runInBand src/lib/__tests__/business-profit.test.ts src/app/super/profit/__tests__/page.test.tsx` — 2 suites, 4 tests passed.
-- `pnpm --filter web exec eslint src/app/super/profit/page.tsx src/app/super/profit/__tests__/page.test.tsx src/hooks/use-business-profit.ts src/lib/business-profit.ts src/lib/__tests__/business-profit.test.ts` — passed.
-- `pnpm --filter @cms/api-types build` and `pnpm --filter @cms/scoreboard-cts build` — passed in this isolated worktree.
-- `pnpm --filter web exec tsc --noEmit` — passed after workspace type packages were built.
-- `node apps/web/tools/check-i18n-parity.cjs` and `git diff --check` — passed.
+- Target ESLint across profit page, unit tests, Playwright spec/config, hook and helper — passed.
+- `pnpm --filter web exec tsc --noEmit` — passed after workspace type packages were built in this isolated worktree.
+- `node apps/web/tools/check-i18n-parity.cjs` — passed, 5,102 keys in each catalog.
+- `git diff --check` — passed.
+- `pnpm --filter web exec playwright test --config src/app/super/profit/playwright.config.ts` — Chromium and WebKit passed create, edit, explicit nullable-field clearing, archive/restore, provider/service preservation, console check, and 375px viewport verification (2 tests total; 5.3 seconds). Screenshots: `apps/web/test-results/profit-chromium-375.png` and `apps/web/test-results/profit-webkit-375.png` (ignored test artifacts).
 
 ## SHA-256
 
 | File | SHA-256 |
 |---|---|
-| `apps/web/src/app/super/profit/page.tsx` | `c9c05ebb52fd05b9d4b6031ab014a6e3007b1248bdf83a3d06f1ee28ad6f5edb` |
-| `apps/web/src/app/super/profit/__tests__/page.test.tsx` | `9cbfb355f122dab585725ca4009937d7521a2b6f61068e7133d905dc5ceeea44` |
-| `apps/web/src/hooks/use-business-profit.ts` | `4f4024e299798c916d0b0f79ea4f635c45059412adf8ecfe9835a7e6688acc78` |
-| `apps/web/src/lib/business-profit.ts` | `c8d814100d60ef80bbe4e8c9670f6235ca23be13181fbc9288c28a1efc173a06` |
-| `apps/web/src/lib/__tests__/business-profit.test.ts` | `1c509944d97d5554811a3c7f809f524935fd386d9975b10ed03c3310cbab4873` |
-| `apps/web/src/i18n/messages/en.json` | `1cc3f05c644689fb2023ab473c9d280fc285e4f7878a77c197a0d04f89283ea2` |
-| `apps/web/src/i18n/messages/es.json` | `297b3fd8d7a1430f3ee5a33509b99d5e7cb4c36fae8604241c1d0e2a36e693a9` |
-| `apps/web/src/i18n/messages/zh.json` | `cb60673790b3f96c109f173920a1f20777f356c264abed77ceb0e4766475d5f5` |
+| `apps/web/src/app/super/profit/page.tsx` | `8dd90eaf115bd8f41ab6184382fb9dc4d1ddcedee1dcd2ae32e7a15ea3f34913` |
+| `apps/web/src/app/super/profit/__tests__/page.test.tsx` | `2b09083f94bd64622ae4d5c0a8747d935e1333b431361e79d519b2a382b0cdfc` |
+| `apps/web/src/app/super/profit/business-profit.spec.ts` | `ddb22c7675d944f320935bd6401f97ac60f145a15388f99d657341d65347152b` |
+| `apps/web/src/app/super/profit/playwright.config.ts` | `cfc3da3a18fe0b458d0a1380731512499d9138cfe72b9dc26ef49145abac1fe3` |
+| `apps/web/src/hooks/use-business-profit.ts` | `46f340fb4e91fd53933a4878f4a440f22532911efaf004e665cb36fecb9d8ed8` |
+| `apps/web/src/lib/business-profit.ts` | `e16b695a7145f5d2e70325ebcb937e1d7f93dd70550d1267b9ccf1cade877c09` |
+| `apps/web/src/lib/__tests__/business-profit.test.ts` | `4da0ab3b31aa40c4b6ac6f6b3490c4044f12b8cbd37936904358b9c851e6ca26` |
+| `apps/web/src/i18n/messages/en.json` | `60864305b10c1cd4ce59c72ca275d408c39c1acd19d25350574eea9ee8fdd608` |
+| `apps/web/src/i18n/messages/es.json` | `7d1a4f51e664bc0656f84a8f98ad653fec7af46458a24fd232c074bc8d3716bd` |
+| `apps/web/src/i18n/messages/zh.json` | `d48b7219f760e49342eecf6185dcd349fc1a7e7ca9c179b918192ed6c7326f8a` |

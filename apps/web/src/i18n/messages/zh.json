@@ -5619,6 +5619,54 @@
     "perMonth": "/ 月",
     "edit": "编辑",
     "archive": "归档",
-    "restore": "恢复"
+    "restore": "恢复",
+    "other": "其他",
+    "otherProvider": "供应商名称",
+    "otherProviderPlaceholder": "输入供应商名称",
+    "providerRequired": "请输入供应商名称。",
+    "sourceBadge": "来源：{source}",
+    "unknownProvider": "未知供应商",
+    "unknownService": "服务",
+    "recommendationKinds": {
+      "costs": {
+        "title": "补全平台成本登记",
+        "detail": "添加已知的基础设施经常性费用，以改进贡献利润估算。"
+      },
+      "pricing": {
+        "title": "检查客户定价",
+        "detail": "有 {count} 个活跃客户尚未记录价格。"
+      },
+      "collections": {
+        "title": "检查未收应收款",
+        "detail": "跟进未结或逾期账单，以确认实际收款情况。"
+      },
+      "budget": {
+        "title": "检查平台预算",
+        "detail": "{provider} · {service} 已接近或达到记录的月预算。更改套餐前请查看实际使用量和供应商条款。"
+      },
+      "stale_cost": {
+        "title": "更新成本核对记录",
+        "detail": "{provider} · {service} 的记录金额可能已过期。请查看最新账单并更新记录。"
+      },
+      "capacity": {
+        "title": "检查服务容量",
+        "detail": "{metric} 指标接近当前上限。请查看下方容量面板并对比供应商套餐后再采取措施。"
+      },
+      "capacity_unavailable": {
+        "title": "容量读数暂不可用",
+        "detail": "目前无法获取容量数据。请查看下方容量面板后再决定服务调整。"
+      }
+    },
+    "capacityMetrics": {
+      "db_size": "数据库大小",
+      "db_connections": "数据库连接数",
+      "storage_bytes": "对象存储",
+      "redis_memory": "Redis 内存",
+      "api_memory": "API 内存",
+      "event_loop_lag": "API 事件循环延迟",
+      "paired_screens": "已配对屏幕",
+      "table": "数据库表 {name}",
+      "unknown": "容量指标"
+    }
   }
 }

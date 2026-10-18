@@ -21,6 +21,7 @@ jest.mock('@/hooks/use-business-profit', () => ({
   useSavePlatformCost: () => ({ mutateAsync: createMutation, isPending: false }),
   useUpdatePlatformCost: () => ({ mutateAsync: updateMutation, isPending: false }),
 }));
+jest.mock('next-intl', () => ({ ...jest.requireActual('next-intl'), useLocale: () => 'en' }));
 jest.mock('@/app/super/efficiency/CapacityCard', () => ({ CapacityCard: () => <div data-testid="capacity-card" /> }));
 jest.mock('next/navigation', () => ({ useRouter: () => ({ back: jest.fn() }) }));
 jest.mock('next/link', () => ({ __esModule: true, default: ({ href, children, ...props }: { href: string; children: React.ReactNode; [key: string]: unknown }) => <a href={href} {...props}>{children}</a> }));

@@ -7,6 +7,7 @@ describe('business profit money and date helpers', () => {
     expect(dollarsToCents('1,234.56')).toBeNull();
     expect(dollarsToCents('12.345')).toBeNull();
     expect(dollarsToCents('-1.00')).toBeNull();
+    expect(dollarsToCents('10000000.01')).toBeNull();
     expect(dollarsToCents('90071992547410.00')).toBeNull();
   });
 
@@ -14,6 +15,7 @@ describe('business profit money and date helpers', () => {
     expect(centsToDollarInput(205)).toBe('2.05');
     expect(centsToDollarInput(null)).toBe('');
     expect(formatUsd(205, 'en-US')).toBe('$2.05');
+    expect(formatUsd(205, 'es-ES')).toContain('2,05');
   });
 
   it('serializes a date input consistently and omits a blank value', () => {

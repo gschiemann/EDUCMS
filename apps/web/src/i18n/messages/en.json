@@ -5619,6 +5619,54 @@
     "perMonth": "/ mo",
     "edit": "Edit",
     "archive": "Archive",
-    "restore": "Restore"
+    "restore": "Restore",
+    "other": "Other",
+    "otherProvider": "Provider name",
+    "otherProviderPlaceholder": "Enter provider name",
+    "providerRequired": "Enter the provider name.",
+    "sourceBadge": "{source} source",
+    "unknownProvider": "Unknown provider",
+    "unknownService": "service",
+    "recommendationKinds": {
+      "costs": {
+        "title": "Complete the platform cost register",
+        "detail": "Add the recurring infrastructure charges you know about to improve the contribution estimate."
+      },
+      "pricing": {
+        "title": "Review customer pricing",
+        "detail": "{count, plural, one {# active customer has no price recorded.} other {# active customers have no price recorded.}}"
+      },
+      "collections": {
+        "title": "Review unpaid receivables",
+        "detail": "Follow up on recorded open or overdue invoices to confirm what has actually been collected."
+      },
+      "budget": {
+        "title": "Review a platform budget",
+        "detail": "{provider} · {service} is at or near its recorded monthly budget. Check actual usage and provider terms before changing the plan."
+      },
+      "stale_cost": {
+        "title": "Refresh a cost observation",
+        "detail": "The recorded amount for {provider} · {service} may be outdated. Check the latest provider bill and update the entry."
+      },
+      "capacity": {
+        "title": "Review service capacity",
+        "detail": "The {metric} reading is nearing its current limit. Review Capacity below and compare the provider plan before taking action."
+      },
+      "capacity_unavailable": {
+        "title": "Capacity readings are unavailable",
+        "detail": "Capacity data is not available right now. Check the Capacity panel below before making a service decision."
+      }
+    },
+    "capacityMetrics": {
+      "db_size": "database size",
+      "db_connections": "database connections",
+      "storage_bytes": "object storage",
+      "redis_memory": "Redis memory",
+      "api_memory": "API memory",
+      "event_loop_lag": "API event loop lag",
+      "paired_screens": "paired screens",
+      "table": "database table {name}",
+      "unknown": "capacity metric"
+    }
   }
 }

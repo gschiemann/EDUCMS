@@ -5619,6 +5619,54 @@
     "perMonth": "/ mes",
     "edit": "Editar",
     "archive": "Archivar",
-    "restore": "Restaurar"
+    "restore": "Restaurar",
+    "other": "Otro",
+    "otherProvider": "Nombre del proveedor",
+    "otherProviderPlaceholder": "Introduce el nombre del proveedor",
+    "providerRequired": "Introduce el nombre del proveedor.",
+    "sourceBadge": "Origen: {source}",
+    "unknownProvider": "Proveedor desconocido",
+    "unknownService": "servicio",
+    "recommendationKinds": {
+      "costs": {
+        "title": "Completa el registro de costos",
+        "detail": "Añade los cargos recurrentes de infraestructura que conoces para mejorar la estimación de contribución."
+      },
+      "pricing": {
+        "title": "Revisa los precios de clientes",
+        "detail": "{count, plural, one {# cliente activo no tiene un precio registrado.} other {# clientes activos no tienen un precio registrado.}}"
+      },
+      "collections": {
+        "title": "Revisa las cuentas por cobrar",
+        "detail": "Haz seguimiento de facturas pendientes o vencidas para confirmar qué se ha cobrado realmente."
+      },
+      "budget": {
+        "title": "Revisa un presupuesto de plataforma",
+        "detail": "{provider} · {service} está cerca o en su presupuesto mensual registrado. Comprueba el uso y las condiciones del proveedor antes de cambiar el plan."
+      },
+      "stale_cost": {
+        "title": "Actualiza la observación de un costo",
+        "detail": "El importe registrado para {provider} · {service} puede estar desactualizado. Revisa la factura más reciente y actualiza la entrada."
+      },
+      "capacity": {
+        "title": "Revisa la capacidad del servicio",
+        "detail": "La lectura de {metric} se acerca a su límite actual. Revisa el panel Capacidad y compara el plan antes de actuar."
+      },
+      "capacity_unavailable": {
+        "title": "Las lecturas de capacidad no están disponibles",
+        "detail": "Los datos de capacidad no están disponibles ahora. Revisa el panel Capacidad antes de decidir sobre el servicio."
+      }
+    },
+    "capacityMetrics": {
+      "db_size": "tamaño de base de datos",
+      "db_connections": "conexiones de base de datos",
+      "storage_bytes": "almacenamiento de objetos",
+      "redis_memory": "memoria de Redis",
+      "api_memory": "memoria de API",
+      "event_loop_lag": "demora del ciclo de eventos de API",
+      "paired_screens": "pantallas emparejadas",
+      "table": "tabla de base de datos {name}",
+      "unknown": "métrica de capacidad"
+    }
   }
 }
