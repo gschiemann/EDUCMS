@@ -40,6 +40,7 @@ function matches(row: Row, where?: Row): boolean {
     if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
       if ('in' in cond) return cond.in.includes(v);
       if ('gt' in cond) return v != null && val(v) > val(cond.gt);
+      if ('lte' in cond) return v != null && val(v) <= val(cond.lte);
       if ('contains' in cond) return typeof v === 'string' && v.includes(cond.contains);
     }
     return v === cond;
@@ -77,7 +78,7 @@ function fakeDb() {
     log: [] as string[],
   };
   const reads = { windowFindFirst: 0 };
-  const failNext = { windowRead: false, audit: false };
+  const failNext = { windowRead: false, audit: false, screenUpdateMany: false };
   const model = (rows: () => Row[]) => ({
     findFirst: async ({ where, orderBy, select }: any = {}) => {
       const r = order(rows().filter((x) => matches(x, where)), orderBy)[0];
@@ -117,6 +118,7 @@ function fakeDb() {
           cancelledByUserId: null,
           cancelledByEmail: null,
           note: null,
+          expiryHandledAt: null,
           ...data,
         };
         db.windows.push(row);
@@ -139,6 +141,10 @@ function fakeDb() {
         return r;
       },
       updateMany: async ({ where, data }: any) => {
+        if (failNext.screenUpdateMany) {
+          failNext.screenUpdateMany = false;
+          throw new Error('screen write unavailable');
+        }
         const hit = db.screens.filter((x) => matches(x, where));
         hit.forEach((x) => Object.assign(x, data));
         return { count: hit.length };
@@ -476,6 +482,95 @@ describe('push now', () => {
     await expect(h.svc.push(owner, w.id, { screenIds: [S1] })).rejects.toThrow('audit unavailable');
     expect(h.db.screens.find((s) => s.id === S1)!.forceApkUpdatePendingAt).toBeNull();
     expect(h.redis.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('a window that EXPIRES leaves nothing to install', () => {
+  const DURATION = 120 * 60_000;
+  async function pushedThenExpired() {
+    setNow(T0);
+    const h = harness();
+    const w = await h.svc.arm(owner, armBody());
+    setNow(T0 + PUSH_SETTLE_MS);
+    await h.svc.push(owner, w.id, { screenIds: [S1] });
+    await h.svc.push(owner, w.id, { screenIds: [S3] });
+    // S3 is pushed again from the dashboard afterwards: that push is not the window's.
+    const theirs = new Date(T0 + PUSH_SETTLE_MS + 5_000);
+    h.db.screens.find((s) => s.id === S3)!.forceApkUpdatePendingAt = theirs;
+    setNow(T0 + DURATION + 1_000);
+    return { h, w, theirs };
+  }
+  const rows = (h: ReturnType<typeof harness>, action: string) => h.db.audit.filter((a) => a.action === action);
+
+  it('before the next update check is answered: its waiting pushes are cancelled, one row per screen and per organization', async () => {
+    const { h, w, theirs } = await pushedThenExpired();
+    await h.svc.refreshGateWindow(); // what FieldWindowGateMiddleware runs before the handler
+    expect(h.db.screens.find((s) => s.id === S1)!.forceApkUpdatePendingAt).toBeNull();
+    expect(h.db.screens.find((s) => s.id === S3)!.forceApkUpdatePendingAt).toEqual(theirs);
+    const cancels = rows(h, FIELD_AUDIT.PUSH_CANCEL);
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0]).toMatchObject({ tenantId: T1, targetId: S1, userId: null, targetType: 'screen' });
+    expect(JSON.parse(cancels[0].details)).toMatchObject({ windowId: w.id, candidate: CANDIDATE, sha256: RELEASE.sha256, reason: 'window-expired', actorEmail: null });
+    const ends = rows(h, FIELD_AUDIT.EXPIRE);
+    expect(ends.map((a) => a.tenantId)).toEqual([T1, T2]);
+    expect(JSON.parse(ends[0].details)).toMatchObject({ windowId: w.id, candidate: CANDIDATE, sha256: RELEASE.sha256, pushesCancelled: [S1] });
+    expect(h.db.windows[0].expiryHandledAt).toEqual(new Date(T0 + DURATION + 1_000));
+    expect(activeFieldWindow()).toBeNull();
+  });
+
+  it('is done once, even by two replicas at the same moment', async () => {
+    const { h } = await pushedThenExpired();
+    const other = new FieldBuildsService(h.prisma, { publish: jest.fn() } as any, { signMessage: jest.fn() } as any);
+    await Promise.all([h.svc.releaseEndedWindows(), other.releaseEndedWindows(), h.svc.releaseEndedWindows()]);
+    await h.svc.releaseEndedWindows();
+    expect(rows(h, FIELD_AUDIT.PUSH_CANCEL)).toHaveLength(1);
+    expect(rows(h, FIELD_AUDIT.EXPIRE)).toHaveLength(2);
+  });
+
+  it('runs the moment the held window ends, even inside the 10 s cache', async () => {
+    const h = harness();
+    const w = await h.svc.arm(owner, armBody({ durationMinutes: 5 }));
+    setNow(T0 + 5 * 60_000 - 4_000);
+    await h.svc.refreshGateWindow();
+    const reads = h.reads.windowFindFirst;
+    setNow(T0 + 5 * 60_000 + 1_000); // 5 s after the last read: the cache alone would wait
+    await h.svc.refreshGateWindow();
+    expect(h.reads.windowFindFirst).toBe(reads + 1);
+    expect(h.db.windows.find((x) => x.id === w.id)!.expiryHandledAt).not.toBeNull();
+    expect(activeFieldWindow()).toBeNull();
+  });
+
+  it('a push that could not be cancelled leaves the window unhandled, and the next read finishes it', async () => {
+    const { h } = await pushedThenExpired();
+    h.failNext.screenUpdateMany = true;
+    await h.svc.releaseEndedWindows();
+    expect(h.db.screens.find((s) => s.id === S1)!.forceApkUpdatePendingAt).not.toBeNull();
+    expect(h.db.windows[0].expiryHandledAt).toBeNull();
+    expect(rows(h, FIELD_AUDIT.EXPIRE)).toHaveLength(0);
+    await h.svc.releaseEndedWindows();
+    expect(h.db.screens.find((s) => s.id === S1)!.forceApkUpdatePendingAt).toBeNull();
+    expect(h.db.windows[0].expiryHandledAt).not.toBeNull();
+    expect(rows(h, FIELD_AUDIT.PUSH_CANCEL)).toHaveLength(1);
+  });
+
+  it('the panel’s read and a late Cancel both release it too (lazy, like support grants)', async () => {
+    const a = await pushedThenExpired();
+    await a.h.svc.listWindows();
+    expect(a.h.db.screens.find((s) => s.id === S1)!.forceApkUpdatePendingAt).toBeNull();
+    const b = await pushedThenExpired();
+    const out = await b.h.svc.cancel(owner, b.w.id, {});
+    expect(out).toMatchObject({ cancelled: false, pushesCancelled: [S1], window: { state: 'expired' } });
+    expect(rows(b.h, FIELD_AUDIT.CANCEL)).toHaveLength(0);
+  });
+
+  it('a window someone cancelled is never handled again as an expiry', async () => {
+    const h = harness();
+    const w = await h.svc.arm(owner, armBody());
+    await h.svc.cancel(owner, w.id, {});
+    setNow(T0 + DURATION + 1_000);
+    await h.svc.releaseEndedWindows();
+    expect(rows(h, FIELD_AUDIT.EXPIRE)).toHaveLength(0);
+    expect(h.db.windows[0].expiryHandledAt).toBeNull();
   });
 });
 

@@ -30,6 +30,17 @@
  * own, or one under an active grant. Cancelling never needs it — stopping an
  * offer is always allowed.
  *
+ * THE END OF A WINDOW. A push this window armed that is still waiting when the
+ * window ends would be answered as an ordinary update — the stable build. So
+ * nothing is left to install from an ended window: a cancel cancels them at
+ * once, and an EXPIRY is handled before the next update check is answered —
+ * the gate's read releases every ended window first (each push cancelled by
+ * its recorded identity, one audit row per screen, one per organization for
+ * the window), whenever the window this replica holds has ended, or the read
+ * is due. Lazy, like support-access grants: no cron. It cannot be missed by a
+ * replica that never saw the window, because a window lasts at least
+ * MIN_WINDOW_MINUTES, longer than the read's 10 s cache.
+ *
  * AUDIT. Every arm, cancel and push writes AuditLog rows carrying the
  * candidate, its digest, the screens and the actor, on each organisation the
  * action touches. Arm and cancel rows commit with the window change itself;
@@ -41,6 +52,7 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { FIELD_CANDIDATE_RELEASES, type FieldCandidateRelease } from '../player-ota/field-candidate-releases';
 import {
+  activeFieldWindow,
   configuredFieldRelease,
   isFieldCandidateTarget,
   setActiveFieldWindow,
@@ -82,7 +94,11 @@ export const FIELD_AUDIT = {
   CANCEL: 'FIELD_BUILD_WINDOW_CANCEL',
   PUSH: 'FIELD_BUILD_PUSH',
   PUSH_CANCEL: 'FIELD_BUILD_PUSH_CANCEL',
+  EXPIRE: 'FIELD_BUILD_WINDOW_EXPIRE',
 } as const;
+
+/** Why a window's waiting pushes were cancelled (FIELD_BUILD_PUSH_CANCEL `reason`). */
+type PushCancelReason = 'window-cancelled' | 'window-expired';
 
 const WINDOW_SELECT = {
   id: true,
@@ -99,6 +115,7 @@ const WINDOW_SELECT = {
   cancelledByUserId: true,
   cancelledByEmail: true,
   note: true,
+  expiryHandledAt: true,
 } as const;
 
 interface WindowRow {
@@ -116,6 +133,7 @@ interface WindowRow {
   cancelledByUserId: string | null;
   cancelledByEmail: string | null;
   note: string | null;
+  expiryHandledAt: Date | null;
 }
 
 export interface CandidateView {
@@ -194,6 +212,8 @@ const actorEmail = (u: Principal | null | undefined): string | null =>
   typeof u?.email === 'string' && u.email ? u.email : null;
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
+const toMs = (v: Date | string | number | null | undefined): number =>
+  v == null ? NaN : v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v);
 
 function http(status: HttpStatus, code: string, message: string, extra?: Record<string, unknown>): HttpException {
   return new HttpException({ code, message, ...(extra ?? {}) }, status);
@@ -241,8 +261,10 @@ function releaseAllowed(r: FieldCandidateRelease, now: number): boolean {
 export class FieldBuildsService {
   private readonly logger = new Logger('FieldBuilds');
   private gateReadAt = 0;
+  private gateFailedAt = 0;
   private gateFlight: Promise<void> | null = null;
   private gateWarnedAt = 0;
+  private releaseWarnedAt = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -253,21 +275,30 @@ export class FieldBuildsService {
   // ─── The gate's read ─────────────────────────────────────────────────────
 
   /**
-   * Keep field-candidate.ts's window at most GATE_TTL_MS old. `force` (after a
-   * write here) waits out a read already in flight — it may predate the write
-   * — and reads again.
+   * Keep field-candidate.ts's window at most GATE_TTL_MS old — and read at
+   * once (releasing it) when the window this replica holds has ended. `force`
+   * (after a write here) waits out a read already in flight — it may predate
+   * the write — and reads again. A failing read is retried every
+   * GATE_RETRY_MS, never on every check.
    */
   async refreshGateWindow(force = false): Promise<void> {
     if (force) {
       await this.gateFlight?.catch(() => undefined);
       return this.readGateWindow();
     }
-    if (Date.now() - this.gateReadAt < GATE_TTL_MS) return;
+    const now = Date.now();
+    const held = activeFieldWindow();
+    const heldEnded = !!held && toMs(held.expiresAt) <= now;
+    if (!heldEnded && now - this.gateReadAt < GATE_TTL_MS) return;
+    if (now - this.gateFailedAt < GATE_RETRY_MS) return;
     return this.gateFlight ?? this.readGateWindow();
   }
 
   private readGateWindow(): Promise<void> {
     const task = (async () => {
+      // Ended windows first: their waiting pushes are cancelled before the
+      // request this read serves is answered. Never throws.
+      await this.releaseEndedWindows();
       try {
         const row = (await this.prisma.client.fieldBuildWindow.findFirst({
           where: { cancelledAt: null, expiresAt: { gt: new Date() } },
@@ -276,9 +307,10 @@ export class FieldBuildsService {
         })) as WindowRow | null;
         setActiveFieldWindow(row ? toGateWindow(row) : null);
         this.gateReadAt = Date.now();
+        this.gateFailedAt = 0;
       } catch (e: any) {
-        // Keep the last row read; try again shortly rather than on every check.
-        this.gateReadAt = Date.now() - GATE_TTL_MS + GATE_RETRY_MS;
+        // Keep the last row read (its expiry is still enforced at every call).
+        this.gateFailedAt = Date.now();
         if (Date.now() - this.gateWarnedAt > 60_000) {
           this.gateWarnedAt = Date.now();
           this.logger.warn(`[field-builds] window read failed — keeping the last window read: ${e?.message ?? e}`);
@@ -290,6 +322,88 @@ export class FieldBuildsService {
       if (this.gateFlight === task) this.gateFlight = null;
     });
     return task;
+  }
+
+  /**
+   * Every window that has EXPIRED (nobody cancelled it) and was not handled
+   * yet: cancel the pushes it armed that are still waiting, then stamp it
+   * handled and write one FIELD_BUILD_WINDOW_EXPIRE row per organization.
+   * Safe to run twice at once (two replicas): a push is cancelled only by its
+   * own identity, so each is cancelled — and audited — once, and only the run
+   * that stamps the window writes its rows. Never throws. Returns the screens
+   * whose push was cancelled, per window.
+   */
+  async releaseEndedWindows(): Promise<Map<string, string[]>> {
+    const released = new Map<string, string[]>();
+    const client = this.prisma.client;
+    let ended: WindowRow[] = [];
+    try {
+      ended = (await client.fieldBuildWindow.findMany({
+        where: { cancelledAt: null, expiryHandledAt: null, expiresAt: { lte: new Date() } },
+        orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
+        take: 20,
+        select: WINDOW_SELECT,
+      })) as WindowRow[];
+    } catch (e: any) {
+      this.warnRelease(`could not list ended windows: ${e?.message ?? e}`);
+      return released;
+    }
+    for (const w of ended) {
+      try {
+        const { cancelled: screens, complete } = await this.cancelWindowPushes(w, null, null, 'window-expired');
+        released.set(w.id, screens);
+        // Not stamped until every waiting push is dealt with: the next read retries.
+        if (!complete) continue;
+        const details = JSON.stringify({
+          windowId: w.id,
+          candidate: w.candidate,
+          sha256: w.candidateSha256,
+          tenantIds: w.tenantIds,
+          screens: w.allScreens ? 'all' : w.screenIds,
+          armedAt: w.armedAt.toISOString(),
+          expiresAt: w.expiresAt.toISOString(),
+          pushesCancelled: screens,
+        });
+        // The stamp and its rows commit together; only the run that stamps writes them.
+        const stamped = (await client.$transaction(
+          async (tx: any) => {
+            const claimed = await tx.fieldBuildWindow.updateMany({
+              where: { id: w.id, cancelledAt: null, expiryHandledAt: null },
+              data: { expiryHandledAt: new Date() },
+            });
+            if (!claimed.count) return false;
+            for (const tenantId of w.tenantIds) {
+              await tx.auditLog.create({
+                data: {
+                  tenantId,
+                  userId: null,
+                  action: FIELD_AUDIT.EXPIRE,
+                  targetType: 'field_build_window',
+                  targetId: w.id,
+                  details,
+                },
+              });
+            }
+            return true;
+          },
+          { maxWait: 5_000, timeout: 10_000 },
+        )) as boolean;
+        if (!stamped) continue;
+        this.logger.log(
+          `[field-builds] window=${w.id} candidate=${w.candidate} ended — ${screens.length} waiting push(es) cancelled`,
+        );
+      } catch (e: any) {
+        this.warnRelease(`could not release ended window=${w.id}: ${e?.message ?? e}`);
+      }
+    }
+    return released;
+  }
+
+  private warnRelease(message: string): void {
+    if (Date.now() - this.releaseWarnedAt > 60_000) {
+      this.releaseWarnedAt = Date.now();
+      this.logger.warn(`[field-builds] ${message}`);
+    }
   }
 
   // ─── Reads for the panel ─────────────────────────────────────────────────
@@ -326,6 +440,7 @@ export class FieldBuildsService {
   }
 
   async listWindows(): Promise<WindowsView> {
+    await this.releaseEndedWindows();
     const now = Date.now();
     const client = this.prisma.client;
     const [history, active] = await Promise.all([
@@ -567,6 +682,7 @@ export class FieldBuildsService {
       async (tx: any) => {
         const w = (await tx.fieldBuildWindow.findUnique({ where: { id }, select: WINDOW_SELECT })) as WindowRow | null;
         if (!w) throw http(HttpStatus.NOT_FOUND, 'FIELD_BUILD_WINDOW_NOT_FOUND', 'That window does not exist.');
+        // Already over. An expired one is released below, like any ended window.
         if (windowState(w, now) !== 'active') return { row: w, cancelled: false };
         const cancelledAt = new Date(Math.max(now, w.armedAt.getTime()));
         // Guarded on "still open", so a double click writes one set of rows.
@@ -611,7 +727,9 @@ export class FieldBuildsService {
     if (outcome.cancelled) {
       this.logger.log(`[field-builds] cancelled window=${id} candidate=${outcome.row.candidate} by=${by ?? '-'}`);
       await this.refreshGateWindow(true);
-      pushesCancelled = await this.cancelWindowPushes(outcome.row, by, email);
+      pushesCancelled = (await this.cancelWindowPushes(outcome.row, by, email, 'window-cancelled')).cancelled;
+    } else if (windowState(outcome.row, now) === 'expired') {
+      pushesCancelled = (await this.releaseEndedWindows()).get(id) ?? [];
     }
     const tenants = await client.tenant.findMany({
       where: { id: { in: outcome.row.tenantIds } },
@@ -627,10 +745,17 @@ export class FieldBuildsService {
   /**
    * A push this window armed and that is still waiting would, with the window
    * gone, be answered as an ordinary update — the stable build. Cancel exactly
-   * those pushes (by their recorded identity, never anyone else's) and audit
-   * each. Best-effort per screen: the window is already closed.
+   * those pushes (by their recorded identity, never anyone else's), each in
+   * one transaction with its FIELD_BUILD_PUSH_CANCEL row. `complete` is false
+   * when anything could not be done; the expiry path then leaves the window
+   * unhandled so the next read tries again.
    */
-  private async cancelWindowPushes(w: WindowRow, by: string | null, email: string | null): Promise<string[]> {
+  private async cancelWindowPushes(
+    w: WindowRow,
+    by: string | null,
+    email: string | null,
+    reason: PushCancelReason,
+  ): Promise<{ cancelled: string[]; complete: boolean }> {
     const client = this.prisma.client;
     let rows: Array<{ tenantId: string; targetId: string | null; details: string | null }> = [];
     try {
@@ -645,9 +770,10 @@ export class FieldBuildsService {
       })) as any[];
     } catch (e: any) {
       this.logger.warn(`[field-builds] could not list the pushes of window=${w.id}: ${e?.message ?? e}`);
-      return [];
+      return { cancelled: [], complete: false };
     }
     const cancelled: string[] = [];
+    let complete = true;
     for (const r of rows) {
       let pushAt: Date | null = null;
       try {
@@ -657,38 +783,42 @@ export class FieldBuildsService {
         /* not ours */
       }
       if (!r.targetId || !pushAt || !Number.isFinite(pushAt.getTime())) continue;
+      const screen = { id: r.targetId, tenantId: r.tenantId };
       try {
-        const done = await cancelScreenApkUpdate(
-          this.prisma,
-          { id: r.targetId, tenantId: r.tenantId },
-          { onlyPushAt: pushAt },
-        );
-        if (!done.cancelled) continue;
-        cancelled.push(r.targetId);
-        await client.auditLog.create({
-          data: {
-            tenantId: r.tenantId,
-            userId: by,
-            action: FIELD_AUDIT.PUSH_CANCEL,
-            targetType: 'screen',
-            targetId: r.targetId,
-            details: JSON.stringify({
-              windowId: w.id,
-              candidate: w.candidate,
-              sha256: w.candidateSha256,
-              pushAt: done.pushAt,
-              hold: done.hold,
-              offers: done.offers,
-              reason: 'window-cancelled',
-              actorEmail: email,
-            }),
+        const done = await client.$transaction(
+          async (tx: any) => {
+            const out = await cancelScreenApkUpdate({ client: tx } as PrismaService, screen, { onlyPushAt: pushAt });
+            if (!out.cancelled) return out;
+            await tx.auditLog.create({
+              data: {
+                tenantId: screen.tenantId,
+                userId: by,
+                action: FIELD_AUDIT.PUSH_CANCEL,
+                targetType: 'screen',
+                targetId: screen.id,
+                details: JSON.stringify({
+                  windowId: w.id,
+                  candidate: w.candidate,
+                  sha256: w.candidateSha256,
+                  pushAt: out.pushAt,
+                  hold: out.hold,
+                  offers: out.offers,
+                  reason,
+                  actorEmail: email,
+                }),
+              },
+            });
+            return out;
           },
-        });
+          { maxWait: 5_000, timeout: 10_000 },
+        );
+        if (done.cancelled) cancelled.push(screen.id);
       } catch (e: any) {
-        this.logger.warn(`[field-builds] push cleanup failed screen=${r.targetId} window=${w.id}: ${e?.message ?? e}`);
+        complete = false;
+        this.logger.warn(`[field-builds] push cleanup failed screen=${screen.id} window=${w.id}: ${e?.message ?? e}`);
       }
     }
-    return cancelled;
+    return { cancelled, complete };
   }
 
   // ─── Push now ────────────────────────────────────────────────────────────

@@ -42,9 +42,16 @@ CREATE TABLE IF NOT EXISTS "field_build_windows" (
     "cancelled_by_user_id" TEXT,
     "cancelled_by_email" TEXT,
     "note" TEXT,
+    "expiry_handled_at" TIMESTAMP(3),
 
     CONSTRAINT "field_build_windows_pkey" PRIMARY KEY ("id")
 );
+
+-- When the system handled a window's END (it expired; nobody cancelled it): the
+-- pushes it armed that were still waiting are cancelled, so nothing installs
+-- from a window that has ended. Repeated here for a database that already took
+-- the table's earlier shape through `pnpm db:push`.
+ALTER TABLE "field_build_windows" ADD COLUMN IF NOT EXISTS "expiry_handled_at" TIMESTAMP(3);
 
 CREATE INDEX IF NOT EXISTS "field_build_windows_cancelled_at_expires_at_idx"
   ON "field_build_windows"("cancelled_at", "expires_at");

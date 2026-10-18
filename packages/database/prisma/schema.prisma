@@ -2108,6 +2108,9 @@ model FieldBuildWindow {
   cancelledByUserId String?   @map("cancelled_by_user_id")
   cancelledByEmail  String?   @map("cancelled_by_email")
   note              String?
+  /// When the system handled the window's END (it expired, nobody cancelled it): the pushes it
+  /// armed that were still waiting were cancelled, so nothing installs from a window that has ended.
+  expiryHandledAt   DateTime? @map("expiry_handled_at")
 
   @@index([cancelledAt, expiresAt])
   @@index([armedAt])

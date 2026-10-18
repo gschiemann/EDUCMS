@@ -12,7 +12,7 @@
  */
 import 'reflect-metadata';
 import request from 'supertest';
-import { Controller, Get, Global, Module, Param, type INestApplication } from '@nestjs/common';
+import { Controller, Get, Global, Logger, Module, Param, type INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
@@ -49,6 +49,9 @@ let app: INestApplication | undefined;
 let windowRow: any;
 let screenRow: any;
 let prisma: any;
+/** Ended, unhandled windows (the expiry release) and the FIELD_BUILD_PUSH rows it reads. */
+let endedRows: any[];
+let pushRows: any[];
 
 function liveWindow(patch: Record<string, unknown> = {}) {
   return {
@@ -75,15 +78,30 @@ async function boot() {
     client: {
       // What the table "returns" for the newest open window (the query filters
       // cancelled and expired rows, so a test models that by setting null).
-      fieldBuildWindow: { findFirst: jest.fn(async () => windowRow) },
+      fieldBuildWindow: {
+        findFirst: jest.fn(async () => windowRow),
+        findMany: jest.fn(async () => endedRows),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      },
       screen: {
         findFirst: jest.fn(async () => screenRow),
-        updateMany: jest.fn(async () => ({ count: 1 })),
+        updateMany: jest.fn(async (args: any) => {
+          // A push cancel guarded on the push's identity (screen-commands.ts) clears it.
+          const guard = args?.where?.forceApkUpdatePendingAt;
+          if (guard && args?.data?.forceApkUpdatePendingAt === null) {
+            const current = screenRow?.forceApkUpdatePendingAt;
+            if (!current || new Date(current).getTime() !== new Date(guard).getTime()) return { count: 0 };
+            screenRow = { ...screenRow, forceApkUpdatePendingAt: null };
+          }
+          return { count: 1 };
+        }),
       },
       auditLog: {
         findFirst: jest.fn(async () => null),
+        findMany: jest.fn(async () => pushRows),
         create: jest.fn(async (args: any) => args.data),
       },
+      $transaction: jest.fn(async (fn: (tx: any) => unknown) => fn(prisma.client)),
     },
   };
   @Global()
@@ -123,6 +141,8 @@ beforeEach(() => {
   process.env.DEVICE_SECRET_KEY = 'fake-test-device-key';
   field.setActiveFieldWindow(null);
   windowRow = liveWindow();
+  endedRows = [];
+  pushRows = [];
   screenRow = {
     id: SCREEN,
     tenantId: TENANT,
@@ -228,6 +248,33 @@ describe('a window in field_build_windows drives the unchanged update check', ()
     const { http } = await boot();
     for (let i = 0; i < 5; i++) await updateCheck(http).expect(201);
     expect(prisma.client.fieldBuildWindow.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('a window that EXPIRES: its waiting push is cancelled before that screen’s update check is answered', async () => {
+    const pushAt = screenRow.forceApkUpdatePendingAt as Date;
+    windowRow = liveWindow({ expiresAt: new Date(Date.now() + 400) });
+    const { http } = await boot();
+    const decisions = jest.spyOn(Logger.prototype, 'log');
+    // While the window is open the pushed screen is offered the field build.
+    expect((await updateCheck(http).expect(201)).body.latest).toMatchObject({ versionName: CANDIDATE });
+    // The window ends with that push still waiting (the screen never installed).
+    await new Promise((r) => setTimeout(r, 500));
+    windowRow = null;
+    endedRows = [{ ...liveWindow(), expiresAt: new Date(Date.now() - 100), expiryHandledAt: null }];
+    pushRows = [{ tenantId: TENANT, targetId: SCREEN, details: JSON.stringify({ windowId: endedRows[0].id, pushAt: pushAt.toISOString() }) }];
+    decisions.mockClear();
+    const res = await updateCheck(http).expect(201);
+    expect(res.body).toEqual({ uptoDate: true });
+    expect(screenRow.forceApkUpdatePendingAt).toBeNull();
+    expect(prisma.client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'FIELD_BUILD_PUSH_CANCEL', targetId: SCREEN, userId: null }) }),
+    );
+    expect(prisma.client.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'FIELD_BUILD_WINDOW_EXPIRE', tenantId: TENANT }) }),
+    );
+    // The controller's own verdict: it saw NO push at all — not a stable install, nothing.
+    const line = decisions.mock.calls.map((c) => String(c[0])).find((l) => l.includes('[ota] decision='));
+    expect(line).toMatch(/decision=uptoDate .*reason=no-force-flag/);
   });
 
   it('a failed read never fails the update check', async () => {
