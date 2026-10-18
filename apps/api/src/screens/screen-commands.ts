@@ -74,18 +74,23 @@ export async function publishScreenRefresh(
  * `armed` is the DB write — the durable half: a screen with no live socket
  * still picks the push up on its periodic update-check. `published` is the
  * realtime nudge. A push is real when the flag is armed.
+ *
+ * `at` is the push's identity (`forceApkUpdatePendingAt`), now when omitted. A
+ * caller that must record the push before arming it — the field-build panel
+ * audits first — passes its own and gets it back as `pushAt`.
  */
 export async function armScreenApkUpdate(
   deps: CommandDeps & { prisma: PrismaService },
   screen: CommandScreen,
-  opts: { requestedBy: string | null; corrId: string; overrideWindow: boolean },
-): Promise<{ armed: boolean; published: boolean }> {
+  opts: { requestedBy: string | null; corrId: string; overrideWindow: boolean; at?: Date },
+): Promise<{ armed: boolean; published: boolean; pushAt: Date }> {
   let armed = true;
+  const pushAt = opts.at ?? new Date();
   await deps.prisma.client.screen.update({
     // SEC-009: tenant predicate in the write.
     where: { id: screen.id, tenantId: screen.tenantId },
     data: {
-      forceApkUpdatePendingAt: new Date(),
+      forceApkUpdatePendingAt: pushAt,
       forceApkUpdateOverrideWindow: opts.overrideWindow,
       // A NEW push starts a fresh record: no hold, no offers, no target
       // (tracked pushes, player-ota/push-tracking.ts).
@@ -117,7 +122,7 @@ export async function armScreenApkUpdate(
     published = false;
     console.warn(`[OTA ${opts.corrId}] redis publish FAILED for ${screen.id}: ${(e as Error).message}`);
   }
-  return { armed, published };
+  return { armed, published, pushAt };
 }
 
 /**
@@ -144,11 +149,14 @@ export const FRESH_PUSH_STATE = {
  * glass is not ours to take down; it stays until someone answers it.)
  * Returns the push that was cancelled (`cancelled: false` when there was
  * none). Never touches a screen outside `screen.tenantId` (SEC-009), and only
- * the push it read — a push re-sent in between is left alone.
+ * the push it read — a push re-sent in between is left alone. With
+ * `onlyPushAt`, only THAT push is cancelled: a caller cleaning up the pushes
+ * it armed (a cancelled field-build window) never cancels someone else's.
  */
 export async function cancelScreenApkUpdate(
   prisma: PrismaService,
   screen: CommandScreen,
+  opts?: { onlyPushAt?: Date },
 ): Promise<{ cancelled: boolean; pushAt: string | null; hold: string | null; offers: number }> {
   const row = (await prisma.client.screen.findFirst({
     where: { id: screen.id, tenantId: screen.tenantId },
@@ -156,6 +164,9 @@ export async function cancelScreenApkUpdate(
   })) as any;
   if (!row?.forceApkUpdatePendingAt) return { cancelled: false, pushAt: null, hold: null, offers: 0 };
   const pushAt = new Date(row.forceApkUpdatePendingAt);
+  if (opts?.onlyPushAt && pushAt.getTime() !== opts.onlyPushAt.getTime()) {
+    return { cancelled: false, pushAt: null, hold: null, offers: 0 };
+  }
   const done = await prisma.client.screen.updateMany({
     where: { id: screen.id, tenantId: screen.tenantId, forceApkUpdatePendingAt: pushAt } as any,
     data: {
