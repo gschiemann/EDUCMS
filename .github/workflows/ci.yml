@@ -716,10 +716,9 @@ jobs:
         include:
           - { browser: chromium, shard: 1, of: 2, workers: 2 }
           - { browser: chromium, shard: 2, of: 2, workers: 2 }
-          - { browser: webkit, shard: 1, of: 4, workers: 1 }
-          - { browser: webkit, shard: 2, of: 4, workers: 1 }
-          - { browser: webkit, shard: 3, of: 4, workers: 1 }
-          - { browser: webkit, shard: 4, of: 4, workers: 1 }
+          - { browser: webkit, shard: 1, of: 3, workers: 2 }
+          - { browser: webkit, shard: 2, of: 3, workers: 2 }
+          - { browser: webkit, shard: 3, of: 3, workers: 2 }
     # No Postgres service and no DATABASE_URL (removed 2026-10-18): nothing
     # under apps/web reads a database — every API call in this suite is
     # intercepted with page.route() — and emergency-path.yml has always run
