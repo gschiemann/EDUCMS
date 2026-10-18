@@ -9,6 +9,7 @@ import { centsToDollarInput, dollarsToCents, formatUsd, optionalDate, type Platf
 import type { BusinessProfitResponse } from '@/lib/business-profit';
 import { useBusinessProfit, useSavePlatformCost, useUpdatePlatformCost } from '@/hooks/use-business-profit';
 import { CapacityCard } from '../efficiency/CapacityCard';
+import { ProviderUsagePanel } from './ProviderUsagePanel';
 
 const PROVIDERS = ['Supabase', 'Railway', 'Vercel', 'Redis', 'Email', 'AI', 'Other'];
 const FIELD = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100';
@@ -153,7 +154,7 @@ export default function BusinessProfitPage() {
         {query.isLoading && !data && <div className="flex min-h-48 items-center justify-center rounded-2xl border border-slate-200 bg-white"><Loader2 className="h-7 w-7 animate-spin text-indigo-600" aria-label={t('loading')} /></div>}
 
         {data && <>
-          <section aria-label={t('summary')} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section aria-label={t('summary')} className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
             <MetricCard label={t('monthlyRevenue')} value={money(data.revenue.committedMonthlyCents)} note={t('revenueNote', { customers: data.revenue.activeCustomers, screens: data.revenue.paidScreens })} tone="indigo" />
             <MetricCard label={t('recordedCosts')} value={money(data.profit.monthlyCostCents)} note={data.profit.coverage === 'complete' ? t('coverageComplete') : t('coveragePartial')} tone="slate" />
             <MetricCard label={t('estimatedProfit')} value={money(data.profit.estimatedMonthlyProfitCents)} note={t('profitNote')} tone={data.profit.estimatedMonthlyProfitCents < 0 ? 'rose' : 'emerald'} />
@@ -164,7 +165,8 @@ export default function BusinessProfitPage() {
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
               <div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden /><div>
                 <h2 className="text-sm font-extrabold text-amber-950">{t('estimateDisclosureTitle')}</h2>
-                <p className="mt-1 text-sm leading-6 text-amber-900">{t('estimateDisclosure')}</p>
+                <p className="mt-1 text-sm leading-5 text-amber-900">{t('estimateSummary')}</p>
+                <details className="mt-2 text-sm text-amber-900"><summary className="min-h-9 cursor-pointer py-2 font-semibold">{t('estimateDetails')}</summary><p className="leading-5">{t('estimateDisclosure')}</p></details>
                 {(data.revenue.unpricedCustomers > 0 || data.profit.coverage === 'partial') && <p className="mt-2 text-sm font-semibold text-amber-950">{t('missingData', { unpriced: data.revenue.unpricedCustomers, coverage: data.profit.coverage === 'partial' ? t('partialCoverage') : t('completeCoverage') })}</p>}
               </div></div>
               <div className="mt-4 grid grid-cols-2 gap-3 border-t border-amber-200 pt-3 text-sm">
@@ -188,6 +190,8 @@ export default function BusinessProfitPage() {
               </li>)}
             </ul>
           </section>}
+
+          <ProviderUsagePanel />
 
           <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,.85fr)]">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -229,7 +233,7 @@ export default function BusinessProfitPage() {
 
 function MetricCard({ label, value, note, tone }: { label: string; value: string; note: string; tone: 'indigo' | 'slate' | 'rose' | 'emerald' | 'violet' }) {
   const style = { indigo: 'border-indigo-100 bg-indigo-50/80 text-indigo-700', slate: 'border-slate-200 bg-white text-slate-700', rose: 'border-rose-100 bg-rose-50 text-rose-700', emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700', violet: 'border-violet-100 bg-violet-50 text-violet-700' }[tone];
-  return <div className={`min-w-0 rounded-2xl border p-4 shadow-sm sm:p-5 ${style}`}><p className="text-xs font-bold uppercase tracking-wide opacity-80">{label}</p><p className="mt-2 break-words text-2xl font-extrabold text-slate-950 sm:text-3xl">{value}</p><p className="mt-1 text-xs leading-5 text-slate-600">{note}</p></div>;
+  return <div className={`min-w-0 rounded-2xl border p-3 shadow-sm sm:p-5 ${style}`}><p className="min-h-8 text-[10px] font-bold uppercase leading-4 tracking-wide opacity-80 sm:min-h-0 sm:text-xs">{label}</p><p className="mt-1 break-words text-xl font-extrabold leading-tight text-slate-950 sm:mt-2 sm:text-3xl">{value}</p><p className="mt-1 text-[11px] leading-4 text-slate-600 sm:text-xs sm:leading-5">{note}</p></div>;
 }
 
 function CostRow({ cost, money, date, t, onEdit, onToggle, busy }: { cost: PlatformCost; money: (cents: number) => string; date: (value: string) => string; t: (key: string, values?: Record<string, string | number>) => string; onEdit: () => void; onToggle: () => void; busy: boolean }) {

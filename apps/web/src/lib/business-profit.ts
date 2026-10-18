@@ -42,6 +42,23 @@ export interface BusinessProfitResponse {
   }>;
 }
 
+export interface ProviderUsageSource {
+  provider: 'vercel' | 'railway' | 'supabase';
+  state: 'connected' | 'not_configured' | 'unavailable' | 'manual';
+  scope: 'project' | 'team' | 'workspace' | 'organization';
+  periodStart: string | null;
+  periodEnd: string | null;
+  observedAt: string | null;
+  accruedCostCents: number | null;
+  items: Array<{ label: string; costCents: number }>;
+  href: string;
+}
+
+export interface ProviderUsageResponse {
+  asOf: string;
+  sources: ProviderUsageSource[];
+}
+
 /** Convert a decimal dollar input to integer cents without floating point rounding. */
 export function dollarsToCents(value: string): number | null {
   const normalized = value.trim();

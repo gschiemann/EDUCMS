@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import type { BusinessProfitResponse } from '@/lib/business-profit';
+import type { BusinessProfitResponse, ProviderUsageResponse } from '@/lib/business-profit';
 
 export const businessProfitKey = ['super-business'] as const;
+export const providerUsageKey = ['super-business-provider-usage'] as const;
 
 export interface SavePlatformCostBody {
   provider: string;
@@ -23,6 +24,16 @@ export function useBusinessProfit(enabled = true) {
     queryFn: () => apiFetch<BusinessProfitResponse>('/super/business'),
     enabled,
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useProviderUsage(enabled = true) {
+  return useQuery({
+    queryKey: providerUsageKey,
+    queryFn: () => apiFetch<ProviderUsageResponse>('/super/business/provider-usage'),
+    enabled,
+    staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
 }

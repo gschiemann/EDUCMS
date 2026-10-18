@@ -18,6 +18,7 @@ const response: BusinessProfitResponse = {
 jest.mock('@/lib/store', () => ({ useAppStore: (selector: (state: unknown) => unknown) => selector({ user: { role } }) }));
 jest.mock('@/hooks/use-business-profit', () => ({
   useBusinessProfit: () => ({ data: response, isError: false, isLoading: false, isFetching: false, refetch: jest.fn() }),
+  useProviderUsage: () => ({ data: { asOf: '2026-10-18T12:00:00.000Z', sources: [] }, isError: false, isLoading: false, isFetching: false, refetch: jest.fn() }),
   useSavePlatformCost: () => ({ mutateAsync: createMutation, isPending: false }),
   useUpdatePlatformCost: () => ({ mutateAsync: updateMutation, isPending: false }),
 }));

@@ -30,6 +30,14 @@ async function installFixtures(page: Page) {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname.endsWith('/super/business') && request.method() === 'GET') return route.fulfill({ json: summary });
+    if (pathname.endsWith('/super/business/provider-usage') && request.method() === 'GET') return route.fulfill({ json: {
+      asOf: '2026-10-18T12:00:00.000Z',
+      sources: [
+        { provider: 'vercel', state: 'connected', scope: 'team', periodStart: '2026-10-01T00:00:00.000Z', periodEnd: '2026-10-18T00:00:00.000Z', observedAt: '2026-10-18T12:00:00.000Z', accruedCostCents: 1234, items: [{ label: 'Functions', costCents: 1234 }], href: 'https://vercel.com/dashboard' },
+        { provider: 'railway', state: 'not_configured', scope: 'workspace', periodStart: null, periodEnd: null, observedAt: null, accruedCostCents: null, items: [], href: 'https://railway.app/dashboard' },
+        { provider: 'supabase', state: 'manual', scope: 'organization', periodStart: null, periodEnd: null, observedAt: null, accruedCostCents: null, items: [], href: 'https://supabase.com/dashboard' },
+      ],
+    } });
     if (pathname.endsWith('/super/business/costs') && request.method() === 'POST') {
       const body = request.postDataJSON();
       const stamp = new Date().toISOString();
@@ -74,6 +82,9 @@ test('create, edit and archive a cost entry without changing provider or service
   await expect(page.getByRole('heading', { name: 'Profit & headroom' })).toBeVisible();
   await expect(page.getByText(/An operating estimate, not cash or accounting profit/)).toBeVisible();
   await expect(page.getByTestId('capacity-card')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Provider usage observations' })).toBeVisible();
+  await expect(page.getByText('Accrued in reported period')).toHaveCount(3);
+  await expect(page.locator('section[aria-labelledby="provider-usage-title"]').getByRole('heading', { name: 'supabase' })).toBeVisible();
 
   await page.getByLabel('Provider', { exact: true }).selectOption('Other');
   await page.getByLabel('Provider name').fill('Signal · Labs');
@@ -85,7 +96,7 @@ test('create, edit and archive a cost entry without changing provider or service
   await page.getByLabel('Notes').fill('Receipt contact');
   await page.getByRole('button', { name: 'Save cost' }).click();
   await expect(page.getByRole('status')).toContainText('Cost entry saved');
-  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
 
   const row = page.getByRole('listitem').filter({ hasText: 'Signal · Labs' });
   await expect(row).toContainText('Email Relay');
@@ -100,26 +111,28 @@ test('create, edit and archive a cost entry without changing provider or service
   await page.getByLabel('Notes').fill('');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('status')).toContainText('Cost entry updated');
-  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
 
   await expect(row).toContainText('Signal · Labs');
   await expect(row).toContainText('Email Relay');
   await expect(row).not.toContainText('Starter');
   expect(patchBodies[0]).toMatchObject({ planName: null, budgetCents: null, nextBillAt: null, notes: null });
   await row.getByRole('button', { name: 'Archive' }).click();
-  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('Archived entries (1)')).toBeVisible();
   await page.getByText('Archived entries (1)').click();
   const archivedRow = page.getByRole('listitem').filter({ hasText: 'Signal · Labs' });
   await expect(archivedRow).toContainText('Archived');
   expect(patchBodies[1]).toMatchObject({ active: false });
   await archivedRow.getByRole('button', { name: 'Restore' }).click();
-  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByRole('listitem').filter({ hasText: 'Signal · Labs' })).toBeVisible();
   expect(patchBodies[2]).toMatchObject({ active: true });
 
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(375);
+  const summaryColumns = await page.locator('section[aria-label="Business estimate summary"]').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  expect(summaryColumns).toBe(2);
   expect(unexpectedConsole).toEqual([]);
   await page.screenshot({ path: `test-results/profit-${page.context().browser()?.browserType().name() ?? 'browser'}-375.png`, fullPage: true });
 });
