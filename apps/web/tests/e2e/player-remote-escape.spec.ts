@@ -151,6 +151,19 @@ async function installWsStub(page: Page) {
 const pressBack = (page: Page) =>
   page.evaluate(() => window.dispatchEvent(new CustomEvent('edu-show-stop-overlay')));
 
+/**
+ * Let one press finish before the next (2026-10-18). The page re-registers its Back listener
+ * in an effect after every toggle, and that listener reads `playbackStopped` from the render
+ * it was registered in. A second press that lands after the toggle is on screen but before
+ * the effect has run reaches the OLD listener and repeats the old toggle — proven in both
+ * engines: two presses back to back leave the overlay closed, the same two presses two frames
+ * apart toggle twice. A remote cannot press twice inside two frames; this test could, and did
+ * under a loaded CI runner (test 4, press 3, WebKit). Wait the two frames a person always
+ * leaves; every press must still toggle.
+ */
+const settle = (page: Page) =>
+  page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+
 test.describe('remote escape — Back always reaches an actionable surface', () => {
   test('1. registering splash (register down) — Back opens Screen options with Exit + Retry', async ({ page }) => {
     test.setTimeout(120_000); // cold-compile payer — see emergency-path test 1
@@ -178,6 +191,7 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     await expect(page.getByText(/Not connected —/)).toBeVisible({ timeout: 45_000 });
 
     // Back again toggles the panel away (same toggle contract as playback).
+    await settle(page);
     await pressBack(page);
     await expect(page.getByRole('dialog', { name: 'Screen options' })).toHaveCount(0);
   });
@@ -203,6 +217,7 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     ).toHaveCount(0);
 
     // Back again resumes the connecting hero (toggle contract).
+    await settle(page);
     await pressBack(page);
     await expect(
       page.getByRole('heading', { name: 'Connecting to your CMS' }),
@@ -306,12 +321,14 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     expect(await page.evaluate(() => window.history.length)).toBeLessThanOrEqual(depthBefore);
 
     // ── Press 2: the existing toggle — overlay dismissed, playback resumes. ──
+    await settle(page);
     await page.goBack();
     await expect(page.getByRole('button', { name: /Resume/ })).toBeHidden({ timeout: 5_000 });
     expect(await trap()).toBe(true);
     expect(await mounts()).toBe(mountsBefore);
 
     // ── Press 3: still one press per toggle, forever. ──
+    await settle(page);
     await page.goBack();
     await expect(page.getByRole('button', { name: /Resume/ })).toBeVisible({ timeout: 5_000 });
     expect(await page.evaluate(() => window.history.length)).toBeLessThanOrEqual(depthBefore);

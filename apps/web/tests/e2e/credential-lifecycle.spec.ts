@@ -330,6 +330,10 @@ test.describe('credential lifecycle — the G43 stories, pinned live', () => {
       'the operator surface states the unproven credential',
     ).toBeVisible({ timeout: 20_000 });
     // Back again resumes: content returns and the chip steps off the glass.
+    // Two frames first: the page re-registers its Back listener in an effect
+    // after each toggle, and a press before that effect reaches the previous
+    // listener (see `settle` in player-remote-escape.spec.ts).
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await pressBack();
     await expect(contentImg(page), 'playback resumes after the operator surface').toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Re-pair required'), 'no admin chip over live content').toHaveCount(0);
