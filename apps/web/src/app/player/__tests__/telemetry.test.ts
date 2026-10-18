@@ -601,6 +601,12 @@ describe('per-file playback evidence on the wire (2026-10-11, video guarantee st
     expect(tel.videoExtrasRefused(400, sent)).toBe(true);
     expect(tel.videoExtrasRefused(400, tel.buildTelemetryBody({ nativeVideo: { ...native, device: undefined, experiments: undefined, timing: nine } } as never))).toBe(false);
     expect(tel.videoExtrasRefused(400, tel.buildTelemetryBody({ nativeVideo: { ...native, timing: nine, experiments: undefined } } as never))).toBe(true);
+    // 1.1.42: the pacing keys are extras too — each alone makes a 400 a hold-back, and the held body drops them.
+    for (const extra of [{ snappedFrames: 1 }, { clockSlewUs: -5 }, { supportedModes: ['1:3840x2160@30.00'] }, { preferredModeResult: 'applied' }, { keepScreenOn: true }, { vsyncPeriodUs: 33333 }]) {
+      const pacing = tel.buildTelemetryBody({ nativeVideo: { ...native, device: undefined, experiments: undefined, timing: { ...nine, ...extra } } } as never);
+      expect({ extra, refused: tel.videoExtrasRefused(400, pacing) }).toEqual({ extra, refused: true });
+      expect(tel.withoutNativeExtras(pacing.nativeVideo!).timing).toEqual(nine);
+    }
     // While held back: only what an API from before 1.1.41 accepts — and never the whole block, liveness still lands.
     const held = tel.buildTelemetryBody({ nativeVideo: native, videoExtras: false } as never);
     expect(held.nativeVideo).toEqual({ version: 1, state: 'presenting', sessionId: '11111111-1111-4111-8111-111111111111', revision: 'rev', sha256: 'a'.repeat(64), faceIndex: 0, timing: nine });
