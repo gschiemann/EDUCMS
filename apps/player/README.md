@@ -99,8 +99,9 @@ adb shell am start -n com.educms.player/.PairingActivity
 
 ### One-time install grants (basic Android settings) — NOT device owner
 
-Since 2026-10-18 the player can set a unit's basic Android settings itself
-(Settings › the screen's drawer › **Android settings**: brightness, volume,
+The player build that carries the `settings/` package (code landed 2026-10-18;
+not yet released or hardware-qualified) sets a unit's basic Android settings itself
+(the screen's drawer › Settings › **Android settings**: brightness, volume,
 screen timeout, rotation lock, automatic date & time, automatic time zone,
 time server, one Wi-Fi network). It does this as an ordinary app — the
 Manager is never device owner — and only on **Android 13+**. Three of those

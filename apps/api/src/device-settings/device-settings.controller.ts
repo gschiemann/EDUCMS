@@ -224,18 +224,24 @@ export class DeviceSettingsController {
   }
 
   /**
-   * Tenant-scoped screen load — the same rule as DisplayController's:
-   * SUPER_ADMIN is cross-tenant by design; every other role must match; a
-   * cross-tenant miss is a 404, never a 403.
+   * The screen, if the caller may reach it: the ACTIVE workspace plus its
+   * direct, non-archived child locations — a SUPER_ADMIN included (support
+   * access governs which workspace that is). The same rule as
+   * PlaybackCapabilityController.reachableScreen, so a district admin reaches
+   * a school's screen and nobody reaches another organisation's. 404
+   * otherwise, never 403 — the house rule that stops the code from
+   * confirming a screen id exists elsewhere.
    */
   private async loadOperatorScreen(screenId: string, req: any): Promise<any> {
-    const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
     const callerTenantId: string | null = req.user?.tenantId || req.user?.schoolId || req.user?.districtId || null;
-    if (!isSuper && !callerTenantId) {
-      throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
-    }
+    if (!callerTenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    const children = await this.prisma.client.tenant.findMany({
+      where: { parentId: callerTenantId, archivedAt: null },
+      select: { id: true },
+    });
+    const readable = [callerTenantId, ...children.map((c: { id: string }) => c.id)];
     const screen = await this.prisma.client.screen.findFirst({
-      where: isSuper ? { id: screenId } : { id: screenId, tenantId: callerTenantId as string },
+      where: { id: screenId, tenantId: { in: readable } },
       select: {
         id: true,
         tenantId: true,
@@ -244,7 +250,7 @@ export class DeviceSettingsController {
         deviceSettingsReportAt: true,
       },
     });
-    if (!screen) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
+    if (!screen || !screen.tenantId) throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
     await assertSupportReach(req.user, screen.tenantId); // SUPPORT ACCESS (2026-10-11)
     return screen;
   }

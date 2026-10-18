@@ -64,6 +64,7 @@ import { PanicContentController } from '../panic-content/panic-content.controlle
 import { ScreensController } from '../screens/screens.controller';
 import { ScreensBulkController } from '../screens/bulk/screens-bulk.controller';
 import { PlaybackCapabilityController } from '../telemetry/playback-capability.controller';
+import { DeviceSettingsController } from '../device-settings/device-settings.controller';
 import { PlaybackDemotionService } from '../telemetry/playback-demotion.service';
 import { SportsController } from '../sports/sports.controller';
 import { SportsService } from '../sports/sports.service';
@@ -227,6 +228,19 @@ function dataset(): Dataset {
       floorX: 1,
       floorY: 1,
       deviceFingerprint: `fp-print-${s}`,
+    })),
+    // 2026-10-18 — basic Android settings: one row per screen, keyed by the
+    // screen id. tenant-b's row carries its own (non-secret) network name so a
+    // leak would show up in the response scan.
+    desiredDeviceSettings: pair((tenantId, s) => ({
+      id: `dds-${s}`,
+      screenId: `scr-${s}`,
+      tenantId,
+      revision: 2,
+      settings: { brightness: { v: 80, id: 'r2', at: '2026-10-18T00:00:00.000Z', by: `user-${s}` } },
+      wifiSecret: null,
+      report: null,
+      reportChangedAt: null,
     })),
     // 2026-10-11 — per-file playback evidence + declared decode capability
     // (video guarantee). One row per screen × file digest / per screen.
@@ -1017,6 +1031,28 @@ const MATRIX: Case[] = [
     controller: PlaybackCapabilityController, handler: 'clearDemotion', op: 'write',
     build: (p) => new PlaybackCapabilityController(p, new PlaybackDemotionService(p, stubRedis, stubSigner)),
     invoke: (c, req) => c.clearDemotion('scr-a', 'dem-b', req),
+  },
+
+  // 2026-10-18 — basic Android settings (apps/api/src/device-settings/).
+  // The screen is loaded through the workspace-plus-children rule, so a
+  // foreign id is a 404 before any settings row is read or written.
+  {
+    name: 'screens: read another tenant\'s Android settings',
+    controller: DeviceSettingsController, handler: 'get', op: 'read',
+    build: (p) => new DeviceSettingsController(p),
+    invoke: (c, req) => c.get('scr-b', req),
+  },
+  {
+    name: 'screens: change another tenant\'s Android settings',
+    controller: DeviceSettingsController, handler: 'put', op: 'write',
+    build: (p) => new DeviceSettingsController(p),
+    invoke: (c, req) => c.put('scr-b', req, { brightness: 60 }),
+  },
+  {
+    name: 'screens: own Android settings never carry another tenant\'s row',
+    controller: DeviceSettingsController, handler: 'get', op: 'read',
+    build: (p) => new DeviceSettingsController(p),
+    invoke: (c, req) => c.get('scr-a', req),
   },
 
   // ── Bulk screen actions (2026-10-11) ──────────────────────────────────

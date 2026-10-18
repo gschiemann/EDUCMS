@@ -53,8 +53,10 @@ function harness(opts: { row?: Row | null; screenTenant?: string | null; face?: 
     }),
   };
   const screen = {
-    findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId?: string } }) =>
-      where.id === screenRow.id && (!where.tenantId || where.tenantId === screenRow.tenantId) ? screenRow : null,
+    findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: { in: string[] } } }) =>
+      where.id === screenRow.id && screenRow.tenantId !== null && where.tenantId.in.includes(screenRow.tenantId)
+        ? screenRow
+        : null,
     ),
     update: jest.fn(async ({ data }: { data: { deviceSettingsRev: number } }) => {
       screenRow.deviceSettingsRev = data.deviceSettingsRev;
@@ -67,10 +69,17 @@ function harness(opts: { row?: Row | null; screenTenant?: string | null; face?: 
       return {};
     }),
   };
+  // tenant-a's child locations (a district's schools).
+  const tenant = {
+    findMany: jest.fn(async ({ where }: { where: { parentId: string } }) =>
+      where.parentId === 'district-a' ? [{ id: 'tenant-a' }] : [],
+    ),
+  };
   const client = {
     desiredDeviceSettings,
     screen,
     auditLog,
+    tenant,
     $transaction: async (fn: (tx: unknown) => unknown) => fn({ desiredDeviceSettings, screen }),
   };
   const controller = new DeviceSettingsController({ client } as never);
@@ -126,6 +135,14 @@ describe('DeviceSettingsController — scope', () => {
       code: 'SCREEN_NOT_FOUND',
     });
     expect(h.desiredDeviceSettings.create).not.toHaveBeenCalled();
+  });
+
+  it('a district admin reaches a screen at one of its locations', async () => {
+    const h = harness();
+    const district = { user: { id: 'u-2', role: AppRole.DISTRICT_ADMIN, tenantId: 'district-a' } };
+    const res = await h.controller.put('screen-1', district, { volume: 40 });
+    expect(res.desired.volume).toMatchObject({ value: 40 });
+    expect(h.audits[0].userId).toBe('u-2');
   });
 
   it('a side of a double-sided unit is set on its main side', async () => {
