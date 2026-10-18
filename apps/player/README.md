@@ -118,9 +118,10 @@ adb shell appops set com.educms.player WRITE_SETTINGS allow
 ```
 
 The first unlocks **automatic date & time, automatic time zone, the time
-server and "Sleep after no remote use"** (Android TV's `attentive_timeout`: the
-box goes to sleep after hours without remote or touch input whatever the player
-holds — set it to Never on signage). The second is the same "Modify system settings" switch the setup
+server and "Sleep after no remote use"** (Android's `attentive_timeout`: TV
+builds put the box to sleep after hours without remote or touch input whatever
+the player holds — set it to Never on signage; a time chosen in the drawer
+applies on any build, including ones that ship with it off). The second is the same "Modify system settings" switch the setup
 checklist asks for with one tap (brightness, screen timeout, rotation lock);
 it is listed here so a cabled install can skip the tap. Check they took:
 

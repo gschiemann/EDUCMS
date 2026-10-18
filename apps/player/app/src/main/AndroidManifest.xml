@@ -89,9 +89,10 @@
       command `adb shell pm grant com.educms.player
       android.permission.WRITE_SECURE_SETTINGS` (apps/player/README.md →
       "One-time install grants"). It is what automatic time, automatic time
-      zone and the NTP server need. It is NOT device owner, survives app
-      updates, and is revoked by an uninstall. Without the grant those three
-      settings report `no-secure-settings` and are never attempted.
+      zone, the NTP server and Android TV's inactivity sleep
+      (Settings.Secure attentive_timeout) need. It is NOT device owner,
+      survives app updates, and is revoked by an uninstall. Without the grant
+      those four settings report `no-secure-settings` and are never attempted.
 
       CHANGE_WIFI_STATE: normal, auto-granted. Wi-Fi network SUGGESTIONS
       (WifiManager.addNetworkSuggestions); Android asks for one approval on

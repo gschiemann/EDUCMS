@@ -84,8 +84,8 @@ than what's installed; uninstall first.
 
 **Install step on Android 13+ units (2026-10-18), while the cable is in:** the one-time
 grants that let the player set the unit's basic Android settings (automatic date & time,
-automatic time zone, time server; brightness / timeout / rotation lock without the setup
-tap). Not device owner; they survive updates and an uninstall revokes them
+automatic time zone, time server, the inactivity sleep; brightness / timeout / rotation
+lock without the setup tap). Not device owner; they survive updates and an uninstall revokes them
 (`apps/player/README.md` → "One-time install grants").
 
 ```bash

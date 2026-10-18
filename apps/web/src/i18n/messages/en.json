@@ -2101,7 +2101,7 @@
         "wifi": "Wi-Fi network"
       },
       "attentive": {
-        "help": "Android TV turns the screen off after this long without remote or touch input, whatever VenueOS is showing. Never keeps it on."
+        "help": "Android turns the screen off after this long without remote or touch input, whatever VenueOS is showing. Never keeps it on."
       },
       "on": "On",
       "off": "Off",
