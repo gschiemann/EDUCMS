@@ -560,9 +560,10 @@ jobs:
   # The layout:
   #   e2e-build  builds the Next bundle ONCE and hands it to every shard as an
   #              artifact (it used to be rebuilt in each job, ~2 min apiece).
-  #   e2e        Playwright's own sharding (`--shard=i/N`) per browser, two
-  #              workers per 4-vCPU runner. Coverage is unchanged: every test of
-  #              both projects still runs once per push.
+  #   e2e        Playwright's own sharding (`--shard=i/N`) per browser —
+  #              Chromium two workers per runner, WebKit one (see the matrix).
+  #              Coverage is unchanged: every test of both projects still runs
+  #              once per push.
   #   e2e-report one job per browser that keeps the familiar check names
   #              ("E2E Tests (Playwright / chromium|webkit)"), merges the shard
   #              reports into one HTML report, and fails unless every listed
@@ -574,8 +575,8 @@ jobs:
   # fails the browser's check by count instead of passing short.
   #
   # ⚠️ Sized for the PUBLIC 4-vCPU / 16 GB runner class. If the repo goes
-  # private (2 vCPU / 7 GB), run one worker per shard and double the shard
-  # counts, or the shards will crowd their 30-minute cap.
+  # private (2 vCPU / 7 GB), give Chromium one worker per shard and double
+  # every shard count, or the shards will crowd their 30-minute cap.
   e2e-build:
     name: E2E build (one Next bundle for every shard)
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
@@ -699,14 +700,26 @@ jobs:
       fail-fast: false
       matrix:
         # Contiguous slices by TEST COUNT (Playwright's sharding), in file
-        # order — which is why WebKit needs more shards than Chromium: its
-        # expensive tests are not where its cheap ones are.
+        # order — so a shard's cost depends on which specs land in it, not on
+        # its size. Measured on PR #107's first sharded run (2026-10-18):
+        #
+        #   workers — Chromium at 2 workers: per-test time x1.31, overlap x1.94,
+        #     0 flaky in 840 tests. WebKit at 2 workers: per-test time x1.49 and
+        #     the shard holding the holiday boards and every builder spec
+        #     starved — 6 failed + 10 flaky, all timeouts (5 s polls, 60 s
+        #     page.goto) — in a 29.4-minute job. WebKit renders the 4K boards in
+        #     software at Desktop Safari's deviceScaleFactor 2 (Chromium: 1), so
+        #     it is CPU-bound with one worker; it gets one.
+        #   shards — WebKit ~57 single-worker minutes, slices of roughly
+        #     7 / 21 / 15 / 14; Chromium ~29 at two workers' ~1.5x, slices
+        #     4.3 / 12.3 test minutes.
         include:
-          - { browser: chromium, shard: 1, of: 2 }
-          - { browser: chromium, shard: 2, of: 2 }
-          - { browser: webkit, shard: 1, of: 3 }
-          - { browser: webkit, shard: 2, of: 3 }
-          - { browser: webkit, shard: 3, of: 3 }
+          - { browser: chromium, shard: 1, of: 2, workers: 2 }
+          - { browser: chromium, shard: 2, of: 2, workers: 2 }
+          - { browser: webkit, shard: 1, of: 4, workers: 1 }
+          - { browser: webkit, shard: 2, of: 4, workers: 1 }
+          - { browser: webkit, shard: 3, of: 4, workers: 1 }
+          - { browser: webkit, shard: 4, of: 4, workers: 1 }
     # No Postgres service and no DATABASE_URL (removed 2026-10-18): nothing
     # under apps/web reads a database — every API call in this suite is
     # intercepted with page.route() — and emergency-path.yml has always run
@@ -744,14 +757,14 @@ jobs:
         run: tar -C apps/web -xf "$RUNNER_TEMP/e2e-next.tar" && test -f apps/web/.next/BUILD_ID
 
       - name: Run E2E tests (${{ matrix.browser }} shard ${{ matrix.shard }}/${{ matrix.of }})
-        # Two workers: the runner has 4 vCPUs and these specs mock every API
-        # call per page, so the only thing two workers share is the prebuilt
-        # `next start` server. `list` keeps the per-test log; `blob` is what
-        # e2e-report merges.
+        # `--workers` from the matrix (why it differs per browser is there).
+        # Every API call is mocked per page, so workers share only the
+        # prebuilt `next start` server — and the CPU. `list` keeps the per-test
+        # log; `blob` is what e2e-report merges.
         run: >-
           pnpm --filter web exec playwright test --config playwright.config.ts
           --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.of }}
-          --workers=2 --reporter=list,blob
+          --workers=${{ matrix.workers }} --reporter=list,blob
         env:
           CI: true
           # Must equal the value the build used — see e2e-build.
