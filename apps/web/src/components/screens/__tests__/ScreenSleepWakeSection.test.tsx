@@ -104,6 +104,31 @@ describe('<ScreenSleepWakeSection />', () => {
     expect(rtl.getByTestId('sleep-wake-last-off').textContent).toMatch(/Android turned it off, not a person/);
   });
 
+  it('1.1.42: says what the player proved about the off — a timeout only when the idle time reached the box timeout, else "not ours, not a timeout"', () => {
+    const withSleep = (sleep: Record<string, unknown>) => {
+      const r = render(
+        <ScreenSleepWakeSection
+          screen={{ ...base, nativeRuntimeReport: { ...base.nativeRuntimeReport, sleep: { offAt: NOW - 3_600_000, ...sleep } } }}
+          nowMs={NOW}
+        />,
+      );
+      const text = r.getByTestId('sleep-wake-last-off').textContent ?? '';
+      r.unmount();
+      return text;
+    };
+    // The owner's remote put the box to sleep after 3 s idle: never called a timeout, whatever `blank` says.
+    const remote = withSleep({ blank: 'screen-timeout', offIdleS: 3, off: 'display-off', sotS: 1_800 });
+    expect(remote).toMatch(/by something other than VenueOS/);
+    expect(remote).toMatch(/not a timeout/);
+    expect(remote).not.toMatch(/Android turned it off/);
+    // Idle longer than the box's own timeout: Android's inactivity sleep is consistent with the evidence.
+    expect(withSleep({ offIdleS: 52_620, off: 'screen-timeout', sotS: 600 })).toMatch(/Android's inactivity sleep is consistent with it/);
+    // No readable timeout: the cause stays unproven, and the line says so.
+    expect(withSleep({ offIdleS: 3, off: 'display-off', sotS: -1 })).toMatch(/could not be read, so the cause is unproven/);
+    // A player before 1.1.42 still gets the attentive-timeout match.
+    expect(withSleep({ offIdleS: 14_400, attS: 14_400 })).toMatch(/Android turned it off, not a person/);
+  });
+
   it('renders nothing without a screen', () => {
     const { container } = render(<ScreenSleepWakeSection screen={null} nowMs={NOW} />);
     expect(container.textContent).toBe('');

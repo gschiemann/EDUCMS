@@ -141,6 +141,39 @@ describe("optional native output handoff", () => {
     expect(nativeOrientationRequest("PORTRAIT", readNativeVideoDescriptor({ ...v2, experiments: { webviewInvisible: true } }))).toBe("PORTRAIT");
     expect(nativeOrientationRequest("PORTRAIT", null)).toBe("PORTRAIT");
   });
+  it("1.1.42: the pacing measurement, the panel's modes, the window flag and the two new experiments ride bounded, and nothing unknown gets through", () => {
+    const nine = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
+      maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
+    const modes = ["1:3840x2160@30.00", "2:3840x2160@60.00", "3:1920x1080@60.00"];
+    const t = readNativeVideoTiming({ ...nine, snappedFrames: 1800, snapErrorMaxUs: 9, snapErrorMeanUs: 2, clockSlewUs: -12345, vsyncPeriodUs: 16666, vsyncSamples: 3600,
+      supportedModes: modes, preferredModeApplied: 2, preferredModeResult: "applied", keepScreenOn: true,
+      history: { entries: [{ at: 5, vsyncSnap: true, prefer60hz: "kept", preferredModeApplied: 2, keepScreenOn: false, snappedFrames: 7, clockSlewUs: 42, vsyncPeriodUs: 33333, vsyncSamples: 9, snapErrorMaxUs: 1, snapErrorMeanUs: 0, supportedModes: modes }], overflow: 0 } })!;
+    expect(t).toMatchObject({ ...nine, snappedFrames: 1800, snapErrorMaxUs: 9, snapErrorMeanUs: 2, clockSlewUs: -12345, vsyncPeriodUs: 16666, vsyncSamples: 3600,
+      supportedModes: modes, preferredModeApplied: 2, preferredModeResult: "applied", keepScreenOn: true });
+    expect(t.history?.entries[0]).toEqual({ at: 5, vsyncSnap: true, prefer60hz: "kept", preferredModeApplied: 2, keepScreenOn: false, snappedFrames: 7, clockSlewUs: 42, vsyncPeriodUs: 33333, vsyncSamples: 9, snapErrorMaxUs: 1, snapErrorMeanUs: 0 });
+    // Malformed shapes drop one by one: 17 modes, a free-text mode, a fractional slew, a string flag, a free-text result.
+    const junk = readNativeVideoTiming({ ...nine, supportedModes: Array(17).fill(modes[0]), preferredModeResult: "mode 2 please", clockSlewUs: 1.5, keepScreenOn: "yes", snappedFrames: -1 })!;
+    expect(junk).toEqual(nine);
+    expect(readNativeVideoTiming({ ...nine, supportedModes: ["4K sixty"] })).toEqual(nine);
+    // The device class carries what the panel runs and offers; an unreadable display is the 1.1.41 shape.
+    const base = { class: "amlogic/android-13", soc: "amlogic", sdk: 33, webviewMajor: 101, nativeSolo: true, protocol3: true, silentUpdate: "tap" };
+    expect(readNativeDeviceClass({ ...base, refreshRate: 30, activeMode: "1:3840x2160@30.00", supportedModes: modes })).toEqual({ ...base, refreshRate: 30, activeMode: "1:3840x2160@30.00", supportedModes: modes });
+    expect(readNativeDeviceClass({ ...base, activeMode: "", supportedModes: [] })).toEqual({ ...base, activeMode: "", supportedModes: [] });
+    expect(readNativeDeviceClass({ ...base, refreshRate: -1, activeMode: "4K", supportedModes: Array(17).fill(modes[0]) })).toEqual(base);
+    // The two new experiments: flags on the descriptor and the state, applied values and guard entries by their names only.
+    const v2 = { version: 2, screenId: primary, tenantId: "28d09f9d-0a6c-4828-b46d-38712eb69f1f", faceIndex: 0, revision: "rev",
+      asset: descriptor.asset, transform: { orientation: "PORTRAIT", fit: "fill" } };
+    const flagged = readNativeVideoDescriptor({ ...v2, experiments: { vsyncSnap: true, prefer60hz: true, "vsync-snap": true, sixtyHertz: true } })!;
+    expect(flagged.experiments).toEqual({ vsyncSnap: true, prefer60hz: true });
+    expect(sharedVideoIdentity(flagged)).toBe(sharedVideoIdentity(readNativeVideoDescriptor(v2)!));
+    expect(nativeOrientationRequest("PORTRAIT", flagged)).toBe("PORTRAIT");
+    const experiments = { requested: { vsyncSnap: true, prefer60hz: true }, applied: { webviewInvisible: false, vsyncSnap: true, prefer60hz: "applied", bogus: 1 },
+      guard: { disabled: { vsyncSnap: "output-stalled", other: "x" }, applied: { vsyncSnap: 1, prefer60hz: 1 } } };
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments })?.experiments)
+      .toEqual({ requested: { vsyncSnap: true, prefer60hz: true }, applied: { webviewInvisible: false, vsyncSnap: true, prefer60hz: "applied" }, guard: { disabled: { vsyncSnap: "output-stalled" }, applied: { vsyncSnap: 1, prefer60hz: 1 } } });
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments: { ...experiments, applied: { webviewInvisible: false, vsyncSnap: "yes", prefer60hz: "http://x" } } })?.experiments?.applied)
+      .toEqual({ webviewInvisible: false });
+  });
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
   it("accepts fill and cover (2026-10-11 crop-to-fill), refuses any other fit", () => {

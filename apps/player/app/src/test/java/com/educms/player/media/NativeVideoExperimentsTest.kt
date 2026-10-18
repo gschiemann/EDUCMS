@@ -19,6 +19,33 @@ class NativeVideoExperimentsTest {
         assertEquals(NativeVideoExperiments(true, true, true), all)
         val j = all.toJson()
         for (k in listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation")) assertTrue(k, j.getBoolean(k))
+        assertFalse(j.getBoolean("vsyncSnap")); assertFalse(j.getBoolean("prefer60hz"))
+    }
+
+    @Test fun theTwoPacingExperimentsParseByTheirExactKeysAndUnknownTokensEnableNothing() {
+        val snap = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true))
+        assertEquals(NativeVideoExperiments(vsyncSnap = true), snap)
+        assertTrue(snap.any); assertFalse(snap.prefer60hz); assertFalse(snap.webviewInvisible)
+        val hz = NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true))
+        assertEquals(NativeVideoExperiments(prefer60hz = true), hz)
+        assertTrue(hz.any)
+        // The wire names are exactly these two; near misses, other spellings and non-`true` values are OFF.
+        for (unknown in listOf("vsync-snap", "vsync_snap", "VsyncSnap", "prefer-60hz", "prefer60Hz", "prefer60", "snap", "sixtyHertz")) {
+            assertEquals(unknown, NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put(unknown, true)))
+        }
+        assertEquals(NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", "true").put("prefer60hz", 1)))
+        assertEquals(listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"), NativeVideoExperiments.KNOWN)
+        val both = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true).put("prefer60hz", true).put("decoderRotation", true))
+        assertEquals(NativeVideoExperiments(decoderRotation = true, vsyncSnap = true, prefer60hz = true), both)
+        assertTrue(both.toJson().getBoolean("vsyncSnap")); assertTrue(both.toJson().getBoolean("prefer60hz")); assertFalse(both.toJson().getBoolean("webviewInvisible"))
+        // The fault guard covers the snap like the other presenting-session experiments; its names are stable codes.
+        val g = NativeExperimentGuard()
+        g.applied(NativeVideoExperiments.VSYNC_SNAP)
+        assertFalse(g.ended(NativeVideoExperiments.VSYNC_SNAP, "content-changed"))
+        assertTrue(g.ended(NativeVideoExperiments.VSYNC_SNAP, "output-stalled"))
+        assertFalse(g.allows(NativeVideoExperiments.VSYNC_SNAP))
+        assertTrue(g.allows(NativeVideoExperiments.PREFER_60HZ))
+        assertEquals("output-stalled", g.toJson().getJSONObject("disabled").getString("vsyncSnap"))
     }
 
     @Test fun theDescriptorCarriesTheFlagsOutsideItsIdentity() {

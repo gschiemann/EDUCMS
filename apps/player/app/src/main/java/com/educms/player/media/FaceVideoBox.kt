@@ -89,6 +89,14 @@ internal class FaceVideoSession(
     // Experiments (§4E) applied to THIS session.
     var webHidden = false
     var frameRateRequested: String? = null
+    /** 1.1.42 — the display this session attached to, every mode it offers (flag or not), and experiments 4 / 5. */
+    var supportedModes: List<String> = emptyList()
+    var activeModeAtAttach = ""
+    var preferredModeApplied = 0
+    var preferredModeResult: String? = null
+    var vsyncSnapped = false
+    /** Whether this face's window held FLAG_KEEP_SCREEN_ON at the last watch tick; null = no window to read. */
+    var keepScreenOn: Boolean? = null
     // Views, created on the UI thread when the surface is attached; in the tree only while this session runs.
     var container: FrameLayout? = null
     var box: FrameLayout? = null
@@ -135,6 +143,8 @@ internal object FaceVideoBox {
     private val lastDiagnostics = mutableMapOf<Int, Long>()
     /** Experiment fault latch, process-wide: one flip at most (NativeVideoExperiments.kt). */
     internal val experiments = NativeExperimentGuard()
+    /** Experiment 4 (1.1.42): the default display's vsync grid, sampled while a snapping session presents (VsyncClock.kt). */
+    private val vsync = VsyncSampler(main)
     const val NAMESPACE = "native-video-v2"
     /** What this engine can do; what it ADVERTISES is the class table's `protocolMax` (2 on every class in 1.1.41). */
     const val PROTOCOL_MAX = 3
@@ -294,6 +304,35 @@ internal object FaceVideoBox {
         if (rect[2] <= 0 || rect[3] <= 0) {
             synchronized(this) { if (live(host, s)) stopSession(host, s, "output-unavailable") }; return
         }
+        if (s.surface == null) {
+            // 1.1.42 (§4E, the pacing finding): the display this face is on and EVERY mode it
+            // offers, once per session, flag or not — `supportedModes` on the snapshot.
+            val (active, modes) = DisplayModePolicy.read(parent.display)
+            s.supportedModes = DisplayModePolicy.labels(active, modes)
+            s.activeModeAtAttach = active?.label() ?: ""
+            PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_DISPLAY face=${host.face} proto=${s.protocol} active=${s.activeModeAtAttach.ifEmpty { "unknown" }} refresh=${parent.display?.refreshRate ?: 0f} modes=${s.supportedModes.joinToString(";")} sha=${s.sha256.take(8)}")
+            // Experiment 5: ask THIS face's window for a same-resolution ~60 Hz mode at this session
+            // boundary — before the surface exists, never mid-session (a mode switch can blank the
+            // panel for a second or two) — kept for the process while the flag stays on; a withdrawn
+            // flag reverts here, at the next boundary. Another session already attached on this face
+            // makes this boundary mid-session for IT, so nothing is asked then.
+            if (s.protocol == 2) {
+                val window = host.window()
+                val otherAttached = host.faceSessions.values.any { it !== s && it.alive && it.attached }
+                if (d.experiments.prefer60hz) {
+                    val (id, result) = if (otherAttached) Pair(PreferredDisplayMode.applied(host.face), PreferredDisplayMode.RESULT_OTHER_SESSION)
+                        else PreferredDisplayMode.request(host.face, window, active, modes)
+                    s.preferredModeApplied = id; s.preferredModeResult = result
+                    if (result == PreferredDisplayMode.RESULT_APPLIED) experiments.applied(NativeVideoExperiments.PREFER_60HZ)
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$result modeId=$id active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
+                } else if (!otherAttached) {
+                    PreferredDisplayMode.withdraw(host.face, window)?.let { result ->
+                        s.preferredModeResult = result
+                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$result active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
+                    }
+                }
+            }
+        }
         val container = s.container ?: FrameLayout(host.web.context).also { s.container = it }
         val box = s.box ?: FrameLayout(host.web.context).also { it.setBackgroundColor(Color.BLACK); s.box = it }
         val surface = s.surface ?: SurfaceView(host.web.context).also { sv ->
@@ -328,6 +367,7 @@ internal object FaceVideoBox {
     /** Surface created/changed (UI thread). Prepares the renderer once the surface is real. */
     fun surfaceReady(host: SharedVideoHost, s: FaceVideoSession) {
         val file: File; val d: FaceVideoDescriptor; val sv: SurfaceView
+        var grid: VsyncGrid? = null
         synchronized(this) {
             if (!live(host, s) || !s.attached || s.preparingRenderer || s.renderer != null) return
             file = s.file ?: return; d = s.descriptor ?: return
@@ -346,6 +386,19 @@ internal object FaceVideoBox {
                 experiments.applied(NativeVideoExperiments.SURFACE_FRAME_RATE)
                 PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=surfaceFrameRate fps=${d.fps} result=${s.frameRateRequested} displayMode=${s.displayMode} refresh=${s.displayRefreshRate} sha=${s.sha256.take(8)}")
             }
+            // Experiment 4: release every output at the vsync closest to its due time, on a grid
+            // sampled from Choreographer (the DEFAULT display's; a face on another panel is not
+            // snapped). Acquired here, before the renderer exists; released with the session.
+            if (d.experiments.vsyncSnap && s.protocol == 2 && experiments.allows(NativeVideoExperiments.VSYNC_SNAP)) {
+                if (sv.display?.displayId == android.view.Display.DEFAULT_DISPLAY) {
+                    grid = vsync.acquire(sv.display?.refreshRate ?: 60f)
+                    s.vsyncSnapped = true
+                    experiments.applied(NativeVideoExperiments.VSYNC_SNAP)
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=vsyncSnap applied=true nominal=${s.displayRefreshRate} displayMode=${s.displayMode} sha=${s.sha256.take(8)}")
+                } else {
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=vsyncSnap applied=false reason=display-not-default displayMode=${s.displayMode} sha=${s.sha256.take(8)}")
+                }
+            }
         }
         val r = FaceVideoRenderer(file, d, sv.holder.surface, s.degrees, { s.alive && !host.detached },
             failed = { why -> synchronized(this) { if (live(host, s)) stopSession(host, s, why) } },
@@ -356,7 +409,8 @@ internal object FaceVideoBox {
             holdFirst = s.protocol == 3,
             firstFrame = { synchronized(this) { if (live(host, s)) { s.held = true; s.heldAt = SystemClock.elapsedRealtime() } } },
             ended = { synchronized(this) { if (live(host, s)) s.ended = true } },
-            refreshRate = sv.display?.refreshRate ?: 60f)
+            refreshRate = sv.display?.refreshRate ?: 60f,
+            vsync = grid)
         meta.execute {
             try {
                 r.prepare()
@@ -632,6 +686,9 @@ internal object FaceVideoBox {
                 else -> null
             }
             if (why != null) { stopSession(host, s, why); return }
+            // 1.1.42: does this face's window hold FLAG_KEEP_SCREEN_ON right now? Read, never written,
+            // here (KeepScreenOnContractTest): the runtime report says whether a blank was in force.
+            s.keepScreenOn = keepScreenOnOf(host)
             // Checkpoint the running session's timing once a minute, so a crash or an
             // update still leaves its last minute on disk (NativeTimingLedger).
             if (s.startedAt > 0 && now - s.lastLedgerAt >= LEDGER_CHECKPOINT_MS) {
@@ -652,13 +709,18 @@ internal object FaceVideoBox {
         s.finalTiming = s.renderer?.timing() ?: s.finalTiming
         s.renderer?.stop(); s.renderer = null
         s.state = "failed"; s.reason = why
-        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=${s.protocol} reason=$why layer=$previousLayer mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sdk=${Build.VERSION.SDK_INT} frames=${s.unique} loops=${s.loops} drops=${s.drops} intervals=${s.intervals?.count ?: 0} onPeriod=${s.intervals?.onPeriod() ?: 0} sha=${s.sha256.take(8)}")
+        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_STOP face=${host.face} proto=${s.protocol} reason=$why layer=$previousLayer mode=${s.layer.mode.name.lowercase(Locale.ROOT)} sdk=${Build.VERSION.SDK_INT} frames=${s.unique} loops=${s.loops} drops=${s.drops} intervals=${s.intervals?.count ?: 0} onPeriod=${s.intervals?.onPeriod() ?: 0} snap=${s.vsyncSnapped} keepScreenOn=${s.keepScreenOn ?: "unknown"} sha=${s.sha256.take(8)}")
         // An experiment that was applied to a session which ended for a reason it could
         // have caused is off for the rest of the process (one flip, never a storm).
         if (s.webHidden && experiments.ended(NativeVideoExperiments.WEBVIEW_INVISIBLE, why))
             PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=webviewInvisible disabled=$why")
         if (s.frameRateRequested != null && experiments.ended(NativeVideoExperiments.SURFACE_FRAME_RATE, why))
             PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=surfaceFrameRate disabled=$why")
+        if (s.vsyncSnapped) {
+            vsync.release()
+            if (experiments.ended(NativeVideoExperiments.VSYNC_SNAP, why))
+                PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=vsyncSnap disabled=$why")
+        }
         if (s.startedAt > 0) runCatching { NativeTimingLedger.shared(host.ctx).record(timingEntry(host, s, why, s.stoppedAt)) }
         val removeOutput = Runnable {
             synchronized(this) {
@@ -732,9 +794,23 @@ internal object FaceVideoBox {
             .put("droppedFrames", s.drops).put("loops", s.loops).put("uniqueFrames", s.unique)
             .put("codecName", s.codecName ?: JSONObject.NULL)
             .put("webviewInvisible", s.webHidden).put("surfaceFrameRate", s.frameRateRequested ?: JSONObject.NULL)
+            // 1.1.42: experiments 4 / 5 and the window flag, per session.
+            .put("vsyncSnap", s.vsyncSnapped).put("prefer60hz", s.preferredModeResult ?: JSONObject.NULL)
+            .put("preferredModeApplied", s.preferredModeApplied)
+            .put("keepScreenOn", s.keepScreenOn ?: JSONObject.NULL)
+        if (base?.has("snappedFrames") == true) {
+            j.put("snappedFrames", base.optLong("snappedFrames")).put("snapErrorMaxUs", base.optLong("snapErrorMaxUs"))
+                .put("snapErrorMeanUs", base.optLong("snapErrorMeanUs")).put("clockSlewUs", base.optLong("clockSlewUs"))
+                .put("vsyncPeriodUs", base.optLong("vsyncPeriodUs")).put("vsyncSamples", base.optLong("vsyncSamples"))
+        }
         s.intervals?.writeTo(j)
         return j
     }
+
+    /** UI thread. Whether this face's window holds FLAG_KEEP_SCREEN_ON right now; null when there is no window to read. */
+    private fun keepScreenOnOf(host: SharedVideoHost): Boolean? = runCatching {
+        host.window()?.attributes?.flags?.let { (it and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0 }
+    }.getOrNull()
 
     /** The live `timing` block: the renderer's scheduling snapshot plus the glass-side measurement and the persisted history. */
     private fun timingJson(host: SharedVideoHost, s: FaceVideoSession): Any {
@@ -746,6 +822,11 @@ internal object FaceVideoBox {
             .put("sourceFps", s.descriptor?.fps ?: 0.0)
             .put("refreshRate", (s.surface?.display?.refreshRate ?: s.displayRefreshRate).toDouble())
             .put("displayMode", s.surface?.let { displayModeOf(it) }?.takeIf { it.isNotEmpty() } ?: s.displayMode)
+            // 1.1.42: every mode the panel offers (read at attach), what experiment 5 asked for, the window flag.
+            .put("supportedModes", JSONArray(s.supportedModes))
+            .put("preferredModeApplied", s.preferredModeApplied)
+            .put("preferredModeResult", s.preferredModeResult ?: JSONObject.NULL)
+            .put("keepScreenOn", s.keepScreenOn ?: JSONObject.NULL)
         s.intervals?.writeTo(j)
         runCatching { j.put("history", NativeTimingLedger.shared(host.ctx).snapshot()) }
         return j
@@ -780,7 +861,9 @@ internal object FaceVideoBox {
         if (d != null && d.experiments.any) {
             j.put("experiments", JSONObject().put("requested", d.experiments.toJson())
                 .put("applied", JSONObject().put(NativeVideoExperiments.WEBVIEW_INVISIBLE, s.webHidden)
-                    .put(NativeVideoExperiments.SURFACE_FRAME_RATE, s.frameRateRequested ?: JSONObject.NULL))
+                    .put(NativeVideoExperiments.SURFACE_FRAME_RATE, s.frameRateRequested ?: JSONObject.NULL)
+                    .put(NativeVideoExperiments.VSYNC_SNAP, s.vsyncSnapped)
+                    .put(NativeVideoExperiments.PREFER_60HZ, s.preferredModeResult ?: JSONObject.NULL))
                 .put("guard", experiments.toJson()))
         }
         return j

@@ -102,28 +102,41 @@ export function parseNativeVideoRollout(
 }
 
 /**
- * THE THREE M43 EXPERIMENTS (player 1.1.41, plan 2026-10-17 §4E), per screen,
- * default OFF — `PLAYER_NATIVE_VIDEO_EXPERIMENTS` (Railway env), comma tokens
- * `<experiment>:<screen uuid>` or `<experiment>:all`:
+ * THE NATIVE VIDEO EXPERIMENTS (player 1.1.41 / 1.1.42, plan 2026-10-17 §4E),
+ * per screen, default OFF — `PLAYER_NATIVE_VIDEO_EXPERIMENTS` (Railway env),
+ * comma tokens `<experiment>:<screen uuid>` or `<experiment>:all`:
  *   webview-invisible   the player WebView goes INVISIBLE while a solo native
  *                       session presents (restored VISIBLE on any end, and
  *                       FIRST on an emergency hold);
  *   surface-frame-rate  `Surface.setFrameRate(fps, ONLY_IF_SEAMLESS)` on API 30+;
  *   decoder-rotation    the Activity stays in the panel's natural orientation
- *                       and the decoder rotates the picture.
+ *                       and the decoder rotates the picture;
+ *   vsync-snap          (1.1.42) every output is released at the vsync closest
+ *                       to its due time, on a Choreographer-measured grid, and
+ *                       the media clock is slewed ≤ 0.3 ms/frame to stay locked
+ *                       — the 30 fps-on-30 Hz straddle that holds or skips a
+ *                       frame with perfect decoding;
+ *   prefer-60hz         (1.1.42) when the panel lists a ~60 Hz mode of the SAME
+ *                       resolution, the APK asks for it at a native session
+ *                       boundary (before that session's surface exists). A mode
+ *                       switch can BLANK the panel for a second or two, so this
+ *                       is switched on per screen after proving it on the glass.
  * Each is switchable on its own; an unknown or malformed token enables nothing.
  * The flags ride on the hashed `nativeVideo` descriptor as `experiments`
  * (omitted when none are on, so nobody else's payload hash moves) and stay
  * OUTSIDE `revision`: flipping one never restarts a session on the glass; it
- * applies to the next native session. Deterministic per (screen, env).
+ * applies to the next native session. Deterministic per (screen, env). An APK
+ * before 1.1.42 ignores the two new keys.
  */
-export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation'] as const;
+export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz'] as const;
 export type NativeVideoExperiment = (typeof NATIVE_VIDEO_EXPERIMENTS)[number];
 export type NativeVideoExperimentFlags = Partial<Record<NativeVideoExperiment, true>>;
 const EXPERIMENT_TOKENS: Record<string, NativeVideoExperiment> = {
   'webview-invisible': 'webviewInvisible',
   'surface-frame-rate': 'surfaceFrameRate',
   'decoder-rotation': 'decoderRotation',
+  'vsync-snap': 'vsyncSnap',
+  'prefer-60hz': 'prefer60hz',
 };
 
 export function parseNativeVideoExperiments(

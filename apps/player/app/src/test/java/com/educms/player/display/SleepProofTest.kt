@@ -30,6 +30,25 @@ class SleepProofTest {
     }
 
     @Test
+    fun `the last display-off that was not ours is a screen timeout only when the idle time reached the system timeout`() {
+        // The owner's remote put the X80 to sleep after 3 s idle (2026-10-18 03:35Z): not a timeout, whatever the resolved blank mechanism says.
+        assertEquals(SleepProofPolicy.OFF_DISPLAY_OFF, SleepProofPolicy.offCause(idleS = 3, screenOffTimeoutMs = 1_800_000))
+        // Idle for the whole timeout (or longer): Android's inactivity sleep is consistent with the evidence.
+        assertEquals(SleepProofPolicy.OFF_SCREEN_TIMEOUT, SleepProofPolicy.offCause(idleS = 1_800, screenOffTimeoutMs = 1_800_000))
+        assertEquals(SleepProofPolicy.OFF_SCREEN_TIMEOUT, SleepProofPolicy.offCause(idleS = 52_620, screenOffTimeoutMs = 600_000))
+        // One second short is not "at least".
+        assertEquals(SleepProofPolicy.OFF_DISPLAY_OFF, SleepProofPolicy.offCause(idleS = 1_799, screenOffTimeoutMs = 1_800_000))
+        // No readable timeout, or a disabled one, can never be blamed.
+        assertEquals(SleepProofPolicy.OFF_DISPLAY_OFF, SleepProofPolicy.offCause(idleS = 52_620, screenOffTimeoutMs = -1))
+        assertEquals(SleepProofPolicy.OFF_DISPLAY_OFF, SleepProofPolicy.offCause(idleS = 52_620, screenOffTimeoutMs = 0))
+        // No input since the process started: the idle time is unknown and so is the cause.
+        assertEquals(SleepProofPolicy.OFF_UNKNOWN, SleepProofPolicy.offCause(idleS = -1, screenOffTimeoutMs = 1_800_000))
+        for (c in listOf(SleepProofPolicy.OFF_SCREEN_TIMEOUT, SleepProofPolicy.OFF_DISPLAY_OFF, SleepProofPolicy.OFF_UNKNOWN)) {
+            assertTrue(c, Regex("^[a-z][a-z-]{1,31}$").matches(c))
+        }
+    }
+
+    @Test
     fun `a screensaver is a dream, not an off — even though Android calls it interactive`() {
         assertEquals(SleepProofPolicy.OUTCOME_DREAM, SleepProofPolicy.outcome(interactive = true, dreamSeen = true))
         assertEquals(SleepProofPolicy.OUTCOME_DREAM, SleepProofPolicy.outcome(interactive = null, dreamSeen = true))

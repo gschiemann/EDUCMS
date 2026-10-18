@@ -49,6 +49,8 @@ internal class FaceVideoRenderer(
     private val firstFrame: () -> Unit = {},
     private val ended: () -> Unit = {},
     private val refreshRate: Float = 60f,
+    /** Experiment 4 (1.1.42): the display's vsync grid to snap releases to; null = release at the PTS-derived due time as before. */
+    private val vsync: VsyncGrid? = null,
 ) {
     private val stopped = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
@@ -157,7 +159,7 @@ internal class FaceVideoRenderer(
                 catch (e: IllegalStateException) { throw IllegalStateException("decoder-unavailable", e) }
             val frameUs = (1_000_000.0 / d.fps).toLong().coerceAtLeast(1)
             val timeline = LoopTimeline(frameUs)
-            val schedule = VideoFrameSchedule(frameUs, refreshRate)
+            val schedule = VideoFrameSchedule(frameUs, refreshRate, vsync)
             val info = MediaCodec.BufferInfo()
             var inputDone = false; var heldOnce = false
             var pendingOutput = -1; var completed = false
@@ -237,9 +239,12 @@ internal class FaceVideoRenderer(
                         if (schedule.shouldDrop(due, now)) {
                             c.releaseOutputBuffer(index, false); dropped()
                         } else {
-                            c.releaseOutputBuffer(index, maxOf(due, now))
+                            // Experiment 4: the vsync closest to `due` (0.8 P early) when the grid
+                            // is known, else `due` itself. The late/drop policy above is untouched.
+                            val at = schedule.releaseTime(due, now)
+                            c.releaseOutputBuffer(index, at)
                             submittedFrames++
-                            schedule.submitted(now, maxOf(due, now))
+                            schedule.submitted(now, if (schedule.lastTargetNs > 0L && schedule.snapping) schedule.lastTargetNs else maxOf(due, now))
                         }
                         lastProgress = SystemClock.elapsedRealtime()
                     }
@@ -269,11 +274,19 @@ internal class FaceVideoRenderer(
                 val nowMs = SystemClock.elapsedRealtime()
                 if (nowMs >= nextTimingAt) {
                     // Immutable once published; low-cost aggregate snapshot, not render proof.
-                    timingSnapshot = JSONObject().put("decodedFrames", decodedFrames)
+                    val snap = JSONObject().put("decodedFrames", decodedFrames)
                         .put("submittedFrames", submittedFrames).put("lateFrames", schedule.lateFrames)
                         .put("lastLateUs", schedule.lastLateUs).put("maxLateUs", schedule.maxLateUs)
                         .put("maxSubmitGapMs", schedule.maxSubmitGapMs).put("leadUs", schedule.leadNs / 1000)
                         .put("sourceWidth", d.width).put("sourceHeight", d.height)
+                    // Experiment 4 (1.1.42): what the vsync snap did, and the grid it used.
+                    if (vsync != null) {
+                        snap.put("snappedFrames", schedule.snappedFrames)
+                            .put("snapErrorMaxUs", schedule.snapErrorMaxUs).put("snapErrorMeanUs", schedule.snapErrorMeanUs)
+                            .put("clockSlewUs", schedule.clockSlewNs / 1000)
+                            .put("vsyncPeriodUs", vsync.periodNs / 1000).put("vsyncSamples", vsync.samples)
+                    }
+                    timingSnapshot = snap
                     nextTimingAt = nowMs + 1000
                 }
                 require(SystemClock.elapsedRealtime() - lastProgress < 15_000) { "codec-stalled" }

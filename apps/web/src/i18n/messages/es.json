@@ -2426,7 +2426,10 @@
         "lastRestore": "Último fin de alerta: {outcome}, porque {reason} ({ago}).",
         "lastOffIdle": "Se apagó por última vez {ago}, tras {idle} sin usar el control remoto.",
         "lastOffInactivity": "Se apagó por última vez {ago}, justo al cumplirse el reposo por inactividad del propio equipo ({idle} sin usar el control remoto): lo apagó Android, no una persona.",
-        "lastOffNoInput": "Se apagó por última vez {ago}, sin usar el control remoto desde que se inició el reproductor."
+        "lastOffNoInput": "Se apagó por última vez {ago}, sin usar el control remoto desde que se inició el reproductor.",
+        "lastOffTimeout": "Se apagó por última vez {ago}, tras {idle} sin usar el control remoto: al menos el tiempo de apagado de pantalla del propio equipo ({timeout}), así que el reposo por inactividad de Android es coherente con ello.",
+        "lastOffNotOurs": "Se apagó por última vez {ago} por algo distinto de VenueOS, tras {idle} sin usar el control remoto, menos que el tiempo de apagado de pantalla del equipo ({timeout}): el botón de encendido, una programación del fabricante o el propio equipo, no un tiempo de espera.",
+        "lastOffNotOursNoTimeout": "Se apagó por última vez {ago} por algo distinto de VenueOS, tras {idle} sin usar el control remoto; no se pudo leer el tiempo de apagado de pantalla del equipo, así que la causa no está probada."
       },
       "turnOn": {
         "confirmed": "Último Encender panel ({ago}): confirmado por el reproductor.",

@@ -3,6 +3,7 @@ import {
   nativeVideoCandidate,
   nativeVideoEnrolled,
   nativeVideoExperimentsFor,
+  NATIVE_VIDEO_EXPERIMENTS,
   parseNativeVideoExperiments,
   parseNativeVideoRollout,
 } from './native-video';
@@ -218,6 +219,23 @@ describe('native video engine — the three M43 experiments (1.1.41, plan §4E)'
     expect(rest).toEqual(off);
     // Deterministic: safe inside the hashed, hot-cached manifest.
     expect(build({ ...fixture(), env: env(`webview-invisible:${front}`) as any })).toEqual(build({ ...fixture(), env: env(`webview-invisible:${front}`) as any }));
+  });
+
+  it('1.1.42: the two pacing experiments parse by their exact tokens; near misses enable nothing', () => {
+    expect(nativeVideoExperimentsFor(front, env(`vsync-snap:${front}`))).toEqual({ vsyncSnap: true });
+    expect(nativeVideoExperimentsFor(front, env('prefer-60hz:all'))).toEqual({ prefer60hz: true });
+    expect(nativeVideoExperimentsFor(front, env(`Vsync-Snap:${front}, PREFER-60HZ:all ,webview-invisible:${front}`)))
+      .toEqual({ webviewInvisible: true, vsyncSnap: true, prefer60hz: true });
+    expect(nativeVideoExperimentsFor(back, env(`vsync-snap:${front}`))).toBeNull();
+    for (const v of ['vsyncSnap:all', 'vsync_snap:all', 'vsync-snap', 'prefer60hz:all', 'prefer-60:all', 'prefer-60-hz:all', `snap:${front}`]) {
+      expect({ v, flags: nativeVideoExperimentsFor(front, env(v)) }).toEqual({ v, flags: null });
+    }
+    // Outside the revision like the other three: a flip never restarts a session on the glass.
+    const off = build({ ...fixture(), env: env() as any })!;
+    const on = build({ ...fixture(), env: env(`vsync-snap:${front},prefer-60hz:${front}`) as any })!;
+    expect(on.experiments).toEqual({ vsyncSnap: true, prefer60hz: true });
+    expect(on.revision).toBe(off.revision);
+    expect(NATIVE_VIDEO_EXPERIMENTS).toEqual(['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz']);
   });
 
   it('a back face gets its own flags by its own id, never its primary\'s', () => {

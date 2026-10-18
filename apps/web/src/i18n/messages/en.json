@@ -2426,7 +2426,10 @@
         "lastRestore": "Last all-clear: {outcome}, because {reason} ({ago}).",
         "lastOffIdle": "Last turned off {ago}, after {idle} without any remote input.",
         "lastOffInactivity": "Last turned off {ago}, after exactly this box's own inactivity sleep ({idle} without remote input): Android turned it off, not a person.",
-        "lastOffNoInput": "Last turned off {ago}, with no remote input since the player started."
+        "lastOffNoInput": "Last turned off {ago}, with no remote input since the player started.",
+        "lastOffTimeout": "Last turned off {ago}, after {idle} without remote input — at least this box's own screen-off timeout ({timeout}), so Android's inactivity sleep is consistent with it.",
+        "lastOffNotOurs": "Last turned off {ago} by something other than VenueOS, after {idle} without remote input — short of this box's screen-off timeout ({timeout}): a power key, a vendor schedule or the box itself, not a timeout.",
+        "lastOffNotOursNoTimeout": "Last turned off {ago} by something other than VenueOS, after {idle} without remote input; this box's screen-off timeout could not be read, so the cause is unproven."
       },
       "turnOn": {
         "confirmed": "Last Turn panel on ({ago}): confirmed by the player.",

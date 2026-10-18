@@ -97,7 +97,17 @@ export interface SleepWakeSummary {
    * two match (within [INACTIVITY_MATCH_S]) — i.e. Android, not a person,
    * turned it off.
    */
-  lastOff: { atMs: number; idleS: number | null; attentiveS: number | null; matchesInactivity: boolean } | null;
+  lastOff: {
+    atMs: number;
+    idleS: number | null;
+    attentiveS: number | null;
+    matchesInactivity: boolean;
+    /** 1.1.42 — what the player PROVED about that off (SleepProofPolicy.offCause): `screen-timeout` only when the
+     *  idle time reached the box's own screen-off timeout; `display-off` = not ours and not a timeout; null = an older player. */
+    cause: LastOffCause | null;
+    /** The box's Settings.System.SCREEN_OFF_TIMEOUT in seconds, when the player could read it. */
+    screenOffTimeoutS: number | null;
+  } | null;
   /** True when the player reports nothing about sleep yet (older build). */
   noEvidence: boolean;
   /** Android release from the capability report's build block ("13"), or null. */
@@ -176,6 +186,9 @@ export function mechanismKind(
   }
 }
 
+export type LastOffCause = 'screen-timeout' | 'display-off' | 'unknown';
+const LAST_OFF_CAUSES: ReadonlySet<string> = new Set<LastOffCause>(['screen-timeout', 'display-off', 'unknown']);
+
 export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
   const version = parsePlayerVersion(input.playerVersion);
   const report = asObject(input.nativeRuntimeReport);
@@ -230,6 +243,7 @@ export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
   const offAt = finite(sleep?.offAt);
   const offIdle = finite(sleep?.offIdleS);
   const att = finite(sleep?.attS);
+  const sot = finite(sleep?.sotS);
   const lastOff =
     offAt !== null
       ? {
@@ -238,6 +252,8 @@ export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
           attentiveS: att !== null && att > 0 ? att : null,
           matchesInactivity:
             offIdle !== null && offIdle >= 0 && att !== null && att > 0 && Math.abs(offIdle - att) <= INACTIVITY_MATCH_S,
+          cause: typeof sleep?.off === 'string' && LAST_OFF_CAUSES.has(sleep.off) ? (sleep.off as LastOffCause) : null,
+          screenOffTimeoutS: sot !== null && sot > 0 ? sot : null,
         }
       : null;
 
