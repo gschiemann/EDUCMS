@@ -17,8 +17,13 @@ async function setup(page, role = 'SUPER_ADMIN') {
   const calls = [];
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  page.on('console', message => { if (message.type() === 'error' && /MISSING_MESSAGE|FORMATTING_ERROR/.test(message.text())) errors.push(message.text()); });
+  page.on('console', message => { if (message.type() === 'error' && /MISSING_MESSAGE|FORMATTING_ERROR|Route error boundary caught/.test(message.text())) errors.push(message.text()); });
   await page.addInitScript(({ role }) => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent = 'nextjs-portal { display: none !important; }';
+      document.head.appendChild(style);
+    });
     const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000) + 86400 }));
     sessionStorage.setItem('edu_cms_token', `fixture.${payload}.fixture`);
     sessionStorage.setItem('edu_cms_user', JSON.stringify({ id: 'fixture-owner', role, tenantId: 'internal', tenantSlug: 'internal', email: 'owner@example.invalid', setupComplete: true }));
@@ -30,6 +35,8 @@ async function setup(page, role = 'SUPER_ADMIN') {
     calls.push({ path, query: url.search, method: req.method(), body: req.postData() });
     let body = {};
     if (path === '/security/csrf') body = { token: 'public-fixture-csrf' };
+    else if (path === '/super/capacity') body = { enabled: true, thresholds: { warnPct: 70, criticalPct: 85 }, metrics: [], checklist: [], note: 'Public fixture: no samples yet.' };
+    else if (path === '/super/efficiency') body = { window: { minutes: 60, from: null, to: null }, requests: { total: 0, bytes: 0, p50LatencyMs: 0, p95LatencyMs: 0 }, topRoutesByBytes: [], topRoutesByRequests: [], slowQueries: [], egress: { rollingBytes: 0, rollingGb: 0, budgetGb: 250, usedPct: 0, cacheHitRatioPct: null }, anomaly: { currentHourBytes: 0, baselineAvgBytes: 0, ratio: null, triggered: false }, efficiency: { score: 100, worstOffenders: [] }, banner: { active: false, message: null }, meta: { budgetGb: 250, slowQueryThresholdMs: 200, note: 'Public fixture' } };
     else if (path === '/super/business') body = business;
     else if (path === '/super/tenants') body = rows.map(r => ({ ...r, tier: 'ENTERPRISE', screensOnline: r.seatsUsed, emergencyActive: false, canaryPercent: 100, openIncidents24h: 0 }));
     else if (path === '/super/activation-funnel') body = { aggregate: { totalTenants: 2, excludedTenants: 0, stageCounts: { SIGNED_UP: 2, BOARD_CREATED: 2, SCREEN_PAIRED: 2, PUBLISHED: 2, RENDER_PROVEN: 2 }, activationRate: { overall: { reached: 2, total: 2, pct: 100 }, last30Days: { reached: 2, total: 2, pct: 100 } }, medianHoursToMilestone: { boardCreated: 1, screenPaired: 2, published: 3, renderProven: 4 } }, recentTenants: [], excluded: { count: 0, note: 'Fixture' }, meta: { generatedAt: '2026-10-18T00:00:00Z', definition: 'Fixture' } };
@@ -96,8 +103,9 @@ async function setup(page, role = 'SUPER_ADMIN') {
     }
     await page.getByRole('navigation', { name: 'Business navigation' }).getByRole('link', { name: 'Platform health' }).click();
     await expect(page).toHaveURL(/\/super\/efficiency/);
+    await expect(page.getByText('Efficiency Score', { exact: true })).toBeVisible();
     for (const locale of ['es','zh']) { await page.context().addCookies([{ name: 'venueos_locale', value: locale, url: base }]); await page.goto(`${base}/super`); await expect(page.getByRole('heading', { name: locale === 'es' ? 'Tu negocio, en un solo lugar.' : '业务管理，尽在一处。' })).toBeVisible(); await page.screenshot({ path: `${out}/${engine}-${locale}-mobile.png`, fullPage: true }); }
-    // New/changed business routes must not crash; health is legacy and checked only for navigation reachability.
+    // Error boundaries catch React exceptions without emitting pageerror; console evidence counts too.
     if (errors.length) throw new Error(`${engine} page errors: ${errors.join('; ')}`);
     const denied = await browser.newPage(); const deniedState = await setup(denied, 'DISTRICT_ADMIN'); await denied.goto(`${base}/super/customers`); await expect(denied.getByRole('heading', { name: 'Owner-only area' })).toBeVisible();
     if (deniedState.calls.some(c => c.path.startsWith('/super/'))) throw new Error('Restricted account made a privileged request');
