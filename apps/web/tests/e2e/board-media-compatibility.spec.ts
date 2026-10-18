@@ -12,6 +12,17 @@ function boards(dir: string): string[] {
 
 // Discover the full corpus so new template families cannot silently miss the
 // media companion. Run each real board with its original apply/POS/kiosk shim.
+
+// Pixel ratio 1 in every engine (2026-10-18). Desktop Safari is
+// deviceScaleFactor 2, and Linux CI's WebKit paints these 4K boards in
+// software: 4x Chromium's pixels for the same sweep. Measured on the same
+// commit, WebKit, one worker (PR #107): holiday boards 8.4 s -> 2.1 s a test,
+// and the first-attempt timeouts that hit 2-3 holiday boards in every recent
+// run (the 5 s wait for `educms-media-ready` ran out behind the first paint)
+// went 1 -> 0. What this spec checks — the companion announces its slots and
+// applies rotation and fit — is computed style, the same at any pixel ratio.
+// Chromium was already at 1.
+test.use({ deviceScaleFactor: 1 });
 const corpus = ['templates', 'holiday-templates'].flatMap(directory => {
   const root = path.resolve(__dirname, '../../public', directory);
   return boards(root).map(file => `/${directory}/${path.relative(root, file).split(path.sep).join('/')}`);
