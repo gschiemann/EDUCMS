@@ -15,6 +15,7 @@ import {
   PREFERRED_MODE_RESULTS,
   SURFACE_FRAME_RATE_CODES,
   VSYNC_LOCK_SAMPLES,
+  buildDisplayView,
   cadenceShare,
   formatPercent,
   groupModes,
@@ -149,6 +150,57 @@ describe('the 4K / 30 Hz reading, shaped like the first real report', () => {
     expect(f!.rows.map((r) => r.id)).toEqual(['panel', 'cadence', 'experiments', 'keepScreenOn']);
   });
 });
+
+// ── the guarded view the component prints ────────────────────────────
+
+describe('buildDisplayView — everything the card prints, as plain strings, in one guarded step', () => {
+  const FIELD = { timing: timing({ ...snapping }), device: device(), experiments: experiments({ vsyncSnap: true }, { vsyncSnap: true }) };
+
+  it('is the same words as the view model, resolved', () => {
+    const view = buildDisplayView(report(FIELD), { nowMs: NOW, locale: 'en' }, t)!;
+    expect(view.title).toBe('Panel and playback pacing');
+    expect(view.provenance).toBe('From the player’s last native video report, 2 minutes ago.');
+    expect(view.session).toBeNull();
+    expect(view.rows.map((r) => r.id)).toEqual(['panel', 'cadence', 'experiments', 'keepScreenOn']);
+    expect(view.rows[1].lines[0]).toEqual({
+      tone: 'strong',
+      parts: ['99.97 % on cadence', '143 late', '0 dropped', 'max gap 96 ms'],
+    });
+    expect(view.rows[2].lines[0].parts).toEqual(['Vsync snap: on, locked to a 16.67 ms vsync grid (error 9 µs mean, 120 µs max)']);
+  });
+
+  it('is null when there is nothing to show', () => {
+    expect(buildDisplayView(undefined, { nowMs: NOW }, t)).toBeNull();
+    expect(buildDisplayView({ native: {} }, { nowMs: NOW }, t)).toBeNull();
+  });
+
+  it('never throws: a report that blows up when read, or a translator that does, makes the card vanish', () => {
+    const hostile = { get native(): never { throw new Error('boom'); } };
+    expect(() => buildDisplayView(hostile, { nowMs: NOW }, t)).not.toThrow();
+    expect(buildDisplayView(hostile, { nowMs: NOW }, t)).toBeNull();
+    const brokenCatalogue: Translate = () => { throw new Error('missing message'); };
+    expect(() => buildDisplayView(report(FIELD), { nowMs: NOW }, brokenCatalogue)).not.toThrow();
+    expect(buildDisplayView(report(FIELD), { nowMs: NOW }, brokenCatalogue)).toBeNull();
+  });
+
+  it('the readers themselves survive garbage in every field (the guard is the last line of defence, not the first)', () => {
+    // Asserted on the UNGUARDED path: a try/catch must not be what makes this pass.
+    const junk = [null, undefined, 0, -1, NaN, Infinity, '', 'x', [], {}, [1, 2, 3], { a: { b: { c: 1 } } }, () => 1, Symbol('s')];
+    for (const j of junk) {
+      for (const key of ['timing', 'device', 'experiments', 'state', 'reason', 'at', 'drops', 'faceIndex']) {
+        expect(() => readDisplayFacts(report({ ...FIELD, [key]: j }), { nowMs: NOW })).not.toThrow();
+      }
+      expect(() => readDisplayFacts(report({ timing: timing({ history: j }) }), { nowMs: NOW })).not.toThrow();
+      expect(() => readDisplayFacts(report({ timing: timing({ history: { entries: [j, entry0(j)], overflow: j } }) }), { nowMs: NOW })).not.toThrow();
+      for (const field of ['intervalBuckets', 'intervalUnitNs', 'sourceFps', 'supportedModes', 'displayMode', 'refreshRate', 'keepScreenOn', 'vsyncSamples', 'snapErrorMeanUs', 'preferredModeResult', 'lateFrames']) {
+        expect(() => readDisplayFacts(report({ timing: timing({ [field]: j }), device: device({ activeMode: j, supportedModes: j, refreshRate: j }) }), { nowMs: NOW })).not.toThrow();
+      }
+    }
+  });
+});
+
+/** A history entry with one hostile field. */
+const entry0 = (v: unknown) => ({ at: v, face: v, elapsedMs: v, fps: v, vsyncSnap: v, prefer60hz: v, intervalUnitNs: v, intervalBuckets: v });
 
 // ── absent data ──────────────────────────────────────────────────────
 

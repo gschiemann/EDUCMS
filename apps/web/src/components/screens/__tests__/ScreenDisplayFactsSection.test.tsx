@@ -62,6 +62,12 @@ describe('<ScreenDisplayFactsSection />', () => {
     });
   });
 
+  it('cannot take the drawer down: a report that blows up when it is read renders nothing, and does not throw', () => {
+    const hostile = { lastVideoReport: { get native(): never { throw new Error('boom'); } } };
+    expect(() => renderSection(hostile)).not.toThrow();
+    expect(rtl.queryByTestId('display-facts-section')).not.toBeInTheDocument();
+  });
+
   describe('the 4K / 30 Hz reading', () => {
     beforeEach(() => { renderSection(screenWith(native())); });
 

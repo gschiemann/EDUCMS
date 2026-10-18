@@ -675,3 +675,37 @@ export function readDisplayFacts(report: unknown, opts: { nowMs: number; locale?
 
   return { title: msg('title'), provenance, session, rows };
 }
+
+/** What the section prints, resolved to plain strings — the component only places them. */
+export interface DisplayView {
+  title: string;
+  provenance: string;
+  session: string | null;
+  rows: Array<{ id: FactRow['id']; label: string; lines: Array<{ tone: FactLine['tone']; parts: string[] }> }>;
+}
+
+/**
+ * `readDisplayFacts` + the translation, in ONE guarded step. This card is a
+ * read-only extra on a drawer that carries the screen's controls: a report the
+ * readers did not foresee (or a catalogue hiccup) must make the card vanish,
+ * never throw into the render and blank the drawer. Null = nothing to show.
+ */
+export function buildDisplayView(report: unknown, opts: { nowMs: number; locale?: string }, t: Translate): DisplayView | null {
+  try {
+    const facts = readDisplayFacts(report, opts);
+    if (!facts) return null;
+    const say = (m: Msg) => renderMessage(t, m);
+    return {
+      title: say(facts.title),
+      provenance: say(facts.provenance),
+      session: facts.session ? say(facts.session) : null,
+      rows: facts.rows.map((row) => ({
+        id: row.id,
+        label: say(row.label),
+        lines: row.lines.map((line) => ({ tone: line.tone, parts: line.parts.map(say) })),
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
