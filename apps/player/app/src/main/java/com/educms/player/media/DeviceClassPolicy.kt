@@ -1,8 +1,11 @@
 package com.educms.player.media
 
 import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.view.Display
 import com.educms.player.logging.PlayerLogger
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
@@ -119,6 +122,27 @@ internal object DeviceClassPolicy {
             .put("qualified", qualified ?: JSONObject.NULL)
     }
 
+    /**
+     * 1.1.42 — what the DEFAULT display runs and offers (plan §4E, the pacing
+     * finding): its active refresh rate and every supported mode as
+     * `modeId:WxH@Hz`, bounded. Read live on every reply, never memoised: a
+     * mode switch (experiment 5, or the panel itself) must show when it happens.
+     */
+    data class DisplayFacts(val refreshRate: Float, val activeMode: String, val supportedModes: List<String>) {
+        fun writeTo(j: JSONObject): JSONObject = j
+            .put("refreshRate", refreshRate.toDouble())
+            .put("activeMode", activeMode.take(48))
+            .put("supportedModes", JSONArray(supportedModes.take(DisplayModePolicy.MAX_MODES).map { it.take(48) }))
+    }
+
+    /** Never throws; null when the default display cannot be read. */
+    fun displayFacts(ctx: Context): DisplayFacts? = runCatching {
+        val dm = ctx.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return@runCatching null
+        val d = dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return@runCatching null
+        val (active, modes) = DisplayModePolicy.read(d)
+        DisplayFacts(d.refreshRate, active?.label() ?: "", DisplayModePolicy.labels(active, modes))
+    }.getOrNull()
+
     private val rockchip = Regex("^(?:rk[0-9]|rockchip)")
     private val amlogic = Regex("^(?:t9[0-9]{2}|s9[0-9]{2}|sc2|a311d|t7|t5d?)(?:[^a-z0-9]|$)")
     private val novastar = Regex("taurus|novastar|nova-star|rk356x_box|rk3568")
@@ -206,10 +230,12 @@ internal object DeviceClassPolicy {
         )
         val resolved = resolve(facts)
         memo = resolved
+        val display = displayFacts(app)
         PlayerLogger.i("DeviceClassPolicy", "PLAYER_DEVICE_CLASS class=${resolved.className} fleet=${resolved.fleet ?: "unlisted"} " +
             "sdk=${resolved.sdk} webview=${resolved.webviewMajor} nativeSolo=${resolved.nativeSolo} " +
             "composition=${resolved.composition?.name?.lowercase(Locale.ROOT) ?: "none"} protocol3=${resolved.protocol3} " +
-            "silentUpdate=${resolved.silentUpdate.wire} qualified=${resolved.qualified ?: "no"}")
+            "silentUpdate=${resolved.silentUpdate.wire} qualified=${resolved.qualified ?: "no"} " +
+            "refresh=${display?.refreshRate ?: 0f} activeMode=${display?.activeMode ?: "unknown"} modes=${display?.supportedModes?.joinToString(";") ?: "unknown"}")
         return resolved
     }
 

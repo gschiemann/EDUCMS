@@ -483,6 +483,44 @@ describe('POST /screens/:id/telemetry', () => {
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{webviewInvisible:false}}}}).success).toBe(false);
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,guard:{disabled:{webviewInvisible:'http://x'},applied:{}}}}}).success).toBe(false);
   });
+  it('1.1.42 accepts the pacing measurement (vsync snap, mode request, keep-screen-on, display facts) and refuses its malformed shapes', async()=>{
+    const buckets = Array.from({length:16},(_,i)=>i===4?1800:0);
+    const modes = ['1:3840x2160@30.00','2:3840x2160@60.00','3:1920x1080@60.00'];
+    const timing = {decodedFrames:1800,submittedFrames:1800,lateFrames:0,lastLateUs:0,maxLateUs:0,maxSubmitGapMs:34,leadUs:33333,
+      sourceWidth:2160,sourceHeight:3840,droppedFrames:0,sourceFps:30,refreshRate:60,displayMode:'2:3840x2160@60.00',
+      intervalUnitNs:8333333,intervalBuckets:buckets,intervalCount:1800,
+      snappedFrames:1800,snapErrorMaxUs:9,snapErrorMeanUs:2,clockSlewUs:-12345,vsyncPeriodUs:16666,vsyncSamples:3600,
+      supportedModes:modes,preferredModeApplied:2,preferredModeResult:'applied',keepScreenOn:true,
+      history:{entries:[{at:1760700000000,face:0,protocol:2,composition:'dynamic_above',layer:'retired',reason:'content-changed',
+        vsyncSnap:true,prefer60hz:'kept',preferredModeApplied:2,keepScreenOn:false,snappedFrames:107990,snapErrorMaxUs:40,snapErrorMeanUs:3,clockSlewUs:987654,vsyncPeriodUs:16666,vsyncSamples:216000}],overflow:0,capacity:6}};
+    const device = {class:'amlogic/android-13',soc:'amlogic',sdk:33,webviewMajor:101,nativeSolo:true,composition:'dynamic_above',protocol3:true,silentUpdate:'tap',
+      refreshRate:30,activeMode:'1:3840x2160@30.00',supportedModes:modes};
+    const experiments = {requested:{vsyncSnap:true,prefer60hz:true},applied:{webviewInvisible:false,vsyncSnap:true,prefer60hz:'applied'},
+      guard:{disabled:{vsyncSnap:'output-stalled'},applied:{vsyncSnap:1,prefer60hz:1}}};
+    const nativeVideo = {...nativeSample(),timing,device,experiments};
+    expect(screenTelemetrySchema.safeParse({nativeVideo}).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo,render:{frames:1800,hash:'pl:test'}});
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{timing:{snappedFrames:1800,clockSlewUs:-12345,supportedModes:modes,preferredModeResult:'applied',keepScreenOn:true},
+      device:{refreshRate:30,activeMode:'1:3840x2160@30.00'},experiments:{applied:{vsyncSnap:true,prefer60hz:'applied'}}}});
+    // An unknown-display device report (an APK that could not read it) is the 1.1.41 shape and still validates.
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:{...device,activeMode:''}}}).success).toBe(true);
+    for (const [name,bad] of [
+      ['17 supported modes',{...timing,supportedModes:Array(17).fill(modes[0])}],
+      ['a free-text supported mode',{...timing,supportedModes:['4K at sixty']}],
+      ['a free-text mode result',{...timing,preferredModeResult:'https://evil.example'}],
+      ['a fractional slew',{...timing,clockSlewUs:1.5}],
+      ['a negative snap error',{...timing,snapErrorMaxUs:-1}],
+      ['a string keepScreenOn',{...timing,keepScreenOn:'yes'}],
+      ['supportedModes inside a history entry',{...timing,history:{entries:[{...timing.history.entries[0],supportedModes:modes}],overflow:0}}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:bad}}).success}).toEqual({name,ok:false});
+    }
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:{...device,supportedModes:Array(17).fill(modes[0])}}}).success).toBe(false);
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:{...device,activeMode:'4K'}}}).success).toBe(false);
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{vsyncSnap:false}}}}).success).toBe(false);
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,applied:{...experiments.applied,prefer60hz:'mode 2 please'}}}}).success).toBe(false);
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{sixtyHertz:true}}}}).success).toBe(false);
+  });
   it('stores actual native composition without confusing it with protocol capability or render proof',async()=>{
     const sample = nativeSample('ready',0);
     const nativeVideo = {...sample,sessionProtocol:2,

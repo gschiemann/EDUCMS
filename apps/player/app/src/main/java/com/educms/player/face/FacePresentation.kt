@@ -89,7 +89,7 @@ class FacePresentation(
                 PlayerLogger.e(TAG, "face ${host.faceIndex} has no faceRoot — cannot host")
                 return@runCatching
             }
-            host.configure(root)
+            host.configure(root, window)
             host.load("presentation created")
         }.onFailure {
             // Never rethrow: this runs inside the Activity's own call stack.

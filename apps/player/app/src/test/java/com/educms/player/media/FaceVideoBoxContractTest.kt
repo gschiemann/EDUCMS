@@ -190,6 +190,61 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
+    fun `experiment 5 asks the face's own window for a mode only at a session boundary, before the surface exists, flag or not the modes are read`() {
+        val b = code(box)
+        val attach = body(b, "private fun attachSurface(")
+        val read = attach.indexOf("DisplayModePolicy.read(parent.display)")
+        val gate = attach.indexOf("if (d.experiments.prefer60hz)")
+        val request = attach.indexOf("PreferredDisplayMode.request(host.face, window, active, modes)")
+        val withdraw = attach.indexOf("PreferredDisplayMode.withdraw(host.face, window)")
+        val surface = attach.indexOf("SurfaceView(host.web.context)")
+        assertTrue("the supported modes are read unconditionally …", read >= 0 && gate > read)
+        assertTrue("… inside the first-attach branch", attach.substring(0, read).contains("if (s.surface == null) {"))
+        assertTrue("the request is behind the flag", request > gate)
+        assertTrue("a withdrawn flag reverts at the same boundary", withdraw > gate)
+        assertTrue("both happen BEFORE this session's SurfaceView exists", surface > request && surface > withdraw)
+        assertTrue("only a solo session asks (a slot carries no flags)", attach.substring(read, gate).contains("if (s.protocol == 2) {"))
+        assertTrue("another attached session makes the boundary mid-session: nothing is asked", attach.contains("otherAttached"))
+        assertTrue("the window is the FACE's (Activity or Presentation), never a guess", attach.contains("val window = host.window()"))
+        // The one place the preferred mode id is ever written is the window half of DisplayModePolicy.kt.
+        assertFalse(b.contains("preferredDisplayModeId"))
+        val policy = code(read("src/main/java/com/educms/player/media/DisplayModePolicy.kt"))
+        assertEquals(1, Regex("lp\\.preferredDisplayModeId = modeId").findAll(policy).count())
+        for ((name, src) in listOf("SharedVideoHost" to code(host), "FaceVideoRenderer" to code(read("src/main/java/com/educms/player/media/FaceVideoRenderer.kt")))) {
+            assertFalse("$name never touches the display mode", src.contains("preferredDisplayModeId"))
+        }
+        val h = code(host)
+        assertTrue("the Activity hands its window to face 0", code(activity).contains("window = { window }, operatorUiClear = ::nativeVideoUiClear"))
+        assertTrue("a face Presentation hands its own window", code(read("src/main/java/com/educms/player/face/FacePresentation.kt")).contains("host.configure(root, window)"))
+        assertTrue(h.contains("internal val window: () -> Window?"))
+    }
+
+    @Test
+    fun `experiment 4 acquires the vsync grid before the renderer exists, only on the default display, and releases it with the session`() {
+        val b = code(box)
+        val ready = body(b, "fun surfaceReady(")
+        val gate = ready.indexOf("if (d.experiments.vsyncSnap && s.protocol == 2 && experiments.allows(NativeVideoExperiments.VSYNC_SNAP))")
+        val acquire = ready.indexOf("grid = vsync.acquire(")
+        val renderer = ready.indexOf("FaceVideoRenderer(file, d, sv.holder.surface")
+        assertTrue(gate >= 0 && acquire > gate && renderer > acquire)
+        assertTrue("snapped only on the display Choreographer samples", ready.substring(gate, acquire).contains("android.view.Display.DEFAULT_DISPLAY"))
+        assertTrue("the renderer receives the grid", ready.contains("vsync = grid)"))
+        val stop = body(b, "private fun stopSession(")
+        assertTrue(stop.contains("vsync.release()"))
+        assertTrue(stop.contains("experiments.ended(NativeVideoExperiments.VSYNC_SNAP, why)"))
+        // The emergency ordering is untouched: the grid release happens before the view pass, which still restores the WebView first.
+        assertTrue(stop.indexOf("vsync.release()") < stop.indexOf("val removeOutput"))
+        // The release path keeps the late / drop policy and uses the schedule's snapped timestamp.
+        val r = code(read("src/main/java/com/educms/player/media/FaceVideoRenderer.kt"))
+        val drain = body(r, "fun drain(")
+        assertTrue(drain.contains("schedule.shouldDrop(due, now)"))
+        assertTrue(drain.contains("schedule.observe(due, now)"))
+        assertTrue(drain.contains("val at = schedule.releaseTime(due, now)"))
+        assertTrue(drain.contains("c.releaseOutputBuffer(index, at)"))
+        assertTrue(drain.indexOf("schedule.observe(due, now)") < drain.indexOf("schedule.releaseTime(due, now)"))
+    }
+
+    @Test
     fun `the watchdog still leaves a foreground player alone every fifteen minutes`() {
         val w = code(read("src/main/java/com/educms/player/watchdog/Watchdog.kt"))
         val guard = w.indexOf("if (MainActivity.isInForeground)")

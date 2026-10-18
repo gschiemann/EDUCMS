@@ -108,12 +108,38 @@ export interface NativeVideoTiming {
   intervalMaxNs?: number;
   intervalLastNs?: number;
   intervalMeanNs?: number;
+  /** 1.1.42 (plan §4E, pacing) — experiment 4's vsync snap: frames snapped, the snap error (max / mean, µs),
+   *  the cumulative SIGNED media-clock slew (the measured drift between the clip's clock and the panel's vsync),
+   *  the grid (period µs, samples). */
+  snappedFrames?: number;
+  snapErrorMaxUs?: number;
+  snapErrorMeanUs?: number;
+  clockSlewUs?: number;
+  vsyncPeriodUs?: number;
+  vsyncSamples?: number;
+  /** 1.1.42 — every mode the panel offers (`modeId:WxH@Hz`, ≤ 16, read when the session attached), and experiment 5's request. */
+  supportedModes?: string[];
+  preferredModeApplied?: number;
+  preferredModeResult?: string;
+  /** 1.1.42 — whether the face's window held FLAG_KEEP_SCREEN_ON at the last watch tick. */
+  keepScreenOn?: boolean;
   history?: { entries: NativeTimingHistoryEntry[]; overflow: number; capacity?: number };
 }
 
 /** One completed (or recovered) session's summary from the APK's persisted ledger. */
 export interface NativeTimingHistoryEntry {
   at: number;
+  /** 1.1.42: experiments 4 / 5 on that session, and the pacing measurement. */
+  vsyncSnap?: boolean;
+  prefer60hz?: string;
+  snappedFrames?: number;
+  snapErrorMaxUs?: number;
+  snapErrorMeanUs?: number;
+  clockSlewUs?: number;
+  vsyncPeriodUs?: number;
+  vsyncSamples?: number;
+  preferredModeApplied?: number;
+  keepScreenOn?: boolean;
   uptimeMs?: number;
   face?: number;
   sha8?: string;
@@ -163,18 +189,26 @@ export interface NativeDeviceClass {
   /** Two values only (owner 2026-10-17: the Manager is never device owner). */
   silentUpdate: "installer-of-record" | "tap";
   qualified?: string;
+  /** 1.1.42 — what the default display runs and offers, read live on every reply. */
+  refreshRate?: number;
+  activeMode?: string;
+  supportedModes?: string[];
 }
 
 export interface NativeExperimentFlags {
   webviewInvisible?: true;
   surfaceFrameRate?: true;
   decoderRotation?: true;
+  /** 1.1.42: vsync-snapped release, and the same-resolution ~60 Hz mode request. */
+  vsyncSnap?: true;
+  prefer60hz?: true;
 }
 
+type GuardedExperiment = "webviewInvisible" | "surfaceFrameRate" | "vsyncSnap" | "prefer60hz";
 export interface NativeSessionExperiments {
   requested: NativeExperimentFlags;
-  applied: { webviewInvisible: boolean; surfaceFrameRate?: string };
-  guard: { disabled: Partial<Record<"webviewInvisible" | "surfaceFrameRate", string>>; applied: Partial<Record<"webviewInvisible" | "surfaceFrameRate", number>> };
+  applied: { webviewInvisible: boolean; surfaceFrameRate?: string; vsyncSnap?: boolean; prefer60hz?: string };
+  guard: { disabled: Partial<Record<GuardedExperiment, string>>; applied: Partial<Record<GuardedExperiment, number>> };
 }
 
 const record = (v: unknown): v is Record<string, unknown> =>
@@ -183,11 +217,20 @@ const record = (v: unknown): v is Record<string, unknown> =>
 const NATIVE_TIMING_BASE_KEYS = ["decodedFrames", "submittedFrames", "lateFrames", "lastLateUs", "maxLateUs",
   "maxSubmitGapMs", "leadUs", "sourceWidth", "sourceHeight"] as const;
 const NATIVE_TIMING_COUNT_KEYS = ["droppedFrames", "intervalUnitNs", "intervalCount", "intervalMinNs", "intervalMaxNs",
-  "intervalLastNs", "intervalMeanNs"] as const;
-/** 1.1.41's timing keys — the ones an older API's strict schema refuses (telemetry.ts holds them back after a 400). */
+  "intervalLastNs", "intervalMeanNs",
+  // 1.1.42
+  "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied"] as const;
+/** 1.1.41's and 1.1.42's timing keys — the ones an older API's strict schema refuses (telemetry.ts holds them back after a 400). */
 export const NATIVE_TIMING_EXTRA_KEYS: readonly string[] = [
   ...NATIVE_TIMING_COUNT_KEYS, "sourceFps", "refreshRate", "displayMode", "intervalBuckets", "history",
+  "clockSlewUs", "supportedModes", "preferredModeResult", "keepScreenOn",
 ];
+const signedCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER;
+export const NATIVE_MAX_SUPPORTED_MODES = 16;
+function readSupportedModes(v: unknown): string[] | undefined {
+  if (!Array.isArray(v) || v.length > NATIVE_MAX_SUPPORTED_MODES || !v.every(m => typeof m === "string" && DISPLAY_MODE_RE.test(m))) return undefined;
+  return v.slice() as string[];
+}
 export const NATIVE_INTERVAL_BUCKETS = 16;
 const DISPLAY_MODE_RE = /^[0-9]{1,6}:[0-9]{1,5}x[0-9]{1,5}@[0-9]{1,4}(?:\.[0-9]{1,3})?$/;
 const SHA8_RE = /^[a-f0-9]{8}$/;
@@ -211,13 +254,24 @@ function readTimingExtras(value: Record<string, unknown>, out: Record<string, un
   if (typeof value.displayMode === "string" && DISPLAY_MODE_RE.test(value.displayMode)) out.displayMode = value.displayMode;
   const buckets = readIntervalBuckets(value.intervalBuckets);
   if (buckets) out.intervalBuckets = buckets;
+  // 1.1.42: the slew is SIGNED (the drift's direction matters); the rest are bounded like everything else here.
+  if (signedCount(value.clockSlewUs)) out.clockSlewUs = value.clockSlewUs;
+  const modes = readSupportedModes(value.supportedModes);
+  if (modes) out.supportedModes = modes;
+  if (typeof value.preferredModeResult === "string" && CODE_RE.test(value.preferredModeResult)) out.preferredModeResult = value.preferredModeResult;
+  if (typeof value.keepScreenOn === "boolean") out.keepScreenOn = value.keepScreenOn;
 }
 
 function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
   if (!record(v) || !count(v.at)) return null;
   const e: NativeTimingHistoryEntry = { at: v.at };
   for (const k of ["uptimeMs", "elapsedMs", "decodedFrames", "submittedFrames", "lateFrames", "maxLateUs", "maxSubmitGapMs",
-    "droppedFrames", "loops", "uniqueFrames", "bootCount"] as const) if (count(v[k])) e[k] = v[k];
+    "droppedFrames", "loops", "uniqueFrames", "bootCount",
+    "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied"] as const) if (count(v[k])) e[k] = v[k];
+  if (signedCount(v.clockSlewUs)) e.clockSlewUs = v.clockSlewUs;
+  if (typeof v.vsyncSnap === "boolean") e.vsyncSnap = v.vsyncSnap;
+  if (typeof v.prefer60hz === "string" && CODE_RE.test(v.prefer60hz)) e.prefer60hz = v.prefer60hz;
+  if (typeof v.keepScreenOn === "boolean") e.keepScreenOn = v.keepScreenOn;
   if (v.face === 0 || v.face === 1) e.face = v.face;
   if (typeof v.sha8 === "string" && SHA8_RE.test(v.sha8)) e.sha8 = v.sha8;
   if (typeof v.build === "string" && BUILD_RE.test(v.build)) e.build = v.build;
@@ -286,11 +340,16 @@ export function readNativeDeviceClass(v: unknown): NativeDeviceClass | null {
   if (typeof v.fleet === "string" && v.fleet.length > 0 && v.fleet.length <= 96) d.fleet = v.fleet;
   if (COMPOSITIONS.has(String(v.composition))) d.composition = v.composition as NativeDeviceClass["composition"];
   if (typeof v.qualified === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v.qualified)) d.qualified = v.qualified;
+  // 1.1.42: the default display's rate and modes; an APK that could not read them sends none (or an empty active mode).
+  if (rate(v.refreshRate)) d.refreshRate = v.refreshRate;
+  if (typeof v.activeMode === "string" && (v.activeMode === "" || DISPLAY_MODE_RE.test(v.activeMode))) d.activeMode = v.activeMode;
+  const modes = readSupportedModes(v.supportedModes);
+  if (modes) d.supportedModes = modes;
   return d;
 }
 
-const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation"] as const;
-const GUARDED = ["webviewInvisible", "surfaceFrameRate"] as const;
+const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"] as const;
+const GUARDED = ["webviewInvisible", "surfaceFrameRate", "vsyncSnap", "prefer60hz"] as const;
 
 /** Only `true` flags, by their known names; nothing else is an experiment. */
 export function readNativeExperimentFlags(v: unknown): NativeExperimentFlags | null {
@@ -305,6 +364,8 @@ export function readNativeSessionExperiments(v: unknown): NativeSessionExperimen
   const requested = readNativeExperimentFlags(v.requested) ?? {};
   const applied: NativeSessionExperiments["applied"] = { webviewInvisible: v.applied.webviewInvisible === true };
   if (typeof v.applied.surfaceFrameRate === "string" && CODE_RE.test(v.applied.surfaceFrameRate)) applied.surfaceFrameRate = v.applied.surfaceFrameRate;
+  if (typeof v.applied.vsyncSnap === "boolean") applied.vsyncSnap = v.applied.vsyncSnap;
+  if (typeof v.applied.prefer60hz === "string" && CODE_RE.test(v.applied.prefer60hz)) applied.prefer60hz = v.applied.prefer60hz;
   const guard: NativeSessionExperiments["guard"] = { disabled: {}, applied: {} };
   if (record(v.guard.disabled)) for (const k of GUARDED) {
     const r = v.guard.disabled[k];

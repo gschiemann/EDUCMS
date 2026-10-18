@@ -166,11 +166,28 @@ export function ScreenSleepWakeSection({
           )}
           {s.lastOff && (
             <p className="text-[10px] text-slate-500 leading-snug" data-testid="sleep-wake-last-off">
-              {s.lastOff.matchesInactivity && s.lastOff.idleS !== null
-                ? t('proof.lastOffInactivity', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
-                : s.lastOff.idleS !== null
-                  ? t('proof.lastOffIdle', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
-                  : t('proof.lastOffNoInput', { ago: ago(s.lastOff.atMs) })}
+              {/* 1.1.42+: the player says what it PROVED about the off (player rule 10) — a timeout only when the idle
+                  time reached the box's own screen-off timeout; otherwise "not ours, not a timeout". Older players
+                  fall through to the attentive-timeout match and the plain idle line. */}
+              {s.lastOff.cause === 'screen-timeout' && s.lastOff.idleS !== null
+                ? t('proof.lastOffTimeout', {
+                    ago: ago(s.lastOff.atMs),
+                    idle: duration(locale, s.lastOff.idleS),
+                    timeout: s.lastOff.screenOffTimeoutS !== null ? duration(locale, s.lastOff.screenOffTimeoutS) : '?',
+                  })
+                : s.lastOff.cause === 'display-off' && s.lastOff.idleS !== null
+                  ? s.lastOff.screenOffTimeoutS !== null
+                    ? t('proof.lastOffNotOurs', {
+                        ago: ago(s.lastOff.atMs),
+                        idle: duration(locale, s.lastOff.idleS),
+                        timeout: duration(locale, s.lastOff.screenOffTimeoutS),
+                      })
+                    : t('proof.lastOffNotOursNoTimeout', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
+                  : s.lastOff.matchesInactivity && s.lastOff.idleS !== null
+                    ? t('proof.lastOffInactivity', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
+                    : s.lastOff.idleS !== null
+                      ? t('proof.lastOffIdle', { ago: ago(s.lastOff.atMs), idle: duration(locale, s.lastOff.idleS) })
+                      : t('proof.lastOffNoInput', { ago: ago(s.lastOff.atMs) })}
             </p>
           )}
           {turnOnLine && <p className="text-[10px] text-slate-500 leading-snug">{turnOnLine}</p>}

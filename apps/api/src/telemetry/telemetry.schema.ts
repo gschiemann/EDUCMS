@@ -227,7 +227,22 @@ const nativeTimingMeasurement = {
   intervalMaxNs: safeCount().optional(),
   intervalLastNs: safeCount().optional(),
   intervalMeanNs: safeCount().optional(),
+  // 1.1.42 (plan §4E, pacing): experiment 4's vsync snap — frames snapped, the
+  // snap error (max / mean, µs), the cumulative SIGNED media-clock slew (the
+  // measured drift between the clip's clock and the panel's vsync), the grid
+  // (period in µs, samples) — experiment 5's mode request, and the window's
+  // KEEP_SCREEN_ON flag as observed while the session presented.
+  snappedFrames: safeCount().optional(),
+  snapErrorMaxUs: safeCount().optional(),
+  snapErrorMeanUs: safeCount().optional(),
+  clockSlewUs: z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER).optional(),
+  vsyncPeriodUs: safeCount().optional(),
+  vsyncSamples: safeCount().optional(),
+  preferredModeApplied: z.number().int().min(0).max(1_000_000).optional(),
+  keepScreenOn: z.boolean().optional(),
 };
+/** Every mode the panel offers, `modeId:WxH@Hz`, as read when the session attached; bounded. */
+const supportedModes = () => z.array(displayMode()).max(16);
 
 const nativeTimingHistoryEntrySchema = z.strictObject({
   at: safeCount(),
@@ -254,6 +269,9 @@ const nativeTimingHistoryEntrySchema = z.strictObject({
   codecName: z.string().regex(/^[a-z0-9_.-]{1,128}$/i).optional(),
   webviewInvisible: z.boolean().optional(),
   surfaceFrameRate: code().optional(),
+  // 1.1.42: whether the snap was applied, and experiment 5's result code, per session.
+  vsyncSnap: z.boolean().optional(),
+  prefer60hz: code().optional(),
   ...nativeTimingMeasurement,
 });
 
@@ -270,21 +288,34 @@ const nativeDeviceClassSchema = z.strictObject({
   // Two values only (owner 2026-10-17: the Manager is never device owner).
   silentUpdate: z.enum(['installer-of-record', 'tap']),
   qualified: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).optional(),
+  // 1.1.42: what the default display runs and offers, read live on every reply.
+  refreshRate: z.number().finite().min(0).max(1000).optional(),
+  activeMode: z.union([displayMode(), z.literal('')]).optional(),
+  supportedModes: supportedModes().optional(),
 });
 
 const experimentFlags = z.strictObject({
   webviewInvisible: z.literal(true).optional(),
   surfaceFrameRate: z.literal(true).optional(),
   decoderRotation: z.literal(true).optional(),
+  // 1.1.42
+  vsyncSnap: z.literal(true).optional(),
+  prefer60hz: z.literal(true).optional(),
 });
-/** The M43 experiments on this session (1.1.41): requested, applied, and the process-wide fault guard. */
+const guardCodes = () => z.strictObject({
+  webviewInvisible: code().optional(), surfaceFrameRate: code().optional(), vsyncSnap: code().optional(), prefer60hz: code().optional(),
+});
+const guardCounts = () => z.strictObject({
+  webviewInvisible: safeCount().optional(), surfaceFrameRate: safeCount().optional(), vsyncSnap: safeCount().optional(), prefer60hz: safeCount().optional(),
+});
+/** The native experiments on this session (1.1.41 / 1.1.42): requested, applied, and the process-wide fault guard. */
 const nativeExperimentsSchema = z.strictObject({
   requested: experimentFlags,
-  applied: z.strictObject({ webviewInvisible: z.boolean(), surfaceFrameRate: code().optional() }),
-  guard: z.strictObject({
-    disabled: z.strictObject({ webviewInvisible: code().optional(), surfaceFrameRate: code().optional() }),
-    applied: z.strictObject({ webviewInvisible: safeCount().optional(), surfaceFrameRate: safeCount().optional() }),
+  applied: z.strictObject({
+    webviewInvisible: z.boolean(), surfaceFrameRate: code().optional(),
+    vsyncSnap: z.boolean().optional(), prefer60hz: code().optional(),
   }),
+  guard: z.strictObject({ disabled: guardCodes(), applied: guardCounts() }),
 });
 
 /** Own native SurfaceView output callbacks; never HTML dropped-frame counters or panel illumination. */
@@ -300,6 +331,9 @@ const nativeVideoSchema = z.strictObject({
     sourceWidth: z.number().int().min(1).max(16_384),
     sourceHeight: z.number().int().min(1).max(16_384),
     ...nativeTimingMeasurement,
+    // 1.1.42: the panel's mode list (live block only) and experiment 5's result code.
+    supportedModes: supportedModes().optional(),
+    preferredModeResult: code().optional(),
     history: z.strictObject({
       entries: z.array(nativeTimingHistoryEntrySchema).max(8),
       overflow: safeCount(),

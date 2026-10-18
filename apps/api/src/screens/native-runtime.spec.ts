@@ -81,6 +81,9 @@ describe('native power evidence and command freshness', () => {
     offIdleS: 14_400,
     offAt: 1791688602995,
     attS: 14_400,
+    // 1.1.42: the proven cause of that off, and the system screen-off timeout it was judged against.
+    off: 'screen-timeout',
+    sotS: 1_800,
   };
   it('accepts the sleep evidence block and an attempt count, additively', () => {
     const full = { ...runtime, powerOnAttempts: 1, sleep };
@@ -100,9 +103,16 @@ describe('native power evidence and command freshness', () => {
       { ...sleep, restore: { ...sleep.restore, d: 'restore; drop table' } },
       { ...sleep, last: { ...sleep.last, at: -5 } },
       { ...sleep, dream: 'yes' },
+      // 1.1.42: the cause is one of three codes, never a device-invented claim.
+      { ...sleep, off: 'android-turned-it-off' },
+      { ...sleep, off: 'power-key' },
+      { ...sleep, sotS: 'never' },
     ]) {
       expect(parseNativeRuntime(JSON.stringify({ ...runtime, sleep: bad }))).toBeNull();
     }
+    // The owner's remote: 3 s idle is a display-off, which a 1.1.42 player reports as such.
+    expect(parseNativeRuntime(JSON.stringify({ ...runtime, sleep: { blank: 'screen-timeout', off: 'display-off', offIdleS: 3, offAt: 1791688602995, sotS: 1_800 } })))
+      .toMatchObject({ sleep: { blank: 'screen-timeout', off: 'display-off', offIdleS: 3, sotS: 1_800 } });
     expect(parseNativeRuntime(JSON.stringify({ ...runtime, powerOnAttempts: 50 }))).toBeNull();
   });
   // 2026-10-11 — the wake timeline and the reporting process (player WakeReport).

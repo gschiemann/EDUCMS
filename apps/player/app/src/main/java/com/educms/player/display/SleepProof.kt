@@ -239,10 +239,20 @@ object SleepProof {
         // its own inactivity-sleep setting — equal values mean Android, not
         // a person, turned the panel off (seconds; -1 = unknown / disabled).
         val offAt = p.getLong(com.educms.player.standby.UserStandby.KEY_LAST_OFF_AT_WALL, 0L)
+        // The box's own inactivity sleep setting (Settings.System.SCREEN_OFF_TIMEOUT, ms; -1 = unreadable
+        // or disabled). 1.1.42 (lead, 2026-10-18): `blank` above is the mechanism WE would use, not what
+        // happened — a reader took "blank: screen-timeout" for "Android's timeout turned it off".
+        // `off` says only what the evidence proves about the last display-off that was not ours.
+        val screenOffTimeoutMs = runCatching {
+            Settings.System.getInt(app.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, -1)
+        }.getOrDefault(-1)
+        out.put("sotS", if (screenOffTimeoutMs > 0) (screenOffTimeoutMs / 1000).coerceAtMost(999_999_999) else -1)
         if (offAt > 0L) {
             val idle = p.getLong(com.educms.player.standby.UserStandby.KEY_LAST_OFF_IDLE_MS, -1L)
-            out.put("offIdleS", if (idle >= 0L) (idle / 1000L).coerceAtMost(999_999_999L) else -1L)
+            val idleS = if (idle >= 0L) (idle / 1000L).coerceAtMost(999_999_999L) else -1L
+            out.put("offIdleS", idleS)
             out.put("offAt", offAt)
+            out.put("off", SleepProofPolicy.offCause(idleS, screenOffTimeoutMs.toLong()))
         }
         secureInt(app, "attentive_timeout")?.let { ms ->
             out.put("attS", if (ms > 0) (ms / 1000).coerceAtMost(999_999_999) else -1)
@@ -348,6 +358,28 @@ object SleepProofPolicy {
 
     /** The screen-off timeout (15 s) + the alert's own 30 s wake lock + margin. */
     const val SCREEN_TIMEOUT_SETTLE_MS = 60_000L
+
+    /** The last display-off that was not ours: idle at least the system screen-off timeout, so Android's inactivity sleep is consistent with it. */
+    const val OFF_SCREEN_TIMEOUT = "screen-timeout"
+    /** The last display-off that was not ours, with less idle time than the system timeout (or no timeout): a power key, a vendor schedule, something else — not a timeout. */
+    const val OFF_DISPLAY_OFF = "display-off"
+    /** No input has been seen since the process started, so the idle time is unknown. */
+    const val OFF_UNKNOWN = "unknown"
+
+    /**
+     * What the evidence proves about the last display-off that was not ours
+     * (player rule 10: copy states what the evidence proves). "screen-timeout"
+     * ONLY when the box had been idle for at least its own
+     * `Settings.System.SCREEN_OFF_TIMEOUT`; a shorter idle time, or no readable
+     * timeout, is a display-off by something else (the owner's remote at
+     * 2026-10-18 03:35Z read `offIdleS: 3` — never a timeout). An unknown idle
+     * time proves nothing.
+     */
+    fun offCause(idleS: Long, screenOffTimeoutMs: Long): String = when {
+        idleS < 0L -> OFF_UNKNOWN
+        screenOffTimeoutMs > 0L && idleS * 1000L >= screenOffTimeoutMs -> OFF_SCREEN_TIMEOUT
+        else -> OFF_DISPLAY_OFF
+    }
 
     /** A lock or vendor command sleeps at once; the margin is for slow firmware. */
     const val IMMEDIATE_SETTLE_MS = 15_000L

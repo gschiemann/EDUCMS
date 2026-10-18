@@ -23,8 +23,16 @@ internal class VideoDecodePump(
     }
 }
 
-/** Surface timestamps use nanoTime; never change the media clock to hide lag. */
-internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float) {
+/**
+ * Surface timestamps use nanoTime; the media clock is never moved to hide
+ * lag. The ONE exception is deliberate and bounded (experiment 4, 1.1.42):
+ * with a vsync grid ([VsyncGrid]) the clock is slewed by at most
+ * [MAX_SLEW_NS] per frame TOWARD the grid, so the frame timeline stays
+ * locked to the panel's vsync with no visible jump — the drift between the
+ * clip's PTS clock and the panel's vsync is what periodically held or skipped
+ * a frame on a 30 Hz panel with perfect decoding.
+ */
+internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val vsync: VsyncGrid? = null) {
     private val frameNs = frameUs.coerceAtLeast(1) * 1000
     private val hz = refreshRate.takeIf { it.isFinite() && it >= 20f && it <= 240f } ?: 60f
     val leadNs = (2_000_000_000.0 / hz).toLong().coerceAtMost(50_000_000L)
@@ -36,9 +44,25 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float) {
     var lastLateUs = 0L; private set
     var maxLateUs = 0L; private set
     var maxSubmitGapMs = 0L; private set
+    // Experiment 4 — what the snap did, for the timing snapshot.
+    var snappedFrames = 0L; private set
+    var snapErrorMaxUs = 0L; private set
+    private var snapErrorSumUs = 0L
+    val snapErrorMeanUs: Long get() = if (snappedFrames == 0L) 0L else snapErrorSumUs / snappedFrames
+    /** Cumulative signed adjustment of the media clock (ns): the measured drift between the two clocks. */
+    var clockSlewNs = 0L; private set
+    /** The vsync the last snapped frame was aimed at (0 before the first). */
+    var lastTargetNs = 0L; private set
+
+    /** True while releases are being snapped (a grid exists and has enough samples). */
+    val snapping: Boolean get() = vsync?.ready == true
 
     fun start(ptsUs: Long, nowNs: Long) {
-        originNs = nowNs
+        // With a grid the FIRST frame is due on a vsync, one period out so its
+        // release (0.8 P early) is still in the future: the one free alignment,
+        // made before anything is on the glass.
+        val v = vsync
+        originNs = if (v != null && v.ready) v.nextVsyncAtOrAfter(nowNs + v.periodNs) else nowNs
         firstPtsUs = ptsUs
         lastSubmittedNs = nowNs
         lastPresentationNs = nowNs
@@ -47,6 +71,32 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float) {
     fun due(ptsUs: Long, nowNs: Long): Long {
         if (originNs == null) start(ptsUs, nowNs)
         return originNs!! + (ptsUs - firstPtsUs) * 1000
+    }
+
+    /**
+     * The timestamp to hand `releaseOutputBuffer` for a frame due at [dueNs]:
+     * without a grid, the due time itself (never earlier than now); with one,
+     * the vsync CLOSEST to the due time, asked for [VSYNC_LEAD_NUM]/[VSYNC_LEAD_DEN]
+     * of a period early so SurfaceFlinger latches the buffer for exactly that
+     * vsync and never the one before (Media3's rule). The media clock is then
+     * slewed by at most [MAX_SLEW_NS] toward the grid, so the error of the
+     * following frames shrinks to zero and stays there instead of walking
+     * across half a period and flipping to the next vsync.
+     */
+    fun releaseTime(dueNs: Long, nowNs: Long): Long {
+        val v = vsync
+        if (v == null || !v.ready) return maxOf(dueNs, nowNs)
+        val snapped = v.closestVsync(dueNs)
+        val err = snapped - dueNs
+        snappedFrames++
+        val errUs = (if (err < 0) -err else err) / 1000
+        snapErrorSumUs += errUs
+        if (errUs > snapErrorMaxUs) snapErrorMaxUs = errUs
+        val slew = err.coerceIn(-MAX_SLEW_NS, MAX_SLEW_NS)
+        originNs = (originNs ?: nowNs) + slew
+        clockSlewNs += slew
+        lastTargetNs = snapped
+        return maxOf(snapped - v.periodNs * VSYNC_LEAD_NUM / VSYNC_LEAD_DEN, nowNs)
     }
 
     fun shouldDrop(dueNs: Long, nowNs: Long): Boolean =
@@ -67,4 +117,12 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float) {
 
     /** An empty EOS may follow a future-scheduled last picture immediately. */
     fun endDeadline(nowNs: Long): Long = lastPresentationNs?.let { it + frameNs } ?: nowNs
+
+    companion object {
+        /** "A few hundred microseconds per frame": 0.3 ms, i.e. at most 0.9 % of a 30 fps period. */
+        const val MAX_SLEW_NS = 300_000L
+        /** Release 0.8 of a vsync period before the target vsync (Media3's VSYNC_OFFSET_PERCENTAGE). */
+        const val VSYNC_LEAD_NUM = 4L
+        const val VSYNC_LEAD_DEN = 5L
+    }
 }

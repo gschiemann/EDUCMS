@@ -3,6 +3,7 @@ package com.educms.player.media
 import com.educms.player.media.DeviceClassPolicy.Facts
 import com.educms.player.media.DeviceClassPolicy.SilentUpdate
 import com.educms.player.media.DeviceClassPolicy.Soc
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -159,6 +160,27 @@ class DeviceClassPolicyTest {
         assertTrue(DeviceClassPolicy.resolve(taurus).toJson().isNull("composition"))
         assertEquals("installer-of-record", DeviceClassPolicy.resolve(t982a13).toJson().getString("silentUpdate"))
         assertEquals(setOf("INSTALLER_OF_RECORD", "TAP"), SilentUpdate.values().map { it.name }.toSet())
+    }
+
+    @Test fun theDisplayFactsRideOnTheDeviceReportBoundedAndInTheWireShape() {
+        val facts = DeviceClassPolicy.DisplayFacts(30.0f, "1:3840x2160@30.00",
+            (1..40).map { "$it:3840x2160@60.00" })
+        val j = facts.writeTo(DeviceClassPolicy.resolve(t982a13).toJson())
+        // Every policy column is still there …
+        assertEquals("amlogic/android-13", j.getString("class"))
+        assertEquals("installer-of-record", j.getString("silentUpdate"))
+        // … plus what the panel runs and offers, bounded to MAX_MODES.
+        assertEquals(30.0, j.getDouble("refreshRate"), 0.0001)
+        assertEquals("1:3840x2160@30.00", j.getString("activeMode"))
+        assertEquals(DisplayModePolicy.MAX_MODES, j.getJSONArray("supportedModes").length())
+        assertEquals("1:3840x2160@60.00", j.getJSONArray("supportedModes").getString(0))
+        // An unknown display leaves the report exactly as 1.1.41 wrote it.
+        val plain = DeviceClassPolicy.resolve(t982a13).toJson()
+        assertFalse(plain.has("refreshRate")); assertFalse(plain.has("supportedModes"))
+        // Long labels are cut, never passed through whole.
+        val cut = DeviceClassPolicy.DisplayFacts(60f, "x".repeat(80), listOf("y".repeat(80))).writeTo(JSONObject())
+        assertEquals(48, cut.getString("activeMode").length)
+        assertEquals(48, cut.getJSONArray("supportedModes").getString(0).length)
     }
 
     @Test fun webviewMajorAndAndroidMajorReadWhatTheyCanAndNeverInvent() {

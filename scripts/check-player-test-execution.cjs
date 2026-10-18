@@ -129,6 +129,14 @@ const REQUIRED = [
   { cls: 'com.educms.player.media.SoloVideoLayerTest', min: 10 },
   { cls: 'com.educms.player.media.DeviceClassPolicyTest', min: 8 },
   { cls: 'com.educms.player.media.FaceVideoBoxContractTest', min: 6 },
+  // ── Pacing (2026-10-18, 1.1.42) — the 30 fps-on-30 Hz straddle ───
+  // The vsync estimator + snapped release (a fake Choreographer, the 30 Hz
+  // and 60 Hz cadences, the bounded slew), the same-resolution ~60 Hz mode
+  // chooser, and the keep-screen-on source guard (Assume-based: the flag is
+  // cleared in exactly one hook and only by display blank providers).
+  { cls: 'com.educms.player.media.VsyncClockTest', min: 4 },
+  { cls: 'com.educms.player.media.DisplayModePolicyTest', min: 3 },
+  { cls: 'com.educms.player.media.KeepScreenOnContractTest', min: 2 },
   // ── One download and one prompt per build (2026-10-17) ───────────
   // An Android 9 panel downloaded one update 48 times in 24 h. This class
   // pins the attempt rules (keep the verified APK, raise the dialog once,
