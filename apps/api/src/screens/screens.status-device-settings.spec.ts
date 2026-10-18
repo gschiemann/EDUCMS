@@ -43,6 +43,7 @@ function harness(opts: { proved?: boolean; paired?: boolean; id?: string; rev?: 
       .fn<Promise<typeof row>, [input: { data: Record<string, unknown> }]>()
       .mockResolvedValue(row),
     count: jest.fn().mockResolvedValue(0),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   };
   const desiredDeviceSettings = {
     findUnique: jest.fn().mockResolvedValue({

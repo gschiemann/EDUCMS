@@ -95,8 +95,10 @@ export async function deviceSettingsHeartbeat(
     // passphrase — must not follow the hardware. Reset ONCE, revision still
     // going up so no identity is ever reused.
     if (row && row.tenantId !== tenantId) {
-      row = await db.desiredDeviceSettings.update({
-        where: { screenId: screen.id },
+      // Conditional on the row this beat read: a save the new organisation
+      // made in between must never be wiped, and a revision never reissued.
+      const reset = await db.desiredDeviceSettings.updateMany({
+        where: { screenId: screen.id, tenantId: row.tenantId, revision: row.revision },
         data: {
           tenantId,
           revision: row.revision + 1,
@@ -105,19 +107,33 @@ export async function deviceSettingsHeartbeat(
           updatedByUserId: null,
         },
       });
-      await audit(prisma, tenantId, screen.id, DEVICE_SETTINGS_AUDIT_ACTIONS.CHANGED, {
-        reason: 'screen-moved-tenant',
-        revision: row.revision,
-        before: '(another organisation)',
-        after: {},
-      });
+      row = await db.desiredDeviceSettings.findUnique({ where: { screenId: screen.id } });
+      if (!row || row.tenantId !== tenantId) {
+        // Moved again under us: say nothing this beat; the next one re-reads.
+        return { data: {}, mustWrite: false, reply: null };
+      }
+      if (reset.count === 1) {
+        await audit(prisma, tenantId, screen.id, DEVICE_SETTINGS_AUDIT_ACTIONS.CHANGED, {
+          reason: 'screen-moved-tenant',
+          revision: row.revision,
+          before: '(another organisation)',
+          after: {},
+        });
+      }
     }
 
     const revision = row?.revision ?? 0;
     if (revision !== markerRev) {
-      // A PUT that landed between the two reads, or a reset above.
-      data.deviceSettingsRev = revision;
-      mustWrite = true;
+      // The marker disagrees with the row: a reset above, a missing row, or a
+      // PUT that committed between this beat's two reads. Move it ONLY from the
+      // value this beat read — never a blind write folded into the heartbeat's
+      // own update, which could land after a newer PUT and put the marker
+      // BEHIND the row (the unit would then be told `same` and never receive
+      // that change). If a PUT moved it meanwhile, this matches nothing.
+      await db.screen.updateMany({
+        where: { id: screen.id, deviceSettingsRev: markerRev },
+        data: { deviceSettingsRev: revision },
+      });
     }
     const stored = row ? readStoredSettings(row.settings) : {};
 

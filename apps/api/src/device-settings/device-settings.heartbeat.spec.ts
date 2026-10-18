@@ -25,13 +25,21 @@ function fakePrisma(initial: Row | null) {
   const audits: Array<{ action: string; details: Record<string, unknown> }> = [];
   const desiredDeviceSettings = {
     findUnique: jest.fn(async () => row),
-    update: jest.fn(async ({ data }: { data: Partial<Row> }) => {
-      row = { ...(row as Row), ...data };
-      return row;
+    updateMany: jest.fn(async ({ where, data }: { where: Partial<Row>; data: Partial<Row> }) => {
+      if (!row || row.tenantId !== where.tenantId || row.revision !== where.revision) return { count: 0 };
+      row = { ...row, ...data };
+      return { count: 1 };
     }),
     upsert: jest.fn(async ({ create, update }: { create: Row; update: Partial<Row> }) => {
       row = row ? { ...row, ...update } : { ...create, wifiSecret: null, reportChangedAt: create.reportChangedAt };
       return row;
+    }),
+  };
+  const markers: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
+  const screen = {
+    updateMany: jest.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      markers.push(args);
+      return { count: 1 };
     }),
   };
   const auditLog = {
@@ -41,9 +49,10 @@ function fakePrisma(initial: Row | null) {
     }),
   };
   return {
-    prisma: { client: { desiredDeviceSettings, auditLog } } as never,
+    prisma: { client: { desiredDeviceSettings, auditLog, screen } } as never,
     desiredDeviceSettings,
     audits,
+    markers,
     get row() {
       return row;
     },
@@ -160,13 +169,20 @@ describe('deviceSettingsHeartbeat', () => {
     expect(f.audits).toHaveLength(1);
   });
 
-  it('keeps the screen marker honest when a PUT landed between the two reads', async () => {
+  it('moves a stale marker only from the value it read — never a blind write a newer PUT could lose', async () => {
     const f = fakePrisma({ ...rowAt4(), revision: 5 });
     const header = report();
     const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), header, now);
-    expect(r!.data.deviceSettingsRev).toBe(5);
-    expect(r!.mustWrite).toBe(true);
+    expect(f.markers).toEqual([{ where: { id: 'screen-1', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
+    // Not folded into the heartbeat's own (later, unconditional) screen write.
+    expect(r!.data).not.toHaveProperty('deviceSettingsRev');
     expect((r!.reply as { rev: number }).rev).toBe(5);
+  });
+
+  it('a marker that already matches the row is never written', async () => {
+    const f = fakePrisma(rowAt4());
+    await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), report({ rev: 3 }), now);
+    expect(f.markers).toEqual([]);
   });
 
   it('a screen re-paired into another organisation never receives the old intent or its Wi-Fi passphrase', async () => {
@@ -177,11 +193,26 @@ describe('deviceSettingsHeartbeat', () => {
     expect(f.row!.wifiSecret).toBeNull();
     expect(f.row!.revision).toBe(5);
     expect(r!.reply).toEqual({ schema: 1, rev: 5, items: {} });
+    expect(f.markers).toEqual([{ where: { id: 'screen-1', deviceSettingsRev: 4 }, data: { deviceSettingsRev: 5 } }]);
     expect(JSON.stringify(r)).not.toContain('correct horse');
     expect(f.audits[0]).toMatchObject({
       action: 'SCREEN_DEVICE_SETTINGS_CHANGED',
       details: { reason: 'screen-moved-tenant', revision: 5 },
     });
+  });
+
+  it('a reset never wipes a save the new organisation made in between', async () => {
+    const f = fakePrisma({ ...rowAt4(), tenantId: 'tenant-old' });
+    // The new organisation's PUT lands between this beat's read and its reset.
+    const fresh: Row = { ...rowAt4(), tenantId: 'tenant-a', revision: 5, wifiSecret: null };
+    f.desiredDeviceSettings.findUnique
+      .mockResolvedValueOnce({ ...rowAt4(), tenantId: 'tenant-old' })
+      .mockResolvedValueOnce(fresh);
+    f.desiredDeviceSettings.updateMany.mockResolvedValueOnce({ count: 0 });
+    const r = await deviceSettingsHeartbeat(f.prisma, screenAt(null, 4), report({ rev: 4 }), now);
+    expect((r!.reply as { rev: number; items: Record<string, unknown> }).rev).toBe(5);
+    expect(Object.keys((r!.reply as { items: Record<string, unknown> }).items)).toEqual(['brightness', 'autoTime', 'wifi']);
+    expect(f.audits.filter((a) => a.details.reason === 'screen-moved-tenant')).toEqual([]);
   });
 
   it('a database fault never fails the heartbeat: the unit hears nothing, the markers stay', async () => {
