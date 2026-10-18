@@ -120,7 +120,12 @@ describe('business server authorization', () => {
     expect(Reflect.getMetadata(ROLES_KEY, BusinessController)).toEqual([
       AppRole.SUPER_ADMIN,
     ]);
-    for (const method of ['report', 'createCost', 'updateCost'] as const) {
+    for (const method of [
+      'report',
+      'providerUsage',
+      'createCost',
+      'updateCost',
+    ] as const) {
       for (const role of [
         AppRole.DISTRICT_ADMIN,
         AppRole.SCHOOL_ADMIN,
@@ -148,7 +153,7 @@ describe('business server authorization', () => {
   });
   it('does not accept mutations without an audit identity', () => {
     const { service } = setup();
-    const controller = new BusinessController(service);
+    const controller = new BusinessController(service, {} as never);
     expect(() => controller.createCost({}, { user: { id: 'owner' } })).toThrow(
       ForbiddenException,
     );

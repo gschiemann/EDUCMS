@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { BusinessService, type BusinessActor } from './business.service';
+import { ProviderUsageService } from './provider-usage.service';
 
 interface BusinessRequest {
   user?: { userId?: string; id?: string; tenantId?: string };
@@ -33,11 +34,19 @@ function actorOf(request: BusinessRequest): BusinessActor {
 @UseGuards(JwtAuthGuard, RbacGuard)
 @RequireRoles(AppRole.SUPER_ADMIN)
 export class BusinessController {
-  constructor(private readonly business: BusinessService) {}
+  constructor(
+    private readonly business: BusinessService,
+    private readonly providers: ProviderUsageService,
+  ) {}
 
   @Get()
   report() {
     return this.business.report();
+  }
+
+  @Get('provider-usage')
+  providerUsage() {
+    return this.providers.getReport();
   }
 
   @Post('costs')

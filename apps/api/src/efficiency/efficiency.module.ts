@@ -11,6 +11,7 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { BusinessController } from '../business/business.controller';
 import { BusinessService } from '../business/business.service';
+import { ProviderUsageService } from '../business/provider-usage.service';
 
 /**
  * EfficiencyModule — pluggable observability for VenueOS efficiency monitoring.
@@ -38,6 +39,7 @@ import { BusinessService } from '../business/business.service';
     EfficiencyAlertingService,
     CapacityWatchService,
     BusinessService,
+    ProviderUsageService,
   ],
   controllers: [EfficiencyController, CapacityController, BusinessController],
   exports: [EfficiencyMetricsService, EfficiencyInterceptor],
