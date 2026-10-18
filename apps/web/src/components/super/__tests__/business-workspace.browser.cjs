@@ -61,20 +61,28 @@ async function setup(page, role = 'SUPER_ADMIN') {
   const report = [];
   for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
     const browser = await browserType.launch(); const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }); const { calls, errors } = await setup(page);
-    await page.goto(`${base}/super`); await expect(page.getByRole('heading', { name: 'Your business, in one place.' })).toBeVisible();
+    // Settle automatic RSC prefetches before hard navigations; WebKit reports cancelled cross-document reads as access-control errors.
+    const goto = async (url) => { await page.waitForLoadState('networkidle'); await page.goto(url); await page.waitForLoadState('networkidle'); };
+    await goto(`${base}/super`); await expect(page.getByRole('heading', { name: 'Your business, in one place.' })).toBeVisible();
     await expect(page.getByText('$995', { exact: true })).toBeVisible(); await expect(page.getByText('$188', { exact: true })).toBeVisible();
     await page.screenshot({ path: `${out}/${engine}-overview-desktop.png`, fullPage: true });
     for (const path of ['/super/customers', '/super/customers/c1', '/super/invoices', '/super/invoices/i1?customer=c1']) {
-      await page.goto(base+path); await expect(page.locator('main h1')).toBeVisible(); await page.screenshot({ path: `${out}/${engine}-${path.includes('?') ? 'invoice-document' : path.split('/').at(-1)}-desktop.png`, fullPage: true });
+      await goto(base+path); await expect(page.locator('main h1')).toBeVisible(); await page.screenshot({ path: `${out}/${engine}-${path.includes('?') ? 'invoice-document' : path.split('/').at(-1)}-desktop.png`, fullPage: true });
     }
+    await goto(`${base}/super`);
+    await page.evaluate(() => { window.__ownerNavigationMarker = 'same-document'; });
+    await page.getByRole('navigation', { name: 'Business navigation' }).getByRole('link', { name: 'Customers', exact: true }).click();
+    await expect(page).toHaveURL(/\/super\/customers$/);
+    await page.waitForLoadState('networkidle');
+    if (await page.evaluate(() => window.__ownerNavigationMarker) !== 'same-document') throw new Error('Business navigation reloaded the document');
     // Exercise the signed attachment through an actual user gesture in both engines.
-    await page.goto(`${base}/super/invoices`);
+    await goto(`${base}/super/invoices`);
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: 'ARC-2026-1042.pdf', exact: true }).click();
     const download = await downloadPromise;
     if (download.suggestedFilename() !== 'ARC-2026-1042.pdf') throw new Error('Attachment download failed');
     await expect(page).toHaveURL(/\/super\/invoices$/);
-    await page.goto(`${base}/super/invoices/i1?customer=c1`);
+    await goto(`${base}/super/invoices/i1?customer=c1`);
     await expect(page.locator('#invoice-print')).toBeVisible();
     await page.emulateMedia({ media: 'print' });
     await page.screenshot({ path: `${out}/${engine}-invoice-print.png`, fullPage: true });
@@ -85,7 +93,7 @@ async function setup(page, role = 'SUPER_ADMIN') {
       if (pages.length !== 1) throw new Error(`Invoice print generated ${pages.length} pages`);
     }
     await page.emulateMedia({ media: 'screen' });
-    await page.goto(`${base}/super/customers/new`);
+    await goto(`${base}/super/customers/new`);
     await page.getByLabel('Organization name').fill('Public fixture customer');
     await page.getByLabel('Owner email (optional)').fill('owner@example.invalid');
     await page.getByLabel('Custom package name').fill('Public fixture package');
@@ -93,18 +101,18 @@ async function setup(page, role = 'SUPER_ADMIN') {
     await page.getByRole('button', { name: 'Create customer', exact: true }).click();
     await expect(page.getByTestId('customer-created')).toBeVisible(); await expect(page.getByText('Owner setup invitation emailed.')).toBeVisible();
     if (!calls.some(c => c.path === '/super/customers/created/starter-link/email' && c.method === 'POST')) throw new Error('Owner invite was not sent');
-    await page.goto(`${base}/super/customers/c1#customer-locations`); await expect(page.getByRole('tab', { name: 'Locations' })).toHaveAttribute('aria-selected', 'true'); await expect(page.getByText('Organization & locations')).toBeVisible();
+    await goto(`${base}/super/customers/c1#customer-locations`); await expect(page.getByRole('tab', { name: 'Locations' })).toHaveAttribute('aria-selected', 'true'); await expect(page.getByText('Organization & locations')).toBeVisible();
     await page.getByRole('tab', { name: 'Locations' }).press('ArrowRight'); await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected','true');
     await page.setViewportSize({ width: 390, height: 844 });
     for (const path of ['/super', '/super/customers', '/super/customers/c1', '/super/customers/new', '/super/invoices']) {
-      await page.goto(base+path); await expect(page.locator('main h1')).toBeVisible();
+      await goto(base+path); await expect(page.locator('main h1')).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1); if (overflow) throw new Error(`${engine} horizontal overflow ${path}`);
       await page.screenshot({ path: `${out}/${engine}-${path.split('/').at(-1) || 'overview'}-mobile.png`, fullPage: true });
     }
     await page.getByRole('navigation', { name: 'Business navigation' }).getByRole('link', { name: 'Platform health' }).click();
     await expect(page).toHaveURL(/\/super\/efficiency/);
     await expect(page.getByText('Efficiency Score', { exact: true })).toBeVisible();
-    for (const locale of ['es','zh']) { await page.context().addCookies([{ name: 'venueos_locale', value: locale, url: base }]); await page.goto(`${base}/super`); await expect(page.getByRole('heading', { name: locale === 'es' ? 'Tu negocio, en un solo lugar.' : '业务管理，尽在一处。' })).toBeVisible(); await page.screenshot({ path: `${out}/${engine}-${locale}-mobile.png`, fullPage: true }); }
+    for (const locale of ['es','zh']) { await page.context().addCookies([{ name: 'venueos_locale', value: locale, url: base }]); await goto(`${base}/super`); await expect(page.getByRole('heading', { name: locale === 'es' ? 'Tu negocio, en un solo lugar.' : '业务管理，尽在一处。' })).toBeVisible(); await page.screenshot({ path: `${out}/${engine}-${locale}-mobile.png`, fullPage: true }); }
     // Error boundaries catch React exceptions without emitting pageerror; console evidence counts too.
     if (errors.length) throw new Error(`${engine} page errors: ${errors.join('; ')}`);
     const denied = await browser.newPage(); const deniedState = await setup(denied, 'DISTRICT_ADMIN'); await denied.goto(`${base}/super/customers`); await expect(denied.getByRole('heading', { name: 'Owner-only area' })).toBeVisible();
