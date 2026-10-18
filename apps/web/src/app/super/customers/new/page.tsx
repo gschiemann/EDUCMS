@@ -14,7 +14,7 @@ import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api-client";
 import { useCreateCustomer } from "@/hooks/use-customer-console";
-import { OneTimeLink } from "@/components/super/customers/CustomerDetailView";
+import { OneTimeLink } from "@/components/super/customers/OneTimeLink";
 import {
   BILLING_MODES,
   PLANS,
@@ -52,6 +52,7 @@ export default function NewCustomerPage() {
   const [ownerFirst, setOwnerFirst] = useState("");
   const [ownerLast, setOwnerLast] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [useColors, setUseColors] = useState(false);
   const [primary, setPrimary] = useState("#1d4ed8");
   const [accent, setAccent] = useState("#f59e0b");
@@ -91,6 +92,15 @@ export default function NewCustomerPage() {
     if (cents === "invalid") return setError(t("detail.invalidPrice"));
     const packageCents = parseDollarsToCents(packagePrice);
     if (packageCents === "invalid") return setError(t("detail.invalidPrice"));
+    if (logoUrl.trim()) {
+      try {
+        const logo = new URL(logoUrl.trim());
+        if (logo.protocol !== "https:" || logo.username || logo.password)
+          return setError(tb("invalidLogo"));
+      } catch {
+        return setError(tb("invalidLogo"));
+      }
+    }
     setDelivery(null);
     try {
       const out = await create.mutateAsync({
@@ -109,6 +119,7 @@ export default function NewCustomerPage() {
         ownerFirstName: ownerFirst || null,
         ownerLastName: ownerLast || null,
         displayName: displayName || null,
+        logoUrl: logoUrl.trim() || null,
         primaryColor: useColors ? primary : null,
         accentColor: useColors ? accent : null,
       });
@@ -392,6 +403,17 @@ export default function NewCustomerPage() {
                     className={INPUT}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </label>
+                <label className="sm:col-span-3">
+                  <span className={LABEL}>{tb("logoUrl")}</span>
+                  <input
+                    type="url"
+                    pattern="https://.+"
+                    className={INPUT}
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    placeholder="https://"
                   />
                 </label>
                 <label className="flex items-center gap-2 text-sm min-h-10 sm:col-span-3">

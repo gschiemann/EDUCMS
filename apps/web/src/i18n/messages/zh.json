@@ -4763,8 +4763,8 @@
     },
     "billing": {
       "CARD": "银行卡（Stripe）",
-      "INVOICE": "发票（ARC）",
-      "PURCHASE_ORDER": "采购订单（ARC）",
+      "INVOICE": "发票",
+      "PURCHASE_ORDER": "采购订单",
       "COMP": "赠送（免费）",
       "NONE": "无许可"
     },
@@ -4817,7 +4817,7 @@
       "saving": "正在保存…",
       "saved": "已保存。",
       "stripeManaged": "银行卡客户，Stripe 订阅仍有效：方案和价格以 Stripe 为准。改为发票计费前，请先在 Stripe 中取消订阅。",
-      "invoiceNote": "由 ARC 开票。客户的计费页面会显示“按发票计费”，不提供银行卡付款。",
+      "invoiceNote": "生成 VenueOS 发票或附加 ARC PDF。按发票计费的客户不使用银行卡结账。",
       "compNote": "赠送账户：不收费，也不提供银行卡付款。",
       "cardNote": "客户在自己的计费页面用银行卡付款。",
       "invalidPrice": "请输入价格，例如 20 或 20.50。",
@@ -4832,7 +4832,7 @@
       "suspendConfirmTitle": "暂停 {name}？",
       "reactivateConfirmTitle": "恢复 {name}？",
       "reactivateExplain": "其人员将可以重新登录并配对新屏幕。",
-      "invoicesSection": "发票（ARC）",
+      "invoicesSection": "发票",
       "invoicesOnlyInvoice": "仅为按发票或采购订单计费的客户记录发票。",
       "invoiceNumber": "发票号",
       "amount": "金额（美元）",
@@ -5828,6 +5828,8 @@
     "margin": "预计利润率",
     "partialCosts": "成本数据尚不完整。贡献不含尚未录入或分配的成本。",
     "recordedCosts": "已记录的月度成本",
-    "overdueReceivables": "逾期发票"
+    "overdueReceivables": "逾期发票",
+    "subscriptionService": "VenueOS 订阅服务",
+    "invalidLogo": "请输入 HTTPS 标志 URL，或留空。"
   }
 }

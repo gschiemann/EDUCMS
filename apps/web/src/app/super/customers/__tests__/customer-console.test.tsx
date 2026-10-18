@@ -54,6 +54,7 @@ function wrap(ui: React.ReactElement) {
 
 beforeEach(() => {
   calls.length = 0;
+  window.history.replaceState(null, '', '/');
   role = 'SUPER_ADMIN';
   jest.useRealTimers();
 });
@@ -92,7 +93,7 @@ describe('/super/customers roster', () => {
     expect(acme.getByText('Acme Schools')).toHaveAttribute('href', '/super/customers/c1');
     expect(acme.getByText('6 / 5')).toBeInTheDocument();
     expect(acme.getByText('Past due')).toBeInTheDocument();
-    expect(acme.getByText('Invoice (ARC)')).toBeInTheDocument();
+    expect(acme.getByText('Invoice')).toBeInTheDocument();
     expect(acme.getByText('1 overdue invoice')).toBeInTheDocument();
     expect(screen.getByText('2 customers')).toBeInTheDocument();
   });
@@ -159,6 +160,7 @@ describe('customer page', () => {
 
   it('suspends only after the confirm prompt, with the reason', async () => {
     wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Setup access' }));
     fireEvent.click(screen.getByRole('button', { name: /Suspend/ }));
     await waitFor(() => expect(calls.some((c) => c.path === '/super/customers/c1/suspend')).toBe(true));
     expect(appPrompt).toHaveBeenCalled();
@@ -184,6 +186,7 @@ describe('customer page', () => {
 
   it('creates a new one-time owner link and shows it with a copy button', async () => {
     wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'People' }));
     fireEvent.click(screen.getByText('Create a new owner link'));
     const box = await screen.findByTestId('one-time-link');
     expect(within(box).getByDisplayValue('https://app.test/claim-account/TOKEN')).toBeInTheDocument();
@@ -204,6 +207,7 @@ describe('business customer workflows', () => {
 
   it('updates branding through the consent-gated API', async () => {
     wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Branding' }));
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Acme Learning' } });
     fireEvent.change(screen.getByLabelText('Logo URL'), { target: { value: 'https://example.com/logo.png' } });
     fireEvent.click(screen.getByText('Save branding'));
@@ -212,6 +216,7 @@ describe('business customer workflows', () => {
 
   it('creates a child location under the selected parent', async () => {
     wrap(<CustomerView c={{ ...DETAIL, locations: [{ id: 'region', name: 'North region', slug: 'north', archived: false, seatsUsed: 2, depth: 1 }] }} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Locations' }));
     fireEvent.change(screen.getByLabelText('Location name'), { target: { value: 'North school' } });
     fireEvent.change(screen.getByLabelText('Parent organization / location'), { target: { value: 'region' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
@@ -220,8 +225,9 @@ describe('business customer workflows', () => {
 
   it('allocates screen allowance for a pooled location without changing the parent contract', async () => {
     wrap(<CustomerView c={{ ...DETAIL, license: { ...DETAIL.license!, pooledSeats: true }, locations: [{ id: 'north', name: 'North school', slug: 'north', archived: false, seatsUsed: 2, depth: 1, allocatedSeats: 3 }] }} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Locations' }));
     fireEvent.change(screen.getByLabelText('Screen allowance for North school'), { target: { value: '4' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(calls.find(c => c.path.endsWith('/north/allocation'))?.body).toEqual({ seatLimit: 4 }));
     expect(calls.some(c => c.path.endsWith('/license'))).toBe(false);
   });

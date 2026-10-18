@@ -128,6 +128,12 @@ export default function SuperLayout({
               <Link
                 key={key}
                 href={href}
+                onClick={() => {
+                  if (href.includes("tools=1"))
+                    window.dispatchEvent(
+                      new Event("venueos-open-platform-tools"),
+                    );
+                }}
                 className="inline-flex min-h-10 items-center text-xs font-medium text-slate-600"
               >
                 {t(key)}
@@ -175,6 +181,12 @@ export default function SuperLayout({
               <Link
                 key={key}
                 href={href}
+                onClick={() => {
+                  if (href.includes("tools=1"))
+                    window.dispatchEvent(
+                      new Event("venueos-open-platform-tools"),
+                    );
+                }}
                 className="flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               >
                 <Settings2 className="h-4 w-4" aria-hidden />

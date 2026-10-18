@@ -4763,8 +4763,8 @@
     },
     "billing": {
       "CARD": "Tarjeta (Stripe)",
-      "INVOICE": "Factura (ARC)",
-      "PURCHASE_ORDER": "Orden de compra (ARC)",
+      "INVOICE": "Factura",
+      "PURCHASE_ORDER": "Orden de compra",
       "COMP": "Cortesía (gratis)",
       "NONE": "Sin licencia"
     },
@@ -4817,7 +4817,7 @@
       "saving": "Guardando…",
       "saved": "Guardado.",
       "stripeManaged": "Cliente con tarjeta y una suscripción de Stripe activa: el plan y el precio vienen de Stripe. Cancélala en Stripe antes de pasar a facturación por factura.",
-      "invoiceNote": "Facturado por ARC. La página de facturación del cliente indica «facturado por factura» y no ofrece pago con tarjeta.",
+      "invoiceNote": "Genera una factura de VenueOS o adjunta un PDF de ARC. Los clientes por factura no usan pago con tarjeta.",
       "compNote": "Cortesía: sin cargo y sin pago con tarjeta.",
       "cardNote": "El cliente paga con tarjeta desde su propia página de facturación.",
       "invalidPrice": "Introduce un precio como 20 o 20.50.",
@@ -4832,7 +4832,7 @@
       "suspendConfirmTitle": "¿Suspender {name}?",
       "reactivateConfirmTitle": "¿Reactivar {name}?",
       "reactivateExplain": "Su personal podrá volver a iniciar sesión y vincular pantallas nuevas.",
-      "invoicesSection": "Facturas (ARC)",
+      "invoicesSection": "Facturas",
       "invoicesOnlyInvoice": "Las facturas se registran para clientes facturados por factura u orden de compra.",
       "invoiceNumber": "N.º de factura",
       "amount": "Importe (USD)",
@@ -5828,6 +5828,8 @@
     "margin": "Margen estimado",
     "partialCosts": "La cobertura de costos es parcial. La contribución excluye costos aún no registrados o asignados.",
     "recordedCosts": "Costos mensuales registrados",
-    "overdueReceivables": "Facturas vencidas"
+    "overdueReceivables": "Facturas vencidas",
+    "subscriptionService": "Servicios de suscripción de VenueOS",
+    "invalidLogo": "Introduce una URL HTTPS del logotipo o deja el campo vacío."
   }
 }

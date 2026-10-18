@@ -337,6 +337,7 @@ export interface InvoiceDocument {
   branding: CustomerDetail["branding"];
   lines: Array<{
     description: string;
+    descriptionCode?: string;
     quantity: number;
     unitAmountCents: number;
     totalCents: number;

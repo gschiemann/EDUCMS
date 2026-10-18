@@ -4763,8 +4763,8 @@
     },
     "billing": {
       "CARD": "Card (Stripe)",
-      "INVOICE": "Invoice (ARC)",
-      "PURCHASE_ORDER": "Purchase order (ARC)",
+      "INVOICE": "Invoice",
+      "PURCHASE_ORDER": "Purchase order",
       "COMP": "Comp (free)",
       "NONE": "No license"
     },
@@ -4817,7 +4817,7 @@
       "saving": "Saving…",
       "saved": "Saved.",
       "stripeManaged": "Card customer with a live Stripe subscription: plan and price come from Stripe. Cancel it in Stripe before switching to invoice billing.",
-      "invoiceNote": "Billed by ARC. The customer's Billing page says “billed by invoice” and offers no card checkout.",
+      "invoiceNote": "Generate a VenueOS invoice or attach an ARC PDF. Invoice-billed customers do not use card checkout.",
       "compNote": "Complimentary: no charge and no card checkout.",
       "cardNote": "The customer pays by card from their own Billing page.",
       "invalidPrice": "Enter a price like 20 or 20.50.",
@@ -4832,7 +4832,7 @@
       "suspendConfirmTitle": "Suspend {name}?",
       "reactivateConfirmTitle": "Reactivate {name}?",
       "reactivateExplain": "Their people can sign in again and pair new screens.",
-      "invoicesSection": "Invoices (ARC)",
+      "invoicesSection": "Invoices",
       "invoicesOnlyInvoice": "Invoices are tracked for customers billed by invoice or purchase order.",
       "invoiceNumber": "Invoice #",
       "amount": "Amount (USD)",
@@ -5828,6 +5828,8 @@
     "margin": "Estimated margin",
     "partialCosts": "Cost coverage is partial. Contribution excludes costs not yet entered or allocated.",
     "recordedCosts": "Recorded monthly costs",
-    "overdueReceivables": "Overdue invoices"
+    "overdueReceivables": "Overdue invoices",
+    "subscriptionService": "VenueOS subscription services",
+    "invalidLogo": "Enter an HTTPS logo URL, or leave it blank."
   }
 }

@@ -76,7 +76,9 @@ export function InvoiceActions({
               const url = new URL(result.url);
               if (url.protocol !== "https:" && url.protocol !== "http:")
                 throw new Error(t("saveFailed"));
-              window.open(url.toString(), "_blank", "noopener,noreferrer");
+              // The API signs with download:fileName, so Content-Disposition keeps this workspace open.
+              // Same-window navigation does not depend on Safari's transient popup permission.
+              window.location.assign(url.toString());
             } catch (err) {
               setError(err instanceof Error ? err.message : t("saveFailed"));
             } finally {

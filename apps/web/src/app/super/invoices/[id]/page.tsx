@@ -122,7 +122,11 @@ export default function InvoiceDocumentPage() {
               <tbody>
                 {d.lines.map((line, index) => (
                   <tr key={index} className="border-b border-slate-100">
-                    <td className="px-3 py-5">{line.description}</td>
+                    <td className="px-3 py-5">
+                      {line.descriptionCode === "subscription"
+                        ? t("subscriptionService")
+                        : line.description}
+                    </td>
                     <td className="px-3 py-5 text-right tabular-nums">
                       {line.quantity}
                     </td>

@@ -24,8 +24,8 @@ export function BusinessOverview({
   screens,
   online,
 }: {
-  screens: number;
-  online: number;
+  screens?: number;
+  online?: number;
 }) {
   const t = useTranslations("businessConsole");
   const locale = useLocale();
@@ -253,7 +253,7 @@ export function BusinessOverview({
         </span>
         <span className="inline-flex items-center gap-3">
           <span className="text-sm font-medium tabular-nums text-slate-700">
-            {t("onlineScreens", { online, total: screens })}
+            {screens == null || online == null ? t("loading") : t("onlineScreens", { online, total: screens })}
           </span>
           <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden />
         </span>

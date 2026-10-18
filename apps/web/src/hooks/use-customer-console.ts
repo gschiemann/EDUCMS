@@ -62,6 +62,8 @@ function useCustomerMutation<TBody, TResult = unknown>(
       qc.invalidateQueries({ queryKey: customerKeys.detail(id) });
       qc.invalidateQueries({ queryKey: ["super", "customers", "list"] });
       qc.invalidateQueries({ queryKey: ["super", "customers", "invoices"] });
+      qc.invalidateQueries({ queryKey: ["super-business"] });
+      qc.invalidateQueries({ queryKey: ["super", "tenants"] });
     },
   });
 }
@@ -132,7 +134,11 @@ export function useCreateCustomer() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: customerKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: customerKeys.all });
+      qc.invalidateQueries({ queryKey: ["super-business"] });
+      qc.invalidateQueries({ queryKey: ["super", "tenants"] });
+    },
   });
 }
 
