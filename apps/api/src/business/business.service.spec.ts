@@ -38,14 +38,16 @@ function setup() {
     auditLog: { create: jest.fn(() => Promise.resolve({})) },
   };
   const client = {
-    $transaction: jest.fn(
-      (callback: (value: typeof tx) => Promise<unknown>) => callback(tx),
+    $transaction: jest.fn((callback: (value: typeof tx) => Promise<unknown>) =>
+      callback(tx),
     ),
     tenant: { findMany: jest.fn(() => Promise.resolve([])) },
     customerInvoice: { findMany: jest.fn(() => Promise.resolve([])) },
     platformCost: { findMany: jest.fn(() => Promise.resolve([cost])) },
   };
-  const capacity = { getReport: jest.fn(() => Promise.resolve({ metrics: [] })) };
+  const capacity = {
+    getReport: jest.fn(() => Promise.resolve({ metrics: [] })),
+  };
   const service = new BusinessService(
     { client } as unknown as PrismaService,
     capacity as unknown as CapacityWatchService,

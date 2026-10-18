@@ -231,7 +231,13 @@ export class BusinessService {
         });
       const cost = await tx.platformCost.update({
         where: { id },
-        data: { ...input, observedAt: now, source: 'MANUAL' },
+        data: {
+          ...input,
+          // Archiving or changing a note is not evidence that the bill was checked.
+          ...(input.monthlyCostCents !== undefined
+            ? { observedAt: now, source: 'MANUAL' }
+            : {}),
+        },
       });
       await this.audit(
         tx,
