@@ -169,8 +169,9 @@ class FacePlayerHost(
      * Everything is wrapped: a throw inside a face must never propagate into
      * the Activity or reach the other face (contract §3).
      */
-    fun configure(root: ViewGroup) {
+    fun configure(root: ViewGroup, window: android.view.Window? = null) {
         runCatching {
+            presentationWindow = window
             val wv = root.findViewById<WebView>(com.educms.player.R.id.faceWebview)
             recoveryOverlay = root.findViewById(com.educms.player.R.id.faceRecoveryOverlay)
             webView = wv
@@ -187,11 +188,14 @@ class FacePlayerHost(
     // function, not the statement: a Kotlin annotation cannot sit on an
     // assignment inside an `apply` block.
     private var sharedVideoHost: com.educms.player.media.SharedVideoHost? = null
+    /** This face's Presentation window (1.1.42): experiment 5 asks IT for a display mode, never the Activity's. */
+    private var presentationWindow: android.view.Window? = null
 
     @Suppress("DEPRECATION")
     private fun configureWebView(wv: WebView) {
         val sharedMedia = com.educms.player.media.SharedVideoHost.attach(faceIndex, wv,
-            foreground = { com.educms.player.MainActivity.isInForeground }, focusRequired = false) {
+            foreground = { com.educms.player.MainActivity.isInForeground }, focusRequired = false,
+            window = { if (destroyed) null else presentationWindow }) {
             !destroyed && wv.isAttachedToWindow && wv.isShown &&
                 recoveryOverlay?.visibility != View.VISIBLE &&
                 (activity as? com.educms.player.MainActivity)?.nativeVideoUiClear() == true

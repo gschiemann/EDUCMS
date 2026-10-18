@@ -2538,7 +2538,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
         val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv,
-            foreground = { isInForeground }, operatorUiClear = ::nativeVideoUiClear)
+            foreground = { isInForeground }, window = { window }, operatorUiClear = ::nativeVideoUiClear)
         sharedVideoHost = sharedMedia
         wv.settings.apply {
             javaScriptEnabled = true

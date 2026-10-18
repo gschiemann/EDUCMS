@@ -10,6 +10,7 @@ import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.Window
 import android.webkit.WebView
 import android.widget.FrameLayout
 import com.educms.player.alertwatch.NativeAlertWatchPolicy
@@ -20,7 +21,9 @@ import org.json.JSONObject
 import java.util.UUID
 
 /** Activity/Presentation-owned adapter. No JS-supplied face index or credential is accepted. */
-class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean, private val foreground: (() -> Boolean)?, private val focusRequired: Boolean) {
+class SharedVideoHost private constructor(internal val face: Int, internal val web: WebView, private val operatorUiClear: () -> Boolean, private val foreground: (() -> Boolean)?, private val focusRequired: Boolean,
+    /** The Window this face's WebView lives in (the Activity's, or a face Presentation's): experiment 5 asks it for a display mode, the runtime report reads its KEEP_SCREEN_ON flag. UI thread. */
+    internal val window: () -> Window?) {
     internal val ctx: Context = web.context.applicationContext
     internal val surfaceView = SurfaceView(web.context)
     internal var attached = false
@@ -96,6 +99,8 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", policy.protocolMax)
         // 1.1.41: the resolved device class and what it does (DeviceClassPolicy), bounded, on every reply.
         j.put("device", policy.toJson())
+        // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
+        DeviceClassPolicy.displayFacts(ctx)?.writeTo(j.getJSONObject("device"))
         if (foreground != null) {
             val s = readiness.snapshot
             j.put("availability", JSONObject().put("version", 1).put("foreground", s.foreground)
@@ -116,8 +121,8 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
 
     companion object {
         /** Called on UI thread, including renderer replacement. Surface stays below the WebView. */
-        fun attach(face: Int, web: WebView, foreground: (() -> Boolean)? = null, focusRequired: Boolean = true, operatorUiClear: () -> Boolean = { false }): SharedVideoHost {
-            val host = SharedVideoHost(face,web,operatorUiClear,foreground,focusRequired)
+        fun attach(face: Int, web: WebView, foreground: (() -> Boolean)? = null, focusRequired: Boolean = true, window: () -> Window? = { null }, operatorUiClear: () -> Boolean = { false }): SharedVideoHost {
+            val host = SharedVideoHost(face,web,operatorUiClear,foreground,focusRequired,window)
             host.refreshReadiness()
             SharedVideoBox.attach(host)
             FaceVideoBox.attach(host)
