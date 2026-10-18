@@ -141,7 +141,10 @@ export class CustomerConsoleService {
     const byId = new Map(tenants.map((t) => [t.id, t]));
     const rootOf = (id: string): string => {
       let cur = byId.get(id);
-      for (let i = 0; cur?.parentId && i < 10; i++) {
+      const seen = new Set<string>();
+      while (cur?.parentId) {
+        if (seen.has(cur.id)) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
+        seen.add(cur.id);
         const parent = byId.get(cur.parentId);
         if (!parent) break;
         cur = parent;
@@ -377,6 +380,8 @@ export class CustomerConsoleService {
       } else if (current?.pooledSeats) {
         const tree = await customerTree(tx, id);
         if (tree.some((t) => t.allocatedSeats != null)) throw new HttpException({ code: 'CUSTOMER_POOL_HAS_ALLOCATIONS', message: 'Clear all location allocations before disabling the corporate pool.' }, 409);
+        const { used } = await poolUsage(tx, tree);
+        if (tree.slice(1).some((t) => (used.get(t.id) ?? 0) > 0)) throw new HttpException({ code: 'CUSTOMER_POOL_HAS_PAIRED_LOCATIONS', message: 'Unpair location screens before disabling the corporate pool.' }, 409);
       }
       if (merged.billingMode === 'COMP') { data.monthlyPriceCents = 0; data.packagePriceCents = null; }
       const before = licenseSnapshot(current);

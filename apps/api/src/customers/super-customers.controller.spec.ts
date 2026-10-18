@@ -20,7 +20,7 @@ import { BillingController } from '../billing/billing.controller';
  * Plus the server half of "invoice customers never see Stripe checkout".
  */
 
-const ROUTES = ['list', 'create', 'detail', 'updateLicense', 'suspend', 'reactivate', 'createInvoice', 'updateInvoice', 'starterLink'] as const;
+const ROUTES = ['list', 'create', 'detail', 'updateLicense', 'suspend', 'reactivate', 'createInvoice', 'updateInvoice', 'starterLink', 'invoices', 'paymentSummary', 'branding', 'invite', 'emailStarterLink', 'createLocation', 'allocate', 'uploadPdf', 'downloadPdf', 'invoiceDocument', 'cardSeats'] as const;
 
 function rbacFor(handler: (...a: any[]) => any, role: string) {
   const guard = new RbacGuard(new Reflector());
@@ -94,6 +94,16 @@ describe('GET /billing/account — the caller’s own organisation only', () => 
     expect(Reflect.getMetadata(ROLES_KEY, CustomerBillingController.prototype.account)).toEqual([
       AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN,
     ]);
+  });
+});
+
+describe('GET /billing/account/invoices/:invoiceId/pdf', () => {
+  it('uses only the authenticated tenant and audit actor, ignoring tenant query parameters', async () => {
+    const svc = { ownDownloadPdf: jest.fn(async () => ({ url: 'signed' })) };
+    const controller = new CustomerBillingController({} as any, svc as any);
+    await controller.invoicePdf('invoice', { user: { tenantId: 'own', userId: 'actor' }, query: { tenantId: 'foreign' } });
+    expect(svc.ownDownloadPdf).toHaveBeenCalledWith('own', 'invoice', 'actor');
+    expect(Reflect.getMetadata(ROLES_KEY, CustomerBillingController.prototype.invoicePdf)).toEqual([AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN]);
   });
 });
 
