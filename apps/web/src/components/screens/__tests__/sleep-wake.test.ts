@@ -138,14 +138,32 @@ describe('sleep & wake — what each screen can do, and what it proved', () => {
         ...x80,
         nativeRuntimeReport: { ...x80.nativeRuntimeReport, sleep: { offAt: at, offIdleS, attS } },
       }).lastOff;
-    expect(withOff(14_400, 14_400)).toEqual({ atMs: at, idleS: 14_400, attentiveS: 14_400, matchesInactivity: true });
+    expect(withOff(14_400, 14_400)).toEqual({ atMs: at, idleS: 14_400, attentiveS: 14_400, matchesInactivity: true, cause: null, screenOffTimeoutS: null });
     expect(withOff(14_400 + 119, 14_400)?.matchesInactivity).toBe(true);
     expect(withOff(3_000, 14_400)?.matchesInactivity).toBe(false);
     // Inactivity sleep switched off on the box (-1): never a match.
-    expect(withOff(14_400, -1)).toEqual({ atMs: at, idleS: 14_400, attentiveS: null, matchesInactivity: false });
+    expect(withOff(14_400, -1)).toEqual({ atMs: at, idleS: 14_400, attentiveS: null, matchesInactivity: false, cause: null, screenOffTimeoutS: null });
     // No input since the player started.
     expect(withOff(-1, 14_400)?.idleS).toBeNull();
     expect(summarizeSleepWake(x80).lastOff).toBeNull();
+  });
+
+  it("1.1.42: the player's own proof of the off (screen-timeout vs display-off) and the box's timeout ride on lastOff; older players carry null", () => {
+    const at = NOW - 3_600_000;
+    const withSleep = (sleep: Record<string, unknown>) =>
+      summarizeSleepWake({
+        ...x80,
+        nativeRuntimeReport: { ...x80.nativeRuntimeReport, sleep: { offAt: at, ...sleep } },
+      }).lastOff;
+    // The owner's remote (2026-10-18 03:35Z): 3 s idle is a display-off, whatever the resolved blank mechanism says.
+    expect(withSleep({ blank: 'screen-timeout', offIdleS: 3, off: 'display-off', sotS: 1_800 }))
+      .toMatchObject({ idleS: 3, cause: 'display-off', screenOffTimeoutS: 1_800, matchesInactivity: false });
+    expect(withSleep({ offIdleS: 52_620, off: 'screen-timeout', sotS: 600 })).toMatchObject({ cause: 'screen-timeout', screenOffTimeoutS: 600 });
+    expect(withSleep({ offIdleS: -1, off: 'unknown', sotS: -1 })).toMatchObject({ idleS: null, cause: 'unknown', screenOffTimeoutS: null });
+    // A code this dashboard does not know, or a malformed timeout, is not a cause.
+    expect(withSleep({ offIdleS: 3, off: 'power-key', sotS: 'soon' })).toMatchObject({ cause: null, screenOffTimeoutS: null });
+    // A player before 1.1.42: the attentive-timeout match still speaks, the cause is unknown to it.
+    expect(withSleep({ offIdleS: 14_400, attS: 14_400 })).toMatchObject({ cause: null, screenOffTimeoutS: null, matchesInactivity: true });
   });
 
   it('an unrecognised outcome is "unknown", never passed through', () => {

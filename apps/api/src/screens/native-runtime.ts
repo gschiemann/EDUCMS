@@ -21,6 +21,7 @@ const wallMs = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
  *  • last    — the last native blank: mechanism, observed outcome, when;
  *  • restore — the last after-alert restore: decision, outcome, when.
  */
+export const NATIVE_OFF_CAUSES = ['screen-timeout', 'display-off', 'unknown'] as const;
 export const NATIVE_SLEEP_OUTCOMES = [
   'off',
   'on',
@@ -53,6 +54,15 @@ const sleepSchema = z.object({
   offIdleS: z.number().int().min(-1).max(999_999_999).optional(),
   offAt: wallMs.optional(),
   attS: z.number().int().min(-1).max(999_999_999).optional(),
+  // 1.1.42 (2026-10-18): what the evidence PROVES about that last display-off
+  // (player SleepProofPolicy.offCause). `blank` above is the mechanism the
+  // player would use, not what happened — a reader took "blank:
+  // screen-timeout" for "Android's timeout turned it off". `screen-timeout`
+  // only when the idle time reached the box's own Settings.System
+  // .SCREEN_OFF_TIMEOUT (`sotS`, s; -1 = unreadable / disabled); otherwise
+  // `display-off` — not ours, and not a timeout; `unknown` = no idle time.
+  off: z.enum(NATIVE_OFF_CAUSES).optional(),
+  sotS: z.number().int().min(-1).max(999_999_999).optional(),
 });
 
 /**
