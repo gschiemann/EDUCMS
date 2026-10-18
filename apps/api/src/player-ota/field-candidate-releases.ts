@@ -138,4 +138,19 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2403987,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39074710993',
   },
+  // Signed CI 39095313732, source 184ca7ed (branch claude/goofy-gagarin-914f85, off master 861ddc7e):
+  // pacing — vsync-snapped release on a Choreographer-measured grid with a bounded media-clock
+  // slew (`vsync-snap`), a same-resolution ~60 Hz mode request at a native session boundary
+  // (`prefer-60hz`, default OFF: a mode switch can blank the panel), every supported display mode
+  // on the snapshot and the device report, keep-screen-on observed (never held), the sleep report's
+  // proven off cause. Production certificate e45adf50…3d1897, versionCode 10142, universal APK
+  // (4 ABIs), non-debuggable, 1.1.42-only DEX markers present and absent from the .41 artifact.
+  // Private mirror NOT uploaded by the registering session. Hardware qualification pending.
+  '1.1.42-field.1': {
+    versionName: '1.1.42-field.1',
+    versionCode: 10142,
+    sha256: '1bde8ad37345fa0deafa7c53012b0de457a7b4fd847707f912ad691332f29ce5', // gitleaks:allow -- verified public APK integrity digest
+    size: 2420475,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39095313732',
+  },
 };
