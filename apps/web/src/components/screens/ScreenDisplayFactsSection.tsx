@@ -17,9 +17,9 @@
  * fields it reads): no empty box.
  */
 
-import { useId, useMemo } from 'react';
+import { Fragment, useId, useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { readDisplayFacts, renderMessage, renderParts, type FactLine } from './displayFacts';
+import { LIST_SEPARATOR, readDisplayFacts, renderMessage, type FactLine } from './displayFacts';
 
 const LINE_TONE: Record<FactLine['tone'], string> = {
   strong: 'text-[12.5px] font-bold text-slate-800',
@@ -67,8 +67,16 @@ export function ScreenDisplayFactsSection({
             </dt>
             <dd className="mt-1 space-y-1">
               {row.lines.map((line, i) => (
-                <p key={i} className={`leading-snug break-words tabular-nums ${LINE_TONE[line.tone]}`}>
-                  {renderParts(t, line.parts)}
+                <p key={i} className={`leading-snug break-words ${LINE_TONE[line.tone]}`}>
+                  {/* A line of several figures wraps BETWEEN them, never inside one ("max / gap 96 ms"). */}
+                  {line.parts.length > 1
+                    ? line.parts.map((part, j) => (
+                        <Fragment key={j}>
+                          {j > 0 && LIST_SEPARATOR}
+                          <span className="whitespace-nowrap">{renderMessage(t, part)}</span>
+                        </Fragment>
+                      ))
+                    : renderMessage(t, line.parts[0])}
                 </p>
               ))}
             </dd>

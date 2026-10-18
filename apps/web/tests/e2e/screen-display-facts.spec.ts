@@ -120,11 +120,18 @@ async function openDrawerFor(page: Page, screenId: string, firstName: string) {
             : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
-  // `?screen=` is the page's own deep link: it opens that screen's drawer on the Overview.
+  // `?screen=` is the page's own deep link: it opens that screen's drawer — on the Settings tab, so ask for the Overview.
   await page.goto(`/e2e-facts/screens?screen=${screenId}`);
   const drawer = page.getByRole('dialog').first();
   await expect(drawer.getByText(firstName).first()).toBeVisible();
+  await drawer.getByRole('tab', { name: 'Overview', exact: true }).click();
+  await expect(drawer.getByRole('tabpanel')).toHaveAttribute('id', 'screen-panel-overview');
   return drawer;
+}
+
+/** `next dev` paints its own "N 1 Issue" badge over the page; it is not part of the UI under test (a production build has none). */
+async function hideDevOverlay(page: Page) {
+  await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
 }
 
 async function expectTheFacts(drawer: ReturnType<Page['getByRole']>) {
@@ -177,6 +184,7 @@ test.describe('Panel and playback pacing', () => {
     const tops = await section.locator('dt').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
     expect([...tops].sort((a, b) => a - b)).toEqual(tops);
 
+    await hideDevOverlay(page);
     await section.screenshot({ path: info.outputPath('display-facts-phone-390.png') });
     await page.screenshot({ path: info.outputPath('display-facts-phone-390-drawer.png') });
   });
@@ -185,8 +193,10 @@ test.describe('Panel and playback pacing', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const drawer = await openDrawerFor(page, WITH_REPORT.id, 'Lobby test A');
     const section = await expectTheFacts(drawer);
+    await hideDevOverlay(page);
     await section.screenshot({ path: info.outputPath('display-facts-desktop-1440.png') });
-    await page.screenshot({ path: info.outputPath('display-facts-desktop-1440-drawer.png') });
+    // CSS pixels (1440 × 900), not device pixels: the whole drawer in context stays a small file.
+    await page.screenshot({ path: info.outputPath('display-facts-desktop-1440-drawer.png'), scale: 'css' });
   });
 
   test('a screen with no native report gets no box at all', async ({ page }) => {
