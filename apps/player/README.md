@@ -97,6 +97,46 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell am start -n com.educms.player/.PairingActivity
 ```
 
+### One-time install grants (basic Android settings) — NOT device owner
+
+Since 2026-10-18 the player can set a unit's basic Android settings itself
+(Settings › the screen's drawer › **Android settings**: brightness, volume,
+screen timeout, rotation lock, automatic date & time, automatic time zone,
+time server, one Wi-Fi network). It does this as an ordinary app — the
+Manager is never device owner — and only on **Android 13+**. Three of those
+settings need a permission that only an ADB session can hand out, once, at
+install time. Run these after `adb install` (or after the field install from
+a USB stick, with a cable for one minute):
+
+```bash
+adb shell pm grant com.educms.player android.permission.WRITE_SECURE_SETTINGS
+```
+
+```bash
+adb shell appops set com.educms.player WRITE_SETTINGS allow
+```
+
+The first unlocks **automatic date & time, automatic time zone and the time
+server**. The second is the same "Modify system settings" switch the setup
+checklist asks for with one tap (brightness, screen timeout, rotation lock);
+it is listed here so a cabled install can skip the tap. Check they took:
+
+```bash
+adb shell dumpsys package com.educms.player | grep -E "WRITE_SECURE_SETTINGS: granted=true"
+```
+
+```bash
+adb shell appops get com.educms.player WRITE_SETTINGS
+```
+
+Both survive app updates (OTA included) and are revoked by an uninstall —
+re-run them after a reinstall. Neither makes the player device owner, a
+device admin or a system app. Without them the dashboard says, per setting,
+"Not possible on this unit" and why; nothing is attempted. The debug build is
+`com.educms.player.debug` — use that package name for a debug install. What
+the app can and cannot reach without device owner is in
+`docs/research/2026-10-17-player-rock-solid/05-android-settings-without-device-owner.md`.
+
 ### MDM / EMM (production)
 Recommended: **Headwind MDM**, **Hexnode** (paid), or **Android Enterprise Dedicated Devices** (free if you self-host the EMM). Push the APK silently to all enrolled devices; lock down to `com.educms.player` as the only allowed launcher (`setLockTaskPackages`).
 

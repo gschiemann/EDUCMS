@@ -143,6 +143,16 @@ const REQUIRED = [
   // then NEEDS_TAP) AND Assume-based source guards that the worker, the
   // install receiver and the Manager's 30-minute lane actually obey them.
   { cls: 'com.educms.player.ota.OtaAttemptPolicyTest', min: 15 },
+  // ── Basic Android settings without device owner (2026-10-18) ─────
+  // A stored operator setting is written into the SYSTEM. The policy class
+  // pins what may be applied when (never during an alert, never on a dark,
+  // blanked or just-woken panel, bounded and persisted before the write,
+  // nothing without a stored intent); the wiring class is an Assume-based
+  // source guard (heartbeat-only transport, brightness/volume through the
+  // registry, the timeout only through the blank provider's lock, no
+  // passphrase on disk), so "not entirely skipped" matters.
+  { cls: 'com.educms.player.settings.DeviceSettingsPolicyTest', min: 15 },
+  { cls: 'com.educms.player.settings.DeviceSettingsWiringTest', min: 8 },
 ];
 
 /**

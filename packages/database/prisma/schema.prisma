@@ -1540,6 +1540,20 @@ model Screen {
   nativePowerOnAt                     DateTime?    @map("native_power_on_at")
   nativeRuntimeReport                 Json?        @map("native_runtime_report")
   nativeRuntimeReportAt               DateTime?    @map("native_runtime_report_at")
+  // ── Basic Android settings without device owner (2026-10-18) ─────────
+  // apps/api/src/device-settings/. The operator's desired values and the
+  // unit's last report live in their own table (DesiredDeviceSettings) —
+  // never JSON on this hot row (the 2026-08-14 egress lesson). These three
+  // are the cheap markers the native heartbeat reads off the row it has
+  // already loaded, so an unchanged unit costs no extra query and no write:
+  //   deviceSettingsRev       — the desired set's revision (0 = none stored);
+  //   deviceSettingsReportSig — signature of the stored report;
+  //   deviceSettingsReportAt  — the last heartbeat that carried a report
+  //                             (rides the debounced liveness write).
+  // All three are SCREEN_TELEMETRY_ONLY_FIELDS: no manifest branch reads them.
+  deviceSettingsRev                   Int          @default(0) @map("device_settings_rev")
+  deviceSettingsReportSig             String?      @map("device_settings_report_sig")
+  deviceSettingsReportAt              DateTime?    @map("device_settings_report_at")
   // ── Frame-locked sync (2026-07-28) ───────────────────────────────────
   // syncOffsetMs — per-screen latency trim (±ms). Different display models
   // add different FIXED pipeline latencies (LED controller scaling, TV
@@ -1912,6 +1926,9 @@ model Screen {
   // see that model's header). Optional: browser players and pre-probe APKs
   // never report one.
   deviceInventory                     ScreenDeviceInventory?
+  // Basic Android settings (2026-10-18) — separate table on purpose, read on
+  // demand by the drawer and by the heartbeat only when a marker above moved.
+  desiredDeviceSettings               DesiredDeviceSettings?
   // Per-file playback evidence + the WebView's declared decode capability
   // (2026-10-11, video guarantee steps 1–4). Separate tables, never Screen
   // columns, and NOT manifest-fed: telemetry writes them, the dashboard reads
@@ -1953,6 +1970,40 @@ model ScreenDeviceInventory {
 
   @@index([tenantId])
   @@map("screen_device_inventory")
+}
+
+// 2026-10-18 — basic Android settings without device owner
+// (apps/api/src/device-settings/, docs/research/2026-10-17-player-rock-solid/
+// 14-android-settings.md). ONE row per screen:
+//   • settings  — the operator's desired values, `{ <key>: { v, id, at, by } }`;
+//                 `id` = "r<revision>" is the identity the unit acknowledges by
+//                 equality. Written only by PUT /screens/:id/device-settings
+//                 (audited before/after).
+//   • wifiSecret — the Wi-Fi passphrase, sealed with streaming/creds-cipher.ts
+//                 (envelope AES-256-GCM). Never returned by any read; sent only
+//                 in the device-authenticated heartbeat reply of THIS screen,
+//                 and only until the unit has finished that network identity.
+//   • report    — the unit's last report (what it can set, what Android reads
+//                 back, per-identity acknowledgements, heat and load facts).
+//                 Written by the heartbeat only when it CHANGED.
+// tenantId is denormalized for tenant-scoped reads; a row whose tenant no
+// longer matches its screen (a re-pair) is treated as empty and reset.
+// NOT in MANIFEST_FED_MODELS: nothing here is manifest content.
+model DesiredDeviceSettings {
+  screenId        String    @id @map("screen_id")
+  screen          Screen    @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  tenantId        String    @map("tenant_id")
+  revision        Int       @default(0)
+  settings        Json      @default("{}")
+  wifiSecret      String?   @map("wifi_secret")
+  report          Json?
+  reportChangedAt DateTime? @map("report_changed_at")
+  updatedByUserId String?   @map("updated_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("desired_device_settings")
 }
 
 // 2026-10-11 — per-(screen, file digest) playback evidence (video guarantee,

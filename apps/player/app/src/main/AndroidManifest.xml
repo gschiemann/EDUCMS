@@ -81,6 +81,26 @@
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!--
+      ── Basic Android settings (2026-10-18) — com.educms.player.settings ──
+
+      WRITE_SECURE_SETTINGS: signature|privileged|development. Declaring it
+      grants NOTHING: it becomes ours only through the one-time install
+      command `adb shell pm grant com.educms.player
+      android.permission.WRITE_SECURE_SETTINGS` (apps/player/README.md →
+      "One-time install grants"). It is what automatic time, automatic time
+      zone and the NTP server need. It is NOT device owner, survives app
+      updates, and is revoked by an uninstall. Without the grant those three
+      settings report `no-secure-settings` and are never attempted.
+
+      CHANGE_WIFI_STATE: normal, auto-granted. Wi-Fi network SUGGESTIONS
+      (WifiManager.addNetworkSuggestions); Android asks for one approval on
+      the glass the first time.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 

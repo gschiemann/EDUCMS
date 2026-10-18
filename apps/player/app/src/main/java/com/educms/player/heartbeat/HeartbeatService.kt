@@ -22,6 +22,7 @@ import com.educms.player.alertwatch.NativeAlertWatch
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.RelaunchEscalation
 import com.educms.player.security.HostAllowlist
+import com.educms.player.settings.DeviceSettings
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -372,6 +373,13 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         setRequestProperty(NativePowerControl.HEADER, NativePowerControl.report(applicationContext, prefs))
                     }.onFailure { PlayerLogger.w(TAG, "native power report unavailable: ${it.message}") }
+                    // 2026-10-18 — basic Android settings (settings.DeviceSettings):
+                    // what this unit can set, what Android reads back, and what
+                    // happened to each stored setting. Its own header, so a
+                    // problem here can never cost the power report above.
+                    if (nativeAllowed) runCatching {
+                        setRequestProperty(DeviceSettings.HEADER, DeviceSettings.report(applicationContext))
+                    }.onFailure { PlayerLogger.w(TAG, "device settings report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -420,6 +428,11 @@ class HeartbeatService : Service() {
         if (nativeAllowed) runCatching {
             NativePowerControl.accept(applicationContext, prefs, JSONObject(body))
         }.onFailure { PlayerLogger.e(TAG, "native power command failed", it) }
+        // Stored device settings — isolated like the power command: a fault
+        // here must not stop a back side being hosted or an OTA push below.
+        if (nativeAllowed) runCatching {
+            DeviceSettings.accept(applicationContext, prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.e(TAG, "device settings failed", it) }
         // ── How many sides the server says this display has ─────────────
         // Read BEFORE the forced-OTA early return below, and isolated from it:
         // a malformed OTA field must not stop a back side being hosted, and
