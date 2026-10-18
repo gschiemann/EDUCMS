@@ -91,14 +91,15 @@ describe('license patch', () => {
 
   it('plan is stored in tier; COMP zeroes the price', () => {
     expect(licenseDataFromPatch({ plan: 'ANNUAL', seatLimit: 4 })).toEqual({ tier: 'ANNUAL', seatLimit: 4 });
-    expect(licenseDataFromPatch({ billingMode: 'COMP' })).toEqual({ billingMode: 'COMP', monthlyPriceCents: 0 });
+    expect(licenseDataFromPatch({ billingMode: 'COMP' })).toEqual({ billingMode: 'COMP', monthlyPriceCents: 0, packagePriceCents: null });
   });
 
   it('a live card subscription owns its plan, price and billing mode', () => {
     const live = { billingMode: 'CARD', status: 'ACTIVE', stripeSubscriptionId: 'sub_1' };
     expect(policyCode(() => assertPatchAllowed(live, { billingMode: 'INVOICE' }))).toBe('CUSTOMER_CARD_SUBSCRIPTION_ACTIVE');
     expect(policyCode(() => assertPatchAllowed(live, { plan: 'ANNUAL' }))).toBe('CUSTOMER_STRIPE_MANAGED');
-    expect(policyCode(() => assertPatchAllowed(live, { seatLimit: 9, notes: 'x', renewalDate: null }))).toBeNull();
+    expect(policyCode(() => assertPatchAllowed(live, { seatLimit: 9 }))).toBe('CUSTOMER_STRIPE_MANAGED');
+    expect(policyCode(() => assertPatchAllowed(live, { notes: 'x', renewalDate: null }))).toBeNull();
     // A cancelled subscription no longer owns anything.
     expect(policyCode(() => assertPatchAllowed({ ...live, status: 'CANCELLED' }, { billingMode: 'INVOICE' }))).toBeNull();
   });

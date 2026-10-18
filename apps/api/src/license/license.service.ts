@@ -1,4 +1,5 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { assertPoolCapacity, customerTree, poolUsage } from './license-pool';
 import { PrismaService } from '../prisma/prisma.service';
 import { billingStateOf, cardBillingReady, isFreeTrialTier } from '../billing/trial-policy';
 
@@ -127,31 +128,20 @@ export class LicenseService {
     suspended: boolean;
   }> {
     const client = tx ?? this.prisma.client;
-    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true, trialEndsAt: true, dunningFailedAt: true, dunningNextAttemptAt: true, aiIncluded: true } };
-    const row = await client.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        id: true,
-        parentId: true,
-        license: lic,
-        parent: {
-          select: {
-            id: true,
-            parentId: true,
-            license: lic,
-            parent: { select: { id: true, parentId: true, license: lic } },
-          },
-        },
-      },
-    });
-    if (!row) return { rootTenantId: tenantId, governing: null, suspended: false };
-    const chain: Array<{ id: string; parentId: string | null; license: any }> = [];
-    let cur: any = row;
-    while (cur) {
-      chain.push(cur);
-      cur = cur.parent ?? null;
+    const chain: any[] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = tenantId;
+    while (cursor) {
+      if (seen.has(cursor) || seen.size >= 100) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
+      seen.add(cursor);
+      const row: any = await client.tenant.findUnique({ where: { id: cursor }, include: { license: true } });
+      if (!row) break;
+      chain.push(row);
+      cursor = row.parentId;
     }
-    const governing = chain.find((t) => t.license)?.license ?? null;
+    if (!chain.length) return { rootTenantId: tenantId, governing: null, suspended: false };
+    const rootLicense = chain[chain.length - 1].license;
+    const governing = rootLicense?.pooledSeats ? rootLicense : chain.find((t) => t.license)?.license ?? null;
     const suspended = chain.some((t) => t.license?.status === 'SUSPENDED');
     return { rootTenantId: chain[chain.length - 1].id, governing, suspended };
   }
@@ -220,6 +210,17 @@ export class LicenseService {
         },
         HttpStatus.PAYMENT_REQUIRED,
       );
+    }
+    const client = tx ?? this.prisma.client;
+    if (org.governing?.pooledSeats) {
+      const governing = org.governing;
+      if (governing.status !== 'ACTIVE') throw new HttpException({ code: 'LICENSE_INACTIVE', message: 'The corporate license is not active.' }, 402);
+      const expiry = governing.expiresAt ?? governing.currentPeriodEnd;
+      if (expiry && new Date(expiry) < new Date()) throw new HttpException({ code: 'LICENSE_EXPIRED', message: 'The corporate license has expired.' }, 402);
+      const tree = await customerTree(client, org.rootTenantId);
+      const { used } = await poolUsage(client, tree);
+      assertPoolCapacity(tree, used, governing.seatLimit, tenantId);
+      return;
     }
     const eff = await this.getEffective(tenantId, tx);
     if (eff.status !== 'ACTIVE') {

@@ -1,4 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import { assertPoolCapacity, customerTree, poolUsage } from '../license/license-pool';
+import { withDbRetry } from '../prisma/with-db-retry';
 import { randomBytes } from 'crypto';
 import { AppRole, Prisma } from '@cms/database';
 import { isReservedTenantSlug, isVertical } from '@cms/api-types';
@@ -225,15 +227,9 @@ export class CustomerConsoleService {
   async detail(id: string, now = new Date()) {
     const org = await this.loadOrg(id);
     const client = this.prisma.client;
-    const children: any[] = await client.tenant.findMany({
-      where: { parentId: id },
-      select: { id: true, name: true, slug: true, archivedAt: true },
-      orderBy: { name: 'asc' },
-    });
-    const grand: any[] = children.length
-      ? await client.tenant.findMany({ where: { parentId: { in: children.map((c) => c.id) } }, select: { id: true, parentId: true } })
-      : [];
-    const treeIds = [id, ...children.map((c) => c.id), ...grand.map((g) => g.id)];
+    const tree = await customerTree(client, id);
+    const children = tree.slice(1);
+    const treeIds = tree.map((t) => t.id);
     const [screens, invoices, users, starterInvites, recent, branding] = await Promise.all([
       (client.screen.groupBy as any)({
         by: ['tenantId'],
@@ -262,8 +258,6 @@ export class CustomerConsoleService {
       client.tenantBranding.findUnique({ where: { tenantId: id }, select: { displayName: true, palette: true, logoUrl: true } }),
     ]);
     const seatsByTenant = new Map<string, number>(screens.map((s: any) => [s.tenantId, s._count?._all ?? 0]));
-    const childSeats = (cid: string) =>
-      (seatsByTenant.get(cid) ?? 0) + grand.filter((g) => g.parentId === cid).reduce((n, g) => n + (seatsByTenant.get(g.id) ?? 0), 0);
     const seatsUsed = treeIds.reduce((n, t) => n + (seatsByTenant.get(t) ?? 0), 0);
     const lic = org.license ?? null;
     const overdue = invoices.some((i: any) => invoiceIsOverdue(i, now));
@@ -289,6 +283,9 @@ export class CustomerConsoleService {
       seatsUsed,
       license: lic
         ? {
+            packageName: lic.packageName ?? null,
+            packagePriceCents: lic.packagePriceCents ?? null,
+            pooledSeats: lic.pooledSeats === true,
             plan: lic.tier,
             status: lic.status,
             billingMode: lic.billingMode,
@@ -307,7 +304,8 @@ export class CustomerConsoleService {
           }
         : null,
       cardCheckout: cardCheckoutAllowed(lic),
-      locations: children.map((c) => ({ id: c.id, name: c.name, slug: c.slug, archived: !!c.archivedAt, seatsUsed: childSeats(c.id) })),
+      locations: children.map((c) => ({ id: c.id, parentId: c.parentId, depth: c.depth, name: c.name, slug: c.slug, archived: !!c.archivedAt, seatsUsed: seatsByTenant.get(c.id) ?? 0, allocatedSeats: c.allocatedSeats })),
+      pool: lic?.pooledSeats ? { committedSeats: tree.reduce((n, t) => n + Math.max(t.allocatedSeats ?? 0, seatsByTenant.get(t.id) ?? 0), 0), seatLimit: lic.seatLimit } : null,
       admins: users.map((u: any) => ({
         id: u.id,
         email: u.email.endsWith(`@${STARTER_EMAIL_DOMAIN}`) ? null : u.email,
@@ -347,6 +345,7 @@ export class CustomerConsoleService {
       status: i.status,
       overdue: invoiceIsOverdue(i, now),
       notes: i.notes,
+      attachment: i.pdfStoragePath ? { fileName: i.pdfFileName, sizeBytes: i.pdfSizeBytes, uploadedAt: iso(i.pdfUploadedAt) } : null,
     };
   }
 
@@ -359,7 +358,7 @@ export class CustomerConsoleService {
     } catch (e) {
       asHttp(e);
     }
-    return this.prisma.client.$transaction(async (tx: any) => {
+    return withDbRetry(() => this.prisma.client.$transaction(async (tx: any) => {
       const org = await this.loadOrg(id, tx);
       const current = org.license ?? null;
       try {
@@ -368,6 +367,18 @@ export class CustomerConsoleService {
         asHttp(e);
       }
       const data = licenseDataFromPatch(patch);
+      const merged = { ...current, ...data };
+      if (merged.pooledSeats) {
+        if (!['INVOICE', 'PURCHASE_ORDER', 'COMP'].includes(merged.billingMode)) throw new HttpException({ code: 'CUSTOMER_POOL_BILLING_INVALID', message: 'Corporate pools require invoice, purchase order, or complimentary billing.' }, 409);
+        const tree = await customerTree(tx, id);
+        if (tree.slice(1).some((t) => t.license)) throw new HttpException({ code: 'CUSTOMER_LOCATION_LICENSE_EXISTS', message: 'Resolve individual location licenses before enabling a corporate pool.' }, 409);
+        const { used } = await poolUsage(tx, tree);
+        assertPoolCapacity(tree, used, merged.seatLimit);
+      } else if (current?.pooledSeats) {
+        const tree = await customerTree(tx, id);
+        if (tree.some((t) => t.allocatedSeats != null)) throw new HttpException({ code: 'CUSTOMER_POOL_HAS_ALLOCATIONS', message: 'Clear all location allocations before disabling the corporate pool.' }, 409);
+      }
+      if (merged.billingMode === 'COMP') { data.monthlyPriceCents = 0; data.packagePriceCents = null; }
       const before = licenseSnapshot(current);
       const lic = current
         ? await tx.license.update({ where: { tenantId: id }, data })
@@ -395,7 +406,7 @@ export class CustomerConsoleService {
         },
       });
       return { ok: true, license: after };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), { label: 'customer-license' });
   }
 
   // ─── Suspend / reactivate ────────────────────────────────────────────────
@@ -558,6 +569,9 @@ export class CustomerConsoleService {
         const lic = await tx.license.create({
           data: {
             tenantId: tenant.id,
+            packageName: input.packageName,
+            packagePriceCents: input.packagePriceCents,
+            pooledSeats: input.pooledSeats,
             tier: input.plan,
             billingMode: input.billingMode,
             status: 'ACTIVE',
@@ -860,6 +874,8 @@ export class CustomerConsoleService {
       poNumber: invoiceBilled ? gov?.poNumber ?? null : null,
       renewalDate: iso(renewalDateOf(gov)),
       invoices: invoices.map((i: any) => ({
+        id: i.id,
+        attachment: i.pdfStoragePath ? { fileName: i.pdfFileName, sizeBytes: i.pdfSizeBytes, uploadedAt: iso(i.pdfUploadedAt) } : null,
         number: i.number,
         amountCents: i.amountCents,
         currency: i.currency,
