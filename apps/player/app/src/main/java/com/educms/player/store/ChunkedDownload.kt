@@ -140,7 +140,9 @@ internal class ChunkedDownload(
                 try { if (ranged) rangedStep(t, resp, st, start, end) { st = it } else wholeStep(t, resp, st) { st = it } }
                 finally { resp.close() }
             } catch (e: Exception) {
-                Step.Fail(StoreReasons.of(e, "media-incomplete"), retryable = true)
+                val reason = StoreReasons.of(e, "media-incomplete")
+                // A redirect off the storage allowlist is a property of the source, not of the network.
+                Step.Fail(reason, retryable = reason != "media-origin" && reason != "media-redirect")
             }
             when (step) {
                 is Step.Wrote -> {

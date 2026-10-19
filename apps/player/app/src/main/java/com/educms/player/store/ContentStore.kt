@@ -242,6 +242,9 @@ internal class ContentStore(
         return v
     }
 
+    /** The pinned emergency state of [tenant] (tests and diagnostics). */
+    internal fun emergencyState(tenant: String): EmergencyState? = synchronized(lock) { emergency[tenant] }
+
     /** The store's last authenticated selection for [face] (offline-boot validation, design §6). */
     fun lastSelection(face: Int): FaceSource? = synchronized(lock) { faces[face] }
 
@@ -483,14 +486,17 @@ internal class ContentStore(
         if (!insufficient()) {
             for ((face, fs) in faces) {
                 val g = glassShas(face, fs)
-                fun keyOf(item: ContentItem): String? {
-                    if (verified(fs.tenant, item.sha256)) return null
+                // Every position keeps its place (verified files included), so a face's second item never
+                // overtakes the other face's first just because an earlier file already landed.
+                fun keyOf(item: ContentItem): String {
                     val k = "c:${fs.tenant}/${item.sha256}"
-                    byKey.putIfAbsent(k, DownloadTarget(fs.tenant, item.sha256, false, item.sha256, item.url, item.stableKey, item.size, emergency = false))
+                    if (!verified(fs.tenant, item.sha256)) {
+                        byKey.putIfAbsent(k, DownloadTarget(fs.tenant, item.sha256, false, item.sha256, item.url, item.stableKey, item.size, emergency = false))
+                    }
                     return k
                 }
                 glass[face] = g.mapNotNull { sha -> fs.item(sha)?.let { keyOf(it) } }
-                next[face] = fs.items.filter { it.video && it.sha256 !in g }.mapNotNull { keyOf(it) }
+                next[face] = fs.items.filter { it.video && it.sha256 !in g }.map { keyOf(it) }
             }
         }
         StorePolicy.order(emergencyKeys, glass, next).asSequence().mapNotNull { byKey[it] }.firstOrNull { eligible(it, now) }
