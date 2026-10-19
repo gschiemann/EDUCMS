@@ -675,8 +675,9 @@ export function pickNativeVideo(input: {
  * one closed table (`nativeEndReasons.ts`, generated from stream B's
  * NativeEndReasons.kt), which B reconciled with this one: every code both
  * know grades the same (`nativeEndReasons.test.ts` proves it here), and the
- * closed table also knows the codes this one misses — `host-replaced` on a v2
- * session is TRANSIENT, not a 24 h block.
+ * closed table also knows the v4-only codes this one does not list.
+ * `host-replaced` is TRANSIENT in both (1.1.43): a WebView crash is never a
+ * 24 h block.
  */
 export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "emergency-held",

@@ -186,8 +186,9 @@ describe('phase 0: the latent defect — never a 24 h block for the network, sto
     const codes = [...NATIVE_VIDEO_TRANSIENT_REASONS, ...NATIVE_VIDEO_NOT_READY_REASONS, ...NATIVE_VIDEO_BOX_REASONS,
       ...NATIVE_VIDEO_FAULT_REASONS, 'manifest-http-503', 'media-http-404', 'descriptor-version'];
     for (const code of codes) expect([code, nativeVideoEndGrade(code)]).toEqual([code, grade1143(code)]);
-    // …and the closed table fixes the one code that table misses (stream B's note 5).
-    expect(grade1143('host-replaced')).toBe('fault');
+    // …including the code stream B's note 5 found ungraded: 1.1.43 itself now lists `host-replaced` as
+    // TRANSIENT (master 78c8dafc), so a WebView crash is never a 24 h block on either table.
+    expect(grade1143('host-replaced')).toBe('transient');
     expect(nativeVideoEndGrade('host-replaced')).toBe('transient');
   });
   it('a full download whose digest is not the manifest\'s is a FAULT everywhere (retrying downloads the same bytes)', () => {
