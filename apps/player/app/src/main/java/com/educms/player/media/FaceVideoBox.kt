@@ -713,41 +713,55 @@ internal object FaceVideoBox {
             val intent = PlaybackIntent.of(m, System.currentTimeMillis())
             val current = host.faceSessions[""]?.takeIf { it.alive }
             val next = host.faceSessions[NEXT]?.takeIf { it.alive }
-            if (current != null && current.identity == m.identity) {
-                // ADOPT (§4.3): the new lease takes the session over; a pending release / swap is called off.
-                current.v4 = true
-                current.start = m.start
-                current.atLapEnd = LapAction.NONE
-                next?.let { stopSession(host, it, "content-changed") }
-                ints.put(face, intent)
-                rejections.remove(face)
-                armLeaseTick(host.ctx)
-                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_ADOPT face=$face state=${current.state} sha=${m.sha256.take(8)}")
-                return
-            }
-            if (next != null && next.identity == m.identity) {
-                next.start = m.start
-                ints.put(face, intent)
-                rejections.remove(face)
-                maybeSwap(next)
-                return
-            }
-            // A NEW content: a boundary. A switch flip never restarts what presents (that was the adopt above).
             val policy = DeviceClassPolicy.current(host.ctx)
-            if (!policy.nativeFirst(switchValue(host.ctx, face))) { reject(face, "native-first-off", m.sha256); return }
-            if (blocks(host.ctx).blockedUntil(m.sha256, face, System.currentTimeMillis()) != null) { reject(face, "blocked", m.sha256); return }
+            val action = PlaybackSessionPolicy.onIntend(
+                sameAsCurrent = current != null && current.identity == m.identity,
+                sameAsNext = next != null && next.identity == m.identity,
+                currentPresenting = current != null && current.state == "presenting",
+                switchOn = policy.nativeFirst(switchValue(host.ctx, face)),
+                blocked = blocks(host.ctx).blockedUntil(m.sha256, face, System.currentTimeMillis()) != null,
+                // §7 E2: the hold is read at the moment of the decision; begin() reads it again.
+                held = DisplayEmergency.isHeld(host.ctx),
+            )
+            when (action) {
+                PlaybackSessionPolicy.IntendAction.ADOPT -> {
+                    // ADOPT (§4.3): the new lease takes the session over; a pending release / swap is called off.
+                    current!!.v4 = true
+                    current.start = m.start
+                    current.atLapEnd = LapAction.NONE
+                    next?.let { stopSession(host, it, "content-changed") }
+                    ints.put(face, intent)
+                    rejections.remove(face)
+                    armLeaseTick(host.ctx)
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_ADOPT face=$face state=${current.state} sha=${m.sha256.take(8)}")
+                    return
+                }
+                PlaybackSessionPolicy.IntendAction.ADOPT_NEXT -> {
+                    next!!.start = m.start
+                    ints.put(face, intent)
+                    rejections.remove(face)
+                    maybeSwap(next)
+                    return
+                }
+                PlaybackSessionPolicy.IntendAction.REFUSE_SWITCH_OFF -> { reject(face, "native-first-off", m.sha256); return }
+                PlaybackSessionPolicy.IntendAction.REFUSE_BLOCKED -> { reject(face, "blocked", m.sha256); return }
+                PlaybackSessionPolicy.IntendAction.SUSPEND -> {
+                    ints.put(face, intent.copy(suspendedByHold = true))
+                    rejections.remove(face)
+                    armLeaseTick(host.ctx)
+                    listOfNotNull(current, next).forEach { stopSession(host, it, "emergency-held") }
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_INTENT face=$face held=true sha=${m.sha256.take(8)}")
+                    return
+                }
+                PlaybackSessionPolicy.IntendAction.PREROLL, PlaybackSessionPolicy.IntendAction.START -> Unit
+            }
+            // A NEW content (or the restore of a suspended / ended one): "until the content changes" (§3.4).
             ints.get(face)?.takeIf { it.sha256 != m.sha256 }?.let { transientEnds.reset(TransientEndTracker.key(face, it.sha256)) }
             rejections.remove(face)
             armLeaseTick(host.ctx)
-            if (DisplayEmergency.isHeld(host.ctx)) {
-                ints.put(face, intent.copy(suspendedByHold = true))
-                listOfNotNull(current, next).forEach { stopSession(host, it, "emergency-held") }
-                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_INTENT face=$face held=true sha=${m.sha256.take(8)}")
-                return
-            }
             ints.put(face, intent)
             val b = newSession(host, m.request(), null).apply { v4 = true; start = m.start }
-            if (current != null && current.state == "presenting") {
+            if (action == PlaybackSessionPolicy.IntendAction.PREROLL) {
                 next?.let { stopSession(host, it, "content-changed") }
                 b.key = NEXT
                 b.preroll = true

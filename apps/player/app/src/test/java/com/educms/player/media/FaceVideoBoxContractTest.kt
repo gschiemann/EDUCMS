@@ -146,9 +146,11 @@ class FaceVideoBoxContractTest {
         assertTrue("the refusal is applied", refusal >= 0)
         assertTrue("…before the emergency / lifecycle checks", refusal < begin.indexOf("DisplayEmergency.isHeld(host.ctx)"))
         assertTrue("…and before the authenticated fetch", refusal < begin.indexOf("meta.execute"))
-        assertTrue("the session is registered first so the page reads the reason", refusal > begin.indexOf("host.faceSessions[session.slot] = session"))
+        assertTrue("the session is registered first so the page reads the reason", refusal > begin.indexOf("host.faceSessions[session.key] = session"))
         assertTrue("sessions are built from the resolved class", b.contains("DeviceClassPolicy.current(host.ctx)"))
-        assertTrue("the advertised protocolMax is the class table's", body(b, "fun state(host: SharedVideoHost)").contains("DeviceClassPolicy.current(host.ctx).protocolMax"))
+        assertTrue("the advertised protocolMax is the class table's", body(b, "fun state(host: SharedVideoHost)").contains("protocolMax(host, DeviceClassPolicy.current(host.ctx))"))
+        assertTrue("…4 only where the class AND this face's enrolment allow it",
+            body(b, "internal fun protocolMax(").contains("policy.protocolMax(policy.nativeFirst(switchValue(host.ctx, host.face)))"))
         assertTrue("the host reply carries the resolved class", body(code(host), "fun stateJson()").contains("policy.toJson()"))
         assertTrue("a refused session never uploads diagnostics", body(b, "private fun queueDiagnostics(").contains("s.refusal != null"))
     }
@@ -272,6 +274,98 @@ class FaceVideoBoxContractTest {
         assertTrue(drain.contains("val at = schedule.releaseTime(due, now)"))
         assertTrue(drain.contains("c.releaseOutputBuffer(index, at)"))
         assertTrue(drain.indexOf("schedule.observe(due, now)") < drain.indexOf("schedule.releaseTime(due, now)"))
+    }
+
+    // ─── NATIVE-FIRST (protocol 4, design §4 + §7) ─────────────────────
+
+    @Test
+    fun `E1 - suppression reaches every v4 session - pre-roll, held predecessor and unattended alike`() {
+        val b = code(box)
+        val suppress = body(b, "fun suppress(")
+        assertTrue(suppress.contains("hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } }"))
+        assertFalse("no filter of any kind in front of the hold", suppress.contains("v4") || suppress.contains("key") || suppress.contains("lease"))
+        // The pre-roll and the held predecessor are REGISTERED sessions, so the loop above reaches them.
+        assertTrue(body(b, "private fun begin(").contains("host.faceSessions[session.key] = session"))
+        assertTrue(body(b, "private fun swap(").contains("host.faceSessions[PREV] = it"))
+        assertTrue(b.contains("b.key = NEXT"))
+        // An unattended session has no separate registry: the lease only gates the page, never suppress.
+        assertFalse(b.contains("unattendedSessions"))
+        // The emergency path into it is unchanged.
+        assertTrue(body(code(emergency), "fun enforceNow(").contains("SharedVideoHost.suppressForEmergency()"))
+        assertTrue(body(code(host), "fun suppressForEmergency()").contains("FaceVideoBox.suppress(\"emergency-held\")"))
+    }
+
+    @Test
+    fun `E1 - the view pass order is unchanged for every v4 end, and the bookkeeping runs before it`() {
+        val stop = body(code(box), "private fun stopSession(")
+        val end = stop.indexOf("if (s.v4) endV4(host, s, why)")
+        val removeOutput = stop.indexOf("val removeOutput")
+        assertTrue("v4 bookkeeping first, then the same view pass", end in 0 until removeOutput)
+        assertTrue("…which still runs inline on the main thread",
+            stop.contains("if (Looper.myLooper() == Looper.getMainLooper()) removeOutput.run() else main.post(removeOutput)"))
+        assertTrue("v4 ends report closed-table codes only", stop.contains("val why = if (s.v4) NativeEndReasons.normalize(graded) else graded"))
+        assertTrue("the layer is retired before the bookkeeping", stop.indexOf("s.layer.retire()") < end)
+    }
+
+    @Test
+    fun `E2 - nothing v4 starts under a hold, and the WebView stays visible and opaque under every v4 session`() {
+        val b = code(box)
+        val intend = body(b, "private fun intend(")
+        assertTrue("the hold is part of the decision", intend.contains("held = DisplayEmergency.isHeld(host.ctx)"))
+        assertTrue("…and an intent under it is kept suspended", intend.contains("ints.put(face, intent.copy(suspendedByHold = true))"))
+        assertTrue(body(b, "private fun begin(").contains("if (DisplayEmergency.isHeld(host.ctx)) { stopSession(host, session, \"emergency-held\"); return null }"))
+        val start = body(b, "private fun startNow(")
+        assertTrue(start.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
+        assertTrue("opaque black, set-to-known-value", start.contains("host.web.setBackgroundColor(Color.BLACK)"))
+        // Experiment 1 can never hide the WebView under a v4 session (it may outlive its page).
+        val updated = body(b, "private fun updated(")
+        val hide = updated.indexOf("host.web.visibility = View.INVISIBLE")
+        assertTrue(updated.substring(updated.indexOf("s.layer.confirm("), hide).contains("!s.v4"))
+        // Its fault guard keys on the lease lapse: VISIBLE again and off for the process.
+        val lapsed = body(b, "private fun leaseLapsed(")
+        assertTrue(lapsed.contains("host.web.visibility = View.VISIBLE"))
+        assertTrue(lapsed.contains("experiments.ended(NativeVideoExperiments.WEBVIEW_INVISIBLE, \"page-lease-expired\")"))
+        assertTrue("page-lease-expired trips the guard", "page-lease-expired" in NativeExperimentGuard.FAULTS)
+    }
+
+    @Test
+    fun `no page event ends a v4 session - document change, silence and a renderer loss leave it presenting`() {
+        val b = code(box)
+        val invalidate = body(b, "fun invalidate(")
+        assertTrue("v2 / v3 end as before; v4 does not", invalidate.contains("if (!it.v4) stopSession(host, it, why)"))
+        assertTrue("…its lease is absent at once instead", invalidate.contains("lease.retire(now)"))
+        val watch = body(b, "private fun watch(")
+        assertTrue(watch.contains("!s.v4 && now - s.lastPoll > 10_000 -> \"page-lease-expired\""))
+        assertTrue("every tick reads the session's CURRENT host", watch.contains("val host = s.host"))
+        val attach = body(b, "fun attach(host: SharedVideoHost)")
+        assertTrue(attach.contains("PlaybackSessionPolicy.v4(PlaybackSessionPolicy.Event.RENDERER_LOST, rehomeable)"))
+        assertTrue("re-homed, not restarted", attach.contains("s.host = host"))
+        assertTrue("only into the same surviving parent", attach.contains("parent === host.web.parent"))
+        assertTrue("the lease is absent at once on a renderer loss", attach.contains("it.retire(now)"))
+        assertTrue("a v4 session has no commit", body(b, "fun commit(").contains("if (s.v4) return"))
+        // Renderer callbacks never trust a captured host.
+        val ready = body(b, "fun surfaceReady(")
+        assertTrue(ready.contains("failed = { why -> synchronized(this) { if (liveNow(s)) stopSession(s.host, s, why) } }"))
+        assertTrue(ready.contains("rendered = { nanos, pts -> synchronized(this) { if (liveNow(s)) updated(s.host, s, nanos, pts) } }"))
+        // …but the page still ends it explicitly, the operator UI and the lifecycle still end it.
+        assertTrue(body(b, "fun stop(host: SharedVideoHost, id: String)").contains("\"page-requested\""))
+        val pageStopped = body(b, "private fun pageStopped(")
+        assertTrue(pageStopped.contains("\"lifecycle-not-ready\"") && pageStopped.contains("\"operator-ui\""))
+        assertTrue(body(b, "fun yieldToUi(").contains("if (it.v4) pageStopped(host, it) else why"))
+    }
+
+    @Test
+    fun `protocol 4 rides the existing sharedVideoPrepare and the reply stays under the page's bound`() {
+        val h = code(host)
+        val prepare = body(h, "fun prepare(json: String)")
+        assertTrue(prepare.contains("NativeFirstMessage.parse(json)?.let { FaceVideoBox.onV4(this, it); return }"))
+        val state = body(h, "fun stateJson()")
+        assertTrue("every poll renews the lease", state.indexOf("FaceVideoBox.onStatePoll(this)") in 0 until state.indexOf("val j ="))
+        assertTrue(state.contains("FaceVideoBox.writeNativeFirst(this, j, max, policy)"))
+        assertTrue(state.contains("return ReplyBudget.fit(j.put(\"protocol\",2)).toString()"))
+        val bridge = code(read("src/main/java/com/educms/player/WebAppBridge.kt"))
+        assertFalse("no new bridge method (rule 9)", Regex("fun (sharedVideoIntend|sharedVideoRelease|nativeFirst|sharedVideoLease)").containsMatchIn(bridge))
+        assertEquals("the four methods, and only those", 4, Regex("fun sharedVideo(Prepare|Commit|Stop|State)\\(nonce").findAll(bridge).count())
     }
 
     @Test

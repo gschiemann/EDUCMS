@@ -73,12 +73,16 @@ internal sealed class NativeFirstMessage {
         /** Printable ASCII without spaces (an ETag-like value is fine). */
         private val TAG = Regex("[\\x21-\\x7e]{1,128}")
         private val SET_HASH = Regex("[A-Za-z0-9_.:-]{1,128}")
+        /** Native reads URLs and credentials from its OWN authenticated sources, never from the page. */
+        val FORBIDDEN_KEYS = listOf("url", "src", "token", "authorization", "cookie")
 
         /** Null for anything that is not a well-formed version-4 message. Fail closed. */
         fun parse(json: String): NativeFirstMessage? = runCatching {
             require(json.length <= 1024)
             val j = JSONObject(json)
             require(j.getInt("version") == VERSION)
+            // Identity only: a message that tries to hand native a URL or a credential is refused whole.
+            require(FORBIDDEN_KEYS.none { j.has(it) })
             when (j.getString("op")) {
                 "intend" -> {
                     val m = Intend(
@@ -278,8 +282,44 @@ internal object PlaybackSessionPolicy {
         END_DISCARD_INTENT,
     }
 
-    /** A live page that polls but has not adopted a presenting session for this long is not its controller. */
-    const val ADOPT_GRACE_MS = 30_000L
+    /** A live page that polls but has not adopted a presenting v4 session for this long is not its controller. */
+    const val ADOPT_GRACE_MS = 60_000L
+
+    /** What an `intend` does (§3.5, §4.3). FaceVideoBox.intend acts on exactly this. */
+    enum class IntendAction {
+        /** The same content presents / prepares: the new lease takes it over; nothing happens on the glass. */
+        ADOPT,
+        /** The same content is already pre-rolling: only its start policy is updated. */
+        ADOPT_NEXT,
+        /** A new content and something presents: it pre-rolls and swaps at the boundary (§3.3). */
+        PREROLL,
+        /** A new content (or a restore of a suspended / ended one) and nothing presents: it starts. */
+        START,
+        /** An emergency hold is raised: nothing starts; the intent is kept, suspended (§7 E2). */
+        SUSPEND,
+        /** Native-first is off for this face (a flip never ends what presents — that is an ADOPT). */
+        REFUSE_SWITCH_OFF,
+        /** The app's own 24 h block of this file on this face and build is live. */
+        REFUSE_BLOCKED,
+    }
+
+    /**
+     * The decision, in order: an ADOPT outranks everything (a switch flip or a
+     * block never restarts what presents); then the switch, the block and the
+     * hold are checked before anything may start; then the boundary.
+     */
+    fun onIntend(
+        sameAsCurrent: Boolean, sameAsNext: Boolean, currentPresenting: Boolean,
+        switchOn: Boolean, blocked: Boolean, held: Boolean,
+    ): IntendAction = when {
+        sameAsCurrent -> IntendAction.ADOPT
+        sameAsNext -> IntendAction.ADOPT_NEXT
+        !switchOn -> IntendAction.REFUSE_SWITCH_OFF
+        blocked -> IntendAction.REFUSE_BLOCKED
+        held -> IntendAction.SUSPEND
+        currentPresenting -> IntendAction.PREROLL
+        else -> IntendAction.START
+    }
 
     /** §4.2 for a version-4 session. */
     fun v4(event: Event, rehomeable: Boolean = true, reason: String? = null): Outcome = when (event) {

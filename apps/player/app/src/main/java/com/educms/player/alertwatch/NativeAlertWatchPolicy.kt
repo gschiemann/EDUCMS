@@ -35,10 +35,19 @@ import java.io.ByteArrayInputStream
  * THE RULES (every one has a JVM test in NativeAlertWatchPolicyTest /
  * NativeAlertWatchEngineTest)
  * ═════════════════════════════════════════════════════════════════════
- *  1. PANEL OFF ONLY. The moment the panel is interactive the page is alive
- *     and owns alert handling; the watch does not poll, and a verdict that
- *     arrives after the panel came on is discarded. Not paired, or no usable
- *     API root ⇒ no polling either.
+ *  1. PANEL OFF — OR NO PAGE LEASE. The moment the panel is interactive the
+ *     page is alive and owns alert handling; the watch does not poll, and a
+ *     verdict that arrives after the panel came on is discarded. Not paired,
+ *     or no usable API root ⇒ no polling either.
+ *     NATIVE-FIRST (design §7 E4, signed off by the lead 2026-10-19): a
+ *     native session may now keep presenting while NO page holds its lease
+ *     (a reload, a renderer loss, a page that went silent). Such a face is
+ *     UNATTENDED, and for it the watch runs with the panel ON too: every
+ *     [UNATTENDED_POLL_INTERVAL_MS] (conditional GETs), the first poll at the
+ *     usual [FIRST_POLL_DELAY_MS], still RAISE ONLY (rule 2); its verdict is
+ *     the page's business again only once a page holds the lease. A face no
+ *     native intent is held for is never unattended, so a screen that is not
+ *     enrolled in native-first behaves exactly as before.
  *  2. RAISE ONLY. [WatchAction] has no release member and nothing in this
  *     package can lower a hold. "No alert" from here is never an all-clear:
  *     the page, on a LIVE manifest, stays the only thing that releases
@@ -219,6 +228,23 @@ object NativeAlertWatchPolicy {
     /** Poll interval while the panel is off and the manifest is answering. */
     const val POLL_INTERVAL_MS = 15_000L
 
+    /**
+     * Poll interval for an UNATTENDED face (native-first §7 E4): a native
+     * session presents and no page holds its lease. Detection ≤ 5 s while no
+     * page is live; a live page is as fast as its own push channel.
+     */
+    const val UNATTENDED_POLL_INTERVAL_MS = 5_000L
+
+    /**
+     * Owner decision D3 (2026-10-19): a hold is raised, the live manifest has
+     * said "no alert" for this long, and no page has held a lease for
+     * [RESTORE_LEASE_ABSENT_MS] → the watch drives the existing bounded
+     * reload / relaunch so a PAGE comes back, reads the live manifest and
+     * releases the hold ITSELF. The watch still never releases anything.
+     */
+    const val RESTORE_LEASE_ABSENT_MS = 30_000L
+    const val RESTORE_NO_ALERT_MS = 30_000L
+
     /** Ceiling on the failure backoff. */
     const val MAX_BACKOFF_MS = 60_000L
 
@@ -318,8 +344,10 @@ object NativeAlertWatchPolicy {
         apiRoot: String?,
         apiRootAllowed: Boolean,
         targets: Int,
+        /** Native-first §7 E4: some face holds a native intent and no page holds its lease. */
+        unattended: Boolean = false,
     ): String? = when {
-        panelInteractive -> "the panel is on — the page owns alert handling"
+        panelInteractive && !unattended -> "the panel is on — the page owns alert handling"
         apiRoot.isNullOrBlank() -> "no API root yet (the page has never bootstrapped this install)"
         !apiRootAllowed -> "the stored API root is not an allowed VenueOS API host"
         targets <= 0 -> "this screen is not paired (no usable device token)"
@@ -358,15 +386,25 @@ object NativeAlertWatchPolicy {
         else -> AlertVerdict.UNKNOWN
     }
 
-    /** The memory after a poll: the validator to send next, the failure count, when to ask again. */
-    fun afterPoll(memory: PollMemory, outcome: PollOutcome, verdict: AlertVerdict, nowMs: Long): PollMemory {
+    /**
+     * The memory after a poll: the validator to send next, the failure count,
+     * when to ask again. [intervalMs] is [POLL_INTERVAL_MS] for a dark panel
+     * and [UNATTENDED_POLL_INTERVAL_MS] for an unattended face.
+     */
+    fun afterPoll(
+        memory: PollMemory,
+        outcome: PollOutcome,
+        verdict: AlertVerdict,
+        nowMs: Long,
+        intervalMs: Long = POLL_INTERVAL_MS,
+    ): PollMemory {
         if (verdict != AlertVerdict.UNKNOWN) {
             if (outcome.httpStatus == 304) {
-                return memory.copy(nextPollAtMs = nowMs + POLL_INTERVAL_MS, failures = 0)
+                return memory.copy(nextPollAtMs = nowMs + intervalMs, failures = 0)
             }
             val etag = usableEtag(outcome.etag)
             return PollMemory(
-                nextPollAtMs = nowMs + POLL_INTERVAL_MS,
+                nextPollAtMs = nowMs + intervalMs,
                 etag = etag,
                 etagVerdict = if (etag != null) verdict else null,
                 failures = 0,
@@ -379,7 +417,7 @@ object NativeAlertWatchPolicy {
         // manifest (network, 401, 5xx) says nothing about it — keep it.
         val validatorIsStale = outcome.httpStatus == 200 || outcome.httpStatus == 304
         return PollMemory(
-            nextPollAtMs = nowMs + pollDelayMs(failures),
+            nextPollAtMs = nowMs + pollDelayMs(failures, intervalMs),
             etag = if (validatorIsStale) null else memory.etag,
             etagVerdict = if (validatorIsStale) null else memory.etagVerdict,
             failures = failures,
@@ -391,10 +429,10 @@ object NativeAlertWatchPolicy {
      * proved nothing: 15 s, 15 s, 30 s, then 60 s for as long as it lasts.
      * Always inside [POLL_INTERVAL_MS]‥[MAX_BACKOFF_MS].
      */
-    fun pollDelayMs(consecutiveFailures: Int): Long {
-        if (consecutiveFailures <= 1) return POLL_INTERVAL_MS
+    fun pollDelayMs(consecutiveFailures: Int, baseMs: Long = POLL_INTERVAL_MS): Long {
+        if (consecutiveFailures <= 1) return baseMs
         val doublings = minOf(consecutiveFailures - 1, 8)
-        return minOf(POLL_INTERVAL_MS shl doublings, MAX_BACKOFF_MS)
+        return minOf(baseMs shl doublings, MAX_BACKOFF_MS)
     }
 
     /** A validator safe to send back as a header value, or null. */
@@ -540,6 +578,64 @@ object NativeAlertWatchPolicy {
         val last = mem.lastAtMs ?: return true
         val since = nowMs - last
         return since < 0 || since >= RELAUNCH_MIN_GAP_MS
+    }
+
+    // ─── D3: bring a page back to release a hold it can no longer see ─
+
+    /** What the D3 recovery has spent in the current hold period (one face). */
+    data class RestoreMemory(val attempts: Int = 0, val lastAtMs: Long? = null, val gaveUp: Boolean = false)
+
+    /** What the D3 recovery wants next for one face. There is no `Release` and there must never be one. */
+    sealed class RestoreStep {
+        object None : RestoreStep()
+        data class Wait(val ms: Long) : RestoreStep()
+        /** The player is on the glass: reload the page so it reads the live manifest and releases itself. */
+        object Reload : RestoreStep()
+        /** The player is not on the glass: bring it forward (the existing relaunch helper). */
+        object BringForward : RestoreStep()
+        /** The budget is spent: the hold STAYS (lit, no native content, flagged) — fail-closed for risk. */
+        object GiveUp : RestoreStep()
+    }
+
+    /**
+     * Owner decision D3 (2026-10-19), in order:
+     *  1. no hold, no unattended face, no established "no alert", an alert
+     *     episode the WATCH raised that is still open or that gave up (its
+     *     own reload path owns this hold and its budget is one per alert), or
+     *     the budget is spent → nothing. An episode the page CONFIRMED does not
+     *     stand in the way: the page had the alert, then went away;
+     *  2. the page has not been gone for [RESTORE_LEASE_ABSENT_MS], or the live
+     *     manifest has not said "no alert" for [RESTORE_NO_ALERT_MS] → wait
+     *     (a live page releases on its own push / poll well inside that);
+     *  3. a load started less than [RELOAD_MIN_GAP_MS] ago (ours or anyone's)
+     *     → wait: every load gets its minute;
+     *  4. [MAX_RELOADS_PER_ALERT] attempts spent → give up;
+     *  5. otherwise reload the page, or bring the player forward first.
+     * RAISE-ONLY is untouched: this only brings back the one thing that may
+     * release — the page, on a live manifest (rule 11).
+     */
+    fun restoreStep(
+        holdHeld: Boolean,
+        unattendedSinceMs: Long?,
+        noAlertSinceMs: Long?,
+        escalationOwns: Boolean,
+        playerInForeground: Boolean,
+        pageLoadStartedAtMs: Long?,
+        mem: RestoreMemory,
+        nowMs: Long,
+    ): RestoreStep {
+        if (!holdHeld || unattendedSinceMs == null || noAlertSinceMs == null || escalationOwns || mem.gaveUp) return RestoreStep.None
+        val absentFor = nowMs - unattendedSinceMs
+        if (absentFor in 0 until RESTORE_LEASE_ABSENT_MS) return RestoreStep.Wait(RESTORE_LEASE_ABSENT_MS - absentFor)
+        val clearFor = nowMs - noAlertSinceMs
+        if (clearFor in 0 until RESTORE_NO_ALERT_MS) return RestoreStep.Wait(RESTORE_NO_ALERT_MS - clearFor)
+        val lastLoad = latest(mem.lastAtMs, pageLoadStartedAtMs)
+        if (lastLoad != null) {
+            val since = nowMs - lastLoad
+            if (since in 0 until RELOAD_MIN_GAP_MS) return RestoreStep.Wait(RELOAD_MIN_GAP_MS - since)
+        }
+        if (mem.attempts >= MAX_RELOADS_PER_ALERT) return RestoreStep.GiveUp
+        return if (playerInForeground) RestoreStep.Reload else RestoreStep.BringForward
     }
 
     // ─── the CPU ─────────────────────────────────────────────────────

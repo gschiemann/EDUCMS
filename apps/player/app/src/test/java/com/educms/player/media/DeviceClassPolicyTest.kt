@@ -183,6 +183,52 @@ class DeviceClassPolicyTest {
         assertEquals(48, cut.getJSONArray("supportedModes").getString(0).length)
     }
 
+    // ─── native-first (design §8.1): ships DARK, enrolled per face ───
+
+    @Test fun nativeFirstAndStoreServeDefaultFalseOnEveryClass() {
+        for (f in listOf(t982a13, t982a11, rk3288a7, rk3328a11, android9, taurus)) {
+            val r = DeviceClassPolicy.resolve(f)
+            assertFalse("${r.className}: native-first is off until that class passes the glass", r.nativeFirstDefault)
+            assertFalse("${r.className}: store serving is phase 2", r.storeServeDefault)
+            assertFalse("${r.className}: absent from the manifest = the class default", r.nativeFirst(null))
+            assertEquals("${r.className}: the dark fleet advertises exactly what 1.1.43 did", r.protocolMax, r.protocolMax(r.nativeFirst(null)))
+            val j = r.toJson()
+            assertFalse(j.getBoolean("nativeFirst")); assertFalse(j.getBoolean("storeServe"))
+        }
+    }
+
+    @Test fun nativeFirstPrecedenceOffOrExclusionWinsThenInclusionThenTheClassDefault() {
+        val off = DeviceClassPolicy.resolve(t982a11)
+        val on = off.copy(nativeFirstDefault = true)
+        // The server already resolved PLAYER_NATIVE_FIRST's grammar for this face: false = `off` or an
+        // exclusion, true = an inclusion, absent = unset.
+        assertFalse("off / exclusion beats a class that defaults ON", on.nativeFirst(false))
+        assertTrue("inclusion beats a class that defaults OFF (Tuesday's one enrolled unit)", off.nativeFirst(true))
+        assertTrue("absent = the class default", on.nativeFirst(null))
+        assertFalse(off.nativeFirst(null))
+        assertEquals(4, off.protocolMax(off.nativeFirst(true)))
+        assertEquals(3, off.protocolMax(off.nativeFirst(false)))
+        // A class that cannot run solo native video at all is never native-first, whatever the manifest says.
+        val t = DeviceClassPolicy.resolve(taurus).copy(nativeFirstDefault = true)
+        assertFalse(t.nativeFirst(true))
+        assertEquals(t.protocolMax, t.protocolMax(true))
+    }
+
+    @Test fun theManifestKeyIsATriStateOutsideEqualityAndAnythingButABooleanIsAbsent() {
+        assertEquals(true, FaceVideoDescriptor.nativeFirstOf(JSONObject().put("nativeFirst", true)))
+        assertEquals(false, FaceVideoDescriptor.nativeFirstOf(JSONObject().put("nativeFirst", false)))
+        assertNull(FaceVideoDescriptor.nativeFirstOf(JSONObject()))
+        assertNull(FaceVideoDescriptor.nativeFirstOf(JSONObject().put("nativeFirst", "true")))
+        assertNull(FaceVideoDescriptor.nativeFirstOf(JSONObject().put("nativeFirst", 1)))
+        assertNull(FaceVideoDescriptor.nativeFirstOf(null))
+        // A flip of the switch is not a different selection: it must never end or restart a session.
+        val d = FaceVideoDescriptor("7d0c4a3e-1b2f-4c5d-8e9f-0a1b2c3d4e5f", "6e0c4a3e-1b2f-4c5d-8e9f-0a1b2c3d4e5f", 0, "rev",
+            "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d", "https://example.test/x.mp4", "a".repeat(64), 10L, 1920, 1080, 30.0, "AUTO", "cover")
+        val flipped = d.copy()
+        d.nativeFirst = true; flipped.nativeFirst = false
+        assertEquals(d, flipped)
+    }
+
     @Test fun webviewMajorAndAndroidMajorReadWhatTheyCanAndNeverInvent() {
         assertEquals(101, DeviceClassPolicy.webviewMajor("101.0.4951.61"))
         assertEquals(66, DeviceClassPolicy.webviewMajor(" 66.0.3359.158 "))
