@@ -330,7 +330,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { signalDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyHoldRaised, signalDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -5180,7 +5180,7 @@ function PlayerPage() {
   // the hold itself is untouched, it is raised before any of this runs).
   useEffect(() => {
     const face = nativeFirstFaceRef.current;
-    if (!face || !face.supportsV4() || nativeFirstHoldRaised || !nativeFirstDecidedRef.current) return;
+    if (!face || !face.supportsV4() || nativeFirstHoldRaised || displayEmergencyHoldRaised() || !nativeFirstDecidedRef.current) return;
     if (nativeFirstOverlay && nativeFirstEngine !== 'web') {
       if (face.presenting()) face.release('now');
       return;
@@ -5197,7 +5197,7 @@ function PlayerPage() {
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        const action = reconcileFace(face.facts, { kind: 'web' }, false);
+        const action = reconcileFace(face.facts, { kind: 'web' }, displayEmergencyHoldRaised());
         if (action.kind === 'release') face.release(action.at);
       });
     });
