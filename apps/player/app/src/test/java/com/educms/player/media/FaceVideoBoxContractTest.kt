@@ -357,6 +357,14 @@ class FaceVideoBoxContractTest {
         val pageStopped = body(b, "private fun pageStopped(")
         assertTrue(pageStopped.contains("\"lifecycle-not-ready\"") && pageStopped.contains("\"operator-ui\""))
         assertTrue(body(b, "fun yieldToUi(").contains("if (it.v4) pageStopped(host, it) else why"))
+        // A LIVE page that never adopts is not the controller: after the grace, the session goes and so
+        // does the intent — a face whose page is alive is never left "unattended" for the alert watch.
+        val poll = body(b, "fun onStatePoll(")
+        assertTrue(poll.contains("if (lease.renew(now))"))
+        assertTrue(poll.contains("val intent = intentsMemo?.get(host.face)"))
+        assertTrue(poll.contains("PlaybackSessionPolicy.ADOPT_GRACE_MS"))
+        assertTrue(poll.contains("intents(host.ctx).put(host.face, null)"))
+        assertTrue(poll.contains("v4Sessions.forEach { stopSession(host, it, \"document-retired\") }"))
     }
 
     @Test

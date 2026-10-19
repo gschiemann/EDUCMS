@@ -1638,12 +1638,14 @@ internal object FaceVideoBox {
 
     /**
      * Every `sharedVideoState` poll (SharedVideoHost.stateJson). It renews the
-     * live document's lease. A live document that polls WITHOUT having adopted
-     * a presenting v4 session for [PlaybackSessionPolicy.ADOPT_GRACE_MS] is not
-     * its controller (a page that does not speak v4): that session is released
-     * (`document-retired`) and its intent discarded — it must never cover a
-     * page that cannot see it. A page that does not poll at all is dead, and
-     * the session continues unattended.
+     * live document's lease. A live document that polls WITHOUT adopting the
+     * face's intent (or its v4 session) for [PlaybackSessionPolicy.ADOPT_GRACE_MS]
+     * is not their controller — a page that does not speak v4, or one that
+     * decided on other content and has nothing to say: the v4 session is
+     * released (`document-retired`) and the intent discarded. A session must
+     * never cover a page that cannot see it, and a face whose page is alive is
+     * never "unattended" for the alert watch. A page that does not poll at all
+     * is dead, and the session continues unattended.
      */
     @Synchronized fun onStatePoll(host: SharedVideoHost) {
         if (hosts[host.face] !== host) return
@@ -1654,15 +1656,17 @@ internal object FaceVideoBox {
             if (unattendedFaces.remove(host.face)) PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_ATTENDED face=${host.face}")
             return
         }
-        val presenting = host.faceSessions.values.filter { it.alive && it.v4 }
-        if (presenting.isEmpty()) { unadoptedSince.remove(host.face); return }
+        val v4Sessions = host.faceSessions.values.filter { it.alive && it.v4 }
+        val intent = intentsMemo?.get(host.face)
+        if (v4Sessions.isEmpty() && intent == null) { unadoptedSince.remove(host.face); return }
         val since = unadoptedSince.getOrPut(host.face) { now }
         if (now - since < PlaybackSessionPolicy.ADOPT_GRACE_MS) return
         unadoptedSince.remove(host.face)
         if (PlaybackSessionPolicy.v4(PlaybackSessionPolicy.Event.UNADOPTED) == PlaybackSessionPolicy.Outcome.END_DISCARD_INTENT) {
-            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_FIRST_UNADOPTED face=${host.face} afterMs=${now - since}")
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_FIRST_UNADOPTED face=${host.face} afterMs=${now - since} sessions=${v4Sessions.size}")
             intents(host.ctx).put(host.face, null)
-            presenting.forEach { stopSession(host, it, "document-retired") }
+            unattendedFaces.remove(host.face)
+            v4Sessions.forEach { stopSession(host, it, "document-retired") }
         }
     }
 
