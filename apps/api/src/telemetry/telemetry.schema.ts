@@ -445,6 +445,11 @@ export const screenTelemetrySchema = z.strictObject({
       playlist: cacheTierSchema.optional(),
       emergency: cacheTierSchema.optional(),
       downloading: cacheDownloadingSchema.optional(),
+      // Native-first (design §6, 2026-10-19): where a v4 face's readiness
+      // came from — the app's verified store or the service worker. Same
+      // rollout as `downloading`: this API half ships first; a player
+      // holds the key back for its session after a 400 that carried it.
+      source: z.enum(['store', 'worker']).optional(),
     })
     .optional(),
   render: z

@@ -2518,7 +2518,8 @@
       "now": {
         "asleep": "Asleep now: Android reports the panel off.",
         "asleepSince": "Asleep now: Android reports the panel off since {since}.",
-        "on": "On now: Android reports the panel on."
+        "on": "On now: Android reports the panel on.",
+        "nativeGlass": "Video on the glass: the app’s own video engine reported a fresh frame {ago}."
       },
       "row": {
         "alert": "An alert wakes it when it is off",

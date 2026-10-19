@@ -1,3 +1,5 @@
+import { gradeNativeEnd } from "./nativeEndReasons";
+
 /** Optional, explicitly scoped renderer. Identity goes to native; URLs and tokens never do. */
 export interface NativeSharedVideoDescriptor {
   version: 1;
@@ -524,6 +526,12 @@ export interface NativeVideoDescriptor {
   };
   /** 1.1.41 — the M43 experiments the server switched on for this screen; absent = none. Outside the identity. */
   experiments?: NativeExperimentFlags;
+  /**
+   * Native-first (`PLAYER_NATIVE_FIRST`, design §8.1): `true` named, `false`
+   * the lead's kill switch, absent = the app's class default. Outside the
+   * identity (a flip never restarts a session; it applies at the next boundary).
+   */
+  nativeFirst?: boolean;
 }
 
 export type AnyNativeVideoDescriptor =
@@ -607,6 +615,7 @@ export function readNativeVideoDescriptor(
       fit: t.fit as NativeVideoDescriptor["transform"]["fit"],
     },
     ...(readNativeExperimentFlags(value.experiments) ? { experiments: readNativeExperimentFlags(value.experiments)! } : {}),
+    ...(typeof value.nativeFirst === "boolean" ? { nativeFirst: value.nativeFirst } : {}),
   };
 }
 
@@ -629,8 +638,15 @@ export function readNativeVideoProtocol(raw: unknown): 1 | 2 | 3 | null {
   if (!record(v) || v.version !== 1) return null;
   // Protocol 3 (2026-10-12) keeps `protocol: 2` on the top level — an older
   // web bundle meeting a newer APK sees exactly what it saw — and proves the
-  // positioned-zone engine with `protocolMax: 3`.
-  if (v.protocol === 2) return v.protocolMax === 3 ? 3 : 2;
+  // positioned-zone engine with `protocolMax: 3`. Native-first (stream B)
+  // raises protocolMax to 4 on an enrolled face whatever the class's slot
+  // engine is, so there the class's own `device.protocol3` says whether
+  // positioned slots run (a v4 face must not lose them, nor gain them).
+  if (v.protocol === 2) {
+    if (v.protocolMax === 3) return 3;
+    if (typeof v.protocolMax === "number" && v.protocolMax >= 4) return record(v.device) && v.device.protocol3 === true ? 3 : 2;
+    return 2;
+  }
   return readNativeSharedVideoState(v) ? 1 : null;
 }
 
@@ -653,8 +669,14 @@ export function pickNativeVideo(input: {
 }
 
 /**
- * End reasons that say nothing about THIS file on THIS box — the page tries
- * native again later. Must match `FaceVideoPolicy.transient` in the APK.
+ * THE APK'S v2 / v3 TABLE, mirrored: 1.1.43's `NativeEndGrade`
+ * (FaceVideoPolicy.kt). A drift test reads the Kotlin and holds these five
+ * lists identical to it. Since native-first, the GRADE itself comes from the
+ * one closed table (`nativeEndReasons.ts`, generated from stream B's
+ * NativeEndReasons.kt), which B reconciled with this one: every code both
+ * know grades the same (`nativeEndReasons.test.ts` proves it here), and the
+ * closed table also knows the codes this one misses — `host-replaced` on a v2
+ * session is TRANSIENT, not a 24 h block.
  */
 export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "emergency-held",
@@ -685,21 +707,6 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   // The face's host WebView was replaced (a renderer crash recreates it): never a verdict on the file.
   "host-replaced",
 ]);
-
-/**
- * FAILURE GRADING, PHASE 0 (1.1.43; docs/design/NATIVE-FIRST-ONE-STORE.md §3.4,
- * owner decision D7). The APK's `NativeEndGrade` table, kept identical here
- * (a test reads FaceVideoPolicy.kt and fails when the two drift):
- *  • transient — the box, the page or the content moved on;
- *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed: an
- *    offline boot (`authorization-failed`), a 5xx, a timeout, a short
- *    download, a full disk, a token that changed. NEVER a verdict on the file
- *    — before this, an offline boot blocked native for a day;
- *  • box — a verdict about this box or this layout: web for this document,
- *    no retry, no block;
- *  • fault — a real fault of a VERIFIED file on this decoder: the 24 h block.
- * A code in no set is a fault: fail closed on the unknown.
- */
 export const NATIVE_VIDEO_NOT_READY_REASONS: ReadonlySet<string> = new Set([
   "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",
   "manifest-unreachable", "timeout", "source-failed", "media-redirect", "media-incomplete", "media-size", "media-publish",
@@ -712,13 +719,23 @@ export const NATIVE_VIDEO_FAULT_REASONS: ReadonlySet<string> = new Set([
   "codec-failed", "codec-stalled", "codec-input", "codec-not-prepared", "hardware-codec-unavailable", "output-stalled",
   "output-unavailable", "media-digest", "avc-track", "coded-size", "container-rotation", "empty-lap", "native-prepare",
 ]);
+
+/**
+ * FAILURE GRADING, PHASE 0 (docs/design/NATIVE-FIRST-ONE-STORE.md §3.4, owner
+ * decision D7) — the closed table's grade, under the names this page's
+ * protocol 2/3 code has always used (`box` = the table's `refused`):
+ *  • transient — the box, the page or the content moved on;
+ *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed (an
+ *    offline boot, a 5xx, a timeout, a short download, a full disk). NEVER a
+ *    verdict on the file — before this, an offline boot blocked native for a day;
+ *  • box — a verdict about this box or this layout: web, no retry, no block;
+ *  • fault — a real fault of a VERIFIED file on this decoder: the 24 h block.
+ * A code in no set is a fault: fail closed on the unknown.
+ */
 export type NativeVideoEndGrade = "transient" | "not-ready" | "box" | "fault";
 export function nativeVideoEndGrade(reason: string | undefined | null): NativeVideoEndGrade {
-  if (!reason) return "transient";
-  if (NATIVE_VIDEO_TRANSIENT_REASONS.has(reason)) return "transient";
-  if (NATIVE_VIDEO_NOT_READY_REASONS.has(reason) || NATIVE_VIDEO_NOT_READY_PREFIXES.some((p) => reason.startsWith(p))) return "not-ready";
-  if (NATIVE_VIDEO_BOX_REASONS.has(reason)) return "box";
-  return "fault";
+  const grade = gradeNativeEnd(reason);
+  return grade === "refused" ? "box" : grade;
 }
 export const NATIVE_VIDEO_RETRY_MS = 30_000;
 export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;

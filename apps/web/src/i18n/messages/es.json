@@ -2518,7 +2518,8 @@
       "now": {
         "asleep": "En reposo ahora: Android informa que el panel está apagado.",
         "asleepSince": "En reposo ahora: Android informa que el panel está apagado desde {since}.",
-        "on": "Encendido ahora: Android informa que el panel está encendido."
+        "on": "Encendido ahora: Android informa que el panel está encendido.",
+        "nativeGlass": "Video en pantalla: el motor de video propio de la app informó un fotograma reciente {ago}."
       },
       "row": {
         "alert": "Una alerta la enciende cuando está apagada",

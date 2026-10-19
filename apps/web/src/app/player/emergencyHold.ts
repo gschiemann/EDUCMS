@@ -171,6 +171,16 @@ export function signalDisplayEmergencyHold(active: boolean, force = false): Hold
   }
 }
 
+/**
+ * READ-ONLY: did this page last ask the device to HOLD (an alert surface is
+ * up, or a pushed OVERRIDE is still being confirmed)? Native-first never
+ * asks the app for a picture while this is true (design §7 E1/E2). It
+ * changes nothing about the signal above; it only reports what was sent.
+ */
+export function displayEmergencyHoldRaised(): boolean {
+  return lastSent === true;
+}
+
 /** Test seam: forget what we last sent. Not used by production code. */
 export function __resetDisplayEmergencyHoldForTests(): void {
   lastSent = null;

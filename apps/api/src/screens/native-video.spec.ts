@@ -4,6 +4,8 @@ import {
   nativeVideoEnrolled,
   nativeVideoExperimentsFor,
   NATIVE_VIDEO_EXPERIMENTS,
+  nativeFirstFor,
+  parseNativeFirstRollout,
   parseNativeVideoExperiments,
   parseNativeVideoRollout,
 } from './native-video';
@@ -315,5 +317,117 @@ describe('field 2026-10-12 — the T982 pair is enrolled and gets a descriptor',
       asset: { id: asset.id, url, sha256: sha, size: 186_954_348, width: 2160, height: 3338, fps: 30 },
       transform: { orientation, fit: 'fill' },
     });
+  });
+});
+
+/**
+ * NATIVE-FIRST switch (design docs/design/NATIVE-FIRST-ONE-STORE.md §8.1):
+ * `PLAYER_NATIVE_FIRST`, carried per face as `nativeFirst: boolean` on the
+ * hashed descriptor OUTSIDE its revision; absent = the APK's class default.
+ */
+describe('native-first switch (PLAYER_NATIVE_FIRST, §8.1)', () => {
+  const env = (v?: string, video?: string) => ({
+    ...(v === undefined ? {} : { PLAYER_NATIVE_FIRST: v }),
+    ...(video === undefined ? {} : { PLAYER_NATIVE_VIDEO: video }),
+  });
+  const withClass = (id: string, cls: string, hardwareModel: string | null = null) => ({
+    id, hardwareModel, lastVideoReport: { native: { device: { class: cls } } },
+  });
+
+  it('unset / empty names nobody: no key on the descriptor (the APK class default)', () => {
+    expect(nativeFirstFor({ id: front }, env())).toBeNull();
+    expect(nativeFirstFor({ id: front }, env('  '))).toBeNull();
+    expect('nativeFirst' in build({ ...fixture(), env: env() as any })!).toBe(false);
+  });
+
+  it('a screen uuid, a model, a reported class and `all` include', () => {
+    expect(nativeFirstFor({ id: front }, env(front))).toBe(true);
+    expect(nativeFirstFor({ id: front }, env(front.toUpperCase()))).toBe(true);
+    expect(nativeFirstFor({ id: single, hardwareModel: 'Goodview-EP6N' }, env('model:goodview-ep6n'))).toBe(true);
+    expect(nativeFirstFor(withClass(single, 'amlogic/android-13'), env('class:amlogic/android-13'))).toBe(true);
+    expect(nativeFirstFor({ id: single }, env('all'))).toBe(true);
+    // Not named → null, never false (false is the kill switch).
+    expect(nativeFirstFor({ id: single }, env(front))).toBeNull();
+    expect(nativeFirstFor(withClass(single, 'rockchip/android-7'), env('class:amlogic/android-13'))).toBeNull();
+  });
+
+  it('exclusions win over inclusions and answer false; off wins over everything', () => {
+    expect(nativeFirstFor({ id: front }, env(`all,-${front}`))).toBe(false);
+    expect(nativeFirstFor({ id: front, hardwareModel: 'x' }, env(`${front},-model:x`))).toBe(false);
+    expect(nativeFirstFor(withClass(front, 'amlogic/android-11'), env(`${front},-class:amlogic/android-11`))).toBe(false);
+    expect(nativeFirstFor({ id: front }, env(`${front},off`))).toBe(false);
+    expect(nativeFirstFor({ id: single }, env('off'))).toBe(false);
+    for (const k of ['0', 'false', 'no', 'OFF']) expect(nativeFirstFor({ id: single }, env(k))).toBe(false);
+  });
+
+  it('a class token never matches a screen that has not reported its class', () => {
+    expect(nativeFirstFor({ id: single }, env('class:amlogic/android-13'))).toBeNull();
+    expect(nativeFirstFor({ id: single }, env('-class:amlogic/android-13'))).toBeNull();
+    expect(nativeFirstFor({ id: single, lastVideoReport: 'garbage' }, env('class:amlogic/android-13'))).toBeNull();
+    expect(nativeFirstFor(withClass(single, 'amlogic/android-13 '), env('class:amlogic/android-13'))).toBeNull();
+  });
+
+  it('a typo, a malformed class, a negative `all` / `off` or a non-uuid names nobody', () => {
+    for (const t of ['alll', 'class:amlogic', 'class:Amlogic/android-x', '-all', '-off', 'model:', 'faces', 'front', `${front}x`]) {
+      expect(nativeFirstFor(withClass(front, 'amlogic/android-13', 'x'), env(t))).toBeNull();
+    }
+  });
+
+  it('rides on the hashed descriptor OUTSIDE the revision (a flip never restarts a session)', () => {
+    const none = build({ ...fixture(), env: env() as any })!;
+    const on = build({ ...fixture(), env: env(front) as any })!;
+    const off = build({ ...fixture(), env: env('off') as any })!;
+    expect(on.nativeFirst).toBe(true);
+    expect(off.nativeFirst).toBe(false);
+    expect(on.revision).toBe(none.revision);
+    expect(off.revision).toBe(none.revision);
+    const { nativeFirst: _n, ...rest } = on;
+    expect(rest).toEqual(none);
+    // Deterministic: safe inside the hashed, hot-cached manifest.
+    expect(build({ ...fixture(), env: env(front) as any })).toEqual(build({ ...fixture(), env: env(front) as any }));
+  });
+
+  it('each face is resolved by its OWN id (a back face never inherits its primary)', () => {
+    const b = fixture(back);
+    expect(build({ ...b, env: env(front) as any })!.nativeFirst).toBeUndefined();
+    expect(build({ ...b, env: env(back) as any })!.nativeFirst).toBe(true);
+  });
+
+  it('emergency content still gets NO descriptor at all (§7 E2 — the server lock)', () => {
+    const f = fixture();
+    f.manifest.isEmergency = true;
+    expect(build({ ...f, env: env('all') as any })).toBeNull();
+    const g = fixture();
+    delete g.manifest.isEmergency;
+    expect(build({ ...g, env: env(front) as any })).toBeNull();
+  });
+
+  it('an inclusion enrols the screen in the native engine; native-video kill switches still win', async () => {
+    const never = async () => {
+      throw new Error('must not be asked');
+    };
+    // A single-sided screen is outside the default `faces` rollout …
+    expect(await nativeVideoEnrolled({ id: single }, async () => false, env())).toBe(false);
+    // … naming it for native-first gives it the descriptor it needs.
+    expect(await nativeVideoEnrolled({ id: single }, never, env(single))).toBe(true);
+    expect(await nativeVideoEnrolled(withClass(single, 'amlogic/android-11'), never, env('class:amlogic/android-11'))).toBe(true);
+    // A native-first exclusion / off is no enrolment of its own.
+    expect(await nativeVideoEnrolled({ id: single }, async () => false, env(`-${single}`))).toBe(false);
+    expect(await nativeVideoEnrolled({ id: single }, async () => false, env('off'))).toBe(false);
+    // PLAYER_NATIVE_VIDEO's own kill switches and Taurus win over native-first.
+    expect(await nativeVideoEnrolled({ id: single }, never, env(single, 'off'))).toBe(false);
+    expect(await nativeVideoEnrolled({ id: single }, never, env(single, `faces,-${single}`))).toBe(false);
+    expect(await nativeVideoEnrolled({ id: single, hardwareModel: 'novastar-taurus' }, never, env(single))).toBe(false);
+  });
+
+  it('parses every token kind into its own set', () => {
+    const r = parseNativeFirstRollout(env(`${front},-${back},model:a,-model:b,class:rockchip/android-7,-class:amlogic/android-11`));
+    expect([...r.ids]).toEqual([front]);
+    expect([...r.excludeIds]).toEqual([back]);
+    expect([...r.models]).toEqual(['a']);
+    expect([...r.excludeModels]).toEqual(['b']);
+    expect([...r.classes]).toEqual(['rockchip/android-7']);
+    expect([...r.excludeClasses]).toEqual(['amlogic/android-11']);
+    expect(r.off || r.all).toBe(false);
   });
 });

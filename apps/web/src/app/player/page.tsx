@@ -1,5 +1,10 @@
 'use client';
 import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
+import { NativeSoloSlot } from './NativeSoloSlot';
+import { decideFaceEngine, type FaceEngineDecision, type FaceYield } from './decideFaceEngine';
+import { NATIVE_FIRST_PROTOCOL, nativeManifestTag, nativePresenting, reconcileFace, storeModeReadiness, type NativeIntentIdentity } from './nativeFirst';
+import { NativeFirstFace, nativeFirstDecisionSignature } from './nativeFirstFace';
+import { NativeTransientEnds } from './nativeEndReasons';
 import { committedNativeVideo } from './nativeMediaCommit';
 import { discoverNativeVideoProtocol } from './nativeVideoProtocolProbe';
 import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
@@ -154,6 +159,7 @@ import { readOwnBundleSha, readOwnBundleId, normalizeBundleSha } from './bundleS
 import {
   buildRenderBlock,
   buildTelemetryBody,
+  cacheSourceRefused,
   downloadReportRefused,
   loopReportRefused,
   loopReportDue,
@@ -325,7 +331,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { signalDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyHoldRaised, signalDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -2883,8 +2889,34 @@ function PlayerPage() {
   // 2026-10-12 — per-face native video engine (protocol 2, nativeSharedVideo.ts).
   // The descriptor is per SCREEN; the protocol is what this APK proved it speaks.
   const [nativeVideoDescriptor, setNativeVideoDescriptor] = useState<NativeVideoDescriptor | null>(null);
+  // The same, for callbacks and timers that cannot read state (native-first).
+  const nativeVideoDescriptorRef = useRef<NativeVideoDescriptor | null>(null);
+  nativeVideoDescriptorRef.current = nativeVideoDescriptor;
   const [nativeVideoProtocol, setNativeVideoProtocol] = useState<1 | 2 | 3 | null>(null);
   const nativeSkipLogged = useRef(false);
+  // ── NATIVE-FIRST (design docs/design/NATIVE-FIRST-ONE-STORE.md, owner D1) ──
+  // One controller per page DOCUMENT (its lease, the app's last v4 facts, the
+  // 500 ms poll while a session matters). Inert unless the app advertises
+  // protocolMax ≥ 4 (it does only when its class table / the lead's
+  // PLAYER_NATIVE_FIRST switch allow native-first), so every other screen
+  // keeps today's path byte for byte. The page re-renders only when a fact a
+  // decision reads changes (`nativeFirstSig`), never on every poll.
+  const nativeFirstFaceRef = useRef<NativeFirstFace | null>(null);
+  const [nativeFirstSig, setNativeFirstSig] = useState('');
+  // Bumped when a native-first end blocks / settles / refuses a file: re-decide
+  // (the render reads the block store and the settle rule afresh).
+  const [, setNativeFirstRev] = useState(0);
+  // The decision line is logged once per change of (engine, reason, yield).
+  const nativeFirstDecisionLogged = useRef('');
+  // The app store's real download (§6 `store.downloading`) for the splash and
+  // the cache report, on a store-mode face; the worker's drive otherwise.
+  const [storeDownload, setStoreDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  // The first `sharedVideoState` read has SETTLED (answered, refused or timed
+  // out). Until then a native-enrolled face mounts nothing for its descriptor's
+  // video: a web-first takeover started in that gap would send a v2 prepare
+  // into a v4 session the app may already be presenting (a reload), and its
+  // stop would release it. Bounded by the read's own 2 s budget.
+  const [nativeFirstReady, setNativeFirstReady] = useState(false);
   /** Template zones already reported as `zone-overlap` this document (codes only, once each). */
   const nativeOverlapLogged = useRef(new Set<string>());
   // ── Protocol 3 (2026-10-12, nativeZones.ts): positioned native slots for
@@ -2939,6 +2971,42 @@ function PlayerPage() {
     return discoverNativeVideoProtocol({
       has: () => nativeHas('sharedVideoState'), state: () => nativeCall('sharedVideoState'),
     }, setNativeVideoProtocol);
+  }, []);
+  useEffect(() => {
+    // Native-first: the browser player stays inert. On an APK, read the app's
+    // v4 facts once at boot (§4.3: a page never treats "I just booted" as
+    // "nothing is on glass"), then re-read on the existing 15 s cache cadence
+    // (§6: the store's `generation`) — only while this face has a native
+    // descriptor or the app speaks v4, so the rest of the fleet pays nothing.
+    // A display surface keeps its timers off-focus (perf-allow: the player is
+    // the screen, not a dashboard tab).
+    if (!isAndroidWebView() && !nativeHas('sharedVideoState')) return;
+    const face = nativeFirstFaceRef.current ?? (nativeFirstFaceRef.current = new NativeFirstFace({
+      has: (m) => nativeHas(m),
+      fire: (m, arg) => nativeFire(m, arg),
+      state: () => nativeCall('sharedVideoState'),
+    }));
+    const unsubscribe = face.subscribe((facts) => {
+      setNativeFirstSig(nativeFirstDecisionSignature(facts));
+      // The store's real download, for the splash's bar (§6). Bounded, set only on change.
+      const dl = facts?.store?.mode === 'active' ? facts.store.downloading : null;
+      const d = nativeVideoDescriptorRef.current;
+      setStoreDownload((prev) => {
+        if (!dl) return prev === null ? prev : null;
+        const name = d && d.asset.sha256.startsWith(dl.sha8) ? (d.asset.url.split('?')[0].split('/').pop() || 'video') : 'video';
+        const total = dl.bytesTotal > 0 ? dl.bytesTotal : null;
+        if (prev && prev.name === name && prev.bytesLoaded === dl.bytesLoaded && prev.bytesTotal === total) return prev;
+        return { name, bytesLoaded: dl.bytesLoaded, bytesTotal: total };
+      });
+    });
+    void face.read().finally(() => setNativeFirstReady(true));
+    const tick = setInterval(() => {
+      // Never before the page has decided: a live page that keeps polling
+      // without adopting is released by the app after 60 s (stream B).
+      if (!nativeFirstDecidedRef.current) return;
+      if (nativeVideoDescriptorRef.current || (face.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL) void face.read();
+    }, 15_000);
+    return () => { unsubscribe(); clearInterval(tick); };
   }, []);
   const [manifestOrientation, setManifestOrientation] = useState<'LANDSCAPE' | 'PORTRAIT' | 'AUTO' | null>(null);
 
@@ -4835,7 +4903,10 @@ function PlayerPage() {
   }, []);
   // The large file the page is driving into the cache right now — feeds the
   // splash's real download bar while nothing is ready to play.
-  const [largeDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  const [workerDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  // Native-first store mode (§6): the splash shows the STORE's real download
+  // when the page is not driving one itself (the store fetches native files).
+  const largeDownload = workerDownload ?? storeDownload;
   // The same fact for the telemetry tick, which cannot read state (2026-09-27):
   // the dashboard shows this download's progress from the cache report.
   // Telemetry only — nothing here decides what plays.
@@ -4918,14 +4989,43 @@ function PlayerPage() {
     const tick = setInterval(() => setSafetyClock(Date.now()), 60_000);
     return () => clearInterval(tick);
   }, [playlist?.isEmergency]);
+  // Native-first STORE MODE (design §6): mediaReadiness is unchanged; only its
+  // inputs move. When the manifest names native-first for this face and the
+  // app reports `store.mode = active`, the face's native-selected file is on
+  // disk exactly when the app's store lists its digest, and the drive is
+  // 'ready' (never 'unavailable' = "stream everything"). Anything else —
+  // including a store that cannot be read — is the worker path, unchanged.
+  const nativeFirstReadiness = useCallback((descriptor: NativeVideoDescriptor | null, drive: CacheDriveState, keys: ReadonlySet<string>) => {
+    const facts = nativeFirstFaceRef.current?.facts ?? null;
+    const storeMode = !!facts && !!descriptor && facts.protocolMax >= NATIVE_FIRST_PROTOCOL &&
+      facts.nativeFirst && facts.nativeSolo && descriptor.nativeFirst !== false;
+    return storeModeReadiness({
+      storeMode,
+      store: facts?.store ?? null,
+      workerDrive: drive,
+      workerKeys: keys,
+      nativeFiles: descriptor
+        ? [{ key: stableManifestUrlKey(playbackUrlFor(descriptor.asset.url, 'video/mp4')), sha256: descriptor.asset.sha256 }]
+        : [],
+    });
+  }, []);
+  const readinessInputs = useMemo(
+    () => nativeFirstReadiness(nativeVideoDescriptor, cacheDrive, cachedMediaKeys),
+    // nativeFirstSig: the store's mode / generation / ready list moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nativeFirstReadiness, nativeVideoDescriptor, cacheDrive, cachedMediaKeys, nativeFirstSig],
+  );
+  // For the telemetry tick (`cache.source`), which cannot read state.
+  const readinessSourceRef = useRef<'store' | 'worker'>('worker');
+  readinessSourceRef.current = readinessInputs.source;
   const readyIds = useMemo<ReadonlySet<string>>(
     () => (playlist?.isEmergency
       ? new Set(readinessItems.map((r) => r.id))
-      : new Set([...readyItemIds(readinessItems, cacheDrive, cachedMediaKeys)].filter(id => {
+      : new Set([...readyItemIds(readinessItems, readinessInputs.cacheDrive, readinessInputs.onDisk)].filter(id => {
           const item = sorted.find(candidate => String(candidate.id) === id);
           return !item?.asset || !playbackSafety().blocked(safetyUrlFor(item), item.asset.fileHash, safetyClock);
         }))),
-    [playlist?.isEmergency, readinessItems, cacheDrive, cachedMediaKeys, sorted, safetyClock],
+    [playlist?.isEmergency, readinessItems, readinessInputs, sorted, safetyClock],
   );
   const readyAt = useCallback(
     (index: number) => { const it = sorted[index]; return !!it && readyIds.has(String(it.id)); },
@@ -5011,6 +5111,156 @@ function PlayerPage() {
       ? stableManifestUrlKey(playbackUrlFor(it.asset?.fileUrl || '', it.asset?.mimeType))
       : null;
   }, [displayIndex, sorted]);
+
+  // ── NATIVE-FIRST: the engine decision BEFORE the mount (design §3.1) ────
+  // The raised hold, read the way applyManifest's emergency step reads it:
+  // decideFaceEngine answers `web` for it first (§7 E2).
+  const nativeFirstHoldRaised = !!activeEmergency || !!pushedEmergencyMessage || !!pendingOverrideConfirmRef.current;
+  // Operator overlays are YIELDS (native steps aside, the same content resumes natively).
+  const nativeFirstOverlay: FaceYield | null = showUpdatePrompt ? 'update-prompt'
+    : softBlank ? 'soft-blank'
+    : showCanvasEditor ? 'canvas-editor'
+    : touchOverlay ? 'touch-overlay'
+    : null;
+  /**
+   * The decision for one slide, or null when the app does not speak v4 —
+   * null keeps today's path byte for byte (the web-first takeover included).
+   */
+  const nativeFirstDecisionFor = (item: any, solo: boolean): {
+    decision: FaceEngineDecision; identity: NativeIntentIdentity | null; faceIndex: number;
+  } | null => {
+    const face = nativeFirstFaceRef.current;
+    const facts = face?.facts ?? null;
+    if (!face || !facts || facts.protocolMax < NATIVE_FIRST_PROTOCOL) return null;
+    const d = nativeVideoDescriptor && nativeVideoDescriptor.screenId === screenId && nativeVideoDescriptor.tenantId === tenantId
+      ? nativeVideoDescriptor : null;
+    const sha = String(item?.asset?.fileHash ?? '').toLowerCase();
+    const faceIndex = d?.faceIndex ?? 0;
+    const decision = decideFaceEngine({
+      content: {
+        solo,
+        muted: item?.muted !== false,
+        mp4: String(item?.asset?.mimeType || '') === 'video/mp4',
+        daypart: !!(item?.daysOfWeek || item?.timeStart || item?.timeEnd),
+        assetId: String(item?.asset?.id ?? ''),
+        sha256: sha,
+      },
+      descriptor: d ? { assetId: d.asset.id, sha256: d.asset.sha256, nativeFirst: d.nativeFirst } : null,
+      app: {
+        protocolMax: facts.protocolMax, nativeSolo: facts.nativeSolo, nativeFirst: facts.nativeFirst,
+        storeMode: facts.store?.mode ?? null, storeReady: new Set(facts.store?.ready ?? []),
+      },
+      blocked: !!d && (() => {
+        try { return nativeVideoBlockedNoted(window.localStorage, d.asset.sha256, d.faceIndex, Date.now(), undefined, reportNativeFallback); } catch { return false; }
+      })(),
+      settled: !!sha && face.ends.settled(NativeTransientEnds.key(faceIndex, sha)),
+      emergencyContent: playlist?.isEmergency === true,
+      holdRaised: nativeFirstHoldRaised,
+      sync: syncConfigRef.current.enabled,
+      preview: isPreviewMode(),
+      softDim: softDim > 0,
+      overlay: nativeFirstOverlay,
+    });
+    const identity: NativeIntentIdentity | null = d
+      ? { screenId: d.screenId, revision: d.revision, sha256: d.asset.sha256, assetId: d.asset.id }
+      : null;
+    return { decision, identity, faceIndex };
+  };
+  // The decision for the slide on glass (the slide renders the same answer).
+  const nativeFirstActiveItem = displayIndex !== null && !isTemplate ? sorted[displayIndex] : null;
+  const nativeFirstActive = nativeFirstActiveItem?.asset?.mimeType?.startsWith?.('video/')
+    ? nativeFirstDecisionFor(nativeFirstActiveItem, sorted.length === 1 && countDistinctPlayable(sorted, playableAt) <= 1)
+    : (nativeFirstFaceRef.current?.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL
+      ? { decision: { engine: 'web' as const, reason: 'not-mp4' as const, yieldTo: null }, identity: null, faceIndex: 0 }
+      : null;
+  const nativeFirstEngine = nativeFirstActive?.decision.engine ?? null;
+  const nativeFirstReason = nativeFirstActive?.decision.reason ?? null;
+  const bumpNativeFirst = useCallback(() => setNativeFirstRev((n) => n + 1), []);
+  // A manifest (live or cached) has been applied: before that the page is
+  // UNDECIDED and never releases what the app is presenting (§4.3). The ref
+  // for callbacks, the state for the poll effect below.
+  const nativeFirstDecidedRef = useRef(false);
+  const [nativeFirstDecided, setNativeFirstDecided] = useState(false);
+  // A content the web-first TAKEOVER (v2) already put on native in this
+  // document stays on that session until the content changes or the page
+  // reloads: when an enrolled face first learns its switch from that very
+  // session (stream B), moving it to a v4 session would restart the picture.
+  const takeoverLatchRef = useRef('');
+  // §4.3 "adopt X until Y is verified": the session the app presents (the
+  // intent it reports) is re-sent with THIS document's lease at the boundary
+  // — the app re-binds it, nothing on glass changes. Never under the hold.
+  const adoptPresentingNative = useCallback(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !face.supportsV4() || displayEmergencyHoldRaised()) return;
+    const f = face.facts;
+    const held = f?.intent;
+    if (held && f?.session?.state === 'presenting' && f.session.sha256 === held.sha256 && f.session.revision === held.revision) {
+      face.intend({ screenId: held.screenId, revision: held.revision, sha256: held.sha256, assetId: held.assetId }, 'boundary');
+    }
+  }, []);
+  // While native presents (or holds an intent) on this face, this document
+  // polls at the session cadence (§4.1: every poll renews its lease) —
+  // whether a slot is mounted, a new playlist is deferred, web content is
+  // being painted beneath, or an alert holds the intent suspended. ONLY once
+  // the page has decided: stream B releases a v4 session a live page keeps
+  // polling for 60 s without adopting, and a booting page cannot adopt
+  // before its first manifest apply — unattended is the safe state until then.
+  const nativeFirstPresentingNow = !!nativeFirstFaceRef.current?.presenting() || !!nativeFirstFaceRef.current?.facts?.intent;
+  useEffect(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !nativeFirstPresentingNow || !nativeFirstDecided) return;
+    return face.hold();
+  }, [nativeFirstPresentingNow, nativeFirstDecided]);
+  // The PAGE side of §4.3 / §3.2 — what no slot owns:
+  //   • web content (or nothing) on this face while the app presents → paint
+  //     it beneath (two frames), then `release at: boundary` (the app bounds
+  //     the wait at 60 s): one cut at the clip's loop end, never a black gap;
+  //   • a new playlist deferred (or a native decision still waiting for the
+  //     store) while the app presents what was on glass → ADOPT it, so the new
+  //     document's lease attends it until the boundary switch;
+  //   • an operator overlay over a presenting session → release now (the
+  //     surface is above the window and would cover the overlay).
+  // While the hold is raised nothing native is sent: the hold removed every
+  // surface and the app keeps the intent suspended (§7 E1 — the ordering of
+  // the hold itself is untouched, it is raised before any of this runs).
+  useEffect(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !face.supportsV4() || nativeFirstHoldRaised || displayEmergencyHoldRaised() || !nativeFirstDecidedRef.current) return;
+    if (nativeFirstOverlay && nativeFirstEngine !== 'web') {
+      if (face.presenting()) face.release('now');
+      return;
+    }
+    if (nativeFirstEngine === 'native') return; // the slot owns the face
+    if (nativeFirstEngine === 'wait' || pendingPlaylistCommitRef.current) {
+      adoptPresentingNative();
+      return;
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const action = reconcileFace(face.facts, { kind: 'web' }, displayEmergencyHoldRaised());
+        if (action.kind === 'release') face.release(action.at);
+      });
+    });
+    return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
+  }, [nativeFirstSig, nativeFirstEngine, nativeFirstReason, nativeFirstHoldRaised, nativeFirstOverlay, playlist, displayIndex, adoptPresentingNative]);
+  // The splash shows the store's real download (§6): poll the app at the
+  // session cadence only while that card is up on a store-mode face.
+  const nativeFirstStoreActive = nativeFirstFaceRef.current?.facts?.store?.mode === 'active';
+  useEffect(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !activeSlot.waitingForDownload || !nativeFirstStoreActive) return;
+    return face.hold();
+  }, [activeSlot.waitingForDownload, nativeFirstStoreActive]);
+  // Why a v4 face is NOT on the native engine, once per change (codes only).
+  useEffect(() => {
+    if (nativeFirstEngine !== 'web' || !nativeFirstReason) return;
+    const line = `[Player] PLAYER_NATIVE_FIRST_DECISION engine=web reason=${nativeFirstReason}`;
+    if (nativeFirstDecisionLogged.current === line) return;
+    nativeFirstDecisionLogged.current = line;
+    console.warn(line);
+  }, [nativeFirstEngine, nativeFirstReason]);
+
   // One clear line per item this screen cannot show at all (audio today).
   const unshowableLoggedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -6410,6 +6660,13 @@ function PlayerPage() {
       // round-trip that will never come. Idempotent + never rejects, so
       // calling it on every apply costs one boolean check after the first.
       void preloadPlayerRenderer();
+      // Native-first (§4.3): from here on this document has DECIDED what its
+      // face shows; before the first apply it never releases a session the
+      // app presents. Set after the emergency decision above, like the rest.
+      if (!nativeFirstDecidedRef.current) {
+        nativeFirstDecidedRef.current = true;
+        setNativeFirstDecided(true);
+      }
 
       setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
       // A replacement can wait for download/loop-boundary readiness. Keep its
@@ -7132,16 +7389,29 @@ function PlayerPage() {
             setSwapEpoch((n) => n + 1);
             return true;
           }
+          // Native-first: readiness of the NEW playlist's native-selected file
+          // comes from the app's store (§6), and a native session the app is
+          // presenting IS regular content on glass — a page that just booted
+          // (reload, Resync, bundle apply, crash) must never treat "I just
+          // booted" as "nothing is on glass" (§4.3).
+          const commitReadiness = nativeFirstReadiness(
+            committedNativeVideo(manifest.nativeVideo, combinedItems, isEmergencyContent || !!em || cachedNormalWouldClearLiveAlert),
+            cacheDriveRef.current, cachedMediaKeysRef.current,
+          );
           const decision = decidePlaylistCommit({
             isEmergency: isEmergencyContent,
-            anyReady: readyItemIds(commit.readiness, cacheDriveRef.current, cachedMediaKeysRef.current).size > 0,
-            regularContentOnGlass: currentPlaylistSigRef.current !== '' && !contentIsEmergencyRef.current,
+            anyReady: readyItemIds(commit.readiness, commitReadiness.cacheDrive, commitReadiness.onDisk).size > 0,
+            regularContentOnGlass: (currentPlaylistSigRef.current !== '' && !contentIsEmergencyRef.current) ||
+              (!holdNow && !!nativeFirstFaceRef.current?.presenting()),
           });
           if (decision === 'defer') {
             if (pendingPlaylistCommitRef.current?.sig !== newSig) {
               console.log('[Player] new content is still downloading — keeping the current content on glass until a file is ready');
             }
             pendingPlaylistCommitRef.current = commit;
+            // Native-first (§4.3): what the app presents stays, attended by
+            // this document's lease, until the new file is verified.
+            if (!holdNow) adoptPresentingNative();
             return true;
           }
           pendingPlaylistCommitRef.current = null;
@@ -7362,6 +7632,15 @@ function PlayerPage() {
           tickToastRef.current = null;
         }
         applyManifest(manifest);
+        // Native-first (§3.5): a nudge that the page applied a new manifest —
+        // the app re-reads its OWN authenticated sources only if its tag
+        // differs. Identity of the response only (its ETag), never a URL; sent
+        // AFTER the apply (the emergency step ran first); once per distinct
+        // tag; only to an app that advertised v4.
+        {
+          const tag = nativeManifestTag(manifestEtagRef.current);
+          if (tag) nativeFirstFaceRef.current?.sync(tag, lastEmergencySetHashRef.current || null);
+        }
         // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
         if (pendingOverrideConfirmRef.current) {
           if (manifest.isEmergency === true) {
@@ -7621,6 +7900,8 @@ function PlayerPage() {
   // (an API from before it existed) — see `downloadReportRefused`. For the
   // rest of this page's life the snapshot is simply not sent.
   const downloadReportAllowedRef = useRef(true);
+  // Native-first `cache.source` (design §6): same session-long self-heal.
+  const cacheSourceAllowedRef = useRef(true);
   // Same rule for the loop-boundary block (2026-09-29), but TIME-LIMITED: after
   // the API 400'd a report that carried it (an API half of a rollout not landed
   // yet) the block is held back for LOOP_REPORT_RETRY_MS, then tried again.
@@ -7737,6 +8018,10 @@ function PlayerPage() {
               deferredCommit: pendingPlaylistCommitRef.current !== null,
             }
           : null,
+        // Native-first (§6): on a v4 face only, where its readiness came from.
+        cacheSource: cacheSourceAllowedRef.current && (nativeFirstFaceRef.current?.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL
+          ? readinessSourceRef.current
+          : null,
       });
 
       let status: number | null = null;
@@ -7768,6 +8053,12 @@ function PlayerPage() {
       }
       if (cancelled) return;
 
+      if (cacheSourceRefused(status, body)) {
+        // An API from before native-first's `cache.source` 400'd the strict
+        // body: stop sending the key; the fast retry goes out without it.
+        cacheSourceAllowedRef.current = false;
+        console.warn('[Player] the server refused the cache source key — not sending it again this session');
+      }
       if (loopReportRefused(status, body)) {
         loopReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the loop-boundary report — holding it back for 10 minutes');
@@ -10615,11 +10906,17 @@ function PlayerPage() {
   useEffect(() => {
     const pending = pendingPlaylistCommitRef.current;
     if (!pending) return;
+    // Native-first store mode: the pending playlist's native file counts as
+    // on disk only once the app's store verified it (§6); the worker otherwise.
+    const inputs = nativeFirstReadiness(
+      committedNativeVideo(pending.manifest.m.nativeVideo, pending.items, pending.isEmergency),
+      cacheDrive, cachedMediaKeys,
+    );
     if (pending.swap) {
       // A held file swap (renditionSwap.ts): every new file on disk first,
       // then the next natural boundary — the item changed, or the video on
       // glass wrapped its loop since the files became ready.
-      const ready = readyItemIds(pending.readiness, cacheDrive, cachedMediaKeys);
+      const ready = readyItemIds(pending.readiness, inputs.cacheDrive, inputs.onDisk);
       const activeItemId = displayedItemIdRef.current;
       if (!pending.swap.armed && swapFilesReady(pending.swap.ids, ready)) {
         pending.swap.armed = { activeItemId, boundarySeq: loopBoundaryTracker.sequence };
@@ -10638,11 +10935,11 @@ function PlayerPage() {
       commitMediaPlaylist(pending);
       return;
     }
-    if (readyItemIds(pending.readiness, cacheDrive, cachedMediaKeys).size === 0) return;
+    if (readyItemIds(pending.readiness, inputs.cacheDrive, inputs.onDisk).size === 0) return;
     pendingPlaylistCommitRef.current = null;
     console.log('[Player] a file of the deferred playlist is ready — putting it on glass');
     commitMediaPlaylist(pending);
-  }, [cacheDrive, cachedMediaKeys, commitMediaPlaylist, displayIndex, swapEpoch]);
+  }, [cacheDrive, cachedMediaKeys, commitMediaPlaylist, displayIndex, swapEpoch, nativeFirstReadiness, nativeFirstSig]);
   // A loop wrap of the video on glass is the boundary a held swap waits for.
   useEffect(() => loopBoundaryTracker.onBoundary(() => {
     if (pendingPlaylistCommitRef.current?.swap?.armed) setSwapEpoch((n) => n + 1);
@@ -12595,13 +12892,38 @@ function PlayerPage() {
                 blocked: (() => { try { return loopIsBlocked(window.localStorage, Date.now()); } catch { return false; } })(),
                 isPreview: isPreviewMode(),
               });
+              // ── NATIVE-FIRST (design §3.1): the engine is decided BEFORE the
+              // mount, on an app that speaks v4 only (null = today's path,
+              // byte for byte). `native` / `wait` mount the slot, which creates
+              // NO web <video> — the picture is the app's surface above the
+              // window, never a web lap first. `web` falls through to today's
+              // code, with the web-first takeover held off for a content that
+              // repeated transient ends settled on web (no flip back).
+              // The app's v4 facts are not known yet (the first state read has
+              // not settled — milliseconds, ≤ 2 s): mount nothing for the
+              // native-enrolled video rather than a takeover that could race a
+              // v4 session the app is already presenting after a reload.
+              if (nativeFirstFaceRef.current && !nativeFirstReady && nativeVideoDescriptor &&
+                nativeVideoDescriptor.asset.id === item.asset?.id) return null;
+              const nativeFirstSlide = nativeFirstDecisionFor(item, isSoloPlaylist && sorted.length === 1);
+              const takeoverKey = `${String(item.asset?.id ?? '')}|${String(item.asset?.fileHash ?? '').toLowerCase()}`;
+              if (nativeFirstSlide && nativeFirstSlide.decision.engine !== 'web' && takeoverLatchRef.current !== takeoverKey) {
+                const face = nativeFirstFaceRef.current;
+                if (!isActive || !face || !nativeFirstSlide.identity) return null;
+                return (
+                  <NativeSoloSlot key={slideKey(item)} face={face} identity={nativeFirstSlide.identity}
+                    decision={nativeFirstSlide.decision} faceIndex={nativeFirstSlide.faceIndex} classes={classes}
+                    onPlaying={markItemSucceeded} onEngineChange={bumpNativeFirst} />
+                );
+              }
+              const nativeFirstSettled = nativeFirstSlide?.decision.reason === 'settled';
               const nativeChoice = pickNativeVideo({
                 v2: nativeVideoDescriptor,
                 v1: nativeSharedDescriptor,
                 protocol: nativeVideoProtocol,
-                v2Blocked: !!nativeVideoDescriptor && (() => {
+                v2Blocked: !!nativeVideoDescriptor && (nativeFirstSettled || (() => {
                   try { return nativeVideoBlockedNoted(window.localStorage, nativeVideoDescriptor.asset.sha256, nativeVideoDescriptor.faceIndex, Date.now(), undefined, reportNativeFallback); } catch { return false; }
-                })(),
+                })()),
               });
               const nativeEligible = sharedVideoEligible(nativeChoice, {
                 screenId,tenantId,assetId:item.asset.id,sha256:item.asset.fileHash ?? '',
@@ -12633,6 +12955,12 @@ function PlayerPage() {
                 sync: syncConfigRef.current.enabled, preview: isPreviewMode(),
                 blocked: !!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0),
               }) && (item as { muted?: boolean | null }).muted !== false && !syncActiveRef.current;
+              // The takeover owns this content for the rest of the document (no
+              // restart into a v4 session) — latched only once the app's v4 facts
+              // were KNOWN when it was chosen; a takeover mounted in the first
+              // milliseconds of a boot, before the first state read answered,
+              // yields to native-first the moment the app says protocolMax 4.
+              if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
               const wrapNative = (browser: React.ReactNode) => nativeEligible
                 ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>

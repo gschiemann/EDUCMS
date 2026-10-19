@@ -28,6 +28,7 @@ import {
   buildDownloadReport,
   buildRenderBlock,
   buildTelemetryBody,
+  cacheSourceRefused,
   clampTelemetryInterval,
   downloadReportRefused,
   nextTelemetryDelayMs,
@@ -396,6 +397,19 @@ describe('body assembly', () => {
       // A 400 without it was never about it; other failures are transient.
       expect(downloadReportRefused(400, without)).toBe(false);
       for (const status of [200, 401, 429, 500, null]) expect(downloadReportRefused(status, withIt)).toBe(false);
+    });
+
+    it('native-first `cache.source`: rides only inside the cache block, only store | worker; a 400 that carried it stops it', () => {
+      expect(buildTelemetryBody({ cache: tiers, cacheSource: 'store' }).cache?.source).toBe('store');
+      expect(buildTelemetryBody({ cache: tiers, cacheSource: 'worker' }).cache?.source).toBe('worker');
+      expect(buildTelemetryBody({ cache: tiers, cacheSource: null }).cache).not.toHaveProperty('source');
+      expect(buildTelemetryBody({ cache: tiers, cacheSource: 'elsewhere' as never }).cache).not.toHaveProperty('source');
+      // Never a cache block of its own.
+      expect(buildTelemetryBody({ cacheSource: 'store' })).not.toHaveProperty('cache');
+      const withIt = buildTelemetryBody({ cache: tiers, cacheSource: 'store' });
+      expect(cacheSourceRefused(400, withIt)).toBe(true);
+      expect(cacheSourceRefused(400, buildTelemetryBody({ cache: tiers }))).toBe(false);
+      for (const status of [200, 401, 429, 500, null]) expect(cacheSourceRefused(status, withIt)).toBe(false);
     });
   });
 
