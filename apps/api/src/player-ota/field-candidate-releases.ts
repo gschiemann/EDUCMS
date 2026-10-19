@@ -153,4 +153,18 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2420475,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39095313732',
   },
+  // Signed CI 39306215680, source f7132ea6 (PR #113, merged 48e18251): auto-detected pacing
+  // defaults — vsync snap on per class, a grid-sized release lead (0.5 of a period at >= 50 Hz,
+  // 0.8 below), an automatic same-resolution ~60 Hz request on the main display with a 10 s
+  // safety net (no switch / no frames -> reverted and blocked 24 h; never asked or undone under an
+  // emergency hold), the closed native end-reason grading (host-replaced transient), the panel's
+  // firmware display facts. Production certificate e45adf50…3d1897, versionCode 10143, universal
+  // APK (4 ABIs), non-debuggable, 1.1.43-only DEX markers present. Hardware qualification pending.
+  '1.1.43-field.1': {
+    versionName: '1.1.43-field.1',
+    versionCode: 10143,
+    sha256: 'a2ca45bdac135471e66913ef5b6216c9db2bcb66f551d0ea43919240e949a5f7', // gitleaks:allow -- verified public APK integrity digest
+    size: 2436899,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39306215680',
+  },
 };
