@@ -164,6 +164,12 @@ const REQUIRED = [
   // passphrase on disk), so "not entirely skipped" matters.
   { cls: 'com.educms.player.settings.DeviceSettingsPolicyTest', min: 15 },
   { cls: 'com.educms.player.settings.DeviceSettingsWiringTest', min: 8 },
+  // Native-first, one verified store (design NATIVE-FIRST-ONE-STORE §5–§7). EmergencyPinTest is
+  // the §7 E3 ship-gate evidence: one case per emergency-set guarantee.
+  { cls: 'com.educms.player.store.ContentStorePolicyTest', min: 10 },
+  { cls: 'com.educms.player.store.ContentStoreDownloadTest', min: 10 },
+  { cls: 'com.educms.player.store.EmergencyPinTest', min: 8 },
+  { cls: 'com.educms.player.store.ContentStoreFacadeTest', min: 8 },
 ];
 
 /**
