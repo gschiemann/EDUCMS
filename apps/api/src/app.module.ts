@@ -62,6 +62,9 @@ import { DataSourceModule } from './data-source/data-source.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
+// 2026-10-18 — private field-build windows armed from /super/field-builds
+// (replaces editing the PLAYER_APK_FIELD_* variables; they stay the fallback).
+import { FieldBuildsModule } from './field-builds/field-builds.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
 import { FitnessModule } from './fitness/fitness.module';
 // 2026-05-16 — Sprint 13 VenueOS Sports: the Sport Engine.
@@ -193,6 +196,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     FeedsModule,
     UsbExportModule,
     PlayerOtaModule,
+    FieldBuildsModule,
     PlayerLogsModule,
     FitnessModule,
     SportsModule,

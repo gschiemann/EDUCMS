@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyDistrictReadiness, playbackCapabilityScreenId, unknownPlaybackCapability } from '../fixtures/api-contract';
 
 // Synthetic company only. Browser requests never touch customer tenants.
 const HQ = 'company-test-hq';
@@ -57,9 +58,12 @@ async function openCompany(page: Page, path: string, width = 1840, dense = false
     if (apiPath === '/screens/fleet') body = companyFleet;
     if (apiPath === '/screens') body = [own];
     if (apiPath === '/screens/fleet-pulse') body = { fleet: pulse, locations: {} };
-    if (apiPath === '/emergency/readiness/district') body = { schools: [], notReadyCount: 0, delivery: { key: 'delivery', status: 'ok' } };
+    if (apiPath === '/emergency/readiness/district') body = emptyDistrictReadiness();
     if (apiPath === '/submissions/pending-counts') body = { byTenant: [], total: 0 };
     if (apiPath === '/deployments') body = { deployments: [] };
+    // The drawer's playback card reads `capability.*` off this (2026-10-11).
+    const playbackScreen = playbackCapabilityScreenId(apiPath);
+    if (playbackScreen) body = unknownPlaybackCapability(playbackScreen);
     return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.route('**/api/build-info', (route) => route.fulfill({ contentType: 'application/json', body: '{}' }));
@@ -136,8 +140,12 @@ test('dashboard offers all location names and totals link into company Screens',
   await page.screenshot({ path: info.outputPath('dashboard-location-checkboxes.png') });
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('tab', { name: 'map', exact: true }).click();
-  await expect(page.getByRole('group', { name: 'Status guide' })).toContainText('not live status');
-  await page.getByRole('group', { name: 'Status guide' }).screenshot({ path: info.outputPath('status-guide.png') });
+  // The map's live summary replaced the static "Status guide" legend on
+  // 2026-10-11 (22e22a9c; the unit test pins the legend gone). It counts the
+  // screens of the two offices in scope.
+  const summary = page.getByRole('group', { name: 'Live screen summary' });
+  await expect(summary).toContainText('2 screens');
+  await summary.screenshot({ path: info.outputPath('live-summary.png') });
   await page.getByRole('group', { name: 'Fleet totals' }).getByRole('link', { name: /Screens/ }).click();
   await expect.poll(() => new URL(page.url()).searchParams.getAll('location')).toEqual(['boston', 'austin']);
   await expect(page.getByRole('button', { name: 'All company screens', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -200,7 +208,8 @@ for (const width of [390, 320]) {
     await expect(table.getByRole('row').filter({ hasText: 'Test Corporate' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'map', exact: true }).click();
     await expect(page.locator('.leaflet-container')).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Status guide' }).filter({ visible: true })).toBeVisible();
+    // The live summary that replaced the static "Status guide" (22e22a9c).
+    await expect(page.getByRole('group', { name: 'Live screen summary' }).filter({ visible: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });

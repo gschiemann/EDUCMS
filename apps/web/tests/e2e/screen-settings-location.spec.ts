@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyDistrictReadiness, playbackCapabilityScreenId, unknownPlaybackCapability } from '../fixtures/api-contract';
 
 const ADDRESS = '100 Market Street, Sacramento, CA';
 const GROUP = { id: 'group-one', name: 'Allora Neighborhood', address: ADDRESS, latitude: 38.58, longitude: -121.49 };
@@ -36,6 +37,8 @@ async function openScreens(page: Page, suffix = "", sharedAddress = false) {
       '/screens': sharedAddress ? SCREENS.map((screen, i) => i ? { ...screen, screenGroupId: 'group-shared', screenGroup: { ...GROUP, id: 'group-shared', name: 'Maple Court' } } : screen) : SCREENS,
       '/screen-groups': [GROUP, ...(sharedAddress ? [{ ...GROUP, id: 'group-shared', name: 'Maple Court' }] : []), { id: 'group-empty', name: 'No location yet', address: null }],
       '/schedules': [], '/playlists': [],
+      // The page reads `schools.find(...)` off this (2026-10-11): `[]` crashes it.
+      '/emergency/readiness/district': emptyDistrictReadiness(),
       '/player/latest-version': { versionName: '1.1.20', versionCode: 10120, managerVersionName: '1.0.24' },
       '/screens/hardware-catalog': { models: [] },
       '/screens/hardware': { models: [] },
@@ -45,7 +48,9 @@ async function openScreens(page: Page, suffix = "", sharedAddress = false) {
     const body = path.endsWith('/device-inventory') ? { report: null, reportedAt: null }
       : path.endsWith('/events') ? { events: [] }
         : path.endsWith('/faces') ? { faces: [] }
-          : bodies[path] ?? [];
+          // The drawer's playback card reads `capability.*` off this (2026-10-11).
+          : playbackCapabilityScreenId(path) ? unknownPlaybackCapability(playbackCapabilityScreenId(path)!)
+            : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto('/e2e-settings/screens' + suffix);
@@ -124,11 +129,23 @@ test('Map uses account branding for a shared group location and opens its equipm
     stable = current && current === previous ? stable + 1 : 0; previous = current;
     return stable >= 3;
   }, { timeout: 10_000, intervals: [100] }).toBe(true);
-  const before = await pin.boundingBox();
-  await pin.click();
-  const after = await pin.boundingBox();
   // Focusing Leaflet must not scroll the dashboard pane during the click.
-  expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
+  //
+  // 2026-10-18 — this compared the pin's on-screen y before and after the
+  // click. Since 5536a7a6 (2026-10-12) a pin click deliberately flies the map
+  // in to the place and centres it beside the location card (`PanTo` in
+  // ScreenMap.tsx), so the pin itself moves — measured in WebKit: 205 px left
+  // and 20 px down with every scroll offset still 0. Measure the thing the
+  // rule is about instead: the scroll offset of the window and of every
+  // element between the pin and the page, which must not move at all.
+  const scrollOffsets = () => pin.evaluate((el) => {
+    const offsets = [window.scrollX, window.scrollY];
+    for (let node = el.parentElement; node; node = node.parentElement) offsets.push(node.scrollLeft, node.scrollTop);
+    return offsets;
+  });
+  const before = await scrollOffsets();
+  await pin.click();
+  expect(await scrollOffsets()).toEqual(before);
   // Same floating navigation, filters and zoom controls as the corporate dashboard.
   await expect(page.getByRole('group', { name: 'Location navigation' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zoom in', exact: true })).toBeVisible();
