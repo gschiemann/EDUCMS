@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyDistrictReadiness } from '../fixtures/api-contract';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const ALPHA = 'mobile-alpha';
@@ -60,6 +61,8 @@ async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: b
       '/assets/storage-summary': { totalBytes: 0, totalFiles: 0, videos: { bytes: 0, files: 0 }, images: { bytes: 0, files: 0 }, other: { bytes: 0, files: 0 } },
       '/assets/storage': { usedBytes: 0, includedBytes: 10 * 1024 ** 3, percent: 0, screens: 2, warn: false },
       '/notifications': { notifications: [], unreadCount: 0 }, '/passkeys': { passkeys: [], max: 10 },
+      // The Screens page reads `schools.find(...)` off this (2026-10-11): `[]` crashes it.
+      '/emergency/readiness/district': emptyDistrictReadiness(),
       '/super/tenants': [],
       '/super/activation-funnel': { recentTenants: [], aggregate: { totalTenants: 0, excludedTenants: 0,
         stageCounts: { SIGNED_UP: 0, BOARD_CREATED: 0, SCREEN_PAIRED: 0, PUBLISHED: 0, RENDER_PROVEN: 0 },

@@ -161,13 +161,24 @@ for (const vp of VIEWPORTS) {
       await expect(summary.getByText('7 screens')).toBeVisible();
       await expect(summary.getByText('4 playing')).toBeVisible();
       await expect(summary.getByRole('button', { name: /2 offline \(since 3 hours ago\)/ })).toBeVisible();
-      await expect(summary.getByRole('button', { name: /2 screens offline at Houston — check power and network/ })).toBeVisible();
+      // 2026-10-18 — the "do this first" line became an action plus a list of
+      // the places with the problem, each a door to its fix (5536a7a6,
+      // `summarizeMapAlerts`): one sentence, then "Houston · 2 screens".
+      await expect(summary.getByText('2 screens are offline — check power and network.')).toBeVisible();
+      await expect(summary.getByRole('list', { name: 'Where to fix it' }).getByRole('button', { name: /^Houston · 2 screens/ })).toBeVisible();
       await expect(page.getByText('Status guide')).toHaveCount(0);
       await summary.scrollIntoViewIfNeeded();
       await shot(page, `fleet-map-${vp.name}`, browserName);
       if (SHOTS) await summary.screenshot({ path: `${SHOTS}/fleet-live-summary-${vp.name}-${browserName}.png` });
-      await summary.getByRole('button', { name: /2 offline/ }).click();
-      await expect(summary.getByText('3 screens')).toBeVisible();
+      // A count filters the MAP, never the summary: since 5536a7a6 the summary
+      // covers every location in scope (FleetCommandCenter `liveSummary`), so
+      // it keeps saying 7 while only Houston's pin stays on the map.
+      const offlineChip = summary.getByRole('button', { name: /2 offline/ });
+      await offlineChip.click();
+      await expect(offlineChip).toHaveAttribute('aria-pressed', 'true');
+      await expect(summary.getByText('7 screens')).toBeVisible();
+      await expect(page.getByRole('img', { name: /^Houston — / })).toBeVisible();
+      await expect(page.getByRole('img', { name: /^(Chicago|Denver) — / })).toHaveCount(0);
       await shot(page, `fleet-map-filtered-offline-${vp.name}`, browserName);
     });
 
