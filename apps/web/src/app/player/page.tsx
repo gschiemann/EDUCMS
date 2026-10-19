@@ -159,6 +159,7 @@ import { readOwnBundleSha, readOwnBundleId, normalizeBundleSha } from './bundleS
 import {
   buildRenderBlock,
   buildTelemetryBody,
+  cacheSourceRefused,
   downloadReportRefused,
   loopReportRefused,
   loopReportDue,
@@ -5005,6 +5006,9 @@ function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nativeFirstReadiness, nativeVideoDescriptor, cacheDrive, cachedMediaKeys, nativeFirstSig],
   );
+  // For the telemetry tick (`cache.source`), which cannot read state.
+  const readinessSourceRef = useRef<'store' | 'worker'>('worker');
+  readinessSourceRef.current = readinessInputs.source;
   const readyIds = useMemo<ReadonlySet<string>>(
     () => (playlist?.isEmergency
       ? new Set(readinessItems.map((r) => r.id))
@@ -7873,6 +7877,8 @@ function PlayerPage() {
   // (an API from before it existed) — see `downloadReportRefused`. For the
   // rest of this page's life the snapshot is simply not sent.
   const downloadReportAllowedRef = useRef(true);
+  // Native-first `cache.source` (design §6): same session-long self-heal.
+  const cacheSourceAllowedRef = useRef(true);
   // Same rule for the loop-boundary block (2026-09-29), but TIME-LIMITED: after
   // the API 400'd a report that carried it (an API half of a rollout not landed
   // yet) the block is held back for LOOP_REPORT_RETRY_MS, then tried again.
@@ -7989,6 +7995,10 @@ function PlayerPage() {
               deferredCommit: pendingPlaylistCommitRef.current !== null,
             }
           : null,
+        // Native-first (§6): on a v4 face only, where its readiness came from.
+        cacheSource: cacheSourceAllowedRef.current && (nativeFirstFaceRef.current?.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL
+          ? readinessSourceRef.current
+          : null,
       });
 
       let status: number | null = null;
@@ -8020,6 +8030,12 @@ function PlayerPage() {
       }
       if (cancelled) return;
 
+      if (cacheSourceRefused(status, body)) {
+        // An API from before native-first's `cache.source` 400'd the strict
+        // body: stop sending the key; the fast retry goes out without it.
+        cacheSourceAllowedRef.current = false;
+        console.warn('[Player] the server refused the cache source key — not sending it again this session');
+      }
       if (loopReportRefused(status, body)) {
         loopReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the loop-boundary report — holding it back for 10 minutes');

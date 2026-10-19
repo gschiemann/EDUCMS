@@ -256,6 +256,13 @@ export interface TelemetryBody {
     playlist?: TelemetryCacheTier;
     emergency?: TelemetryCacheTier;
     downloading?: TelemetryDownloadReport;
+    /**
+     * Native-first (design §6): where this face's readiness came from — the
+     * app's verified store, or the service worker. ⚠️ Same rollout rule as
+     * `downloading`: the API half ships first; a 400 that carried it stops it
+     * for the session (`cacheSourceRefused`).
+     */
+    source?: 'store' | 'worker';
   };
   render?: TelemetryRenderBlock;
   refreshAckMs?: number;
@@ -486,6 +493,8 @@ export interface TelemetryBodyInput {
    * never carries a download without the counters it belongs beside.
    */
   download?: DownloadSnapshotInput | null;
+  /** Native-first: the readiness source of a v4 face (`cache.source`); null = not sent. */
+  cacheSource?: 'store' | 'worker' | null;
   /** The off-hours update this document came up from, once (2026-10-10). */
   update?: TelemetryUpdateReport | null;
 }
@@ -539,6 +548,7 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
     if (input.cache.emergency) body.cache.emergency = tier(input.cache.emergency);
     const downloading = buildDownloadReport(input.download);
     if (downloading) body.cache.downloading = downloading;
+    if (input.cacheSource === 'store' || input.cacheSource === 'worker') body.cache.source = input.cacheSource;
   }
 
   if (input.render) body.render = input.render;
@@ -814,6 +824,11 @@ export function buildDownloadReport(
  */
 export function downloadReportRefused(status: number | null, sent: TelemetryBody): boolean {
   return status === 400 && !!sent.cache?.downloading;
+}
+
+/** Same self-heal for native-first's `cache.source`: a 400 that carried it stops it for the session. */
+export function cacheSourceRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.cache?.source;
 }
 
 /** Only the two counters, only as non-negative ints — the server's schema

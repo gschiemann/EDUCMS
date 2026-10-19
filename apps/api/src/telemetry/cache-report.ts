@@ -47,6 +47,8 @@ export interface CacheReport {
   playlist?: CacheTierReport;
   emergency?: CacheTierReport;
   downloading?: DownloadingReport;
+  /** Native-first (§6): the readiness source of a v4 face — the app's store, or the service worker. */
+  source?: 'store' | 'worker';
 }
 
 const safeInt = (v: unknown): number | null =>
@@ -117,5 +119,6 @@ export function sanitizeCacheReport(raw: unknown): CacheReport {
   };
   const downloading = sanitizeDownloadingReport(r.downloading);
   if (downloading) report.downloading = downloading;
+  if (r.source === 'store' || r.source === 'worker') report.source = r.source;
   return report;
 }

@@ -9,6 +9,7 @@ import {
   sanitizeDownloadingReport,
   sanitizeTier,
 } from './cache-report';
+import { screenTelemetrySchema } from './telemetry.schema';
 
 describe('sanitizeTier', () => {
   it('keeps two non-negative ints and nothing else', () => {
@@ -169,6 +170,16 @@ describe('sanitizeCacheReport', () => {
     expect(
       sanitizeCacheReport({ downloading: { file: 'a.mp4' } }),
     ).not.toHaveProperty('downloading');
+  });
+
+  it('native-first: carries `source` store | worker and nothing else (§6)', () => {
+    expect(sanitizeCacheReport({ playlist: { count: 1, bytes: 2 }, source: 'store' })).toEqual({ playlist: { count: 1, bytes: 2 }, source: 'store' });
+    expect(sanitizeCacheReport({ source: 'worker' }).source).toBe('worker');
+    for (const bad of ['STORE', 'network', 1, null, { a: 1 }]) {
+      expect(sanitizeCacheReport({ source: bad })).not.toHaveProperty('source');
+    }
+    expect(screenTelemetrySchema.safeParse({ cache: { playlist: { count: 1, bytes: 2 }, source: 'store' } }).success).toBe(true);
+    expect(screenTelemetrySchema.safeParse({ cache: { source: 'elsewhere' } }).success).toBe(false);
   });
 
   it('a body that is not an object stores an empty report, never the raw value', () => {
