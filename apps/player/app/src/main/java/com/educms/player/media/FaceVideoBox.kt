@@ -94,6 +94,10 @@ internal class FaceVideoSession(
     var activeModeAtAttach = ""
     var preferredModeApplied = 0
     var preferredModeResult: String? = null
+    /** 1.1.43 — this boundary wanted a 60 Hz mode (asked, kept, blocked, could not ask): `requested.prefer60hz` on the report. */
+    var preferredModeWanted = false
+    /** 1.1.43 — the safety net reverted a mode switch during this session: its stalls are the switch's, not the file's. */
+    var modeReverted = false
     var vsyncSnapped = false
     /** Whether this face's window held FLAG_KEEP_SCREEN_ON at the last watch tick; null = no window to read. */
     var keepScreenOn: Boolean? = null
@@ -143,8 +147,18 @@ internal object FaceVideoBox {
     private val lastDiagnostics = mutableMapOf<Int, Long>()
     /** Experiment fault latch, process-wide: one flip at most (NativeVideoExperiments.kt). */
     internal val experiments = NativeExperimentGuard()
-    /** Experiment 4 (1.1.42): the default display's vsync grid, sampled while a snapping session presents (VsyncClock.kt). */
+    /** The default display's vsync grid, sampled while a snapping session presents (VsyncClock.kt; default on since 1.1.43). */
     private val vsync = VsyncSampler(main)
+    /** 1.1.43: proof that the display keeps producing frames after an automatic 60 Hz request (DisplayModePolicy.kt). */
+    private val modeFrames = ModeSwitchFrameWatch(main)
+    /**
+     * 1.1.43: the end code of a session whose stall was the 60 Hz mode switch's failure, not the
+     * file's. TRANSIENT on both sides (NativeEndGrade / the page's table): native is tried again at
+     * the panel's own mode on the 30 s schedule — never a 24 h block of the file.
+     */
+    const val REASON_DISPLAY_MODE_REVERTED = "display-mode-reverted"
+    /** Ends that, before the first native frame after a mode request, are re-graded as the switch's failure. */
+    private val MODE_SWITCH_FAULTS = setOf("output-stalled", "output-unavailable", "codec-stalled")
     const val NAMESPACE = "native-video-v2"
     /** What this engine can do; what it ADVERTISES is the class table's `protocolMax` (2 on every class in 1.1.41). */
     const val PROTOCOL_MAX = 3
@@ -311,25 +325,40 @@ internal object FaceVideoBox {
             s.supportedModes = DisplayModePolicy.labels(active, modes)
             s.activeModeAtAttach = active?.label() ?: ""
             PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_DISPLAY face=${host.face} proto=${s.protocol} active=${s.activeModeAtAttach.ifEmpty { "unknown" }} refresh=${parent.display?.refreshRate ?: 0f} modes=${s.supportedModes.joinToString(";")} sha=${s.sha256.take(8)}")
-            // Experiment 5: ask THIS face's window for a same-resolution ~60 Hz mode at this session
-            // boundary — before the surface exists, never mid-session (a mode switch can blank the
-            // panel for a second or two) — kept for the process while the flag stays on; a withdrawn
-            // flag reverts here, at the next boundary. Another session already attached on this face
-            // makes this boundary mid-session for IT, so nothing is asked then.
+            // THE 60 Hz REQUEST (automatic since 1.1.43): ask THIS face's window for a same-resolution
+            // ~60 Hz mode at this session boundary — before the surface exists, never mid-session (a
+            // mode switch can blank the panel for a second or two), never for a slot, never under an
+            // emergency hold — once per process, then PROVEN by the safety net (verifyPreferredMode)
+            // and the first native frame (updated). Another session already attached on this face
+            // makes this boundary mid-session for IT, so nothing is asked then. The kill switch
+            // (`prefer60hz: false` on the descriptor) reverts here, at the next boundary.
             if (s.protocol == 2) {
                 val window = host.window()
                 val otherAttached = host.faceSessions.values.any { it !== s && it.alive && it.attached }
-                if (d.experiments.prefer60hz) {
-                    val (id, result) = if (otherAttached) Pair(PreferredDisplayMode.applied(host.face), PreferredDisplayMode.RESULT_OTHER_SESSION)
-                        else PreferredDisplayMode.request(host.face, window, active, modes)
-                    s.preferredModeApplied = id; s.preferredModeResult = result
-                    if (result == PreferredDisplayMode.RESULT_APPLIED) experiments.applied(NativeVideoExperiments.PREFER_60HZ)
-                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$result modeId=$id active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
-                } else if (!otherAttached) {
-                    PreferredDisplayMode.withdraw(host.face, window)?.let { result ->
+                val mode = d.experiments.prefer60hz
+                if (mode == Prefer60Hz.OFF) {
+                    if (!otherAttached) PreferredDisplayMode.withdraw(host.face, window)?.let { result ->
                         s.preferredModeResult = result
-                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$result active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
+                        PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=off result=$result active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
                     }
+                } else if (otherAttached) {
+                    s.preferredModeApplied = PreferredDisplayMode.applied(host.face); s.preferredModeResult = PreferredDisplayMode.RESULT_OTHER_SESSION
+                    s.preferredModeWanted = true
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=${mode.wire} result=${s.preferredModeResult} modeId=${s.preferredModeApplied} sha=${s.sha256.take(8)}")
+                } else if (DisplayEmergency.isHeld(host.ctx)) {
+                    s.preferredModeResult = PreferredDisplayMode.RESULT_EMERGENCY_HELD
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=${mode.wire} result=${s.preferredModeResult} sha=${s.sha256.take(8)}")
+                } else {
+                    val nowMs = System.currentTimeMillis()
+                    val blockedUntil = if (mode == Prefer60Hz.AUTO) Prefer60HzBlock.blockedUntil(host.ctx, nowMs) else 0L
+                    val (id, result) = PreferredDisplayMode.request(host.face, window, active, modes, mode, blockedUntil, nowMs)
+                    s.preferredModeApplied = id; s.preferredModeResult = result
+                    s.preferredModeWanted = result != PreferredDisplayMode.RESULT_ALREADY_60HZ && result != PreferredDisplayMode.RESULT_NO_60HZ_MODE
+                    if (result == PreferredDisplayMode.RESULT_APPLIED) {
+                        experiments.applied(NativeVideoExperiments.PREFER_60HZ)
+                        PreferredDisplayMode.pending?.let { armModeSafetyNet(host, s, it) }
+                    }
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=${mode.wire} result=$result modeId=$id active=${s.activeModeAtAttach.ifEmpty { "unknown" }} blockedUntil=$blockedUntil sha=${s.sha256.take(8)}")
                 }
             }
         }
@@ -362,6 +391,53 @@ internal object FaceVideoBox {
         synchronized(this) { if (!live(host, s)) return; s.attached = true; s.degrees = degrees }
         PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=attached sdk=${Build.VERSION.SDK_INT} parked=${s.layer.parked} box=${rect.joinToString(",")} sha=${s.sha256.take(8)}")
         surfaceReady(host, s)
+    }
+
+    /**
+     * THE SAFETY NET (1.1.43), armed the moment a 60 Hz mode was asked for: Choreographer frames are
+     * watched for [PreferredDisplayMode.CONFIRM_WINDOW_MS], then the verdict is taken on the UI
+     * thread — the active mode must be the one asked for AND a frame must have been produced within
+     * the last seconds — else the mode is reverted and the automatic request blocked for 24 h. A
+     * verified switch still waits for the first NATIVE frame (updated → PreferredDisplayMode.confirm);
+     * a stall before it is the switch's failure, not the file's (stopSession).
+     */
+    private fun armModeSafetyNet(host: SharedVideoHost, s: FaceVideoSession, p: PreferredDisplayMode.Pending) {
+        modeFrames.start(PreferredDisplayMode.CONFIRM_WINDOW_MS)
+        main.postDelayed({ verifyPreferredMode(host, s, p) }, PreferredDisplayMode.CONFIRM_WINDOW_MS)
+    }
+
+    /** UI thread. The verdict at the end of the window; a request already confirmed, reverted or withdrawn is left alone. */
+    private fun verifyPreferredMode(host: SharedVideoHost, s: FaceVideoSession, p: PreferredDisplayMode.Pending) {
+        synchronized(this) {
+            if (PreferredDisplayMode.pending !== p) { modeFrames.stop(); return }
+            val display = (host.web.parent as? ViewGroup)?.display ?: host.web.display
+            val activeNow = DisplayModeFacts.of(runCatching { display?.mode }.getOrNull())
+            val verdict = PreferredDisplayMode.verdict(p, activeNow, modeFrames.lastFrameNs, System.nanoTime())
+            val frames = modeFrames.frames
+            modeFrames.stop()
+            if (verdict == null) {
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=switched modeId=${p.modeId} active=${activeNow?.label() ?: "unknown"} frames=$frames awaiting=native-frame sha=${s.sha256.take(8)}")
+                return
+            }
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$verdict modeId=${p.modeId} active=${activeNow?.label() ?: "unknown"} frames=$frames sha=${s.sha256.take(8)}")
+            revertPreferredMode(host, s, verdict)
+        }
+    }
+
+    /**
+     * Under the monitor, any thread: the bookkeeping now (the block, the session's code, nothing
+     * pending any more), the window write on the UI thread. One place reverts; nothing else does.
+     */
+    private fun revertPreferredMode(host: SharedVideoHost, s: FaceVideoSession, verdict: String) {
+        s.preferredModeResult = verdict; s.preferredModeApplied = 0; s.modeReverted = true
+        PreferredDisplayMode.abandon(host.face)
+        Prefer60HzBlock.block(host.ctx, System.currentTimeMillis() + PreferredDisplayMode.BLOCK_MS, verdict)
+        val revert = Runnable {
+            modeFrames.stop()
+            val result = PreferredDisplayMode.revert(host.face, host.window(), verdict)
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=$verdict revert=$result blockedForMs=${PreferredDisplayMode.BLOCK_MS} sha=${s.sha256.take(8)}")
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) revert.run() else main.post(revert)
     }
 
     /** Surface created/changed (UI thread). Prepares the renderer once the surface is real. */
@@ -535,6 +611,11 @@ internal object FaceVideoBox {
             // surface is on the glass: the cadence the compositor actually produced.
             if (s.lastStamp > 0L && onGlass) s.intervals?.observe(stamp - s.lastStamp)
             s.unique++; s.lastStamp = stamp; s.ptsUs = pts
+            // 1.1.43: the first native frame rendered after a 60 Hz request proves the switch.
+            if (PreferredDisplayMode.confirm(host.face)) {
+                modeFrames.stop()
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz result=confirmed modeId=${s.preferredModeApplied} displayMode=${s.surface?.let { displayModeOf(it) } ?: s.displayMode} sha=${s.sha256.take(8)}")
+            }
         }
         s.lastUpdate = SystemClock.elapsedRealtime()
         if (s.protocol == 3) {
@@ -700,8 +781,16 @@ internal object FaceVideoBox {
     }
 
     /** Called under the monitor. Invalidate first; the view work happens on the UI thread. */
-    private fun stopSession(host: SharedVideoHost, s: FaceVideoSession, why: String) {
+    private fun stopSession(host: SharedVideoHost, s: FaceVideoSession, reason: String) {
         if (!s.alive) return
+        // 1.1.43: a stall before the first native frame after a 60 Hz request — or in a session whose
+        // switch the safety net already reverted — is the mode switch's failure, not the file's: the
+        // switch is reverted and blocked, and the session ends TRANSIENT (`display-mode-reverted`), so
+        // the page tries native again at the panel's own mode instead of blocking the file for a day.
+        val why = if (reason in MODE_SWITCH_FAULTS && (s.modeReverted || PreferredDisplayMode.pending?.face == host.face)) {
+            if (!s.modeReverted) revertPreferredMode(host, s, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES)
+            REASON_DISPLAY_MODE_REVERTED
+        } else reason
         val previousLayer = s.layer.phase.name.lowercase(Locale.ROOT)
         s.alive = false
         s.layer.retire()
@@ -802,6 +891,8 @@ internal object FaceVideoBox {
             j.put("snappedFrames", base.optLong("snappedFrames")).put("snapErrorMaxUs", base.optLong("snapErrorMaxUs"))
                 .put("snapErrorMeanUs", base.optLong("snapErrorMeanUs")).put("clockSlewUs", base.optLong("clockSlewUs"))
                 .put("vsyncPeriodUs", base.optLong("vsyncPeriodUs")).put("vsyncSamples", base.optLong("vsyncSamples"))
+            // 1.1.43: the grid-sized release lead the session ran with.
+            if (base.has("releaseLeadUs")) j.put("releaseLeadUs", base.optLong("releaseLeadUs"))
         }
         s.intervals?.writeTo(j)
         return j
@@ -858,8 +949,13 @@ internal object FaceVideoBox {
             .put("elapsedMs", if (s.startedAt > 0) SystemClock.elapsedRealtime() - s.startedAt else 0)
             .put("stalls", if (s.reason == "output-stalled") 1 else 0)
         val d = s.descriptor
-        if (d != null && d.experiments.any) {
-            j.put("experiments", JSONObject().put("requested", d.experiments.toJson())
+        if (d != null) {
+            // `requested` = what was in effect for THIS session (1.1.43: the snap by default on a solo;
+            // the 60 Hz request when this boundary wanted one — asked, kept, blocked or could not ask).
+            val requested = d.experiments.toJson()
+                .put(NativeVideoExperiments.VSYNC_SNAP, s.protocol == 2 && d.experiments.vsyncSnap)
+                .put(NativeVideoExperiments.PREFER_60HZ, s.preferredModeWanted)
+            j.put("experiments", JSONObject().put("requested", requested)
                 .put("applied", JSONObject().put(NativeVideoExperiments.WEBVIEW_INVISIBLE, s.webHidden)
                     .put(NativeVideoExperiments.SURFACE_FRAME_RATE, s.frameRateRequested ?: JSONObject.NULL)
                     .put(NativeVideoExperiments.VSYNC_SNAP, s.vsyncSnapped)

@@ -65,6 +65,10 @@ internal class FaceVideoRenderer(
     /** Throws a reason code on anything this box cannot play natively. */
     fun prepare() {
         check(!stopped.get() && current()) { "session-retired" }
+        // A file the cache no longer holds (pruned, storage reset) is a storage fact, never a
+        // verdict on the file: `media-missing` grades NOT READY (NativeEndGrade), so the page
+        // retries instead of blocking the file for a day.
+        require(file.isFile && file.length() > 0L) { "media-missing" }
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(file.absolutePath)
@@ -239,7 +243,7 @@ internal class FaceVideoRenderer(
                         if (schedule.shouldDrop(due, now)) {
                             c.releaseOutputBuffer(index, false); dropped()
                         } else {
-                            // Experiment 4: the vsync closest to `due` (0.8 P early) when the grid
+                            // The vsync closest to `due` (a grid-sized lead early) when the grid
                             // is known, else `due` itself. The late/drop policy above is untouched.
                             val at = schedule.releaseTime(due, now)
                             c.releaseOutputBuffer(index, at)
@@ -279,12 +283,14 @@ internal class FaceVideoRenderer(
                         .put("lastLateUs", schedule.lastLateUs).put("maxLateUs", schedule.maxLateUs)
                         .put("maxSubmitGapMs", schedule.maxSubmitGapMs).put("leadUs", schedule.leadNs / 1000)
                         .put("sourceWidth", d.width).put("sourceHeight", d.height)
-                    // Experiment 4 (1.1.42): what the vsync snap did, and the grid it used.
+                    // The vsync snap (1.1.42, default on since 1.1.43): what it did, the grid it used,
+                    // and the grid-sized release lead in force (VideoFrameSchedule.releaseLeadNs).
                     if (vsync != null) {
                         snap.put("snappedFrames", schedule.snappedFrames)
                             .put("snapErrorMaxUs", schedule.snapErrorMaxUs).put("snapErrorMeanUs", schedule.snapErrorMeanUs)
                             .put("clockSlewUs", schedule.clockSlewNs / 1000)
                             .put("vsyncPeriodUs", vsync.periodNs / 1000).put("vsyncSamples", vsync.samples)
+                            .put("releaseLeadUs", VideoFrameSchedule.releaseLeadNs(vsync.periodNs) / 1000)
                     }
                     timingSnapshot = snap
                     nextTimingAt = nowMs + 1000

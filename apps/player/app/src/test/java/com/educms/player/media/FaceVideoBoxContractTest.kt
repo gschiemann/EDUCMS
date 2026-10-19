@@ -190,22 +190,48 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
-    fun `experiment 5 asks the face's own window for a mode only at a session boundary, before the surface exists, flag or not the modes are read`() {
+    fun `the 60 Hz request is automatic at a session boundary, before the surface exists, once per process, never for a slot, never under a hold`() {
         val b = code(box)
         val attach = body(b, "private fun attachSurface(")
         val read = attach.indexOf("DisplayModePolicy.read(parent.display)")
-        val gate = attach.indexOf("if (d.experiments.prefer60hz)")
-        val request = attach.indexOf("PreferredDisplayMode.request(host.face, window, active, modes)")
+        val gate = attach.indexOf("val mode = d.experiments.prefer60hz")
+        val off = attach.indexOf("if (mode == Prefer60Hz.OFF) {")
+        val held = attach.indexOf("} else if (DisplayEmergency.isHeld(host.ctx)) {")
+        val block = attach.indexOf("Prefer60HzBlock.blockedUntil(host.ctx, nowMs)")
+        val request = attach.indexOf("PreferredDisplayMode.request(host.face, window, active, modes, mode, blockedUntil, nowMs)")
         val withdraw = attach.indexOf("PreferredDisplayMode.withdraw(host.face, window)")
+        val armed = attach.indexOf("armModeSafetyNet(host, s, it)")
         val surface = attach.indexOf("SurfaceView(host.web.context)")
         assertTrue("the supported modes are read unconditionally …", read >= 0 && gate > read)
         assertTrue("… inside the first-attach branch", attach.substring(0, read).contains("if (s.surface == null) {"))
-        assertTrue("the request is behind the flag", request > gate)
-        assertTrue("a withdrawn flag reverts at the same boundary", withdraw > gate)
-        assertTrue("both happen BEFORE this session's SurfaceView exists", surface > request && surface > withdraw)
-        assertTrue("only a solo session asks (a slot carries no flags)", attach.substring(read, gate).contains("if (s.protocol == 2) {"))
+        assertTrue("the kill switch (OFF) reverts at the boundary; nothing else is asked then", off > gate && withdraw > off && withdraw < held)
+        assertTrue("an emergency hold at the boundary asks nothing", held > off && held < request)
+        assertTrue("the AUTO request is behind the persisted 24 h block; FORCE walks past it", block > held && block < request)
+        assertTrue(attach.contains("if (mode == Prefer60Hz.AUTO) Prefer60HzBlock.blockedUntil(host.ctx, nowMs) else 0L"))
+        assertTrue("the request is made …", request > block)
+        assertTrue("… and the safety net is armed the moment it is applied", armed > request)
+        assertTrue("all of it happens BEFORE this session's SurfaceView exists", surface > armed && surface > withdraw)
+        assertTrue("only a solo session asks (a slot never does)", attach.substring(read, gate).contains("if (s.protocol == 2) {"))
         assertTrue("another attached session makes the boundary mid-session: nothing is asked", attach.contains("otherAttached"))
         assertTrue("the window is the FACE's (Activity or Presentation), never a guess", attach.contains("val window = host.window()"))
+        // The safety net: a Choreographer watch for the window, then the verdict on the UI thread; ONE revert path.
+        val verify = body(b, "private fun verifyPreferredMode(")
+        assertTrue(verify.contains("PreferredDisplayMode.verdict(p, activeNow, modeFrames.lastFrameNs, System.nanoTime())"))
+        assertTrue("a request already confirmed, reverted or withdrawn is left alone", verify.contains("if (PreferredDisplayMode.pending !== p)"))
+        assertTrue(verify.contains("revertPreferredMode(host, s, verdict)"))
+        val revert = body(b, "private fun revertPreferredMode(")
+        assertTrue("the revert blocks the automatic request for 24 h", revert.contains("Prefer60HzBlock.block(host.ctx, System.currentTimeMillis() + PreferredDisplayMode.BLOCK_MS, verdict)"))
+        assertTrue("the window write runs on the UI thread, the bookkeeping at once", revert.contains("if (Looper.myLooper() == Looper.getMainLooper()) revert.run() else main.post(revert)"))
+        assertEquals("exactly one caller of PreferredDisplayMode.revert", 1, Regex("PreferredDisplayMode\\.revert\\(").findAll(b).count())
+        assertEquals("exactly one block writer", 1, Regex("Prefer60HzBlock\\.block\\(").findAll(b).count())
+        // The first native frame after the request confirms it (updated); a stall before it is the switch's failure (stopSession).
+        assertTrue(body(b, "private fun updated(").contains("if (PreferredDisplayMode.confirm(host.face)) {"))
+        val stop = body(b, "private fun stopSession(")
+        assertTrue(stop.contains("reason in MODE_SWITCH_FAULTS && (s.modeReverted || PreferredDisplayMode.pending?.face == host.face)"))
+        assertTrue(stop.contains("REASON_DISPLAY_MODE_REVERTED"))
+        assertTrue("the re-grade happens before anything else in stopSession", stop.indexOf("MODE_SWITCH_FAULTS") < stop.indexOf("s.alive = false"))
+        assertEquals("display-mode-reverted", FaceVideoBox.REASON_DISPLAY_MODE_REVERTED)
+        assertTrue("… and that code is TRANSIENT on this side", NativeEndGrade.retries(FaceVideoBox.REASON_DISPLAY_MODE_REVERTED))
         // The one place the preferred mode id is ever written is the window half of DisplayModePolicy.kt.
         assertFalse(b.contains("preferredDisplayModeId"))
         val policy = code(read("src/main/java/com/educms/player/media/DisplayModePolicy.kt"))
@@ -217,10 +243,14 @@ class FaceVideoBoxContractTest {
         assertTrue("the Activity hands its window to face 0", code(activity).contains("window = { window }, operatorUiClear = ::nativeVideoUiClear"))
         assertTrue("a face Presentation hands its own window", code(read("src/main/java/com/educms/player/face/FacePresentation.kt")).contains("host.configure(root, window)"))
         assertTrue(h.contains("internal val window: () -> Window?"))
+        // The panel firmware facts are read-only: no sysfs write anywhere in the engine.
+        val device = code(read("src/main/java/com/educms/player/media/DeviceClassPolicy.kt"))
+        assertFalse(Regex("(writeText|outputStream|FileWriter|FileOutputStream)").containsMatchIn(device))
+        assertTrue(device.contains("if (!f.isFile || !f.canRead()) return@runCatching null"))
     }
 
     @Test
-    fun `experiment 4 acquires the vsync grid before the renderer exists, only on the default display, and releases it with the session`() {
+    fun `the vsync snap acquires the grid before the renderer exists, only on the default display, and releases it with the session`() {
         val b = code(box)
         val ready = body(b, "fun surfaceReady(")
         val gate = ready.indexOf("if (d.experiments.vsyncSnap && s.protocol == 2 && experiments.allows(NativeVideoExperiments.VSYNC_SNAP))")

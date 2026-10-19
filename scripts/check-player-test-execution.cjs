@@ -137,6 +137,17 @@ const REQUIRED = [
   { cls: 'com.educms.player.media.VsyncClockTest', min: 4 },
   { cls: 'com.educms.player.media.DisplayModePolicyTest', min: 3 },
   { cls: 'com.educms.player.media.KeepScreenOnContractTest', min: 2 },
+  // ── Defaults decided by the device (2026-10-18, 1.1.43) ──────────
+  // The automatic 60 Hz request (once per process, the persisted 24 h
+  // block, the safety-net verdict that reverts a switch nothing proved),
+  // the failure-grading table (an offline boot must never block native for
+  // a day — only a real fault of a verified file may), and the read-only,
+  // bounded panel-firmware facts. If these stop running, nothing in CI
+  // checks that a mode switch can be undone or that a network failure is
+  // not graded as a file fault.
+  { cls: 'com.educms.player.media.Prefer60HzPolicyTest', min: 3 },
+  { cls: 'com.educms.player.media.NativeEndGradeTest', min: 2 },
+  { cls: 'com.educms.player.media.SysDisplayFactsTest', min: 3 },
   // ── One download and one prompt per build (2026-10-17) ───────────
   // An Android 9 panel downloaded one update 48 times in 24 h. This class
   // pins the attempt rules (keep the verified APK, raise the dialog once,
