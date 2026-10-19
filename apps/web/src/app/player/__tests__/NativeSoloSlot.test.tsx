@@ -43,7 +43,7 @@ function mount(decision: FaceEngineDecision = NATIVE, extra: Partial<React.Compo
   const onEngineChange = jest.fn();
   const r = render(
     <NativeSoloSlot face={face} identity={identity} decision={decision} faceIndex={0} classes="slot"
-      onPlaying={onPlaying} onEngineChange={onEngineChange} log={() => undefined} {...extra} />,
+      onPlaying={onPlaying} onEngineChange={onEngineChange} holdRaised={() => false} log={() => undefined} {...extra} />,
   );
   return { face, onPlaying, onEngineChange, r };
 }
@@ -141,6 +141,38 @@ it('a transient end → native again; the 6th in 10 min settles the content on w
   reply = session('failed', 0, { reason: 'operator-ui', sessionId: '66666666-6666-4666-8666-666666666669' });
   await flush(500);
   expect(onEngineChange).toHaveBeenCalledTimes(1);
+  r.unmount();
+});
+
+it('never asks for a picture while the page holds an alert; asks once it clears (§7)', async () => {
+  let hold = true;
+  const { r } = mount(NATIVE, { holdRaised: () => hold });
+  await flush(2_000);
+  expect(intents()).toEqual([]);
+  hold = false;
+  await flush(500);
+  expect(intents()).toHaveLength(1);
+  r.unmount();
+});
+
+it('an end the app restores itself (operator UI / the hold) with the intent kept is NOT re-asked — no settle behind a long Back menu', async () => {
+  const { r, onEngineChange, onPlaying } = mount();
+  await flush();
+  reply = session('presenting', 3);
+  await flush(500);
+  expect(onPlaying).toHaveBeenCalledTimes(1);
+  fired.length = 0;
+  // The app ended it for its own UI and keeps the intent, suspended.
+  reply = { ...session('failed', 0, { reason: 'operator-ui', sessionId: '77777777-7777-4777-8777-777777777777' }), intent: { ...identity, suspended: 'operator-ui' } };
+  for (let i = 0; i < 30; i++) await flush(1_000);
+  expect(intents()).toEqual([]);
+  expect(onEngineChange).not.toHaveBeenCalled();
+  // The UI closes: the app restores the same identity — picked up, no second onPlaying.
+  reply = session('presenting', 9, { sessionId: '88888888-8888-4888-8888-888888888888' });
+  await flush(500);
+  expect(intents()).toEqual([]);
+  expect(onPlaying).toHaveBeenCalledTimes(1);
+  expect(r.container.querySelector('[data-native-first]')?.getAttribute('data-native-first')).toBe('presenting');
   r.unmount();
 });
 

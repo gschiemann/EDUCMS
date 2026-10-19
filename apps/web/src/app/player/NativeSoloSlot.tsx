@@ -7,6 +7,7 @@ import { nativeFirstEndNext, NativeTransientEnds } from "./nativeEndReasons";
 import { reconcileFace, sessionHasFreshFrame, sessionMatches, type NativeFirstFacts, type NativeIntentIdentity } from "./nativeFirst";
 import type { NativeFirstFace } from "./nativeFirstFace";
 import { blockNativeVideo, nativeSharedVideoEvidence } from "./nativeSharedVideo";
+import { displayEmergencyHoldRaised } from "./emergencyHold";
 
 /**
  * NATIVE-FIRST SLOT (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.2) —
@@ -49,6 +50,13 @@ export const NATIVE_FIRST_WAIT_RETRY_MS = 30_000;
 export const NATIVE_FIRST_AGAIN_MS = 1_000;
 /** A boundary switch / release lands at the presenting clip's loop end, bounded (today's hand-off wait). */
 export const NATIVE_FIRST_BOUNDARY_MAX_MS = 60_000;
+/**
+ * Transient ends whose cause the APP clears and restores from (§4.2: the
+ * hold, the operator UI, the lifecycle). While the app keeps this face's
+ * intent the page does not ask again — it would only be refused, counted,
+ * and settle a healthy content on web behind a long Back menu.
+ */
+export const APP_RESTORES: ReadonlySet<string> = new Set(["emergency-held", "operator-ui", "activity-paused", "lifecycle-not-ready", "page-stopped"]);
 
 function localStore(): Storage | null {
   try {
@@ -66,6 +74,7 @@ export function NativeSoloSlot({
   classes,
   onPlaying,
   onEngineChange,
+  holdRaised = displayEmergencyHoldRaised,
   log = (line: string) => console.warn(line),
 }: {
   face: NativeFirstFace;
@@ -77,12 +86,15 @@ export function NativeSoloSlot({
   onPlaying(): void;
   /** A block, a settle or a refusal: the page must decide this face again. */
   onEngineChange(): void;
+  /** Whether the page last asked the device to HOLD (emergencyHold.ts) — never intend under it. */
+  holdRaised?: () => boolean;
   log?: (line: string) => void;
 }) {
   const identityKey = `${identity.screenId}|${identity.revision}|${identity.sha256}|${identity.assetId}`;
   const contentKey = NativeTransientEnds.key(faceIndex, identity.sha256);
-  const [attempt, setAttempt] = useState(0);
   const [stage, setStage] = useState<"waiting" | "starting" | "presenting">("waiting");
+  const holdRaisedRef = useRef(holdRaised);
+  holdRaisedRef.current = holdRaised;
   const playing = useRef(onPlaying);
   playing.current = onPlaying;
   const engineChange = useRef(onEngineChange);
@@ -111,86 +123,115 @@ export function NativeSoloSlot({
     }
     const owner = {};
     let alive = true;
+    // A block / settle / refusal handed the face back to the page.
+    let stopped = false;
     let sent = false;
-    let sawOurs = false;
     let reported = false;
-    let ended = false;
+    let phase: "starting" | "presenting" | "awaiting" = "starting";
     let startedAt = Date.now();
-    // A `failed` state that was already there when this attempt intended is
-    // the PREVIOUS attempt's end — never this one's.
+    let awaitSince = 0;
+    let awaitReason: string | undefined;
+    let awaitNext: "native" | "wait" = "native";
+    // A `failed` state that was already there when this attempt intended, or
+    // that was already graded, is never graded (again).
     let staleSession = "";
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastEnded = "";
     const ownCopy = decision.reason === "own-copy";
     let budget = ownCopy ? NATIVE_FIRST_OWN_COPY_BUDGET_MS : NATIVE_FIRST_START_BUDGET_MS;
     nativeSharedVideoEvidence.select(owner);
 
     const send = (facts: NativeFirstFacts | null) => {
-      if (!alive || sent) return;
+      if (!alive || sent || stopped) return;
+      // Never ask the app for a picture while the page holds an alert (§7).
+      if (holdRaisedRef.current()) return;
       const action = reconcileFace(facts, { kind: "native", identity, verified: true }, false);
+      let boundary = false;
       if (action.kind === "adopt") sent = face.intend(action.identity, "boundary");
-      else if (action.kind === "intend") sent = face.intend(action.identity, action.start);
-      // A boundary switch waits for the presenting clip's loop end (the app bounds it at 60 s).
-      if (sent && action.kind === "intend" && action.start === "boundary") budget += NATIVE_FIRST_BOUNDARY_MAX_MS;
+      else if (action.kind === "intend") { sent = face.intend(action.identity, action.start); boundary = action.start === "boundary"; }
       if (sent) {
         startedAt = Date.now();
+        // A boundary switch waits for the presenting clip's loop end (the app bounds it at 60 s).
+        budget = (ownCopy ? NATIVE_FIRST_OWN_COPY_BUDGET_MS : NATIVE_FIRST_START_BUDGET_MS) + (boundary ? NATIVE_FIRST_BOUNDARY_MAX_MS : 0);
         staleSession = facts?.session?.state === "failed" ? facts.session.sessionId : "";
+        phase = "starting";
         setStage("starting");
       }
     };
-    const again = (ms: number) => {
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => { if (alive) setAttempt((n) => n + 1); }, ms);
-    };
-    const end = (reason: string | undefined) => {
-      if (!alive || ended) return;
-      ended = true;
+    const end = (reason: string | undefined, sessionId: string) => {
+      if (!alive || stopped) return;
+      if (sessionId) lastEnded = sessionId;
       const settled = face.ends.ended(contentKey, reason, Date.now());
       const next = nativeFirstEndNext({ reason, settled });
       logRef.current(`[Player] PLAYER_NATIVE_FIRST_END reason=${reason && /^[a-z0-9-]{1,64}$/.test(reason) ? reason : "none"} next=${next}` +
         ` face=${faceIndex} sha=${identity.sha256.slice(0, 8)}${next === "block" || next === "settle" || next === "web" ? " (web fallback)" : ""}`);
       nativeSharedVideoEvidence.clear(owner);
       if (next === "block") {
+        stopped = true;
         blockNativeVideo(localStore(), identity.sha256, faceIndex, Date.now());
         engineChange.current();
       } else if (next === "settle" || next === "web") {
+        stopped = true;
         face.ends.settle(contentKey);
         engineChange.current();
-      } else if (next === "wait") {
-        // With an active store the page re-decides when the store lists the
-        // file again (decideFaceEngine → wait → native); with none, retry.
-        again(NATIVE_FIRST_WAIT_RETRY_MS);
       } else {
-        again(NATIVE_FIRST_AGAIN_MS);
+        // native again / wait: watch, and ask again only when it is time (resume).
+        phase = "awaiting";
+        awaitSince = Date.now();
+        awaitReason = reason;
+        awaitNext = next === "wait" ? "wait" : "native";
+        setStage("starting");
       }
     };
+    // Native again, at the next start — never while the page holds an alert,
+    // never over an intent the app KEPT for a cause it restores itself (the
+    // hold, the operator UI, the lifecycle: §4.2), and a not-ready end only
+    // once the store lists the file again (or, with no store, after 30 s).
+    const resume = (facts: NativeFirstFacts) => {
+      if (holdRaisedRef.current()) return;
+      const kept = !!facts.intent && facts.intent.sha256 === identity.sha256 && facts.intent.revision === identity.revision;
+      if (kept && (facts.intent?.suspended || (awaitReason && APP_RESTORES.has(awaitReason)))) return;
+      const elapsed = Date.now() - awaitSince;
+      if (awaitNext === "wait") {
+        const store = facts.store?.mode === "active" ? facts.store : null;
+        if (store ? store.ready.indexOf(identity.sha256) === -1 : elapsed < NATIVE_FIRST_WAIT_RETRY_MS) return;
+      } else if (elapsed < NATIVE_FIRST_AGAIN_MS) return;
+      sent = false;
+      nativeSharedVideoEvidence.select(owner);
+      send(facts);
+    };
     const onFacts = (facts: NativeFirstFacts | null) => {
-      if (!alive || ended) return;
-      if (!sent) send(facts);
-      if (!sent || !facts) return;
-      const s = facts.session && !(facts.session.state === "failed" && facts.session.sessionId === staleSession) ? facts.session : null;
-      if (s && sessionMatches(s, identity)) {
-        const fresh = sessionHasFreshFrame(s);
-        nativeSharedVideoEvidence.update(owner, s, fresh, Date.now());
-        if (s.state === "failed") { end(s.reason); return; }
-        if (fresh) {
-          sawOurs = true;
-          if (!reported) {
-            reported = true;
-            setStage("presenting");
-            playing.current();
-          }
-          return;
+      if (!alive || stopped) return;
+      if (!sent && phase !== "awaiting") send(facts);
+      if (!facts) return;
+      const raw = facts.session;
+      const s = raw && !(raw.state === "failed" && (raw.sessionId === staleSession || raw.sessionId === lastEnded)) ? raw : null;
+      const ours = !!s && sessionMatches(s, identity);
+      if (ours && s!.state === "presenting" && sessionHasFreshFrame(s)) {
+        // On the glass — first start, an adopted session, or one the app restored after an alert / the operator UI.
+        nativeSharedVideoEvidence.update(owner, s!, true, Date.now());
+        if (phase !== "presenting") {
+          phase = "presenting";
+          setStage("presenting");
+          if (!reported) { reported = true; playing.current(); }
         }
-        if (sawOurs || Date.now() - startedAt <= budget) return;
-        end(undefined);
         return;
       }
-      // Our session was on the glass and is gone, and nobody here asked:
-      // the app ended it (a reason, when it gave one, rides on `failed`).
-      if (sawOurs) { end(s?.reason); return; }
+      if (phase === "awaiting") { resume(facts); return; }
+      if (!sent) return;
+      if (ours) {
+        nativeSharedVideoEvidence.update(owner, s!, false, Date.now());
+        if (s!.state === "failed") { end(s!.reason, s!.sessionId); return; }
+        // Still ours with a momentarily stale frame: the app grades a real
+        // stall itself (`output-stalled`, 8 s). Before the first frame, the budget.
+        if (phase === "presenting" || Date.now() - startedAt <= budget) return;
+        end(undefined, "");
+        return;
+      }
+      // Our session was on the glass and is gone, and nobody here asked.
+      if (phase === "presenting") { end(s?.reason, s?.sessionId ?? ""); return; }
       // Never started within its budget → a transient end (native again;
       // repeated → settle on web). Never a verdict on the file by itself.
-      if (Date.now() - startedAt > budget) end(undefined);
+      if (Date.now() - startedAt > budget) end(undefined, "");
     };
     const unsubscribe = face.subscribe(onFacts);
     if (face.facts) onFacts(face.facts);
@@ -198,12 +239,11 @@ export function NativeSoloSlot({
     return () => {
       alive = false;
       unsubscribe();
-      if (timer !== null) clearTimeout(timer);
       nativeSharedVideoEvidence.clear(owner);
     };
     // The identity key carries every field of the identity; callbacks do not restart a session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [face, identityKey, decision.engine, decision.reason, decision.yieldTo, attempt, contentKey, faceIndex]);
+  }, [face, identityKey, decision.engine, decision.reason, decision.yieldTo, contentKey, faceIndex]);
 
   return (
     <div
