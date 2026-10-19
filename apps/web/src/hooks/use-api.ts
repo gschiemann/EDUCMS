@@ -4132,6 +4132,173 @@ export function useCompSeats() {
   });
 }
 
+// ─── Field builds (/super/field-builds, 2026-10-18) ─────────────
+// A private field build of the player is offered only to a screen inside a
+// window (organisations + screens, ≤ 24 h) and only after a push to that
+// screen. SUPER_ADMIN only on the server (apps/api/src/field-builds); these
+// hooks are enabled only for an owner.
+
+export type FieldBuildMirrorState = 'present' | 'missing' | 'size-mismatch' | 'unconfigured' | 'unknown';
+export interface FieldBuildCandidate {
+  versionName: string;
+  versionCode: number;
+  sha256: string;
+  size: number;
+  sourceUrl: string;
+  allowed: boolean;
+  blockedReason: string | null;
+  mirror: { state: FieldBuildMirrorState; httpStatus?: number; checkedAt: string };
+}
+export interface FieldBuildWindow {
+  id: string;
+  candidate: string;
+  candidateSha256: string;
+  versionCode: number | null;
+  tenants: Array<{ id: string; name: string | null }>;
+  allScreens: boolean;
+  screenIds: string[];
+  armedAt: string;
+  expiresAt: string;
+  armedBy: { userId: string | null; email: string | null };
+  cancelledAt: string | null;
+  cancelledBy: { userId: string | null; email: string | null } | null;
+  note: string | null;
+  state: 'active' | 'cancelled' | 'expired';
+  pushReadyAt: string;
+}
+export interface FieldBuildWindows {
+  now: string;
+  effective: 'window' | 'variables' | 'none';
+  active: FieldBuildWindow | null;
+  windows: FieldBuildWindow[];
+  variables: {
+    configured: boolean;
+    candidate: string | null;
+    tenantIds: string[];
+    screens: 'all' | string[];
+    expiresAt: string | null;
+    live: boolean;
+  };
+  limits: { minMinutes: number; maxMinutes: number; maxPushScreens: number; pushSettleMs: number; gateTtlMs: number };
+}
+export interface FieldBuildScreen {
+  id: string;
+  name: string;
+  tenantId: string;
+  tenantName: string | null;
+  status: string;
+  online: boolean;
+  lastPingAt: string | null;
+  playerVersion: string | null;
+  playerVersionCode: number | null;
+  playerVersionAt: string | null;
+  forceApkUpdatePendingAt: string | null;
+  forceApkUpdateHold: string | null;
+  forceApkUpdateHoldAt: string | null;
+  forceApkUpdateHoldReason: string | null;
+  forceApkUpdateOfferCount: number;
+  forceApkUpdateLastOfferAt: string | null;
+  forceApkUpdateTargetVersion: string | null;
+}
+export interface FieldBuildArmInput {
+  candidate: string;
+  tenantIds: string[];
+  screens: 'all' | string[];
+  durationMinutes: number;
+  note?: string;
+}
+export interface FieldBuildPushResult {
+  screenId: string;
+  name: string;
+  armed: boolean;
+  published: boolean;
+  corrId: string;
+  pushAt: string;
+}
+
+/** The registered field builds, with whether each one's private copy is in storage. */
+export function useFieldBuildCandidates(enabled: boolean) {
+  return useQuery<{ candidates: FieldBuildCandidate[] }>({
+    queryKey: ['field-builds', 'candidates'],
+    enabled,
+    queryFn: () => apiFetch('/super/field-builds/candidates'),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * The open window, recent history and the variables' window. Re-read every
+ * 30 s while the page is visible so a cancel or an expiry elsewhere shows up;
+ * never in the background (mobile-perf rule 1).
+ */
+export function useFieldBuildWindows(enabled: boolean) {
+  return useQuery<FieldBuildWindows>({
+    queryKey: ['field-builds', 'windows'],
+    enabled,
+    queryFn: () => apiFetch('/super/field-builds/windows'),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Screens of the listed organisations — names, reported player versions, push
+ * state. `live` re-reads every 15 s (visible only) so a pushed screen's new
+ * version appears while the page is open.
+ */
+export function useFieldBuildScreens(tenantIds: string[], opts: { enabled: boolean; live?: boolean }) {
+  const ids = [...tenantIds].sort();
+  return useQuery<{ screens: FieldBuildScreen[]; unreachable: string[] }>({
+    queryKey: ['field-builds', 'screens', ids.join(',')],
+    enabled: opts.enabled && ids.length > 0,
+    queryFn: () => apiFetch(`/super/field-builds/screens?tenantIds=${encodeURIComponent(ids.join(','))}`),
+    refetchInterval: opts.live ? 15_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: !!opts.live,
+  });
+}
+
+export function useArmFieldWindow() {
+  const qc = useQueryClient();
+  return useMutation<FieldBuildWindow, Error & { code?: string }, FieldBuildArmInput>({
+    mutationFn: (body) => apiFetch('/super/field-builds/windows', { method: 'POST', body: JSON.stringify(body) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['field-builds'] }),
+  });
+}
+
+export function useCancelFieldWindow() {
+  const qc = useQueryClient();
+  return useMutation<
+    { window: FieldBuildWindow; cancelled: boolean; pushesCancelled: string[] },
+    Error & { code?: string },
+    { id: string; reason?: string }
+  >({
+    mutationFn: ({ id, reason }) =>
+      apiFetch(`/super/field-builds/windows/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['field-builds'] }),
+  });
+}
+
+export function usePushFieldWindow() {
+  const qc = useQueryClient();
+  return useMutation<
+    { results: FieldBuildPushResult[] },
+    Error & { code?: string; body?: { retryAfterMs?: number } },
+    { id: string; screenIds: string[]; overrideWindow: boolean }
+  >({
+    mutationFn: ({ id, screenIds, overrideWindow }) =>
+      apiFetch(`/super/field-builds/windows/${encodeURIComponent(id)}/push`, {
+        method: 'POST',
+        body: JSON.stringify({ screenIds, overrideWindow }),
+      }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['field-builds', 'screens'] }),
+  });
+}
+
 // ─── Auto-update player (OTA gating, 2026-04-27) ─────────────────
 //
 // When OFF (default), paired Android players DO NOT auto-update
