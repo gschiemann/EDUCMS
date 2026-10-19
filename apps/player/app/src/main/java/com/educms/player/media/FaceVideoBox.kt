@@ -849,6 +849,8 @@ internal object FaceVideoBox {
         synchronized(this) {
             val host = s.host
             if (!live(host, s) || s.state != "ready") return
+            // §7 E2: not even a hidden pre-roll decoder starts under a hold.
+            if (DisplayEmergency.isHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
             if (s.key == NEXT) {
                 // PRE-ROLL: the decoder starts now and its first frame is HELD on a surface parked beyond
                 // the display (static) or beneath the opaque window (dynamic); prerollHeld() arms the swap.

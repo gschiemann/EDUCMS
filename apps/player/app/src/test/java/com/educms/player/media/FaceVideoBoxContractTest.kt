@@ -319,6 +319,9 @@ class FaceVideoBoxContractTest {
         val start = body(b, "private fun startNow(")
         assertTrue(start.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
         assertTrue("opaque black, set-to-known-value", start.contains("host.web.setBackgroundColor(Color.BLACK)"))
+        val ready = body(b, "private fun v4Ready(")
+        assertTrue("not even a hidden pre-roll decoder starts under a hold",
+            ready.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until ready.indexOf("s.renderer?.start()"))
         // Experiment 1 can never hide the WebView under a v4 session (it may outlive its page).
         val updated = body(b, "private fun updated(")
         val hide = updated.indexOf("host.web.visibility = View.INVISIBLE")
