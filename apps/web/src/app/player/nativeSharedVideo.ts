@@ -1,3 +1,5 @@
+import { gradeNativeEnd, NATIVE_END_LEGACY_GRADES, NATIVE_END_TAKEOVER_BLOCKS, NATIVE_END_TRANSIENT } from "./nativeEndReasons";
+
 /** Optional, explicitly scoped renderer. Identity goes to native; URLs and tokens never do. */
 export interface NativeSharedVideoDescriptor {
   version: 1;
@@ -654,69 +656,36 @@ export function pickNativeVideo(input: {
 
 /**
  * End reasons that say nothing about THIS file on THIS box — the page tries
- * native again later. Must match `FaceVideoPolicy.transient` in the APK.
+ * native again later. Derived from the ONE closed table (nativeEndReasons.ts,
+ * phase 0 / D7, generated from the APK's NativeEndReasons.kt) plus the
+ * transient codes older APKs emit outside it. Never edit a list here: edit the
+ * table, which a test holds identical to the Kotlin.
  */
 export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
-  "emergency-held",
-  "activity-paused",
-  "host-detached",
-  "document-retired",
-  "content-changed",
-  "peer-stopped",
-  "page-stopped",
-  "engine-switched",
-  "page-lease-expired",
-  // The device credential rotated while native was preparing (the page
-  // renews its token on reload / every few minutes). Native re-reads it on
-  // the next attempt — never a verdict on the file (field 2026-10-12: M43 +
-  // L55VEC were blocked for 24 h by exactly this, seconds after a reload).
-  "credential-changed",
-  // 1.1.43 (failure grading, phase 0): the rest of the APK's TRANSIENT set.
-  "session-retired",
-  "selection-changed",
-  "superseded",
-  "skipped",
-  "hold-expired",
-  "decoder-budget",
-  "decoder-unavailable",
-  "output-detached",
-  // The safety net reverted a 60 Hz mode switch nothing proved; native is tried again at the panel's own mode.
-  "display-mode-reverted",
+  ...Array.from(NATIVE_END_TRANSIENT),
+  ...Object.keys(NATIVE_END_LEGACY_GRADES).filter((k) => NATIVE_END_LEGACY_GRADES[k] === "transient"),
 ]);
 
 /**
- * FAILURE GRADING, PHASE 0 (1.1.43; docs/design/NATIVE-FIRST-ONE-STORE.md §3.4,
- * owner decision D7). The APK's `NativeEndGrade` table, kept identical here
- * (a test reads FaceVideoPolicy.kt and fails when the two drift):
+ * FAILURE GRADING, PHASE 0 (docs/design/NATIVE-FIRST-ONE-STORE.md §3.4, owner
+ * decision D7) — the closed table's grade, under the names this page's
+ * protocol 2/3 code has always used (`box` = the table's `refused`):
  *  • transient — the box, the page or the content moved on;
- *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed: an
- *    offline boot (`authorization-failed`), a 5xx, a timeout, a short
- *    download, a full disk, a token that changed. NEVER a verdict on the file
- *    — before this, an offline boot blocked native for a day;
- *  • box — a verdict about this box or this layout: web for this document,
- *    no retry, no block;
+ *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed (an
+ *    offline boot, a 5xx, a timeout, a short download, a full disk, a token
+ *    that changed). NEVER a verdict on the file — before this, an offline
+ *    boot blocked native for a day;
+ *  • box — a verdict about this box or this layout: web, no retry, no block;
  *  • fault — a real fault of a VERIFIED file on this decoder: the 24 h block.
  * A code in no set is a fault: fail closed on the unknown.
  */
-export const NATIVE_VIDEO_NOT_READY_REASONS: ReadonlySet<string> = new Set([
-  "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",
-  "manifest-unreachable", "timeout", "source-failed", "media-redirect", "media-incomplete", "media-size", "media-publish",
-  "media-cache-unavailable", "media-cache-corrupt", "media-cache-quota", "media-missing", "media-origin", "not-in-store",
-  "store-full",
-]);
-export const NATIVE_VIDEO_NOT_READY_PREFIXES: readonly string[] = ["manifest-http-", "media-http-", "descriptor-"];
-export const NATIVE_VIDEO_BOX_REASONS: ReadonlySet<string> = new Set(["composition-unavailable", "protocol3-disabled", "zone-overlap", "protocol"]);
-export const NATIVE_VIDEO_FAULT_REASONS: ReadonlySet<string> = new Set([
-  "codec-failed", "codec-stalled", "codec-input", "codec-not-prepared", "hardware-codec-unavailable", "output-stalled",
-  "output-unavailable", "media-digest", "avc-track", "coded-size", "container-rotation", "empty-lap", "native-prepare",
-]);
 export type NativeVideoEndGrade = "transient" | "not-ready" | "box" | "fault";
 export function nativeVideoEndGrade(reason: string | undefined | null): NativeVideoEndGrade {
-  if (!reason) return "transient";
-  if (NATIVE_VIDEO_TRANSIENT_REASONS.has(reason)) return "transient";
-  if (NATIVE_VIDEO_NOT_READY_REASONS.has(reason) || NATIVE_VIDEO_NOT_READY_PREFIXES.some((p) => reason.startsWith(p))) return "not-ready";
-  if (NATIVE_VIDEO_BOX_REASONS.has(reason)) return "box";
-  return "fault";
+  // A pre-store APK's digest mismatch repeats on every retry (no quarantine):
+  // on this protocol 2/3 takeover path it still blocks (NATIVE_END_TAKEOVER_BLOCKS).
+  if (reason && NATIVE_END_TAKEOVER_BLOCKS.has(reason)) return "fault";
+  const grade = gradeNativeEnd(reason);
+  return grade === "refused" ? "box" : grade;
 }
 export const NATIVE_VIDEO_RETRY_MS = 30_000;
 export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;

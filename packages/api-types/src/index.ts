@@ -1141,3 +1141,9 @@ export * from './playback-capability';
 // set, the operator's desired values, and the unit's acknowledgements, shared
 // by the API (heartbeat + PUT) and the dashboard (one state rule for both).
 export * from './device-settings';
+
+// Native end reasons (2026-10-19, native-first phase 0 / D7) — the closed set
+// of reasons a native video session ends with, and what each means next.
+// Generated from the APK table (NativeEndReasons.kt); the player page keeps a
+// dependency-free mirror held identical by a parity test.
+export * from './native-end-reasons';
