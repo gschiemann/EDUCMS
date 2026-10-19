@@ -682,6 +682,8 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "output-detached",
   // The safety net reverted a 60 Hz mode switch nothing proved; native is tried again at the panel's own mode.
   "display-mode-reverted",
+  // The face's host WebView was replaced (a renderer crash recreates it): never a verdict on the file.
+  "host-replaced",
 ]);
 
 /**

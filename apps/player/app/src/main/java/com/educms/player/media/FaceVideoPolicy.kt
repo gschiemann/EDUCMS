@@ -171,6 +171,10 @@ internal object NativeEndGrade {
         "page-stopped", "engine-switched", "page-lease-expired", "credential-changed", "session-retired", "selection-changed",
         "superseded", "skipped", "hold-expired", "decoder-budget", "decoder-unavailable", "output-detached",
         "display-mode-reverted",
+        // The face's host WebView was replaced — a renderer crash recreates it and FaceVideoBox.attach ends the
+        // old host's sessions: the box moved on, never a verdict on the file. No parentheses in this list: the
+        // page's drift test reads it up to the closing one.
+        "host-replaced",
     )
     val NOT_READY: Set<String> = setOf(
         "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",

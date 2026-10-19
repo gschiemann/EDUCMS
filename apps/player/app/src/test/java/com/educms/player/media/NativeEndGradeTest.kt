@@ -20,7 +20,7 @@ class NativeEndGradeTest {
         "credential-changed" to Grade.TRANSIENT, "session-retired" to Grade.TRANSIENT, "selection-changed" to Grade.TRANSIENT,
         "superseded" to Grade.TRANSIENT, "skipped" to Grade.TRANSIENT, "hold-expired" to Grade.TRANSIENT,
         "decoder-budget" to Grade.TRANSIENT, "decoder-unavailable" to Grade.TRANSIENT, "output-detached" to Grade.TRANSIENT,
-        "display-mode-reverted" to Grade.TRANSIENT,
+        "display-mode-reverted" to Grade.TRANSIENT, "host-replaced" to Grade.TRANSIENT,
         // Network, storage, authorization, manifest: never a verdict on the file.
         "authorization-failed" to Grade.NOT_READY, "credential-missing" to Grade.NOT_READY, "credential-identity" to Grade.NOT_READY,
         "api-root" to Grade.NOT_READY, "api-origin" to Grade.NOT_READY, "manifest-http-500" to Grade.NOT_READY,
@@ -64,6 +64,23 @@ class NativeEndGradeTest {
         // A short download is the network's (`media-incomplete`); only a full-length body with the wrong digest is the file's.
         assertEquals(Grade.NOT_READY, NativeEndGrade.grade("media-incomplete"))
         assertEquals(Grade.FAULT, NativeEndGrade.grade("media-digest"))
+    }
+
+    @Test fun aWebViewCrashThatReplacesTheHostRestartsNativeAndNeverBlocks() {
+        // A renderer crash recreates the face's WebView, and FaceVideoBox.attach ends every session of the old host
+        // `host-replaced`. Ungraded, that fell into FAULT: one plain WebView crash blocked native on the file for a
+        // day. It is the box moving on — retried like any transient end, never a block.
+        assertEquals(Grade.TRANSIENT, NativeEndGrade.grade("host-replaced"))
+        assertTrue(NativeEndGrade.retries("host-replaced"))
+        assertTrue(FaceVideoPolicy.transient("host-replaced"))
+        assertFalse("a WebView crash must never block native on the file for a day", NativeEndGrade.blocks("host-replaced"))
+        // … and it is the very code the engine emits on a host replacement.
+        val box = generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+            .flatMap { sequenceOf(java.io.File(it, "src/main/java/com/educms/player/media/FaceVideoBox.kt"),
+                java.io.File(it, "app/src/main/java/com/educms/player/media/FaceVideoBox.kt")) }
+            .firstOrNull { it.isFile }
+        org.junit.Assume.assumeTrue("FaceVideoBox.kt not on disk", box != null)
+        assertTrue(box!!.readText().contains("stopSession(old, it, \"host-replaced\")"))
     }
 
     @Test fun theUnknownFailsClosedAndTheSetsAreDisjoint() {

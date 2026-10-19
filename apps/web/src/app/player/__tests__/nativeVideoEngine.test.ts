@@ -11,6 +11,7 @@ import {
   NATIVE_VIDEO_NOT_READY_PREFIXES,
   NATIVE_VIDEO_NOT_READY_REASONS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
+  nativeVideoEndGrade,
   pickNativeVideo,
   readNativeVideoDescriptor,
   readNativeVideoProtocol,
@@ -26,6 +27,7 @@ import {
   nativeVideoBlockedLine,
 } from "../nativeSharedVideo";
 import { nativeVideoNext } from "../NativeDualVideo";
+import { nativeZoneNext } from "../nativeZones";
 
 const screen = "40864836-9367-47a3-b349-ba1c3378f814";
 const tenant = "28d09f9d-0a6c-4828-b46d-38712eb69f1f";
@@ -220,6 +222,26 @@ describe("what a native end means next", () => {
     expect(nativeVideoNext(2, "media-digest", 0)).toBe("block");
     expect(nativeVideoNext(2, "a-code-nobody-graded", 0)).toBe("block"); // the unknown fails closed
     expect(nativeVideoNext(1, "authorization-failed", 0)).toBe("stay"); // protocol 1 is unchanged
+  });
+  it("1.1.43: `host-replaced` (a WebView renderer crash recreated the face's host) restarts native and never writes a 24 h block", () => {
+    // Ungraded it was a fault: one plain WebView crash blocked native on the file for a day.
+    expect(nativeVideoEndGrade("host-replaced")).toBe("transient");
+    expect(nativeVideoNext(2, "host-replaced", 0)).toBe("retry");
+    expect(nativeZoneNext("host-replaced", 0)).toBe("retry");
+    for (const attempt of [0, 5, 19]) for (const onGlass of [false, true]) {
+      expect(nativeVideoNext(2, "host-replaced", attempt, onGlass)).not.toBe("block");
+      expect(nativeVideoNext(2, "host-replaced", attempt, onGlass, true)).not.toBe("block");
+      expect(nativeZoneNext("host-replaced", attempt, onGlass)).not.toBe("block");
+    }
+    // A block is written only on a "block" answer — the one call site in each engine.
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    for (const file of ["NativeDualVideo.tsx", "NativeZoneVideo.tsx"]) {
+      const src = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+      const calls = src.split("\n").filter((l) => /\bblockNativeVideo\(/.test(l));
+      expect({ file, calls: calls.length, guarded: calls.every((l) => l.includes('if (next === "block") blockNativeVideo(')) })
+        .toEqual({ file, calls: 1, guarded: true });
+    }
   });
   it("the page's grading table is exactly the APK's (NativeEndGrade in FaceVideoPolicy.kt)", () => {
     const fs = jest.requireActual("fs") as typeof import("fs");
