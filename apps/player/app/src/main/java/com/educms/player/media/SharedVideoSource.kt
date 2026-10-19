@@ -121,7 +121,11 @@ internal class SharedVideoSource(private val ctx: Context) {
                             }
                             output.fd.sync()
                         } }
-                        require(count == size && hex(digest.digest()) == sha256) { "media-digest" }
+                        // A short body is the NETWORK's failure (a cut connection, a proxy that gave up):
+                        // `media-incomplete`, retried. Only a full-length body whose digest is not the
+                        // manifest's is a verdict on the file: `media-digest`.
+                        require(count == size) { "media-incomplete" }
+                        require(hex(digest.digest()) == sha256) { "media-digest" }
                         finished = true
                         null
                     }

@@ -117,6 +117,8 @@ export interface NativeVideoTiming {
   clockSlewUs?: number;
   vsyncPeriodUs?: number;
   vsyncSamples?: number;
+  /** 1.1.43 — the grid-sized release lead (µs) the session ran with: 0.8 P on a 30 Hz grid, 0.5 P on 60 Hz. */
+  releaseLeadUs?: number;
   /** 1.1.42 — every mode the panel offers (`modeId:WxH@Hz`, ≤ 16, read when the session attached), and experiment 5's request. */
   supportedModes?: string[];
   preferredModeApplied?: number;
@@ -138,6 +140,7 @@ export interface NativeTimingHistoryEntry {
   clockSlewUs?: number;
   vsyncPeriodUs?: number;
   vsyncSamples?: number;
+  releaseLeadUs?: number;
   preferredModeApplied?: number;
   keepScreenOn?: boolean;
   uptimeMs?: number;
@@ -193,6 +196,9 @@ export interface NativeDeviceClass {
   refreshRate?: number;
   activeMode?: string;
   supportedModes?: string[];
+  /** 1.1.43 — what the panel FIRMWARE lists (sysfs, read-only, bounded): the mode in force and the capability table. */
+  sysDisplayMode?: string;
+  sysDisplayCaps?: string[];
 }
 
 export interface NativeExperimentFlags {
@@ -219,7 +225,9 @@ const NATIVE_TIMING_BASE_KEYS = ["decodedFrames", "submittedFrames", "lateFrames
 const NATIVE_TIMING_COUNT_KEYS = ["droppedFrames", "intervalUnitNs", "intervalCount", "intervalMinNs", "intervalMaxNs",
   "intervalLastNs", "intervalMeanNs",
   // 1.1.42
-  "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied"] as const;
+  "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied",
+  // 1.1.43
+  "releaseLeadUs"] as const;
 /** 1.1.41's and 1.1.42's timing keys — the ones an older API's strict schema refuses (telemetry.ts holds them back after a 400). */
 export const NATIVE_TIMING_EXTRA_KEYS: readonly string[] = [
   ...NATIVE_TIMING_COUNT_KEYS, "sourceFps", "refreshRate", "displayMode", "intervalBuckets", "history",
@@ -267,7 +275,7 @@ function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
   const e: NativeTimingHistoryEntry = { at: v.at };
   for (const k of ["uptimeMs", "elapsedMs", "decodedFrames", "submittedFrames", "lateFrames", "maxLateUs", "maxSubmitGapMs",
     "droppedFrames", "loops", "uniqueFrames", "bootCount",
-    "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied"] as const) if (count(v[k])) e[k] = v[k];
+    "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied", "releaseLeadUs"] as const) if (count(v[k])) e[k] = v[k];
   if (signedCount(v.clockSlewUs)) e.clockSlewUs = v.clockSlewUs;
   if (typeof v.vsyncSnap === "boolean") e.vsyncSnap = v.vsyncSnap;
   if (typeof v.prefer60hz === "string" && CODE_RE.test(v.prefer60hz)) e.prefer60hz = v.prefer60hz;
@@ -345,8 +353,15 @@ export function readNativeDeviceClass(v: unknown): NativeDeviceClass | null {
   if (typeof v.activeMode === "string" && (v.activeMode === "" || DISPLAY_MODE_RE.test(v.activeMode))) d.activeMode = v.activeMode;
   const modes = readSupportedModes(v.supportedModes);
   if (modes) d.supportedModes = modes;
+  // 1.1.43: the firmware's own strings, already stripped by the APK; bounded again here, anything else dropped.
+  if (typeof v.sysDisplayMode === "string" && SYS_DISPLAY_MODE_RE.test(v.sysDisplayMode)) d.sysDisplayMode = v.sysDisplayMode;
+  if (Array.isArray(v.sysDisplayCaps) && v.sysDisplayCaps.length <= NATIVE_MAX_SYS_DISPLAY_CAPS &&
+    v.sysDisplayCaps.every((c) => typeof c === "string" && SYS_DISPLAY_CAP_RE.test(c))) d.sysDisplayCaps = v.sysDisplayCaps.slice() as string[];
   return d;
 }
+export const NATIVE_MAX_SYS_DISPLAY_CAPS = 16;
+const SYS_DISPLAY_MODE_RE = /^[A-Za-z0-9:_.*+/@-]{1,48}$/;
+const SYS_DISPLAY_CAP_RE = /^[A-Za-z0-9:_.*+/@-]{1,32}$/;
 
 const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"] as const;
 const GUARDED = ["webviewInvisible", "surfaceFrameRate", "vsyncSnap", "prefer60hz"] as const;
@@ -656,7 +671,55 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   // the next attempt — never a verdict on the file (field 2026-10-12: M43 +
   // L55VEC were blocked for 24 h by exactly this, seconds after a reload).
   "credential-changed",
+  // 1.1.43 (failure grading, phase 0): the rest of the APK's TRANSIENT set.
+  "session-retired",
+  "selection-changed",
+  "superseded",
+  "skipped",
+  "hold-expired",
+  "decoder-budget",
+  "decoder-unavailable",
+  "output-detached",
+  // The safety net reverted a 60 Hz mode switch nothing proved; native is tried again at the panel's own mode.
+  "display-mode-reverted",
+  // The face's host WebView was replaced (a renderer crash recreates it): never a verdict on the file.
+  "host-replaced",
 ]);
+
+/**
+ * FAILURE GRADING, PHASE 0 (1.1.43; docs/design/NATIVE-FIRST-ONE-STORE.md §3.4,
+ * owner decision D7). The APK's `NativeEndGrade` table, kept identical here
+ * (a test reads FaceVideoPolicy.kt and fails when the two drift):
+ *  • transient — the box, the page or the content moved on;
+ *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed: an
+ *    offline boot (`authorization-failed`), a 5xx, a timeout, a short
+ *    download, a full disk, a token that changed. NEVER a verdict on the file
+ *    — before this, an offline boot blocked native for a day;
+ *  • box — a verdict about this box or this layout: web for this document,
+ *    no retry, no block;
+ *  • fault — a real fault of a VERIFIED file on this decoder: the 24 h block.
+ * A code in no set is a fault: fail closed on the unknown.
+ */
+export const NATIVE_VIDEO_NOT_READY_REASONS: ReadonlySet<string> = new Set([
+  "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",
+  "manifest-unreachable", "timeout", "source-failed", "media-redirect", "media-incomplete", "media-size", "media-publish",
+  "media-cache-unavailable", "media-cache-corrupt", "media-cache-quota", "media-missing", "media-origin", "not-in-store",
+  "store-full",
+]);
+export const NATIVE_VIDEO_NOT_READY_PREFIXES: readonly string[] = ["manifest-http-", "media-http-", "descriptor-"];
+export const NATIVE_VIDEO_BOX_REASONS: ReadonlySet<string> = new Set(["composition-unavailable", "protocol3-disabled", "zone-overlap", "protocol"]);
+export const NATIVE_VIDEO_FAULT_REASONS: ReadonlySet<string> = new Set([
+  "codec-failed", "codec-stalled", "codec-input", "codec-not-prepared", "hardware-codec-unavailable", "output-stalled",
+  "output-unavailable", "media-digest", "avc-track", "coded-size", "container-rotation", "empty-lap", "native-prepare",
+]);
+export type NativeVideoEndGrade = "transient" | "not-ready" | "box" | "fault";
+export function nativeVideoEndGrade(reason: string | undefined | null): NativeVideoEndGrade {
+  if (!reason) return "transient";
+  if (NATIVE_VIDEO_TRANSIENT_REASONS.has(reason)) return "transient";
+  if (NATIVE_VIDEO_NOT_READY_REASONS.has(reason) || NATIVE_VIDEO_NOT_READY_PREFIXES.some((p) => reason.startsWith(p))) return "not-ready";
+  if (NATIVE_VIDEO_BOX_REASONS.has(reason)) return "box";
+  return "fault";
+}
 export const NATIVE_VIDEO_RETRY_MS = 30_000;
 export const NATIVE_VIDEO_MAX_ATTEMPTS = 20;
 /** A file that faults native on this box stays on the web engine for a day. */

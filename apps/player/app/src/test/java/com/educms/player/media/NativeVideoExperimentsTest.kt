@@ -4,11 +4,16 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** The three M43 experiments (plan §4E): manifest flags, default off, individually switchable, fault-latched. */
+/**
+ * The engine's switches (plan §4E): the three M43 experiments are OFF unless
+ * the descriptor says exactly `true`; since 1.1.43 the vsync snap is ON and
+ * the 60 Hz request AUTOMATIC unless the descriptor says `false` — the lead's
+ * kill switches; a `true` for either changes nothing (a key can only remove a
+ * default). Fault-latched.
+ */
 class NativeVideoExperimentsTest {
-    @Test fun everyExperimentIsOffUnlessTheDescriptorSaysExactlyTrue() {
+    @Test fun theThreeExperimentsAreOffUnlessTheDescriptorSaysExactlyTrueAndTheDefaultsStandWithoutADescriptor() {
         assertEquals(NativeVideoExperiments.NONE, NativeVideoExperiments.parse(null))
-        assertFalse(NativeVideoExperiments.parse(null).any)
         assertEquals(NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject()))
         assertEquals(NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put("webviewInvisible", "true").put("surfaceFrameRate", 1).put("decoderRotation", JSONObject.NULL)))
         val one = NativeVideoExperiments.parse(JSONObject().put("surfaceFrameRate", true).put("somethingNew", true))
@@ -19,25 +24,35 @@ class NativeVideoExperimentsTest {
         assertEquals(NativeVideoExperiments(true, true, true), all)
         val j = all.toJson()
         for (k in listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation")) assertTrue(k, j.getBoolean(k))
-        assertFalse(j.getBoolean("vsyncSnap")); assertFalse(j.getBoolean("prefer60hz"))
+        // 1.1.43: the defaults ride in `requested` as what is in effect — the snap on, the 60 Hz request not switched off.
+        assertTrue(j.getBoolean("vsyncSnap")); assertTrue(j.getBoolean("prefer60hz"))
+        // The APK's own defaults: the three experiments off, the snap on, the 60 Hz request automatic — and
+        // therefore always "something in effect" (the session report always carries the block).
+        assertFalse(NativeVideoExperiments.NONE.webviewInvisible); assertFalse(NativeVideoExperiments.NONE.surfaceFrameRate); assertFalse(NativeVideoExperiments.NONE.decoderRotation)
+        assertTrue(NativeVideoExperiments.NONE.vsyncSnap); assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.NONE.prefer60hz)
+        assertTrue(NativeVideoExperiments.NONE.any)
     }
 
-    @Test fun theTwoPacingExperimentsParseByTheirExactKeysAndUnknownTokensEnableNothing() {
-        val snap = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true))
-        assertEquals(NativeVideoExperiments(vsyncSnap = true), snap)
-        assertTrue(snap.any); assertFalse(snap.prefer60hz); assertFalse(snap.webviewInvisible)
-        val hz = NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true))
-        assertEquals(NativeVideoExperiments(prefer60hz = true), hz)
-        assertTrue(hz.any)
-        // The wire names are exactly these two; near misses, other spellings and non-`true` values are OFF.
-        for (unknown in listOf("vsync-snap", "vsync_snap", "VsyncSnap", "prefer-60hz", "prefer60Hz", "prefer60", "snap", "sixtyHertz")) {
-            assertEquals(unknown, NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put(unknown, true)))
+    @Test fun theVsyncSnapIsOnByDefaultAndOnlyAnExplicitFalseSwitchesItOff() {
+        // Absent = on. `true` (the 1.1.42 positive token, still accepted) = on, nothing changes.
+        assertTrue(NativeVideoExperiments.parse(null).vsyncSnap)
+        assertTrue(NativeVideoExperiments.parse(JSONObject()).vsyncSnap)
+        assertTrue(NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true)).vsyncSnap)
+        assertEquals(NativeVideoExperiments.parse(JSONObject()), NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true)))
+        // The kill switch: exactly a JSON `false` (the API's `-vsync-snap:<uuid|all>`).
+        val off = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", false))
+        assertFalse(off.vsyncSnap)
+        assertEquals(NativeVideoExperiments(vsyncSnap = false), off)
+        assertFalse(off.toJson().getBoolean("vsyncSnap"))
+        // Garbage is the default, never off: a malformed descriptor cannot switch the pacing off by accident.
+        for (junk in listOf("false", 0, JSONObject.NULL, "off", "", JSONObject())) {
+            assertTrue("$junk", NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", junk)).vsyncSnap)
         }
-        assertEquals(NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", "true").put("prefer60hz", 1)))
+        // Near-miss keys enable and disable nothing.
+        for (unknown in listOf("vsync-snap", "vsync_snap", "VsyncSnap", "snap")) {
+            assertEquals(unknown, NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put(unknown, false)))
+        }
         assertEquals(listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"), NativeVideoExperiments.KNOWN)
-        val both = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true).put("prefer60hz", true).put("decoderRotation", true))
-        assertEquals(NativeVideoExperiments(decoderRotation = true, vsyncSnap = true, prefer60hz = true), both)
-        assertTrue(both.toJson().getBoolean("vsyncSnap")); assertTrue(both.toJson().getBoolean("prefer60hz")); assertFalse(both.toJson().getBoolean("webviewInvisible"))
         // The fault guard covers the snap like the other presenting-session experiments; its names are stable codes.
         val g = NativeExperimentGuard()
         g.applied(NativeVideoExperiments.VSYNC_SNAP)
@@ -46,6 +61,32 @@ class NativeVideoExperimentsTest {
         assertFalse(g.allows(NativeVideoExperiments.VSYNC_SNAP))
         assertTrue(g.allows(NativeVideoExperiments.PREFER_60HZ))
         assertEquals("output-stalled", g.toJson().getJSONObject("disabled").getString("vsyncSnap"))
+    }
+
+    @Test fun theSixtyHertzRequestIsAutomaticByDefaultOnlyFalseSwitchesItOffAndTrueChangesNothing() {
+        assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(null).prefer60hz)
+        assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject()).prefer60hz)
+        assertEquals(Prefer60Hz.OFF, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", false)).prefer60hz)
+        // The 1.1.42 positive token (`prefer-60hz:<…>`, sends `true`) is accepted and is the default: it can never
+        // force a request past the safety net's 24 h block (a manifest key only ever removes behaviour).
+        assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true)).prefer60hz)
+        assertEquals(NativeVideoExperiments.parse(JSONObject()), NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true)))
+        // Garbage is AUTO, never OFF.
+        for (junk in listOf("true", "false", 1, 0, JSONObject.NULL, "force", "auto")) {
+            assertEquals("$junk", Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", junk)).prefer60hz)
+        }
+        for (unknown in listOf("prefer-60hz", "prefer60Hz", "prefer60", "sixtyHertz")) {
+            assertEquals(unknown, NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put(unknown, true)))
+        }
+        // On the wire `prefer60hz` is "not switched off"; the session overrides it with what its boundary decided.
+        assertTrue(NativeVideoExperiments().toJson().getBoolean("prefer60hz"))
+        assertFalse(NativeVideoExperiments(prefer60hz = Prefer60Hz.OFF).toJson().getBoolean("prefer60hz"))
+        assertEquals(listOf("off", "auto"), Prefer60Hz.values().map { it.wire })
+        // Both switched off together is the one shape with nothing in effect but the three experiments.
+        val bare = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", false).put("prefer60hz", false))
+        assertFalse(bare.any)
+        val both = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true).put("prefer60hz", true).put("decoderRotation", true))
+        assertEquals(NativeVideoExperiments(decoderRotation = true, vsyncSnap = true, prefer60hz = Prefer60Hz.AUTO), both)
     }
 
     @Test fun theDescriptorCarriesTheFlagsOutsideItsIdentity() {
@@ -59,14 +100,18 @@ class NativeVideoExperimentsTest {
             .also { if (experiments != null) it.put("experiments", experiments) }
         val plain = FaceVideoDescriptor.parse(descriptor(null))
         assertEquals(NativeVideoExperiments.NONE, plain.experiments)
+        assertTrue("a descriptor with no experiments key gets the 1.1.43 defaults", plain.experiments.vsyncSnap)
+        assertEquals(Prefer60Hz.AUTO, plain.experiments.prefer60hz)
         val flagged = FaceVideoDescriptor.parse(descriptor(JSONObject().put("webviewInvisible", true)))
         assertTrue(flagged.experiments.webviewInvisible)
+        val killed = FaceVideoDescriptor.parse(descriptor(JSONObject().put("vsyncSnap", false).put("prefer60hz", false)))
+        assertFalse(killed.experiments.vsyncSnap); assertEquals(Prefer60Hz.OFF, killed.experiments.prefer60hz)
         // Same identity: the page's request matches either, so a flag flip never changes what plays.
         val request = FaceVideoRequest.parse(JSONObject().put("version", 2).put("screenId", screen).put("revision", "rev-1").put("sha256", "a".repeat(64)).put("assetId", asset).toString())!!
-        assertTrue(plain.matches(request)); assertTrue(flagged.matches(request))
-        assertEquals(plain.revision, flagged.revision)
-        // Garbage in the experiments object is OFF, never a refused descriptor.
-        assertEquals(NativeVideoExperiments.NONE, FaceVideoDescriptor.parse(descriptor(JSONObject().put("webviewInvisible", "yes"))).experiments)
+        assertTrue(plain.matches(request)); assertTrue(flagged.matches(request)); assertTrue(killed.matches(request))
+        assertEquals(plain.revision, flagged.revision); assertEquals(plain.revision, killed.revision)
+        // Garbage in the experiments object is the default, never a refused descriptor.
+        assertEquals(NativeVideoExperiments.NONE, FaceVideoDescriptor.parse(descriptor(JSONObject().put("webviewInvisible", "yes").put("vsyncSnap", "no"))).experiments)
     }
 
     @Test fun theGuardTripsOnceOnAFaultTheHiddenPageCouldHaveCausedAndNeverOnAnOrdinaryEnd() {
@@ -88,5 +133,7 @@ class NativeVideoExperimentsTest {
         assertEquals("page-lease-expired", j.getJSONObject("disabled").getString("webviewInvisible"))
         assertEquals(1L, j.getJSONObject("applied").getLong("webviewInvisible"))
         for (fault in NativeExperimentGuard.FAULTS) assertTrue(fault, NativeExperimentGuard().ended("surfaceFrameRate", fault))
+        // 1.1.43: a stall the safety net re-graded as the mode switch's failure is TRANSIENT and never trips the guard.
+        assertFalse(NativeExperimentGuard().ended("vsyncSnap", FaceVideoBox.REASON_DISPLAY_MODE_REVERTED))
     }
 }

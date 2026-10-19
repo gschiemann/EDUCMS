@@ -130,9 +130,78 @@ internal object FaceVideoPolicy {
         files.filter { it.first !in pinned }.sortedByDescending { it.second }.drop(keepExtra).map { it.first }.toSet()
 
     /** A failure the page should treat as transient (retry later) rather than a fault of this file on this box. */
-    fun transient(reason: String): Boolean = reason in TRANSIENT
-    private val TRANSIENT = setOf("emergency-held", "activity-paused", "host-detached", "document-retired",
-        "content-changed", "peer-stopped", "page-stopped", "engine-switched", "page-lease-expired")
+    fun transient(reason: String): Boolean = NativeEndGrade.retries(reason)
+}
+
+/**
+ * FAILURE GRADING, PHASE 0 (1.1.43; design docs/design/NATIVE-FIRST-ONE-STORE.md
+ * §3.4, owner decision D7). Every reason a session can end with is one of a
+ * closed set of codes, and each code has ONE grade:
+ *
+ *  • TRANSIENT — the box, the page or the content moved on; nothing about this
+ *    file. Native is tried again on the page's 30 s schedule (bounded), and
+ *    never once native was on the glass (owner rule: no web ↔ native flip).
+ *  • NOT_READY — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed: an
+ *    offline boot, a 5xx, a timeout, a short download, a full disk, a token
+ *    that changed. These are NEVER a verdict on the file — the latent defect
+ *    (§1.2): an offline boot used to end `authorization-failed`, which the
+ *    page graded as a fault and blocked native for a day. Retried like
+ *    TRANSIENT. The `manifest-http-<n>` / `media-http-<n>` families are
+ *    matched by prefix; `descriptor-*` likewise (a server shape this APK
+ *    cannot read is the server's, not the file's).
+ *  • BOX — a verdict about this box or this layout, never the file: the class
+ *    table refuses composition, the slot engine is off, a zone overlaps. The
+ *    page stays web for this document (no retry, no block).
+ *  • FAULT — a real fault of a VERIFIED file on this decoder: codec failed or
+ *    stalled, no hardware decoder, the output never advanced, a full-length
+ *    download whose digest is not the manifest's, a stream this engine cannot
+ *    play. The page blocks native for this file on this face on this build
+ *    for 24 h and plays the same file on the web engine.
+ *
+ * The page keeps the SAME table (apps/web/src/app/player/nativeSharedVideo.ts,
+ * `NATIVE_VIDEO_*_REASONS`); a web test reads this file and fails when the
+ * two drift. A code in no set is graded FAULT — fail closed on the unknown,
+ * so a new end code must be classified here before it ships.
+ */
+internal object NativeEndGrade {
+    enum class Grade { TRANSIENT, NOT_READY, BOX, FAULT }
+
+    val TRANSIENT: Set<String> = setOf(
+        "emergency-held", "activity-paused", "host-detached", "document-retired", "content-changed", "peer-stopped",
+        "page-stopped", "engine-switched", "page-lease-expired", "credential-changed", "session-retired", "selection-changed",
+        "superseded", "skipped", "hold-expired", "decoder-budget", "decoder-unavailable", "output-detached",
+        "display-mode-reverted",
+        // The face's host WebView was replaced — a renderer crash recreates it and FaceVideoBox.attach ends the
+        // old host's sessions: the box moved on, never a verdict on the file. No parentheses in this list: the
+        // page's drift test reads it up to the closing one.
+        "host-replaced",
+    )
+    val NOT_READY: Set<String> = setOf(
+        "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",
+        "manifest-unreachable", "timeout", "source-failed", "media-redirect", "media-incomplete", "media-size", "media-publish",
+        "media-cache-unavailable", "media-cache-corrupt", "media-cache-quota", "media-missing", "media-origin", "not-in-store",
+        "store-full",
+    )
+    val NOT_READY_PREFIXES: List<String> = listOf("manifest-http-", "media-http-", "descriptor-")
+    val BOX: Set<String> = setOf("composition-unavailable", "protocol3-disabled", "zone-overlap", "protocol")
+    val FAULT: Set<String> = setOf(
+        "codec-failed", "codec-stalled", "codec-input", "codec-not-prepared", "hardware-codec-unavailable", "output-stalled",
+        "output-unavailable", "media-digest", "avc-track", "coded-size", "container-rotation", "empty-lap", "native-prepare",
+    )
+
+    fun grade(reason: String?): Grade = when {
+        reason == null || reason.isEmpty() -> Grade.TRANSIENT
+        reason in TRANSIENT -> Grade.TRANSIENT
+        reason in NOT_READY || NOT_READY_PREFIXES.any { reason.startsWith(it) } -> Grade.NOT_READY
+        reason in BOX -> Grade.BOX
+        else -> Grade.FAULT
+    }
+
+    /** Tried again later (never a block): transient and not-ready ends. */
+    fun retries(reason: String?): Boolean = grade(reason).let { it == Grade.TRANSIENT || it == Grade.NOT_READY }
+
+    /** A 24 h block of this file on this face on this build: faults only. */
+    fun blocks(reason: String?): Boolean = grade(reason) == Grade.FAULT
 }
 
 /*

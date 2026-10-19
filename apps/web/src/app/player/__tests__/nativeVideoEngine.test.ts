@@ -6,7 +6,12 @@ import {
   blockNativeVideo,
   nativeVideoBlocked,
   NATIVE_VIDEO_BLOCK_MS,
+  NATIVE_VIDEO_BOX_REASONS,
+  NATIVE_VIDEO_FAULT_REASONS,
+  NATIVE_VIDEO_NOT_READY_PREFIXES,
+  NATIVE_VIDEO_NOT_READY_REASONS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
+  nativeVideoEndGrade,
   pickNativeVideo,
   readNativeVideoDescriptor,
   readNativeVideoProtocol,
@@ -22,6 +27,7 @@ import {
   nativeVideoBlockedLine,
 } from "../nativeSharedVideo";
 import { nativeVideoNext } from "../NativeDualVideo";
+import { nativeZoneNext } from "../nativeZones";
 
 const screen = "40864836-9367-47a3-b349-ba1c3378f814";
 const tenant = "28d09f9d-0a6c-4828-b46d-38712eb69f1f";
@@ -202,6 +208,57 @@ describe("what a native end means next", () => {
     expect(nativeVideoNext(2, "credential-changed", 0, true)).toBe("stay");
     expect(nativeVideoNext(2, undefined, 0, true)).toBe("stay");
     expect(nativeVideoNext(2, "codec-failed", 0, true)).toBe("block");
+  });
+  it("1.1.43 (failure grading, phase 0): a network / storage / auth / manifest end retries, a box verdict stays web, only a fault blocks", () => {
+    // An offline boot ends `authorization-failed` (or `timeout`); a short download is `media-incomplete`; a pruned cache
+    // file `media-missing`; a 5xx `manifest-http-500`. Before 1.1.43 every one of them blocked native for a day.
+    for (const reason of ["authorization-failed", "timeout", "media-incomplete", "media-missing", "manifest-http-500", "descriptor-version"]) {
+      expect({ reason, next: nativeVideoNext(2, reason, 0) }).toEqual({ reason, next: "retry" });
+      expect({ reason, next: nativeVideoNext(2, reason, 0, true) }).toEqual({ reason, next: "stay" }); // never flip on the glass
+    }
+    expect(nativeVideoNext(2, "composition-unavailable", 0)).toBe("stay");
+    // The safety net reverted a 60 Hz switch nothing proved: native is tried again at the panel's own mode.
+    expect(nativeVideoNext(2, "display-mode-reverted", 0)).toBe("retry");
+    expect(nativeVideoNext(2, "media-digest", 0)).toBe("block");
+    expect(nativeVideoNext(2, "a-code-nobody-graded", 0)).toBe("block"); // the unknown fails closed
+    expect(nativeVideoNext(1, "authorization-failed", 0)).toBe("stay"); // protocol 1 is unchanged
+  });
+  it("1.1.43: `host-replaced` (a WebView renderer crash recreated the face's host) restarts native and never writes a 24 h block", () => {
+    // Ungraded it was a fault: one plain WebView crash blocked native on the file for a day.
+    expect(nativeVideoEndGrade("host-replaced")).toBe("transient");
+    expect(nativeVideoNext(2, "host-replaced", 0)).toBe("retry");
+    expect(nativeZoneNext("host-replaced", 0)).toBe("retry");
+    for (const attempt of [0, 5, 19]) for (const onGlass of [false, true]) {
+      expect(nativeVideoNext(2, "host-replaced", attempt, onGlass)).not.toBe("block");
+      expect(nativeVideoNext(2, "host-replaced", attempt, onGlass, true)).not.toBe("block");
+      expect(nativeZoneNext("host-replaced", attempt, onGlass)).not.toBe("block");
+    }
+    // A block is written only on a "block" answer — the one call site in each engine.
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    for (const file of ["NativeDualVideo.tsx", "NativeZoneVideo.tsx"]) {
+      const src = fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+      const calls = src.split("\n").filter((l) => /\bblockNativeVideo\(/.test(l));
+      expect({ file, calls: calls.length, guarded: calls.every((l) => l.includes('if (next === "block") blockNativeVideo(')) })
+        .toEqual({ file, calls: 1, guarded: true });
+    }
+  });
+  it("the page's grading table is exactly the APK's (NativeEndGrade in FaceVideoPolicy.kt)", () => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    const kt = path.resolve(__dirname, "../../../../../player/app/src/main/java/com/educms/player/media/FaceVideoPolicy.kt");
+    expect(fs.existsSync(kt)).toBe(true);
+    const src = fs.readFileSync(kt, "utf8");
+    const apk = (name: string): string[] => {
+      const m = new RegExp(`val ${name}: (?:Set|List)<String> = (?:setOf|listOf)\\(([^)]*)\\)`).exec(src);
+      expect({ name, found: !!m }).toEqual({ name, found: true });
+      return Array.from(m![1].matchAll(/"([a-z0-9-]+)"/g), (x) => x[1]).sort();
+    };
+    expect(apk("TRANSIENT")).toEqual([...NATIVE_VIDEO_TRANSIENT_REASONS].sort());
+    expect(apk("NOT_READY")).toEqual([...NATIVE_VIDEO_NOT_READY_REASONS].sort());
+    expect(apk("NOT_READY_PREFIXES")).toEqual([...NATIVE_VIDEO_NOT_READY_PREFIXES].sort());
+    expect(apk("BOX")).toEqual([...NATIVE_VIDEO_BOX_REASONS].sort());
+    expect(apk("FAULT")).toEqual([...NATIVE_VIDEO_FAULT_REASONS].sort());
   });
   it("a block is per file per face, expires after a day, and survives a broken store", () => {
     const mem = new Map<string, string>();

@@ -2591,7 +2591,12 @@
           "all": "Modes offered: {list}",
           "first": "First {count} modes offered: {list}"
         },
-        "modeGroup": "{size} at {rates} Hz"
+        "modeGroup": "{size} at {rates} Hz",
+        "firmware": {
+          "both": "Panel firmware lists: {mode} now; {list}",
+          "modeOnly": "Panel firmware lists: {mode} now",
+          "capsOnly": "Panel firmware lists: {list}"
+        }
       },
       "cadence": {
         "label": "Frame cadence",
@@ -2635,7 +2640,11 @@
           "sixtyFailed": "requested, the request could not be made",
           "sixtyReverted": "no longer requested, Android’s own choice restored",
           "sixtyRevertFailed": "no longer requested, restoring Android’s own choice failed",
-          "sixtyPending": "requested, no result reported yet"
+          "sixtyPending": "requested, no result reported yet",
+          "sixtyBlocked": "automatic, paused for 24 h after an earlier switch was undone",
+          "sixtyRevertedNoSwitch": "asked Android for a 60 Hz mode, the panel did not switch within 10 s, undone (automatic requests paused for 24 h)",
+          "sixtyRevertedNoFrames": "asked Android for a 60 Hz mode, no frames followed within 10 s, undone (automatic requests paused for 24 h)",
+          "sixtyHeld": "not asked: an emergency alert was held at that session boundary"
         },
         "guardNote": "The player’s guard switched {name} off after {reason}.",
         "guardReason": {
@@ -2670,7 +2679,11 @@
             "other-session": "another session was on this side",
             "failed": "the request could not be made",
             "reverted": "request withdrawn, Android’s own choice restored",
-            "other": "reported “{code}”"
+            "other": "reported “{code}”",
+            "blocked": "automatic request paused after an earlier switch was undone",
+            "reverted-no-switch": "the panel did not switch; undone",
+            "reverted-no-frames": "no frames followed the switch; undone",
+            "emergency-held": "not asked: an emergency alert was held"
           }
         },
         "overflow": "{count} older sessions are no longer listed — the player keeps only its most recent ones."

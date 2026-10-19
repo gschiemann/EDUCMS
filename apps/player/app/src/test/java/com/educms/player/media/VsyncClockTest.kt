@@ -91,6 +91,7 @@ class VsyncClockTest {
         val targets = ArrayList<Long>(frames)
         var now = startNs
         var pts = 0L
+        val lead = VideoFrameSchedule.releaseLeadNs(grid.periodNs)
         for (i in 0 until frames) {
             val due = schedule.due(pts, now)
             // The pump hands a frame over about 30 ms before it is due (inside the 2-vsync lead the
@@ -100,13 +101,57 @@ class VsyncClockTest {
             val target = schedule.lastTargetNs
             assertTrue("frame $i released no earlier than now", release >= now)
             assertTrue("frame $i released before its target vsync", release < target)
-            assertEquals("frame $i released 0.8 P before its vsync", maxOf(target - grid.periodNs * 4 / 5, now), release)
+            // 1.1.43: the GRID-SIZED lead — exactly releaseLeadNs(P) early (or at `now` when handed over late) …
+            assertEquals("frame $i released the grid-sized lead before its vsync", maxOf(target - lead, now), release)
+            assertEquals(lead, schedule.lastReleaseLeadNs)
+            // … which lands at least half a period before the target on every grid, and NEVER on or before
+            // the previous vsync (so SurfaceFlinger can latch it for exactly the target, never an early one).
+            assertTrue("frame $i released ≥ P/2 before its vsync: ${target - release} of ${grid.periodNs}", target - release >= grid.periodNs / 2)
+            assertTrue("frame $i released after the previous vsync: ${target - release} of ${grid.periodNs}", target - release < grid.periodNs)
             onFrame(i, due, target)
             targets.add(target)
             schedule.submitted(now, target)
             pts += 33_333
         }
         return targets
+    }
+
+    @Test fun theReleaseLeadIsSizedToTheGrid() {
+        val ms = 1_000_000L
+        // 30 Hz (33.3 ms): Media3's 0.8 P — 26.7 ms early, 6.7 ms of latch-phase tolerance.
+        assertEquals(33_333_333L * 800L / 1000L, VideoFrameSchedule.releaseLeadNs(33_333_333L))
+        // 60 Hz (16.7 ms): 0.5 P — 8.3 ms early, dead centre between the previous and the next latch
+        // (the rk3328 / Android 11 unit latched ~0.17 % of frames one vsync EARLY on the 13.3 ms lead).
+        assertEquals(16_666_667L / 2L, VideoFrameSchedule.releaseLeadNs(16_666_667L))
+        assertTrue(VideoFrameSchedule.releaseLeadNs(16_666_667L) in 8_300_000L..8_400_000L)
+        // 50 Hz (20 ms) is the fast end (0.5 P), 40 Hz (25 ms) the slow end (0.8 P); linear between.
+        assertEquals(10 * ms, VideoFrameSchedule.releaseLeadNs(20 * ms))
+        assertEquals(20 * ms, VideoFrameSchedule.releaseLeadNs(25 * ms))
+        val mid = VideoFrameSchedule.releaseLeadNs(22_500_000L) // 44.4 Hz: 0.65 P
+        assertEquals(22_500_000L * 650L / 1000L, mid)
+        // Monotone in the period across the whole clamp range, and always inside (P/2, 0.8 P].
+        var last = 0L
+        for (p in 4_166_666L..50_000_000L step 100_000L) {
+            val lead = VideoFrameSchedule.releaseLeadNs(p)
+            assertTrue("lead for $p: $lead", lead >= p / 2 && lead <= p * 4 / 5)
+            assertTrue("non-decreasing at $p", lead >= last)
+            last = lead
+        }
+        // 24 Hz (41.7 ms) and 120 Hz (8.3 ms) sit on the clamps.
+        assertEquals(41_666_666L * 800L / 1000L, VideoFrameSchedule.releaseLeadNs(41_666_666L))
+        assertEquals(8_333_333L / 2L, VideoFrameSchedule.releaseLeadNs(8_333_333L))
+    }
+
+    @Test fun aSixtyHertzGridReleasesEightMillisecondsBeforeEachVsyncAndNeverOnThePreviousOne() {
+        val grid = Grid(periodNs = 16_666_667L, anchorNs = 3_000_000_000L)
+        val s = VideoFrameSchedule(33_333, 60f, grid)
+        var minLead = Long.MAX_VALUE; var maxLead = 0L
+        run(grid, s, frames = 6_000, startNs = 3_000_020_000L) { _, _, _ ->
+            minLead = minOf(minLead, s.lastReleaseLeadNs); maxLead = maxOf(maxLead, s.lastReleaseLeadNs)
+        }
+        assertEquals(8_333_333L, minLead); assertEquals(8_333_333L, maxLead)
+        assertEquals(6_000L, s.snappedFrames)
+        assertEquals(0L, s.lateFrames)
     }
 
     @Test fun thirtyFpsOnAThirtyHertzGridPutsExactlyOneFrameOnEveryVsyncDespiteDrift() {

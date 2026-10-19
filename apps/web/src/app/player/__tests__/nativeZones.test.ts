@@ -220,6 +220,19 @@ describe("fallback discipline", () => {
     expect(nativeZoneNext("activity-paused", 19)).toBe("stay");
   });
 
+  it("1.1.43 (failure grading, phase 0): a network / storage / auth / manifest end is retried like a transient one — never a 24 h block", () => {
+    // An offline boot, a 5xx, a short download, a pruned cache file, a full store: none says anything about the file.
+    for (const reason of ["authorization-failed", "timeout", "source-failed", "media-incomplete", "media-missing", "manifest-http-503", "media-http-502", "store-full"]) {
+      expect({ reason, next: nativeZoneNext(reason, 0) }).toEqual({ reason, next: "retry" });
+      expect({ reason, next: nativeZoneNext(reason, 19) }).toEqual({ reason, next: "stay" }); // bounded like any retry
+      expect({ reason, next: nativeZoneNext(reason, 0, true) }).toEqual({ reason, next: "stay" }); // never flip on the glass
+    }
+    // A verdict about this box stays web for the document; only a real fault of a verified file blocks, and the
+    // unknown fails closed.
+    for (const reason of ["composition-unavailable", "protocol3-disabled"]) expect(nativeZoneNext(reason, 0)).toBe("stay");
+    for (const reason of ["codec-stalled", "avc-track", "media-digest", "a-code-nobody-graded"]) expect(nativeZoneNext(reason, 0)).toBe("block");
+  });
+
   it("1.1.41: a verdict about the box or the layout is a web decision for the document — no retry storm, no 24 h block", () => {
     for (const reason of ["protocol", "zone-overlap"]) {
       for (const attempt of [0, 5, 19]) for (const onGlass of [false, true]) {
