@@ -2077,6 +2077,46 @@ model ScreenPlaybackDemotion {
   @@map("screen_playback_demotions")
 }
 
+// 2026-10-18 — FIELD BUILD WINDOWS (apps/api/src/field-builds). A private
+// field build of the Android player (registered in
+// apps/api/src/player-ota/field-candidate-releases.ts) is offered only inside
+// a window: listed organisations, listed screens (or every screen of those
+// organisations), for at most 24 hours from arming. A SUPER_ADMIN arms and
+// cancels one from /super/field-builds, audited. It replaces hand-editing the
+// four PLAYER_APK_FIELD_* Railway variables, which still apply when no window
+// is live (player-ota/field-candidate.ts). The 24-hour ceiling and the
+// screens-or-all shape are also CHECK constraints in the migration, so no
+// writer can store a longer window. Not manifest-fed: the update check reads
+// it, the manifest never does. No foreign keys: the organisation and screen
+// lists are an allow-list (an array cannot carry one), and people are kept as
+// id + email, like SupportAccessGrant.
+model FieldBuildWindow {
+  id                String    @id @default(uuid())
+  /// The registry key, e.g. "1.1.42-field.1".
+  candidate         String
+  /// The registry digest when armed. The gate refuses a registry entry that no longer matches it.
+  candidateSha256   String    @map("candidate_sha256")
+  tenantIds         String[]  @map("tenant_ids")
+  screenIds         String[]  @default([]) @map("screen_ids")
+  /// Every screen of every listed organisation. There is no organisation wildcard.
+  allScreens        Boolean   @default(false) @map("all_screens")
+  armedAt           DateTime  @default(now()) @map("armed_at")
+  expiresAt         DateTime  @map("expires_at")
+  armedByUserId     String?   @map("armed_by_user_id")
+  armedByEmail      String?   @map("armed_by_email")
+  cancelledAt       DateTime? @map("cancelled_at")
+  cancelledByUserId String?   @map("cancelled_by_user_id")
+  cancelledByEmail  String?   @map("cancelled_by_email")
+  note              String?
+  /// When the system handled the window's END (it expired, nobody cancelled it): the pushes it
+  /// armed that were still waiting were cancelled, so nothing installs from a window that has ended.
+  expiryHandledAt   DateTime? @map("expiry_handled_at")
+
+  @@index([cancelledAt, expiresAt])
+  @@index([armedAt])
+  @@map("field_build_windows")
+}
+
 model AssetFolder {
   id        String        @id @default(uuid())
   tenantId  String        @map("tenant_id")

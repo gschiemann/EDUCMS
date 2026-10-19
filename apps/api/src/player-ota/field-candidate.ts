@@ -11,6 +11,8 @@ const uuid = (v: unknown): v is string =>
   /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(v);
 const MAX_BYTES = 16 * 1024 * 1024;
 const TICKET_MS = 15 * 60_000;
+/** The longest window there is: 24 h from now, and for an armed window 24 h from arming. */
+const WINDOW_MS = 24 * 60 * 60_000;
 
 const csv = (v: string | undefined): string[] =>
   (v ?? '')
@@ -19,9 +21,101 @@ const csv = (v: string | undefined): string[] =>
     .filter(Boolean);
 
 /**
+ * One `field_build_windows` row (apps/api/src/field-builds), in the shape the
+ * gate reads. A SUPER_ADMIN arms it from /super/field-builds; it replaces
+ * editing the PLAYER_APK_FIELD_* variables, which still decide when no window
+ * is live.
+ */
+export interface FieldBuildWindow {
+  id: string;
+  candidate: string;
+  /** The registry digest when armed. A registry entry that no longer matches is refused. */
+  candidateSha256: string;
+  tenantIds: readonly string[];
+  screenIds: readonly string[];
+  /** Every screen of every listed tenant. There is no tenant wildcard. */
+  allScreens: boolean;
+  armedAt: Date | string | number;
+  expiresAt: Date | string | number;
+  cancelledAt?: Date | string | number | null;
+}
+
+let liveWindow: FieldBuildWindow | null = null;
+
+/**
+ * The newest un-cancelled, un-expired window as last read. FieldWindowGateMiddleware
+ * reads it (cached ≤ 10 s) before an update check or a field download runs,
+ * and on no other route — never on a manifest poll. null = no window: the
+ * variables decide, exactly as before. Every function below takes it as an
+ * explicit last argument; this is only the default.
+ */
+export function activeFieldWindow(): FieldBuildWindow | null {
+  return liveWindow;
+}
+
+/** Written by FieldBuildsService after each read of the table (and by tests). */
+export function setActiveFieldWindow(window: FieldBuildWindow | null): void {
+  liveWindow = window;
+}
+
+const ms = (v: Date | string | number | null | undefined): number =>
+  v == null ? NaN : v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v);
+
+/** What the gate admits from, whichever source supplied it. */
+interface Admission {
+  candidate: string;
+  /** The armed digest of a window; null when the variables decide. */
+  sha256: string | null;
+  tenants: string[];
+  screens: string[];
+  all: boolean;
+  end: number;
+  /** The latest end this source may have. */
+  latestEnd: number;
+}
+
+/**
+ * A window that is not cancelled and has not (provably) expired wins outright.
+ * Its rules are then applied as written: a malformed live window admits
+ * nothing rather than falling back. A cancelled or expired window — or none —
+ * leaves the variables in charge, read exactly as before.
+ */
+function admission(
+  env: NodeJS.ProcessEnv,
+  now: number,
+  window: FieldBuildWindow | null | undefined,
+): Admission {
+  if (window && window.cancelledAt == null && !(ms(window.expiresAt) <= now)) {
+    return {
+      candidate: typeof window.candidate === 'string' ? window.candidate : '',
+      sha256: typeof window.candidateSha256 === 'string' ? window.candidateSha256 : '',
+      tenants: Array.isArray(window.tenantIds) ? [...window.tenantIds] : [],
+      screens: Array.isArray(window.screenIds) ? [...window.screenIds] : [],
+      all: window.allScreens === true,
+      end: ms(window.expiresAt),
+      // An unknown arming time makes this NaN, which admits nothing.
+      latestEnd: Math.min(ms(window.armedAt) + WINDOW_MS, now + WINDOW_MS),
+    };
+  }
+  const screens = csv(env.PLAYER_APK_FIELD_SCREEN_IDS);
+  return {
+    candidate: env.PLAYER_APK_FIELD_CANDIDATE ?? '',
+    sha256: null,
+    tenants: csv(env.PLAYER_APK_FIELD_TENANT_ID),
+    screens,
+    all: screens.some((s) => s.toLowerCase() === 'all'),
+    end: Date.parse(env.PLAYER_APK_FIELD_EXPIRES_AT ?? ''),
+    latestEnd: now + WINDOW_MS,
+  };
+}
+
+/**
  * Who may be offered the private field artifact: a screen of a listed tenant,
  * named by id or covered by `all`, inside a bounded explicit window (≤ 24 h);
  * never a fleet latest override.
+ *
+ * The window comes from `field_build_windows` when one is live (armed from
+ * /super/field-builds; at most 24 h from arming as well), otherwise from:
  *
  *   PLAYER_APK_FIELD_TENANT_ID   one tenant uuid, or a comma-separated list
  *                                (2026-10-17: the demo account and the home
@@ -36,20 +130,23 @@ export function isFieldCandidateTarget(
   tenant: string | null,
   env = process.env,
   now = Date.now(),
+  window: FieldBuildWindow | null = activeFieldWindow(),
 ): boolean {
-  const end = Date.parse(env.PLAYER_APK_FIELD_EXPIRES_AT ?? '');
   if (!uuid(id) || !uuid(tenant)) return false;
-  if (!csv(env.PLAYER_APK_FIELD_TENANT_ID).some((t) => uuid(t) && t === tenant)) return false;
-  const screens = csv(env.PLAYER_APK_FIELD_SCREEN_IDS);
-  const named = screens.some((s) => s.toLowerCase() === 'all' || s === id);
-  return named && Number.isFinite(end) && end > now && end - now <= 24 * 60 * 60_000;
+  const a = admission(env, now, window);
+  if (!a.tenants.some((t) => uuid(t) && t === tenant)) return false;
+  const named = a.all || a.screens.some((s) => s === id);
+  return named && Number.isFinite(a.end) && a.end > now && a.end <= a.latestEnd;
 }
 
 export function configuredFieldRelease(
   env = process.env,
   registry = FIELD_CANDIDATE_RELEASES,
+  window: FieldBuildWindow | null = activeFieldWindow(),
+  now = Date.now(),
 ): FieldCandidateRelease | null {
-  const r = registry[env.PLAYER_APK_FIELD_CANDIDATE ?? ''];
+  const a = admission(env, now, window);
+  const r = registry[a.candidate];
   if (
     !r ||
     !/^\d+\.\d{1,2}\.\d{1,2}-field\.[1-9]\d*$/.test(r.versionName) ||
@@ -59,6 +156,8 @@ export function configuredFieldRelease(
     r.size > MAX_BYTES
   )
     return null;
+  // An armed window pins the digest it was armed with.
+  if (a.sha256 !== null && r.sha256 !== a.sha256) return null;
   const p = r.versionName.split('-')[0].split('.').map(Number);
   if (
     r.versionCode !== p[0] * 10000 + p[1] * 100 + p[2] ||
@@ -91,16 +190,14 @@ export function mintFieldTicket(
   tenantId: string,
   env = process.env,
   now = Date.now(),
+  window: FieldBuildWindow | null = activeFieldWindow(),
 ): string | null {
   if (
     !env.DEVICE_SECRET_KEY ||
-    !isFieldCandidateTarget(screenId, tenantId, env, now)
+    !isFieldCandidateTarget(screenId, tenantId, env, now, window)
   )
     return null;
-  const exp = Math.min(
-    now + TICKET_MS,
-    Date.parse(env.PLAYER_APK_FIELD_EXPIRES_AT!),
-  );
+  const exp = Math.min(now + TICKET_MS, admission(env, now, window).end);
   const payload = Buffer.from(
     JSON.stringify({
       screenId,
@@ -117,6 +214,7 @@ export function verifyFieldTicket(
   r: FieldCandidateRelease,
   env = process.env,
   now = Date.now(),
+  window: FieldBuildWindow | null = activeFieldWindow(),
 ): FieldTicket | null {
   try {
     if (typeof raw !== 'string' || raw.length > 1024 || !env.DEVICE_SECRET_KEY)
@@ -139,7 +237,7 @@ export function verifyFieldTicket(
       !Number.isSafeInteger(v.exp) ||
       v.exp <= now ||
       v.exp > now + TICKET_MS ||
-      !isFieldCandidateTarget(v.screenId, v.tenantId, env, now)
+      !isFieldCandidateTarget(v.screenId, v.tenantId, env, now, window)
     )
       return null;
     return v;
