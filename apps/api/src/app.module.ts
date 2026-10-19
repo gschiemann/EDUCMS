@@ -124,6 +124,7 @@ import { GpioModule } from './screens/gpio.module';
 // scheduled on-off windows that run ON DEVICE from the manifest, plus the
 // platform vendor-recipe catalog. See display/display.module.ts.
 import { DisplayModule } from './display/display.module';
+import { DeviceSettingsModule } from './device-settings/device-settings.module';
 import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
 // 2026-05-27 — One-click Bug Reporter. BugsController is registered
 // in the `controllers` array below; BugsModule provides the
@@ -228,6 +229,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     DisplayModule,
+    DeviceSettingsModule,
     // 2026-10-11 — select-all / select-group Resync, Send update, power,
     // automatic updates (screens/bulk/screens-bulk.controller.ts).
     ScreensBulkModule,

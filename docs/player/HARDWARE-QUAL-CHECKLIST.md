@@ -82,6 +82,27 @@ the version under test.
 of the universal one. `INSTALL_FAILED_UPDATE_INCOMPATIBLE` = signed with a different key
 than what's installed; uninstall first.
 
+**Install step on Android 13+ units (2026-10-18), while the cable is in:** the one-time
+grants that let the player set the unit's basic Android settings (automatic date & time,
+automatic time zone, time server, the inactivity sleep; brightness / timeout / rotation
+lock without the setup tap). Not device owner; they survive updates and an uninstall revokes them
+(`apps/player/README.md` → "One-time install grants").
+
+```bash
+adb shell pm grant com.educms.player android.permission.WRITE_SECURE_SETTINGS
+```
+
+```bash
+adb shell appops set com.educms.player WRITE_SETTINGS allow
+```
+
+Then, in the dashboard drawer → Settings → **Android settings**, every row should read
+something other than "Needs the one-time install command". Set **Sleep after no remote
+use** to Never on a TV-class unit (`adb shell settings get secure attentive_timeout` → `-1`).
+If the site uses Wi-Fi, save its network for the screen and **approve VenueOS's suggested
+networks once on the glass** (Android's "Allow suggested Wi-Fi networks?" prompt) — the row
+then reads "allowed on the screen". Not a release gate — record it in the unit's note.
+
 ---
 
 ## 2. `pairing` — the code shows and the credential sticks

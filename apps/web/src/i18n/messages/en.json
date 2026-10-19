@@ -2075,6 +2075,134 @@
       "powerOffConfirmBody": "If it doesn't turn back on, someone will have to switch it on at the screen. To just darken it, use Blank.",
       "powerOffConfirmCta": "Turn it off"
     },
+    "deviceSettings": {
+      "title": "Android settings",
+      "checkedAgo": "checked {ago}",
+      "loading": "Loading Android settings…",
+      "notReported": "This screen hasn’t reported its Android settings yet. It needs an updated VenueOS player on Android 13 or newer.",
+      "needsAndroid13": "Android settings need Android 13 or newer. This unit reports Android API level {sdk}.",
+      "intro": "VenueOS sets these on the screen itself and reads back what Android keeps. A change reaches the screen within about 5 minutes.",
+      "notManaged": "Not managed",
+      "android": "Android reports {value}",
+      "androidUnreadable": "Android doesn’t report this value",
+      "save": "Save",
+      "saving": "Saving…",
+      "stopManaging": "Stop managing",
+      "stopManagingNote": "The screen keeps its current value.",
+      "row": {
+        "brightness": "Brightness",
+        "volume": "Volume",
+        "screenOffTimeoutMs": "Screen timeout",
+        "attentiveTimeoutMs": "Sleep after no remote use",
+        "rotationLock": "Rotation",
+        "autoTime": "Automatic date & time",
+        "autoTimeZone": "Automatic time zone",
+        "ntpServer": "Time server",
+        "wifi": "Wi-Fi network"
+      },
+      "attentive": {
+        "help": "Android turns the screen off after this long without remote or touch input, whatever VenueOS is showing. Never keeps it on."
+      },
+      "on": "On",
+      "off": "Off",
+      "percent": "{n}%",
+      "timeout": {
+        "never": "Never",
+        "minutes": "{n, plural, one {# minute} other {# minutes}}",
+        "hours": "{n, plural, one {# hour} other {# hours}}"
+      },
+      "rotation": {
+        "locked": "Locked",
+        "auto": "Auto-rotate"
+      },
+      "ntp": {
+        "androidDefault": "Android’s own server",
+        "placeholder": "time.google.com",
+        "help": "Leave it empty to use Android’s own server."
+      },
+      "wifi": {
+        "ssid": "Network name",
+        "security": "Security",
+        "wpa2": "WPA2",
+        "wpa3": "WPA3",
+        "open": "Open (no password)",
+        "password": "Password",
+        "passwordSaved": "Saved — leave empty to keep it",
+        "hidden": "Hidden network",
+        "note": "Android asks once, on the screen, to allow VenueOS’s networks. The screen keeps any network it already uses.",
+        "noneSuggested": "none",
+        "observed": "{ssid} · {approval}",
+        "approval": {
+          "approved": "allowed on the screen",
+          "pending": "waiting for someone to allow it on the screen",
+          "rejected": "declined on the screen",
+          "unknown": "approval not reported"
+        }
+      },
+      "state": {
+        "sending": "Saved — waiting for the screen to pick it up",
+        "applied": "Set on the screen",
+        "alreadySet": "Already set on the screen",
+        "unverified": "Set — Android can’t confirm it",
+        "failed": "Couldn’t set it: {reason}",
+        "waiting": "Waiting: {reason}",
+        "notPossible": "Not possible on this unit: {reason}",
+        "notPossibleNow": "Not possible on this unit right now: {reason}"
+      },
+      "why": {
+        "api-level": "needs Android 13 or newer",
+        "no-write-settings": "VenueOS isn’t allowed to modify system settings — allow it in the screen’s setup, or run the install command",
+        "no-secure-settings": "needs the one-time install command (adb) on this unit",
+        "vendor-brightness": "this panel’s brightness is controlled by its own controller, not Android",
+        "picture-only": "Android exposes no backlight control here — the Brightness slider above dims the picture only",
+        "volume-fixed": "the volume is fixed (the TV or amplifier controls it)",
+        "no-wifi": "this unit has no Wi-Fi",
+        "wifi-disallowed": "someone declined VenueOS’s Wi-Fi networks on the screen",
+        "unsupported": "this unit doesn’t offer it",
+        "emergency": "an alert is on this screen",
+        "screen-off": "the screen is off",
+        "blanked": "the screen is blanked",
+        "settling": "the screen just turned on",
+        "not-taken": "Android didn’t keep the new value",
+        "write-refused": "Android refused the change",
+        "invalid-value": "the saved value isn’t valid for this unit",
+        "error": "something went wrong on the screen",
+        "needs-secret": "the screen is asking for the Wi-Fi password",
+        "already-set": "already set",
+        "unverified": "Android can’t confirm it",
+        "wifi-rejected": "the Wi-Fi network was declined on the screen",
+        "wifi-limit": "the screen has too many suggested networks",
+        "wifi-invalid": "Android didn’t accept the network details",
+        "wifi-restricted": "Wi-Fi changes are restricted on this unit",
+        "wifi-error": "Android couldn’t add the network"
+      },
+      "load": {
+        "title": "Heat & load",
+        "asOf": "as of {ago}",
+        "thermal": "Heat: {level}",
+        "thermalChanged": "changed {ago}",
+        "level": {
+          "none": "normal",
+          "light": "light throttling",
+          "moderate": "moderate throttling",
+          "severe": "severe throttling",
+          "critical": "critical",
+          "emergency": "emergency",
+          "shutdown": "shutting down"
+        },
+        "headroom": "Thermal headroom {value} (1.0 = Android starts throttling)",
+        "soc": "Chip {value} °C",
+        "cpu": "CPU: player {player}",
+        "cpuBoth": "CPU: player {player} · whole device {device}",
+        "memory": "Memory: {free} free of {total}",
+        "memoryLow": "Android reports low memory",
+        "none": "This unit reports no heat or load facts."
+      },
+      "errors": {
+        "save": "Couldn’t save: {message}",
+        "passwordRequired": "Enter the Wi-Fi password — this network has none saved yet."
+      }
+    },
     "setLocation": "Set address",
     "contentState": {
       "downloading": "Downloading new content",

@@ -292,6 +292,14 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'nativePowerOnAt',
     'nativeRuntimeReport',
     'nativeRuntimeReportAt',
+    // Basic Android settings (2026-10-18, apps/api/src/device-settings/). The
+    // revision is bumped by PUT /screens/:id/device-settings; the signature and
+    // the timestamp ride the native heartbeat's own write. No manifest branch
+    // reads any of them (the desired set travels in the heartbeat REPLY, never
+    // in the manifest), so none of those writes may bust the cache.
+    'deviceSettingsRev',
+    'deviceSettingsReportSig',
+    'deviceSettingsReportAt',
     'status',
     'playerVersion',
     'playerVersionAt',

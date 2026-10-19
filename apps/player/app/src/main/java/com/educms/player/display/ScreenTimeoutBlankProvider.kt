@@ -69,6 +69,42 @@ object ScreenTimeoutBlankProvider : DisplayControlProvider {
     internal const val FALLBACK_TIMEOUT_MS = 30 * 60 * 1000
 
     /**
+     * 2026-10-18 — ONE writer of `SCREEN_OFF_TIMEOUT` at a time. Device
+     * settings (`settings.DeviceSettings`) now also store an operator's
+     * timeout, and its check ("no blank in force") and its write must not
+     * straddle a blank's snapshot-then-shorten: that interleaving would put
+     * the long value back over a blank's 15 s and keep the panel lit.
+     */
+    private val timeoutLock = Any()
+
+    /** What happened to a baseline timeout write from device settings. */
+    enum class BaselineWrite { WRITTEN, BLANK_IN_FORCE, REFUSED }
+
+    /**
+     * Write the operator's baseline screen-off timeout — the value this
+     * provider's wake puts back — unless a blank of ours is in force.
+     *
+     * During a blank the live value is our own 15 s, and changing it would
+     * undo the blank; the saved snapshot is the blank's to restore. So this
+     * refuses ([BaselineWrite.BLANK_IN_FORCE]) and the caller waits for the
+     * wake. Also refused when the live value IS our 15 s with no snapshot (a
+     * lost snapshot — [restoreTimeout]'s fallback case).
+     */
+    fun writeBaselineTimeout(ctx: Context, ms: Int): BaselineWrite = synchronized(timeoutLock) {
+        val app = ctx.applicationContext
+        if (!SettingsBrightnessProvider.canWrite(app)) return BaselineWrite.REFUSED
+        if (DisplayPrefs.priorScreenOffTimeoutMs(app) != null) return BaselineWrite.BLANK_IN_FORCE
+        val current = Settings.System.getInt(app.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, -1)
+        if (current == BLANK_TIMEOUT_MS) return BaselineWrite.BLANK_IN_FORCE
+        if (Settings.System.putInt(app.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, ms)) {
+            PlayerLogger.i(TAG, "baseline screen-off timeout ${current}ms → ${ms}ms (device settings)")
+            BaselineWrite.WRITTEN
+        } else {
+            BaselineWrite.REFUSED
+        }
+    }
+
+    /**
      * 2026-10-11 — ALSO declines once a screensaver has been SEEN to replace
      * this mechanism's sleep ([SleepProof.timeoutBlankDeclined]). On an
      * Android-TV-style box (`screensaver_activate_on_sleep = 1`,
@@ -99,7 +135,9 @@ object ScreenTimeoutBlankProvider : DisplayControlProvider {
         else -> ActionResult.Unsupported("screen-timeout only handles blank/wake")
     }
 
-    private fun blank(ctx: Context): ActionResult {
+    private fun blank(ctx: Context): ActionResult = synchronized(timeoutLock) { blankLocked(ctx) }
+
+    private fun blankLocked(ctx: Context): ActionResult {
         val app = ctx.applicationContext
         if (!SettingsBrightnessProvider.canWrite(app)) {
             return ActionResult.Unsupported("WRITE_SETTINGS not granted — operator must allow it in Settings")
@@ -167,7 +205,9 @@ object ScreenTimeoutBlankProvider : DisplayControlProvider {
      *
      * Returns the value now in force.
      */
-    internal fun restoreTimeout(ctx: Context): Int {
+    internal fun restoreTimeout(ctx: Context): Int = synchronized(timeoutLock) { restoreTimeoutLocked(ctx) }
+
+    private fun restoreTimeoutLocked(ctx: Context): Int {
         val app = ctx.applicationContext
         val saved = DisplayPrefs.priorScreenOffTimeoutMs(app)
         if (!SettingsBrightnessProvider.canWrite(app)) {

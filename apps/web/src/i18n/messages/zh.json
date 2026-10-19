@@ -2075,6 +2075,134 @@
       "powerOffConfirmBody": "如果无法重新开启，需要有人到屏幕旁手动开启。若只想让屏幕变暗，请使用“黑屏”。",
       "powerOffConfirmCta": "关闭"
     },
+    "deviceSettings": {
+      "title": "Android 设置",
+      "checkedAgo": "检测于 {ago}",
+      "loading": "正在加载 Android 设置…",
+      "notReported": "此屏幕尚未上报其 Android 设置。需要在 Android 13 或更高版本上运行更新后的 VenueOS 播放器。",
+      "needsAndroid13": "Android 设置需要 Android 13 或更高版本。此设备上报的 Android API 级别为 {sdk}。",
+      "intro": "VenueOS 会在屏幕上直接应用这些设置，并读回 Android 实际保留的值。更改会在约 5 分钟内送达屏幕。",
+      "notManaged": "不管理",
+      "android": "Android 报告：{value}",
+      "androidUnreadable": "Android 不报告此值",
+      "save": "保存",
+      "saving": "正在保存…",
+      "stopManaging": "停止管理",
+      "stopManagingNote": "屏幕会保留当前值。",
+      "row": {
+        "brightness": "亮度",
+        "volume": "音量",
+        "screenOffTimeoutMs": "屏幕超时",
+        "attentiveTimeoutMs": "无遥控操作后休眠",
+        "rotationLock": "屏幕旋转",
+        "autoTime": "自动设置日期和时间",
+        "autoTimeZone": "自动设置时区",
+        "ntpServer": "时间服务器",
+        "wifi": "Wi-Fi 网络"
+      },
+      "attentive": {
+        "help": "Android 在这段时间内没有遥控器或触摸操作时会关闭屏幕，无论 VenueOS 正在显示什么。选择“永不”可保持开启。"
+      },
+      "on": "开",
+      "off": "关",
+      "percent": "{n}%",
+      "timeout": {
+        "never": "永不",
+        "minutes": "{n, plural, other {# 分钟}}",
+        "hours": "{n, plural, other {# 小时}}"
+      },
+      "rotation": {
+        "locked": "已锁定",
+        "auto": "自动旋转"
+      },
+      "ntp": {
+        "androidDefault": "Android 自带的服务器",
+        "placeholder": "time.google.com",
+        "help": "留空则使用 Android 自带的服务器。"
+      },
+      "wifi": {
+        "ssid": "网络名称",
+        "security": "安全性",
+        "wpa2": "WPA2",
+        "wpa3": "WPA3",
+        "open": "开放（无密码）",
+        "password": "密码",
+        "passwordSaved": "已保存——留空即保留",
+        "hidden": "隐藏网络",
+        "note": "Android 会在屏幕上询问一次是否允许 VenueOS 提供的网络。屏幕会继续使用它已在使用的任何网络。",
+        "noneSuggested": "无",
+        "observed": "{ssid} · {approval}",
+        "approval": {
+          "approved": "已在屏幕上允许",
+          "pending": "等待有人在屏幕上允许",
+          "rejected": "已在屏幕上拒绝",
+          "unknown": "未上报审批状态"
+        }
+      },
+      "state": {
+        "sending": "已保存——等待屏幕接收",
+        "applied": "已在屏幕上设置",
+        "alreadySet": "屏幕上已是此设置",
+        "unverified": "已设置——Android 无法确认",
+        "failed": "无法设置：{reason}",
+        "waiting": "等待中：{reason}",
+        "notPossible": "此设备无法设置：{reason}",
+        "notPossibleNow": "此设备目前无法设置：{reason}"
+      },
+      "why": {
+        "api-level": "需要 Android 13 或更高版本",
+        "no-write-settings": "VenueOS 无权修改系统设置——请在屏幕的设置流程中允许，或运行安装命令",
+        "no-secure-settings": "需要在此设备上运行一次性安装命令（adb）",
+        "vendor-brightness": "此面板的亮度由其自带的控制器控制，而非 Android",
+        "picture-only": "此处 Android 未提供背光控制——上方的亮度滑块只会调暗画面",
+        "volume-fixed": "音量是固定的（由电视或功放控制）",
+        "no-wifi": "此设备没有 Wi-Fi",
+        "wifi-disallowed": "有人在屏幕上拒绝了 VenueOS 的 Wi-Fi 网络",
+        "unsupported": "此设备不提供此设置",
+        "emergency": "此屏幕上有警报",
+        "screen-off": "屏幕已关闭",
+        "blanked": "屏幕处于黑屏状态",
+        "settling": "屏幕刚刚开启",
+        "not-taken": "Android 未保留新值",
+        "write-refused": "Android 拒绝了此更改",
+        "invalid-value": "已保存的值对此设备无效",
+        "error": "屏幕上出现了问题",
+        "needs-secret": "屏幕正在请求 Wi-Fi 密码",
+        "already-set": "已是此设置",
+        "unverified": "Android 无法确认",
+        "wifi-rejected": "Wi-Fi 网络已在屏幕上被拒绝",
+        "wifi-limit": "屏幕上建议的网络过多",
+        "wifi-invalid": "Android 不接受该网络信息",
+        "wifi-restricted": "此设备限制了 Wi-Fi 更改",
+        "wifi-error": "Android 无法添加该网络"
+      },
+      "load": {
+        "title": "温度与负载",
+        "asOf": "数据时间：{ago}",
+        "thermal": "温度：{level}",
+        "thermalChanged": "{ago}变化",
+        "level": {
+          "none": "正常",
+          "light": "轻度降频",
+          "moderate": "中度降频",
+          "severe": "严重降频",
+          "critical": "危急",
+          "emergency": "紧急",
+          "shutdown": "正在关机"
+        },
+        "headroom": "散热余量 {value}（1.0 = Android 开始降频）",
+        "soc": "芯片 {value} °C",
+        "cpu": "CPU：播放器 {player}",
+        "cpuBoth": "CPU：播放器 {player} · 整机 {device}",
+        "memory": "内存：{total} 中可用 {free}",
+        "memoryLow": "Android 报告内存不足",
+        "none": "此设备未报告温度或负载数据。"
+      },
+      "errors": {
+        "save": "无法保存：{message}",
+        "passwordRequired": "请输入 Wi-Fi 密码——此网络尚未保存密码。"
+      }
+    },
     "setLocation": "设置地址",
     "contentState": {
       "downloading": "正在下载新内容",
