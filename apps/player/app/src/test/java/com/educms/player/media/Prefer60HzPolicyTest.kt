@@ -5,10 +5,11 @@ import org.junit.Test
 
 /**
  * THE AUTOMATIC 60 Hz REQUEST (1.1.43): decided from the panel's own facts,
- * once per process, refused by a standing 24 h block unless forced, and
- * PROVEN by the safety net — the mode must change and frames must keep
- * flowing — or reverted and blocked. Pure: no window is ever created here;
- * a face number no other test uses keeps the process-wide state private.
+ * once per process, refused by a standing 24 h block — always: no manifest
+ * key walks past it — and PROVEN by the safety net — the mode must change and
+ * frames must keep flowing — or reverted and blocked. Pure: no window is ever
+ * created here; a face number no other test uses keeps the process-wide state
+ * private.
  */
 class Prefer60HzPolicyTest {
     private val uhd30 = DisplayModeFacts(1, 3840, 2160, 30.00f)
@@ -20,30 +21,30 @@ class Prefer60HzPolicyTest {
     @Test fun autoAsksNothingWhereThereIsNothingToAskAndWantsAModeOnlyWhereOneIsOffered() {
         val face = 11
         // M43 / L55VEC: one Android mode at 30 Hz — nothing to ask, nothing remembered, no window touched.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_60HZ_MODE), PreferredDisplayMode.request(face, null, uhd30, only30, Prefer60Hz.AUTO, 0L, 1_000L))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_60HZ_MODE), PreferredDisplayMode.request(face, null, uhd30, only30, 0L, 1_000L))
         assertNull(PreferredDisplayMode.attempted(face)); assertEquals(0, PreferredDisplayMode.applied(face)); assertNull(PreferredDisplayMode.pending)
         // The rk3328 unit: already 60 Hz.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_ALREADY_60HZ), PreferredDisplayMode.request(face, null, uhd60, offers60, Prefer60Hz.AUTO, 0L, 1_000L))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_ALREADY_60HZ), PreferredDisplayMode.request(face, null, uhd60, offers60, 0L, 1_000L))
         // A panel that offers 3840x2160@60: the request is wanted, but there is no window in a JVM test.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.AUTO, 0L, 1_000L))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60, 0L, 1_000L))
         assertNull("no request was made, so nothing is remembered: the next boundary may ask", PreferredDisplayMode.attempted(face))
         assertNull(PreferredDisplayMode.pending)
     }
 
-    @Test fun aStandingBlockRefusesTheAutomaticRequestButNeverAForcedOne() {
+    @Test fun aStandingBlockRefusesTheRequestAndNothingWalksPastIt() {
         val face = 12
         val now = 5_000_000L
         val until = now + PreferredDisplayMode.BLOCK_MS
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_BLOCKED), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.AUTO, until, now))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_BLOCKED), PreferredDisplayMode.request(face, null, uhd30, offers60, until, now))
         assertNull(PreferredDisplayMode.attempted(face))
         // The block is checked AFTER "is there anything to ask": a blocked unit with no 60 Hz mode still says so.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_60HZ_MODE), PreferredDisplayMode.request(face, null, uhd30, only30, Prefer60Hz.AUTO, until, now))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_60HZ_MODE), PreferredDisplayMode.request(face, null, uhd30, only30, until, now))
         // An expired block is no block.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.AUTO, until, until + 1L))
-        // FORCE (the lead's positive token) walks past the block — to the window, which a JVM test has not.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.FORCE, until, now))
-        // The default argument is FORCE and no block: the 1.1.42 call shape is unchanged.
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60, until, until + 1L))
+        // The request takes no mode: a manifest key can only switch it off (the caller withdraws), never force it
+        // past the block. The 1.1.42 call shape (no block) still asks — to the window, which a JVM test has not.
         assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face, null, uhd30, offers60))
+        assertEquals(listOf(Prefer60Hz.OFF, Prefer60Hz.AUTO), Prefer60Hz.values().toList())
     }
 
     @Test fun theSafetyNetVerdictNeedsTheRequestedModeAndARecentFrame() {
@@ -74,10 +75,10 @@ class Prefer60HzPolicyTest {
         assertEquals(PreferredDisplayMode.RESULT_FAILED, PreferredDisplayMode.revert(face, null, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES))
         assertEquals(PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES, PreferredDisplayMode.attempted(face))
         assertEquals(0, PreferredDisplayMode.applied(face))
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.AUTO, 0L, 1L))
-        assertEquals("not even forced: once per process", Pair(0, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES), PreferredDisplayMode.request(face, null, uhd30, offers60, Prefer60Hz.FORCE, 0L, 1L))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES), PreferredDisplayMode.request(face, null, uhd30, offers60, 0L, 1L))
+        assertEquals("once per process, block or not", Pair(0, PreferredDisplayMode.RESULT_REVERTED_NO_FRAMES), PreferredDisplayMode.request(face, null, uhd30, offers60))
         // Another face is its own request.
-        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face + 1, null, uhd30, offers60, Prefer60Hz.AUTO, 0L, 1L))
+        assertEquals(Pair(0, PreferredDisplayMode.RESULT_NO_WINDOW), PreferredDisplayMode.request(face + 1, null, uhd30, offers60, 0L, 1L))
         // The kill switch with nothing applied withdraws nothing.
         assertNull(PreferredDisplayMode.withdraw(face, null))
         for (c in PreferredDisplayMode.RESULTS) assertTrue(c, Regex("^[a-z0-9-]{1,64}$").matches(c))

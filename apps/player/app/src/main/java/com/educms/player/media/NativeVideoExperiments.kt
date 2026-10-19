@@ -43,10 +43,11 @@ import org.json.JSONObject
  *     change and the display must keep producing frames within 10 s, or the
  *     mode is reverted and the automatic request is blocked on this unit for
  *     24 h. [Prefer60Hz.OFF] is the kill switch (`-prefer-60hz:<…>`, sends
- *     `false`); [Prefer60Hz.FORCE] (`prefer-60hz:<…>`, sends `true`) asks
- *     even past a block — the lead's test tool. A mode switch can blank the
- *     panel for a second or two, which is why it happens only at a boundary,
- *     while the web engine still shows the content.
+ *     `false`); `true` (the 1.1.42 positive token, still accepted) changes
+ *     nothing — a manifest key can only REMOVE the behaviour, never force a
+ *     request past the safety net's block. A mode switch can blank the panel
+ *     for a second or two, which is why it happens only at a boundary, while
+ *     the web engine still shows the content.
  *
  * The flags ride OUTSIDE the descriptor's `revision`, so flipping one never
  * restarts a session that is on the glass; it applies to the next session.
@@ -55,17 +56,11 @@ internal enum class Prefer60Hz(val wire: String) {
     /** The lead's kill switch: never ask; a mode this process asked for is reverted at the next boundary. */
     OFF("off"),
     /** The default: ask once per process when the panel offers a same-resolution ~60 Hz mode and no block stands. */
-    AUTO("auto"),
-    /** The lead's positive token: ask even while a 24 h block stands (never past the once-per-process rule). */
-    FORCE("force");
+    AUTO("auto");
 
     companion object {
-        /** Absent or anything but a JSON boolean = AUTO; `false` = OFF; `true` = FORCE. */
-        fun parse(v: Any?): Prefer60Hz = when (v) {
-            false -> OFF
-            true -> FORCE
-            else -> AUTO
-        }
+        /** Exactly a JSON `false` = OFF (the kill switch); anything else — absent, `true`, garbage — = AUTO. */
+        fun parse(v: Any?): Prefer60Hz = if (v == false) OFF else AUTO
     }
 }
 
@@ -75,7 +70,7 @@ internal data class NativeVideoExperiments(
     val decoderRotation: Boolean = false,
     /** 1.1.43: ON unless the descriptor says exactly `false`. */
     val vsyncSnap: Boolean = true,
-    /** 1.1.43: AUTO unless the descriptor says `false` (OFF) or `true` (FORCE). */
+    /** 1.1.43: AUTO unless the descriptor says exactly `false` (OFF). */
     val prefer60hz: Prefer60Hz = Prefer60Hz.AUTO,
 ) {
     /** Whether anything at all is in effect for a session (with the 1.1.43 defaults, always). */
@@ -108,8 +103,8 @@ internal data class NativeVideoExperiments(
         /**
          * The three experiments: absent, malformed or anything but a JSON `true`
          * reads as OFF. The two defaults: absent or malformed reads as the
-         * default, a JSON `false` switches off, a JSON `true` is accepted
-         * (snap: no change; 60 Hz: forced). Unknown keys are ignored.
+         * default, a JSON `false` switches off, a JSON `true` is accepted and
+         * changes nothing (a key can only remove a default). Unknown keys are ignored.
          */
         fun parse(j: JSONObject?): NativeVideoExperiments {
             if (j == null) return NONE

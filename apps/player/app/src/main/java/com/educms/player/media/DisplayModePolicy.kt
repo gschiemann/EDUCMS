@@ -37,8 +37,9 @@ import kotlin.math.abs
  * that stalls before any native frame is the switch's failure, not the file's
  * (FaceVideoBox.watch). A failed request is reverted, reported as one of the
  * `reverted-*` codes, and the AUTOMATIC request is blocked on this unit for
- * [BLOCK_MS] ([Prefer60HzBlock], persisted across reboots). [Prefer60Hz.FORCE]
- * asks past the block; nothing asks past the once-per-process rule.
+ * [BLOCK_MS] ([Prefer60HzBlock], persisted across reboots). Nothing asks past
+ * the block or past the once-per-process rule: a manifest key can only switch
+ * the request off ([Prefer60Hz.OFF]), never force one.
  */
 internal data class DisplayModeFacts(val id: Int, val width: Int, val height: Int, val refreshRate: Float) {
     /** `modeId:WxH@Hz`, the shape every `displayMode` field already uses. */
@@ -161,13 +162,13 @@ internal object PreferredDisplayMode {
 
     /**
      * UI thread, at a session boundary BEFORE the session's surface exists.
-     * Returns the mode id asked for (0 = none) and the result code. [mode] is
-     * never [Prefer60Hz.OFF] here (the caller withdraws instead); a standing
-     * block ([blockedUntilMs] > [nowMs]) refuses an AUTO request, never a FORCE.
+     * Returns the mode id asked for (0 = none) and the result code. Only the
+     * automatic request comes here (the kill switch withdraws instead); a
+     * standing block ([blockedUntilMs] > [nowMs]) refuses it, always.
      */
     fun request(
         face: Int, window: Window?, active: DisplayModeFacts?, modes: List<DisplayModeFacts>,
-        mode: Prefer60Hz = Prefer60Hz.FORCE, blockedUntilMs: Long = 0L, nowMs: Long = 0L,
+        blockedUntilMs: Long = 0L, nowMs: Long = 0L,
     ): Pair<Int, String> {
         val have = applied(face)
         if (have != 0) return Pair(have, RESULT_KEPT)
@@ -175,7 +176,7 @@ internal object PreferredDisplayMode {
         val pick = DisplayModePolicy.choosePreferred60(active, modes) ?: return Pair(0, RESULT_NO_60HZ_MODE)
         // Once per process: a request that was made (and failed, or was reverted) is not made again.
         attemptedByFace[face]?.let { return Pair(0, it) }
-        if (mode == Prefer60Hz.AUTO && blockedUntilMs > nowMs) return Pair(0, RESULT_BLOCKED)
+        if (blockedUntilMs > nowMs) return Pair(0, RESULT_BLOCKED)
         if (window == null) return Pair(0, RESULT_NO_WINDOW)
         if (!set(window, pick.id)) { attemptedByFace[face] = RESULT_FAILED; return Pair(0, RESULT_FAILED) }
         appliedByFace[face] = pick.id

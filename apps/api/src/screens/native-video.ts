@@ -130,9 +130,10 @@ export function parseNativeVideoRollout(
  *                       and the first native frame confirms — or reverts and
  *                       blocks the automatic request on that unit for 24 h.
  *                       `-prefer-60hz:<…>` switches it OFF (a mode this process
- *                       asked for is reverted at the next boundary);
- *                       `prefer-60hz:<…>` FORCES a request even while blocked
- *                       (the lead's test tool).
+ *                       asked for is reverted at the next boundary); the
+ *                       positive token is accepted and changes nothing — it
+ *                       can never force a request past the safety net's block.
+ * On an APK ≥ 1.1.43 a token for these two can only REMOVE behaviour.
  * A negative token for one of the three experiments changes nothing (they are
  * off anyway); an unknown or malformed token enables and disables nothing; a
  * negative token wins over a positive one for the same screen. The flags ride
