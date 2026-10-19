@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { emptyDistrictReadiness } from '../fixtures/api-contract';
+import { emptyDistrictReadiness, emptyScreenEvents, screenEventsScreenId } from '../fixtures/api-contract';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const ALPHA = 'mobile-alpha';
@@ -71,6 +71,9 @@ async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: b
         excluded: { count: 0, note: 'Synthetic test accounts' }, meta: { generatedAt: new Date().toISOString(), definition: 'Test data' } },
     };
     body = bodies[path] ?? body;
+    // The screen drawer's interruptions section reads `summary.*` (2026-10-18).
+    const eventsScreen = screenEventsScreenId(path);
+    if (eventsScreen) body = emptyScreenEvents(eventsScreen);
     if (path === '/branding/me' && tenantId === BETA && opts.delayBetaBrand) await betaBrandGate;
     if (path === '/tenants/switch') body = { access_token: token(data.tenantId), user: user(data.tenantId) };
     if (path === '/assets/presign') body = { uploadUrl: `https://storage.example.test/${encodeURIComponent(data.filename)}`,

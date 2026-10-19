@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -91,6 +91,10 @@ import type {
   MediaAlertInput,
 } from '@cms/api-types';
 import { assertSupportReach } from '../support-access/support-access.context';
+// 2026-10-18 — the interruption ledger: one emergency-start / emergency-clear
+// row per screen an alert reached, written AFTER the alert's own writes, audit
+// rows and dispatch, never awaited (screens/events/screen-events.ts).
+import { LEDGER_BULK_MAX_ROWS, ScreenEventsService } from '../screens/events/screen-events.service';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -109,7 +113,63 @@ export class EmergencyController {
     // Fire-and-forget — never blocks the response path or the
     // life-safety trigger transaction. See call sites below.
     private readonly gpio: GpioService,
+    // 2026-10-18 — interruption ledger. Optional: every spec that builds this
+    // controller by hand records nothing, and nothing here depends on it.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
+
+  /**
+   * Interruption ledger (2026-10-18): one row per screen this alert reached —
+   * every screen of the affected tenants for a tenant-scoped alert, exactly
+   * the named screens otherwise. Called WITHOUT await, after the alert's own
+   * writes, audit rows and dispatch, so it can never delay, fail or reorder
+   * the alert; it swallows every error itself. `drill` is the alert's own
+   * flag — the launch gate leaves drills out of its count.
+   */
+  private recordAlertLedger(args: {
+    kind: 'emergency-start' | 'emergency-clear';
+    overrideId: string;
+    cause: string;
+    isDrill: boolean;
+    scopeType: string;
+    severity?: string | null;
+    tenantIds?: string[];
+    screens?: Array<{ id: string; tenantId: string | null }>;
+  }): void {
+    const ledger = this.ledger;
+    if (!ledger) return;
+    void (async () => {
+      try {
+        const screens =
+          args.screens ??
+          (args.tenantIds && args.tenantIds.length > 0
+            ? await this.prisma.client.screen.findMany({
+                where: { tenantId: { in: args.tenantIds } },
+                select: { id: true, tenantId: true },
+                take: LEDGER_BULK_MAX_ROWS,
+              })
+            : []);
+        if (screens.length === 0) return;
+        await ledger.recordMany(
+          screens.map((s) => ({
+            screenId: s.id,
+            tenantId: s.tenantId,
+            kind: args.kind,
+            cause: args.cause,
+            source: 'operator' as const,
+            detail: {
+              drill: args.isDrill,
+              overrideId: args.overrideId,
+              scope: args.scopeType,
+              ...(args.severity ? { severity: args.severity } : {}),
+            },
+          })),
+        );
+      } catch {
+        /* bookkeeping only — the alert has already gone out */
+      }
+    })();
+  }
 
   /**
    * Redis fan-out for a life-safety dispatch.
@@ -1000,6 +1060,8 @@ export class EmergencyController {
     // Group / device scope only: how many screens the alert took over
     // (whole displays included), so the operator UI can report it.
     let affectedScreenCount: number | undefined;
+    // …and which, for the interruption ledger (written after everything below).
+    let ledgerScreens: Array<{ id: string; tenantId: string | null }> | null = null;
 
     // If targeting a tenant (e.g., a school), update its emergencyStatus persistently
     if (scopeType === 'tenant') {
@@ -1386,6 +1448,7 @@ export class EmergencyController {
         panicSource: panic.source,
       });
       affectedScreenCount = affectedScreens.length;
+      ledgerScreens = affectedScreens.map((s: any) => ({ id: s.id as string, tenantId: (s.tenantId as string | null) ?? ownedTenantId }));
 
       // ownedTenantId already verified above. Override rows + audit in one
       // transaction so a concurrent all-clear can't leave half the group's
@@ -1451,6 +1514,18 @@ export class EmergencyController {
           userId: req.user?.id,
           userTenantId: req.user?.tenantId,
         });
+
+    // Interruption ledger — after the alert's writes, audit rows and dispatch;
+    // not awaited, never throws (see recordAlertLedger).
+    this.recordAlertLedger({
+      kind: 'emergency-start',
+      overrideId,
+      cause: this.emergencyTypeKey(overridePayload.type)?.toLowerCase() ?? 'alert',
+      isDrill,
+      scopeType,
+      severity,
+      ...(scopeType === 'tenant' ? { tenantIds: affectedTenantIds } : { screens: ledgerScreens ?? [] }),
+    });
 
     // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
     // Fire-and-forget; the response below is never blocked. Only fires
@@ -1852,6 +1927,19 @@ export class EmergencyController {
       );
     }
     await clearFanout;
+
+    // Interruption ledger — after the all-clear's writes, audit rows and
+    // dispatch; not awaited, never throws (see recordAlertLedger).
+    this.recordAlertLedger({
+      kind: 'emergency-clear',
+      overrideId,
+      cause: 'all-clear',
+      isDrill: clearingDrill,
+      scopeType,
+      ...(scopeType === 'tenant'
+        ? { tenantIds: affectedTenantIds }
+        : { screens: changedScreenIds.map((sid) => ({ id: sid, tenantId: ownedTenantId })) }),
+    });
 
     return {
       success: true,

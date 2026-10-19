@@ -126,6 +126,9 @@ import { GpioModule } from './screens/gpio.module';
 import { DisplayModule } from './display/display.module';
 import { DeviceSettingsModule } from './device-settings/device-settings.module';
 import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
+// 2026-10-18 — the interruption ledger (@Global ScreenEventsService + its
+// leader-leased retention cron). See screens/events/screen-events.ts.
+import { ScreenEventsModule } from './screens/events/screen-events.module';
 // 2026-05-27 — One-click Bug Reporter. BugsController is registered
 // in the `controllers` array below; BugsModule provides the
 // enrichment + AI analyzer services that back it. See bugs/*.ts and
@@ -233,6 +236,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-11 — select-all / select-group Resync, Send update, power,
     // automatic updates (screens/bulk/screens-bulk.controller.ts).
     ScreensBulkModule,
+    ScreenEventsModule,
     BugsModule,
     EfficiencyModule,
     ActivationFunnelModule,

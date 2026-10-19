@@ -59,6 +59,7 @@ import { isInCanaryCohort } from './canary-cohort';
 // minutes (2026-05-12). blockedBySigningCutover keeps the pre-v1.1.0
 // `-debug` fleet from being offered an update Android must refuse.
 import { verifyDeviceForScreen } from '../screens/device-auth';
+import { recordScreenEvent, versionChangeEvent } from '../screens/events/screen-events.service';
 import {
   evaluateReleaseForFleet,
   evaluateManagerReleaseForFleet,
@@ -321,6 +322,7 @@ export class PlayerOtaController {
             : {}),
         } as any,
       });
+      void recordScreenEvent(this.prisma, prior?.tenantId ? versionChangeEvent({ screenId: prior.id, tenantId: prior.tenantId, versionCode: vc, previousCode: prior.playerVersionCode, reportedCode: vc, versionName: vn, pushSatisfied: installed, authenticated: ctx.deviceAuthenticated }) : null, this.redisService); // interruption ledger (2026-10-18): a new Player build, best-effort
       if (installed) {
         this.logger.log(
           `[ota] flag-cleared-on-install screen=${prior.id} ` +

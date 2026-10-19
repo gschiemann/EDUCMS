@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { emptyDistrictReadiness, unknownPlaybackCapability } from '../fixtures/api-contract';
+import { emptyDistrictReadiness, emptyScreenEvents, unknownPlaybackCapability } from '../fixtures/api-contract';
 
 const TENANT = 'e2e-preview';
 const USER = { id: 'preview-user', role: 'SCHOOL_ADMIN', email: 'preview@example.test', tenantId: TENANT };
@@ -38,7 +38,7 @@ async function setup(page: Page, command = false, kind: Kind = 'template', websi
       '/screens/fleet': { root: tenant, locations: command ? [tenant, { id: 'other', slug: 'other', name: 'Other location' }] : [], screens: [screen()], stats: { total: 1, online: 1, offline: 0, locationCount: command ? 2 : 1 } },
       '/playlists/demo-playlist/delivery': { latest: { id: 'push', createdAt: new Date(Date.now() - 5000).toISOString(), targetCount: 1, acknowledged: 0, targets: [{ screenId: 'display', name: 'Demo display', online: true, state: 'not-updated', ackAt: null, lastProofAt: null, pushChannel: 'live' }] }, history: [] },
       '/assets/storage-summary': { totalBytes: 0, totalFiles: website ? 1 : 0, images: { bytes: 0, files: 0 }, videos: { bytes: 0, files: 0 }, other: { bytes: 0, files: website ? 1 : 0 } },
-      '/screens/display/faces': { faces: [] }, '/screens/display/events': { events: [] }, '/screens/display/device-inventory': { report: null },
+      '/screens/display/faces': { faces: [] }, '/screens/display/events': emptyScreenEvents('display'), '/screens/display/device-inventory': { report: null },
       '/player/latest-version': { versionName: '1.1.20', versionCode: 10120 },
       // The Screens page reads `schools.find(...)` off this and the screen drawer
       // `capability.*` off playback-capability (2026-10-11): `[]` crashes both.

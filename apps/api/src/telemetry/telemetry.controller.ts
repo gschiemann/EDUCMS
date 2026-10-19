@@ -40,6 +40,12 @@ import {
   type StoredVideoSample,
 } from './file-playback';
 import { pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
+import { ScreenEventsService } from '../screens/events/screen-events.service';
+import {
+  nativeEngineEvents,
+  versionChangeEvent,
+  type LedgerEventInput,
+} from '../screens/events/screen-events';
 
 /**
  * POST /api/v1/screens/:id/telemetry — the ONE routine report a player
@@ -103,6 +109,10 @@ export class TelemetryController {
     // Video guarantee closed loop (2026-10-12). Optional so a context without
     // it (older specs) still ingests evidence exactly as before.
     @Optional() private readonly playbackDemotion?: PlaybackDemotionService,
+    // Interruption ledger (2026-10-18): version changes, native engine
+    // start / stop / swap and applied bundle updates, as this report shows
+    // them. Optional: hand-built specs record nothing.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
 
   /**
@@ -691,6 +701,58 @@ export class TelemetryController {
       } catch {
         /* timeline best-effort */
       }
+    }
+
+    // ── INTERRUPTION LEDGER (2026-10-18, player rock-solid §4B) ──────────
+    // What this report proves happened on the screen since the last one,
+    // compared with the row as it was read above (screens/events/
+    // screen-events.ts has every rule). Best-effort and deduplicated: it
+    // never fails the report and a repeating report cannot flood the ledger.
+    if (this.ledger && screen.tenantId) {
+      const reportedCode = typeof data.playerVersionCode === 'number' ? data.playerVersionCode : null;
+      const versionCode = reportedCode ?? screen.playerVersionCode ?? null;
+      const happened: LedgerEventInput[] = [];
+      const installed = versionChangeEvent({
+        screenId,
+        tenantId: screen.tenantId,
+        previousCode: screen.playerVersionCode,
+        reportedCode,
+        versionName: vn || null,
+        pushSatisfied: otaCleared,
+      });
+      if (installed) happened.push(installed);
+      happened.push(
+        ...nativeEngineEvents({
+          screenId,
+          tenantId: screen.tenantId,
+          versionCode,
+          storedReport: screen.lastVideoReport,
+          native: nativeVideo ?? null,
+          webSample: videoReport ? { sha256: (videoReport as { sha256?: string }).sha256 ?? null } : null,
+          nowMs: now.getTime(),
+        }),
+      );
+      // The page reloaded itself onto a new bundle and says so once.
+      if (body.update) {
+        happened.push({
+          screenId,
+          tenantId: screen.tenantId,
+          versionCode,
+          kind: 'page-reload',
+          cause: 'bundle-apply',
+          source: 'device',
+          detail: {
+            window: body.update.window,
+            fromBundleId: body.update.fromBundleId,
+            toBundleId: body.update.toBundleId,
+            blankMs: body.update.blankMs,
+            coverMs: body.update.coverMs,
+          },
+          dedupKey: `page-reload:bundle-apply:${body.update.toBundleId ?? 'unknown'}`,
+          dedupMs: 24 * 60 * 60_000,
+        });
+      }
+      if (happened.length > 0) await this.ledger.recordAll(happened, now);
     }
 
     // ── RESPONSE: everything the retired GETs handed the player ─────────

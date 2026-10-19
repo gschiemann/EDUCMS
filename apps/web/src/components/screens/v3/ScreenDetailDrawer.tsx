@@ -49,6 +49,7 @@ import type { OpsMessage } from '../contentDownload';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
+import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -699,6 +700,7 @@ export function ScreenDetailDrawer({
                   this screen played, smooth / hitches / stutters, from minutes
                   of the player's own counts — read-only, enforces nothing. */}
               <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} />
+              <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview'} />
 
               <ScreenDisplayFactsSection screen={screen} now={now} />
 

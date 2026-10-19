@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyScreenEvents, screenEventsScreenId } from '../fixtures/api-contract';
 
 /**
  * Tracked APK pushes in the screen drawer (2026-10-18, unattended-updates
@@ -87,7 +88,8 @@ async function openScreens(page: Page, screens: Array<Record<string, unknown>>) 
       '/screens/hardware': { models: [] },
     };
     const body = path.endsWith('/device-inventory') ? { report: null, reportedAt: null }
-      : path.endsWith('/events') ? { events: [] }
+      // History reads `events`, the interruptions section `summary.*` (2026-10-18).
+      : screenEventsScreenId(path) ? emptyScreenEvents(screenEventsScreenId(path)!)
         : path.endsWith('/faces') ? { faces: [] }
           // The drawer's playback card reads `capability.*` off this.
           : path.endsWith('/playback-capability') ? {

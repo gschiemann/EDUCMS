@@ -10,6 +10,7 @@
  */
 import { PlaybackDemotionService, VIDEO_PLAYBACK_DEMOTED, VIDEO_PLAYBACK_DEMOTION_CLEARED, VIDEO_PLAYBACK_STUTTER_TWO_SIDED, VIDEO_PLAYBACK_STUTTER_UNRESOLVED } from './playback-demotion.service';
 import { ingestFilePlayback } from './file-playback';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from '../screens/events/screen-events.service';
 
 const T = 'tenant-a';
 const S = 'screen-1';
@@ -326,5 +327,60 @@ describe('ingest → evaluate: only VISIBLE stutter, 3 in a row', () => {
     });
     expect(out).toEqual({ kind: 'none', why: 'excluded-sample' });
     expect(db.screen.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+// ── Interruption ledger (2026-10-18, screens/events/screen-events.ts) ──────
+describe('interruption ledger rows', () => {
+  beforeEach(() => resetScreenEventsDedupForTests());
+  /** The same world, with the real ledger service writing into a fake table. */
+  function withLedger(over: Parameters<typeof world>[0] = {}) {
+    const h = world(over);
+    const rows: any[] = [];
+    const ledgerDb = { client: { screenEvent: { create: jest.fn(async ({ data }: any) => { rows.push(data); return { id: 'ev' }; }) } } };
+    const svc = new PlaybackDemotionService(
+      { client: h.db } as any, h.redis as any, h.signer as any, h.notifications as any, h.mailer as any,
+      new ScreenEventsService(ledgerDb as any),
+    );
+    return { ...h, svc, rows };
+  }
+
+  it('demotion: one row when the screen is moved to the 1080p copy — none for the sticky repeat', async () => {
+    const { svc, rows } = withLedger();
+    await svc.evaluate(input());
+    await svc.evaluate(input({ visibleBadStreak: 4 }));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        screenId: S, tenantId: T, kind: 'demotion', cause: 'visible-stutter', source: 'system',
+        detail: { assetId: 'asset-1', from: 'original', to: '1080p', streak: 3, lastPct: 22.5 },
+      }),
+    ]);
+  });
+
+  it('no row when nothing was demoted (observe mode, two-sided, emergency)', async () => {
+    process.env.VIDEO_PLAYBACK_DEMOTION = 'observe';
+    const a = withLedger();
+    await a.svc.evaluate(input());
+    delete process.env.VIDEO_PLAYBACK_DEMOTION;
+    const b = withLedger({ faces: 1 });
+    await b.svc.evaluate(input());
+    const c = withLedger({ emergency: 'protected' });
+    await c.svc.evaluate(input());
+    expect([...a.rows, ...b.rows, ...c.rows]).toEqual([]);
+  });
+
+  it('rendition-swap: "Try full quality again" moves the screen back — one row per demotion cleared', async () => {
+    const { svc, rows, w } = withLedger({ demotions: [{ id: 'dem-1', tenantId: T, screenId: S, sourceSha256: SHA, assetId: 'asset-1', clearedAt: null }] });
+    await svc.clear({ tenantId: T, screenId: S, demotionId: 'dem-1', userId: 'user-9' });
+    // a double click that clears the same demotion again inside a minute
+    // (the row reopened here to let the second clear through) adds no row
+    w.demotions[0].clearedAt = null;
+    await svc.clear({ tenantId: T, screenId: S, demotionId: 'dem-1', userId: 'user-9' });
+    expect(rows).toEqual([
+      expect.objectContaining({
+        screenId: S, tenantId: T, kind: 'rendition-swap', cause: 'demotion-cleared', source: 'operator',
+        detail: { demotionId: 'dem-1', assetId: 'asset-1', from: '1080p', to: 'original' },
+      }),
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { MediaOptimizationService } from '../storage/media-optimization.service';
 import { MediaPublicationService } from './media-publication.service';
+import { ScreenEventsService, resetScreenEventsDedupForTests } from '../screens/events/screen-events.service';
 
 const video = {
   id: 'asset-v', mimeType: 'video/mp4', fileUrl: 'https://example.com/4k.mp4',
@@ -273,5 +274,52 @@ describe('media publication gate', () => {
       scope: 'screen', scopeId: 'screen-1', jitterMs: 0,
     }));
     expect(h.redis.publish).toHaveBeenCalledWith('tenant:tenant', 'signed-sync');
+  });
+});
+
+// ── Interruption ledger (2026-10-18, screens/events/screen-events.ts) ──────
+describe('interruption ledger: the rendition REFRESH_WEB', () => {
+  beforeEach(() => resetScreenEventsDedupForTests());
+  it('page-reload server-displacement: one row for the screen it asks to reload — none for a repeat inside a minute', async () => {
+    const ready = { ...video, processingMeta: {
+      ...video.processingMeta,
+      renditions: { '1080p': { url: 'https://example.com/1080.mp4', sha256: 'a'.repeat(64), size: 40_000_000 } },
+    } };
+    const h = setup(ready);
+    const rows: any[] = [];
+    const ledgerDb = { client: { screenEvent: { create: jest.fn(async ({ data }: any) => { rows.push(data); return { id: 'ev' }; }) } } };
+    const service = new MediaPublicationService(
+      h.prisma as any, h.jobs as any, h.redis as any, h.signer as any, h.storage as any, new MediaOptimizationService(),
+      undefined, undefined, new ScreenEventsService(ledgerDb as any),
+    );
+    const rule = () => ({ id: 'rule-1', tenantId: 'tenant', playlistId: 'playlist-1',
+      playlist: { items: [{ asset: ready }] },
+      screen: { id: 'screen-1', resolution: '1920 x 1080', pendingRefreshAt: null,
+        lastVideoReportAt: new Date(), lastVideoReport: { url: ready.fileUrl, width: 3840 } },
+      screenGroup: null });
+    for (let i = 0; i < 2; i++) {
+      h.prisma.client.schedule.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([rule()]);
+      (service as any).lastLegacyBackfillAt = 0;
+      await service.sweep();
+    }
+    expect(h.signer.signMessage.mock.calls.filter(([type]: any[]) => type === 'REFRESH_WEB')).toHaveLength(2);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        screenId: 'screen-1', tenantId: 'tenant', kind: 'page-reload', cause: 'server-displacement', source: 'system',
+        detail: { reason: 'media-rendition-ready', assetId: 'asset-v', playlistId: 'playlist-1', requested: true },
+      }),
+    ]);
+  });
+
+  it('a screen that was not asked to reload has no row', async () => {
+    const h = setup();
+    const rows: any[] = [];
+    const service = new MediaPublicationService(
+      h.prisma as any, h.jobs as any, h.redis as any, h.signer as any, h.storage as any, new MediaOptimizationService(),
+      undefined, undefined, new ScreenEventsService({ client: { screenEvent: { create: jest.fn(async ({ data }: any) => rows.push(data)) } } } as any),
+    );
+    (service as any).lastLegacyBackfillAt = 0;
+    await service.sweep();
+    expect(rows).toEqual([]);
   });
 });

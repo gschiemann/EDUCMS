@@ -50,6 +50,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 import { emergencyContentUse } from '../emergency/emergency-content-use';
 import { valid1080pRendition } from '../screens/video-rendition';
+import { ScreenEventsService } from '../screens/events/screen-events.service';
 
 /** Ops hear about one screen × file at most this often (owner decision C). */
 export const STUTTER_ALERT_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -102,6 +103,9 @@ export class PlaybackDemotionService {
     @Optional() private readonly signer?: WebsocketSignerService,
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly mailer?: PlatformAlertMailer,
+    // Interruption ledger (2026-10-18): a demotion, and the switch back an
+    // operator asks for. Optional: hand-built specs record nothing.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
 
   private get db(): any {
@@ -214,6 +218,15 @@ export class PlaybackDemotionService {
         this.logger.warn(
           `[video-demotion] DEMOTED screen=${screenId} asset=${asset.id} → 1080p copy after ${input.visibleBadStreak} visibly stuttering minutes (last ${input.lastPct ?? '?'}% dropped)`,
         );
+        await this.ledger?.record({
+          screenId,
+          tenantId,
+          kind: 'demotion',
+          cause: 'visible-stutter',
+          source: 'system',
+          detail: { assetId: asset.id, from: 'original', to: '1080p', streak: input.visibleBadStreak, lastPct: input.lastPct },
+          dedupKey: `demotion:${sha}`,
+        });
         await this.syncScreen(screenId);
       }
       return action;
@@ -378,6 +391,17 @@ export class PlaybackDemotionService {
       return true;
     });
     if (!done) throw new HttpException({ code: 'PLAYBACK_DEMOTION_NOT_FOUND', message: 'Nothing to undo for this screen.' }, HttpStatus.NOT_FOUND);
+    // The manifest names the original again; the screen swaps back at a
+    // natural boundary once the file is on disk (renditionSwap.ts).
+    await this.ledger?.record({
+      screenId: args.screenId,
+      tenantId: args.tenantId,
+      kind: 'rendition-swap',
+      cause: 'demotion-cleared',
+      source: 'operator',
+      detail: { demotionId: row.id, assetId: row.assetId, from: '1080p', to: 'original' },
+      dedupKey: `rendition-swap:${row.id}`,
+    });
     await this.syncScreen(args.screenId);
     return { cleared: true, sourceSha256: row.sourceSha256 };
   }
