@@ -28,7 +28,9 @@ import kotlin.math.abs
  * runs at 59 Hz or more. Every supported mode is logged first, flag or not.
  *
  * [PreferredDisplayMode] is the window half: the request lives on the Activity
- * window (face 0) or the face Presentation's window (face 1), is kept for the
+ * window — the default display's face (face 0) only since 1.1.43, because the
+ * safety net's frame proof follows the default display and one request is
+ * proven at a time — is kept for the
  * process lifetime, and is reverted (mode id 0 = the system's choice) at a
  * session boundary once the kill switch withdraws it — or by the SAFETY NET:
  * after a request the active mode must change AND the display must keep

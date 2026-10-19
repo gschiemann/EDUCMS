@@ -37,8 +37,9 @@ import org.json.JSONObject
  *     guard covers it as before.
  *  5. [prefer60hz] — when the panel lists a ~60 Hz mode of the SAME
  *     resolution, ask for it through `Window.preferredDisplayModeId` once per
- *     process, at the first native session boundary after boot, before that
- *     session's surface exists (DisplayModePolicy.kt). [Prefer60Hz.AUTO] is
+ *     process, on the default display's face, at the first native session
+ *     boundary after boot, before that session's surface exists
+ *     (DisplayModePolicy.kt). [Prefer60Hz.AUTO] is
  *     the default: the request is made, then PROVEN — the active mode must
  *     change and the display must keep producing frames within 10 s, or the
  *     mode is reverted and the automatic request is blocked on this unit for

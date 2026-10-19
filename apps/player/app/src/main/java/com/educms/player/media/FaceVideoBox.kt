@@ -333,7 +333,10 @@ internal object FaceVideoBox {
             // makes this boundary mid-session for IT, so nothing is asked then. The kill switch
             // (`prefer60hz: false` on the descriptor) reverts here, at the next boundary — but never
             // under a hold either: a withdraw is a mode switch too, so the first boundary after it does it.
-            if (s.protocol == 2) {
+            // Only the DEFAULT display's face asks: the safety net's frame proof is the UI thread's
+            // Choreographer, which follows the default display, and one request is proven at a time —
+            // a second panel (face 1 of a double-sided unit) would switch with no proof of its own.
+            if (s.protocol == 2 && host.face == DisplayEmergency.PRIMARY_FACE) {
                 val window = host.window()
                 val otherAttached = host.faceSessions.values.any { it !== s && it.alive && it.attached }
                 val mode = d.experiments.prefer60hz

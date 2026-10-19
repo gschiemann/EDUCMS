@@ -214,7 +214,9 @@ class FaceVideoBoxContractTest {
         assertTrue("the request is made …", request > block)
         assertTrue("… and the safety net is armed the moment it is applied", armed > request)
         assertTrue("all of it happens BEFORE this session's SurfaceView exists", surface > armed && surface > withdraw)
-        assertTrue("only a solo session asks (a slot never does)", attach.substring(read, gate).contains("if (s.protocol == 2) {"))
+        assertTrue("only a solo session on the DEFAULT display's face asks (a slot never does; face 1's panel has no frame proof of its own)",
+            attach.substring(read, gate).contains("if (s.protocol == 2 && host.face == DisplayEmergency.PRIMARY_FACE) {"))
+        assertEquals(0, com.educms.player.display.DisplayEmergency.PRIMARY_FACE)
         assertTrue("another attached session makes the boundary mid-session: nothing is asked", attach.contains("otherAttached"))
         assertTrue("the window is the FACE's (Activity or Presentation), never a guess", attach.contains("val window = host.window()"))
         // The safety net: a Choreographer watch for the window, then the verdict on the UI thread; ONE revert path.
