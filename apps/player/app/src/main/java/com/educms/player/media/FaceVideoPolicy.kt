@@ -54,12 +54,30 @@ internal data class FaceVideoDescriptor(
     /** The M43 experiments the server switched on for THIS screen (1.1.41); absent = none. Outside `revision`. */
     val experiments: NativeVideoExperiments = NativeVideoExperiments.NONE,
 ) {
+    /**
+     * Native-first enrolment for THIS face (design §8.1; stream C adds the key):
+     * `true` = included, `false` = off / excluded, null = absent (the class
+     * default). OUTSIDE `revision` AND outside equality — a flip must never end
+     * or restart a session (`fresh == d` in FaceVideoBox.fetch compares this
+     * class).
+     */
+    var nativeFirst: Boolean? = null
+        internal set
+
     fun matches(r: FaceVideoRequest): Boolean =
         r.screenId == screenId && r.revision == revision && r.sha256 == sha256 && r.assetId == assetId
 
     companion object {
         private val uuid = Regex("[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}")
         val FITS = setOf("cover", "contain", "fill")
+
+        /** The descriptor's `nativeFirst` as the tri-state of §8.1: a JSON boolean, or null for absent / anything else. */
+        fun nativeFirstOf(j: JSONObject?): Boolean? = when (j?.opt("nativeFirst")) {
+            true -> true
+            false -> false
+            else -> null
+        }
+
         fun parse(j: JSONObject): FaceVideoDescriptor {
             require(j.getInt("version") == 2) { "descriptor-version" }
             fun id(key: String): String = j.getString(key).also { require(uuid.matches(it)) { "descriptor-identity" } }
@@ -77,6 +95,7 @@ internal data class FaceVideoDescriptor(
                 d.fps.isFinite() && d.fps > 0 && d.fps <= 30) { "descriptor-format" }
             require(d.fit in FITS && d.orientation in setOf("PORTRAIT", "LANDSCAPE", "AUTO")) { "descriptor-transform" }
             require(SharedVideoSourcePolicy.allowed(d.url)) { "media-origin" }
+            d.nativeFirst = nativeFirstOf(j)
             return d
         }
     }
@@ -395,6 +414,14 @@ internal class LoopTimeline(private val frameUs: Long) {
     private var fileStartRaw = Long.MAX_VALUE
     private var queuedMax = Long.MIN_VALUE
     var laps = 0L; private set
+    /**
+     * Native-first (§3.3): the queued presentation time of each lap's FIRST
+     * picture, until the output side reaches it. Input runs a few frames ahead
+     * of output, so the decode thread asks [outputCrossesLap] for every picture
+     * it is about to show: true = this picture opens a new lap, i.e. the
+     * picture before it was the last of the old lap (the loop end).
+     */
+    private val lapStarts = ArrayDeque<Long>()
 
     /** The presentation time to queue for a raw sample time of the current lap. */
     fun queue(rawUs: Long): Long {
@@ -411,6 +438,18 @@ internal class LoopTimeline(private val frameUs: Long) {
         lapBaseRaw = fileStartRaw
         queuedMax = Long.MIN_VALUE
         laps++
+        lapStarts.addLast(offsetUs)
+        while (lapStarts.size > 8) lapStarts.removeFirst()
         return true
+    }
+
+    /** Output side: does the picture at [ptsUs] open a lap the output has not reached yet? Consumes that lap start. */
+    fun outputCrossesLap(ptsUs: Long): Boolean {
+        var crossed = false
+        while (lapStarts.isNotEmpty() && ptsUs >= lapStarts.first()) {
+            lapStarts.removeFirst()
+            crossed = true
+        }
+        return crossed
     }
 }

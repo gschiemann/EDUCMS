@@ -51,9 +51,20 @@ internal class FaceVideoRenderer(
     private val refreshRate: Float = 60f,
     /** Experiment 4 (1.1.42): the display's vsync grid to snap releases to; null = release at the PTS-derived due time as before. */
     private val vsync: VsyncGrid? = null,
+    /**
+     * Native-first (design §3.3): asked on the decode thread at every LOOP END
+     * (the next picture opens a new lap). True = stop here — the last picture
+     * of the lap stays on the surface, nothing more is shown, [lapEnded] fires
+     * once and the decoder waits for [stop]. The boundary switch / a release at
+     * the boundary hangs off this; false (the default) loops as before.
+     */
+    private val freezeAtLapEnd: () -> Boolean = { false },
+    private val lapEnded: () -> Unit = {},
 ) {
     private val stopped = AtomicBoolean(false)
     private val started = AtomicBoolean(false)
+    /** Counted down once the decode thread has released its codec (or never ran). */
+    private val finished = java.util.concurrent.CountDownLatch(1)
     @Volatile private var released = !holdFirst
     private val callbacks = Handler(Looper.getMainLooper())
     var codecName: String? = null; private set
@@ -120,6 +131,18 @@ internal class FaceVideoRenderer(
     fun release() { released = true }
 
     fun stop() { stopped.set(true); released = true }
+
+    /**
+     * Native-first's hold-last-frame swap (§3.3): stop, and wait (off the UI
+     * thread) until the decoder is actually released, so the next session's
+     * decoder never races this one for the hardware. The surface keeps the
+     * last picture. True when released in time (or the decoder never ran).
+     */
+    fun stopAndAwait(timeoutMs: Long): Boolean {
+        stop()
+        if (!started.get()) return true
+        return finished.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
 
     private fun videoTrack(e: MediaExtractor): Int = (0 until e.trackCount).firstOrNull {
         e.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == "video/avc"
@@ -239,6 +262,18 @@ internal class FaceVideoRenderer(
                         // SurfaceView needs about two VSYNCs of scheduled lead time;
                         // sleeping until due used to starve OEM decoders and miss VSYNC.
                         if (due - now > schedule.leadNs) return false
+                        if (loop && timeline.outputCrossesLap(info.presentationTimeUs) && freezeAtLapEnd()) {
+                            // Native-first LOOP END (§3.3): this picture opens a new lap and the session
+                            // asked to stop here. The lap's last picture stays on the surface; this one
+                            // is never shown; the session swaps (or releases) in one UI pass, and stop()
+                            // ends this wait. The decoder is held, not released, until then.
+                            c.releaseOutputBuffer(index, false)
+                            pendingOutput = -1
+                            lapEnded()
+                            while (!stopped.get() && current()) Thread.sleep(5)
+                            check(!stopped.get() && current()) { "session-retired" }
+                            return false
+                        }
                         schedule.observe(due, now)
                         if (schedule.shouldDrop(due, now)) {
                             c.releaseOutputBuffer(index, false); dropped()
@@ -301,6 +336,7 @@ internal class FaceVideoRenderer(
             if (!stopped.get()) { stop(); failed(FaceVideoReasons.code(e, "codec-failed")) }
         } finally {
             runCatching { codec?.stop() }; runCatching { codec?.release() }; runCatching { extractor.release() }
+            finished.countDown()
         }
     }
 }

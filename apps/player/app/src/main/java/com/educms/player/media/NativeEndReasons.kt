@@ -33,6 +33,24 @@ package com.educms.player.media
  * setOf(` … `)` with ONE quoted literal per line and `//` comments only on
  * lines of their own. Codes are `[a-z0-9-]{1,64}`. Adding a member means
  * adding it to exactly one set here AND regenerating the page's table.
+ * NativeEndReasonsTest parses this file the same way and fails when the
+ * parsed sets and the runtime sets differ.
+ *
+ * PARITY WITH 1.1.43's `NativeEndGrade` (FaceVideoPolicy.kt — the phase-0
+ * table the page mirrors today): every code BOTH tables know has the same
+ * grade (REFUSED ↔ BOX), and every raw code `NativeEndGrade` lists folds,
+ * through [normalize], onto a member with the same block / retry verdict
+ * (NativeEndReasonsTest). Where the two disagreed on 2026-10-19 this table
+ * moved to 1.1.43's grade: `selection-changed` + `credential-changed` →
+ * TRANSIENT, `descriptor-invalid` → NOT_READY, `output-unavailable` +
+ * `media-digest` → FAULT.
+ *
+ * WHO EMITS WHAT. A version-4 session reports ONLY members of this table
+ * (FaceVideoBox normalises its end through [normalize]); the codes that
+ * split 1.1.42's `page-stopped` (`page-requested`, `lifecycle-not-ready`,
+ * `operator-ui`) and the v4 codes (`released`, `native-first-off`,
+ * `lease-retired`, `blocked`) ride v4 sessions only, so a page that started
+ * a v2 / v3 session keeps reading exactly the codes it reads today.
  */
 internal object NativeEndReasons {
 
@@ -74,10 +92,16 @@ internal object NativeEndReasons {
         "session-retired",
         // the surface was destroyed or left the window
         "output-detached",
-        // the surface could not be composed in time (no parent, empty rect, reveal timed out, no hardware acceleration)
-        "output-unavailable",
         // a held first frame waited longer than the hold bound for the glass
         "hold-expired",
+        // the manifest's selection no longer names what the page intended; the page decides again (1.1.43: TRANSIENT, as NativeEndGrade)
+        "selection-changed",
+        // the credential rotated while native was preparing (the page renews its token); re-read next attempt (1.1.43: TRANSIENT, as NativeEndGrade)
+        "credential-changed",
+        // 1.1.43: the safety net reverted a 60 Hz mode switch nothing proved; native again at the panel's own mode
+        "display-mode-reverted",
+        // page-side: a pre-roll-only slot the page skipped because another was already active (never emitted by the app)
+        "skipped",
         // emitted by APKs before 1.1.43 for `lifecycle-not-ready` + `operator-ui` + `page-requested`; kept so an older APK's end is graded the same way
         "page-stopped",
     )
@@ -92,14 +116,12 @@ internal object NativeEndReasons {
         "store-full",
         // the store's directory could not be used right now (unavailable, corrupt copy removed, publish failed)
         "store-unavailable",
-        // the manifest's selection no longer names what the page intended; the page decides again
-        "selection-changed",
         // this face holds no device credential
         "credential-missing",
-        // the credential rotated while native was preparing (the page renews its token); re-read next attempt
-        "credential-changed",
         // the credential no longer names this screen (a re-pair); the intent is discarded
         "credential-identity",
+        // the manifest's descriptor for this file is outside what this APK reads (version, identity, format, transform, origin): the server's shape, not the file's (1.1.43: NOT_READY, as NativeEndGrade)
+        "descriptor-invalid",
     )
 
     // ── FAULT: a real fault of a verified file: 24 h block keyed by file + face + build; the web engine plays the same file ──
@@ -124,8 +146,10 @@ internal object NativeEndReasons {
         "output-stalled",
         // the renderer could not prepare this file (the catch-all for prepare)
         "native-prepare",
-        // the manifest's descriptor for this file is outside the contract (version, identity, format, transform, origin)
-        "descriptor-invalid",
+        // the surface could not be composed in time (no parent, empty rect, reveal timed out, no hardware acceleration) (1.1.43: FAULT, as NativeEndGrade)
+        "output-unavailable",
+        // a full-length download whose SHA-256 is not the manifest's: the bytes at the source are not this file (1.1.43: FAULT, as NativeEndGrade; retrying would download the same bytes)
+        "media-digest",
         // the app's own 24 h block for this file + face + build is live
         "blocked",
     )
@@ -140,6 +164,10 @@ internal object NativeEndReasons {
         "native-first-off",
         // a v4 message named a lease that a retired document wrote; it can never act again
         "lease-retired",
+        // page-side: a template VIDEO zone another zone overlaps stays web for this document (never emitted by the app)
+        "zone-overlap",
+        // page-side: the APK answered no usable protocol for this slot (never emitted by the app)
+        "protocol",
     )
 
     /** What the page does next after an end with this reason. */
@@ -196,7 +224,7 @@ internal object NativeEndReasons {
 
     // Raw codes, as the engine emits them today (SharedVideoSource, FaceVideoBox, FaceVideoRenderer).
     private val MANIFEST_UNREACHABLE = setOf("timeout", "authorization-failed", "api-root", "api-origin", "manifest-too-large", "manifest-malformed")
-    private val NOT_IN_STORE = setOf("media-redirect", "media-incomplete", "media-size", "media-digest", "source-failed")
+    private val NOT_IN_STORE = setOf("media-redirect", "media-incomplete", "media-size", "media-missing", "source-failed")
     private val STORE_FULL = setOf("media-cache-quota")
     private val STORE_UNAVAILABLE = setOf("media-cache-unavailable", "media-cache-corrupt", "media-publish")
     private val DESCRIPTOR_INVALID = setOf("media-origin")
