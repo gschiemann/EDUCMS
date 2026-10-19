@@ -102,35 +102,53 @@ export function parseNativeVideoRollout(
 }
 
 /**
- * THE NATIVE VIDEO EXPERIMENTS (player 1.1.41 / 1.1.42, plan 2026-10-17 §4E),
- * per screen, default OFF — `PLAYER_NATIVE_VIDEO_EXPERIMENTS` (Railway env),
- * comma tokens `<experiment>:<screen uuid>` or `<experiment>:all`:
+ * THE NATIVE VIDEO ENGINE'S SWITCHES (player 1.1.41 → 1.1.43, plan 2026-10-17
+ * §4E), per screen — `PLAYER_NATIVE_VIDEO_EXPERIMENTS` (Railway env), comma
+ * tokens `<name>:<screen uuid>` or `<name>:all`. Since 1.1.43 the APK decides
+ * its own DEFAULTS from the device's facts (owner 2026-10-18: no settings);
+ * a token is the lead's kill switch or test override, never a setting.
+ *
+ * The three M43 experiments, default OFF, `true` switches one on:
  *   webview-invisible   the player WebView goes INVISIBLE while a solo native
  *                       session presents (restored VISIBLE on any end, and
- *                       FIRST on an emergency hold);
+ *                       FIRST on an emergency hold). Measured: no gain; off.
  *   surface-frame-rate  `Surface.setFrameRate(fps, ONLY_IF_SEAMLESS)` on API 30+;
  *   decoder-rotation    the Activity stays in the panel's natural orientation
- *                       and the decoder rotates the picture;
- *   vsync-snap          (1.1.42) every output is released at the vsync closest
- *                       to its due time, on a Choreographer-measured grid, and
- *                       the media clock is slewed ≤ 0.3 ms/frame to stay locked
- *                       — the 30 fps-on-30 Hz straddle that holds or skips a
- *                       frame with perfect decoding;
- *   prefer-60hz         (1.1.42) when the panel lists a ~60 Hz mode of the SAME
- *                       resolution, the APK asks for it at a native session
- *                       boundary (before that session's surface exists). A mode
- *                       switch can BLANK the panel for a second or two, so this
- *                       is switched on per screen after proving it on the glass.
- * Each is switchable on its own; an unknown or malformed token enables nothing.
- * The flags ride on the hashed `nativeVideo` descriptor as `experiments`
- * (omitted when none are on, so nobody else's payload hash moves) and stay
+ *                       and the decoder rotates the picture.
+ * The two pacing behaviours of 1.1.42, DEFAULT ON in an APK ≥ 1.1.43 — a
+ * NEGATIVE token (`-<name>:<uuid|all>`) sends `false`, the kill switch:
+ *   vsync-snap          every output is released at the vsync closest to its
+ *                       due time on a Choreographer-measured grid, with a
+ *                       grid-sized lead and a media-clock slew ≤ 0.3 ms/frame.
+ *                       `-vsync-snap:<…>` switches it OFF; the positive token
+ *                       is accepted and changes nothing (absent = on).
+ *   prefer-60hz         when the panel lists a ~60 Hz mode of the SAME
+ *                       resolution, the APK asks for it once per process at the
+ *                       first native session boundary after boot (before that
+ *                       session's surface exists), then PROVES it — the mode
+ *                       must change and frames must keep flowing within 10 s,
+ *                       and the first native frame confirms — or reverts and
+ *                       blocks the automatic request on that unit for 24 h.
+ *                       `-prefer-60hz:<…>` switches it OFF (a mode this process
+ *                       asked for is reverted at the next boundary);
+ *                       `prefer-60hz:<…>` FORCES a request even while blocked
+ *                       (the lead's test tool).
+ * A negative token for one of the three experiments changes nothing (they are
+ * off anyway); an unknown or malformed token enables and disables nothing; a
+ * negative token wins over a positive one for the same screen. The flags ride
+ * on the hashed `nativeVideo` descriptor as `experiments` (omitted when no
+ * token names the screen, so nobody else's payload hash moves) and stay
  * OUTSIDE `revision`: flipping one never restarts a session on the glass; it
  * applies to the next native session. Deterministic per (screen, env). An APK
- * before 1.1.42 ignores the two new keys.
+ * before 1.1.42 ignores the two pacing keys; 1.1.42 reads `true` as on and
+ * ignores `false` (its defaults were off).
  */
 export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz'] as const;
 export type NativeVideoExperiment = (typeof NATIVE_VIDEO_EXPERIMENTS)[number];
-export type NativeVideoExperimentFlags = Partial<Record<NativeVideoExperiment, true>>;
+/** `true` switches an experiment on; `false` is the kill switch of a 1.1.43 default (`vsyncSnap`, `prefer60hz`). */
+export type NativeVideoExperimentFlags = Partial<Record<NativeVideoExperiment, boolean>>;
+/** The behaviours an APK ≥ 1.1.43 runs by default — the only ones a negative token can switch off. */
+export const NATIVE_VIDEO_DEFAULT_ON: ReadonlySet<NativeVideoExperiment> = new Set(['vsyncSnap', 'prefer60hz']);
 const EXPERIMENT_TOKENS: Record<string, NativeVideoExperiment> = {
   'webview-invisible': 'webviewInvisible',
   'surface-frame-rate': 'surfaceFrameRate',
@@ -139,28 +157,49 @@ const EXPERIMENT_TOKENS: Record<string, NativeVideoExperiment> = {
   'prefer-60hz': 'prefer60hz',
 };
 
+export interface NativeVideoExperimentTargets {
+  all: boolean;
+  ids: Set<string>;
+  /** 1.1.43: the negative tokens — the kill switch for everyone / for these screens. */
+  offAll: boolean;
+  offIds: Set<string>;
+}
+
 export function parseNativeVideoExperiments(
   env: Record<string, string | undefined> = process.env,
-): Record<NativeVideoExperiment, { all: boolean; ids: Set<string> }> {
+): Record<NativeVideoExperiment, NativeVideoExperimentTargets> {
   const r = Object.fromEntries(
-    NATIVE_VIDEO_EXPERIMENTS.map((e) => [e, { all: false, ids: new Set<string>() }]),
-  ) as Record<NativeVideoExperiment, { all: boolean; ids: Set<string> }>;
+    NATIVE_VIDEO_EXPERIMENTS.map((e) => [e, { all: false, ids: new Set<string>(), offAll: false, offIds: new Set<string>() }]),
+  ) as Record<NativeVideoExperiment, NativeVideoExperimentTargets>;
   const raw = (env.PLAYER_NATIVE_VIDEO_EXPERIMENTS ?? '').trim();
   if (!raw) return r;
   for (const t0 of raw.split(',')) {
-    const t = t0.trim();
+    let t = t0.trim();
+    const negative = t.startsWith('-');
+    if (negative) t = t.slice(1).trim();
     const at = t.indexOf(':');
     if (at <= 0) continue;
     const name = EXPERIMENT_TOKENS[t.slice(0, at).trim().toLowerCase()];
     const target = t.slice(at + 1).trim();
     if (!name) continue;
-    if (target.toLowerCase() === 'all') r[name].all = true;
-    else if (UUID_RE.test(target)) r[name].ids.add(target.toLowerCase());
+    const isAll = target.toLowerCase() === 'all';
+    const isId = UUID_RE.test(target);
+    if (!isAll && !isId) continue;
+    if (negative) {
+      if (isAll) r[name].offAll = true;
+      else r[name].offIds.add(target.toLowerCase());
+    } else if (isAll) r[name].all = true;
+    else r[name].ids.add(target.toLowerCase());
   }
   return r;
 }
 
-/** The flags for ONE screen, or null when none is on (the descriptor then carries no `experiments` key). */
+/**
+ * The flags for ONE screen, or null when no token names it (the descriptor
+ * then carries no `experiments` key and the APK runs its defaults). `true`
+ * for a positive token; `false` for a negative token on a default-on
+ * behaviour (the kill switch wins over a positive token for the same screen).
+ */
 export function nativeVideoExperimentsFor(
   screenId: string,
   env: Record<string, string | undefined> = process.env,
@@ -169,7 +208,11 @@ export function nativeVideoExperimentsFor(
   if (!UUID_RE.test(id)) return null;
   const r = parseNativeVideoExperiments(env);
   const out: NativeVideoExperimentFlags = {};
-  for (const e of NATIVE_VIDEO_EXPERIMENTS) if (r[e].all || r[e].ids.has(id)) out[e] = true;
+  for (const e of NATIVE_VIDEO_EXPERIMENTS) {
+    const off = NATIVE_VIDEO_DEFAULT_ON.has(e) && (r[e].offAll || r[e].offIds.has(id));
+    if (off) out[e] = false;
+    else if (r[e].all || r[e].ids.has(id)) out[e] = true;
+  }
   return Object.keys(out).length ? out : null;
 }
 

@@ -2591,7 +2591,12 @@
           "all": "提供的模式：{list}",
           "first": "提供的前 {count} 个模式：{list}"
         },
-        "modeGroup": "{size}，{rates} Hz"
+        "modeGroup": "{size}，{rates} Hz",
+        "firmware": {
+          "both": "面板固件列出：当前 {mode}；{list}",
+          "modeOnly": "面板固件列出：当前 {mode}",
+          "capsOnly": "面板固件列出：{list}"
+        }
       },
       "cadence": {
         "label": "帧节奏",
@@ -2635,7 +2640,11 @@
           "sixtyFailed": "已请求，请求未能发出",
           "sixtyReverted": "不再请求，已恢复 Android 自行选择",
           "sixtyRevertFailed": "不再请求，恢复 Android 自行选择失败",
-          "sixtyPending": "已请求，尚无结果报告"
+          "sixtyPending": "已请求，尚无结果报告",
+          "sixtyBlocked": "自动，因先前的切换被撤销而暂停 24 小时",
+          "sixtyRevertedNoSwitch": "已向 Android 请求 60 Hz 模式，面板在 10 秒内未切换，已撤销（自动请求暂停 24 小时）",
+          "sixtyRevertedNoFrames": "已向 Android 请求 60 Hz 模式，10 秒内没有后续画面，已撤销（自动请求暂停 24 小时）",
+          "sixtyHeld": "未请求：该会话边界处有紧急警报被保持"
         },
         "guardNote": "播放器的保护机制在{reason}后关闭了“{name}”。",
         "guardReason": {
@@ -2670,7 +2679,11 @@
             "other-session": "这一面当时已有另一个会话",
             "failed": "请求未能发出",
             "reverted": "已撤回请求，已恢复 Android 自行选择",
-            "other": "报告为“{code}”"
+            "other": "报告为“{code}”",
+            "blocked": "因先前的切换被撤销，自动请求已暂停",
+            "reverted-no-switch": "面板未切换；已撤销",
+            "reverted-no-frames": "切换后没有后续画面；已撤销",
+            "emergency-held": "未请求：有紧急警报被保持"
           }
         },
         "overflow": "另有 {count} 个更早的会话已不再列出——播放器只保留最近的会话。"

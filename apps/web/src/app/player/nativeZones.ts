@@ -46,6 +46,7 @@
 import {
   NATIVE_VIDEO_MAX_ATTEMPTS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
+  nativeVideoEndGrade,
   readNativeVideoTiming,
   type NativeSharedVideoState,
 } from "./nativeSharedVideo";
@@ -562,12 +563,16 @@ export function overlappedTemplateZoneIds(zones: ReadonlyArray<unknown>): Set<st
 
 export function nativeZoneNext(reason: string | undefined, attempt: number, wasOnGlass = false): "retry" | "block" | "stay" {
   if (reason && NATIVE_ZONE_WEB_FOR_DOCUMENT_REASONS.has(reason)) return "stay";
+  // 1.1.43 (failure grading, phase 0): only a real FAULT of the file blocks it; a network, storage,
+  // authorization or manifest failure (`nativeVideoEndGrade` not-ready) is retried like a transient end,
+  // and a verdict about the box stays web for this document.
+  const grade = reason && !NATIVE_ZONE_TRANSIENT_REASONS.has(reason) ? nativeVideoEndGrade(reason) : "transient";
+  if (grade === "fault") return "block";
+  if (grade === "box") return "stay";
   // Owner rule 2026-10-12: never flip web ↔ native on the glass. Once a slot was
   // presenting and ended, it stays web until the content changes / page reloads.
-  if (wasOnGlass && (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))) return "stay";
-  if (!reason || NATIVE_ZONE_TRANSIENT_REASONS.has(reason))
-    return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
-  return "block";
+  if (wasOnGlass) return "stay";
+  return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
 }
 
 // ── Controller ───────────────────────────────────────────────────────────
