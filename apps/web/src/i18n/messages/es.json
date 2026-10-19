@@ -2591,7 +2591,12 @@
           "all": "Modos ofrecidos: {list}",
           "first": "Primeros {count} modos ofrecidos: {list}"
         },
-        "modeGroup": "{size} a {rates} Hz"
+        "modeGroup": "{size} a {rates} Hz",
+        "firmware": {
+          "both": "El firmware del panel indica: {mode} ahora; {list}",
+          "modeOnly": "El firmware del panel indica: {mode} ahora",
+          "capsOnly": "El firmware del panel indica: {list}"
+        }
       },
       "cadence": {
         "label": "Cadencia de fotogramas",
@@ -2635,7 +2640,11 @@
           "sixtyFailed": "solicitado, no se pudo hacer la solicitud",
           "sixtyReverted": "ya no se solicita, se restableció la elección propia de Android",
           "sixtyRevertFailed": "ya no se solicita, no se pudo restablecer la elección propia de Android",
-          "sixtyPending": "solicitado, aún sin resultado"
+          "sixtyPending": "solicitado, aún sin resultado",
+          "sixtyBlocked": "automático, en pausa 24 h después de deshacer un cambio anterior",
+          "sixtyRevertedNoSwitch": "se pidió a Android un modo de 60 Hz, el panel no cambió en 10 s, deshecho (solicitudes automáticas en pausa 24 h)",
+          "sixtyRevertedNoFrames": "se pidió a Android un modo de 60 Hz, no siguieron fotogramas en 10 s, deshecho (solicitudes automáticas en pausa 24 h)",
+          "sixtyHeld": "no se pidió: había una alerta de emergencia retenida en ese límite de sesión"
         },
         "guardNote": "La protección del reproductor desactivó «{name}» tras {reason}.",
         "guardReason": {
@@ -2670,7 +2679,11 @@
             "other-session": "otra sesión estaba en este lado",
             "failed": "no se pudo hacer la solicitud",
             "reverted": "solicitud retirada, se restableció la elección propia de Android",
-            "other": "informó «{code}»"
+            "other": "informó «{code}»",
+            "blocked": "solicitud automática en pausa tras deshacer un cambio anterior",
+            "reverted-no-switch": "el panel no cambió; deshecho",
+            "reverted-no-frames": "no siguieron fotogramas al cambio; deshecho",
+            "emergency-held": "no se pidió: había una alerta de emergencia retenida"
           }
         },
         "overflow": "{count} sesiones anteriores ya no aparecen: el reproductor solo conserva las más recientes."
