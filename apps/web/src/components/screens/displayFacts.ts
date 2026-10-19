@@ -61,8 +61,12 @@ export const PREFERRED_MODE_RESULTS = [
   'applied', 'kept', 'already-60hz', 'no-60hz-mode', 'no-window', 'other-session', 'failed', 'reverted',
   'blocked', 'reverted-no-switch', 'reverted-no-frames', 'emergency-held',
 ] as const;
-/** Results worth a line even when the request is no longer wanted: the revert, and a switch the safety net undid. */
-const AFTER_WITHDRAWAL_RESULTS: ReadonlySet<string> = new Set(['reverted', 'failed', 'reverted-no-switch', 'reverted-no-frames']);
+/**
+ * Results worth a line even when the session did not mark the request wanted: the revert, a failed revert, a
+ * switch the safety net undid, and a boundary an emergency hold kept from asking (the APK reports
+ * `emergency-held` with `requested.prefer60hz` false — the hold is checked before the panel's modes are).
+ */
+const UNREQUESTED_RESULTS: ReadonlySet<string> = new Set(['reverted', 'failed', 'reverted-no-switch', 'reverted-no-frames', 'emergency-held']);
 /** `Api30SurfaceFrameRate.request` answers one of these. */
 export const SURFACE_FRAME_RATE_CODES = ['only-if-seamless', 'refused'] as const;
 /** `NativeExperimentGuard.FAULTS`: the only reasons the guard switches an experiment off. */
@@ -355,9 +359,17 @@ interface Panel {
  * wins over the default display's `device.*`: on a double-sided unit they are
  * different panels. Active mode and mode list always come from the same source.
  */
-function resolvePanel(timing: NativeVideoTiming | null, device: ReturnType<typeof readNativeDeviceClass>): Panel {
-  // The firmware tables are the default display's, read beside Android's own mode list.
-  const firmware = { mode: device?.sysDisplayMode ?? null, caps: device?.sysDisplayCaps ?? [] };
+function resolvePanel(
+  timing: NativeVideoTiming | null,
+  device: ReturnType<typeof readNativeDeviceClass>,
+  faceIndex: number | null,
+): Panel {
+  // The firmware tables are the DEFAULT display's (sysfs speaks for one HDMI output), read beside Android's own
+  // mode list — so only the default display's face (face 0, every single-sided screen) shows them; the back face
+  // of a double-sided unit is another panel and never borrows them.
+  const firmware = faceIndex === null || faceIndex === 0
+    ? { mode: device?.sysDisplayMode ?? null, caps: device?.sysDisplayCaps ?? [] }
+    : { mode: null, caps: [] };
   const timingActive = parseMode(timing?.displayMode);
   const timingModes = (timing?.supportedModes ?? []).map(parseMode).filter((m): m is DisplayMode => m !== null);
   const timingHz = positive(timing?.refreshRate);
@@ -508,9 +520,9 @@ export function experimentMessages(input: ExperimentInput): { lines: Msg[]; guar
       }
       case 'prefer60hz': {
         const code = applied?.prefer60hz ?? timing?.preferredModeResult;
-        // A result after the request was withdrawn is still worth a line when it is the revert, when it
-        // failed, or when the safety net undid a switch (1.1.43).
-        if (!requested.prefer60hz && !(code && AFTER_WITHDRAWAL_RESULTS.has(code))) break;
+        // A result the session did not mark wanted is still worth a line when it is the revert, when it
+        // failed, when the safety net undid a switch, or when a hold kept the boundary from asking (1.1.43).
+        if (!requested.prefer60hz && !(code && UNREQUESTED_RESULTS.has(code))) break;
         lines.push(line(name, preferredModeState(code, !!requested.prefer60hz, timing, panel, locale)));
         break;
       }
@@ -664,7 +676,8 @@ export function readDisplayFacts(report: unknown, opts: { nowMs: number; locale?
   const device = readNativeDeviceClass(native.device);
   const experiments = readNativeSessionExperiments(native.experiments);
 
-  const panel = resolvePanel(timing, device);
+  const faceIndex = isCount(native.faceIndex) ? native.faceIndex : null;
+  const panel = resolvePanel(timing, device, faceIndex);
   const rows: FactRow[] = [];
   const panelFacts = panelRow(panel, locale);
   if (panelFacts) rows.push(panelFacts);
@@ -689,7 +702,7 @@ export function readDisplayFacts(report: unknown, opts: { nowMs: number; locale?
       lines: [{ parts: [msg(timing.keepScreenOn ? 'keepScreenOn.yes' : 'keepScreenOn.no')], tone: 'normal' }],
     });
   }
-  const past = historyLines(timing?.history, { faceIndex: isCount(native.faceIndex) ? native.faceIndex : null, nowMs: opts.nowMs, locale });
+  const past = historyLines(timing?.history, { faceIndex, nowMs: opts.nowMs, locale });
   if (past.length > 0) rows.push({ id: 'history', label: msg('history.label'), lines: past });
   if (rows.length === 0) return null;
 
