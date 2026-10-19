@@ -143,6 +143,79 @@ internal object DeviceClassPolicy {
         DisplayFacts(d.refreshRate, active?.label() ?: "", DisplayModePolicy.labels(active, modes))
     }.getOrNull()
 
+    /**
+     * 1.1.43 — what the PANEL FIRMWARE says, read-only and bounded, beside
+     * what Android's DisplayManager says (M43 and L55VEC list ONE Android mode
+     * at 30 Hz while their Choreographer runs at 60 Hz: the ROM composes at
+     * 60 and drives the link at 30 — only the firmware's own tables can say
+     * what the link could do). Amlogic: `/sys/class/display/mode` (the mode
+     * in force, e.g. `2160p30hz`) and `/sys/class/amhdmitx/amhdmitx0/disp_cap`
+     * (one capability per line, `*` marks the current). Rockchip:
+     * `/sys/class/graphics/fb0/modes` (`U:1920x1080p-60` per line). A path
+     * that does not exist or cannot be read is simply absent; nothing is
+     * written, nothing is invented, and every string is cut to the wire
+     * bound and stripped to a safe character set before it leaves the box.
+     */
+    data class SysDisplayFacts(val mode: String?, val caps: List<String>) {
+        val any: Boolean get() = mode != null || caps.isNotEmpty()
+        fun writeTo(j: JSONObject): JSONObject = j.also {
+            mode?.let { m -> it.put("sysDisplayMode", m) }
+            if (caps.isNotEmpty()) it.put("sysDisplayCaps", JSONArray(caps))
+        }
+
+        companion object {
+            const val MODE_MAX = 48
+            const val CAP_MAX = 32
+            const val CAPS_MAX = 16
+            /** Bytes read from one file at most; the firmware tables are a few hundred bytes. */
+            const val READ_MAX = 4096
+            val MODE_PATHS: List<String> = listOf("/sys/class/display/mode")
+            val CAP_PATHS: List<String> = listOf("/sys/class/amhdmitx/amhdmitx0/disp_cap", "/sys/class/graphics/fb0/modes")
+            private val unsafe = Regex("[^A-Za-z0-9:_.*+/@-]")
+
+            /** The first non-empty line, stripped and cut; null when there is none. */
+            fun parseMode(raw: String?): String? =
+                raw?.lineSequence()?.map { clean(it, MODE_MAX) }?.firstOrNull { it.isNotEmpty() }
+
+            /** One capability per line, stripped, cut, de-duplicated, at most [CAPS_MAX]. */
+            fun parseCaps(raw: String?): List<String> =
+                raw?.lineSequence()?.map { clean(it, CAP_MAX) }?.filter { it.isNotEmpty() }?.distinct()?.take(CAPS_MAX)?.toList() ?: emptyList()
+
+            private fun clean(line: String, max: Int): String = line.trim().replace(unsafe, "").take(max)
+
+            /** Read through [read] (a bounded file read in production; a map in tests). Never throws. */
+            fun read(read: (String) -> String? = ::readBounded): SysDisplayFacts = runCatching {
+                val mode = MODE_PATHS.asSequence().mapNotNull { parseMode(read(it)) }.firstOrNull()
+                val caps = CAP_PATHS.asSequence().map { parseCaps(read(it)) }.firstOrNull { it.isNotEmpty() } ?: emptyList()
+                SysDisplayFacts(mode, caps)
+            }.getOrDefault(SysDisplayFacts(null, emptyList()))
+
+            /** At most [READ_MAX] bytes of a readable file; null when it is absent or unreadable. Never writes. */
+            fun readBounded(path: String): String? = runCatching {
+                val f = java.io.File(path)
+                if (!f.isFile || !f.canRead()) return@runCatching null
+                f.inputStream().use { input ->
+                    val buf = ByteArray(READ_MAX)
+                    var n = 0
+                    while (n < READ_MAX) {
+                        val r = input.read(buf, n, READ_MAX - n); if (r < 0) break
+                        n += r
+                    }
+                    String(buf, 0, n, Charsets.US_ASCII)
+                }
+            }.getOrNull()
+        }
+    }
+
+    @Volatile private var sysMemo: Pair<Long, SysDisplayFacts>? = null
+    /** The firmware tables, re-read at most every 30 s (the page polls `sharedVideoState` twice a second). Never throws. */
+    fun sysDisplayFacts(nowMs: Long = android.os.SystemClock.elapsedRealtime()): SysDisplayFacts {
+        sysMemo?.let { (at, facts) -> if (nowMs - at < 30_000L) return facts }
+        val facts = SysDisplayFacts.read()
+        sysMemo = Pair(nowMs, facts)
+        return facts
+    }
+
     private val rockchip = Regex("^(?:rk[0-9]|rockchip)")
     private val amlogic = Regex("^(?:t9[0-9]{2}|s9[0-9]{2}|sc2|a311d|t7|t5d?)(?:[^a-z0-9]|$)")
     private val novastar = Regex("taurus|novastar|nova-star|rk356x_box|rk3568")

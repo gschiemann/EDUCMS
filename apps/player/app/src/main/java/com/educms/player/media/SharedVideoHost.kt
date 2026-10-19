@@ -101,6 +101,8 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         j.put("device", policy.toJson())
         // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
         DeviceClassPolicy.displayFacts(ctx)?.writeTo(j.getJSONObject("device"))
+        // 1.1.43: plus what the panel firmware itself lists (sysfs, read-only, bounded, refreshed every 30 s).
+        DeviceClassPolicy.sysDisplayFacts().writeTo(j.getJSONObject("device"))
         if (foreground != null) {
             val s = readiness.snapshot
             j.put("availability", JSONObject().put("version", 1).put("foreground", s.foreground)

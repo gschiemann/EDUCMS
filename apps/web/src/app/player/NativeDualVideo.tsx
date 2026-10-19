@@ -6,8 +6,8 @@ import {
   blockNativeVideo,
   NATIVE_VIDEO_MAX_ATTEMPTS,
   NATIVE_VIDEO_RETRY_MS,
-  NATIVE_VIDEO_TRANSIENT_REASONS,
   nativeSharedVideoEvidence,
+  nativeVideoEndGrade,
   nativeVideoFallbackLine,
   SharedVideoController,
   sharedVideoIdentity,
@@ -18,9 +18,14 @@ import { NativeVideoResumeWaiter, probeNativeVideoAvailability, queryNativeVideo
 
 /**
  * What a native end means for the NEXT attempt (protocol 2 only; protocol 1
- * keeps its one-attempt-per-identity rule unchanged):
- *  • a transient end (paused, emergency, content changed, page lease…) or no
- *    reason at all → try native again in 30 s, at most 20 times per identity;
+ * keeps its one-attempt-per-identity rule unchanged), by the failure-grading
+ * table (`nativeVideoEndGrade`, 1.1.43 phase 0):
+ *  • a transient end (paused, emergency, content changed, page lease…), a
+ *    NOT-READY end (network, storage, authorization, manifest — an offline
+ *    boot) or no reason at all → try native again in 30 s, at most 20 times
+ *    per identity; never a verdict on the file;
+ *  • a verdict about this box or layout (cannot compose) → web for this
+ *    document, no retry, no block;
  *  • a native fault of this file on this box (codec failed/stalled, no
  *    hardware decoder, digest mismatch…) → web for this file for 24 h.
  * Pure, exported for the test.
@@ -37,14 +42,15 @@ export function nativeVideoNext(
   // A verified native readiness edge is a lifecycle recovery, not a periodic
   // decoder retry. Older APKs retain their existing policy.
   if (hasAvailability && (reason === "activity-paused" || reason === "page-stopped")) return "wait";
+  const grade = nativeVideoEndGrade(reason);
+  if (grade === "fault") return "block";
+  if (grade === "box") return "stay";
   // Owner rule 2026-10-12: content must never flip web → native → web → native.
   // A retry is invisible only while the browser is still the picture; once
   // native has been on the glass and ended, this content stays on the browser
   // player until it changes or the page reloads (a fault still blocks).
-  if (wasOnGlass && (!reason || NATIVE_VIDEO_TRANSIENT_REASONS.has(reason))) return "stay";
-  if (!reason || NATIVE_VIDEO_TRANSIENT_REASONS.has(reason))
-    return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
-  return "block";
+  if (wasOnGlass) return "stay";
+  return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
 }
 
 /** Longest wait for the web clip's loop point before handing over anyway. */

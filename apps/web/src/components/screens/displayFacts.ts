@@ -56,10 +56,13 @@ export const VSYNC_LOCK_SAMPLES = 8;
 /** `Surface.setFrameRate` needs API 30 (Android 11). */
 const SURFACE_FRAME_RATE_MIN_SDK = 30;
 
-/** Experiment 5's result codes (`PreferredDisplayMode.RESULT_*`). */
+/** The 60 Hz request's result codes (`PreferredDisplayMode.RESULT_*`; the last four are 1.1.43's automatic request + safety net). */
 export const PREFERRED_MODE_RESULTS = [
   'applied', 'kept', 'already-60hz', 'no-60hz-mode', 'no-window', 'other-session', 'failed', 'reverted',
+  'blocked', 'reverted-no-switch', 'reverted-no-frames', 'emergency-held',
 ] as const;
+/** Results worth a line even when the request is no longer wanted: the revert, and a switch the safety net undid. */
+const AFTER_WITHDRAWAL_RESULTS: ReadonlySet<string> = new Set(['reverted', 'failed', 'reverted-no-switch', 'reverted-no-frames']);
 /** `Api30SurfaceFrameRate.request` answers one of these. */
 export const SURFACE_FRAME_RATE_CODES = ['only-if-seamless', 'refused'] as const;
 /** `NativeExperimentGuard.FAULTS`: the only reasons the guard switches an experiment off. */
@@ -343,6 +346,8 @@ interface Panel {
   hz: number | null;
   modes: DisplayMode[];
   truncated: boolean;
+  /** 1.1.43: what the panel firmware itself lists (the default display's sysfs tables), when the APK could read them. */
+  firmware: { mode: string | null; caps: string[] };
 }
 
 /**
@@ -351,6 +356,8 @@ interface Panel {
  * different panels. Active mode and mode list always come from the same source.
  */
 function resolvePanel(timing: NativeVideoTiming | null, device: ReturnType<typeof readNativeDeviceClass>): Panel {
+  // The firmware tables are the default display's, read beside Android's own mode list.
+  const firmware = { mode: device?.sysDisplayMode ?? null, caps: device?.sysDisplayCaps ?? [] };
   const timingActive = parseMode(timing?.displayMode);
   const timingModes = (timing?.supportedModes ?? []).map(parseMode).filter((m): m is DisplayMode => m !== null);
   const timingHz = positive(timing?.refreshRate);
@@ -360,6 +367,7 @@ function resolvePanel(timing: NativeVideoTiming | null, device: ReturnType<typeo
       hz: timingActive?.hz ?? timingHz,
       modes: timingModes,
       truncated: (timing?.supportedModes?.length ?? 0) >= NATIVE_MAX_SUPPORTED_MODES,
+      firmware,
     };
   }
   const deviceActive = parseMode(device?.activeMode);
@@ -368,7 +376,19 @@ function resolvePanel(timing: NativeVideoTiming | null, device: ReturnType<typeo
     hz: deviceActive?.hz ?? positive(device?.refreshRate),
     modes: (device?.supportedModes ?? []).map(parseMode).filter((m): m is DisplayMode => m !== null),
     truncated: (device?.supportedModes?.length ?? 0) >= NATIVE_MAX_SUPPORTED_MODES,
+    firmware,
   };
+}
+
+/** 1.1.43: ONE muted line with what the panel firmware lists — the mode in force and its capability table, verbatim. */
+function firmwareLine(panel: Panel): FactLine | null {
+  const { mode, caps } = panel.firmware;
+  if (mode === null && caps.length === 0) return null;
+  const list = caps.join(LIST_SEPARATOR);
+  const m: Msg = mode !== null && caps.length > 0 ? msg('panel.firmware.both', { mode, list })
+    : mode !== null ? msg('panel.firmware.modeOnly', { mode })
+    : msg('panel.firmware.capsOnly', { list });
+  return { parts: [m], tone: 'muted' };
 }
 
 function panelRow(panel: Panel, locale: string): FactRow | null {
@@ -395,6 +415,8 @@ function panelRow(panel: Panel, locale: string): FactRow | null {
       tone: 'muted',
     });
   }
+  const firmware = firmwareLine(panel);
+  if (firmware) lines.push(firmware);
   return lines.length > 0 ? { id: 'panel', label: msg('panel.label'), lines } : null;
 }
 
@@ -486,8 +508,9 @@ export function experimentMessages(input: ExperimentInput): { lines: Msg[]; guar
       }
       case 'prefer60hz': {
         const code = applied?.prefer60hz ?? timing?.preferredModeResult;
-        // A result after the flag was withdrawn is still worth a line when it is the revert, or when it failed.
-        if (!requested.prefer60hz && code !== 'reverted' && code !== 'failed') break;
+        // A result after the request was withdrawn is still worth a line when it is the revert, when it
+        // failed, or when the safety net undid a switch (1.1.43).
+        if (!requested.prefer60hz && !(code && AFTER_WITHDRAWAL_RESULTS.has(code))) break;
         lines.push(line(name, preferredModeState(code, !!requested.prefer60hz, timing, panel, locale)));
         break;
       }
@@ -551,6 +574,15 @@ function preferredModeState(
       return requested ? state('sixtyFailed') : state('sixtyRevertFailed');
     case 'reverted':
       return state('sixtyReverted');
+    // 1.1.43: the automatic request's own answers and the safety net's verdicts.
+    case 'blocked':
+      return state('sixtyBlocked');
+    case 'reverted-no-switch':
+      return state('sixtyRevertedNoSwitch');
+    case 'reverted-no-frames':
+      return state('sixtyRevertedNoFrames');
+    case 'emergency-held':
+      return state('sixtyHeld');
     default:
       return CODE_RE.test(code) ? state('requestedReported', { code }) : state('sixtyPending');
   }
