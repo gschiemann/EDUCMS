@@ -12,7 +12,7 @@ import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-i
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { registeredResolution } from './registered-resolution';
 import { loadDemotedSources } from './playback-demotions';
-import { NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
+import { NATIVE_PRESENTING_HEADER, NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativePresentingHeader, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { ScreenEventsService } from './events/screen-events.service';
 import {
   LEDGER_KIND_LIST,
@@ -1588,6 +1588,16 @@ export class ScreensController {
     const nativeRuntime = paired && credential.proved
       ? parseNativeRuntime(req?.headers?.[NATIVE_RUNTIME_HEADER])
       : null;
+    // Native-first §4.4 (stream B): this face's "native frames on the glass"
+    // evidence rides its own header; it is stored INSIDE the runtime report
+    // (a telemetry-only column), under the same credential gate.
+    if (nativeRuntime && !nativeRuntime.nativePresenting) {
+      const presenting = parseNativePresentingHeader(
+        req?.headers?.[NATIVE_PRESENTING_HEADER],
+        (screen as any).faceIndex === 1 ? 1 : 0,
+      );
+      if (presenting) nativeRuntime.nativePresenting = presenting;
+    }
 
     // Update lastPingAt — and if the kiosk passed its app version on
     // this heartbeat, capture it too. Operator (2026-04-27): "we

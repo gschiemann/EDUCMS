@@ -73,6 +73,14 @@ class NativeAlertWatchEngine(private val ports: Ports) {
          * no-op; it decides nothing about the hold.
          */
         fun alertEpisodeSettled(face: Int, outcome: String) = Unit
+
+        /**
+         * Native-first §7 E4: face → `elapsedRealtime` since when that face
+         * holds a native intent with NO live page lease (FaceVideoBox). Such a
+         * face is watched with the panel on too. Empty — the default, and every
+         * screen that is not enrolled in native-first — changes nothing.
+         */
+        fun unattendedSinceMs(): Map<Int, Long> = emptyMap()
     }
 
     enum class Level { INFO, WARN, ERROR }
@@ -101,6 +109,14 @@ class NativeAlertWatchEngine(private val ports: Ports) {
     private val faces = HashMap<Int, FaceWatch>()
     private var relaunch = RelaunchMemory()
     private var notOnGlassLogged = false
+
+    // ── native-first (§7 E4, owner D3) ──
+    /** Faces that were unattended at the last pass (a newly unattended face gets its first poll in 3 s). */
+    private var lastUnattended: Set<Int> = emptySet()
+    /** face → `elapsedRealtime` from which every definite verdict has said "no alert" (cleared by an alert). */
+    private val noAlertSince = HashMap<Int, Long>()
+    /** face → what the D3 recovery has spent in this hold period. */
+    private val restores = HashMap<Int, NativeAlertWatchPolicy.RestoreMemory>()
 
     /** For tests and the loop's own bookkeeping. */
     internal fun faceState(face: Int): FaceWatch = faces[face] ?: FaceWatch()
@@ -149,19 +165,26 @@ class NativeAlertWatchEngine(private val ports: Ports) {
         }
     }
 
-    // ─── 1. poll, only while the panel is off ────────────────────────
+    // ─── 1. poll while the panel is off — or while no page holds a lease ─
 
     private fun pollIfDark(): Long? {
         val interactive = ports.panelInteractive()
-        // The stores are not even read while the panel is on.
-        val plan = if (interactive) null else ports.plan()
-        val refusal = NativeAlertWatchPolicy.pollRefusal(
+        // §7 E4: a face whose native session presents with no page lease is watched with the panel on too.
+        val unattended = ports.unattendedSinceMs()
+        // The stores are not even read while the panel is on and every face is attended.
+        val plan = if (interactive && unattended.isEmpty()) null else ports.plan()
+        val watchable = plan?.targets.orEmpty().filter { !interactive || it.face in unattended }
+        val refusal = if (interactive && unattended.isNotEmpty() && plan?.targets.orEmpty().isNotEmpty() && watchable.isEmpty()) {
+            "a face is unattended, but its manifest is not one the native watch reads (the primary's alone); the page owns the rest"
+        } else NativeAlertWatchPolicy.pollRefusal(
             panelInteractive = interactive,
             apiRoot = plan?.apiRoot,
             apiRootAllowed = plan?.apiRootAllowed == true,
             targets = plan?.targets?.size ?: 0,
+            unattended = unattended.isNotEmpty(),
         )
         if (refusal != null) {
+            lastUnattended = unattended.keys
             if (memories != null) {
                 memories = null
                 ports.log(
@@ -182,7 +205,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
             }
             return null
         }
-        val targets = plan?.targets.orEmpty()
+        val targets = if (interactive) watchable else plan?.targets.orEmpty()
 
         ports.cpuLock(true)
         refusalLogged = null
@@ -191,28 +214,48 @@ class NativeAlertWatchEngine(private val ports: Ports) {
             darkSinceMs = ports.nowMs()
             pollsThisDarkPeriod = 0
             lastProgressLogAtMs = darkSinceMs
+            // D3 trusts only "no alert" answers read in THIS watch period.
+            noAlertSince.clear()
             ports.log(
                 Level.INFO,
-                "the panel is off — watching ${targets.size} manifest(s) natively for an emergency alert " +
-                    "(first poll in ${NativeAlertWatchPolicy.FIRST_POLL_DELAY_MS / 1000}s, then every " +
-                    "${NativeAlertWatchPolicy.POLL_INTERVAL_MS / 1000}s)",
+                if (interactive) {
+                    "no page holds a live lease on face(s) ${unattended.keys.sorted().joinToString(",")} — watching " +
+                        "${targets.size} manifest(s) natively for an emergency alert (first poll in " +
+                        "${NativeAlertWatchPolicy.FIRST_POLL_DELAY_MS / 1000}s, then every " +
+                        "${NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS / 1000}s)"
+                } else {
+                    "the panel is off — watching ${targets.size} manifest(s) natively for an emergency alert " +
+                        "(first poll in ${NativeAlertWatchPolicy.FIRST_POLL_DELAY_MS / 1000}s, then every " +
+                        "${NativeAlertWatchPolicy.POLL_INTERVAL_MS / 1000}s)"
+                },
             )
         }
         mem.keys.retainAll(targets.map { it.face }.toSet())
+        // §7 E4: a face that has JUST become unattended gets its first poll within the usual 3 s,
+        // even in the middle of a dark period's slower cadence.
+        val newlyUnattended = unattended.keys - lastUnattended
+        lastUnattended = unattended.keys
+        for (face in newlyUnattended) {
+            val m = mem[face] ?: continue
+            val due = ports.nowMs() + NativeAlertWatchPolicy.FIRST_POLL_DELAY_MS
+            if (m.nextPollAtMs > due) mem[face] = m.copy(nextPollAtMs = due)
+        }
 
         for (target in targets) {
             val before = mem[target.face]
                 ?: NativeAlertWatchPolicy.firstMemory(ports.nowMs()).also { mem[target.face] = it }
             if (ports.nowMs() < before.nextPollAtMs) continue
-            // Rule 1, re-read per manifest: the panel may have come on while
-            // an earlier face was being asked.
-            if (ports.panelInteractive()) break
+            // Rule 1, re-read per manifest: the panel may have come on (and a
+            // page taken the lease) while an earlier face was being asked.
+            if (ports.panelInteractive() && target.face !in ports.unattendedSinceMs()) break
 
             ports.cpuLock(true)
             val outcome = ports.fetchManifest(target, before.etag)
             val nowMs = ports.nowMs()
             val verdict = NativeAlertWatchPolicy.classify(outcome, before)
-            val after = NativeAlertWatchPolicy.afterPoll(before, outcome, verdict, nowMs)
+            val interval = if (target.face in unattended) NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS
+                else NativeAlertWatchPolicy.POLL_INTERVAL_MS
+            val after = NativeAlertWatchPolicy.afterPoll(before, outcome, verdict, nowMs, interval)
             mem[target.face] = after
             pollsThisDarkPeriod += 1
             logPoll(target.face, outcome, verdict, before, after)
@@ -224,19 +267,25 @@ class NativeAlertWatchEngine(private val ports: Ports) {
             lastProgressLogAtMs = nowMs
             ports.log(
                 Level.INFO,
-                "native alert watch: the panel has been off for ${(nowMs - darkSinceMs) / 60_000} min — " +
-                    "$pollsThisDarkPeriod manifest poll(s) so far",
+                "native alert watch: watching for ${(nowMs - darkSinceMs) / 60_000} min " +
+                    "(${if (interactive) "no page lease" else "the panel is off"}) — $pollsThisDarkPeriod manifest poll(s) so far",
             )
         }
-        return mem.values.minOfOrNull { it.nextPollAtMs - nowMs }?.coerceAtLeast(0L)
+        return targets.mapNotNull { mem[it.face] }.minOfOrNull { it.nextPollAtMs - nowMs }?.coerceAtLeast(0L)
     }
 
     private fun applyVerdict(face: Int, verdict: AlertVerdict, nowMs: Long) {
         // Read again AFTER the request: an answer that lands once the panel
-        // is on belongs to the page (rule 1).
-        val interactive = ports.panelInteractive()
-        val step = NativeAlertWatchPolicy.onVerdict(faceState(face), verdict, nowMs, interactive)
+        // is on AND a page holds the face's lease belongs to the page (rule 1).
+        val pageOwns = ports.panelInteractive() && face !in ports.unattendedSinceMs()
+        val step = NativeAlertWatchPolicy.onVerdict(faceState(face), verdict, nowMs, pageOwns)
         faces[face] = step.state
+        // D3: from when has every definite answer for this face said "no alert"?
+        when (verdict) {
+            AlertVerdict.NO_ALERT -> if (!noAlertSince.containsKey(face)) noAlertSince[face] = nowMs
+            AlertVerdict.ALERT -> noAlertSince.remove(face)
+            AlertVerdict.UNKNOWN -> Unit
+        }
         when {
             step.action == WatchAction.RAISE -> {
                 if (step.openedEpisode) {
@@ -298,6 +347,74 @@ class NativeAlertWatchEngine(private val ports: Ports) {
     // ─── 2. the alert on the glass: confirm, reload, bring forward ───
 
     private fun followUp(): Long? {
+        val restoreInMs = restoreFollowUp()
+        val episodesInMs = episodeFollowUp()
+        return listOfNotNull(restoreInMs, episodesInMs).minOrNull()
+    }
+
+    /**
+     * Owner decision D3 (2026-10-19): a hold is up, the live manifest says "no
+     * alert", and no page has held the face's lease for 30 s — so nothing
+     * alive can release it. Bring a PAGE back through the existing bounded
+     * reload / relaunch path; the page reads the live manifest and releases
+     * the hold ITSELF. ⚠️ Nothing here releases anything (rule 2).
+     */
+    private fun restoreFollowUp(): Long? {
+        val held = ports.holdHeld()
+        if (!held) {
+            restores.clear()
+            return null
+        }
+        val unattended = ports.unattendedSinceMs()
+        if (unattended.isEmpty()) return null
+        var soonestMs: Long? = null
+        for ((face, since) in unattended) {
+            val nowMs = ports.nowMs()
+            val ep = faces[face]?.episode
+            val mem = restores[face] ?: NativeAlertWatchPolicy.RestoreMemory()
+            val step = NativeAlertWatchPolicy.restoreStep(
+                holdHeld = held,
+                unattendedSinceMs = since,
+                noAlertSinceMs = noAlertSince[face],
+                escalationOwns = ep != null && ep.settled != Settled.CONFIRMED,
+                playerInForeground = ports.playerInForeground(),
+                pageLoadStartedAtMs = ports.pageLoadStartedAtMs(face),
+                mem = mem,
+                nowMs = nowMs,
+            )
+            when (step) {
+                NativeAlertWatchPolicy.RestoreStep.None -> Unit
+                is NativeAlertWatchPolicy.RestoreStep.Wait -> soonestMs = minOf(soonestMs ?: step.ms, step.ms)
+                NativeAlertWatchPolicy.RestoreStep.Reload, NativeAlertWatchPolicy.RestoreStep.BringForward -> {
+                    val attempt = mem.attempts + 1
+                    restores[face] = mem.copy(attempts = attempt, lastAtMs = nowMs)
+                    val why = "an emergency hold is up, the live manifest has said no alert for " +
+                        "${(nowMs - (noAlertSince[face] ?: nowMs)) / 1000}s and no page has held this face's lease for " +
+                        "${(nowMs - since) / 1000}s — bringing the page back so it reads the live state and releases the hold itself"
+                    ports.log(
+                        Level.ERROR,
+                        "PLAYER_NATIVE_FIRST_RESTORE face=$face n=$attempt of=${NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT} " +
+                            "action=${if (step == NativeAlertWatchPolicy.RestoreStep.Reload) "reload" else "launch"} — $why",
+                    )
+                    if (step == NativeAlertWatchPolicy.RestoreStep.Reload) ports.reloadPage(face, attempt, why)
+                    else ports.bringPlayerForward(attempt)
+                    soonestMs = minOf(soonestMs ?: NativeAlertWatchPolicy.FOLLOW_UP_TICK_MS, NativeAlertWatchPolicy.FOLLOW_UP_TICK_MS)
+                }
+                NativeAlertWatchPolicy.RestoreStep.GiveUp -> {
+                    restores[face] = mem.copy(gaveUp = true)
+                    ports.log(
+                        Level.ERROR,
+                        "PLAYER_NATIVE_FIRST_RESTORE_UNCONFIRMED face=$face attempts=${mem.attempts} — no page came back to " +
+                            "release the hold. It STAYS engaged: the panel is lit and no native content plays",
+                    )
+                    ports.alertEpisodeSettled(face, "restore-unconfirmed")
+                }
+            }
+        }
+        return soonestMs
+    }
+
+    private fun episodeFollowUp(): Long? {
         if (faces.values.none { it.episode != null }) {
             relaunch = RelaunchMemory()
             return null
@@ -359,6 +476,9 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                 }
                 FollowUp.GaveUp -> {
                     faces[face] = NativeAlertWatchPolicy.settle(state, Settled.GAVE_UP)
+                    // One budget per hold: this alert's reloads are spent, so D3 adds none on top
+                    // of them for this hold period (cleared when a page finally releases).
+                    restores[face] = NativeAlertWatchPolicy.RestoreMemory(attempts = ep.reloads, gaveUp = true)
                     ports.log(
                         Level.ERROR,
                         "PLAYER_NATIVE_ALERT_UNCONFIRMED face=$face reloads=${ep.reloads} " +

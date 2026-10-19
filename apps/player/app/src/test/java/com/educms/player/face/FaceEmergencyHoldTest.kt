@@ -1,6 +1,8 @@
 package com.educms.player.face
 
 import com.educms.player.display.DisplayEmergency
+import com.educms.player.media.NativeFirstBoundary
+import com.educms.player.media.PlaybackSessionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -277,5 +279,61 @@ class FaceEmergencyHoldTest {
             faces = DisplayEmergency.nextHoldFaces(faces, DisplayEmergency.creditedFace(1, doubleSided), false)
         }
         assertEquals(setOf(0), faces)
+    }
+
+    // ─── NATIVE-FIRST (design §7 E1 / E2): the hold outranks a session that outlives its page ──
+
+    @Test
+    fun `a hold ends a v4 session whatever its state - attended or unattended, presenting, pre-rolling or mid-swap`() {
+        // The end table has no notion of the lease or the role: the hold's outcome is one row.
+        assertEquals(PlaybackSessionPolicy.Outcome.END_SUSPEND_INTENT,
+            PlaybackSessionPolicy.v4(PlaybackSessionPolicy.Event.EMERGENCY_HOLD))
+        assertEquals(PlaybackSessionPolicy.Outcome.END_SUSPEND_INTENT, PlaybackSessionPolicy.fateOf("emergency-held"))
+        // Mid-boundary: whichever path the swap would take, a raised hold aborts it before anything moves.
+        for (path in NativeFirstBoundary.Path.values()) {
+            assertEquals(listOf(NativeFirstBoundary.Step.ABORT_HELD), NativeFirstBoundary.swapSteps(held = true, path = path))
+        }
+        // Nothing new starts or pre-rolls under it either, with or without something on the glass.
+        for (presenting in listOf(true, false)) {
+            assertEquals(PlaybackSessionPolicy.IntendAction.SUSPEND, PlaybackSessionPolicy.onIntend(
+                sameAsCurrent = false, sameAsNext = false, currentPresenting = presenting, switchOn = true, blocked = false, held = true))
+        }
+        // The page being gone changes nothing about any of this: the lease is not an input.
+        assertTrue(DisplayEmergency.heldFrom(setOf(front), legacyHold = false))
+    }
+
+    private val moduleRoot: java.io.File? by lazy {
+        var dir: java.io.File? = java.io.File("").absoluteFile
+        while (dir != null) {
+            if (java.io.File(dir, "src/main/AndroidManifest.xml").isFile) return@lazy dir
+            val nested = java.io.File(dir, "app/src/main/AndroidManifest.xml")
+            if (nested.isFile) return@lazy java.io.File(dir, "app")
+            dir = dir.parentFile
+        }
+        null
+    }
+
+    private fun source(relative: String): String {
+        val root = moduleRoot
+        org.junit.Assume.assumeTrue("module root not on disk", root != null)
+        val f = java.io.File(root, relative)
+        org.junit.Assume.assumeTrue("source not on disk: $relative", f.isFile)
+        return f.readText().replace(Regex("/\\*[\\s\\S]*?\\*/"), "").lines().joinToString("\n") { it.substringBefore("//") }
+    }
+
+    @Test
+    fun `suppression reaches unattended and mid-boundary sessions, and the hold's release restarts nothing by itself`() {
+        val box = source("src/main/java/com/educms/player/media/FaceVideoBox.kt")
+        val suppress = box.substring(box.indexOf("fun suppress("), box.indexOf("fun yieldToUi("))
+        assertTrue("every session of every host", suppress.contains("hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } }"))
+        assertFalse("not filtered by the lease, the role or the protocol", Regex("v4|lease|key|NEXT|PREV").containsMatchIn(suppress))
+        // The pre-roll and the held predecessor live in that same registry.
+        assertTrue(box.contains("host.faceSessions[PREV] = it"))
+        assertTrue(box.contains("host.faceSessions[session.key] = session"))
+        // D5 / §4.3: after the all-clear the PAGE restores (one intend, one start); the interlock's
+        // release path starts no native content of its own.
+        val emergency = source("src/main/java/com/educms/player/display/DisplayEmergency.kt")
+        val release = emergency.substring(emergency.indexOf("private fun release("), emergency.indexOf("fun enforceNow("))
+        assertFalse(Regex("FaceVideoBox|SharedVideoHost|intend|restore\\(").containsMatchIn(release.replace("restoreAfterAlertIfDue", "")))
     }
 }

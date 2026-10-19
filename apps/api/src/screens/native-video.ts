@@ -218,6 +218,121 @@ export function nativeVideoExperimentsFor(
 }
 
 /**
+ * NATIVE-FIRST (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §8.1, phase 1;
+ * owner D1, 2026-10-19) — the lead's switch, per face, for "the engine
+ * decision moves BEFORE the mount": a solo muted video whose file is verified
+ * on disk starts on the hardware engine at frame 0 and the web `<video>` is
+ * never created; the app owns the session, so a page reload no longer takes
+ * the picture off the glass. Never an operator setting (owner 2026-10-18):
+ * the APK decides its own default per device class (`DeviceClassPolicy`,
+ * FALSE on every class in this release) and this env only overrides it.
+ *
+ * `PLAYER_NATIVE_FIRST` (Railway env), comma tokens — the grammar of
+ * `PLAYER_NATIVE_VIDEO`:
+ *   unset / empty             → nobody named: the descriptor carries NO key
+ *                               and the APK runs its class default
+ *   `all`                     → every screen
+ *   `<screen uuid>`           → that screen (= that face)
+ *   `model:<id>`              → every screen whose hardwareModel is <id>
+ *   `class:<soc>/android-<N>` → every screen whose APK last REPORTED that
+ *                               device class (`lastVideoReport.native.device
+ *                               .class`, 1.1.41+). A screen that has not
+ *                               reported one yet is matched by no `class:`
+ *                               token, in or out — use `-<uuid>` or `off` for
+ *                               an immediate stop.
+ *   `-<uuid>` / `-model:<id>` / `-class:<…>` → never that screen / model /
+ *                               class: `false`, and it wins over any inclusion
+ *   `off`/`0`/`false`/`no`    → `false` for every screen; wins over everything
+ * Anything unrecognised is ignored (a typo names nobody).
+ *
+ * Carried per face as `nativeFirst: boolean` on the hashed `nativeVideo`
+ * descriptor, OUTSIDE `revision` (the 1.1.41 experiment-flag rule): a flip
+ * changes the ETag and never restarts a presenting session — it applies at
+ * the next content boundary. Absent when nothing names the screen, so nobody
+ * else's payload hash moves. Emergency manifests still get no descriptor at
+ * all (the second lock in `buildNativeVideoDescriptor`).
+ *
+ * An INCLUSION also enrols the screen in the native engine itself
+ * (`nativeVideoEnrolled`): naming a screen for native-first without giving it
+ * a descriptor would do nothing. `PLAYER_NATIVE_VIDEO=off`, its exclusions
+ * and the Taurus hard exclusion still win over it.
+ */
+const DEVICE_CLASS_RE = /^[a-z]+\/android-[0-9]{1,2}$/;
+
+export interface NativeFirstRollout {
+  off: boolean;
+  all: boolean;
+  ids: Set<string>;
+  models: Set<string>;
+  classes: Set<string>;
+  excludeIds: Set<string>;
+  excludeModels: Set<string>;
+  excludeClasses: Set<string>;
+}
+
+export function parseNativeFirstRollout(
+  env: Record<string, string | undefined> = process.env,
+): NativeFirstRollout {
+  const r: NativeFirstRollout = {
+    off: false,
+    all: false,
+    ids: new Set(),
+    models: new Set(),
+    classes: new Set(),
+    excludeIds: new Set(),
+    excludeModels: new Set(),
+    excludeClasses: new Set(),
+  };
+  const raw = (env.PLAYER_NATIVE_FIRST ?? '').trim();
+  if (!raw) return r;
+  for (const t0 of raw.split(',')) {
+    const t = t0.trim().toLowerCase();
+    if (!t) continue;
+    const negative = t.startsWith('-');
+    const body = negative ? t.slice(1).trim() : t;
+    if (!negative && ['off', '0', 'false', 'no'].includes(body)) r.off = true;
+    else if (!negative && body === 'all') r.all = true;
+    else if (body.startsWith('model:') && body.length > 6)
+      (negative ? r.excludeModels : r.models).add(body.slice(6));
+    else if (body.startsWith('class:') && DEVICE_CLASS_RE.test(body.slice(6)))
+      (negative ? r.excludeClasses : r.classes).add(body.slice(6));
+    else if (UUID_RE.test(body)) (negative ? r.excludeIds : r.ids).add(body);
+  }
+  return r;
+}
+
+/** The device class this screen's APK last reported, or '' (never guessed). */
+export function reportedDeviceClass(screen: { lastVideoReport?: unknown } | null | undefined): string {
+  const report = obj(screen?.lastVideoReport) ? (screen!.lastVideoReport as Record<string, any>) : null;
+  const native = report && obj(report.native) ? report.native : null;
+  const cls = native && obj(native.device) ? native.device.class : null;
+  return typeof cls === 'string' && DEVICE_CLASS_RE.test(cls) ? cls : '';
+}
+
+/**
+ * This face's native-first override: `true` (named), `false` (`off` or an
+ * exclusion — the kill switch), or `null` (not named: no key on the
+ * descriptor, the APK's class default applies). Deterministic per
+ * (screen row, env) — safe inside the hashed, hot-cached manifest.
+ */
+export function nativeFirstFor(
+  screen: { id: string; hardwareModel?: string | null; lastVideoReport?: unknown },
+  env: Record<string, string | undefined> = process.env,
+): boolean | null {
+  const id = String(screen?.id ?? '').toLowerCase();
+  if (!UUID_RE.test(id)) return null;
+  const r = parseNativeFirstRollout(env);
+  if (r.off) return false;
+  const model = String(screen.hardwareModel ?? '').toLowerCase();
+  const cls = reportedDeviceClass(screen);
+  if (r.excludeIds.has(id) || (model && r.excludeModels.has(model)) || (cls && r.excludeClasses.has(cls)))
+    return false;
+  if (r.all || r.ids.has(id) || (model && r.models.has(model)) || (cls && r.classes.has(cls)))
+    return true;
+  return null;
+}
+
+/**
  * Is this screen enrolled? `hasBackFace` is asked ONLY when the answer turns
  * on it (a primary under `faces`), so the single-sided fleet pays no query.
  */
@@ -226,6 +341,7 @@ export async function nativeVideoEnrolled(
     id: string;
     hardwareModel?: string | null;
     faceOfScreenId?: string | null;
+    lastVideoReport?: unknown;
   },
   hasBackFace: () => Promise<boolean>,
   env: Record<string, string | undefined> = process.env,
@@ -238,6 +354,8 @@ export async function nativeVideoEnrolled(
   if (r.excludeIds.has(id) || (model && r.excludeModels.has(model)))
     return false;
   if (r.all || r.ids.has(id) || (model && r.models.has(model))) return true;
+  // Native-first names this screen: it needs the descriptor to do anything.
+  if (nativeFirstFor(screen, env) === true) return true;
   if (!r.faces) return false;
   if (screen.faceOfScreenId) return true;
   try {
@@ -339,6 +457,9 @@ export function buildNativeVideoDescriptor(input: {
     .digest('hex');
   // Outside the revision on purpose (see NATIVE_VIDEO_EXPERIMENTS); absent when none is on.
   const experiments = nativeVideoExperimentsFor(s.id, env);
+  // Native-first (§8.1): outside the revision too — a flip never restarts a
+  // presenting session; absent when the env names nobody (class default).
+  const nativeFirst = nativeFirstFor(s as { id: string }, env);
   return {
     version: 2,
     screenId: s.id,
@@ -348,5 +469,6 @@ export function buildNativeVideoDescriptor(input: {
     asset,
     transform,
     ...(experiments ? { experiments } : {}),
+    ...(nativeFirst !== null ? { nativeFirst } : {}),
   };
 }

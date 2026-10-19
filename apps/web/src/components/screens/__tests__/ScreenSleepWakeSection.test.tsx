@@ -129,6 +129,19 @@ describe('<ScreenSleepWakeSection />', () => {
     expect(withSleep({ offIdleS: 14_400, attS: 14_400 })).toMatch(/Android turned it off, not a person/);
   });
 
+  it('native-first: says the app’s own engine reported a fresh frame — and nothing when it did not', () => {
+    const { unmount } = render(
+      <ScreenSleepWakeSection
+        screen={{ ...base, nativeRuntimeReport: { ...base.nativeRuntimeReport, nativePresenting: { sha8: 'abcdef01', uniqueFrames: 900, ageMs: 40 } } }}
+        nowMs={NOW}
+      />,
+    );
+    expect(rtl.getByTestId('sleep-wake-native-glass').textContent).toMatch(/^Video on the glass: the app’s own video engine reported a fresh frame .+\.$/);
+    unmount();
+    render(<ScreenSleepWakeSection screen={base} nowMs={NOW} />);
+    expect(rtl.queryByTestId('sleep-wake-native-glass')).toBeNull();
+  });
+
   it('renders nothing without a screen', () => {
     const { container } = render(<ScreenSleepWakeSection screen={null} nowMs={NOW} />);
     expect(container.textContent).toBe('');

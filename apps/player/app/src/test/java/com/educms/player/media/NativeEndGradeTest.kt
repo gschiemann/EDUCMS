@@ -74,13 +74,16 @@ class NativeEndGradeTest {
         assertTrue(NativeEndGrade.retries("host-replaced"))
         assertTrue(FaceVideoPolicy.transient("host-replaced"))
         assertFalse("a WebView crash must never block native on the file for a day", NativeEndGrade.blocks("host-replaced"))
-        // … and it is the very code the engine emits on a host replacement.
+        // … and it is the very code the engine emits on a host replacement (native-first: every session
+        // the replacement cannot re-home — every v2 / v3 session, and a v4 one whose parent changed).
         val box = generateSequence(java.io.File("").absoluteFile) { it.parentFile }
             .flatMap { sequenceOf(java.io.File(it, "src/main/java/com/educms/player/media/FaceVideoBox.kt"),
                 java.io.File(it, "app/src/main/java/com/educms/player/media/FaceVideoBox.kt")) }
             .firstOrNull { it.isFile }
         org.junit.Assume.assumeTrue("FaceVideoBox.kt not on disk", box != null)
-        assertTrue(box!!.readText().contains("stopSession(old, it, \"host-replaced\")"))
+        assertTrue(box!!.readText().contains("stopSession(old, s, \"host-replaced\")"))
+        // The one closed end-reason table grades it the same way.
+        assertTrue("host-replaced" in NativeEndReasons.TRANSIENT)
     }
 
     @Test fun theUnknownFailsClosedAndTheSetsAreDisjoint() {

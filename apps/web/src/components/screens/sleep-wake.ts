@@ -38,6 +38,9 @@ export const INACTIVITY_MATCH_S = 120;
 
 /** How old a native report may be before it says nothing about "now". */
 export const NATIVE_REPORT_FRESH_MS = 10 * 60_000;
+/** Native-first §4.4 — the API's `nativeGlassPlaying` bounds: a report ≤ 2 min old whose newest frame was ≤ 10 s old. */
+export const NATIVE_GLASS_REPORT_FRESH_MS = 2 * 60_000;
+export const NATIVE_GLASS_FRAME_FRESH_MS = 10_000;
 
 export type SleepMechanismKind =
   /** Android device-admin lock — a real sleep. */
@@ -79,6 +82,13 @@ export interface SleepWakeSummary {
   mechanism: SleepMechanismKind;
   /** Android's own power state, when a FRESH native report says so. */
   now: { asleep: boolean; sinceMs: number | null; reportAgeMs: number } | null;
+  /**
+   * Native-first §4.4 — the app's OWN video engine reported a fresh frame on
+   * the glass (`nativePresenting` on the heartbeat), independent of the page:
+   * the frame's time, from a FRESH report on a lit panel only. Evidence of the
+   * native engine, never of the page (rule 10).
+   */
+  nativeGlass: { frameAtMs: number; uniqueFrames: number } | null;
   /** An alert wakes this panel even when someone turned it off. */
   alertWakesSleeping: Support;
   /** "Turn panel on" reaches a panel whose page is asleep. */
@@ -257,7 +267,21 @@ export function summarizeSleepWake(input: SleepWakeInput): SleepWakeSummary {
         }
       : null;
 
+  // Native-first §4.4: a fresh frame the app's own engine reported, on a lit
+  // panel, from a fresh report — the API grades the same facts (nativeGlassPlaying).
+  const presenting = asObject(report?.nativePresenting);
+  const presentAge = finite(presenting?.ageMs);
+  const presentFrames = finite(presenting?.uniqueFrames);
+  const nativeGlass =
+    reportAgeMs !== null && reportAgeMs <= NATIVE_GLASS_REPORT_FRESH_MS &&
+    report?.interactive !== false && presenting && Number.isFinite(reportAtMs) &&
+    presentAge !== null && presentAge >= 0 && presentAge <= NATIVE_GLASS_FRAME_FRESH_MS &&
+    presentFrames !== null && presentFrames > 0
+      ? { frameAtMs: reportAtMs - presentAge, uniqueFrames: presentFrames }
+      : null;
+
   return {
+    nativeGlass,
     lastOff,
     mechanism: mechanismKind(blank, screensaverSeen, (() => {
       const sdk = asObject(verdict?.build)?.sdk;

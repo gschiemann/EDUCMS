@@ -148,6 +148,18 @@ const REQUIRED = [
   { cls: 'com.educms.player.media.Prefer60HzPolicyTest', min: 3 },
   { cls: 'com.educms.player.media.NativeEndGradeTest', min: 2 },
   { cls: 'com.educms.player.media.SysDisplayFactsTest', min: 3 },
+  // ── Native-first, stream B (2026-10-19) — the app owns the session ──
+  // The lease (a reload / a renderer loss / a silent page never ends a v4
+  // session; a retired document can never act; the intent survives a
+  // process death), the native→native boundary switch (pre-roll vs hold the
+  // last frame under the decoder budget of every face; the swap pass reads
+  // the emergency hold FIRST), and the closed end-reason table the page's is
+  // generated from (parseable, and never in disagreement with 1.1.43's
+  // NativeEndGrade). If these stop running, nothing in CI checks that a
+  // session outliving its page still yields to every alert.
+  { cls: 'com.educms.player.media.PlaybackLeaseTest', min: 15 },
+  { cls: 'com.educms.player.media.NativeFirstBoundaryTest', min: 6 },
+  { cls: 'com.educms.player.media.NativeEndReasonsTest', min: 5 },
   // ── One download and one prompt per build (2026-10-17) ───────────
   // An Android 9 panel downloaded one update 48 times in 24 h. This class
   // pins the attempt rules (keep the verified APK, raise the dialog once,
@@ -164,6 +176,12 @@ const REQUIRED = [
   // passphrase on disk), so "not entirely skipped" matters.
   { cls: 'com.educms.player.settings.DeviceSettingsPolicyTest', min: 15 },
   { cls: 'com.educms.player.settings.DeviceSettingsWiringTest', min: 8 },
+  // Native-first, one verified store (design NATIVE-FIRST-ONE-STORE §5–§7). EmergencyPinTest is
+  // the §7 E3 ship-gate evidence: one case per emergency-set guarantee.
+  { cls: 'com.educms.player.store.ContentStorePolicyTest', min: 10 },
+  { cls: 'com.educms.player.store.ContentStoreDownloadTest', min: 10 },
+  { cls: 'com.educms.player.store.EmergencyPinTest', min: 8 },
+  { cls: 'com.educms.player.store.ContentStoreFacadeTest', min: 8 },
 ];
 
 /**

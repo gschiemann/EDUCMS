@@ -159,7 +159,7 @@ object NativeAlertWatch {
                 // Both are PROTECTED system broadcasts — only the system can
                 // send them — so EXPORTED grants nothing to other apps.
                 ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
-                PlayerLogger.i(TAG, "native alert watch installed — it polls the manifest only while the panel is off")
+                PlayerLogger.i(TAG, "native alert watch installed — it polls the manifest only while the panel is off, or while a native session presents with no page lease")
             }.onFailure {
                 receiverRegistered = false
                 PlayerLogger.e(TAG, "could not register the screen on/off receiver for the native alert watch", it)
@@ -416,6 +416,15 @@ object NativeAlertWatch {
                 NativeAlertWatchEngine.Level.ERROR -> PlayerLogger.e(TAG, message)
             }
         }
+
+        /**
+         * Native-first §7 E4: faces whose native session presents (or whose
+         * intent is suspended by a hold) with NO live page lease. Read from
+         * the playback session's own bookkeeping; never throws.
+         */
+        override fun unattendedSinceMs(): Map<Int, Long> = runCatching {
+            com.educms.player.media.FaceVideoBox.unattendedSince(SystemClock.elapsedRealtime())
+        }.getOrDefault(emptyMap())
 
         /** 2026-10-11 — the markers above reach the server: a bounded, rate-limited device-log upload. */
         override fun alertEpisodeSettled(face: Int, outcome: String) {

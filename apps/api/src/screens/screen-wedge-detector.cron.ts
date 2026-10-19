@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
-import { nativeReportsAsleep } from './native-runtime';
+import { nativeGlassPlaying, nativeReportsAsleep } from './native-runtime';
 import { PUSH_EXPIRE_MS } from '../player-ota/push-tracking';
 import { ScreenEventsService } from './events/screen-events.service';
 
@@ -701,12 +701,19 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         ? Math.round((now - screen.lastPingAt.getTime()) / 1000)
         : null;
 
+      // NATIVE-FIRST (§4.4, rule 10 wording): the page stopped reporting but
+      // the app's own native engine reports fresh frames on the glass. The
+      // page still gets its recovery (a reload no longer touches a
+      // native-first session); the record says what the evidence proves —
+      // "page down, glass playing" — never "frozen".
+      const glass = nativeGlassPlaying(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now);
       const baseDetails = {
         scope: 'screen' as const,
         screenName: screen.name,
         cacheAgeMin,
         pingAgeSec,
         attemptCountInWindow: decision.fireCountInWindow,
+        ...(glass ? { glass: 'page-down-glass-playing' as const, nativeFrameAgeMs: glass.ageMs } : {}),
       };
 
       if (decision.action === 'escalate') {
@@ -746,9 +753,11 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
 
       // decision.action === 'fire'
       const corrId = `wedge-${Date.now().toString(36)}-${screen.id.slice(0, 8)}`;
-      const reason = cacheAgeMin === null
+      const reason = (glass
+        ? `page down, glass playing (native frames ${glass.ageMs}ms old, sha ${glass.sha8}) — `
+        : '') + (cacheAgeMin === null
         ? `never reported cache, paired ${Math.round((now - (screen.pairedAt?.getTime() ?? now)) / 60_000)}min ago`
-        : `cache-report stale ${cacheAgeMin}min, ping fresh ${pingAgeSec}s ago`;
+        : `cache-report stale ${cacheAgeMin}min, ping fresh ${pingAgeSec}s ago`);
 
       this.logger.warn(
         `[wedge-detector] auto-refreshing screen=${screen.name} (id=${screen.id.slice(0, 8)}) — ${reason}` +

@@ -49,6 +49,9 @@ class NativeAlertWatchEngineTest {
         /** Runs inside a fetch, before it returns — for "the panel came on mid-request". */
         var duringFetch: (() -> Unit)? = null
 
+        /** Native-first §7 E4: faces presenting natively with no page lease, and since when. */
+        var unattended: Map<Int, Long> = emptyMap()
+
         val fetchAt = ArrayList<Long>()
         val conditional = ArrayList<Boolean>()
         var held = false
@@ -119,6 +122,8 @@ class NativeAlertWatchEngineTest {
         override fun log(level: NativeAlertWatchEngine.Level, message: String) {
             logs.add(message)
         }
+
+        override fun unattendedSinceMs(): Map<Int, Long> = unattended
 
         /** The page, alive: it raises the hold itself. */
         fun pageRaises() {
@@ -404,6 +409,135 @@ class NativeAlertWatchEngineTest {
         val e2 = NativeAlertWatchEngine(onGlass)
         run(onGlass, e2, 5 * 60_000L)
         assertTrue(onGlass.launchAt.isEmpty())
+    }
+
+    // ─── native-first §7 E4: no page holds the lease ─────────────────
+
+    @Test
+    fun `NO PAGE LEASE, PANEL ON — first poll within three seconds, then every five, conditional after the first`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 19_000L)
+        assertEquals(listOf(3_000L, 8_000L, 13_000L, 18_000L), sim.fetchAt)
+        assertEquals(listOf(false, true, true, true), sim.conditional)
+        assertTrue("no alert: nothing is raised", sim.raiseAt.isEmpty())
+        assertTrue(sim.logs.any { it.contains("no page holds a live lease") })
+    }
+
+    @Test
+    fun `an alert while no page holds the lease is raised natively with the panel ON, within five seconds — raise only`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 10_000L)
+        sim.serverAlert = true
+        val triggeredAt = sim.now
+        run(sim, engine, triggeredAt + 6_000L)
+        assertTrue("raised ${sim.raiseAt.firstOrNull()?.minus(triggeredAt)} ms after the trigger",
+            sim.raiseAt.isNotEmpty() && sim.raiseAt[0] - triggeredAt <= NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS)
+        assertTrue(sim.held)
+        // The server ends it; nothing in the watch lowers the hold — a page must come back and do it.
+        sim.serverAlert = false
+        run(sim, engine, sim.now + 10 * 60_000L)
+        assertTrue("RAISE ONLY", sim.held)
+        // The existing escalation brought a page back — bounded.
+        assertTrue(sim.reloadAt.size in 1..NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT)
+        sim.reloadAt.zipWithNext().forEach { (a, b) -> assertTrue(b - a >= NativeAlertWatchPolicy.RELOAD_MIN_GAP_MS) }
+    }
+
+    @Test
+    fun `the moment a page holds the lease again, the watch stops polling with the panel on`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 20_000L)
+        val before = sim.fetchAt.size
+        assertTrue(before >= 3)
+        sim.unattended = emptyMap()
+        run(sim, engine, 10 * 60_000L)
+        assertEquals(before, sim.fetchAt.size)
+        assertFalse(sim.cpuHeld)
+    }
+
+    @Test
+    fun `a face that becomes unattended in the middle of a dark period is asked within three seconds`() {
+        val sim = Sim()
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 40_000L)
+        assertEquals(listOf(3_000L, 18_000L, 33_000L), sim.fetchAt)
+        sim.unattended = mapOf(0 to 40_000L)
+        run(sim, engine, 54_000L)
+        assertEquals(listOf(3_000L, 18_000L, 33_000L, 43_000L, 48_000L, 53_000L), sim.fetchAt)
+    }
+
+    @Test
+    fun `an answer that lands after a page took the lease back belongs to the page — no native raise`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L); serverAlert = true }
+        sim.duringFetch = { sim.unattended = emptyMap() }   // the reloaded page adopted mid-request
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 60_000L)
+        assertEquals(1, sim.fetchAt.size)
+        assertTrue(sim.raiseAt.isEmpty())
+    }
+
+    // ─── owner decision D3: the page is gone, the hold is up, the alert is over ──
+
+    @Test
+    fun `D3 — a hold with no alert and no page lease for 30 s brings the page back, bounded, and never releases`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        sim.pageRaises()                 // the page raised for an alert, then died
+        sim.pageRaisedAt = null
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 20 * 60_000L)
+        assertEquals(NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT, sim.reloadAt.size)
+        assertTrue("not before 30 s of absence AND 30 s of a live no-alert", sim.reloadAt.first() >= 33_000L)
+        sim.reloadAt.zipWithNext().forEach { (a, b) -> assertTrue("${b - a} ms apart", b - a >= NativeAlertWatchPolicy.RELOAD_MIN_GAP_MS) }
+        assertEquals(1, sim.logs.count { it.startsWith("PLAYER_NATIVE_FIRST_RESTORE_UNCONFIRMED") })
+        assertTrue("the watch never releases: the hold STAYS", sim.held)
+        assertTrue(sim.raiseAt.isEmpty())
+    }
+
+    @Test
+    fun `D3 — the page coming back and releasing ends the recovery at once`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        sim.pageRaises(); sim.pageRaisedAt = null
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 40_000L)
+        assertEquals(1, sim.reloadAt.size)
+        // The reloaded page reads the live manifest, releases, and takes the lease.
+        sim.pageReleases()
+        sim.unattended = emptyMap()
+        run(sim, engine, 20 * 60_000L)
+        assertEquals(1, sim.reloadAt.size)
+    }
+
+    @Test
+    fun `D3 — with the player off the glass the recovery brings it forward instead, still bounded`() {
+        val sim = Sim().apply { interactive = true; inForeground = false; unattended = mapOf(0 to 0L) }
+        sim.pageRaises(); sim.pageRaisedAt = null
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 20 * 60_000L)
+        assertTrue(sim.reloadAt.isEmpty())
+        assertEquals(NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT, sim.launchAt.size)
+        assertTrue(sim.held)
+    }
+
+    @Test
+    fun `D3 never acts while the alert is live — the alert's own escalation owns that`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L); serverAlert = true }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 20 * 60_000L)
+        assertTrue(sim.logs.none { it.startsWith("PLAYER_NATIVE_FIRST_RESTORE") })
+        assertTrue(sim.reloadAt.size <= NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT)
+        assertTrue(sim.held)
+    }
+
+    @Test
+    fun `D3 does nothing without a hold — an unattended native picture with no alert is just playing`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; unattended = mapOf(0 to 0L) }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 30 * 60_000L)
+        assertTrue(sim.reloadAt.isEmpty())
+        assertTrue(sim.launchAt.isEmpty())
+        assertFalse(sim.held)
     }
 
     @Test

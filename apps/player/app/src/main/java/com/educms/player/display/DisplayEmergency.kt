@@ -482,14 +482,14 @@ object DisplayEmergency {
             PlayerLogger.e(
                 TAG,
                 "PLAYER_NATIVE_ALERT_RAISE face=$faceIndex heldBefore=${isHeld(app)} — this screen's manifest " +
-                    "reports an active emergency alert while the panel is off; the NATIVE watch is raising " +
-                    "the hold because the page has not",
+                    "reports an active emergency alert while the panel is off or no page holds a native " +
+                    "session's lease; the NATIVE watch is raising the hold because the page has not",
             )
         } else {
             PlayerLogger.w(
                 TAG,
-                "native alert watch: the alert is still active and the panel is still off — " +
-                    "re-asserting a visible screen (face $faceIndex)",
+                "native alert watch: the alert is still active and no page owns it (panel off or no page " +
+                    "lease) — re-asserting a visible screen (face $faceIndex)",
             )
         }
         return setHoldFrom(app, faceIndex, active = true, fromPage = false)

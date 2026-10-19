@@ -93,7 +93,33 @@ internal object DeviceClassPolicy {
         val silentUpdate: SilentUpdate,
         /** The date this class passed the on-glass checklist on THIS compositing contract; null = unqualified. */
         val qualified: String?,
+        /**
+         * Native-first's CLASS DEFAULT (design §8.1): the app owns the playback
+         * session (protocol 4) on this class when the manifest says nothing.
+         * FALSE on every class until that class passes the glass — the feature
+         * ships dark and is enrolled per face from the manifest ([nativeFirst]).
+         */
+        val nativeFirstDefault: Boolean = false,
+        /** Phase 2's class default (the WebView served from the store, stream A). FALSE everywhere; reported only. */
+        val storeServeDefault: Boolean = false,
     ) {
+        /**
+         * §8.1 PRECEDENCE for one face: the manifest's per-face value — already
+         * resolved by the server from `PLAYER_NATIVE_FIRST`, so `false` means
+         * `off` or an exclusion and `true` an inclusion — wins over the class
+         * default; absent (null) means the class default. A class that cannot
+         * run solo native video at all (a NovaStar Taurus) is never native-first,
+         * whatever the manifest says.
+         */
+        fun nativeFirst(manifest: Boolean?): Boolean = nativeSolo && when (manifest) {
+            false -> false
+            true -> true
+            null -> nativeFirstDefault
+        }
+
+        /** What a face advertises: 4 when the app owns the session there, else the class's slot capability. */
+        fun protocolMax(nativeFirstOn: Boolean): Int = if (nativeFirstOn && nativeSolo) 4 else protocolMax
+
         /** The mode a session on [face] gets, or null = refuse it (the caller names the reason). */
         fun composition(protocol: Int, face: Int): SoloVideoLayer.Mode? = when {
             protocol == 2 && nativeSolo -> SoloVideoLayer.mode(protocol, face, sdk)
@@ -120,6 +146,8 @@ internal object DeviceClassPolicy {
             .put("protocol3", protocol3)
             .put("silentUpdate", silentUpdate.wire)
             .put("qualified", qualified ?: JSONObject.NULL)
+            .put("nativeFirst", nativeFirstDefault)
+            .put("storeServe", storeServeDefault)
     }
 
     /**
@@ -252,6 +280,14 @@ internal object DeviceClassPolicy {
      */
     private val QUALIFIED: Map<String, String> = emptyMap()
 
+    /**
+     * The classes on which native-first (the app owns the playback session,
+     * design §8.1) is ON BY DEFAULT. EMPTY: it flips per class in an app
+     * release only after that class passes the glass; until then a screen is
+     * enrolled from its own manifest (`nativeVideo.nativeFirst: true`).
+     */
+    private val NATIVE_FIRST_CLASSES: Set<String> = emptySet()
+
     fun resolve(f: Facts): Resolved {
         val soc = soc(f)
         val sdk = f.sdk
@@ -270,6 +306,10 @@ internal object DeviceClassPolicy {
             protocol3 = nativeSolo,
             silentUpdate = silentUpdate,
             qualified = QUALIFIED[className],
+            // Native-first ships DARK (owner 2026-10-19): false on every class until
+            // that class passes the glass; enrolment is per face, from the manifest.
+            nativeFirstDefault = NATIVE_FIRST_CLASSES.contains(className),
+            storeServeDefault = false,
         )
     }
 

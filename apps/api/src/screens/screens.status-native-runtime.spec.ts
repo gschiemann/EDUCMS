@@ -170,3 +170,35 @@ describe('native heartbeat write debounce (review P2, 2026-10-10)', () => {
     expect(screen.update).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('native-first §4.4 — stream B\'s x-venueos-native-presenting header', () => {
+  const presenting = JSON.stringify({ v: 1, faces: [{ face: 0, sha8: 'abcdef01', uniqueFrames: 900, ageMs: 40, v4: true, unattended: true }] });
+  const pollWith = (controller: ScreensController, headers: Record<string, unknown>) =>
+    controller.deviceStatus('android-wall', '1.1.24', '10124', undefined, { headers: { 'x-venueos-native-runtime': JSON.stringify(runtime), ...headers } });
+
+  it('stores this face\'s entry inside the runtime report, under the same credential gate', async () => {
+    const { controller, screen } = harness(true, true, 'wall-presenting-1');
+    await pollWith(controller, { 'x-venueos-native-presenting': presenting });
+    expect(screen.update.mock.calls[0][0].data.nativeRuntimeReport).toEqual({
+      ...runtime,
+      nativePresenting: { sha8: 'abcdef01', uniqueFrames: 900, ageMs: 40, v4: true, unattended: true },
+    });
+  });
+
+  it('a malformed header, another face only or no frame yet stores nothing extra; an unproven caller stores nothing', async () => {
+    for (const bad of [
+      '{not json',
+      JSON.stringify({ v: 2, faces: [] }),
+      JSON.stringify({ v: 1, faces: [{ face: 1, sha8: 'abcdef01', uniqueFrames: 9, ageMs: 4, v4: true, unattended: false }] }),
+      JSON.stringify({ v: 1, faces: [{ face: 0, sha8: 'abcdef01', uniqueFrames: 9, ageMs: -1, v4: true, unattended: false }] }),
+      JSON.stringify({ v: 1, faces: [{ face: 0, sha8: 'https://x', uniqueFrames: 9, ageMs: 4, v4: true, unattended: false }] }),
+    ]) {
+      const { controller, screen } = harness(true, true, `wall-presenting-bad-${bad.length}`);
+      await pollWith(controller, { 'x-venueos-native-presenting': bad });
+      expect(screen.update.mock.calls[0][0].data.nativeRuntimeReport).toEqual(runtime);
+    }
+    const { controller, screen } = harness(false, true, 'wall-presenting-anon');
+    await pollWith(controller, { 'x-venueos-native-presenting': presenting });
+    for (const call of screen.update.mock.calls) expect(call[0].data).not.toHaveProperty('nativeRuntimeReport');
+  });
+});
