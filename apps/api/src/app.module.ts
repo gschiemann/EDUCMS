@@ -62,6 +62,9 @@ import { DataSourceModule } from './data-source/data-source.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
+// 2026-10-18 — private field-build windows armed from /super/field-builds
+// (replaces editing the PLAYER_APK_FIELD_* variables; they stay the fallback).
+import { FieldBuildsModule } from './field-builds/field-builds.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
 import { FitnessModule } from './fitness/fitness.module';
 // 2026-05-16 — Sprint 13 VenueOS Sports: the Sport Engine.
@@ -121,7 +124,11 @@ import { GpioModule } from './screens/gpio.module';
 // scheduled on-off windows that run ON DEVICE from the manifest, plus the
 // platform vendor-recipe catalog. See display/display.module.ts.
 import { DisplayModule } from './display/display.module';
+import { DeviceSettingsModule } from './device-settings/device-settings.module';
 import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
+// 2026-10-18 — the interruption ledger (@Global ScreenEventsService + its
+// leader-leased retention cron). See screens/events/screen-events.ts.
+import { ScreenEventsModule } from './screens/events/screen-events.module';
 // 2026-05-27 — One-click Bug Reporter. BugsController is registered
 // in the `controllers` array below; BugsModule provides the
 // enrichment + AI analyzer services that back it. See bugs/*.ts and
@@ -192,6 +199,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     FeedsModule,
     UsbExportModule,
     PlayerOtaModule,
+    FieldBuildsModule,
     PlayerLogsModule,
     FitnessModule,
     SportsModule,
@@ -224,9 +232,11 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     DisplayModule,
+    DeviceSettingsModule,
     // 2026-10-11 — select-all / select-group Resync, Send update, power,
     // automatic updates (screens/bulk/screens-bulk.controller.ts).
     ScreensBulkModule,
+    ScreenEventsModule,
     BugsModule,
     EfficiencyModule,
     ActivationFunnelModule,

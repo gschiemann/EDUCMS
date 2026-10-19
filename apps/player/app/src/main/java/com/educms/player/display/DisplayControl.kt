@@ -50,8 +50,15 @@ enum class Capability {
  */
 sealed class DisplayAction {
 
-    /** 0..100. Clamped by [DisplayLimits.clampVolume]. */
-    data class SetVolume(val percent: Int) : DisplayAction()
+    /**
+     * 0..100. Clamped by [DisplayLimits.clampVolume].
+     *
+     * [showUi] (2026-10-18) — pop Android's volume panel on the glass. True
+     * for an operator's live slider (they asked to see it); false for an
+     * unattended re-apply of a stored device setting, which must not toast on
+     * a screen nobody is adjusting.
+     */
+    data class SetVolume(val percent: Int, val showUi: Boolean = true) : DisplayAction()
 
     /**
      * 0..100. Clamped UP to [DisplayLimits.MIN_SAFE_BRIGHTNESS] unless
@@ -82,7 +89,7 @@ sealed class DisplayAction {
 
     /** Short, log-safe description. Never includes anything secret. */
     fun describe(): String = when (this) {
-        is SetVolume -> "SetVolume($percent%)"
+        is SetVolume -> "SetVolume($percent%${if (showUi) "" else ", silent"})"
         is SetBrightness -> "SetBrightness($percent%${if (allowBlack) ", allowBlack" else ""})"
         Blank -> "Blank"
         Wake -> "Wake"
@@ -222,7 +229,7 @@ object DisplayLimits {
         is DisplayAction.SetBrightness ->
             DisplayAction.SetBrightness(clampBrightness(action.percent, action.allowBlack), action.allowBlack)
         is DisplayAction.SetVolume ->
-            DisplayAction.SetVolume(clampVolume(action.percent))
+            DisplayAction.SetVolume(clampVolume(action.percent), action.showUi)
         else -> action
     }
 }

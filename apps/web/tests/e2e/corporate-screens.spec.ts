@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { emptyDistrictReadiness, playbackCapabilityScreenId, unknownPlaybackCapability } from '../fixtures/api-contract';
+import {
+  emptyDistrictReadiness,
+  emptyScreenEvents,
+  playbackCapabilityScreenId,
+  screenEventsScreenId,
+  unknownPlaybackCapability,
+} from '../fixtures/api-contract';
 
 // Synthetic company only. Browser requests never touch customer tenants.
 const HQ = 'company-test-hq';
@@ -64,6 +70,9 @@ async function openCompany(page: Page, path: string, width = 1840, dense = false
     // The drawer's playback card reads `capability.*` off this (2026-10-11).
     const playbackScreen = playbackCapabilityScreenId(apiPath);
     if (playbackScreen) body = unknownPlaybackCapability(playbackScreen);
+    // …and its interruptions section `summary.*` off this (2026-10-18).
+    const eventsScreen = screenEventsScreenId(apiPath);
+    if (eventsScreen) body = emptyScreenEvents(eventsScreen);
     return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.route('**/api/build-info', (route) => route.fulfill({ contentType: 'application/json', body: '{}' }));

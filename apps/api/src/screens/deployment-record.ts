@@ -1,4 +1,5 @@
 import type { PrismaService } from '../prisma/prisma.service';
+import { writeLedgerRows } from './events/screen-events.service';
 
 /**
  * recordPushDeployment — the shared "a push becomes an object you can point
@@ -12,6 +13,11 @@ import type { PrismaService } from '../prisma/prisma.service';
  *      manifest ride — reaches a push-dead screen),
  *   2. ONE Deployment row keyed by the same value,
  *   3. one ScreenEvent per target (skipped past the fan-out cap).
+ * Plus, as its own statement, one interruption-ledger row per target
+ * (`page-reload`, cause `operator`; screens/events/screen-events.ts): the
+ * player always honours an operator's durable refresh, so every target
+ * reloads. Not skipped at the timeline's fan-out cap — the launch gate is
+ * read per screen — but capped and chunked by `writeLedgerRows`.
  * NOTHING here may throw into the caller: the triggering action has already
  * succeeded, so a failed record degrades to the pre-record behavior rather
  * than a failed operator click.
@@ -44,10 +50,12 @@ export async function recordPushDeployment(
 ): Promise<void> {
   const targetIdCap = caps.targetIdCap ?? DEFAULT_TARGET_ID_CAP;
   const eventFanoutCap = caps.eventFanoutCap ?? DEFAULT_EVENT_FANOUT_CAP;
+  let targets: Array<{ id: string; tenantId: string | null }> = [];
+  let stamped = false;
   try {
     // Resolve targets as (id, tenantId) PAIRS — events must carry each
     // screen's OWN tenant, never the pusher's (TEN-001).
-    const targets = await prisma.client.screen.findMany({
+    targets = await prisma.client.screen.findMany({
       where: opts.screenIds
         ? { id: { in: opts.screenIds }, tenantId: { in: opts.targetTenantIds } }
         : { tenantId: { in: opts.targetTenantIds } },
@@ -64,6 +72,7 @@ export async function recordPushDeployment(
       // honours an operator's refresh (`refresh-request-origin.ts`).
       data: { pendingRefreshAt: opts.value, pendingRefreshSource: 'operator' },
     });
+    stamped = true;
 
     await prisma.client.deployment.create({
       data: {
@@ -98,6 +107,30 @@ export async function recordPushDeployment(
     console.warn(
       `[push-record ${opts.corrId}] deployment record failed:`,
       (e as Error).message,
+    );
+  }
+
+  // Interruption ledger — once the durable refresh is stamped (the one
+  // delivery a publish-to-fleet has; the refresh routes' Redis push is
+  // best-effort), and independent of the Deployment / timeline rows after it:
+  // those failing must not lose the reload. Never throws.
+  if (stamped && targets.length > 0) {
+    await writeLedgerRows(
+      prisma,
+      targets.map((t) => ({
+        screenId: t.id,
+        tenantId: t.tenantId,
+        kind: 'page-reload' as const,
+        cause: 'operator',
+        source: 'operator' as const,
+        at: opts.value,
+        detail: {
+          scope: opts.scope,
+          corrId: opts.corrId,
+          ...(opts.playlistId ? { publish: true, playlistId: opts.playlistId } : {}),
+        },
+      })),
+      opts.value,
     );
   }
 }

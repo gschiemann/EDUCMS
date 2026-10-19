@@ -1136,3 +1136,8 @@ export * from './team-abbrev';
 // never disagree about what "stutters" means. Read-only today: nothing gates
 // or demotes on it yet.
 export * from './playback-capability';
+
+// Basic Android settings without device owner (2026-10-18) — what a unit can
+// set, the operator's desired values, and the unit's acknowledgements, shared
+// by the API (heartbeat + PUT) and the dashboard (one state rule for both).
+export * from './device-settings';

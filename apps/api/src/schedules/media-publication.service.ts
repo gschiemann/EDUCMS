@@ -18,6 +18,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { MediaOptimizationService } from '../storage/media-optimization.service';
 import { displaceCompetingActiveSchedules } from './schedule-displacement';
 import { PlaybackGateService, type PlaybackGateWarning } from './playback-gate.service';
+import { ScreenEventsService } from '../screens/events/screen-events.service';
 
 /**
  * Where an activation door collects the video gate's warnings (step 5,
@@ -227,6 +228,8 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
     // Video guarantee step 5 (2026-10-12): the publish-time video gate.
     // Optional so every existing construction keeps today's behaviour.
     @Optional() private readonly gate?: PlaybackGateService,
+    // Interruption ledger (2026-10-18): the rendition REFRESH_WEB below.
+    @Optional() private readonly ledger?: ScreenEventsService,
   ) {}
 
   /**
@@ -646,6 +649,19 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
               return true;
             });
             if (refreshed) {
+              // Interruption ledger: the server displaces the 4K file this
+              // screen still decodes. A SYSTEM request — a current bundle may
+              // apply the new URL as a swap and decline the reload. Never throws.
+              await this.ledger?.record({
+                screenId: screen.id,
+                tenantId: rule.tenantId,
+                kind: 'page-reload',
+                cause: 'server-displacement',
+                source: 'system',
+                at: value,
+                detail: { reason: 'media-rendition-ready', assetId: asset.id, playlistId: rule.playlistId, requested: true },
+                dedupKey: `page-reload:server-displacement:${asset.id}`,
+              });
               const signed = this.signer.signMessage('REFRESH_WEB', {
                 scope: 'screen', scopeId: screen.id, tenantId: rule.tenantId,
                 jitterMs: 0, source: 'media_rendition_ready',

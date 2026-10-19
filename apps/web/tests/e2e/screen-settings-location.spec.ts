@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { emptyDistrictReadiness, playbackCapabilityScreenId, unknownPlaybackCapability } from '../fixtures/api-contract';
+import {
+  emptyDistrictReadiness,
+  emptyScreenEvents,
+  playbackCapabilityScreenId,
+  screenEventsScreenId,
+  unknownPlaybackCapability,
+} from '../fixtures/api-contract';
 
 const ADDRESS = '100 Market Street, Sacramento, CA';
 const GROUP = { id: 'group-one', name: 'Allora Neighborhood', address: ADDRESS, latitude: 38.58, longitude: -121.49 };
@@ -46,7 +52,8 @@ async function openScreens(page: Page, suffix = "", sharedAddress = false) {
     const headers = { 'Access-Control-Allow-Origin': new URL(page.url()).origin, 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'authorization,content-type,x-csrf-token,x-requested-with', 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     const body = path.endsWith('/device-inventory') ? { report: null, reportedAt: null }
-      : path.endsWith('/events') ? { events: [] }
+      // History reads `events`, the interruptions section `summary.*` (2026-10-18).
+      : screenEventsScreenId(path) ? emptyScreenEvents(screenEventsScreenId(path)!)
         : path.endsWith('/faces') ? { faces: [] }
           // The drawer's playback card reads `capability.*` off this (2026-10-11).
           : playbackCapabilityScreenId(path) ? unknownPlaybackCapability(playbackCapabilityScreenId(path)!)
