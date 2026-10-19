@@ -50,7 +50,13 @@ object AudioManagerProvider : DisplayControlProvider {
             // genuinely changes, so on-screen feedback is honest for both
             // — there is no boot-time volume restore that would toast on
             // every restart.
-            manager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+            // 2026-10-18 — except a stored device setting re-applied with
+            // nobody at the screen (SetVolume.showUi = false): no toast.
+            manager.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                target,
+                if (action.showUi) AudioManager.FLAG_SHOW_UI else 0,
+            )
             PlayerLogger.i(TAG, "volume ${action.percent}% → $target/$max via $id")
             ActionResult.Ok(id, "$target/$max")
         } catch (t: Throwable) {

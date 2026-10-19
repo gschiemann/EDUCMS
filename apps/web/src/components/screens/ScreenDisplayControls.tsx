@@ -135,6 +135,7 @@ import {
   type ControlAxis,
 } from './display-capabilities';
 import { deriveRenderTrustGrade } from './renderTrust';
+import { ScreenDeviceSettings } from './ScreenDeviceSettings';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
@@ -793,6 +794,9 @@ export function ScreenDisplayControls({
         {powerRow}
         {scheduleRow}
         {statusRow}
+        {/* 2026-10-18 — basic Android settings: their own report, so they
+            do not wait on this panel's display verdict. */}
+        <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
       </div>
     );
   }
@@ -893,6 +897,9 @@ export function ScreenDisplayControls({
       {scheduleRow}
 
       {statusRow}
+
+      {/* ── Android settings (2026-10-18) — collapsed until opened ── */}
+      <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
     </div>
   );
 }

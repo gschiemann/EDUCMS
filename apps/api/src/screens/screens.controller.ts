@@ -21,6 +21,8 @@ import {
   versionChangeEvent,
   type LedgerEventInput,
 } from './events/screen-events';
+import { DEVICE_SETTINGS_HEADER } from '@cms/api-types';
+import { deviceSettingsHeartbeat } from '../device-settings/device-settings.heartbeat';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1607,6 +1609,12 @@ export class ScreensController {
       data.nativeRuntimeReport = nativeRuntime;
       data.nativeRuntimeReportAt = new Date();
     }
+    // Basic Android settings (2026-10-18, device-settings/): the unit's report
+    // in, its desired set out — the same credential gate as the native report.
+    const deviceSettings = paired && credential.proved
+      ? await deviceSettingsHeartbeat(this.prisma, screen as any, req?.headers?.[DEVICE_SETTINGS_HEADER])
+      : null;
+    if (deviceSettings) Object.assign(data, deviceSettings.data);
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -1718,7 +1726,8 @@ export class ScreensController {
     // is a state change, so it is still written at once.
     const nativeChanged = !!nativeRuntime &&
       nativePowerStateChanged(screen.nativeRuntimeReport, nativeRuntime);
-    const mustWrite = mayStampFirmware && (!!versionChanged || managerChanged || otaCleared || nativeChanged);
+    const mustWrite = mayStampFirmware &&
+      (!!versionChanged || managerChanged || otaCleared || nativeChanged || !!deviceSettings?.mustWrite);
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;
@@ -1865,6 +1874,7 @@ export class ScreensController {
       // Heartbeat-driven polling fallback for missed WS pushes.
       forceUpdatePending,
       forceUpdatePendingAt: forceAt ? new Date(forceAt).toISOString() : null,
+      ...(deviceSettings?.reply ? { deviceSettings: deviceSettings.reply } : {}),
       ...(nativeRuntime ? {
         nativeControl: {
           schema: 1,
