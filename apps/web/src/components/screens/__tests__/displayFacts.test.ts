@@ -606,6 +606,11 @@ describe('experiments: what is requested, and what each did', () => {
       'failed': { text: '60 Hz mode: requested, the request could not be made' },
       // `reverted` only ever follows a withdrawn flag.
       'reverted': { text: '60 Hz mode: no longer requested, Android’s own choice restored', requested: false },
+      // 1.1.43: the automatic request's own answers and the safety net's verdicts.
+      'blocked': { text: '60 Hz mode: automatic, paused for 24 h after an earlier switch was undone' },
+      'reverted-no-switch': { text: '60 Hz mode: asked Android for a 60 Hz mode, the panel did not switch within 10 s, undone (automatic requests paused for 24 h)' },
+      'reverted-no-frames': { text: '60 Hz mode: asked Android for a 60 Hz mode, no frames followed within 10 s, undone (automatic requests paused for 24 h)' },
+      'emergency-held': { text: '60 Hz mode: not asked: an emergency alert was held at that session boundary' },
     };
 
     it('the code list is the APK’s (PreferredDisplayMode.RESULT_*)', () => {
