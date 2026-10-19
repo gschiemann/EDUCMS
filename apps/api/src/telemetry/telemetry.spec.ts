@@ -521,6 +521,41 @@ describe('POST /screens/:id/telemetry', () => {
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,applied:{...experiments.applied,prefer60hz:'mode 2 please'}}}}).success).toBe(false);
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{sixtyHertz:true}}}}).success).toBe(false);
   });
+  it('1.1.43 accepts the grid-sized release lead and the panel firmware facts, and refuses their malformed shapes', async()=>{
+    // As the APK writes them: `releaseLeadUs` beside the snap figures (live block and ledger entry, FaceVideoRenderer /
+    // FaceVideoBox.timingEntry), and the sysfs strings already stripped to [A-Za-z0-9:_.*+/@-] and cut (SysDisplayFacts).
+    const timing = {decodedFrames:1800,submittedFrames:1800,lateFrames:0,lastLateUs:0,maxLateUs:0,maxSubmitGapMs:34,leadUs:33333,
+      sourceWidth:3840,sourceHeight:2160,snappedFrames:1800,snapErrorMaxUs:9,snapErrorMeanUs:2,clockSlewUs:-40,vsyncPeriodUs:16666,vsyncSamples:3600,
+      releaseLeadUs:8333,preferredModeResult:'reverted-no-frames',
+      history:{entries:[{at:1760700000000,face:0,vsyncSnap:true,prefer60hz:'blocked',snappedFrames:107990,vsyncPeriodUs:33333,vsyncSamples:216000,releaseLeadUs:26666}],overflow:0,capacity:6}};
+    const device = {class:'amlogic/android-13',soc:'amlogic',sdk:33,webviewMajor:101,nativeSolo:true,composition:'dynamic_above',protocol3:true,silentUpdate:'tap',
+      refreshRate:30,activeMode:'1:3840x2160@30.00',supportedModes:['1:3840x2160@30.00'],
+      sysDisplayMode:'2160p30hz',sysDisplayCaps:['1080p60hz','2160p30hz*','2160p60hz']};
+    const nativeVideo = {...nativeSample(),timing,device};
+    expect(screenTelemetrySchema.safeParse({nativeVideo}).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo,render:{frames:1800,hash:'pl:test'}});
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{timing:{releaseLeadUs:8333,preferredModeResult:'reverted-no-frames'},
+      device:{sysDisplayMode:'2160p30hz',sysDisplayCaps:['1080p60hz','2160p30hz*','2160p60hz']}}});
+    // The Rockchip table shape (`fb0/modes`) and a device with only one of the two facts validate too.
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:{...device,sysDisplayMode:undefined,sysDisplayCaps:['U:1920x1080p-60','U:1280x720p-60']}}}).success).toBe(true);
+    for (const [name,bad] of [
+      ['a negative lead',{...timing,releaseLeadUs:-1}],
+      ['a fractional lead',{...timing,releaseLeadUs:8333.5}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:bad}}).success}).toEqual({name,ok:false});
+    }
+    for (const [name,badDevice] of [
+      ['a mode with a space',{...device,sysDisplayMode:'2160p 30hz'}],
+      ['a mode over 48 characters',{...device,sysDisplayMode:'x'.repeat(49)}],
+      ['an empty mode',{...device,sysDisplayMode:''}],
+      ['a capability with markup',{...device,sysDisplayCaps:['<b>2160p60hz</b>']}],
+      ['a capability over 32 characters',{...device,sysDisplayCaps:['y'.repeat(33)]}],
+      ['17 capabilities',{...device,sysDisplayCaps:Array(17).fill('1080p60hz')}],
+      ['a capability that is not a string',{...device,sysDisplayCaps:[1080]}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),device:badDevice}}).success}).toEqual({name,ok:false});
+    }
+  });
   it('stores actual native composition without confusing it with protocol capability or render proof',async()=>{
     const sample = nativeSample('ready',0);
     const nativeVideo = {...sample,sessionProtocol:2,
