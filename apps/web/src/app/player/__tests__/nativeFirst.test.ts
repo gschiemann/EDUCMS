@@ -20,6 +20,7 @@ import {
   type NativeIntentIdentity,
 } from '../nativeFirst';
 import { NativeFirstFace, nativeFirstDecisionSignature } from '../nativeFirstFace';
+import { readNativeVideoProtocol } from '../nativeSharedVideo';
 import { isItemReady, readyItemIds, type ReadinessItem } from '../mediaReadiness';
 
 const SCREEN = '11111111-1111-4111-8111-111111111111';
@@ -165,6 +166,17 @@ describe('the v4 reply facts', () => {
     expect(nativeFirstDecisionSignature(facts(presenting(Y)))).not.toBe(nativeFirstDecisionSignature(a));
     expect(nativeFirstDecisionSignature(facts({ store: { mode: 'active', generation: 2, ready: [] } })))
       .not.toBe(nativeFirstDecisionSignature(facts({ store: { mode: 'active', generation: 3, ready: [SHA_X] } })));
+  });
+});
+
+describe('a v4 face keeps exactly the positioned-slot engine its class has', () => {
+  it('protocolMax 4 reads as protocol 3 only where device.protocol3 says so (B raises protocolMax on enrolment)', () => {
+    expect(readNativeVideoProtocol({ version: 1, state: 'idle', protocol: 2, protocolMax: 4, device: { protocol3: true } })).toBe(3);
+    expect(readNativeVideoProtocol({ version: 1, state: 'idle', protocol: 2, protocolMax: 4, device: { protocol3: false } })).toBe(2);
+    expect(readNativeVideoProtocol({ version: 1, state: 'idle', protocol: 2, protocolMax: 4 })).toBe(2);
+    // Unchanged for every older reply.
+    expect(readNativeVideoProtocol({ version: 1, state: 'idle', protocol: 2, protocolMax: 3 })).toBe(3);
+    expect(readNativeVideoProtocol({ version: 1, state: 'idle', protocol: 2 })).toBe(2);
   });
 });
 

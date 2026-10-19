@@ -638,8 +638,15 @@ export function readNativeVideoProtocol(raw: unknown): 1 | 2 | 3 | null {
   if (!record(v) || v.version !== 1) return null;
   // Protocol 3 (2026-10-12) keeps `protocol: 2` on the top level — an older
   // web bundle meeting a newer APK sees exactly what it saw — and proves the
-  // positioned-zone engine with `protocolMax: 3`.
-  if (v.protocol === 2) return v.protocolMax === 3 ? 3 : 2;
+  // positioned-zone engine with `protocolMax: 3`. Native-first (stream B)
+  // raises protocolMax to 4 on an enrolled face whatever the class's slot
+  // engine is, so there the class's own `device.protocol3` says whether
+  // positioned slots run (a v4 face must not lose them, nor gain them).
+  if (v.protocol === 2) {
+    if (v.protocolMax === 3) return 3;
+    if (typeof v.protocolMax === "number" && v.protocolMax >= 4) return record(v.device) && v.device.protocol3 === true ? 3 : 2;
+    return 2;
+  }
   return readNativeSharedVideoState(v) ? 1 : null;
 }
 
