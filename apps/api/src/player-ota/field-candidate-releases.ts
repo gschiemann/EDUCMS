@@ -167,4 +167,18 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2436899,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39306215680',
   },
+  // Signed CI 39315500242, source b6bfd12a (PR #118, native-first integration): 1.1.43 plus native
+  // first SHIPPED DARK — protocol v4 intents on the existing shared-video methods, the page lease
+  // (playback survives the page), the native->native boundary switch, the alert watch polling fast
+  // only for a presenting native face with no page lease, the closed end-reason table, the content
+  // store (unwired). Nothing changes for a screen PLAYER_NATIVE_FIRST does not name. Production
+  // certificate e45adf50…3d1897, versionCode 10144, universal APK (4 ABIs), non-debuggable.
+  // Hardware qualification pending (the §7 E1–E7 drills on an enrolled unit).
+  '1.1.44-field.1': {
+    versionName: '1.1.44-field.1',
+    versionCode: 10144,
+    sha256: '26cc99a54104ffa0d6c1637e4edf807208feebad6c0cf299d7cdcb9212b57264', // gitleaks:allow -- verified public APK integrity digest
+    size: 2463481,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39315500242',
+  },
 };
