@@ -238,9 +238,14 @@ const nativeTimingMeasurement = {
   clockSlewUs: z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER).optional(),
   vsyncPeriodUs: safeCount().optional(),
   vsyncSamples: safeCount().optional(),
+  // 1.1.43: the grid-sized release lead the session ran with (0.8 P on a 30 Hz grid, 0.5 P on 60 Hz).
+  releaseLeadUs: safeCount().optional(),
   preferredModeApplied: z.number().int().min(0).max(1_000_000).optional(),
   keepScreenOn: z.boolean().optional(),
 };
+/** 1.1.43: what the panel FIRMWARE lists (sysfs, read-only, bounded, stripped to a safe set by the APK). */
+const sysDisplayMode = () => z.string().regex(/^[A-Za-z0-9:_.*+/@-]{1,48}$/);
+const sysDisplayCaps = () => z.array(z.string().regex(/^[A-Za-z0-9:_.*+/@-]{1,32}$/)).max(16);
 /** Every mode the panel offers, `modeId:WxH@Hz`, as read when the session attached; bounded. */
 const supportedModes = () => z.array(displayMode()).max(16);
 
@@ -292,6 +297,9 @@ const nativeDeviceClassSchema = z.strictObject({
   refreshRate: z.number().finite().min(0).max(1000).optional(),
   activeMode: z.union([displayMode(), z.literal('')]).optional(),
   supportedModes: supportedModes().optional(),
+  // 1.1.43: what the panel firmware itself lists (Amlogic `display/mode` + `disp_cap`, Rockchip `fb0/modes`).
+  sysDisplayMode: sysDisplayMode().optional(),
+  sysDisplayCaps: sysDisplayCaps().optional(),
 });
 
 const experimentFlags = z.strictObject({
