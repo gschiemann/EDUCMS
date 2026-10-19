@@ -67,6 +67,8 @@ internal class FaceVideoSession(
     var frozenAt = 0L
     /** v4: the session this one replaces; its views go once this one's first post-reveal render confirms. */
     var predecessor: FaceVideoSession? = null
+    /** v4: how long this session's last frame was held on the glass for its successor (ledgered, §3.3). */
+    var heldFrameMs = 0L
     /** The stable reason this session may not run on this box, decided before any work; null = it may. */
     val refusal: String? = policy.refusal(protocol, face)
     /** ONE COMPOSITING CONTRACT: above the window — a solo dynamic (R+) or static (24–29), a slot always static; a refused session never uses it. */
@@ -1123,6 +1125,7 @@ internal object FaceVideoBox {
                     s.predecessor = null
                     if (p.alive) {
                         val heldMs = if (p.frozenAt > 0) SystemClock.elapsedRealtime() - p.frozenAt else 0L
+                        p.heldFrameMs = heldMs
                         PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_SWAP face=${host.face} phase=confirmed heldFrameMs=$heldMs from=${p.sha256.take(8)} to=${s.sha256.take(8)}")
                         stopSession(p.host, p, "content-changed")
                     }
@@ -1403,6 +1406,9 @@ internal object FaceVideoBox {
             if (base.has("releaseLeadUs")) j.put("releaseLeadUs", base.optLong("releaseLeadUs"))
         }
         s.intervals?.writeTo(j)
+        // Native-first (§3.3): a v4 session, and how long its last frame was held for its successor.
+        if (s.v4) j.put("v4", true)
+        if (s.heldFrameMs > 0) j.put("heldFrameMs", s.heldFrameMs)
         return j
     }
 
