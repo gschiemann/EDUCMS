@@ -21,7 +21,11 @@
  * Typed against the hooks the pages use, so a change to either response shape
  * fails type-checking here instead of silently in a browser.
  */
-import type { DistrictReadinessResponse, ScreenPlaybackCapabilityResponse } from '../../src/hooks/use-api';
+import type {
+  DistrictReadinessResponse,
+  ScreenInterruptionsResponse,
+  ScreenPlaybackCapabilityResponse,
+} from '../../src/hooks/use-api';
 
 /** `GET /emergency/readiness/district` for a location with no readiness rows. */
 export function emptyDistrictReadiness(): DistrictReadinessResponse {
@@ -60,5 +64,28 @@ export function unknownPlaybackCapability(screenId: string): ScreenPlaybackCapab
 /** The screen id in a `/screens/:id/playback-capability` API path, or null for any other path. */
 export function playbackCapabilityScreenId(apiPath: string): string | null {
   const m = /^\/screens\/([^/]+)\/playback-capability$/.exec(apiPath);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * `GET /screens/:id/events` for a screen with nothing recorded (2026-10-18).
+ * The drawer's "Interruptions" section (`?hours=24|72`) reads `summary.*` and the
+ * History tab (`?limit=20`) reads `events`, so this one body answers both — a
+ * bare `[]`, or the old `{ events: [] }`, has no summary.
+ */
+export function emptyScreenEvents(screenId: string, hours: 24 | 72 = 24): ScreenInterruptionsResponse {
+  return {
+    screenId,
+    hours,
+    since: new Date(Date.now() - hours * 60 * 60_000).toISOString(),
+    summary: { interruptions: 0, drills: 0, byKind: {} },
+    events: [],
+    truncated: false,
+  };
+}
+
+/** The screen id in a `/screens/:id/events` API path, or null for any other path. */
+export function screenEventsScreenId(apiPath: string): string | null {
+  const m = /^\/screens\/([^/]+)\/events$/.exec(apiPath);
   return m ? decodeURIComponent(m[1]) : null;
 }

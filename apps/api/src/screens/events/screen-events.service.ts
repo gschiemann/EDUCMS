@@ -53,6 +53,7 @@ export interface ScreenLedgerEventView {
 }
 
 export interface ScreenLedgerWindow {
+  screenId: string;
   hours: number;
   since: string;
   summary: LedgerSummary;
@@ -143,6 +144,7 @@ export class ScreenEventsService {
     );
     const list = (rows as any[]).slice(0, LEDGER_WINDOW_LIST_MAX);
     return {
+      screenId,
       hours,
       since: since.toISOString(),
       summary,

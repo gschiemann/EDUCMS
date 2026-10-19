@@ -23,7 +23,7 @@ jest.mock('@/lib/store', () => ({
   useAppStore: (sel: (s: { user: { id: string; role: string } }) => unknown) => sel({ user: { id: 'u1', role } }),
 }));
 
-import { ScreenInterruptionsSection, interruptionCause, interruptionKindKey } from '../ScreenInterruptionsSection';
+import { ScreenInterruptionsSection, interruptionCause, interruptionKindKey, readInterruptions } from '../ScreenInterruptionsSection';
 
 type Ev = ScreenInterruptionsResponse['events'][number];
 const ev = (over: Partial<Ev>): Ev => ({
@@ -31,7 +31,7 @@ const ev = (over: Partial<Ev>): Ev => ({
   sessionId: null, versionCode: null, interruption: true, drill: false, detail: null, ...over,
 });
 const response = (events: Ev[], summary: Partial<ScreenInterruptionsResponse['summary']> = {}, hours = 24): ScreenInterruptionsResponse => ({
-  hours, since: '2026-10-17T09:00:00.000Z', truncated: false, events,
+  screenId: 'scr-1', hours, since: '2026-10-17T09:00:00.000Z', truncated: false, events,
   summary: { interruptions: events.filter((e) => e.interruption).length, drills: 0, byKind: {}, ...summary },
 });
 
@@ -93,6 +93,15 @@ describe('ScreenInterruptionsSection', () => {
     expect(items[3].textContent).toContain('Emergency drill started — Lockdown');
   });
 
+  it('an answer it cannot read renders nothing and never throws (a stubbed API, an older API)', async () => {
+    for (const body of [[], { events: [] }, { summary: 'x', events: [] }, { summary: { interruptions: '3', drills: 0 }, events: [] }, 'nope', 0]) {
+      state.data = body as unknown as ScreenInterruptionsResponse;
+      const out = await mount();
+      expect(out.container.innerHTML).toBe('');
+      out.unmount();
+    }
+  });
+
   it('a read that failed is not "0"', async () => {
     state.isError = true;
     await mount();
@@ -109,6 +118,23 @@ describe('ScreenInterruptionsSection', () => {
     role = 'SCHOOL_ADMIN';
     const out = await mount({ enabled: false });
     expect(out.container.innerHTML).toBe('');
+  });
+});
+
+describe('reading the answer', () => {
+  it('keeps a well-formed answer and drops rows it cannot show', () => {
+    const ok = readInterruptions({
+      ...response([ev({ id: 'a' })], { interruptions: 1 }),
+      events: [ev({ id: 'a' }), { id: 'b', kind: 'page-reload', at: 'not a date' }, null, { kind: 'x' }],
+    });
+    expect(ok?.summary).toEqual({ interruptions: 1, drills: 0, byKind: {} });
+    expect(ok?.events.map((e) => e.id)).toEqual(['a']);
+  });
+
+  it('refuses anything without a numeric summary and a list of rows', () => {
+    for (const body of [null, undefined, [], {}, { events: [] }, { summary: {}, events: [] }, { summary: { interruptions: 1, drills: 0 }, events: {} }]) {
+      expect(readInterruptions(body)).toBeNull();
+    }
   });
 });
 

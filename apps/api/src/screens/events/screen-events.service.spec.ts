@@ -170,6 +170,7 @@ describe('window (the drawer + the launch gate)', () => {
       { id: 'e1', kind: 'page-reload', cause: 'operator', source: 'operator', detail: null, sessionId: null, versionCode: 10141, createdAt: new Date(NOW - 2_000) },
     ]);
     const out = await new ScreenEventsService({ client } as any).window('scr-1', 72, NOW);
+    expect(out.screenId).toBe('scr-1');
     expect(out.summary).toEqual({ interruptions: 2, drills: 1, byKind: { 'page-reload': 2, 'emergency-start': 1, 'engine-stop': 3 } });
     expect(out.since).toBe(new Date(NOW - 72 * 3_600_000).toISOString());
     expect(out.events).toEqual([

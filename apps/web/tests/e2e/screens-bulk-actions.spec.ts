@@ -14,7 +14,7 @@
  *      flow works, with no horizontal page scroll.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { emptyDistrictReadiness } from '../fixtures/api-contract';
+import { emptyDistrictReadiness, emptyScreenEvents, screenEventsScreenId } from '../fixtures/api-contract';
 
 const SCHOOL = 'bulk-test-school';
 const USER = { id: 'bulk-user', email: 'operator@example.test', role: 'SCHOOL_ADMIN', tenantId: SCHOOL, canTriggerPanic: false };
@@ -58,6 +58,9 @@ async function open(page: Page, width: number) {
     if (apiPath === '/screen-groups') body = groups;
     // The page reads `schools.find(...)` off this (2026-10-11): `[]` crashes it.
     if (apiPath === '/emergency/readiness/district') body = emptyDistrictReadiness();
+    // The screen drawer's interruptions section reads `summary.*` (2026-10-18).
+    const eventsScreen = screenEventsScreenId(apiPath);
+    if (eventsScreen) body = emptyScreenEvents(eventsScreen);
     if (apiPath.startsWith('/screens/bulk/') && req.method() === 'POST') {
       const b = (req.postDataJSON() ?? {}) as BulkBody;
       bulkCalls.push({ path: apiPath, body: b });

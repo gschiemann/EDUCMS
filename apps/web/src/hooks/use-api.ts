@@ -3769,6 +3769,7 @@ export function useScreenEvents(screenId: string | null) {
  * counted. Fetched when the drawer asks, never polled.
  */
 export interface ScreenInterruptionsResponse {
+  screenId: string;
   hours: number;
   since: string;
   summary: { interruptions: number; drills: number; byKind: Record<string, number> };

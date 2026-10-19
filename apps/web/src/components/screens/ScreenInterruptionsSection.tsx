@@ -123,6 +123,39 @@ export function interruptionCause(
   return key ? { key } : null;
 }
 
+const isEvent = (e: unknown): e is LedgerEvent => {
+  if (!e || typeof e !== 'object') return false;
+  const v = e as Record<string, unknown>;
+  return typeof v.id === 'string' && typeof v.kind === 'string' && typeof v.at === 'string' && Number.isFinite(Date.parse(v.at));
+};
+
+/**
+ * The answer as this section can read it, or null. Anything else — a list, a
+ * timeline-only `{ events }` from an older API, a missing summary — is null,
+ * and the section then renders nothing rather than throwing inside the drawer.
+ */
+export function readInterruptions(body: unknown): ScreenInterruptionsResponse | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const b = body as Record<string, unknown>;
+  const summary = b.summary as Record<string, unknown> | null | undefined;
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return null;
+  if (typeof summary.interruptions !== 'number' || !Number.isFinite(summary.interruptions)) return null;
+  if (typeof summary.drills !== 'number' || !Number.isFinite(summary.drills)) return null;
+  if (!Array.isArray(b.events)) return null;
+  return {
+    screenId: typeof b.screenId === 'string' ? b.screenId : '',
+    hours: typeof b.hours === 'number' ? b.hours : 0,
+    since: typeof b.since === 'string' ? b.since : '',
+    summary: {
+      interruptions: Math.max(0, Math.floor(summary.interruptions)),
+      drills: Math.max(0, Math.floor(summary.drills)),
+      byKind: summary.byKind && typeof summary.byKind === 'object' ? (summary.byKind as Record<string, number>) : {},
+    },
+    events: b.events.filter(isEvent),
+    truncated: b.truncated === true,
+  };
+}
+
 function formatAt(iso: string, locale: string): string {
   try {
     return new Date(iso).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -136,7 +169,9 @@ function InterruptionsCard({ screenId }: { screenId: string }) {
   const locale = useLocale();
   const [hours, setHours] = useState<24 | 72>(24);
   const q = useScreenInterruptions(screenId, hours);
-  const data = q.data;
+  const data = readInterruptions(q.data);
+  // An answer this section cannot read is not "0": render nothing, never throw.
+  if (q.data !== undefined && !data) return null;
 
   return (
     <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-interruptions" data-hours={hours}>
