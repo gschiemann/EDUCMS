@@ -100,7 +100,7 @@ describe('the v4 reply facts', () => {
     expect(f.nativeFirst).toBe(true);
     expect(f.nativeSolo).toBe(true);
     expect(f.lease).toEqual({ id: LEASE, state: 'held' });
-    expect(f.intent).toEqual({ ...X, start: 'now', suspended: null });
+    expect(f.intent).toEqual({ ...X, start: 'now', suspended: null, status: null, lastEnd: null, settled: false });
     expect(f.session?.state).toBe('presenting');
     expect(f.store).toEqual({ mode: 'active', serve: false, generation: 7, ready: [SHA_X], pending: [SHA_Y],
       downloading: { sha8: 'bbbbbbbb', bytesLoaded: 5, bytesTotal: 10 }, emergency: { setHash: 'h1', complete: true, count: 3, bytes: 900 } });
@@ -114,6 +114,35 @@ describe('the v4 reply facts', () => {
     expect(f.store).toBeNull();
     expect(nativePresenting(readNativeFirstFacts(reply({ protocolMax: 3, ...presenting(X) })))).toBe(false);
   });
+  it('stream B\'s exact reply blocks (origin/claude/native-first-stream-b)', () => {
+    const f = facts({
+      ...presenting(X),
+      device: { nativeSolo: true, nativeFirst: false }, // the CLASS default — false everywhere this release
+      nativeFirst: { enabled: true, manifest: true, classDefault: false },
+      lease: { id: LEASE, live: true, ageMs: 400, unattended: false },
+      intent: { ...X, start: 'now', atMs: 123, status: 'presenting', lastEnd: null, settled: false },
+      intentRejected: null,
+      availability: { version: 1, foreground: true, interactive: true, focused: true, focusRequired: false, uiClear: true, ready: true, epoch: 7 },
+    });
+    // An ENROLLED face on a class whose default is off: native-first is ON for this face.
+    expect(f.nativeFirst).toBe(true);
+    expect(f.lease).toEqual({ id: LEASE, state: 'held' });
+    expect(f.intent).toMatchObject({ status: 'presenting', suspended: null, settled: false });
+    expect(f.availability).toEqual({ ready: true, epoch: 7 });
+    expect(facts({ lease: { id: LEASE, live: false, ageMs: 12_000, unattended: true } }).lease).toEqual({ id: LEASE, state: 'absent' });
+    expect(facts({ lease: { id: null, live: false } }).lease).toBeNull();
+    expect(facts({ intent: { ...X, status: 'suspended-by-hold', lastEnd: 'emergency-held', settled: false } }).intent)
+      .toMatchObject({ suspended: 'hold', status: 'suspended-by-hold', lastEnd: 'emergency-held' });
+    const rej = facts({ intentRejected: { reason: 'blocked', sha256: SHA_X, atMs: 99 } }).intentRejected;
+    expect(rej).toEqual({ reason: 'blocked', sha256: SHA_X, key: `blocked|99|${SHA_X}` });
+    expect(facts({ intentRejected: { reason: 'BAD CODE' } }).intentRejected).toBeNull();
+    // An explicit per-face "off" wins over a stray protocolMax.
+    expect(facts({ nativeFirst: { enabled: false, manifest: false, classDefault: false } }).nativeFirst).toBe(false);
+    // An older reply with neither block: protocolMax decides.
+    expect(readNativeFirstFacts({ version: 1, state: 'idle', protocolMax: 4 })!.nativeFirst).toBe(true);
+    expect(readNativeFirstFacts({ version: 1, state: 'idle', protocolMax: 3 })!.nativeFirst).toBe(false);
+  });
+
   it('a suspended intent (the hold) and its spellings', () => {
     for (const s of [true, 'hold', 'emergency-held']) expect(facts({ intent: { ...X, suspended: s } }).intent?.suspended).toBe('hold');
     expect(facts({ intent: { ...X, suspended: 'operator-ui' } }).intent?.suspended).toBe('operator-ui');

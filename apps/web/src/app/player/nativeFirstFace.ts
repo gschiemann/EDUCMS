@@ -49,7 +49,12 @@ const realTimers: NativeFirstTimers = {
 export const NATIVE_FIRST_RESEND_MS = 1_000;
 
 export class NativeFirstFace {
-  readonly lease: string;
+  private leaseId: string;
+  private leaseRenewals = 0;
+  /** This document's lease id (fresh per document; renewed only after the app refused a retired one). */
+  get lease(): string {
+    return this.leaseId;
+  }
   /** The page's settle rule for this document (§3.4) — a reload starts clean. */
   readonly ends = new NativeTransientEnds();
   private current: NativeFirstFacts | null = null;
@@ -67,7 +72,7 @@ export class NativeFirstFace {
     private readonly bridge: NativeFirstBridge,
     opts: { lease?: string; timers?: NativeFirstTimers; now?: () => number } = {},
   ) {
-    this.lease = opts.lease ?? newNativeLeaseId();
+    this.leaseId = opts.lease ?? newNativeLeaseId();
     this.timers = opts.timers ?? realTimers;
     this.now = opts.now ?? (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
   }
@@ -75,6 +80,19 @@ export class NativeFirstFace {
   /** The last facts the app reported (null until the first usable reply). */
   get facts(): NativeFirstFacts | null {
     return this.current;
+  }
+
+  /**
+   * The app refused this document's lease as RETIRED (stream B: "a retired
+   * lease is refused for good"): mint a new one. Bounded — at most 3 per
+   * document, so a misbehaving app can never make the page spin.
+   */
+  renewLease(): boolean {
+    if (this.leaseRenewals >= 3) return false;
+    this.leaseRenewals++;
+    this.leaseId = newNativeLeaseId();
+    this.lastSent = '';
+    return true;
   }
 
   /** The app speaks v4 AND the method to say it exists. */

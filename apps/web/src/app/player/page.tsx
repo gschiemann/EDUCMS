@@ -5168,8 +5168,15 @@ function PlayerPage() {
   const nativeFirstReason = nativeFirstActive?.decision.reason ?? null;
   const bumpNativeFirst = useCallback(() => setNativeFirstRev((n) => n + 1), []);
   // A manifest (live or cached) has been applied: before that the page is
-  // UNDECIDED and never releases what the app is presenting (§4.3).
+  // UNDECIDED and never releases what the app is presenting (§4.3). The ref
+  // for callbacks, the state for the poll effect below.
   const nativeFirstDecidedRef = useRef(false);
+  const [nativeFirstDecided, setNativeFirstDecided] = useState(false);
+  // A content the web-first TAKEOVER (v2) already put on native in this
+  // document stays on that session until the content changes or the page
+  // reloads: when an enrolled face first learns its switch from that very
+  // session (stream B), moving it to a v4 session would restart the picture.
+  const takeoverLatchRef = useRef('');
   // §4.3 "adopt X until Y is verified": the session the app presents (the
   // intent it reports) is re-sent with THIS document's lease at the boundary
   // — the app re-binds it, nothing on glass changes. Never under the hold.
@@ -5182,15 +5189,19 @@ function PlayerPage() {
       face.intend({ screenId: held.screenId, revision: held.revision, sha256: held.sha256, assetId: held.assetId }, 'boundary');
     }
   }, []);
-  // While native presents on this face, this document polls at the session
-  // cadence (§4.1: every poll renews its lease) — whether a slot is mounted,
-  // a new playlist is deferred, or web content is being painted beneath.
-  const nativeFirstPresentingNow = !!nativeFirstFaceRef.current?.presenting();
+  // While native presents (or holds an intent) on this face, this document
+  // polls at the session cadence (§4.1: every poll renews its lease) —
+  // whether a slot is mounted, a new playlist is deferred, web content is
+  // being painted beneath, or an alert holds the intent suspended. ONLY once
+  // the page has decided: stream B releases a v4 session a live page keeps
+  // polling for 60 s without adopting, and a booting page cannot adopt
+  // before its first manifest apply — unattended is the safe state until then.
+  const nativeFirstPresentingNow = !!nativeFirstFaceRef.current?.presenting() || !!nativeFirstFaceRef.current?.facts?.intent;
   useEffect(() => {
     const face = nativeFirstFaceRef.current;
-    if (!face || !nativeFirstPresentingNow) return;
+    if (!face || !nativeFirstPresentingNow || !nativeFirstDecided) return;
     return face.hold();
-  }, [nativeFirstPresentingNow]);
+  }, [nativeFirstPresentingNow, nativeFirstDecided]);
   // The PAGE side of §4.3 / §3.2 — what no slot owns:
   //   • web content (or nothing) on this face while the app presents → paint
   //     it beneath (two frames), then `release at: boundary` (the app bounds
@@ -6643,7 +6654,10 @@ function PlayerPage() {
       // Native-first (§4.3): from here on this document has DECIDED what its
       // face shows; before the first apply it never releases a session the
       // app presents. Set after the emergency decision above, like the rest.
-      nativeFirstDecidedRef.current = true;
+      if (!nativeFirstDecidedRef.current) {
+        nativeFirstDecidedRef.current = true;
+        setNativeFirstDecided(true);
+      }
 
       setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
       // A replacement can wait for download/loop-boundary readiness. Keep its
@@ -12877,7 +12891,8 @@ function PlayerPage() {
               // code, with the web-first takeover held off for a content that
               // repeated transient ends settled on web (no flip back).
               const nativeFirstSlide = nativeFirstDecisionFor(item, isSoloPlaylist && sorted.length === 1);
-              if (nativeFirstSlide && nativeFirstSlide.decision.engine !== 'web') {
+              const takeoverKey = `${String(item.asset?.id ?? '')}|${String(item.asset?.fileHash ?? '').toLowerCase()}`;
+              if (nativeFirstSlide && nativeFirstSlide.decision.engine !== 'web' && takeoverLatchRef.current !== takeoverKey) {
                 const face = nativeFirstFaceRef.current;
                 if (!isActive || !face || !nativeFirstSlide.identity) return null;
                 return (
@@ -12925,6 +12940,12 @@ function PlayerPage() {
                 sync: syncConfigRef.current.enabled, preview: isPreviewMode(),
                 blocked: !!zoneItem && nativeSlotBlocked(zoneItem.asset.sha256, nativeVideoItems?.faceIndex ?? 0),
               }) && (item as { muted?: boolean | null }).muted !== false && !syncActiveRef.current;
+              // The takeover owns this content for the rest of the document (no
+              // restart into a v4 session) — latched only once the app's v4 facts
+              // were KNOWN when it was chosen; a takeover mounted in the first
+              // milliseconds of a boot, before the first state read answered,
+              // yields to native-first the moment the app says protocolMax 4.
+              if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
               const wrapNative = (browser: React.ReactNode) => nativeEligible
                 ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>

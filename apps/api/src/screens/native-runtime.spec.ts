@@ -1,6 +1,7 @@
 import {
   nativeGlassPlaying,
   nativePowerStateChanged,
+  parseNativePresentingHeader,
   parseNativeRuntime,
   pendingNativePowerOn,
   NATIVE_GLASS_FRAME_FRESH_MS,
@@ -222,5 +223,23 @@ describe('native-first §4.4 — nativePresenting on the status heartbeat (telem
     expect(nativeGlassPlaying('garbage', at(1), NOW)).toBeNull();
     // A report from the future (device clock) never counts.
     expect(nativeGlassPlaying(report, new Date(NOW + 5_000), NOW)).toBeNull();
+  });
+
+  it('stream B\'s own header: this face\'s entry, strictly; -1 (no frame yet) and malformed read as nothing', () => {
+    const h = (faces: unknown[], v = 1) => JSON.stringify({ v, faces });
+    const e0 = { face: 0, sha8: 'abcdef01', uniqueFrames: 10, ageMs: 5, v4: true, unattended: false };
+    const e1 = { face: 1, sha8: '12345678', uniqueFrames: 20, ageMs: 6, v4: false, unattended: true };
+    expect(parseNativePresentingHeader(h([e0, e1]), 0)).toEqual({ sha8: 'abcdef01', uniqueFrames: 10, ageMs: 5, v4: true, unattended: false });
+    expect(parseNativePresentingHeader(h([e0, e1]), 1)).toEqual({ sha8: '12345678', uniqueFrames: 20, ageMs: 6, v4: false, unattended: true });
+    expect(parseNativePresentingHeader(h([e1]), 0)).toBeNull();
+    expect(parseNativePresentingHeader(h([{ ...e0, ageMs: -1 }]), 0)).toBeNull();
+    expect(parseNativePresentingHeader(h([e0], 2), 0)).toBeNull();
+    expect(parseNativePresentingHeader(h([{ ...e0, extra: 1 }]), 0)).toBeNull();
+    expect(parseNativePresentingHeader(h([e0, e1, e0]), 0)).toBeNull();
+    expect(parseNativePresentingHeader('x'.repeat(600), 0)).toBeNull();
+    expect(parseNativePresentingHeader(undefined, 0)).toBeNull();
+    // What it returns is exactly what the runtime report stores.
+    const stored = parseNativeRuntime(JSON.stringify({ ...on, nativePresenting: parseNativePresentingHeader(h([e0]), 0) }));
+    expect(stored?.nativePresenting).toEqual({ sha8: 'abcdef01', uniqueFrames: 10, ageMs: 5, v4: true, unattended: false });
   });
 });

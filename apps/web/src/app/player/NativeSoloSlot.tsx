@@ -51,12 +51,14 @@ export const NATIVE_FIRST_AGAIN_MS = 1_000;
 /** A boundary switch / release lands at the presenting clip's loop end, bounded (today's hand-off wait). */
 export const NATIVE_FIRST_BOUNDARY_MAX_MS = 60_000;
 /**
- * Transient ends whose cause the APP clears and restores from (§4.2: the
- * hold, the operator UI, the lifecycle). While the app keeps this face's
- * intent the page does not ask again — it would only be refused, counted,
- * and settle a healthy content on web behind a long Back menu.
+ * Transient ends caused by the APP's own window (its operator UI, the
+ * Activity's lifecycle). The app never restarts content on its own (stream
+ * B's D5), so the page asks again — but only once the app's window answer
+ * (`availability.ready`, the 1.1.35 contract) says the window is free again,
+ * when the reply carries it: asking into a Back menu would only be refused,
+ * counted, and settle a healthy content on web behind a long menu.
  */
-export const APP_RESTORES: ReadonlySet<string> = new Set(["emergency-held", "operator-ui", "activity-paused", "lifecycle-not-ready", "page-stopped"]);
+export const APP_YIELDS: ReadonlySet<string> = new Set(["operator-ui", "activity-paused", "lifecycle-not-ready", "page-stopped"]);
 
 function localStore(): Storage | null {
   try {
@@ -133,9 +135,10 @@ export function NativeSoloSlot({
     let awaitReason: string | undefined;
     let awaitNext: "native" | "wait" = "native";
     // A `failed` state that was already there when this attempt intended, or
-    // that was already graded, is never graded (again).
+    // that was already graded, is never graded (again) — nor a refusal.
     let staleSession = "";
     let lastEnded = "";
+    let staleRejection = "";
     const ownCopy = decision.reason === "own-copy";
     let budget = ownCopy ? NATIVE_FIRST_OWN_COPY_BUDGET_MS : NATIVE_FIRST_START_BUDGET_MS;
     nativeSharedVideoEvidence.select(owner);
@@ -153,6 +156,7 @@ export function NativeSoloSlot({
         // A boundary switch waits for the presenting clip's loop end (the app bounds it at 60 s).
         budget = (ownCopy ? NATIVE_FIRST_OWN_COPY_BUDGET_MS : NATIVE_FIRST_START_BUDGET_MS) + (boundary ? NATIVE_FIRST_BOUNDARY_MAX_MS : 0);
         staleSession = facts?.session?.state === "failed" ? facts.session.sessionId : "";
+        staleRejection = facts?.intentRejected?.key ?? "";
         phase = "starting";
         setStage("starting");
       }
@@ -182,14 +186,15 @@ export function NativeSoloSlot({
         setStage("starting");
       }
     };
-    // Native again, at the next start — never while the page holds an alert,
-    // never over an intent the app KEPT for a cause it restores itself (the
-    // hold, the operator UI, the lifecycle: §4.2), and a not-ready end only
-    // once the store lists the file again (or, with no store, after 30 s).
+    // Native again, at the next start. The app never restarts content on its
+    // own (stream B's D5), so the page asks — never while it holds an alert
+    // (a suspended-by-hold intent is restored here, once the hold is down),
+    // not while the app's own UI / lifecycle still holds its window, and a
+    // not-ready end only once the store lists the file again (or, with no
+    // store, after 30 s).
     const resume = (facts: NativeFirstFacts) => {
       if (holdRaisedRef.current()) return;
-      const kept = !!facts.intent && facts.intent.sha256 === identity.sha256 && facts.intent.revision === identity.revision;
-      if (kept && (facts.intent?.suspended || (awaitReason && APP_RESTORES.has(awaitReason)))) return;
+      if (awaitReason && APP_YIELDS.has(awaitReason) && facts.availability && !facts.availability.ready) return;
       const elapsed = Date.now() - awaitSince;
       if (awaitNext === "wait") {
         const store = facts.store?.mode === "active" ? facts.store : null;
@@ -218,6 +223,16 @@ export function NativeSoloSlot({
       }
       if (phase === "awaiting") { resume(facts); return; }
       if (!sent) return;
+      // The app REFUSED this intent (stream B's `intentRejected`): graded by
+      // the closed table like any end — except a lease the app calls retired,
+      // which gets a fresh lease and is asked again (bounded).
+      const rej = facts.intentRejected;
+      if (rej && rej.key !== staleRejection && (!rej.sha256 || rej.sha256 === identity.sha256)) {
+        staleRejection = rej.key;
+        if (rej.reason === "lease-retired" && face.renewLease()) { sent = false; return; }
+        end(rej.reason, "");
+        return;
+      }
       if (ours) {
         nativeSharedVideoEvidence.update(owner, s!, false, Date.now());
         if (s!.state === "failed") { end(s!.reason, s!.sessionId); return; }

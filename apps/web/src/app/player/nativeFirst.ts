@@ -19,18 +19,25 @@
  * document): a reload is a new lease, which must adopt the app's intent
  * before it can change or release it (§4.1).
  *
- * THE REPLY (v4 keys this page reads; every one optional, all bounded):
- *   protocolMax: 4
- *   device.nativeFirst: boolean            the class table's (or switch's) answer
- *   lease: {id, state:"held"|"absent"|"retired"} | "<id>"
- *   intent: {screenId, revision, sha256, assetId, start, suspended?}
- *           suspended: true | "hold" | "emergency-held" | "operator-ui"
+ * THE REPLY (v4 keys this page reads; every one optional, all bounded —
+ * stream B's shapes, origin/claude/native-first-stream-b):
+ *   protocolMax: 4                         only where the class AND this face's switch allow it
+ *   nativeFirst: {enabled, manifest, classDefault}   (device.nativeFirst = the CLASS default)
+ *   lease: {id, live, ageMs, unattended}  (or {id, state} / "<id>")
+ *   intent: {screenId, revision, sha256, assetId, start, atMs,
+ *            status: "suspended-by-hold"|"pre-rolling"|<session state>|"ended",
+ *            lastEnd, settled}
+ *   intentRejected: {reason, sha256, atMs}
+ *   availability: {ready, epoch, …}        the 1.1.35 window answer
  *   store: {mode:"off"|"adopting"|"active", serve, generation,
  *           ready:[sha…≤64], pending:[sha…≤64],
  *           downloading:{sha8, bytesLoaded, bytesTotal},
  *           emergency:{setHash, complete, count, bytes}, …}
  *   (the top-level session fields — state, sessionId, revision, sha256,
- *    output … — keep describing this face's solo session, presenting or not)
+ *    output … — keep describing this face's solo session; an ended one is
+ *    `state: "failed"` + `reason` for 30 s. The app NEVER restarts content on
+ *    its own (B's D5): after a hold, its own UI or a lifecycle end, the page
+ *    intends again.)
  *
  * Pure: no React, no DOM, no bridge, no clock.
  */
@@ -107,9 +114,12 @@ export function nativeManifestTag(etag: string | null | undefined): string | nul
   return TAG_RE.test(t) ? t : null;
 }
 
+/** Stream B's grammar for the emergency set hash (a value outside it would refuse the WHOLE sync). */
+const SET_HASH_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+
 export function nativeSyncMessage(manifestTag: string, emergencySetHash?: string | null): string | null {
   if (!TAG_RE.test(manifestTag)) return null;
-  const hash = typeof emergencySetHash === 'string' && TAG_RE.test(emergencySetHash) ? emergencySetHash : null;
+  const hash = typeof emergencySetHash === 'string' && SET_HASH_RE.test(emergencySetHash) ? emergencySetHash : null;
   return JSON.stringify({ version: NATIVE_FIRST_PROTOCOL, op: 'sync', manifestTag, ...(hash ? { emergencySetHash: hash } : {}) });
 }
 
@@ -131,10 +141,27 @@ export interface NativeFirstFacts {
   /** `protocolMax` (0 when absent). */
   protocolMax: number;
   nativeSolo: boolean;
+  /**
+   * Native-first is ON for THIS face: stream B's `nativeFirst.enabled` (the
+   * class default OR this face's manifest switch), else protocolMax ≥ 4 (B
+   * advertises 4 only then). `device.nativeFirst` alone is the CLASS DEFAULT
+   * (false everywhere this release) and never turns a face off by itself.
+   */
   nativeFirst: boolean;
   /** The lease the app counts as this face's controller right now, when it says. */
   lease: { id: string; state: 'held' | 'absent' | 'retired' } | null;
-  intent: (NativeIntentIdentity & { start: NativeStart | null; suspended: NativeIntentSuspension }) | null;
+  intent: (NativeIntentIdentity & {
+    start: NativeStart | null;
+    suspended: NativeIntentSuspension;
+    /** B: `suspended-by-hold` | `pre-rolling` | a session state | `ended`. */
+    status: string | null;
+    lastEnd: string | null;
+    settled: boolean;
+  }) | null;
+  /** The app refused an intent (B: `{reason, sha256, atMs}`); `key` identifies this refusal. */
+  intentRejected: { reason: string; sha256: string | null; key: string } | null;
+  /** The 1.1.35 window-availability answer, when the reply carries it (the app's own UI / lifecycle). */
+  availability: { ready: boolean; epoch: number } | null;
   /** This face's solo session (top-level fields), or null when idle / unreadable. */
   session: NativeSharedVideoState | null;
   store: NativeStoreBlock | null;
@@ -171,10 +198,13 @@ export function readNativeStoreBlock(v: unknown): NativeStoreBlock | null {
 }
 
 function readSuspension(v: unknown): NativeIntentSuspension {
-  if (v === true || v === 'hold' || v === 'emergency-held') return 'hold';
+  if (v === true || v === 'hold' || v === 'emergency-held' || v === 'suspended-by-hold') return 'hold';
   if (v === 'operator-ui') return 'operator-ui';
   return null;
 }
+/** The app echoes the PAGE's lease id (stream B accepts `[A-Za-z0-9_-]{8,64}`). */
+const APP_LEASE_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const STATUS_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 /** The v4 facts of one `sharedVideoState` reply (string or object), bounded; null when unusable. */
 export function readNativeFirstFacts(raw: unknown): NativeFirstFacts | null {
@@ -189,26 +219,57 @@ export function readNativeFirstFacts(raw: unknown): NativeFirstFacts | null {
   }
   if (!record(v) || v.version !== 1) return null;
   const device = record(v.device) ? v.device : null;
+  const protocolMax = count(v.protocolMax) && v.protocolMax <= 99 ? v.protocolMax : 0;
   const l = v.lease;
-  const lease = typeof l === 'string' && LEASE_RE.test(l)
+  const lease = typeof l === 'string' && APP_LEASE_RE.test(l)
     ? { id: l, state: 'held' as const }
-    : record(l) && typeof l.id === 'string' && LEASE_RE.test(l.id) && ['held', 'absent', 'retired'].includes(String(l.state))
-      ? { id: l.id, state: l.state as 'held' | 'absent' | 'retired' }
+    : record(l) && typeof l.id === 'string' && APP_LEASE_RE.test(l.id)
+      ? ['held', 'absent', 'retired'].includes(String(l.state))
+        ? { id: l.id, state: l.state as 'held' | 'absent' | 'retired' }
+        : typeof l.live === 'boolean'
+          ? { id: l.id, state: (l.live ? 'held' : 'absent') as 'held' | 'absent' }
+          : null
       : null;
   const i = v.intent;
   const intentId = record(i)
     ? { screenId: String(i.screenId ?? ''), revision: String(i.revision ?? ''), sha256: String(i.sha256 ?? '').toLowerCase(), assetId: String(i.assetId ?? '') }
     : null;
+  const status = record(i) && typeof i.status === 'string' && STATUS_RE.test(i.status) ? i.status : null;
   const intent = record(i) && validIdentity(intentId)
-    ? { ...intentId, start: i.start === 'now' || i.start === 'boundary' ? (i.start as NativeStart) : null, suspended: readSuspension(i.suspended) }
+    ? {
+        ...intentId,
+        start: i.start === 'now' || i.start === 'boundary' ? (i.start as NativeStart) : null,
+        suspended: readSuspension(i.suspended) ?? readSuspension(status),
+        status,
+        lastEnd: typeof i.lastEnd === 'string' && /^[a-z0-9-]{1,64}$/.test(i.lastEnd) ? i.lastEnd : null,
+        settled: i.settled === true,
+      }
     : null;
+  const r = v.intentRejected;
+  const intentRejected = record(r) && typeof r.reason === 'string' && /^[a-z0-9-]{1,64}$/.test(r.reason)
+    ? {
+        reason: r.reason,
+        sha256: typeof r.sha256 === 'string' && SHA_RE.test(r.sha256) ? r.sha256.toLowerCase() : null,
+        key: `${r.reason}|${typeof r.atMs === 'number' && Number.isFinite(r.atMs) ? r.atMs : ''}|${typeof r.sha256 === 'string' ? r.sha256.toLowerCase() : ''}`,
+      }
+    : null;
+  const a = v.availability;
+  const availability = record(a) && typeof a.ready === 'boolean'
+    ? { ready: a.ready, epoch: count(a.epoch) ? a.epoch : 0 }
+    : null;
+  const nf = v.nativeFirst;
   const s = readNativeSharedVideoState(v);
   return {
-    protocolMax: count(v.protocolMax) && v.protocolMax <= 99 ? v.protocolMax : 0,
+    protocolMax,
     nativeSolo: device?.nativeSolo === true,
-    nativeFirst: device?.nativeFirst === true,
+    // An explicit per-face answer wins; otherwise v4 itself says it is on.
+    nativeFirst: record(nf)
+      ? nf.enabled === true
+      : nf === true || device?.nativeFirst === true || protocolMax >= NATIVE_FIRST_PROTOCOL,
     lease,
     intent,
+    intentRejected,
+    availability,
     session: s && s.state !== 'idle' ? s : null,
     store: readNativeStoreBlock(v.store),
   };

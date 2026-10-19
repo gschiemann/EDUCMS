@@ -155,25 +155,71 @@ it('never asks for a picture while the page holds an alert; asks once it clears 
   r.unmount();
 });
 
-it('an end the app restores itself (operator UI / the hold) with the intent kept is NOT re-asked — no settle behind a long Back menu', async () => {
+it('the app\'s own UI ended it: asked again only once its window is free (availability) — no settle behind a long Back menu', async () => {
   const { r, onEngineChange, onPlaying } = mount();
   await flush();
   reply = session('presenting', 3);
   await flush(500);
   expect(onPlaying).toHaveBeenCalledTimes(1);
   fired.length = 0;
-  // The app ended it for its own UI and keeps the intent, suspended.
-  reply = { ...session('failed', 0, { reason: 'operator-ui', sessionId: '77777777-7777-4777-8777-777777777777' }), intent: { ...identity, suspended: 'operator-ui' } };
+  // The app ended it for its own UI; its window answer says "not free".
+  const ended = session('failed', 0, { reason: 'operator-ui', sessionId: '77777777-7777-4777-8777-777777777777' });
+  reply = { ...ended, intent: { ...identity, status: 'ended', lastEnd: 'operator-ui' }, availability: { ready: false, epoch: 3 } };
   for (let i = 0; i < 30; i++) await flush(1_000);
   expect(intents()).toEqual([]);
   expect(onEngineChange).not.toHaveBeenCalled();
-  // The UI closes: the app restores the same identity — picked up, no second onPlaying.
+  // The UI closes: the page asks again (the app never restarts on its own — B's D5).
+  reply = { ...ended, intent: { ...identity, status: 'ended', lastEnd: 'operator-ui' }, availability: { ready: true, epoch: 4 } };
+  await flush(500);
+  expect(intents()).toEqual([expect.objectContaining({ op: 'intend', start: 'now', sha256: SHA })]);
   reply = session('presenting', 9, { sessionId: '88888888-8888-4888-8888-888888888888' });
   await flush(500);
-  expect(intents()).toEqual([]);
   expect(onPlaying).toHaveBeenCalledTimes(1);
   expect(r.container.querySelector('[data-native-first]')?.getAttribute('data-native-first')).toBe('presenting');
   r.unmount();
+});
+
+it('a suspended-by-hold intent is restored by the page once its hold is down (the app never restarts on its own)', async () => {
+  let hold = false;
+  const { r } = mount(NATIVE, { holdRaised: () => hold });
+  await flush();
+  reply = session('presenting', 3);
+  await flush(500);
+  fired.length = 0;
+  hold = true;
+  reply = { ...session('failed', 0, { reason: 'emergency-held', sessionId: '99999999-9999-4999-8999-999999999999' }), intent: { ...identity, status: 'suspended-by-hold' } };
+  for (let i = 0; i < 10; i++) await flush(1_000);
+  expect(intents()).toEqual([]);
+  hold = false;
+  await flush(1_000);
+  await flush(500);
+  expect(intents()).toEqual([expect.objectContaining({ op: 'intend', start: 'now' })]);
+  r.unmount();
+});
+
+it('the app refused the intent: a block is a block; a retired lease gets ONE fresh lease and is asked again', async () => {
+  const a = mount();
+  await flush();
+  reply = { ...base(), intentRejected: { reason: 'blocked', sha256: SHA, atMs: 10 } };
+  await flush(500);
+  expect(a.onEngineChange).toHaveBeenCalledTimes(1);
+  expect(nativeVideoBlocked(window.localStorage, SHA, 0, Date.now())).toBe(true);
+  a.r.unmount();
+  window.localStorage.clear();
+  fired.length = 0;
+  reply = base();
+  const b = mount();
+  await flush();
+  const firstLease = intents()[0].lease;
+  reply = { ...base(), intentRejected: { reason: 'lease-retired', sha256: SHA, atMs: 20 } };
+  await flush(500);
+  await flush(500);
+  const leases = intents().map((m) => m.lease);
+  expect(leases.length).toBeGreaterThanOrEqual(2);
+  expect(leases[leases.length - 1]).not.toBe(firstLease);
+  expect(leases[leases.length - 1]).toMatch(/^[a-f0-9]{32}$/);
+  expect(b.onEngineChange).not.toHaveBeenCalled();
+  b.r.unmount();
 });
 
 it('a refused end is web for this content (no block)', async () => {

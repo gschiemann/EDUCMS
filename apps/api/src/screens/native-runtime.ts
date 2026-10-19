@@ -108,7 +108,47 @@ const nativePresentingSchema = z.object({
   sha8: z.string().regex(/^[a-f0-9]{8}$/),
   uniqueFrames: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   ageMs: z.number().int().nonnegative().max(86_400_000),
+  /** Stream B: the session is a native-first (v4) one, and no page lease attends it. */
+  v4: z.boolean().optional(),
+  unattended: z.boolean().optional(),
 });
+
+/**
+ * Stream B sends the same evidence in its OWN header on the status heartbeat
+ * (`x-venueos-native-presenting`, FaceVideoBox.presentingReport):
+ * `{"v":1,"faces":[{face,sha8,uniqueFrames,ageMs,v4,unattended}]}` — one
+ * entry per face whose solo session presents; `ageMs` is -1 before the first
+ * rendered frame. Strict: anything malformed reads as no evidence.
+ */
+export const NATIVE_PRESENTING_HEADER = 'x-venueos-native-presenting';
+const presentingHeaderSchema = z.strictObject({
+  v: z.literal(1),
+  faces: z.array(z.strictObject({
+    face: z.union([z.literal(0), z.literal(1)]),
+    sha8: z.string().regex(/^[a-f0-9]{8}$/),
+    uniqueFrames: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    ageMs: z.number().int().min(-1).max(86_400_000),
+    v4: z.boolean(),
+    unattended: z.boolean(),
+  })).max(2),
+});
+
+/** This face's entry of the header, as the stored `nativePresenting` shape; null when absent / malformed / no frame yet. */
+export function parseNativePresentingHeader(
+  value: unknown,
+  faceIndex: number,
+): z.infer<typeof nativePresentingSchema> | null {
+  if (typeof value !== 'string' || value.length > 512) return null;
+  try {
+    const parsed = presentingHeaderSchema.safeParse(JSON.parse(value));
+    if (!parsed.success) return null;
+    const entry = parsed.data.faces.find((f) => f.face === (faceIndex === 1 ? 1 : 0));
+    if (!entry || entry.ageMs < 0) return null;
+    return { sha8: entry.sha8, uniqueFrames: entry.uniqueFrames, ageMs: entry.ageMs, v4: entry.v4, unattended: entry.unattended };
+  } catch {
+    return null;
+  }
+}
 
 /** THIS process: id, start (wall ms), the box's boot count. A new pid is a restart; a new boot count a reboot. */
 const procSchema = z.object({
