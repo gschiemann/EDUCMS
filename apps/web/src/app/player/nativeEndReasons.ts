@@ -180,6 +180,10 @@ export class NativeTransientEnds {
   settled(contentKey: string): boolean {
     return this.settledKeys.has(contentKey);
   }
+  /** Settle at once (a REFUSED end: web for this content until it changes or the page reloads). */
+  settle(contentKey: string): void {
+    this.settledKeys.add(contentKey);
+  }
   /** The content changed: its history and its settlement are gone. */
   reset(contentKey: string): void {
     this.ends.delete(contentKey);

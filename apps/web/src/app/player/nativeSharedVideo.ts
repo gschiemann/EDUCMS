@@ -526,6 +526,12 @@ export interface NativeVideoDescriptor {
   };
   /** 1.1.41 — the M43 experiments the server switched on for this screen; absent = none. Outside the identity. */
   experiments?: NativeExperimentFlags;
+  /**
+   * Native-first (`PLAYER_NATIVE_FIRST`, design §8.1): `true` named, `false`
+   * the lead's kill switch, absent = the app's class default. Outside the
+   * identity (a flip never restarts a session; it applies at the next boundary).
+   */
+  nativeFirst?: boolean;
 }
 
 export type AnyNativeVideoDescriptor =
@@ -609,6 +615,7 @@ export function readNativeVideoDescriptor(
       fit: t.fit as NativeVideoDescriptor["transform"]["fit"],
     },
     ...(readNativeExperimentFlags(value.experiments) ? { experiments: readNativeExperimentFlags(value.experiments)! } : {}),
+    ...(typeof value.nativeFirst === "boolean" ? { nativeFirst: value.nativeFirst } : {}),
   };
 }
 
