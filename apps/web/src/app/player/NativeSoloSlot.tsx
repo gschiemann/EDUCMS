@@ -221,6 +221,17 @@ export function NativeSoloSlot({
         }
         return;
       }
+      // The APP settled this content on web (its own tracker, `intent.settled`):
+      // the same verdict as the page's — web until the content changes or a reload.
+      const it = facts.intent;
+      if (it && it.settled && it.sha256 === identity.sha256 && it.revision === identity.revision) {
+        stopped = true;
+        face.ends.settle(contentKey);
+        logRef.current(`[Player] PLAYER_NATIVE_FIRST_END reason=settled-by-app next=settle face=${faceIndex} sha=${identity.sha256.slice(0, 8)} (web fallback)`);
+        nativeSharedVideoEvidence.clear(owner);
+        engineChange.current();
+        return;
+      }
       if (phase === "awaiting") { resume(facts); return; }
       if (!sent) return;
       // The app REFUSED this intent (stream B's `intentRejected`): graded by

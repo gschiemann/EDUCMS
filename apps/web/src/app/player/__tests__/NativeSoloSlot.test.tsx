@@ -222,6 +222,16 @@ it('the app refused the intent: a block is a block; a retired lease gets ONE fre
   b.r.unmount();
 });
 
+it('the app settled the content (intent.settled) → web for this content, no block', async () => {
+  const { r, onEngineChange } = mount();
+  await flush();
+  reply = { ...session('failed', 0, { reason: 'activity-paused', sessionId: '12121212-1212-4121-8121-121212121212' }), intent: { ...identity, status: 'ended', lastEnd: 'activity-paused', settled: true } };
+  await flush(500);
+  expect(onEngineChange).toHaveBeenCalledTimes(1);
+  expect(nativeVideoBlocked(window.localStorage, SHA, 0, Date.now())).toBe(false);
+  r.unmount();
+});
+
 it('a refused end is web for this content (no block)', async () => {
   const { r, onEngineChange } = mount();
   await flush();
