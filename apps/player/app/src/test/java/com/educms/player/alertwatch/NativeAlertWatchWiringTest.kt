@@ -140,6 +140,40 @@ class NativeAlertWatchWiringTest {
         }
     }
 
+    // ─── native-first §7 E4 + owner decision D3 ──────────────────────
+
+    @Test
+    fun `an unattended native session switches the watch on with the panel on — from the session's own lease`() {
+        val port = body(watch, "override fun unattendedSinceMs(")
+        assertTrue("the Android port reads the playback session's lease", port.contains("FaceVideoBox.unattendedSince(SystemClock.elapsedRealtime())"))
+        assertTrue("never throws", port.contains("runCatching"))
+        val poll = body(engine, "private fun pollIfDark(")
+        assertTrue(poll.contains("val unattended = ports.unattendedSinceMs()"))
+        assertTrue("the stores are still not read while the panel is on and every face attended",
+            poll.contains("val plan = if (interactive && unattended.isEmpty()) null else ports.plan()"))
+        assertTrue(poll.contains("unattended = unattended.isNotEmpty()"))
+        assertTrue("5 s for an unattended face", poll.contains("NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS"))
+        assertTrue("a page that holds the lease again owns the verdict", body(engine, "private fun applyVerdict(")
+            .contains("val pageOwns = ports.panelInteractive() && face !in ports.unattendedSinceMs()"))
+        // The playback session kicks the loop the moment a lease lapses (a reload, a renderer loss).
+        val box = code(read("$pkg/media/FaceVideoBox.kt"))
+        assertTrue(body(box, "private fun leaseLapsed(").contains("NativeAlertWatch.kick("))
+        assertEquals(5_000L, NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS)
+        assertEquals(3_000L, NativeAlertWatchPolicy.FIRST_POLL_DELAY_MS)
+    }
+
+    @Test
+    fun `D3 brings a page back through the existing reload and relaunch, and lowers nothing`() {
+        val restore = body(engine, "private fun restoreFollowUp(")
+        assertTrue(restore.contains("NativeAlertWatchPolicy.restoreStep("))
+        assertTrue(restore.contains("ports.reloadPage(face, attempt, why)"))
+        assertTrue(restore.contains("ports.bringPlayerForward(attempt)"))
+        for (forbidden in listOf("raise(", "setHold", "DisplayPrefs", "release(")) {
+            assertFalse("restore reaches `$forbidden`", restore.contains(forbidden))
+        }
+        assertTrue("the restore is part of every follow-up", body(engine, "private fun followUp(").contains("restoreFollowUp()"))
+    }
+
     // ─── the request ─────────────────────────────────────────────────
 
     @Test

@@ -38,14 +38,25 @@ internal class SharedVideoSource(private val ctx: Context) {
      * engines read their descriptor from here, so the page can only ever ask
      * native to play what the server already selected for this exact screen.
      */
-    fun manifest(face: Int, expectedScreen: String): JSONObject {
+    fun manifest(face: Int, expectedScreen: String): JSONObject =
+        manifestIfChanged(face, expectedScreen, null).first ?: error("manifest-http-304")
+
+    /**
+     * [manifest], conditional: with [ifNoneMatch] a `304` answers `(null, etag)`
+     * and costs no body. Native-first reads its enrolment switch this way every
+     * few minutes (FaceVideoBox.maybeRefreshSwitch) — a 304 is nearly free.
+     */
+    fun manifestIfChanged(face: Int, expectedScreen: String, ifNoneMatch: String?): Pair<JSONObject?, String?> {
         val token = FaceTokenStore.read(ctx, face) ?: error("credential-missing")
         require(NativeAlertWatchPolicy.screenIdOf(token) == expectedScreen) { "credential-identity" }
         val saved = ctx.getSharedPreferences("edu_player", Context.MODE_PRIVATE).getString("api_root", null) ?: error("api-root")
         val root = SharedVideoSourcePolicy.apiBase(saved)
         require(HostAllowlist.isApiHost(root)) { "api-origin" }
         val url = "$root/api/v1/screens/$expectedScreen/manifest"
-        val bytes = request(url, token, 15_000L) { c ->
+        var etag: String? = null
+        val bytes = request(url, token, 15_000L, ifNoneMatch?.takeIf { v -> v.length <= 256 && v.all { it.code in 0x21..0x7E } }) { c ->
+            etag = c.getHeaderField("ETag")?.takeIf { v -> v.length <= 256 && v.all { it.code in 0x21..0x7E } }
+            if (ifNoneMatch != null && c.responseCode == 304) return@request null
             require(c.responseCode == 200) { "manifest-http-${c.responseCode}" }
             c.inputStream.use { input ->
                 val out = java.io.ByteArrayOutputStream()
@@ -63,7 +74,7 @@ internal class SharedVideoSource(private val ctx: Context) {
         // byte: the page renews its token constantly, so an exact match failed
         // every attempt on the field units (2026-10-12, M43 + L55VEC).
         require(NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(ctx, face)) == expectedScreen) { "credential-changed" }
-        return JSONObject(String(bytes, Charsets.UTF_8))
+        return Pair(bytes?.let { JSONObject(String(it, Charsets.UTF_8)) }, etag)
     }
 
     fun verifiedFile(d: SharedVideoDescriptor, current: () -> Boolean): File =
@@ -156,12 +167,13 @@ internal class SharedVideoSource(private val ctx: Context) {
         return (hex(digest.digest()) == sha256).also { if (it) VerifiedFiles.remember(file, sha256) }
     }
 
-    private fun <T> request(url: String, token: String?, deadline: Long, body: (HttpURLConnection) -> T): T {
+    private fun <T> request(url: String, token: String?, deadline: Long, ifNoneMatch: String? = null, body: (HttpURLConnection) -> T): T {
         val c = URL(url).openConnection() as HttpURLConnection
         c.instanceFollowRedirects = false
         c.connectTimeout = 6000; c.readTimeout = 6000
         c.setRequestProperty("Accept-Encoding", "identity")
         if (token != null) c.setRequestProperty("Authorization", "Bearer $token")
+        if (ifNoneMatch != null) c.setRequestProperty("If-None-Match", ifNoneMatch)
         val timer = Timer("shared-media-http", true)
         timer.schedule(object : TimerTask() { override fun run() { c.disconnect() } }, deadline)
         try { return body(c) } finally { timer.cancel(); c.disconnect() }

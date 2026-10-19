@@ -72,12 +72,19 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
     /** Native escape does not depend on the page handling the key promptly. */
     fun yieldToUi() { operatorUiRequested = true; FaceVideoBox.yieldToUi(this, "page-stopped") }
 
+    /** The page decided again (a v2 prepare, a v4 intend): the operator latch is cleared, exactly as a v2 prepare always did. */
+    internal fun clearOperatorUi() { operatorUiRequested = false }
+
     /**
-     * `version: 3` (an op on a positioned slot) and `version: 2` (the solo)
-     * select the per-face engine; anything else is the protocol-1 pair
-     * engine, unchanged.
+     * `version: 4` (native-first: an `op` of intend / release / sync — the app
+     * owns the session), `version: 3` (an op on a positioned slot) and
+     * `version: 2` (the solo) select the per-face engine; anything else is the
+     * protocol-1 pair engine, unchanged. No bridge method was added (rule 9).
      */
     fun prepare(json: String) {
+        NativeFirstMessage.parse(json)?.let { FaceVideoBox.onV4(this, it); return }
+        // A malformed version-4 message is dropped, never handed to the pair engine.
+        if (runCatching { json.length <= 1024 && JSONObject(json).optInt("version") == NativeFirstMessage.VERSION }.getOrDefault(false)) return
         when (val m = FaceZoneMessage.parse(json)) {
             is FaceZoneMessage.Prepare -> FaceVideoBox.prepare(this, m.request)
             is FaceZoneMessage.Layout -> FaceVideoBox.layout(this, m.sessionId, m.layout)
@@ -95,8 +102,12 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
      */
     fun stateJson(): String {
         refreshReadiness()
+        // Native-first (§4.1): every poll renews this document's lease — the page's liveness, never a
+        // condition for presenting.
+        FaceVideoBox.onStatePoll(this)
         val policy = DeviceClassPolicy.current(ctx)
-        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", policy.protocolMax)
+        val max = FaceVideoBox.protocolMax(this, policy)
+        val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", max)
         // 1.1.41: the resolved device class and what it does (DeviceClassPolicy), bounded, on every reply.
         j.put("device", policy.toJson())
         // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
@@ -109,7 +120,10 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
                 .put("interactive", s.interactive).put("focused", s.focused).put("focusRequired", s.focusRequired).put("uiClear", s.uiClear)
                 .put("ready", s.ready).put("epoch", s.epoch))
         }
-        return j.put("protocol",2).toString()
+        // Protocol 4's blocks (lease, intent, store, nativeFirst) — only where this face advertises 4 or holds v4 state.
+        FaceVideoBox.writeNativeFirst(this, j, max, policy)
+        // The page refuses a reply over 16 384 characters: trim history before it could ever get there.
+        return ReplyBudget.fit(j.put("protocol",2)).toString()
     }
     fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
     fun detach() {

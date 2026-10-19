@@ -380,6 +380,14 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         setRequestProperty(DeviceSettings.HEADER, DeviceSettings.report(applicationContext))
                     }.onFailure { PlayerLogger.w(TAG, "device settings report unavailable: ${it.message}") }
+                    // 2026-10-19 — native-first §4.4, PROOF WITHOUT A PAGE: what each face's native
+                    // solo is presenting (sha8, unique frames, age of the last one, whether the page
+                    // holds its lease). A dead page behind a playing native picture then reads "page
+                    // down, glass playing", never "frozen". Its own header (an old API ignores it),
+                    // omitted when nothing presents — it can never cost the reports above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.media.FaceVideoBox.presentingReport()?.let { setRequestProperty(NATIVE_PRESENTING_HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "native presenting report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -476,6 +484,8 @@ class HeartbeatService : Service() {
 
     companion object {
         private const val TAG = "HeartbeatService"
+        /** Native-first §4.4: `{"v":1,"faces":[{face,sha8,uniqueFrames,ageMs,v4,unattended}]}` (FaceVideoBox.presentingReport). */
+        const val NATIVE_PRESENTING_HEADER = "x-venueos-native-presenting"
         private const val NOTIF_ID = 1001
         private const val KEY_LAST_FORCE_OTA_KEY = "last_force_ota_key"
         private const val KEY_LAST_FORCE_OTA_AT = "last_force_ota_at"
