@@ -2518,7 +2518,8 @@
       "now": {
         "asleep": "当前已休眠：Android 报告面板已关闭。",
         "asleepSince": "当前已休眠：Android 报告面板自{since}起关闭。",
-        "on": "当前已开启：Android 报告面板已开启。"
+        "on": "当前已开启：Android 报告面板已开启。",
+        "nativeGlass": "屏幕正在播放视频：应用自带的视频引擎于{ago}报告了新画面。"
       },
       "row": {
         "alert": "关闭时警报可将其唤醒",

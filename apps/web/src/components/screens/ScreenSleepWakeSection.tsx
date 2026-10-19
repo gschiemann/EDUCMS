@@ -137,6 +137,12 @@ export function ScreenSleepWakeSection({
               : t('now.on')}
           </p>
         )}
+        {s.nativeGlass && (
+          // Native-first §4.4: the app's own engine, independent of the page.
+          <p className="text-[10px] text-emerald-700 leading-snug mt-0.5" data-testid="sleep-wake-native-glass">
+            {t('now.nativeGlass', { ago: ago(s.nativeGlass.frameAtMs) })}
+          </p>
+        )}
 
         <div className="mt-2 space-y-1">
           {rows.map((r) => (

@@ -187,3 +187,25 @@ describe('sleep & wake — what each screen can do, and what it proved', () => {
     expect(s.now?.asleep).toBe(true);
   });
 });
+
+describe('native-first §4.4 — the app’s own engine on the glass (nativePresenting)', () => {
+  const lit = { ...x80.nativeRuntimeReport, interactive: true, foreground: true, standbySinceMs: null };
+  const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+  it('a fresh report with a recent frame on a lit panel: the frame’s time, from the report', () => {
+    const s = summarizeSleepWake({ ...x80, nativeRuntimeReport: { ...lit, nativePresenting: { sha8: 'abcdef01', uniqueFrames: 900, ageMs: 40 } }, nativeRuntimeReportAt: at(20_000) });
+    expect(s.nativeGlass).toEqual({ frameAtMs: NOW - 20_000 - 40, uniqueFrames: 900 });
+  });
+  it('no block, an old report, an old frame, no frames or an asleep panel: nothing claimed', () => {
+    const p = { sha8: 'abcdef01', uniqueFrames: 900, ageMs: 40 };
+    for (const input of [
+      { ...x80, nativeRuntimeReport: lit, nativeRuntimeReportAt: at(1_000) },
+      { ...x80, nativeRuntimeReport: { ...lit, nativePresenting: p }, nativeRuntimeReportAt: at(3 * 60_000) },
+      { ...x80, nativeRuntimeReport: { ...lit, nativePresenting: { ...p, ageMs: 60_000 } }, nativeRuntimeReportAt: at(1_000) },
+      { ...x80, nativeRuntimeReport: { ...lit, nativePresenting: { ...p, uniqueFrames: 0 } }, nativeRuntimeReportAt: at(1_000) },
+      { ...x80, nativeRuntimeReport: { ...x80.nativeRuntimeReport, nativePresenting: p }, nativeRuntimeReportAt: at(1_000) },
+      { ...x80, nativeRuntimeReport: { ...lit, nativePresenting: 'garbage' }, nativeRuntimeReportAt: at(1_000) },
+    ]) {
+      expect(summarizeSleepWake(input).nativeGlass).toBeNull();
+    }
+  });
+});
