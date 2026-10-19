@@ -2911,6 +2911,12 @@ function PlayerPage() {
   // The app store's real download (§6 `store.downloading`) for the splash and
   // the cache report, on a store-mode face; the worker's drive otherwise.
   const [storeDownload, setStoreDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  // The first `sharedVideoState` read has SETTLED (answered, refused or timed
+  // out). Until then a native-enrolled face mounts nothing for its descriptor's
+  // video: a web-first takeover started in that gap would send a v2 prepare
+  // into a v4 session the app may already be presenting (a reload), and its
+  // stop would release it. Bounded by the read's own 2 s budget.
+  const [nativeFirstReady, setNativeFirstReady] = useState(false);
   /** Template zones already reported as `zone-overlap` this document (codes only, once each). */
   const nativeOverlapLogged = useRef(new Set<string>());
   // ── Protocol 3 (2026-10-12, nativeZones.ts): positioned native slots for
@@ -2993,7 +2999,7 @@ function PlayerPage() {
         return { name, bytesLoaded: dl.bytesLoaded, bytesTotal: total };
       });
     });
-    void face.read();
+    void face.read().finally(() => setNativeFirstReady(true));
     const tick = setInterval(() => {
       // Never before the page has decided: a live page that keeps polling
       // without adopting is released by the app after 60 s (stream B).
@@ -12893,6 +12899,12 @@ function PlayerPage() {
               // window, never a web lap first. `web` falls through to today's
               // code, with the web-first takeover held off for a content that
               // repeated transient ends settled on web (no flip back).
+              // The app's v4 facts are not known yet (the first state read has
+              // not settled — milliseconds, ≤ 2 s): mount nothing for the
+              // native-enrolled video rather than a takeover that could race a
+              // v4 session the app is already presenting after a reload.
+              if (nativeFirstFaceRef.current && !nativeFirstReady && nativeVideoDescriptor &&
+                nativeVideoDescriptor.asset.id === item.asset?.id) return null;
               const nativeFirstSlide = nativeFirstDecisionFor(item, isSoloPlaylist && sorted.length === 1);
               const takeoverKey = `${String(item.asset?.id ?? '')}|${String(item.asset?.fileHash ?? '').toLowerCase()}`;
               if (nativeFirstSlide && nativeFirstSlide.decision.engine !== 'web' && takeoverLatchRef.current !== takeoverKey) {

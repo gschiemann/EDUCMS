@@ -67,6 +67,10 @@ describe('§7 E2 / §3.1 — the decision before the mount', () => {
     // A settled content never re-enters the takeover (no flip back).
     expect(PAGE).toMatch(/v2Blocked: !!nativeVideoDescriptor && \(nativeFirstSettled \|\|/);
   });
+  it('until the first state read settles, a native-enrolled video mounts nothing (no v2 prepare racing a v4 session)', () => {
+    expect(before(PAGE, '!nativeFirstReady && nativeVideoDescriptor', 'const nativeFirstSlide = nativeFirstDecisionFor(item')).toBe(true);
+    expect(PAGE).toMatch(/void face\.read\(\)\.finally\(\(\) => setNativeFirstReady\(true\)\);/);
+  });
   it('an app without v4 keeps today\'s path byte for byte (the decision answers null)', () => {
     const fn = block('const nativeFirstDecisionFor = (item: any, solo: boolean)', 800);
     expect(fn).toMatch(/if \(!face \|\| !facts \|\| facts\.protocolMax < NATIVE_FIRST_PROTOCOL\) return null;/);
