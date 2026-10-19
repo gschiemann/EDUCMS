@@ -2995,6 +2995,9 @@ function PlayerPage() {
     });
     void face.read();
     const tick = setInterval(() => {
+      // Never before the page has decided: a live page that keeps polling
+      // without adopting is released by the app after 60 s (stream B).
+      if (!nativeFirstDecidedRef.current) return;
       if (nativeVideoDescriptorRef.current || (face.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL) void face.read();
     }, 15_000);
     return () => { unsubscribe(); clearInterval(tick); };
