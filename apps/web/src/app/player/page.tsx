@@ -5166,6 +5166,27 @@ function PlayerPage() {
   // A manifest (live or cached) has been applied: before that the page is
   // UNDECIDED and never releases what the app is presenting (§4.3).
   const nativeFirstDecidedRef = useRef(false);
+  // §4.3 "adopt X until Y is verified": the session the app presents (the
+  // intent it reports) is re-sent with THIS document's lease at the boundary
+  // — the app re-binds it, nothing on glass changes. Never under the hold.
+  const adoptPresentingNative = useCallback(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !face.supportsV4() || displayEmergencyHoldRaised()) return;
+    const f = face.facts;
+    const held = f?.intent;
+    if (held && f?.session?.state === 'presenting' && f.session.sha256 === held.sha256 && f.session.revision === held.revision) {
+      face.intend({ screenId: held.screenId, revision: held.revision, sha256: held.sha256, assetId: held.assetId }, 'boundary');
+    }
+  }, []);
+  // While native presents on this face, this document polls at the session
+  // cadence (§4.1: every poll renews its lease) — whether a slot is mounted,
+  // a new playlist is deferred, or web content is being painted beneath.
+  const nativeFirstPresentingNow = !!nativeFirstFaceRef.current?.presenting();
+  useEffect(() => {
+    const face = nativeFirstFaceRef.current;
+    if (!face || !nativeFirstPresentingNow) return;
+    return face.hold();
+  }, [nativeFirstPresentingNow]);
   // The PAGE side of §4.3 / §3.2 — what no slot owns:
   //   • web content (or nothing) on this face while the app presents → paint
   //     it beneath (two frames), then `release at: boundary` (the app bounds
@@ -5186,12 +5207,8 @@ function PlayerPage() {
       return;
     }
     if (nativeFirstEngine === 'native') return; // the slot owns the face
-    const facts = face.facts;
     if (nativeFirstEngine === 'wait' || pendingPlaylistCommitRef.current) {
-      const held = facts?.intent;
-      if (held && facts?.session?.state === 'presenting' && facts.session.sha256 === held.sha256 && facts.session.revision === held.revision) {
-        face.intend({ screenId: held.screenId, revision: held.revision, sha256: held.sha256, assetId: held.assetId }, 'boundary');
-      }
+      adoptPresentingNative();
       return;
     }
     let raf2 = 0;
@@ -5202,7 +5219,7 @@ function PlayerPage() {
       });
     });
     return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
-  }, [nativeFirstSig, nativeFirstEngine, nativeFirstReason, nativeFirstHoldRaised, nativeFirstOverlay, playlist, displayIndex]);
+  }, [nativeFirstSig, nativeFirstEngine, nativeFirstReason, nativeFirstHoldRaised, nativeFirstOverlay, playlist, displayIndex, adoptPresentingNative]);
   // The splash shows the store's real download (§6): poll the app at the
   // session cadence only while that card is up on a store-mode face.
   const nativeFirstStoreActive = nativeFirstFaceRef.current?.facts?.store?.mode === 'active';
@@ -7365,6 +7382,9 @@ function PlayerPage() {
               console.log('[Player] new content is still downloading — keeping the current content on glass until a file is ready');
             }
             pendingPlaylistCommitRef.current = commit;
+            // Native-first (§4.3): what the app presents stays, attended by
+            // this document's lease, until the new file is verified.
+            if (!holdNow) adoptPresentingNative();
             return true;
           }
           pendingPlaylistCommitRef.current = null;
