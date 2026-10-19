@@ -1,5 +1,6 @@
 package com.educms.player.store
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Process
 import android.system.Os
@@ -63,6 +64,9 @@ internal object AndroidContentStore {
             }.getOrNull()
         }
         val disk = object : StoreDisk {
+            // Conservative on purpose: the budget never counts cache space the OS has not freed
+            // (getAllocatableBytes would, and a store sized on it could fill the disk).
+            @SuppressLint("UsableSpace")
             override fun usableBytes(dir: File): Long = dir.usableSpace
             override fun inode(file: File): Long = runCatching { Os.stat(file.path).st_ino }.getOrDefault(0L)
             override fun link(from: File, to: File): Boolean = runCatching { Os.link(from.path, to.path); true }.getOrDefault(false)

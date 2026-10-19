@@ -127,19 +127,22 @@ class ContentStoreFacadeTest {
     @Test
     fun `the state block is bounded and complete`() {
         val h = Harness()
-        val blobs = (0 until 150).map { Blob("v$it.mp4", Kit.bytes(1024, 300 + it)) }
+        val blobs = (0 until 200).map { Blob("v$it.mp4", Kit.bytes(1024, 300 + it)) }
         h.manifest(items = blobs, nativeBlob = blobs[0])
         h.emergencySet(blobs = emptyList())
-        blobs.take(100).forEach { h.server.put(it) } // 50 stay missing → pending
+        blobs.take(100).forEach { h.server.put(it) } // 100 stay missing → pending (worst case: both lists full)
         h.pump()
         val s = h.store.stateBlock()
         for (k in listOf("mode", "serve", "generation", "ready", "pending", "emergency", "accounting")) assertTrue(k, s.has(k))
         assertFalse(s.getBoolean("serve"))
         assertEquals(64, s.getJSONArray("ready").length())
-        assertTrue(s.getJSONArray("pending").length() in 1..64)
+        assertEquals(64, s.getJSONArray("pending").length())
         for (k in listOf("setHash", "complete", "count", "bytes")) assertTrue(k, s.getJSONObject("emergency").has(k))
         for (k in listOf("usedBytes", "pinnedBytes", "budgetBytes", "freeBytes")) assertTrue(k, s.getJSONObject("accounting").has(k))
-        assertTrue("well inside the 16 KB reply (${s.toString().length})", s.toString().length < 10_000)
+        // Worst case (64 + 64 digests, every optional key present) stays well inside the 16 KB reply.
+        s.put("downloading", JSONObject().put("sha8", "deadbeef").put("bytesLoaded", Long.MAX_VALUE).put("bytesTotal", Long.MAX_VALUE))
+        s.put("lastCorruption", JSONObject().put("sha8", "deadbeef").put("at", Long.MAX_VALUE))
+        assertTrue("store block ${s.toString().length} bytes", s.toString().length < 9_500)
         assertEquals(blobs[0].sha, s.getJSONArray("ready").getString(0))
         // generation moves on every change; the page's intent puts its content first.
         val g = s.getLong("generation")

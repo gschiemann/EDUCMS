@@ -33,7 +33,8 @@ internal interface ContentStoreApi {
      * The page's current content per face: face → shas, ITERATION ORDER = PLAY
      * ORDER (pass a LinkedHashSet / `linkedSetOf`). Identity only: the store
      * downloads a sha only when its OWN authenticated manifest names it. A face
-     * missing from the map keeps its previous set.
+     * missing from the map keeps its previous set; an EMPTY set clears the
+     * page's intent (the server's own native pick stays current).
      */
     fun intend(currentSets: Map<Int, Set<String>>)
 
