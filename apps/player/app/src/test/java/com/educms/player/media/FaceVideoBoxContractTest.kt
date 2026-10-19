@@ -149,8 +149,10 @@ class FaceVideoBoxContractTest {
         assertTrue("the session is registered first so the page reads the reason", refusal > begin.indexOf("host.faceSessions[session.key] = session"))
         assertTrue("sessions are built from the resolved class", b.contains("DeviceClassPolicy.current(host.ctx)"))
         assertTrue("the advertised protocolMax is the class table's", body(b, "fun state(host: SharedVideoHost)").contains("protocolMax(host, DeviceClassPolicy.current(host.ctx))"))
+        val max = body(b, "internal fun protocolMax(")
         assertTrue("…4 only where the class AND this face's enrolment allow it",
-            body(b, "internal fun protocolMax(").contains("policy.protocolMax(policy.nativeFirst(switchValue(host.ctx, host.face)))"))
+            max.contains("val manifest = switchValue(host.ctx, host.face)") && max.contains("return policy.protocolMax(policy.nativeFirst(manifest))"))
+        assertTrue("a screen that is not enrolled makes no new request", max.contains("if (policy.nativeSolo && manifest == true) maybeRefreshSwitch(host)"))
         assertTrue("the host reply carries the resolved class", body(code(host), "fun stateJson()").contains("policy.toJson()"))
         assertTrue("a refused session never uploads diagnostics", body(b, "private fun queueDiagnostics(").contains("s.refusal != null"))
     }
@@ -333,7 +335,7 @@ class FaceVideoBoxContractTest {
         val b = code(box)
         val invalidate = body(b, "fun invalidate(")
         assertTrue("v2 / v3 end as before; v4 does not", invalidate.contains("if (!it.v4) stopSession(host, it, why)"))
-        assertTrue("…its lease is absent at once instead", invalidate.contains("lease.retire(now)"))
+        assertTrue("…the outgoing document's lease is absent at once instead", invalidate.contains("lease.onDocumentChange(now)"))
         val watch = body(b, "private fun watch(")
         assertTrue(watch.contains("!s.v4 && now - s.lastPoll > 10_000 -> \"page-lease-expired\""))
         assertTrue("every tick reads the session's CURRENT host", watch.contains("val host = s.host"))

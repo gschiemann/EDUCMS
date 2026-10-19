@@ -204,6 +204,9 @@ internal object FaceVideoBox {
     /** The hold-last-frame path waits at most this long for A's decoder to be released before B's opens. */
     private const val DECODER_RELEASE_WAIT_MS = 1_000L
     private const val LEASE_TICK_MS = 2_000L
+    /** Ends of the presenting session after which its pre-roll must NOT take the face. */
+    private val NO_PROMOTION = setOf("emergency-held", "released", "page-requested", "operator-ui", "lifecycle-not-ready",
+        "activity-paused", "credential-identity", "document-retired", "host-detached")
     /** The enrolment switch is re-read from this face's own manifest this often (a conditional GET: a 304 costs nothing). */
     private const val SWITCH_REFRESH_MS = 5L * 60_000L
     private const val SWITCH_RETRY_MS = 60_000L
@@ -266,8 +269,10 @@ internal object FaceVideoBox {
         host.faceSessions.values.toList().forEach { if (!it.v4) stopSession(host, it, why) }
         val now = SystemClock.elapsedRealtime()
         leases[host.face]?.let { lease ->
-            if (lease.id != null && PlaybackSessionPolicy.v4(PlaybackSessionPolicy.Event.DOCUMENT_CHANGED) == PlaybackSessionPolicy.Outcome.CONTINUE_UNATTENDED) {
-                lease.retire(now)
+            // The outgoing document's lease is retired at once; a lease the loading document has just
+            // adopted survives that same navigation's later callbacks (PlaybackLease.onDocumentChange).
+            if (PlaybackSessionPolicy.v4(PlaybackSessionPolicy.Event.DOCUMENT_CHANGED) == PlaybackSessionPolicy.Outcome.CONTINUE_UNATTENDED &&
+                lease.onDocumentChange(now)) {
                 // "until the content changes or the page reloads" (§3.4): a new document starts unsettled.
                 transientEnds.resetAll()
                 leaseLapsed(host, now)
@@ -1541,7 +1546,9 @@ internal object FaceVideoBox {
             NEXT -> host.faceSessions[""]?.let { a ->
                 if (a.alive && a.atLapEnd == LapAction.SWAP) { a.atLapEnd = LapAction.NONE; a.lapArmedAt = 0L }
             }
-            "" -> host.faceSessions[NEXT]?.takeIf { it.alive && why != "emergency-held" && why !in PlaybackSessionPolicy.DELIBERATE }?.let { b ->
+            // The pre-roll IS the page's intent: it takes the face — unless the hold, a release or the
+            // page's own stop ended the presenting session (those end the pre-roll too).
+            "" -> host.faceSessions[NEXT]?.takeIf { it.alive && why !in NO_PROMOTION }?.let { b ->
                 main.post { synchronized(this) { if (liveNow(b) && b.key == NEXT) promote(b.host, b) } }
             }
         }
@@ -1557,14 +1564,19 @@ internal object FaceVideoBox {
 
     /** What a face advertises: 4 only where the class can run solo native video AND this face is enrolled (§8.1). */
     internal fun protocolMax(host: SharedVideoHost, policy: DeviceClassPolicy.Resolved): Int {
-        if (policy.nativeSolo) maybeRefreshSwitch(host)
-        return policy.protocolMax(policy.nativeFirst(switchValue(host.ctx, host.face)))
+        val manifest = switchValue(host.ctx, host.face)
+        // Only an ENROLLED face re-reads its switch on its own (to notice a flip to off): a screen that
+        // is not enrolled makes no request it did not make before — it learns from its sessions' reads.
+        if (policy.nativeSolo && manifest == true) maybeRefreshSwitch(host)
+        return policy.protocolMax(policy.nativeFirst(manifest))
     }
 
     // The enrolment switch per face (§8.1): learned from this face's OWN authenticated manifest
-    // (`nativeVideo.nativeFirst`), persisted so a reboot answers at once, re-read at most every
-    // five minutes with a conditional GET. A flip changes what the face advertises — never what
+    // (`nativeVideo.nativeFirst`) on every native session's selection read, persisted so a reboot
+    // answers at once; an enrolled face also re-reads it at most every five minutes with a
+    // conditional GET (a 304 costs nothing). A flip changes what the face advertises — never what
     // presents (an adopt of the same content is not a boundary).
+    private val switchIo = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-switch").apply { isDaemon = true } }
     private val switchValues = HashMap<Int, Boolean?>()
     private val switchLearnedAt = HashMap<Int, Long>()
     private val switchEtags = HashMap<Int, String>()
@@ -1600,7 +1612,8 @@ internal object FaceVideoBox {
             // A failed read is retried after a minute, not on every poll; a good one stamps `now` (learnSwitch).
             switchLearnedAt[face] = now - SWITCH_REFRESH_MS + SWITCH_RETRY_MS
         }
-        meta.execute {
+        // Its own thread: a slow read never delays a session's selection or decoder preparation (meta).
+        switchIo.execute {
             try {
                 val screen = NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(host.ctx, face)) ?: return@execute
                 val (manifest, etag) = SharedVideoSource(host.ctx).manifestIfChanged(face, screen, synchronized(this) { switchEtags[face] })
@@ -1651,21 +1664,25 @@ internal object FaceVideoBox {
      * the face advertises 4 or holds v4 state, so the dark fleet's replies are
      * unchanged byte for byte.
      */
-    @Synchronized fun writeNativeFirst(host: SharedVideoHost, j: JSONObject, protocolMax: Int, policy: DeviceClassPolicy.Resolved) {
-        val face = host.face
-        val now = SystemClock.elapsedRealtime()
-        val intent = intentsMemo?.get(face) ?: if (protocolMax >= 4) intents(host.ctx).get(face) else null
-        val rejected = rejections[face]
-        if (protocolMax < 4 && intent == null && rejected == null) return
-        val lease = leases[face]
-        val live = lease?.live(now) == true
-        j.put("lease", JSONObject().put("id", lease?.id ?: JSONObject.NULL).put("live", live)
-            .put("ageMs", lease?.ageMs(now) ?: -1L).put("unattended", intent != null && !live))
-        j.put("intent", if (intent == null) JSONObject.NULL else intentJson(host, intent))
-        j.put("intentRejected", rejected ?: JSONObject.NULL)
-        j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: NoopContentStore.stateBlock())
-        j.put("nativeFirst", JSONObject().put("enabled", protocolMax >= 4)
-            .put("manifest", switchValue(host.ctx, face) ?: JSONObject.NULL).put("classDefault", policy.nativeFirstDefault))
+    fun writeNativeFirst(host: SharedVideoHost, j: JSONObject, protocolMax: Int, policy: DeviceClassPolicy.Resolved) {
+        val wrote = synchronized(this) {
+            val face = host.face
+            val now = SystemClock.elapsedRealtime()
+            val intent = intentsMemo?.get(face) ?: if (protocolMax >= 4) intents(host.ctx).get(face) else null
+            val rejected = rejections[face]
+            if (protocolMax < 4 && intent == null && rejected == null) return
+            val lease = leases[face]
+            val live = lease?.live(now) == true
+            j.put("lease", JSONObject().put("id", lease?.id ?: JSONObject.NULL).put("live", live)
+                .put("ageMs", lease?.ageMs(now) ?: -1L).put("unattended", intent != null && !live))
+            j.put("intent", if (intent == null) JSONObject.NULL else intentJson(host, intent))
+            j.put("intentRejected", rejected ?: JSONObject.NULL)
+            j.put("nativeFirst", JSONObject().put("enabled", protocolMax >= 4)
+                .put("manifest", switchValue(host.ctx, face) ?: JSONObject.NULL).put("classDefault", policy.nativeFirstDefault))
+            true
+        }
+        // The store answers OUTSIDE this monitor (its own locks never nest inside ours).
+        if (wrote) j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: NoopContentStore.stateBlock())
     }
 
     /** Under the monitor: the intent as the page reads it, with what the app is doing about it. */

@@ -126,6 +126,7 @@ internal class PlaybackLease(createdAtMs: Long, private val boundMs: Long = BOUN
     var id: String? = null
         private set
     private var renewedAtMs = Long.MIN_VALUE
+    private var adoptedAtMs = Long.MIN_VALUE
     private var absentFromMs: Long = createdAtMs
     private val retired = ArrayDeque<String>()
     /** Documents that have adopted this face, for the ledger. */
@@ -141,8 +142,25 @@ internal class PlaybackLease(createdAtMs: Long, private val boundMs: Long = BOUN
         id?.let { retireId(it) }
         id = lease
         renewedAtMs = nowMs
+        adoptedAtMs = nowMs
         adoptions++
         return Verdict.ADOPTED
+    }
+
+    /**
+     * A main-frame document callback (MainActivity / FacePlayerHost
+     * `onMainFrameDocument`). It fires up to THREE times for one navigation —
+     * page started, commit visible, page finished — and the new document's
+     * script can adopt the face between the first and the last. So a lease
+     * adopted within [DOCUMENT_SHIELD_MS] belongs to the document now loading
+     * and is NOT retired by that same navigation's later callbacks; anything
+     * older is the outgoing document's, and is retired at once. True when it
+     * retired a lease.
+     */
+    fun onDocumentChange(nowMs: Long): Boolean {
+        if (id == null || nowMs - adoptedAtMs < DOCUMENT_SHIELD_MS) return false
+        retire(nowMs)
+        return true
     }
 
     /** A `sharedVideoState` poll. Renews the live document's lease; true when there was one to renew. */
@@ -180,6 +198,8 @@ internal class PlaybackLease(createdAtMs: Long, private val boundMs: Long = BOUN
     companion object {
         /** A lease not renewed for this long is absent (the page polls every 500 ms while a session matters). */
         const val BOUND_MS = 10_000L
+        /** A lease adopted this recently belongs to the document still loading (onDocumentChange). */
+        const val DOCUMENT_SHIELD_MS = 30_000L
         /** Retired ids remembered; a document that old cannot still be speaking. */
         const val RETIRED_MAX = 16
     }

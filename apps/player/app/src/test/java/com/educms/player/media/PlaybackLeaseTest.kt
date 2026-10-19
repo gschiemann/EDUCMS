@@ -73,6 +73,24 @@ class PlaybackLeaseTest {
     }
 
     @Test
+    fun `the three document callbacks of ONE navigation never retire the lease its new document just adopted`() {
+        // onMainFrameDocument fires on page started, commit visible AND page finished; the new
+        // document's script can adopt in between. Only the outgoing document's lease is retired.
+        val lease = PlaybackLease(0L)
+        lease.accept("lease-doc-one", 0L)
+        val started = 120_000L
+        assertTrue("page started: the old document's lease goes at once", lease.onDocumentChange(started))
+        assertFalse("commit visible: nothing left to retire", lease.onDocumentChange(started + 400L))
+        assertEquals(PlaybackLease.Verdict.ADOPTED, lease.accept("lease-doc-two", started + 2_000L))
+        assertFalse("page finished: the NEW document's lease survives", lease.onDocumentChange(started + 9_000L))
+        assertTrue(lease.live(started + 9_000L))
+        assertEquals("lease-doc-two", lease.id)
+        // The next real reload, later, retires it like any outgoing document's.
+        assertTrue(lease.onDocumentChange(started + 2_000L + PlaybackLease.DOCUMENT_SHIELD_MS))
+        assertEquals(PlaybackLease.Verdict.RETIRED, lease.accept("lease-doc-two", started + 40_000L))
+    }
+
+    @Test
     fun `a new document adopts with its own lease, and the retired one can never act again`() {
         val lease = PlaybackLease(0L)
         lease.accept("lease-doc-one", 0L)
