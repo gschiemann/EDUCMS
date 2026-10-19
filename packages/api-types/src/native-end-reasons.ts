@@ -54,8 +54,11 @@ export const NATIVE_END_TRANSIENT: ReadonlySet<string> = new Set([
   'decoder-budget',
   'session-retired',
   'output-detached',
-  'output-unavailable',
   'hold-expired',
+  'selection-changed',
+  'credential-changed',
+  'display-mode-reverted',
+  'skipped',
   'page-stopped',
 ]);
 
@@ -65,10 +68,9 @@ export const NATIVE_END_NOT_READY: ReadonlySet<string> = new Set([
   'manifest-unreachable',
   'store-full',
   'store-unavailable',
-  'selection-changed',
   'credential-missing',
-  'credential-changed',
   'credential-identity',
+  'descriptor-invalid',
 ]);
 
 /** A real fault of a verified file: 24 h block keyed by file + face + build. */
@@ -83,7 +85,8 @@ export const NATIVE_END_FAULT: ReadonlySet<string> = new Set([
   'codec-stalled',
   'output-stalled',
   'native-prepare',
-  'descriptor-invalid',
+  'output-unavailable',
+  'media-digest',
   'blocked',
 ]);
 
@@ -93,6 +96,8 @@ export const NATIVE_END_REFUSED: ReadonlySet<string> = new Set([
   'protocol3-disabled',
   'native-first-off',
   'lease-retired',
+  'zone-overlap',
+  'protocol',
 ]);
 
 export type NativeEndGrade = 'transient' | 'not-ready' | 'fault' | 'refused';
@@ -104,7 +109,7 @@ export type NativeEndGrade = 'transient' | 'not-ready' | 'fault' | 'refused';
  */
 export const NATIVE_END_RAW_CODES: Readonly<Record<string, readonly string[]>> = {
   'manifest-unreachable': ['timeout', 'authorization-failed', 'api-root', 'api-origin', 'manifest-too-large', 'manifest-malformed'],
-  'not-in-store': ['media-redirect', 'media-incomplete', 'media-size', 'media-digest', 'source-failed'],
+  'not-in-store': ['media-redirect', 'media-incomplete', 'media-size', 'media-missing', 'source-failed'],
   'store-full': ['media-cache-quota'],
   'store-unavailable': ['media-cache-unavailable', 'media-cache-corrupt', 'media-publish'],
   'descriptor-invalid': ['media-origin'],
@@ -124,16 +129,11 @@ export const NATIVE_END_RAW_PREFIXES: ReadonlyArray<readonly [string, string]> =
  * too; none of these is a member of a closed set (the test asserts it).
  */
 export const NATIVE_END_LEGACY_GRADES: Readonly<Record<string, NativeEndGrade>> = {
-  // 1.1.41 protocol 3: a slot the APK skipped because its turn had passed.
-  skipped: 'transient',
-  // 1.1.43: the 60 Hz safety net reverted a mode switch nothing proved.
-  'display-mode-reverted': 'transient',
-  // 1.1.43: the verified copy was not on disk at prepare.
-  'media-missing': 'not-ready',
-  // 1.1.41 protocol 3 (page and API): another zone overlaps this VIDEO zone.
-  'zone-overlap': 'refused',
-  // An APK that does not answer the protocol the page asked for.
-  protocol: 'refused',
+  // Empty since 2026-10-19: stream B's table reconciled itself with 1.1.43's
+  // `NativeEndGrade` and now carries every code the fleet emits (`skipped`,
+  // `display-mode-reverted` → TRANSIENT; `zone-overlap`, `protocol` →
+  // REFUSED; `media-missing` folds onto `not-in-store`). Kept so a future
+  // APK-only code can be graded here without touching the closed sets.
 };
 
 export const NATIVE_END_SETTLE_MAX_IN_WINDOW = 5;

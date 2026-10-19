@@ -1,4 +1,4 @@
-import { gradeNativeEnd, NATIVE_END_LEGACY_GRADES, NATIVE_END_TAKEOVER_BLOCKS, NATIVE_END_TRANSIENT } from "./nativeEndReasons";
+import { gradeNativeEnd, NATIVE_END_LEGACY_GRADES, NATIVE_END_TRANSIENT } from "./nativeEndReasons";
 
 /** Optional, explicitly scoped renderer. Identity goes to native; URLs and tokens never do. */
 export interface NativeSharedVideoDescriptor {
@@ -688,9 +688,6 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
  */
 export type NativeVideoEndGrade = "transient" | "not-ready" | "box" | "fault";
 export function nativeVideoEndGrade(reason: string | undefined | null): NativeVideoEndGrade {
-  // A pre-store APK's digest mismatch repeats on every retry (no quarantine):
-  // on this protocol 2/3 takeover path it still blocks (NATIVE_END_TAKEOVER_BLOCKS).
-  if (reason && NATIVE_END_TAKEOVER_BLOCKS.has(reason)) return "fault";
   const grade = gradeNativeEnd(reason);
   return grade === "refused" ? "box" : grade;
 }

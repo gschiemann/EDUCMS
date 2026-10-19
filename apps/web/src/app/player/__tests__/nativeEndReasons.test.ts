@@ -129,14 +129,22 @@ if (!ktSource) {
 
 describe('phase 0: the latent defect — never a 24 h block for the network, storage or credential', () => {
   const offlineBoot = ['authorization-failed', 'manifest-http-503', 'manifest-http-401', 'timeout', 'api-root', 'media-incomplete',
-    'source-failed', 'media-http-500', 'media-cache-quota', 'media-cache-corrupt', 'credential-changed', 'credential-missing', 'media-missing'];
+    'source-failed', 'media-http-500', 'media-cache-quota', 'media-cache-corrupt', 'credential-missing', 'media-missing',
+    'media-origin', 'descriptor-version'];
   it.each(offlineBoot)('%s is NOT-READY: wait on native-first, retry on the takeover path, never block', (code) => {
     expect(gradeNativeEnd(code)).toBe('not-ready');
     expect(nativeFirstEndNext({ reason: code, settled: false })).toBe('wait');
     expect(nativeVideoNext(2, code, 0)).toBe('retry');
   });
+  it('a token renewed mid-prepare / a selection that moved on is TRANSIENT (as 1.1.43 grades it): native again, never a block', () => {
+    for (const code of ['credential-changed', 'selection-changed']) {
+      expect(gradeNativeEnd(code)).toBe('transient');
+      expect(nativeFirstEndNext({ reason: code, settled: false })).toBe('native');
+      expect(nativeVideoNext(2, code, 0)).toBe('retry');
+    }
+  });
   it('a real decoder fault of a verified file still blocks', () => {
-    for (const code of ['codec-failed', 'hardware-codec-unavailable', 'codec-stalled', 'output-stalled', 'codec-not-prepared']) {
+    for (const code of ['codec-failed', 'hardware-codec-unavailable', 'codec-stalled', 'output-stalled', 'codec-not-prepared', 'output-unavailable']) {
       expect(gradeNativeEnd(code)).toBe('fault');
       expect(nativeFirstEndNext({ reason: code, settled: false })).toBe('block');
       expect(nativeVideoNext(2, code, 0)).toBe('block');
@@ -155,19 +163,18 @@ describe('phase 0: the latent defect — never a 24 h block for the network, sto
       expect(nativeVideoNext(2, code, 0)).toBe('stay');
     }
   });
-  it('the takeover path keeps its no-flip rule; legacy transient codes stay transient', () => {
+  it('the takeover path keeps its no-flip rule; the 1.1.43 codes grade as 1.1.43 meant them', () => {
     expect(nativeVideoNext(2, 'emergency-held', 0)).toBe('retry');
     expect(nativeVideoNext(2, 'emergency-held', 0, true)).toBe('stay');
-    for (const legacy of ['skipped', 'display-mode-reverted']) {
-      expect(NATIVE_VIDEO_TRANSIENT_REASONS.has(legacy)).toBe(true);
-      expect(nativeVideoEndGrade(legacy)).toBe('transient');
+    for (const code of ['skipped', 'display-mode-reverted']) {
+      expect(NATIVE_VIDEO_TRANSIENT_REASONS.has(code)).toBe(true);
+      expect(nativeVideoEndGrade(code)).toBe('transient');
     }
     for (const c of NATIVE_END_TRANSIENT) expect(NATIVE_VIDEO_TRANSIENT_REASONS.has(c)).toBe(true);
   });
-  it('a pre-store APK digest mismatch still blocks on the takeover path (no quarantine → re-download loop), never on native-first', () => {
-    expect(gradeNativeEnd('media-digest')).toBe('not-ready');
-    expect(nativeFirstEndNext({ reason: 'media-digest', settled: false })).toBe('wait');
-    expect(nativeVideoEndGrade('media-digest')).toBe('fault');
+  it('a full download whose digest is not the manifest\'s is a FAULT everywhere (retrying downloads the same bytes)', () => {
+    expect(gradeNativeEnd('media-digest')).toBe('fault');
+    expect(nativeFirstEndNext({ reason: 'media-digest', settled: false })).toBe('block');
     expect(nativeVideoNext(2, 'media-digest', 0)).toBe('block');
   });
 });
@@ -200,7 +207,8 @@ describe('native-first: what an end means next (replaces the wasOnGlass rule the
   });
   it('normalize folds as the APK does and never lets a non-member out', () => {
     expect(normalizeNativeEndReason('manifest-http-503')).toBe('manifest-unreachable');
-    expect(normalizeNativeEndReason('media-digest')).toBe('not-in-store');
+    expect(normalizeNativeEndReason('media-missing')).toBe('not-in-store');
+    expect(normalizeNativeEndReason('media-digest')).toBe('media-digest');
     expect(normalizeNativeEndReason('media-origin')).toBe('descriptor-invalid');
     expect(normalizeNativeEndReason('BAD CODE')).toBe('native-prepare');
     expect(normalizeNativeEndReason('nope', 'activity-paused')).toBe('activity-paused');

@@ -40,8 +40,11 @@ export const NATIVE_END_TRANSIENT: ReadonlySet<string> = new Set([
   'decoder-budget',
   'session-retired',
   'output-detached',
-  'output-unavailable',
   'hold-expired',
+  'selection-changed',
+  'credential-changed',
+  'display-mode-reverted',
+  'skipped',
   'page-stopped',
 ]);
 
@@ -50,10 +53,9 @@ export const NATIVE_END_NOT_READY: ReadonlySet<string> = new Set([
   'manifest-unreachable',
   'store-full',
   'store-unavailable',
-  'selection-changed',
   'credential-missing',
-  'credential-changed',
   'credential-identity',
+  'descriptor-invalid',
 ]);
 
 export const NATIVE_END_FAULT: ReadonlySet<string> = new Set([
@@ -67,7 +69,8 @@ export const NATIVE_END_FAULT: ReadonlySet<string> = new Set([
   'codec-stalled',
   'output-stalled',
   'native-prepare',
-  'descriptor-invalid',
+  'output-unavailable',
+  'media-digest',
   'blocked',
 ]);
 
@@ -76,13 +79,15 @@ export const NATIVE_END_REFUSED: ReadonlySet<string> = new Set([
   'protocol3-disabled',
   'native-first-off',
   'lease-retired',
+  'zone-overlap',
+  'protocol',
 ]);
 
 export type NativeEndGrade = 'transient' | 'not-ready' | 'fault' | 'refused';
 
 export const NATIVE_END_RAW_CODES: Readonly<Record<string, readonly string[]>> = {
   'manifest-unreachable': ['timeout', 'authorization-failed', 'api-root', 'api-origin', 'manifest-too-large', 'manifest-malformed'],
-  'not-in-store': ['media-redirect', 'media-incomplete', 'media-size', 'media-digest', 'source-failed'],
+  'not-in-store': ['media-redirect', 'media-incomplete', 'media-size', 'media-missing', 'source-failed'],
   'store-full': ['media-cache-quota'],
   'store-unavailable': ['media-cache-unavailable', 'media-cache-corrupt', 'media-publish'],
   'descriptor-invalid': ['media-origin'],
@@ -96,11 +101,7 @@ export const NATIVE_END_RAW_PREFIXES: ReadonlyArray<readonly [string, string]> =
 
 /** Codes shipped APKs (1.1.29 → 1.1.43) emit outside the closed table, graded as they meant them. */
 export const NATIVE_END_LEGACY_GRADES: Readonly<Record<string, NativeEndGrade>> = {
-  skipped: 'transient',
-  'display-mode-reverted': 'transient',
-  'media-missing': 'not-ready',
-  'zone-overlap': 'refused',
-  protocol: 'refused',
+  // Empty: stream B's table now carries every code the fleet emits (see the shared table).
 };
 
 export const NATIVE_END_SETTLE_MAX_IN_WINDOW = 5;
@@ -140,16 +141,6 @@ export function gradeNativeEnd(reason: string | null | undefined): NativeEndGrad
 
 // ── Page-only: the settle rule and what a native-first face does next ────
 
-/**
- * PAGE ONLY, TAKEOVER PATH ONLY (v2/v3 sessions of APKs before the store):
- * raw codes that still block the file there although the closed table folds
- * them onto NOT_READY. `media-digest` is a download whose bytes did not match
- * the manifest's digest — the closed table is right that it is no verdict on
- * the DECODER (the store re-fetches under its 6 h checksum quarantine), but a
- * pre-store APK has no quarantine: every 30 s retry is a whole-file
- * re-download of bytes that will mismatch again. A v4 APK never emits it raw.
- */
-export const NATIVE_END_TAKEOVER_BLOCKS: ReadonlySet<string> = new Set(['media-digest']);
 
 /**
  * The settle rule of §3.4, the page's twin of the APK's `TransientEndTracker`:
