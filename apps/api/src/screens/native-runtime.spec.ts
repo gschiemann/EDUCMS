@@ -1,7 +1,10 @@
 import {
+  nativeGlassPlaying,
   nativePowerStateChanged,
   parseNativeRuntime,
   pendingNativePowerOn,
+  NATIVE_GLASS_FRAME_FRESH_MS,
+  NATIVE_GLASS_REPORT_FRESH_MS,
   NATIVE_POWER_ON_TTL_MS,
 } from './native-runtime';
 
@@ -175,5 +178,49 @@ describe('native power evidence and command freshness', () => {
     ]) {
       expect(nativePowerStateChanged(r, { ...r, sleep: next as typeof r.sleep })).toBe(true);
     }
+  });
+});
+
+describe('native-first §4.4 — nativePresenting on the status heartbeat (telemetry only)', () => {
+  const on = { ...runtime, interactive: true, foreground: true, standbySinceMs: null };
+  const presenting = { sha8: 'abcdef01', uniqueFrames: 4200, ageMs: 40 };
+  const NOW = Date.parse('2026-10-19T12:00:00.000Z');
+  const at = (msAgo: number) => new Date(NOW - msAgo);
+
+  it('accepts the block additively; a malformed one drops the report (never a device-invented claim)', () => {
+    expect(parseNativeRuntime(JSON.stringify({ ...on, nativePresenting: presenting }))).toEqual({ ...on, nativePresenting: presenting });
+    expect(parseNativeRuntime(JSON.stringify(on))).toEqual(on);
+    for (const bad of [
+      { ...presenting, sha8: 'https://x' },
+      { ...presenting, sha8: 'ABCDEF01' },
+      { ...presenting, uniqueFrames: -1 },
+      { ...presenting, ageMs: 1.5 },
+      { sha8: 'abcdef01' },
+    ]) {
+      expect(parseNativeRuntime(JSON.stringify({ ...on, nativePresenting: bad }))).toBeNull();
+    }
+    // Fits the header budget with every other block present.
+    const full = JSON.stringify({ ...on, nativePresenting: presenting, proc: { pid: 2147483647, at: NOW, boot: 2147483647 } });
+    expect(full.length).toBeLessThan(400);
+  });
+
+  it('never forces a row write: frames advancing every beat are not a power-state change', () => {
+    const a = parseNativeRuntime(JSON.stringify({ ...on, nativePresenting: presenting }))!;
+    const b = parseNativeRuntime(JSON.stringify({ ...on, nativePresenting: { ...presenting, uniqueFrames: 9999, ageMs: 10 } }))!;
+    expect(nativePowerStateChanged(a, b)).toBe(false);
+  });
+
+  it('grades "page down, glass playing" only on a fresh report with a recent frame on a lit panel', () => {
+    const report = { ...on, nativePresenting: presenting };
+    expect(nativeGlassPlaying(report, at(30_000), NOW)).toEqual(presenting);
+    expect(nativeGlassPlaying(report, at(NATIVE_GLASS_REPORT_FRESH_MS + 1), NOW)).toBeNull();
+    expect(nativeGlassPlaying(report, null, NOW)).toBeNull();
+    expect(nativeGlassPlaying({ ...report, nativePresenting: { ...presenting, ageMs: NATIVE_GLASS_FRAME_FRESH_MS + 1 } }, at(1), NOW)).toBeNull();
+    expect(nativeGlassPlaying({ ...report, nativePresenting: { ...presenting, uniqueFrames: 0 } }, at(1), NOW)).toBeNull();
+    expect(nativeGlassPlaying({ ...report, interactive: false }, at(1), NOW)).toBeNull();
+    expect(nativeGlassPlaying(on, at(1), NOW)).toBeNull();
+    expect(nativeGlassPlaying('garbage', at(1), NOW)).toBeNull();
+    // A report from the future (device clock) never counts.
+    expect(nativeGlassPlaying(report, new Date(NOW + 5_000), NOW)).toBeNull();
   });
 });

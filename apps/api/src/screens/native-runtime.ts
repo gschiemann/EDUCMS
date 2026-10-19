@@ -93,6 +93,23 @@ const wakeSchema = z.object({
   n: z.number().int().min(0).max(9),
   out: z.enum(NATIVE_WAKE_OUTCOMES),
 });
+/**
+ * NATIVE-FIRST (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §4.4, phase 1):
+ * proof WITHOUT a page. The app's native session presents and survives a page
+ * reload or a dead WebView, so the status heartbeat carries what the app's own
+ * render callback saw on this face: the clip (8-hex digest prefix — never a
+ * URL), its unique frames, and how old the newest one was when the heartbeat
+ * left. TELEMETRY ONLY: stored inside `nativeRuntimeReport` (already a
+ * telemetry-only column, `SCREEN_TELEMETRY_ONLY_FIELDS`), never a manifest
+ * input and never a forced write (`nativePowerStateChanged` ignores it). It
+ * adds ≤ 75 characters to the 1,024-character header budget below.
+ */
+const nativePresentingSchema = z.object({
+  sha8: z.string().regex(/^[a-f0-9]{8}$/),
+  uniqueFrames: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  ageMs: z.number().int().nonnegative().max(86_400_000),
+});
+
 /** THIS process: id, start (wall ms), the box's boot count. A new pid is a restart; a new boot count a reboot. */
 const procSchema = z.object({
   pid: z.number().int().nonnegative().max(2_147_483_647),
@@ -124,6 +141,9 @@ const runtimeSchema = z.object({
   // Additive (2026-10-11). Optional so every earlier report parses as before.
   wake: wakeSchema.optional(),
   proc: procSchema.optional(),
+  // Additive (2026-10-19, native-first §4.4). Optional; a malformed block
+  // drops the whole report like any other malformed field.
+  nativePresenting: nativePresentingSchema.optional(),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;
@@ -215,4 +235,32 @@ export function nativeReportsAsleep(
   if (!(age >= 0 && age <= NATIVE_ASLEEP_FRESH_MS)) return false;
   const parsed = runtimeSchema.safeParse(report);
   return parsed.success && parsed.data.interactive === false;
+}
+
+/** How fresh the native heartbeat must be, and how recent its newest frame, to say "glass playing". */
+export const NATIVE_GLASS_REPORT_FRESH_MS = 2 * 60_000;
+export const NATIVE_GLASS_FRAME_FRESH_MS = 10_000;
+
+/**
+ * "PAGE DOWN, GLASS PLAYING" (native-first §4.4, rule 10 wording): the page
+ * has stopped reporting, but the app's own render callback saw a fresh frame
+ * on this face when its last heartbeat (≤ 2 min old) left. Evidence of the
+ * native engine, never of the page — the page may still need its recovery
+ * (a reload no longer touches a native-first session), and the copy must say
+ * exactly that rather than "frozen". Null when the report does not prove it.
+ */
+export function nativeGlassPlaying(
+  report: unknown,
+  reportAt: Date | null | undefined,
+  nowMs = Date.now(),
+): { sha8: string; uniqueFrames: number; ageMs: number } | null {
+  if (!reportAt) return null;
+  const age = nowMs - reportAt.getTime();
+  if (!(age >= 0 && age <= NATIVE_GLASS_REPORT_FRESH_MS)) return null;
+  const parsed = runtimeSchema.safeParse(report);
+  const p = parsed.success ? parsed.data.nativePresenting : undefined;
+  if (!p || p.uniqueFrames <= 0 || p.ageMs > NATIVE_GLASS_FRAME_FRESH_MS) return null;
+  // A panel the same report calls asleep is not "playing" whatever its decoder says.
+  if (parsed.success && parsed.data.interactive === false) return null;
+  return { sha8: p.sha8, uniqueFrames: p.uniqueFrames, ageMs: p.ageMs };
 }
