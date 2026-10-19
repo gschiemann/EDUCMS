@@ -86,6 +86,24 @@ class ContentStoreFacadeTest {
     }
 
     @Test
+    fun `adoption waits for the emergency set and an adopted file is never downloaded`() {
+        val h = Harness()
+        val clip = Blob("clip.mp4", Kit.bytes(256 * 1024, 213))
+        val alert = Blob("alert.png", Kit.bytes(16 * 1024, 214), "image/png")
+        h.manifest(items = listOf(clip), nativeBlob = clip)
+        h.emergencySet(blobs = listOf(alert))
+        h.server.put(clip)
+        val legacy = File(File(File(h.dir, "native-video-v2"), Kit.TENANT_A), "${clip.sha}.mp4").also { it.parentFile!!.mkdirs(); it.writeBytes(clip.bytes) }
+        // The alert media lands while the legacy copy is still where it was: emergency first, adoption after.
+        h.server.put(alert).onBody = { assertTrue("emergency set before adoption", legacy.exists()) }
+        h.pump()
+        assertTrue(h.store.stateBlock().getJSONObject("emergency").getBoolean("complete"))
+        assertFalse(legacy.exists())
+        assertNotNull(h.store.lookup(clip.sha))
+        assertTrue(h.server.storageGetsFor(clip).isEmpty())
+    }
+
+    @Test
     fun `mode stays adopting until the current content is verified`() {
         val h = Harness()
         val clip = Blob("clip.mp4", Kit.bytes(256 * 1024, 205))

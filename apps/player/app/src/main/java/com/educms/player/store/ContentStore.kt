@@ -277,14 +277,21 @@ internal class ContentStore(
             return
         }
         computeAccounting()
-        adopt()
         rehashSuspects()
         commitEmergency()
         var steps = 0
         while (steps++ < 10_000) {
             if (preempt || synchronized(lock) { manifestRequested || emergencyRequested }) refresh(waitForEmergency = preempt)
+            if (!synchronized(lock) { participating() }) break
             rehashSuspects()
-            val t = nextTarget() ?: break
+            val t = nextTarget()
+            // Adoption (§5.7) runs after the emergency set is on disk and before any content download,
+            // so a file already on disk is never fetched again.
+            if ((t == null || !t.emergency) && synchronized(lock) { boundTenants().any { it !in adoptedTenants } }) {
+                adopt()
+                continue
+            }
+            if (t == null) break
             if (!admit(t)) continue
             download(t)
             commitEmergency()
@@ -698,8 +705,11 @@ internal class ContentStore(
     private fun adopt() {
         val tenants = synchronized(lock) { boundTenants().filter { it !in adoptedTenants } }
         for (tenant in tenants) {
-            for (ns in LEGACY_NAMESPACES) adoptDir(tenant, File(File(filesDir, ns), tenant))
-            adoptUsb(tenant)
+            var complete = true
+            for (ns in LEGACY_NAMESPACES) complete = adoptDir(tenant, File(File(filesDir, ns), tenant)) && complete
+            complete = adoptUsb(tenant) && complete
+            // Interrupted by an emergency set: the alert goes first, adoption resumes on the next turn.
+            if (!complete) return
             synchronized(lock) {
                 adoptedTenants += tenant
                 generation++
@@ -707,13 +717,26 @@ internal class ContentStore(
         }
     }
 
-    /** `native-video-v2/<tenant>/<sha>.mp4`, `shared-video-v1/<tenant>/<sha>.mp4`: verify once, rename (same filesystem, zero copy). */
-    private fun adoptDir(tenant: String, dir: File) {
-        val files = dir.listFiles()?.filter { it.isFile && LEGACY_NAME.matches(it.name) } ?: return
+    private sealed class Hashed {
+        class Done(val sha: String) : Hashed()
+        object Preempted : Hashed()
+        object Unreadable : Hashed()
+    }
+
+    /**
+     * `native-video-v2/<tenant>/<sha>.mp4`, `shared-video-v1/<tenant>/<sha>.mp4`: verify once,
+     * rename (same filesystem, zero copy). False when interrupted (retried on the next turn).
+     */
+    private fun adoptDir(tenant: String, dir: File): Boolean {
+        val files = dir.listFiles()?.filter { it.isFile && LEGACY_NAME.matches(it.name) } ?: return true
         for (f in files) {
             val sha = f.name.substring(0, 64)
             if (!claimForAdoption(tenant, sha, f)) continue
-            val hash = guardedHash(sha, f) ?: continue
+            val hash = when (val r = guardedHash(sha, f)) {
+                Hashed.Preempted -> return false
+                Hashed.Unreadable -> { reject(f); continue }
+                is Hashed.Done -> r.sha
+            }
             if (hash != sha) {
                 reject(f)
                 continue
@@ -728,6 +751,7 @@ internal class ContentStore(
                 generation++
             }
         }
+        return true
     }
 
     /**
@@ -736,11 +760,13 @@ internal class ContentStore(
      * the USB interceptor keeps serving it; a copy (verified as stored) when a
      * link is impossible and the budget allows.
      */
-    private fun adoptUsb(tenant: String) {
+    private fun adoptUsb(tenant: String): Boolean {
         val root = File(filesDir, "usb-cache")
-        val assets = runCatching { JSONObject(File(root, "manifest.json").readText()).optJSONArray("assets") }.getOrNull() ?: return
+        val manifest = File(root, "manifest.json")
+        if (!manifest.isFile) return true
+        val assets = runCatching { JSONObject(manifest.readText()).optJSONArray("assets") }.getOrNull() ?: return true
         val named = synchronized(lock) { namedShas(tenant) }
-        val rootPath = runCatching { root.canonicalPath }.getOrNull() ?: return
+        val rootPath = runCatching { root.canonicalPath }.getOrNull() ?: return true
         for (i in 0 until minOf(assets.length(), 4096)) {
             val a = assets.optJSONObject(i) ?: continue
             val sha = StoreNames.shaOrNull(a.optString("sha256", "")) ?: continue
@@ -750,7 +776,11 @@ internal class ContentStore(
             val src = runCatching { File(root, rel).canonicalFile }.getOrNull() ?: continue
             if (!src.path.startsWith(rootPath + File.separator)) continue
             if (!claimForAdoption(tenant, sha, src)) continue
-            val hash = guardedHash(sha, src) ?: continue
+            val hash = when (val r = guardedHash(sha, src)) {
+                Hashed.Preempted -> return false
+                Hashed.Unreadable -> { reject(src); continue }
+                is Hashed.Done -> r.sha
+            }
             if (hash != sha) {
                 reject(src)
                 continue
@@ -763,6 +793,7 @@ internal class ContentStore(
                 generation++
             }
         }
+        return true
     }
 
     private fun claimForAdoption(tenant: String, sha: String, f: File): Boolean = synchronized(lock) {
@@ -778,13 +809,17 @@ internal class ContentStore(
 
     private fun memo(f: File) = "${f.path}|${f.length()}|${f.lastModified()}"
 
-    private fun guardedHash(id: String, f: File): String? {
+    private fun guardedHash(id: String, f: File): Hashed {
         synchronized(lock) { crash = crash.begin(id) }
         persistCrash()
-        val hash = try { hasher.sha256(f) { !preempt } } catch (e: Exception) { null }
-        synchronized(lock) { crash = crash.end(id, hash != null) }
+        val result = try {
+            hasher.sha256(f) { !preempt }?.let { Hashed.Done(it) } ?: Hashed.Preempted
+        } catch (e: Exception) {
+            Hashed.Unreadable
+        }
+        synchronized(lock) { crash = crash.end(id, result is Hashed.Done) }
         persistCrash()
-        return hash
+        return result
     }
 
     private fun copyVerified(tenant: String, sha: String, src: File, dest: File): Boolean {
