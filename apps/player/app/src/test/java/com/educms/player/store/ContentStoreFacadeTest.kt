@@ -64,6 +64,28 @@ class ContentStoreFacadeTest {
     }
 
     @Test
+    fun `enrolment is the per-face descriptor's nativeFirst - a top-level key enrols nothing`() {
+        fun manifest(top: Any?, descriptor: Any?) = JSONObject().apply {
+            if (top != null) put("nativeFirst", top)
+            if (descriptor != null) put("nativeVideo", JSONObject().put("nativeFirst", descriptor))
+        }
+        assertTrue(nativeFirstEnrolled(manifest(null, true)))
+        assertFalse("the old top-level key: no producer writes it", nativeFirstEnrolled(manifest(true, null)))
+        assertFalse("the kill switch or an exclusion wins", nativeFirstEnrolled(manifest(true, false)))
+        assertFalse("only a JSON boolean, as the session reads it", nativeFirstEnrolled(manifest(null, "true")))
+        assertFalse("absent ships dark", nativeFirstEnrolled(JSONObject()))
+        // End to end: a manifest enrolled only at the top level stays dark.
+        val h = Harness()
+        val clip = Blob("clip.mp4", Kit.bytes(64 * 1024, 209))
+        h.server.manifests[Kit.SCREEN_0] = Json.manifest(Kit.SCREEN_0, Kit.TENANT_A, listOf(clip), clip, enrolled = false, emergency = false)
+            .put("nativeFirst", true)
+        h.server.put(clip)
+        h.pump()
+        assertEquals("not-enrolled", h.store.stateBlock().getString("reason"))
+        assertTrue(h.server.storageGets().isEmpty())
+    }
+
+    @Test
     fun `adoption verifies each legacy copy once and renames it in - mode goes adopting then active`() {
         val h = Harness()
         val clip = Blob("clip.mp4", Kit.bytes(256 * 1024, 202))

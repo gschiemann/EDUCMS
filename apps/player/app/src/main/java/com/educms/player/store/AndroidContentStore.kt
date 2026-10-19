@@ -84,7 +84,7 @@ internal object AndroidContentStore {
             apiHostAllowed = { HostAllowlist.isApiHost(it) },
             storageAllowed = { SharedVideoSourcePolicy.allowed(it) },
             classAllows = classAllows,
-            enrolledBy = enrolledBy ?: { it.optBoolean("nativeFirst", false) },
+            enrolledBy = enrolledBy ?: ::nativeFirstEnrolled,
             log = { PlayerLogger.i(TAG, it) },
         )
     }

@@ -1,5 +1,6 @@
 package com.educms.player.store
 
+import com.educms.player.media.FaceVideoDescriptor
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
@@ -49,12 +50,26 @@ internal class StoreEnv(
     val classAllows: () -> Boolean = { true },
     /**
      * Whether a face's authenticated (non-emergency) manifest enrols it in native-first
-     * (`PLAYER_NATIVE_FIRST`, stream C). Ships DARK: absent = not enrolled.
+     * ([nativeFirstEnrolled]: `nativeVideo.nativeFirst`). Ships DARK: absent = not enrolled.
      */
-    val enrolledBy: (JSONObject) -> Boolean = { it.optBoolean("nativeFirst", false) },
+    val enrolledBy: (JSONObject) -> Boolean = ::nativeFirstEnrolled,
     val verifyBytesPerSec: Long = StorePolicy.VERIFY_BYTES_PER_SEC,
     val log: (String) -> Unit = {},
 )
+
+/**
+ * Native-first enrolment for ONE face, read exactly where the session reads it
+ * (stream B, [FaceVideoDescriptor.nativeFirstOf]): `nativeFirst` on the face's own
+ * per-face `nativeVideo` descriptor, which the API resolves from `PLAYER_NATIVE_FIRST`
+ * (stream C). Only a JSON `true` enrols. Absent (no key, or no descriptor at all: the
+ * face is not showing a solo native video), `false` (the kill switch or an exclusion)
+ * or any other value does not, so the store ships dark. A top-level manifest
+ * `nativeFirst` is NOT read; no producer writes one. Every class default is false
+ * today; when one turns on, the wiring passes an [StoreEnv.enrolledBy] resolved
+ * through `DeviceClassPolicy.nativeFirst` (the manifest value, else the class default).
+ */
+internal fun nativeFirstEnrolled(manifest: JSONObject): Boolean =
+    FaceVideoDescriptor.nativeFirstOf(manifest.optJSONObject("nativeVideo")) == true
 
 /**
  * Streamed SHA-256 of the bytes ON DISK, 64 KiB at a time, never a whole-file

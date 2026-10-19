@@ -229,11 +229,16 @@ internal object Json {
         }
         val j = JSONObject().put("version", "1.0").put("screenId", screen).put("tenantId", tenant).put("isEmergency", emergency)
             .put("playlists", JSONArray().put(JSONObject().put("id", "pl-1").put("items", arr)))
-        if (enrolled) j.put("nativeFirst", true)
+        // Enrolment rides the per-face descriptor (`nativeVideo.nativeFirst`, as the API writes it and the
+        // session reads it). A download-set test with no native clip still needs the key, so it gets a
+        // descriptor carrying only that key; the store reads nothing else from a descriptor without an asset.
+        val native = JSONObject()
         if (nativeBlob != null) {
-            j.put("nativeVideo", JSONObject().put("version", 2).put("screenId", screen).put("tenantId", tenant).put("faceIndex", 0)
-                .put("asset", JSONObject().put("id", "asset-n").put("sha256", nativeBlob.sha).put("size", nativeBlob.size).put("url", nativeBlob.url)))
+            native.put("version", 2).put("screenId", screen).put("tenantId", tenant).put("faceIndex", 0)
+                .put("asset", JSONObject().put("id", "asset-n").put("sha256", nativeBlob.sha).put("size", nativeBlob.size).put("url", nativeBlob.url))
         }
+        if (enrolled) native.put("nativeFirst", true)
+        if (native.length() > 0) j.put("nativeVideo", native)
         return j
     }
 
