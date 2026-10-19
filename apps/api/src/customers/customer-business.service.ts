@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AppRole, Prisma } from '@cms/database';
 import { isReservedTenantSlug } from '@cms/api-types';
+import { isValidEmail } from '../common/is-valid-email';
 import { PrismaService } from '../prisma/prisma.service';
 import { withDbRetry } from '../prisma/with-db-retry';
 import {
@@ -203,7 +204,7 @@ export class CustomerBusinessService {
   async emailStarterLink(id: string, raw: unknown, actor: Principal) {
     const org = await this.org(id);
     const to = text(object(raw).email, 254, true)!;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))
+    if (!isValidEmail(to))
       throw new BadRequestException('A valid email is required.');
     // Reuse the exact claimed-owner/consent gate and token lifecycle; never mint a second credential path.
     const link = await this.console.issueStarterLink(id, actorId(actor), actor);

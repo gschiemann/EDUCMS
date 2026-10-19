@@ -6139,7 +6139,8 @@
     "recordedCosts": "Costos mensuales registrados",
     "overdueReceivables": "Facturas vencidas",
     "subscriptionService": "Servicios de suscripción de VenueOS",
-    "invalidLogo": "Introduce una URL HTTPS del logotipo o deja el campo vacío."
+    "invalidLogo": "Introduce una URL HTTPS del logotipo o deja el campo vacío.",
+    "fieldBuilds": "Compilaciones de campo"
   },
   "fieldBuilds": {
     "title": "Versiones de prueba",

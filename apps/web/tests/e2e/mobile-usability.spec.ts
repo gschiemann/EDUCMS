@@ -64,6 +64,10 @@ async function setup(page: Page, opts: { failFirst?: boolean; delayBetaBrand?: b
       // The Screens page reads `schools.find(...)` off this (2026-10-11): `[]` crashes it.
       '/emergency/readiness/district': emptyDistrictReadiness(),
       '/super/tenants': [],
+      '/super/business': { revenue: { committedMonthlyCents: 0 }, receivables: { overdueCents: 0 },
+        profit: { monthlyCostCents: 0, estimatedMonthlyProfitCents: 0, marginPercent: null, coverage: 'partial' } },
+      '/super/customers': { rows: [], total: 0, page: 1, pageSize: 5, pages: 0 },
+      '/super/capacity': { enabled: true, thresholds: { warnPct: 70, criticalPct: 85 }, metrics: [], checklist: [], note: 'Synthetic test' },
       '/super/activation-funnel': { recentTenants: [], aggregate: { totalTenants: 0, excludedTenants: 0,
         stageCounts: { SIGNED_UP: 0, BOARD_CREATED: 0, SCREEN_PAIRED: 0, PUBLISHED: 0, RENDER_PROVEN: 0 },
         medianHoursToMilestone: { boardCreated: null, screenPaired: null, published: null, renderProven: null },
@@ -238,13 +242,15 @@ test('standalone owner pages retain an exit and correct tenant navigation', asyn
   const back = page.getByRole('link', { name: 'Back to dashboard', exact: true });
   await expect(back).toBeVisible();
   await expect(back).toHaveAttribute('href', `/${ALPHA}/dashboard`);
-  const nav = page.getByRole('navigation', { name: 'Primary' });
-  await expect(nav.getByRole('link', { name: 'Media', exact: true })).toHaveAttribute('href', `/${ALPHA}/assets`);
-  await expect(page.getByRole('heading', { name: 'Owner control panel', exact: true })).toBeVisible();
+  const businessNav = page.getByRole('navigation', { name: 'Business navigation' });
+  await expect(businessNav.getByRole('link', { name: 'Customers', exact: true })).toHaveAttribute('href', '/super/customers');
+  await expect(businessNav.getByRole('link', { name: 'Invoices', exact: true })).toHaveAttribute('href', '/super/invoices');
+  await expect(businessNav.getByRole('link', { name: 'Profit & costs', exact: true })).toHaveAttribute('href', '/super/profit');
+  await expect(page.getByRole('heading', { name: 'Your business, in one place.', exact: true })).toBeVisible();
   await page.screenshot({ animations: 'disabled', path: info.outputPath('owner-console-with-exit.png') });
   await back.click();
   await expect(page).toHaveURL(new RegExp(`/${ALPHA}/dashboard`));
-  await expect(nav).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 

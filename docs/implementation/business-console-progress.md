@@ -60,3 +60,11 @@ Remaining: production preflight and final complete API suite (bounded workers to
 - Final production Chromium and WebKit portal harness passed with zero page/route-boundary errors: actual soft navigation without reload, desktop/mobile/locales, customer tabs, denied-role request gating, owner email action, real signed-file download and one-page invoice print. Final profit production browser tests passed both engines at 375px.
 - Evidence: `/tmp/business-production-evidence`, `apps/web/test-results`, and preserved ignored research evidence. No live charges, production database writes, provider plan changes, main checkout edits or production deployment.
 - Optional Railway/Vercel usage requires scoped runtime credentials; the UI shows connection state and scope. Supabase billing costs are recorded manually; capacity remains measured. Stripe and private storage were verified using mocks/local tests; credential-based live integration remains a release configuration check.
+
+## Publish checkpoint — 2026-10-18
+
+- Incorporated current master (71dd041), retaining screen/device/ledger features and linking Field builds from the business workspace. All owner routes, including Field builds, render per request with enforced script nonces.
+- Resolved the three CodeQL findings using bounded linear email parsing and anchored single-character slug trimming. Targeted service/policy/security checks: 4 suites, 106 tests passed.
+- Updated the existing mobile owner regression to verify the unified business navigation and return to the correct tenant dashboard. Chromium and WebKit both pass.
+- Rebuilt with `pnpm preflight`: passed. CSP prerender guard: 56 static routes, none in the enforced set. Full production portal browser harness passes in Chromium and WebKit with zero page errors; desktop/mobile, Spanish/Chinese, consent/role gate, customer tabs, PDF download and invoice print exercised. Profit cost create/edit/archive/restore checks pass in both browsers at 375px.
+- Publication is pending the fresh remote CI run and production deployment verification. No live customer invitations, billing changes or costs were created for verification.

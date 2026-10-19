@@ -6139,7 +6139,8 @@
     "recordedCosts": "已记录的月度成本",
     "overdueReceivables": "逾期发票",
     "subscriptionService": "VenueOS 订阅服务",
-    "invalidLogo": "请输入 HTTPS 标志 URL，或留空。"
+    "invalidLogo": "请输入 HTTPS 标志 URL，或留空。",
+    "fieldBuilds": "现场构建"
   },
   "fieldBuilds": {
     "title": "现场测试版",

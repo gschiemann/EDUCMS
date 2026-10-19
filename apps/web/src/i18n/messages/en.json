@@ -6139,7 +6139,8 @@
     "recordedCosts": "Recorded monthly costs",
     "overdueReceivables": "Overdue invoices",
     "subscriptionService": "VenueOS subscription services",
-    "invalidLogo": "Enter an HTTPS logo URL, or leave it blank."
+    "invalidLogo": "Enter an HTTPS logo URL, or leave it blank.",
+    "fieldBuilds": "Field builds"
   },
   "fieldBuilds": {
     "title": "Field builds",

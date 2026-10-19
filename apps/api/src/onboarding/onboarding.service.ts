@@ -14,6 +14,7 @@ import { isReservedTenantSlug, isVertical } from '@cms/api-types';
 import { cardBillingReady, newTrialEndsAt, TRIAL_SCREENS } from '../billing/trial-policy';
 import { assertSupportReach } from '../support-access/support-access.context';
 import { emailOwnershipProofRequired } from '../auth/setup-email-verification';
+import { isValidEmail } from '../common/is-valid-email';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -38,12 +39,9 @@ function slugify(input: string): string {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^-/, '')
+    .replace(/-$/, '')
     .slice(0, 60);
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function validatePassword(password: string): void {

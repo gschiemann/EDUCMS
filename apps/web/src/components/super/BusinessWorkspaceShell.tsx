@@ -124,6 +124,7 @@ export default function BusinessWorkspaceShell({
               ["/super/ai", "ai"],
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
+              ["/super/field-builds", "fieldBuilds"],
             ].map(([href, key]) => (
               <Link
                 key={key}
@@ -177,6 +178,7 @@ export default function BusinessWorkspaceShell({
               ["/super/ai", "ai"],
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
+              ["/super/field-builds", "fieldBuilds"],
             ].map(([href, key]) => (
               <Link
                 key={key}
