@@ -331,13 +331,18 @@ internal object FaceVideoBox {
             // emergency hold — once per process, then PROVEN by the safety net (verifyPreferredMode)
             // and the first native frame (updated). Another session already attached on this face
             // makes this boundary mid-session for IT, so nothing is asked then. The kill switch
-            // (`prefer60hz: false` on the descriptor) reverts here, at the next boundary.
-            if (s.protocol == 2) {
+            // (`prefer60hz: false` on the descriptor) reverts here, at the next boundary — but never
+            // under a hold either: a withdraw is a mode switch too, so the first boundary after it does it.
+            // Only the DEFAULT display's face asks: the safety net's frame proof is the UI thread's
+            // Choreographer, which follows the default display, and one request is proven at a time —
+            // a second panel (face 1 of a double-sided unit) would switch with no proof of its own.
+            if (s.protocol == 2 && host.face == DisplayEmergency.PRIMARY_FACE) {
                 val window = host.window()
                 val otherAttached = host.faceSessions.values.any { it !== s && it.alive && it.attached }
                 val mode = d.experiments.prefer60hz
+                val held = DisplayEmergency.isHeld(host.ctx)
                 if (mode == Prefer60Hz.OFF) {
-                    if (!otherAttached) PreferredDisplayMode.withdraw(host.face, window)?.let { result ->
+                    if (!otherAttached && !held) PreferredDisplayMode.withdraw(host.face, window)?.let { result ->
                         s.preferredModeResult = result
                         PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=off result=$result active=${s.activeModeAtAttach.ifEmpty { "unknown" }} sha=${s.sha256.take(8)}")
                     }
@@ -345,13 +350,14 @@ internal object FaceVideoBox {
                     s.preferredModeApplied = PreferredDisplayMode.applied(host.face); s.preferredModeResult = PreferredDisplayMode.RESULT_OTHER_SESSION
                     s.preferredModeWanted = true
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=${mode.wire} result=${s.preferredModeResult} modeId=${s.preferredModeApplied} sha=${s.sha256.take(8)}")
-                } else if (DisplayEmergency.isHeld(host.ctx)) {
+                } else if (held) {
                     s.preferredModeResult = PreferredDisplayMode.RESULT_EMERGENCY_HELD
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=prefer60hz mode=${mode.wire} result=${s.preferredModeResult} sha=${s.sha256.take(8)}")
                 } else {
                     val nowMs = System.currentTimeMillis()
-                    val blockedUntil = if (mode == Prefer60Hz.AUTO) Prefer60HzBlock.blockedUntil(host.ctx, nowMs) else 0L
-                    val (id, result) = PreferredDisplayMode.request(host.face, window, active, modes, mode, blockedUntil, nowMs)
+                    // The persisted 24 h block stands for every request: no manifest key walks past it.
+                    val blockedUntil = Prefer60HzBlock.blockedUntil(host.ctx, nowMs)
+                    val (id, result) = PreferredDisplayMode.request(host.face, window, active, modes, blockedUntil, nowMs)
                     s.preferredModeApplied = id; s.preferredModeResult = result
                     s.preferredModeWanted = result != PreferredDisplayMode.RESULT_ALREADY_60HZ && result != PreferredDisplayMode.RESULT_NO_60HZ_MODE
                     if (result == PreferredDisplayMode.RESULT_APPLIED) {

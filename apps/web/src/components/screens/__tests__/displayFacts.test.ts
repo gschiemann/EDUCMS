@@ -497,6 +497,23 @@ describe('the panel row from the report', () => {
     const lines = panel({ timing: timing({ supportedModes: undefined }), device: device({ supportedModes: ['1:3840x2160@30.00', '2:3840x2160@60.00'] }) });
     expect(lines).toEqual(['3840×2160 at 30 Hz']);
   });
+
+  it('1.1.43: the panel firmware’s own tables, verbatim, as the last muted line — and only on the default display’s face', () => {
+    // As SysDisplayFacts sends them: the Amlogic mode in force + `disp_cap` (`*` marks the current), already stripped.
+    const firmware = { sysDisplayMode: '2160p30hz', sysDisplayCaps: ['1080p60hz', '2160p30hz*', '2160p60hz'] };
+    const f = facts({ faceIndex: 0, timing: timing(), device: device(firmware) });
+    expect(rowLines(f, 'panel').at(-1)).toBe('Panel firmware lists: 2160p30hz now; 1080p60hz · 2160p30hz* · 2160p60hz');
+    expect(f!.rows.find((r) => r.id === 'panel')!.lines.at(-1)!.tone).toBe('muted');
+    // One of the two alone (a Rockchip box has only `fb0/modes`), and neither → no line at all.
+    expect(panel({ device: device({ sysDisplayMode: '2160p30hz' }) }).at(-1)).toBe('Panel firmware lists: 2160p30hz now');
+    expect(panel({ device: device({ sysDisplayCaps: ['U:1920x1080p-60', 'U:1280x720p-60'] }) }).at(-1)).toBe('Panel firmware lists: U:1920x1080p-60 · U:1280x720p-60');
+    expect(panel({ device: device() }).join(' ')).not.toContain('firmware');
+    // The tables are the DEFAULT display's (sysfs knows one HDMI output): the back face of a double-sided unit is
+    // another panel, so its row never borrows them — the same rule as the mode list above.
+    expect(rowLines(facts({ faceIndex: 1, timing: timing(), device: device(firmware) }), 'panel').join(' ')).not.toContain('firmware');
+    // A string the readers do not accept is dropped, never shown.
+    expect(panel({ device: device({ sysDisplayMode: '<b>2160p</b>', sysDisplayCaps: ['ok', 'not ok'] }) }).join(' ')).not.toContain('firmware');
+  });
 });
 
 // ── experiments ──────────────────────────────────────────────────────
@@ -606,11 +623,21 @@ describe('experiments: what is requested, and what each did', () => {
       'failed': { text: '60 Hz mode: requested, the request could not be made' },
       // `reverted` only ever follows a withdrawn flag.
       'reverted': { text: '60 Hz mode: no longer requested, Android’s own choice restored', requested: false },
-      // 1.1.43: the automatic request's own answers and the safety net's verdicts.
-      'blocked': { text: '60 Hz mode: automatic, paused for 24 h after an earlier switch was undone' },
-      'reverted-no-switch': { text: '60 Hz mode: asked Android for a 60 Hz mode, the panel did not switch within 10 s, undone (automatic requests paused for 24 h)' },
-      'reverted-no-frames': { text: '60 Hz mode: asked Android for a 60 Hz mode, no frames followed within 10 s, undone (automatic requests paused for 24 h)' },
-      'emergency-held': { text: '60 Hz mode: not asked: an emergency alert was held at that session boundary' },
+      // 1.1.43, as FaceVideoBox reports them: the boundary wanted the mode (`requested` true) but a standing 24 h
+      // block refused it, nothing asked …
+      'blocked': { text: '60 Hz mode: automatic, paused for 24 h after an earlier switch was undone', timing: { preferredModeApplied: 0 } },
+      // … the safety net undid a switch it could not prove (applied back to 0, the panel back on its own mode) …
+      'reverted-no-switch': {
+        text: '60 Hz mode: asked Android for a 60 Hz mode, the panel did not switch within 10 s, undone (automatic requests paused for 24 h)',
+        timing: { preferredModeApplied: 0, displayMode: '1:3840x2160@30.00' },
+      },
+      'reverted-no-frames': {
+        text: '60 Hz mode: asked Android for a 60 Hz mode, no frames followed within 10 s, undone (automatic requests paused for 24 h)',
+        timing: { preferredModeApplied: 0, displayMode: '1:3840x2160@30.00' },
+      },
+      // … and an emergency hold stood at the boundary: the hold is checked BEFORE the panel's modes, so the session
+      // never marks the request wanted (`requested.prefer60hz` false) — the line is shown anyway.
+      'emergency-held': { text: '60 Hz mode: not asked: an emergency alert was held at that session boundary', requested: false },
     };
 
     it('the code list is the APK’s (PreferredDisplayMode.RESULT_*)', () => {
@@ -937,6 +964,10 @@ describe('the catalogue and the code agree', () => {
       { timing: timing({ displayMode: undefined, supportedModes: undefined }) },
       { timing: timing({ supportedModes: Array.from({ length: 16 }, (_, i) => `${i + 1}:${i < 8 ? '3840x2160' : '1920x1080'}@${30 + i}.00`) }) },
       { device: device() },
+      // 1.1.43: the panel firmware's own tables — both, the mode alone, the capability table alone.
+      { device: device({ sysDisplayMode: '2160p30hz', sysDisplayCaps: ['1080p60hz', '2160p30hz*'] }) },
+      { device: device({ sysDisplayMode: '2160p30hz' }) },
+      { device: device({ sysDisplayCaps: ['U:1920x1080p-60'] }) },
       // Session states, keep-screen-on both ways, no stamp.
       { state: 'preparing', timing: timing() },
       { state: 'ready', timing: timing() },
@@ -956,6 +987,11 @@ describe('the catalogue and the code agree', () => {
       { faceIndex: 0, timing: timing({ history: { overflow: 0, entries: [
         { at: NOW - 3_600_000, face: 0, prefer60hz: 'failed' },
         { at: NOW - 3_600_000, face: 0, prefer60hz: 'reverted' },
+        // 1.1.43: the automatic request's own answers and the safety net's verdicts, per finished session.
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'blocked' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'reverted-no-switch' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'reverted-no-frames' },
+        { at: NOW - 3_600_000, face: 0, prefer60hz: 'emergency-held' },
       ] } }) },
       // An older player.
       { timing: nineCounters() },

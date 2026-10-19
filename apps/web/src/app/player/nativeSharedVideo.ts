@@ -1,4 +1,4 @@
-import { gradeNativeEnd, NATIVE_END_LEGACY_GRADES, NATIVE_END_TRANSIENT } from "./nativeEndReasons";
+import { gradeNativeEnd } from "./nativeEndReasons";
 
 /** Optional, explicitly scoped renderer. Identity goes to native; URLs and tokens never do. */
 export interface NativeSharedVideoDescriptor {
@@ -669,15 +669,53 @@ export function pickNativeVideo(input: {
 }
 
 /**
- * End reasons that say nothing about THIS file on THIS box — the page tries
- * native again later. Derived from the ONE closed table (nativeEndReasons.ts,
- * phase 0 / D7, generated from the APK's NativeEndReasons.kt) plus the
- * transient codes older APKs emit outside it. Never edit a list here: edit the
- * table, which a test holds identical to the Kotlin.
+ * THE APK'S v2 / v3 TABLE, mirrored: 1.1.43's `NativeEndGrade`
+ * (FaceVideoPolicy.kt). A drift test reads the Kotlin and holds these five
+ * lists identical to it. Since native-first, the GRADE itself comes from the
+ * one closed table (`nativeEndReasons.ts`, generated from stream B's
+ * NativeEndReasons.kt), which B reconciled with this one: every code both
+ * know grades the same (`nativeEndReasons.test.ts` proves it here), and the
+ * closed table also knows the codes this one misses — `host-replaced` on a v2
+ * session is TRANSIENT, not a 24 h block.
  */
 export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
-  ...Array.from(NATIVE_END_TRANSIENT),
-  ...Object.keys(NATIVE_END_LEGACY_GRADES).filter((k) => NATIVE_END_LEGACY_GRADES[k] === "transient"),
+  "emergency-held",
+  "activity-paused",
+  "host-detached",
+  "document-retired",
+  "content-changed",
+  "peer-stopped",
+  "page-stopped",
+  "engine-switched",
+  "page-lease-expired",
+  // The device credential rotated while native was preparing (the page
+  // renews its token on reload / every few minutes). Native re-reads it on
+  // the next attempt — never a verdict on the file (field 2026-10-12: M43 +
+  // L55VEC were blocked for 24 h by exactly this, seconds after a reload).
+  "credential-changed",
+  // 1.1.43 (failure grading, phase 0): the rest of the APK's TRANSIENT set.
+  "session-retired",
+  "selection-changed",
+  "superseded",
+  "skipped",
+  "hold-expired",
+  "decoder-budget",
+  "decoder-unavailable",
+  "output-detached",
+  // The safety net reverted a 60 Hz mode switch nothing proved; native is tried again at the panel's own mode.
+  "display-mode-reverted",
+]);
+export const NATIVE_VIDEO_NOT_READY_REASONS: ReadonlySet<string> = new Set([
+  "authorization-failed", "credential-missing", "credential-identity", "api-root", "api-origin", "manifest-too-large",
+  "manifest-unreachable", "timeout", "source-failed", "media-redirect", "media-incomplete", "media-size", "media-publish",
+  "media-cache-unavailable", "media-cache-corrupt", "media-cache-quota", "media-missing", "media-origin", "not-in-store",
+  "store-full",
+]);
+export const NATIVE_VIDEO_NOT_READY_PREFIXES: readonly string[] = ["manifest-http-", "media-http-", "descriptor-"];
+export const NATIVE_VIDEO_BOX_REASONS: ReadonlySet<string> = new Set(["composition-unavailable", "protocol3-disabled", "zone-overlap", "protocol"]);
+export const NATIVE_VIDEO_FAULT_REASONS: ReadonlySet<string> = new Set([
+  "codec-failed", "codec-stalled", "codec-input", "codec-not-prepared", "hardware-codec-unavailable", "output-stalled",
+  "output-unavailable", "media-digest", "avc-track", "coded-size", "container-rotation", "empty-lap", "native-prepare",
 ]);
 
 /**
@@ -686,9 +724,8 @@ export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
  * protocol 2/3 code has always used (`box` = the table's `refused`):
  *  • transient — the box, the page or the content moved on;
  *  • not-ready — the NETWORK, STORAGE, AUTHORIZATION or MANIFEST failed (an
- *    offline boot, a 5xx, a timeout, a short download, a full disk, a token
- *    that changed). NEVER a verdict on the file — before this, an offline
- *    boot blocked native for a day;
+ *    offline boot, a 5xx, a timeout, a short download, a full disk). NEVER a
+ *    verdict on the file — before this, an offline boot blocked native for a day;
  *  • box — a verdict about this box or this layout: web, no retry, no block;
  *  • fault — a real fault of a VERIFIED file on this decoder: the 24 h block.
  * A code in no set is a fault: fail closed on the unknown.

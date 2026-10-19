@@ -240,6 +240,28 @@ describe('native video engine — the three M43 experiments (1.1.41, plan §4E)'
     expect(NATIVE_VIDEO_EXPERIMENTS).toEqual(['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz']);
   });
 
+  it('1.1.43: a negative token sends `false` — the kill switch of the two pacing defaults — and never touches the three experiments', () => {
+    expect(nativeVideoExperimentsFor(front, env(`-vsync-snap:${front}`))).toEqual({ vsyncSnap: false });
+    expect(nativeVideoExperimentsFor(back, env(`-vsync-snap:${front}`))).toBeNull();
+    expect(nativeVideoExperimentsFor(single, env('-prefer-60hz:all'))).toEqual({ prefer60hz: false });
+    // The kill switch wins over a positive token for the same screen, whatever their order.
+    expect(nativeVideoExperimentsFor(front, env(`vsync-snap:all,-vsync-snap:${front}`))).toEqual({ vsyncSnap: false });
+    expect(nativeVideoExperimentsFor(back, env(`vsync-snap:all,-vsync-snap:${front}`))).toEqual({ vsyncSnap: true });
+    expect(nativeVideoExperimentsFor(front, env(`-prefer-60hz:all, prefer-60hz:${front}`))).toEqual({ prefer60hz: false });
+    // The three experiments are off by default: a negative token for one changes nothing and cannot cancel a positive one.
+    expect(nativeVideoExperimentsFor(front, env(`-webview-invisible:${front},-decoder-rotation:all`))).toBeNull();
+    expect(nativeVideoExperimentsFor(front, env(`-surface-frame-rate:all,surface-frame-rate:${front}`))).toEqual({ surfaceFrameRate: true });
+    // A malformed negative token disables nothing.
+    for (const v of ['-vsync-snap', '--vsync-snap:all', `-vsync-snap:${front}x`, '-:all', '- prefer-60hz', '-prefer60hz:all']) {
+      expect({ v, flags: nativeVideoExperimentsFor(front, env(v)) }).toEqual({ v, flags: null });
+    }
+    // Rides on the descriptor outside the revision, like every flag: flipping it never restarts a session on the glass.
+    const off = build({ ...fixture(), env: env() as any })!;
+    const killed = build({ ...fixture(), env: env(`-vsync-snap:${front},-prefer-60hz:${front}`) as any })!;
+    expect(killed.experiments).toEqual({ vsyncSnap: false, prefer60hz: false });
+    expect(killed.revision).toBe(off.revision);
+  });
+
   it('a back face gets its own flags by its own id, never its primary\'s', () => {
     const b = build({ ...fixture(back), env: env(`surface-frame-rate:${front}`) as any })!;
     expect(b).not.toHaveProperty('experiments');

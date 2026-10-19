@@ -56,7 +56,10 @@ fs.mkdirSync(output,{recursive:true});
   for(const collection of ['standard','brookfield']) {
    const record=manifest.find(r=>r.collection===collection && r.url.endsWith('04-home-plan.html')&&!r.url.includes('/portrait/'));
    const page=await browser.newPage({viewport:{width:1280,height:720}});
-   await page.goto(base+record.url);await page.waitForSelector('[data-native-image-carousel]');
+   // Time from the carousel's MOUNT (its interval starts in the effect that renders this selector), not from
+   // the window `load` event: `load` also waits for the board's web fonts and images, and on a slow runner it
+   // landed more than 0.8 s after the mount, so the 7 s flip came before the 6.2 s check.
+   await page.goto(base+record.url,{waitUntil:'domcontentloaded'});await page.waitForSelector('[data-native-image-carousel]');
    const selector='[data-imgslot="home.plan"] [data-native-image-carousel]';
    assert.equal(await page.locator(selector).getAttribute('data-carousel-index'),'0');
    await page.waitForTimeout(6200);assert.equal(await page.locator(selector).getAttribute('data-carousel-index'),'0');

@@ -8,7 +8,8 @@ import org.junit.Test
  * The engine's switches (plan §4E): the three M43 experiments are OFF unless
  * the descriptor says exactly `true`; since 1.1.43 the vsync snap is ON and
  * the 60 Hz request AUTOMATIC unless the descriptor says `false` — the lead's
- * kill switches — and a `true` for the 60 Hz request FORCES it. Fault-latched.
+ * kill switches; a `true` for either changes nothing (a key can only remove a
+ * default). Fault-latched.
  */
 class NativeVideoExperimentsTest {
     @Test fun theThreeExperimentsAreOffUnlessTheDescriptorSaysExactlyTrueAndTheDefaultsStandWithoutADescriptor() {
@@ -62,12 +63,15 @@ class NativeVideoExperimentsTest {
         assertEquals("output-stalled", g.toJson().getJSONObject("disabled").getString("vsyncSnap"))
     }
 
-    @Test fun theSixtyHertzRequestIsAutomaticByDefaultFalseSwitchesItOffAndTrueForcesIt() {
+    @Test fun theSixtyHertzRequestIsAutomaticByDefaultOnlyFalseSwitchesItOffAndTrueChangesNothing() {
         assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(null).prefer60hz)
         assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject()).prefer60hz)
         assertEquals(Prefer60Hz.OFF, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", false)).prefer60hz)
-        assertEquals(Prefer60Hz.FORCE, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true)).prefer60hz)
-        // Garbage is AUTO, never OFF and never FORCE.
+        // The 1.1.42 positive token (`prefer-60hz:<…>`, sends `true`) is accepted and is the default: it can never
+        // force a request past the safety net's 24 h block (a manifest key only ever removes behaviour).
+        assertEquals(Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true)).prefer60hz)
+        assertEquals(NativeVideoExperiments.parse(JSONObject()), NativeVideoExperiments.parse(JSONObject().put("prefer60hz", true)))
+        // Garbage is AUTO, never OFF.
         for (junk in listOf("true", "false", 1, 0, JSONObject.NULL, "force", "auto")) {
             assertEquals("$junk", Prefer60Hz.AUTO, NativeVideoExperiments.parse(JSONObject().put("prefer60hz", junk)).prefer60hz)
         }
@@ -76,14 +80,13 @@ class NativeVideoExperimentsTest {
         }
         // On the wire `prefer60hz` is "not switched off"; the session overrides it with what its boundary decided.
         assertTrue(NativeVideoExperiments().toJson().getBoolean("prefer60hz"))
-        assertTrue(NativeVideoExperiments(prefer60hz = Prefer60Hz.FORCE).toJson().getBoolean("prefer60hz"))
         assertFalse(NativeVideoExperiments(prefer60hz = Prefer60Hz.OFF).toJson().getBoolean("prefer60hz"))
-        assertEquals(listOf("off", "auto", "force"), Prefer60Hz.values().map { it.wire })
+        assertEquals(listOf("off", "auto"), Prefer60Hz.values().map { it.wire })
         // Both switched off together is the one shape with nothing in effect but the three experiments.
         val bare = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", false).put("prefer60hz", false))
         assertFalse(bare.any)
         val both = NativeVideoExperiments.parse(JSONObject().put("vsyncSnap", true).put("prefer60hz", true).put("decoderRotation", true))
-        assertEquals(NativeVideoExperiments(decoderRotation = true, vsyncSnap = true, prefer60hz = Prefer60Hz.FORCE), both)
+        assertEquals(NativeVideoExperiments(decoderRotation = true, vsyncSnap = true, prefer60hz = Prefer60Hz.AUTO), both)
     }
 
     @Test fun theDescriptorCarriesTheFlagsOutsideItsIdentity() {

@@ -30,7 +30,14 @@ import {
   NativeTransientEnds,
   normalizeNativeEndReason,
 } from '../nativeEndReasons';
-import { nativeVideoEndGrade, NATIVE_VIDEO_TRANSIENT_REASONS } from '../nativeSharedVideo';
+import {
+  nativeVideoEndGrade,
+  NATIVE_VIDEO_BOX_REASONS,
+  NATIVE_VIDEO_FAULT_REASONS,
+  NATIVE_VIDEO_NOT_READY_PREFIXES,
+  NATIVE_VIDEO_NOT_READY_REASONS,
+  NATIVE_VIDEO_TRANSIENT_REASONS,
+} from '../nativeSharedVideo';
 import { nativeVideoNext } from '../NativeDualVideo';
 
 const sorted = (s: Iterable<string>) => Array.from(s).sort();
@@ -170,7 +177,18 @@ describe('phase 0: the latent defect — never a 24 h block for the network, sto
       expect(NATIVE_VIDEO_TRANSIENT_REASONS.has(code)).toBe(true);
       expect(nativeVideoEndGrade(code)).toBe('transient');
     }
-    for (const c of NATIVE_END_TRANSIENT) expect(NATIVE_VIDEO_TRANSIENT_REASONS.has(c)).toBe(true);
+  });
+  it('the closed table agrees with 1.1.43\'s v2/v3 table (NativeEndGrade) on every code that one knows', () => {
+    const grade1143 = (code: string) =>
+      NATIVE_VIDEO_TRANSIENT_REASONS.has(code) ? 'transient'
+        : NATIVE_VIDEO_NOT_READY_REASONS.has(code) || NATIVE_VIDEO_NOT_READY_PREFIXES.some((p) => code.startsWith(p)) ? 'not-ready'
+          : NATIVE_VIDEO_BOX_REASONS.has(code) ? 'box' : 'fault';
+    const codes = [...NATIVE_VIDEO_TRANSIENT_REASONS, ...NATIVE_VIDEO_NOT_READY_REASONS, ...NATIVE_VIDEO_BOX_REASONS,
+      ...NATIVE_VIDEO_FAULT_REASONS, 'manifest-http-503', 'media-http-404', 'descriptor-version'];
+    for (const code of codes) expect([code, nativeVideoEndGrade(code)]).toEqual([code, grade1143(code)]);
+    // …and the closed table fixes the one code that table misses (stream B's note 5).
+    expect(grade1143('host-replaced')).toBe('fault');
+    expect(nativeVideoEndGrade('host-replaced')).toBe('transient');
   });
   it('a full download whose digest is not the manifest\'s is a FAULT everywhere (retrying downloads the same bytes)', () => {
     expect(gradeNativeEnd('media-digest')).toBe('fault');
