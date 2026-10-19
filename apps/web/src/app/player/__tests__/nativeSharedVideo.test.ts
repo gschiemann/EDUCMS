@@ -174,6 +174,21 @@ describe("optional native output handoff", () => {
     expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments: { ...experiments, applied: { webviewInvisible: false, vsyncSnap: "yes", prefer60hz: "http://x" } } })?.experiments?.applied)
       .toEqual({ webviewInvisible: false });
   });
+  it("1.1.43: the grid-sized lead rides with the snap figures, and the always-present `requested` block reaches the API as `true` keys only", () => {
+    const nine = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
+      maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
+    const t = readNativeVideoTiming({ ...nine, snappedFrames: 1800, vsyncPeriodUs: 16666, vsyncSamples: 3600, releaseLeadUs: 8333,
+      history: { entries: [{ at: 5, vsyncSnap: true, prefer60hz: "blocked", snappedFrames: 7, vsyncPeriodUs: 33333, vsyncSamples: 9, releaseLeadUs: 26666 }], overflow: 0 } })!;
+    expect(t.releaseLeadUs).toBe(8333);
+    expect(t.history?.entries[0]).toMatchObject({ prefer60hz: "blocked", releaseLeadUs: 26666 });
+    expect(readNativeVideoTiming({ ...nine, releaseLeadUs: -1 })).toEqual(nine);
+    // Since 1.1.43 every session report carries `requested` with EVERY key — `false` for whatever is not in effect
+    // (FaceVideoBox.sessionJson). The API's strict schema accepts only `true`; the page passes exactly those on.
+    const requested = { webviewInvisible: false, surfaceFrameRate: false, decoderRotation: false, vsyncSnap: true, prefer60hz: false };
+    const experiments = { requested, applied: { webviewInvisible: false, surfaceFrameRate: null, vsyncSnap: true, prefer60hz: "no-60hz-mode" },
+      guard: { disabled: {}, applied: {} } };
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments })?.experiments?.requested).toEqual({ vsyncSnap: true });
+  });
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
   it("accepts fill and cover (2026-10-11 crop-to-fill), refuses any other fit", () => {

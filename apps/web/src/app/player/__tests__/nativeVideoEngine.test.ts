@@ -6,6 +6,10 @@ import {
   blockNativeVideo,
   nativeVideoBlocked,
   NATIVE_VIDEO_BLOCK_MS,
+  NATIVE_VIDEO_BOX_REASONS,
+  NATIVE_VIDEO_FAULT_REASONS,
+  NATIVE_VIDEO_NOT_READY_PREFIXES,
+  NATIVE_VIDEO_NOT_READY_REASONS,
   NATIVE_VIDEO_TRANSIENT_REASONS,
   pickNativeVideo,
   readNativeVideoDescriptor,
@@ -202,6 +206,37 @@ describe("what a native end means next", () => {
     expect(nativeVideoNext(2, "credential-changed", 0, true)).toBe("stay");
     expect(nativeVideoNext(2, undefined, 0, true)).toBe("stay");
     expect(nativeVideoNext(2, "codec-failed", 0, true)).toBe("block");
+  });
+  it("1.1.43 (failure grading, phase 0): a network / storage / auth / manifest end retries, a box verdict stays web, only a fault blocks", () => {
+    // An offline boot ends `authorization-failed` (or `timeout`); a short download is `media-incomplete`; a pruned cache
+    // file `media-missing`; a 5xx `manifest-http-500`. Before 1.1.43 every one of them blocked native for a day.
+    for (const reason of ["authorization-failed", "timeout", "media-incomplete", "media-missing", "manifest-http-500", "descriptor-version"]) {
+      expect({ reason, next: nativeVideoNext(2, reason, 0) }).toEqual({ reason, next: "retry" });
+      expect({ reason, next: nativeVideoNext(2, reason, 0, true) }).toEqual({ reason, next: "stay" }); // never flip on the glass
+    }
+    expect(nativeVideoNext(2, "composition-unavailable", 0)).toBe("stay");
+    // The safety net reverted a 60 Hz switch nothing proved: native is tried again at the panel's own mode.
+    expect(nativeVideoNext(2, "display-mode-reverted", 0)).toBe("retry");
+    expect(nativeVideoNext(2, "media-digest", 0)).toBe("block");
+    expect(nativeVideoNext(2, "a-code-nobody-graded", 0)).toBe("block"); // the unknown fails closed
+    expect(nativeVideoNext(1, "authorization-failed", 0)).toBe("stay"); // protocol 1 is unchanged
+  });
+  it("the page's grading table is exactly the APK's (NativeEndGrade in FaceVideoPolicy.kt)", () => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    const kt = path.resolve(__dirname, "../../../../../player/app/src/main/java/com/educms/player/media/FaceVideoPolicy.kt");
+    expect(fs.existsSync(kt)).toBe(true);
+    const src = fs.readFileSync(kt, "utf8");
+    const apk = (name: string): string[] => {
+      const m = new RegExp(`val ${name}: (?:Set|List)<String> = (?:setOf|listOf)\\(([^)]*)\\)`).exec(src);
+      expect({ name, found: !!m }).toEqual({ name, found: true });
+      return Array.from(m![1].matchAll(/"([a-z0-9-]+)"/g), (x) => x[1]).sort();
+    };
+    expect(apk("TRANSIENT")).toEqual([...NATIVE_VIDEO_TRANSIENT_REASONS].sort());
+    expect(apk("NOT_READY")).toEqual([...NATIVE_VIDEO_NOT_READY_REASONS].sort());
+    expect(apk("NOT_READY_PREFIXES")).toEqual([...NATIVE_VIDEO_NOT_READY_PREFIXES].sort());
+    expect(apk("BOX")).toEqual([...NATIVE_VIDEO_BOX_REASONS].sort());
+    expect(apk("FAULT")).toEqual([...NATIVE_VIDEO_FAULT_REASONS].sort());
   });
   it("a block is per file per face, expires after a day, and survives a broken store", () => {
     const mem = new Map<string, string>();
