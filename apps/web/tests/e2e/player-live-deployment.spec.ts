@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { bootMockPlayer, ok, type MockKind } from './helpers/mock-player';
 
-test.use({ serviceWorkers: 'block' });
+test.use({ serviceWorkers: 'block', timezoneId: 'UTC' });
 
 for (const kind of ['website', 'images', 'video'] as MockKind[]) {
   test(`a new deployment preserves the running ${kind} past the former forced-reload limit and playlist wraps`, async ({ page }) => {
     const drift: string[] = [];
     page.on('console', msg => { if (msg.text().includes('[bundle-drift]')) drift.push(msg.text()); });
-    await page.clock.install();
+    // This checks daytime preservation. A live CI clock can enter the valid
+    // 03:00–04:00 update window; player-offhours-update covers that behavior.
+    await page.clock.install({ time: new Date('2026-10-18T14:00:00Z') });
     await bootMockPlayer(page, { tag: `live-deployment-${kind}`, kind,
       playback: { loopMode: 'native' }, videoMp4: kind === 'video',
       extraRoutes: async p => {

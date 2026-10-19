@@ -54,6 +54,9 @@ export const isInvoiceBilled = (mode: string | null | undefined): boolean =>
   mode === 'INVOICE' || mode === 'PURCHASE_ORDER';
 
 export interface LicenseLike {
+  packageName?: string | null;
+  packagePriceCents?: number | null;
+  pooledSeats?: boolean;
   tier?: string | null;
   status?: string | null;
   billingMode?: string | null;
@@ -156,6 +159,9 @@ function intIn(v: unknown, field: string, min: number, max: number, code: string
 
 /** The license fields the console may edit, validated. Absent = unchanged. */
 export interface LicensePatch {
+  packageName?: string | null;
+  packagePriceCents?: number | null;
+  pooledSeats?: boolean;
   seatLimit?: number;
   monthlyPriceCents?: number | null;
   plan?: ConsolePlan;
@@ -172,6 +178,12 @@ export function parseLicensePatch(body: unknown): LicensePatch {
   if (!body || typeof body !== 'object') throw new PolicyError('CUSTOMER_BODY_REQUIRED', 'A request body is required.');
   const b = body as Record<string, unknown>;
   const out: LicensePatch = {};
+  if (b.packageName !== undefined) out.packageName = optionalText(b.packageName, 'packageName', 120);
+  if (b.packagePriceCents !== undefined) out.packagePriceCents = b.packagePriceCents === null ? null : intIn(b.packagePriceCents, 'packagePriceCents', 0, MAX_INVOICE_CENTS, 'CUSTOMER_PRICE_INVALID');
+  if (b.pooledSeats !== undefined) {
+    if (typeof b.pooledSeats !== 'boolean') throw new PolicyError('CUSTOMER_POOL_INVALID', 'pooledSeats must be true or false.');
+    out.pooledSeats = b.pooledSeats;
+  }
   if (b.seatLimit !== undefined) out.seatLimit = intIn(b.seatLimit, 'seatLimit', 0, MAX_SEATS, 'CUSTOMER_SEAT_LIMIT_INVALID');
   if (b.monthlyPriceCents !== undefined) {
     out.monthlyPriceCents =
@@ -232,7 +244,7 @@ export function assertPatchAllowed(current: LicenseLike | null, patch: LicensePa
       409,
     );
   }
-  if (patch.plan !== undefined || patch.monthlyPriceCents !== undefined) {
+  if (patch.plan !== undefined || patch.monthlyPriceCents !== undefined || patch.packageName !== undefined || patch.packagePriceCents !== undefined || patch.pooledSeats !== undefined || patch.seatLimit !== undefined) {
     throw new PolicyError(
       'CUSTOMER_STRIPE_MANAGED',
       'Plan and price for a card customer come from their Stripe subscription. Change them in Stripe.',
@@ -253,6 +265,9 @@ export function assertPatchAllowed(current: LicenseLike | null, patch: LicensePa
 /** The License columns a patch writes. `plan` is stored in `tier` (the Stripe webhook writes MONTHLY / ANNUAL there too). */
 export function licenseDataFromPatch(patch: LicensePatch): Record<string, unknown> {
   const data: Record<string, unknown> = {};
+  if (patch.packageName !== undefined) data.packageName = patch.packageName;
+  if (patch.packagePriceCents !== undefined) data.packagePriceCents = patch.packagePriceCents;
+  if (patch.pooledSeats !== undefined) data.pooledSeats = patch.pooledSeats;
   if (patch.seatLimit !== undefined) data.seatLimit = patch.seatLimit;
   if (patch.monthlyPriceCents !== undefined) data.monthlyPriceCents = patch.monthlyPriceCents;
   if (patch.plan !== undefined) data.tier = patch.plan;
@@ -263,7 +278,7 @@ export function licenseDataFromPatch(patch: LicensePatch): Record<string, unknow
   if (patch.notes !== undefined) data.notes = patch.notes;
   if (patch.aiIncluded !== undefined) data.aiIncluded = patch.aiIncluded;
   // COMP is free by definition — never leave a price on it that a report could add up.
-  if (patch.billingMode === 'COMP') data.monthlyPriceCents = 0;
+  if (patch.billingMode === 'COMP') { data.monthlyPriceCents = 0; data.packagePriceCents = null; }
   return data;
 }
 
@@ -273,6 +288,9 @@ export function licenseSnapshot(lic: LicenseLike | null | undefined): Record<str
   const iso = (d: Date | string | null | undefined) =>
     d == null ? null : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
   return {
+    packageName: lic.packageName ?? null,
+    packagePriceCents: lic.packagePriceCents ?? null,
+    pooledSeats: lic.pooledSeats === true,
     tier: lic.tier ?? null,
     status: lic.status ?? null,
     billingMode: lic.billingMode ?? null,
@@ -296,6 +314,9 @@ export function changedFields(before: Record<string, unknown> | null, after: Rec
 // ─── Create customer ───────────────────────────────────────────────────────
 
 export interface CreateCustomerInput {
+  packageName: string | null;
+  packagePriceCents: number | null;
+  pooledSeats: boolean;
   name: string;
   slug?: string;
   vertical: string;
@@ -307,10 +328,27 @@ export interface CreateCustomerInput {
   renewalDate: Date | null;
   notes: string | null;
   displayName: string | null;
+  logoUrl: string | null;
   primaryColor: string | null;
   accentColor: string | null;
   ownerFirstName: string | null;
   ownerLastName: string | null;
+}
+
+/** A saved browser image URL; never fetched by the customer setup API. */
+export function parseCustomerLogoUrl(value: unknown): string | null {
+  const logoUrl = optionalText(value, 'logoUrl', 2048) ?? null;
+  if (!logoUrl) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(logoUrl);
+  } catch {
+    throw new PolicyError('CUSTOMER_LOGO_URL_INVALID', 'Logo must be an HTTPS URL.');
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new PolicyError('CUSTOMER_LOGO_URL_INVALID', 'Logo must be an HTTPS URL.');
+  }
+  return logoUrl;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -320,7 +358,8 @@ export function slugify(input: string): string {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^-/, '')
+    .replace(/-$/, '')
     .slice(0, 60);
 }
 
@@ -354,7 +393,12 @@ export function parseCreateCustomer(body: unknown, isVertical: (v: string) => bo
     if (!HEX.test(t)) throw new PolicyError('CUSTOMER_COLOR_INVALID', `${field} must be a #rrggbb color.`);
     return t.toLowerCase();
   };
+  const packageName = optionalText(b.packageName, 'packageName', 120) ?? null;
+  const packagePriceCents = b.packagePriceCents == null || billingMode === 'COMP' ? null : intIn(b.packagePriceCents, 'packagePriceCents', 0, MAX_INVOICE_CENTS, 'CUSTOMER_PRICE_INVALID');
+  if (b.pooledSeats !== undefined && typeof b.pooledSeats !== 'boolean') throw new PolicyError('CUSTOMER_POOL_INVALID', 'pooledSeats must be true or false.');
+  if (b.pooledSeats && billingMode === 'CARD') throw new PolicyError('CUSTOMER_POOL_BILLING_INVALID', 'Corporate pools require invoice, purchase order, or complimentary billing.');
   return {
+    packageName, packagePriceCents, pooledSeats: b.pooledSeats === true,
     name,
     slug,
     vertical,
@@ -366,6 +410,7 @@ export function parseCreateCustomer(body: unknown, isVertical: (v: string) => bo
     renewalDate: optionalDate(b.renewalDate, 'renewalDate') ?? null,
     notes: optionalText(b.notes, 'notes', MAX_NOTES) ?? null,
     displayName: optionalText(b.displayName, 'displayName', 120) ?? null,
+    logoUrl: parseCustomerLogoUrl(b.logoUrl),
     primaryColor: color(b.primaryColor, 'primaryColor'),
     accentColor: color(b.accentColor, 'accentColor'),
     ownerFirstName: optionalText(b.ownerFirstName, 'ownerFirstName', 80) ?? null,
@@ -437,6 +482,9 @@ export function normalizeInvoiceWrite(input: InvoiceInput, now: Date): InvoiceIn
 // ─── List: filter / sort / paginate ────────────────────────────────────────
 
 export interface CustomerRow {
+  packageName?: string | null;
+  packagePriceCents?: number | null;
+  pooledSeats?: boolean;
   id: string;
   name: string;
   slug: string;

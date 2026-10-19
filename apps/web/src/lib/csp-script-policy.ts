@@ -76,11 +76,14 @@ export const CSP_UNNONCEABLE_PREFIXES = [
 
 /**
  * Prerendered routes listed EXACTLY, because a prefix would over-match a
- * sibling that IS dynamic and IS enforced — `/super/bugs` is prerendered while
- * `/super/bugs/[id]` is not; `/reset-password/request` is prerendered while
+ * sibling that IS dynamic and IS enforced — `/reset-password/request` is prerendered while
  * `/reset-password/[token]` is not.
  *
- * ── THE HONEST GAP IN THIS CHANGE ────────────────────────────────────────
+ * 2026-10-18: every `/super/*` route now uses a server segment layout with
+ * `await connection()`, so ALL owner pages carry request nonces. Their old
+ * exclusions were removed. The historical gap below remains for other entries.
+ *
+ * ── THE HONEST GAP IN THE ORIGINAL CHANGE ────────────────────────────────
  * The second block below is NOT public content. `/login`, `/signup`, `/super*`
  * and the onboarding pages carry or create a session, and they keep the
  * REPORT-ONLY policy — i.e. SEC-010 is NOT closed on them. They are here
@@ -121,15 +124,7 @@ export const CSP_UNNONCEABLE_EXACT = [
   '/schedules',
   '/screens',
   '/signup',
-  '/super',
-  '/super/ai',
-  '/super/customers',
-  '/super/customers/new',
   '/account-suspended',
-  '/super/bugs',
-  '/super/cts-simulator',
-  '/super/efficiency',
-  '/super/field-builds',
 ] as const;
 
 /**

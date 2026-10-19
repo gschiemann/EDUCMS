@@ -1,3 +1,7 @@
+import { EmailModule } from '../email/email.module';
+import { BillingModule } from '../billing/billing.module';
+import { CustomerBusinessService } from './customer-business.service';
+import { CustomerInvoiceStorageService } from './customer-invoice-storage.service';
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -17,10 +21,12 @@ import { OrgSuspensionGate, OrgSuspensionInterceptor } from './org-suspension.in
  * route's guards, so it sees the verified principal.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, OnboardingModule, SampleDataModule],
+  imports: [PrismaModule, AuthModule, OnboardingModule, SampleDataModule, BillingModule, EmailModule],
   controllers: [SuperCustomersController, CustomerClaimController, CustomerBillingController],
   providers: [
     CustomerConsoleService,
+    CustomerBusinessService,
+    CustomerInvoiceStorageService,
     OrgSuspensionGate,
     { provide: APP_INTERCEPTOR, useClass: OrgSuspensionInterceptor },
   ],

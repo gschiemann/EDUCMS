@@ -37,16 +37,25 @@ jest.mock('@/components/ui/app-dialog', () => ({
   appPrompt: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn().mockResolvedValue({}) }));
+// This suite targets the actual legacy table; the finance overview has separate mounted browser coverage.
+jest.mock('@/components/super/BusinessOverview', () => ({ BusinessOverview: () => null }));
 jest.mock('../ActivationFunnelPanel', () => ({ __esModule: true, default: () => null }));
 
 import SuperPage from '../page';
+
+function renderLegacyTools() {
+  render(<SuperPage />);
+  const summary = rtl.getByText('Advanced platform tools');
+  fireEvent.click(summary);
+  expect(summary.closest('details')).toHaveAttribute('open');
+}
 
 const k12 = () => rtl.getByRole('checkbox', { name: 'Select all K12 tenants shown' }) as HTMLInputElement;
 const box = (name: string) => rtl.getByRole('checkbox', { name: `Select ${name}` }) as HTMLInputElement;
 
 describe('the Super tenant table — one tri-state select-all box per vertical', () => {
   it('names each header box for the vertical it covers, and puts it in the first column', () => {
-    render(<SuperPage />);
+    renderLegacyTools();
     expect(rtl.getByRole('checkbox', { name: 'Select all FITNESS tenants shown' })).toBeInTheDocument();
     expect(rtl.getByRole('checkbox', { name: 'Select all RESTAURANT tenants shown' })).toBeInTheDocument();
     const table = k12().closest('table') as HTMLElement;
@@ -54,7 +63,7 @@ describe('the Super tenant table — one tri-state select-all box per vertical',
   });
 
   it('is tri-state over that vertical only: none → some → all → none', async () => {
-    render(<SuperPage />);
+    renderLegacyTools();
     // The page defers its body one tick for hydration.
     expect(await rtl.findByRole('checkbox', { name: 'Select all K12 tenants shown' })).toBeInTheDocument();
     expect(k12().checked).toBe(false);
@@ -77,7 +86,7 @@ describe('the Super tenant table — one tri-state select-all box per vertical',
   });
 
   it('a tenant ticked elsewhere stays ticked when a vertical is cleared', () => {
-    render(<SuperPage />);
+    renderLegacyTools();
     fireEvent.click(box('Corner Cafe'));
     fireEvent.click(k12());
     fireEvent.click(k12());
@@ -85,7 +94,7 @@ describe('the Super tenant table — one tri-state select-all box per vertical',
   });
 
   it('each header box explains itself on hover: "Select all <vertical> tenants shown", and "Clear selection" once all of that vertical are picked (Greg, 2026-10-04)', () => {
-    render(<SuperPage />);
+    renderLegacyTools();
     const titleOf = (el: HTMLElement) => (el.closest('label') as HTMLElement).getAttribute('title');
     expect(titleOf(k12())).toBe('Select all K12 tenants shown'); // none
     fireEvent.click(box('Lincoln High')); // some

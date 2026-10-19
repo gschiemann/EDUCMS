@@ -1,4 +1,5 @@
-import { Controller, Get, Request, UseGuards } from '@nestjs/common';
+import { CustomerBusinessService } from './customer-business.service';
+import { Controller, Get, Param, ParseUUIDPipe, Request, UseGuards } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -18,7 +19,13 @@ import { CustomerConsoleService } from './customer-console.service';
 @Controller('api/v1/billing')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class CustomerBillingController {
-  constructor(private readonly customers: CustomerConsoleService) {}
+  constructor(private readonly customers: CustomerConsoleService, private readonly business?: CustomerBusinessService) {}
+
+  @Get('account/invoices/:invoiceId/pdf')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  invoicePdf(@Param('invoiceId', new ParseUUIDPipe()) invoiceId: string, @Request() req: any) {
+    return this.business!.ownDownloadPdf(req.user.tenantId, invoiceId, req.user.userId ?? req.user.id ?? null);
+  }
 
   @Get('account')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

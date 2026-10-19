@@ -91,14 +91,15 @@ describe('license patch', () => {
 
   it('plan is stored in tier; COMP zeroes the price', () => {
     expect(licenseDataFromPatch({ plan: 'ANNUAL', seatLimit: 4 })).toEqual({ tier: 'ANNUAL', seatLimit: 4 });
-    expect(licenseDataFromPatch({ billingMode: 'COMP' })).toEqual({ billingMode: 'COMP', monthlyPriceCents: 0 });
+    expect(licenseDataFromPatch({ billingMode: 'COMP' })).toEqual({ billingMode: 'COMP', monthlyPriceCents: 0, packagePriceCents: null });
   });
 
   it('a live card subscription owns its plan, price and billing mode', () => {
     const live = { billingMode: 'CARD', status: 'ACTIVE', stripeSubscriptionId: 'sub_1' };
     expect(policyCode(() => assertPatchAllowed(live, { billingMode: 'INVOICE' }))).toBe('CUSTOMER_CARD_SUBSCRIPTION_ACTIVE');
     expect(policyCode(() => assertPatchAllowed(live, { plan: 'ANNUAL' }))).toBe('CUSTOMER_STRIPE_MANAGED');
-    expect(policyCode(() => assertPatchAllowed(live, { seatLimit: 9, notes: 'x', renewalDate: null }))).toBeNull();
+    expect(policyCode(() => assertPatchAllowed(live, { seatLimit: 9 }))).toBe('CUSTOMER_STRIPE_MANAGED');
+    expect(policyCode(() => assertPatchAllowed(live, { notes: 'x', renewalDate: null }))).toBeNull();
     // A cancelled subscription no longer owns anything.
     expect(policyCode(() => assertPatchAllowed({ ...live, status: 'CANCELLED' }, { billingMode: 'INVOICE' }))).toBeNull();
   });
@@ -132,6 +133,13 @@ describe('create customer input', () => {
     expect(policyCode(() => parseCreateCustomer({ ...ok, vertical: 'MOON' }, isVertical))).toBe('CUSTOMER_VERTICAL_INVALID');
     expect(policyCode(() => parseCreateCustomer({ ...ok, primaryColor: 'red' }, isVertical))).toBe('CUSTOMER_COLOR_INVALID');
     expect(policyCode(() => parseCreateCustomer({ ...ok, slug: '!!!' }, isVertical))).toBe('CUSTOMER_SLUG_INVALID');
+  });
+  it('accepts optional HTTPS logo URLs and rejects URL credentials and non-HTTPS schemes', () => {
+    expect(parseCreateCustomer({ ...ok, logoUrl: '  https://brand.example/logo.png  ' }, isVertical).logoUrl).toBe('https://brand.example/logo.png');
+    expect(parseCreateCustomer(ok, isVertical).logoUrl).toBeNull();
+    for (const logoUrl of ['http://brand.example/logo.png', 'javascript:alert(1)', 'data:image/png;base64,abc', 'https://user:pass@brand.example/logo.png', '/logo.png']) {
+      expect(policyCode(() => parseCreateCustomer({ ...ok, logoUrl }, isVertical))).toBe('CUSTOMER_LOGO_URL_INVALID');
+    }
   });
   it('COMP is free whatever price was typed', () => {
     expect(parseCreateCustomer({ ...ok, billingMode: 'COMP', monthlyPriceCents: 2500 }, isVertical).monthlyPriceCents).toBe(0);

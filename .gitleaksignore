@@ -95,3 +95,41 @@ ca3d0a4449e5a95a36b25f3d339ae11987e634c6:docs/research/2026-10-17-player-rock-so
 # Verified APK integrity digest of private 1.1.42-field.1, signed CI run 39095313732 on source 184ca7ed;
 # the line also carries an inline gitleaks:allow (the .39–.41 form). A public hash, never a signing secret.
 b0e4e2a68e148400c5df1a61c71333ca6697eead:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:152
+
+# Business portal reports: reviewed SHA-256 source and screenshot checksums, never credentials.
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:17
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:23
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:24
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:25
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:26
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:28
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:29
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:31
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:32
+b16a1ac7207b91330d761ebdf67c90f519c92dea:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:33
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:20
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:21
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:22
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:23
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:24
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:25
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:26
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:27
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:28
+67f86bbfbd6e54db7fc79df67193d4b7a22e973d:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:29
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:19
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:20
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:21
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:22
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:23
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:24
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:25
+f15f742127741f0e7099322c2deb68c71285bad9:docs/implementation/business-profit-ui.md:venueos-hardcoded-256bit-hex-secret:26
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:19
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:20
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:21
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:22
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:23
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:24
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:25
+c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:26

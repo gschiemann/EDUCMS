@@ -1,13 +1,16 @@
 "use client";
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Loader2, Crown, Building2, AlertCircle, Plus, Search, X, Filter, HardDrive, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Loader2, Crown, Building2, AlertCircle, Search, X, Filter, HardDrive, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import { apiFetch } from '@/lib/api-client';
+import { useBusinessHydrated } from '@/hooks/use-customer-console';
+import { BusinessOverview } from '@/components/super/BusinessOverview';
 import ActivationFunnelPanel from './ActivationFunnelPanel';
 import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 
@@ -20,6 +23,9 @@ import { SelectionCheckbox, selectAllTitle, selectionState } from '@/components/
 export default function SuperPage() {
   const router = useRouter();
   const tc = useTranslations('customerConsole');
+  const tb = useTranslations('businessConsole');
+  const [toolsOpen, setToolsOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tools'));
+  useEffect(() => { const openTools = () => setToolsOpen(true); window.addEventListener('venueos-open-platform-tools', openTools); return () => window.removeEventListener('venueos-open-platform-tools', openTools); }, []);
   const user = useAppStore(s => s.user);
   const { data: tenants, isLoading } = useSuperTenants();
   const comp = useCompSeats();
@@ -34,8 +40,7 @@ export default function SuperPage() {
   // for the store to hydrate, then deny unless the user is confirmed
   // SUPER_ADMIN. The API still enforces server-side via @RequireRoles —
   // this is just defense-in-depth at the page boundary.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useBusinessHydrated();
 
   // 2026-05-23 (launch-audit P0): all hooks moved ABOVE the early
   // returns. The previous structure put 3 useStates and a useMemo
@@ -128,7 +133,6 @@ export default function SuperPage() {
   // stay one toggle-off away.
   const totalSeats = visibleTenants.reduce((n, t) => n + t.seatsUsed, 0);
   const totalTenants = visibleTenants.length;
-  const monthlyMrrCents = visibleTenants.reduce((n, t) => n + (t.monthlyPriceCents ?? 0) * (t.seatsUsed || 0), 0);
   const totalAvailable = tenants?.length ?? 0;
   const filterIsActive = showSelectedOnly || q.length > 0;
 
@@ -167,19 +171,23 @@ export default function SuperPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        <BusinessOverview screens={tenants ? tenants.reduce((n, t) => n + t.seatsUsed, 0) : undefined} online={tenants ? tenants.reduce((n, t) => n + (t.screensOnline ?? 0), 0) : undefined} />
+        <details id="platform-tools" open={toolsOpen} onToggle={(e) => setToolsOpen(e.currentTarget.open)} className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tb('advancedTools')}</summary>
+          <p className="mt-2 mb-6 text-sm text-slate-500">{tb('advancedToolsBody')}</p>
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-              <Crown className="w-6 h-6 text-amber-500" /> Owner control panel
-            </h1>
+            <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <Crown className="w-6 h-6 text-amber-500" /> {tb('tools')}
+            </h2>
             <p className="text-sm text-slate-500 mt-1">
               Tenants, licenses, billing health.{' '}
-              <a href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
+              <Link href="/super/customers" className="font-bold text-indigo-600 hover:text-indigo-800">
                 {tc('title')} →
-              </a>{' '}
-              <a href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
+              </Link>{' '}
+              <Link href="/super/ai" className="font-bold text-indigo-600 hover:text-indigo-800">
                 AI models &amp; usage →
-              </a>
+              </Link>
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:flex-wrap shrink-0">
@@ -211,7 +219,7 @@ export default function SuperPage() {
                 ? <Stat label="In canary" value={String(inCanary)} tone="warn" />
                 : null;
             })()}
-            <Stat label="Approx MRR" value={`$${(monthlyMrrCents / 100).toFixed(0)}`} accent />
+
           </div>
         </header>
 
@@ -464,6 +472,7 @@ export default function SuperPage() {
             /api/v1/super/storage/* so the operator never has to drop
             to curl to recover from a Supabase egress regression. */}
         <StorageAdmin />
+        </details>
       </div>
     </div>
   );
@@ -484,7 +493,7 @@ export default function SuperPage() {
  * audits every attempt; there is deliberately no button for it.
  */
 function StorageAdmin() {
-  const [auditResult, setAuditResult] = useState<any>(null);
+  const [auditResult, setAuditResult] = useState<{ kind: 'audit' | 'backfill'; data: unknown } | null>(null);
   const [busy, setBusy] = useState<'audit' | 'backfill' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -492,10 +501,10 @@ function StorageAdmin() {
     setBusy('audit');
     setError(null);
     try {
-      const res = await apiFetch<any>('/super/storage/cache-control-audit');
+      const res = await apiFetch<unknown>('/super/storage/cache-control-audit');
       setAuditResult({ kind: 'audit', data: res });
-    } catch (e: any) {
-      setError(e?.message || 'Audit failed.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Audit failed.');
     } finally {
       setBusy(null);
     }
@@ -512,10 +521,10 @@ function StorageAdmin() {
     setBusy('backfill');
     setError(null);
     try {
-      const res = await apiFetch<any>('/super/storage/backfill-cache-control', { method: 'POST' });
+      const res = await apiFetch<unknown>('/super/storage/backfill-cache-control', { method: 'POST' });
       setAuditResult({ kind: 'backfill', data: res });
-    } catch (e: any) {
-      setError(e?.message || 'Backfill failed.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Backfill failed.');
     } finally {
       setBusy(null);
     }

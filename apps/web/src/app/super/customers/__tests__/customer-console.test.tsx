@@ -30,7 +30,7 @@ const DETAIL: CustomerDetail = {
 };
 
 const apiFetch = jest.fn(async (path: string, opts: any = {}) => {
-  calls.push({ path, method: opts.method ?? 'GET', body: opts.body ? JSON.parse(opts.body) : undefined });
+  calls.push({ path, method: opts.method ?? 'GET', body: opts.body instanceof FormData ? opts.body : opts.body ? JSON.parse(opts.body) : undefined });
   if (path.startsWith('/super/customers?') || path === '/super/customers') return LIST;
   if (path === '/super/customers/c1') return DETAIL;
   if (path === '/super/customers/c1/starter-link') return { url: 'https://app.test/claim-account/TOKEN', expiresAt: '2026-10-17T00:00:00Z' };
@@ -54,6 +54,7 @@ function wrap(ui: React.ReactElement) {
 
 beforeEach(() => {
   calls.length = 0;
+  window.history.replaceState(null, '', '/');
   role = 'SUPER_ADMIN';
   jest.useRealTimers();
 });
@@ -92,7 +93,7 @@ describe('/super/customers roster', () => {
     expect(acme.getByText('Acme Schools')).toHaveAttribute('href', '/super/customers/c1');
     expect(acme.getByText('6 / 5')).toBeInTheDocument();
     expect(acme.getByText('Past due')).toBeInTheDocument();
-    expect(acme.getByText('Invoice (ARC)')).toBeInTheDocument();
+    expect(acme.getByText('Invoice')).toBeInTheDocument();
     expect(acme.getByText('1 overdue invoice')).toBeInTheDocument();
     expect(screen.getByText('2 customers')).toBeInTheDocument();
   });
@@ -159,6 +160,7 @@ describe('customer page', () => {
 
   it('suspends only after the confirm prompt, with the reason', async () => {
     wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Setup access' }));
     fireEvent.click(screen.getByRole('button', { name: /Suspend/ }));
     await waitFor(() => expect(calls.some((c) => c.path === '/super/customers/c1/suspend')).toBe(true));
     expect(appPrompt).toHaveBeenCalled();
@@ -184,9 +186,70 @@ describe('customer page', () => {
 
   it('creates a new one-time owner link and shows it with a copy button', async () => {
     wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'People' }));
     fireEvent.click(screen.getByText('Create a new owner link'));
     const box = await screen.findByTestId('one-time-link');
     expect(within(box).getByDisplayValue('https://app.test/claim-account/TOKEN')).toBeInTheDocument();
     expect(within(box).getByText('Copy link')).toBeInTheDocument();
+  });
+});
+
+
+describe('business customer workflows', () => {
+  it('saves a custom fixed-price package and pooled corporate billing', async () => {
+    wrap(<CustomerView c={DETAIL} />);
+    fireEvent.change(screen.getByLabelText('Custom package name'), { target: { value: 'Campus Plus' } });
+    fireEvent.change(screen.getByLabelText('Fixed package / month (USD)'), { target: { value: '850' } });
+    fireEvent.click(screen.getByLabelText('Corporate billing across locations'));
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(calls.find(c => c.path.endsWith('/license'))?.body).toMatchObject({ packageName: 'Campus Plus', packagePriceCents: 85000, pooledSeats: true }));
+  });
+
+  it('updates branding through the consent-gated API', async () => {
+    wrap(<CustomerView c={DETAIL} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Branding' }));
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Acme Learning' } });
+    fireEvent.change(screen.getByLabelText('Logo URL'), { target: { value: 'https://example.com/logo.png' } });
+    fireEvent.click(screen.getByText('Save branding'));
+    await waitFor(() => expect(calls.find(c => c.path.endsWith('/branding'))?.body).toMatchObject({ displayName: 'Acme Learning', logoUrl: 'https://example.com/logo.png' }));
+  });
+
+  it('creates a child location under the selected parent', async () => {
+    wrap(<CustomerView c={{ ...DETAIL, locations: [{ id: 'region', name: 'North region', slug: 'north', archived: false, seatsUsed: 2, depth: 1 }] }} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Locations' }));
+    fireEvent.change(screen.getByLabelText('Location name'), { target: { value: 'North school' } });
+    fireEvent.change(screen.getByLabelText('Parent organization / location'), { target: { value: 'region' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
+    await waitFor(() => expect(calls.find(c => c.path.endsWith('/locations'))?.body).toEqual({ name: 'North school', parentId: 'region' }));
+  });
+
+  it('allocates screen allowance for a pooled location without changing the parent contract', async () => {
+    wrap(<CustomerView c={{ ...DETAIL, license: { ...DETAIL.license!, pooledSeats: true }, locations: [{ id: 'north', name: 'North school', slug: 'north', archived: false, seatsUsed: 2, depth: 1, allocatedSeats: 3 }] }} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Locations' }));
+    fireEvent.change(screen.getByLabelText('Screen allowance for North school'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.find(c => c.path.endsWith('/north/allocation'))?.body).toEqual({ seatLimit: 4 }));
+    expect(calls.some(c => c.path.endsWith('/license'))).toBe(false);
+  });
+
+  it('updates Stripe quantity only after explicit proration confirmation', async () => {
+    wrap(<CustomerView c={{ ...DETAIL, license: { ...DETAIL.license!, billingMode: 'CARD', stripeManaged: true } }} />);
+    fireEvent.change(screen.getByLabelText('Screen licenses'), { target: { value: '12' } });
+    fireEvent.click(screen.getByText('Update card subscription screens'));
+    await waitFor(() => expect(calls.find(c => c.path.endsWith('/card-seats'))?.body).toEqual({ quantity: 12, confirmProration: true }));
+    expect(appConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('prorated adjustment on the next invoice') }));
+  });
+
+  it('uploads an actual multipart invoice attachment and rejects oversized PDFs locally', async () => {
+    wrap(<CustomerView c={DETAIL} />);
+    const input = screen.getByLabelText('Upload PDF for ARC-1');
+    const file = new File(['%PDF-1.4 test fixture'], 'ARC-1.pdf', { type: 'application/pdf' });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(calls.some(c => c.path.endsWith('/i1/pdf'))).toBe(true));
+    expect(calls.find(c => c.path.endsWith('/i1/pdf'))?.body.get('file')).toBe(file);
+    const oversized = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.pdf', { type: 'application/pdf' });
+    fireEvent.change(input, { target: { files: [oversized] } });
+    expect(await screen.findByText('Choose a PDF file up to 10 MB.')).toBeInTheDocument();
+    expect(calls.filter(c => c.path.endsWith('/i1/pdf'))).toHaveLength(1);
   });
 });

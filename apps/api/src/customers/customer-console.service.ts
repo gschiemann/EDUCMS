@@ -1,4 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import { assertPoolCapacity, customerTree, poolUsage } from '../license/license-pool';
+import { withDbRetry } from '../prisma/with-db-retry';
 import { randomBytes } from 'crypto';
 import { AppRole, Prisma } from '@cms/database';
 import { isReservedTenantSlug, isVertical } from '@cms/api-types';
@@ -112,6 +114,7 @@ export class CustomerConsoleService {
         license: {
           select: {
             tier: true, status: true, billingMode: true, seatLimit: true, monthlyPriceCents: true,
+            packageName: true, packagePriceCents: true, pooledSeats: true,
             renewalDate: true, currentPeriodEnd: true, expiresAt: true,
           },
         },
@@ -139,7 +142,10 @@ export class CustomerConsoleService {
     const byId = new Map(tenants.map((t) => [t.id, t]));
     const rootOf = (id: string): string => {
       let cur = byId.get(id);
-      for (let i = 0; cur?.parentId && i < 10; i++) {
+      const seen = new Set<string>();
+      while (cur?.parentId) {
+        if (seen.has(cur.id)) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
+        seen.add(cur.id);
         const parent = byId.get(cur.parentId);
         if (!parent) break;
         cur = parent;
@@ -196,6 +202,9 @@ export class CustomerConsoleService {
           seatsUsed: seats.get(t.id) ?? 0,
           locations: locations.get(t.id) ?? 0,
           monthlyPriceCents: lic?.monthlyPriceCents ?? null,
+          packageName: lic?.packageName ?? null,
+          packagePriceCents: lic?.packagePriceCents ?? null,
+          pooledSeats: lic?.pooledSeats === true,
           renewalDate: iso(renewalDateOf(lic)),
           lastActivityAt: last ? new Date(last).toISOString() : null,
           openInvoiceCents: inv.cents,
@@ -225,15 +234,9 @@ export class CustomerConsoleService {
   async detail(id: string, now = new Date()) {
     const org = await this.loadOrg(id);
     const client = this.prisma.client;
-    const children: any[] = await client.tenant.findMany({
-      where: { parentId: id },
-      select: { id: true, name: true, slug: true, archivedAt: true },
-      orderBy: { name: 'asc' },
-    });
-    const grand: any[] = children.length
-      ? await client.tenant.findMany({ where: { parentId: { in: children.map((c) => c.id) } }, select: { id: true, parentId: true } })
-      : [];
-    const treeIds = [id, ...children.map((c) => c.id), ...grand.map((g) => g.id)];
+    const tree = await customerTree(client, id);
+    const children = tree.slice(1);
+    const treeIds = tree.map((t) => t.id);
     const [screens, invoices, users, starterInvites, recent, branding] = await Promise.all([
       (client.screen.groupBy as any)({
         by: ['tenantId'],
@@ -262,8 +265,6 @@ export class CustomerConsoleService {
       client.tenantBranding.findUnique({ where: { tenantId: id }, select: { displayName: true, palette: true, logoUrl: true } }),
     ]);
     const seatsByTenant = new Map<string, number>(screens.map((s: any) => [s.tenantId, s._count?._all ?? 0]));
-    const childSeats = (cid: string) =>
-      (seatsByTenant.get(cid) ?? 0) + grand.filter((g) => g.parentId === cid).reduce((n, g) => n + (seatsByTenant.get(g.id) ?? 0), 0);
     const seatsUsed = treeIds.reduce((n, t) => n + (seatsByTenant.get(t) ?? 0), 0);
     const lic = org.license ?? null;
     const overdue = invoices.some((i: any) => invoiceIsOverdue(i, now));
@@ -289,6 +290,9 @@ export class CustomerConsoleService {
       seatsUsed,
       license: lic
         ? {
+            packageName: lic.packageName ?? null,
+            packagePriceCents: lic.packagePriceCents ?? null,
+            pooledSeats: lic.pooledSeats === true,
             plan: lic.tier,
             status: lic.status,
             billingMode: lic.billingMode,
@@ -307,7 +311,8 @@ export class CustomerConsoleService {
           }
         : null,
       cardCheckout: cardCheckoutAllowed(lic),
-      locations: children.map((c) => ({ id: c.id, name: c.name, slug: c.slug, archived: !!c.archivedAt, seatsUsed: childSeats(c.id) })),
+      locations: children.map((c) => ({ id: c.id, parentId: c.parentId, depth: c.depth, name: c.name, slug: c.slug, archived: !!c.archivedAt, seatsUsed: seatsByTenant.get(c.id) ?? 0, allocatedSeats: c.allocatedSeats })),
+      pool: lic?.pooledSeats ? { committedSeats: tree.reduce((n, t) => n + Math.max(t.allocatedSeats ?? 0, seatsByTenant.get(t.id) ?? 0), 0), seatLimit: lic.seatLimit } : null,
       admins: users.map((u: any) => ({
         id: u.id,
         email: u.email.endsWith(`@${STARTER_EMAIL_DOMAIN}`) ? null : u.email,
@@ -347,6 +352,7 @@ export class CustomerConsoleService {
       status: i.status,
       overdue: invoiceIsOverdue(i, now),
       notes: i.notes,
+      attachment: i.pdfStoragePath ? { fileName: i.pdfFileName, sizeBytes: i.pdfSizeBytes, uploadedAt: iso(i.pdfUploadedAt) } : null,
     };
   }
 
@@ -359,7 +365,7 @@ export class CustomerConsoleService {
     } catch (e) {
       asHttp(e);
     }
-    return this.prisma.client.$transaction(async (tx: any) => {
+    return withDbRetry(() => this.prisma.client.$transaction(async (tx: any) => {
       const org = await this.loadOrg(id, tx);
       const current = org.license ?? null;
       try {
@@ -368,6 +374,20 @@ export class CustomerConsoleService {
         asHttp(e);
       }
       const data = licenseDataFromPatch(patch);
+      const merged = { ...current, ...data };
+      if (merged.pooledSeats) {
+        if (!['INVOICE', 'PURCHASE_ORDER', 'COMP'].includes(merged.billingMode)) throw new HttpException({ code: 'CUSTOMER_POOL_BILLING_INVALID', message: 'Corporate pools require invoice, purchase order, or complimentary billing.' }, 409);
+        const tree = await customerTree(tx, id);
+        if (tree.slice(1).some((t) => t.license)) throw new HttpException({ code: 'CUSTOMER_LOCATION_LICENSE_EXISTS', message: 'Resolve individual location licenses before enabling a corporate pool.' }, 409);
+        const { used } = await poolUsage(tx, tree);
+        assertPoolCapacity(tree, used, merged.seatLimit);
+      } else if (current?.pooledSeats) {
+        const tree = await customerTree(tx, id);
+        if (tree.some((t) => t.allocatedSeats != null)) throw new HttpException({ code: 'CUSTOMER_POOL_HAS_ALLOCATIONS', message: 'Clear all location allocations before disabling the corporate pool.' }, 409);
+        const { used } = await poolUsage(tx, tree);
+        if (tree.slice(1).some((t) => (used.get(t.id) ?? 0) > 0)) throw new HttpException({ code: 'CUSTOMER_POOL_HAS_PAIRED_LOCATIONS', message: 'Unpair location screens before disabling the corporate pool.' }, 409);
+      }
+      if (merged.billingMode === 'COMP') { data.monthlyPriceCents = 0; data.packagePriceCents = null; }
       const before = licenseSnapshot(current);
       const lic = current
         ? await tx.license.update({ where: { tenantId: id }, data })
@@ -395,7 +415,7 @@ export class CustomerConsoleService {
         },
       });
       return { ok: true, license: after };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }), { label: 'customer-license' });
   }
 
   // ─── Suspend / reactivate ────────────────────────────────────────────────
@@ -558,6 +578,9 @@ export class CustomerConsoleService {
         const lic = await tx.license.create({
           data: {
             tenantId: tenant.id,
+            packageName: input.packageName,
+            packagePriceCents: input.packagePriceCents,
+            pooledSeats: input.pooledSeats,
             tier: input.plan,
             billingMode: input.billingMode,
             status: 'ACTIVE',
@@ -568,9 +591,9 @@ export class CustomerConsoleService {
             notes: input.notes,
           },
         });
-        if (input.displayName || palette) {
+        if (input.displayName || input.logoUrl || palette) {
           await tx.tenantBranding.create({
-            data: { tenantId: tenant.id, displayName: input.displayName ?? input.name, ...(palette ? { palette: palette as any } : {}) },
+            data: { tenantId: tenant.id, displayName: input.displayName ?? input.name, logoUrl: input.logoUrl, ...(palette ? { palette: palette as any } : {}) },
           });
         }
         const owner = await this.createStarterOwner(tx, tenant.id, token, expiresAt, actorId, input);
@@ -587,7 +610,7 @@ export class CustomerConsoleService {
               slug,
               vertical: input.vertical,
               license: { before: null, after: licenseSnapshot(lic) },
-              branding: { displayName: input.displayName, primary: input.primaryColor, accent: input.accentColor },
+              branding: { displayName: input.displayName, logoUrl: input.logoUrl, primary: input.primaryColor, accent: input.accentColor },
               starterOwnerUserId: owner.id,
               starterLinkExpiresAt: expiresAt.toISOString(),
             }),
@@ -860,6 +883,8 @@ export class CustomerConsoleService {
       poNumber: invoiceBilled ? gov?.poNumber ?? null : null,
       renewalDate: iso(renewalDateOf(gov)),
       invoices: invoices.map((i: any) => ({
+        id: i.id,
+        attachment: i.pdfStoragePath ? { fileName: i.pdfFileName, sizeBytes: i.pdfSizeBytes, uploadedAt: iso(i.pdfUploadedAt) } : null,
         number: i.number,
         amountCents: i.amountCents,
         currency: i.currency,

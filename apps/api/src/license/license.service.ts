@@ -1,4 +1,5 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { assertPoolCapacity, customerTree, poolUsage } from './license-pool';
 import { PrismaService } from '../prisma/prisma.service';
 import { billingStateOf, cardBillingReady, isFreeTrialTier } from '../billing/trial-policy';
 
@@ -106,8 +107,8 @@ export class LicenseService {
 
   /**
    * CUSTOMER CONSOLE (2026-10-10) — the organisation-level billing facts for a
-   * tenant: its own License and the nearest ancestor's, up to three levels
-   * (district → school → sub-site, deeper than anything the product creates).
+   * tenant: its own License and every ancestor's, including deeper location
+   * hierarchies. A corporate pool always governs from the organisation root.
    *
    *   - `governing`  the License that decides HOW this tenant is billed: its
    *                  own row if it has one, else the nearest ancestor's. A
@@ -118,8 +119,8 @@ export class LicenseService {
    *                  schools / locations.
    *   - `rootTenantId` the top-level organisation (the "customer").
    *
-   * One query. Optionally takes a transaction client (same deadlock reason as
-   * getEffective).
+   * One query for the usual three-level tree, then bounded batches for deeper
+   * chains. Optionally takes a transaction client (same deadlock reason as getEffective).
    */
   async orgAccount(tenantId: string, tx?: any): Promise<{
     rootTenantId: string;
@@ -127,31 +128,29 @@ export class LicenseService {
     suspended: boolean;
   }> {
     const client = tx ?? this.prisma.client;
-    const lic = { select: { tenantId: true, tier: true, status: true, billingMode: true, poNumber: true, renewalDate: true, currentPeriodEnd: true, expiresAt: true, seatLimit: true, monthlyPriceCents: true, stripeSubscriptionId: true, trialEndsAt: true, dunningFailedAt: true, dunningNextAttemptAt: true, aiIncluded: true } };
-    const row = await client.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        id: true,
-        parentId: true,
-        license: lic,
-        parent: {
-          select: {
-            id: true,
-            parentId: true,
-            license: lic,
-            parent: { select: { id: true, parentId: true, license: lic } },
-          },
-        },
-      },
+    const chain: any[] = [];
+    const seen = new Set<string>();
+    // Keep the common organisation/location path in one round trip. Deeper
+    // hierarchies continue in batches without truncating the governing root.
+    const read = (id: string): Promise<any> => client.tenant.findUnique({
+      where: { id },
+      select: { id: true, parentId: true, license: true, parent: {
+        select: { id: true, parentId: true, license: true, parent: {
+          select: { id: true, parentId: true, license: true },
+        } },
+      } },
     });
-    if (!row) return { rootTenantId: tenantId, governing: null, suspended: false };
-    const chain: Array<{ id: string; parentId: string | null; license: any }> = [];
-    let cur: any = row;
-    while (cur) {
-      chain.push(cur);
-      cur = cur.parent ?? null;
+    let row: any = await read(tenantId);
+    while (row) {
+      if (seen.has(row.id) || seen.size >= 100) throw new HttpException({ code: 'CUSTOMER_TREE_INVALID', message: 'Invalid organization hierarchy.' }, 409);
+      seen.add(row.id);
+      chain.push(row);
+      if (!row.parentId) break;
+      row = row.parent ?? await read(row.parentId);
     }
-    const governing = chain.find((t) => t.license)?.license ?? null;
+    if (!chain.length) return { rootTenantId: tenantId, governing: null, suspended: false };
+    const rootLicense = chain[chain.length - 1].license;
+    const governing = rootLicense?.pooledSeats ? rootLicense : chain.find((t) => t.license)?.license ?? null;
     const suspended = chain.some((t) => t.license?.status === 'SUSPENDED');
     return { rootTenantId: chain[chain.length - 1].id, governing, suspended };
   }
@@ -220,6 +219,17 @@ export class LicenseService {
         },
         HttpStatus.PAYMENT_REQUIRED,
       );
+    }
+    const client = tx ?? this.prisma.client;
+    if (org.governing?.pooledSeats) {
+      const governing = org.governing;
+      if (governing.status !== 'ACTIVE') throw new HttpException({ code: 'LICENSE_INACTIVE', message: 'The corporate license is not active.' }, 402);
+      const expiry = governing.expiresAt ?? governing.currentPeriodEnd;
+      if (expiry && new Date(expiry) < new Date()) throw new HttpException({ code: 'LICENSE_EXPIRED', message: 'The corporate license has expired.' }, 402);
+      const tree = await customerTree(client, org.rootTenantId);
+      const { used } = await poolUsage(client, tree);
+      assertPoolCapacity(tree, used, governing.seatLimit, tenantId);
+      return;
     }
     const eff = await this.getEffective(tenantId, tx);
     if (eff.status !== 'ACTIVE') {
