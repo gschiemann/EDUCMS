@@ -2438,6 +2438,116 @@
       },
       "noEvidence": "此播放器版本不会报告其观察结果。更新后即可在此查看确认信息。"
     },
+    "displayFacts": {
+      "title": "面板与播放节奏",
+      "provenance": {
+        "at": "来自播放器最近一次原生视频报告（{ago}）。",
+        "undated": "来自播放器最近一次原生视频报告。"
+      },
+      "session": {
+        "preparing": "该报告时，原生视频会话仍在准备中。",
+        "ready": "该报告时，原生视频会话已就绪，但尚未开始呈现。",
+        "stopped": "该报告时，原生视频会话已停止。",
+        "stoppedWhy": "该报告时，原生视频会话已停止（{reason}）。"
+      },
+      "panel": {
+        "label": "面板模式",
+        "modeAt": "{size}，{hz} Hz",
+        "rateOnly": "{hz} Hz",
+        "sixty": {
+          "already": "面板已运行在 59 Hz 或更高。",
+          "offered": "{size} 下提供约 60 Hz 的模式（{hz} Hz）。",
+          "none": "{size} 下未提供 60 Hz 模式。"
+        },
+        "modes": {
+          "all": "提供的模式：{list}",
+          "first": "提供的前 {count} 个模式：{list}"
+        },
+        "modeGroup": "{size}，{rates} Hz"
+      },
+      "cadence": {
+        "label": "帧节奏",
+        "onCadence": "{percent}% 符合节奏",
+        "late": "{count} 帧延迟",
+        "dropped": "{count} 帧丢弃",
+        "maxGap": "最大间隔 {ms} 毫秒",
+        "basis": "在本次视频会话的 {count} 个渲染回调间隔中，落在源帧周期 {period} 毫秒 ±{tolerance} 毫秒范围内的占比。",
+        "terms": "延迟：晚于应显示的时间才送出显示。丢弃：因延迟超过一帧而被跳过。"
+      },
+      "experiments": {
+        "label": "这块屏幕上的实验项",
+        "line": "{name}：{state}",
+        "name": {
+          "vsyncSnap": "垂直同步对齐",
+          "prefer60hz": "60 Hz 模式",
+          "webviewInvisible": "隐藏 WebView",
+          "surfaceFrameRate": "帧率提示",
+          "decoderRotation": "解码器旋转"
+        },
+        "state": {
+          "requestedApplied": "已请求，已应用",
+          "requestedNotApplied": "已请求，最近一次报告时未应用",
+          "requestedReported": "已请求，报告为“{code}”",
+          "frameRateSent": "已请求，已发送给 Android（仅在切换无缝时生效）",
+          "frameRateRefused": "已请求，请求未能发出",
+          "frameRateNeedsApi": "已请求，未应用（需要 Android 11 或更高版本）",
+          "rotationRequested": "已请求，没有应用情况的报告",
+          "vsyncLocked": "已开启，已锁定 {period} 毫秒的垂直同步网格（误差平均 {mean} 微秒，最大 {max} 微秒）",
+          "vsyncWaiting": "已开启，尚未对齐（网格样本 {samples}/{needed}）",
+          "vsyncNoReport": "已开启，尚无对齐测量数据",
+          "sixtyAsked": "已请求，已向 Android 申请 {mode}",
+          "sixtyAskedAny": "已请求，已向 Android 申请约 60 Hz 的模式",
+          "sixtyKept": "已请求，仍在向 Android 申请 {mode}",
+          "sixtyKeptAny": "已请求，仍在向 Android 申请约 60 Hz 的模式",
+          "sixtyAlreadyAt": "已请求，面板已运行在 {hz} Hz",
+          "sixtyAlready": "已请求，面板已运行在 59 Hz 或更高",
+          "sixtyNoMode": "已请求，未提供 60 Hz 模式",
+          "sixtyNoWindow": "已请求，没有可用于申请的窗口",
+          "sixtyOtherSession": "已请求，这一面已有另一个视频会话",
+          "sixtyFailed": "已请求，请求未能发出",
+          "sixtyReverted": "不再请求，已恢复 Android 自行选择",
+          "sixtyRevertFailed": "不再请求，恢复 Android 自行选择失败",
+          "sixtyPending": "已请求，尚无结果报告"
+        },
+        "guardNote": "播放器的保护机制在{reason}后关闭了“{name}”。",
+        "guardReason": {
+          "page-lease-expired": "播放器页面停止响应",
+          "output-stalled": "视频输出停滞",
+          "output-unavailable": "视频输出变为不可用",
+          "codec-stalled": "解码器停滞",
+          "other": "有会话以“{code}”结束"
+        }
+      },
+      "keepScreenOn": {
+        "label": "屏幕常亮",
+        "yes": "播放器窗口在最近一次报告时保持了“屏幕常亮”。",
+        "no": "播放器窗口在最近一次报告时没有保持“屏幕常亮”。"
+      },
+      "history": {
+        "label": "此前的会话",
+        "when": "{ago}",
+        "unknownTime": "时间未知",
+        "recovered": "重启后恢复",
+        "ran": "运行 {duration}",
+        "snapOn": "对齐已开启",
+        "snapOff": "对齐已关闭",
+        "sixty": {
+          "line": "60 Hz 模式：{result}",
+          "result": {
+            "applied": "已向 Android 申请 60 Hz 模式",
+            "kept": "仍在向 Android 申请 60 Hz 模式",
+            "already-60hz": "面板当时已运行在 59 Hz 或更高",
+            "no-60hz-mode": "未提供 60 Hz 模式",
+            "no-window": "没有可用于申请的窗口",
+            "other-session": "这一面当时已有另一个会话",
+            "failed": "请求未能发出",
+            "reverted": "已撤回请求，已恢复 Android 自行选择",
+            "other": "报告为“{code}”"
+          }
+        },
+        "overflow": "另有 {count} 个更早的会话已不再列出——播放器只保留最近的会话。"
+      }
+    },
     "playback": {
       "title": "视频播放",
       "summarySmooth": "视频播放流畅",

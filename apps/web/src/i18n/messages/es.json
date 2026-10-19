@@ -2438,6 +2438,116 @@
       },
       "noEvidence": "Esta versión del reproductor no informa lo que observó. Actualícela para ver la comprobación aquí."
     },
+    "displayFacts": {
+      "title": "Panel y ritmo de reproducción",
+      "provenance": {
+        "at": "Del último informe de video nativo del reproductor, {ago}.",
+        "undated": "Del último informe de video nativo del reproductor."
+      },
+      "session": {
+        "preparing": "En ese informe, la sesión de video nativo aún se estaba preparando.",
+        "ready": "En ese informe, la sesión de video nativo estaba lista, pero aún no se mostraba.",
+        "stopped": "En ese informe, la sesión de video nativo ya se había detenido.",
+        "stoppedWhy": "En ese informe, la sesión de video nativo ya se había detenido ({reason})."
+      },
+      "panel": {
+        "label": "Modo del panel",
+        "modeAt": "{size} a {hz} Hz",
+        "rateOnly": "{hz} Hz",
+        "sixty": {
+          "already": "El panel ya funciona a 59 Hz o más.",
+          "offered": "Se ofrece un modo de ~60 Hz en {size} ({hz} Hz).",
+          "none": "No se ofrece ningún modo de 60 Hz en {size}."
+        },
+        "modes": {
+          "all": "Modos ofrecidos: {list}",
+          "first": "Primeros {count} modos ofrecidos: {list}"
+        },
+        "modeGroup": "{size} a {rates} Hz"
+      },
+      "cadence": {
+        "label": "Cadencia de fotogramas",
+        "onCadence": "{percent} % en cadencia",
+        "late": "{count} con retraso",
+        "dropped": "{count} descartados",
+        "maxGap": "mayor intervalo {ms} ms",
+        "basis": "Proporción de {count} intervalos entre notificaciones de renderizado de esta sesión de video que quedaron a ±{tolerance} ms del periodo de fotograma de origen de {period} ms.",
+        "terms": "Con retraso: enviado a la pantalla después de la hora que le correspondía. Descartado: omitido por llevar más de un fotograma de retraso."
+      },
+      "experiments": {
+        "label": "Experimentos en esta pantalla",
+        "line": "{name}: {state}",
+        "name": {
+          "vsyncSnap": "Alineación a vsync",
+          "prefer60hz": "Modo de 60 Hz",
+          "webviewInvisible": "WebView oculto",
+          "surfaceFrameRate": "Sugerencia de velocidad de fotogramas",
+          "decoderRotation": "Rotación en el decodificador"
+        },
+        "state": {
+          "requestedApplied": "solicitado, aplicado",
+          "requestedNotApplied": "solicitado, no aplicado en el último informe",
+          "requestedReported": "solicitado, informó «{code}»",
+          "frameRateSent": "solicitado, enviado a Android (solo actúa si el cambio se hace sin cortes)",
+          "frameRateRefused": "solicitado, no se pudo hacer la solicitud",
+          "frameRateNeedsApi": "solicitado, no aplicado (requiere Android 11 o posterior)",
+          "rotationRequested": "solicitado, sin informe de aplicación",
+          "vsyncLocked": "activo, sincronizado con una cuadrícula vsync de {period} ms (error medio de {mean} µs, máximo de {max} µs)",
+          "vsyncWaiting": "activo, aún sin alinear ({samples} de {needed} muestras de la cuadrícula)",
+          "vsyncNoReport": "activo, aún sin mediciones de alineación",
+          "sixtyAsked": "solicitado, se pidió a Android {mode}",
+          "sixtyAskedAny": "solicitado, se pidió a Android un modo de ~60 Hz",
+          "sixtyKept": "solicitado, se sigue pidiendo a Android {mode}",
+          "sixtyKeptAny": "solicitado, se sigue pidiendo a Android un modo de ~60 Hz",
+          "sixtyAlreadyAt": "solicitado, el panel ya funciona a {hz} Hz",
+          "sixtyAlready": "solicitado, el panel ya funciona a 59 Hz o más",
+          "sixtyNoMode": "solicitado, no se ofrece ningún modo de 60 Hz",
+          "sixtyNoWindow": "solicitado, no había ventana donde pedirlo",
+          "sixtyOtherSession": "solicitado, otra sesión de video ya estaba en este lado",
+          "sixtyFailed": "solicitado, no se pudo hacer la solicitud",
+          "sixtyReverted": "ya no se solicita, se restableció la elección propia de Android",
+          "sixtyRevertFailed": "ya no se solicita, no se pudo restablecer la elección propia de Android",
+          "sixtyPending": "solicitado, aún sin resultado"
+        },
+        "guardNote": "La protección del reproductor desactivó «{name}» tras {reason}.",
+        "guardReason": {
+          "page-lease-expired": "dejar de responder la página del reproductor",
+          "output-stalled": "detenerse la salida de video",
+          "output-unavailable": "dejar de estar disponible la salida de video",
+          "codec-stalled": "detenerse el decodificador",
+          "other": "terminar una sesión con «{code}»"
+        }
+      },
+      "keepScreenOn": {
+        "label": "Mantener pantalla encendida",
+        "yes": "La ventana del reproductor mantenía activo «mantener pantalla encendida» en el último informe.",
+        "no": "La ventana del reproductor no mantenía activo «mantener pantalla encendida» en el último informe."
+      },
+      "history": {
+        "label": "Sesiones anteriores",
+        "when": "{ago}",
+        "unknownTime": "hora desconocida",
+        "recovered": "recuperada tras un reinicio",
+        "ran": "duró {duration}",
+        "snapOn": "alineación activada",
+        "snapOff": "alineación desactivada",
+        "sixty": {
+          "line": "Modo de 60 Hz: {result}",
+          "result": {
+            "applied": "se pidió a Android un modo de 60 Hz",
+            "kept": "se seguía pidiendo a Android un modo de 60 Hz",
+            "already-60hz": "el panel ya funcionaba a 59 Hz o más",
+            "no-60hz-mode": "no se ofrecía ningún modo de 60 Hz",
+            "no-window": "no había ventana donde pedirlo",
+            "other-session": "otra sesión estaba en este lado",
+            "failed": "no se pudo hacer la solicitud",
+            "reverted": "solicitud retirada, se restableció la elección propia de Android",
+            "other": "informó «{code}»"
+          }
+        },
+        "overflow": "{count} sesiones anteriores ya no aparecen: el reproductor solo conserva las más recientes."
+      }
+    },
     "playback": {
       "title": "Reproducción de video",
       "summarySmooth": "Reproduce video con fluidez",

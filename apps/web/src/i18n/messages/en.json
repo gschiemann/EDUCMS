@@ -2438,6 +2438,116 @@
       },
       "noEvidence": "This player version does not report what it saw. Update it to see proof here."
     },
+    "displayFacts": {
+      "title": "Panel and playback pacing",
+      "provenance": {
+        "at": "From the player’s last native video report, {ago}.",
+        "undated": "From the player’s last native video report."
+      },
+      "session": {
+        "preparing": "The native video session was still preparing at that report.",
+        "ready": "The native video session was ready but not yet presenting at that report.",
+        "stopped": "The native video session had stopped at that report.",
+        "stoppedWhy": "The native video session had stopped at that report ({reason})."
+      },
+      "panel": {
+        "label": "Panel mode",
+        "modeAt": "{size} at {hz} Hz",
+        "rateOnly": "{hz} Hz",
+        "sixty": {
+          "already": "The panel already runs at 59 Hz or faster.",
+          "offered": "A ~60 Hz mode is offered at {size} ({hz} Hz).",
+          "none": "No 60 Hz mode offered at {size}."
+        },
+        "modes": {
+          "all": "Modes offered: {list}",
+          "first": "First {count} modes offered: {list}"
+        },
+        "modeGroup": "{size} at {rates} Hz"
+      },
+      "cadence": {
+        "label": "Frame cadence",
+        "onCadence": "{percent} % on cadence",
+        "late": "{count} late",
+        "dropped": "{count} dropped",
+        "maxGap": "max gap {ms} ms",
+        "basis": "Share of {count} intervals between render callbacks in this video session that fell within ±{tolerance} ms of the {period} ms source frame period.",
+        "terms": "Late: released to the display after its due time. Dropped: skipped for being more than one frame late."
+      },
+      "experiments": {
+        "label": "Experiments on this screen",
+        "line": "{name}: {state}",
+        "name": {
+          "vsyncSnap": "Vsync snap",
+          "prefer60hz": "60 Hz mode",
+          "webviewInvisible": "WebView hidden",
+          "surfaceFrameRate": "Frame-rate hint",
+          "decoderRotation": "Decoder rotation"
+        },
+        "state": {
+          "requestedApplied": "requested, applied",
+          "requestedNotApplied": "requested, not applied at the last report",
+          "requestedReported": "requested, reported “{code}”",
+          "frameRateSent": "requested, sent to Android (acts only if the change is seamless)",
+          "frameRateRefused": "requested, the request could not be made",
+          "frameRateNeedsApi": "requested, not applied (needs Android 11 or newer)",
+          "rotationRequested": "requested, no applied report",
+          "vsyncLocked": "on, locked to a {period} ms vsync grid (error {mean} µs mean, {max} µs max)",
+          "vsyncWaiting": "on, not snapping yet ({samples} of {needed} grid samples)",
+          "vsyncNoReport": "on, no snap measurements reported yet",
+          "sixtyAsked": "requested, asked Android for {mode}",
+          "sixtyAskedAny": "requested, asked Android for a ~60 Hz mode",
+          "sixtyKept": "requested, still asking Android for {mode}",
+          "sixtyKeptAny": "requested, still asking Android for a ~60 Hz mode",
+          "sixtyAlreadyAt": "requested, the panel already runs at {hz} Hz",
+          "sixtyAlready": "requested, the panel already runs at 59 Hz or faster",
+          "sixtyNoMode": "requested, no 60 Hz mode offered",
+          "sixtyNoWindow": "requested, no window to ask on",
+          "sixtyOtherSession": "requested, another video session was already on this side",
+          "sixtyFailed": "requested, the request could not be made",
+          "sixtyReverted": "no longer requested, Android’s own choice restored",
+          "sixtyRevertFailed": "no longer requested, restoring Android’s own choice failed",
+          "sixtyPending": "requested, no result reported yet"
+        },
+        "guardNote": "The player’s guard switched {name} off after {reason}.",
+        "guardReason": {
+          "page-lease-expired": "the player page stopped checking in",
+          "output-stalled": "the video output stalled",
+          "output-unavailable": "the video output became unavailable",
+          "codec-stalled": "the decoder stalled",
+          "other": "a session ended with “{code}”"
+        }
+      },
+      "keepScreenOn": {
+        "label": "Keep screen on",
+        "yes": "The player window held keep-screen-on at the last report.",
+        "no": "The player window did not hold keep-screen-on at the last report."
+      },
+      "history": {
+        "label": "Previous sessions",
+        "when": "{ago}",
+        "unknownTime": "time unknown",
+        "recovered": "recovered after a restart",
+        "ran": "ran {duration}",
+        "snapOn": "snap on",
+        "snapOff": "snap off",
+        "sixty": {
+          "line": "60 Hz mode: {result}",
+          "result": {
+            "applied": "asked Android for a 60 Hz mode",
+            "kept": "still asking Android for a 60 Hz mode",
+            "already-60hz": "the panel already ran at 59 Hz or faster",
+            "no-60hz-mode": "no 60 Hz mode offered",
+            "no-window": "no window to ask on",
+            "other-session": "another session was on this side",
+            "failed": "the request could not be made",
+            "reverted": "request withdrawn, Android’s own choice restored",
+            "other": "reported “{code}”"
+          }
+        },
+        "overflow": "{count} older sessions are no longer listed — the player keeps only its most recent ones."
+      }
+    },
     "playback": {
       "title": "Video playback",
       "summarySmooth": "Plays video smoothly",
