@@ -138,7 +138,11 @@ export function decideFaceEngine(input: FaceEngineInput): FaceEngineDecision {
   const app = input.app;
   if (!app || app.protocolMax < NATIVE_FIRST_MIN_PROTOCOL) return web('protocol');
   if (!app.nativeSolo) return web('class-not-native');
-  if (!app.nativeFirst) return web('native-first-off');
+  // §8.1 precedence: an explicit per-screen enrolment (`nativeVideo.nativeFirst: true`) beats the
+  // class default the app reports as `device.nativeFirst`; the protocol-4 check above already proves
+  // the app read the same enrolment. Absent → the class default decides. (Field bug 2026-10-19: an
+  // enrolled unit whose class default is off was vetoed here and stayed on the protocol-3 path.)
+  if (d.nativeFirst !== true && !app.nativeFirst) return web('native-first-off');
   if (input.blocked) return web('blocked');
   if (input.settled) return web('settled');
   if (input.softDim) return web('soft-dim');

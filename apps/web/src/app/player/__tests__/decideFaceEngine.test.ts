@@ -63,7 +63,12 @@ describe('§3.1 — one decision per face, before the mount', () => {
     expect(decideFaceEngine(input({}, { nativeSolo: false })).reason).toBe('class-not-native');
     expect(decideFaceEngine(input({}, { protocolMax: 3 })).reason).toBe('protocol');
     expect(decideFaceEngine(input({}, null)).reason).toBe('protocol');
-    expect(decideFaceEngine(input({}, { nativeFirst: false })).reason).toBe('native-first-off');
+    // Not enrolled (descriptor silent) and the class default off → web.
+    expect(decideFaceEngine(input({ descriptor: { assetId: ASSET, sha256: SHA } }, { nativeFirst: false })).reason).toBe('native-first-off');
+    // §8.1: an explicit enrolment beats the class default the app reports (field bug 2026-10-19).
+    expect(decideFaceEngine(input({}, { nativeFirst: false }))).toEqual({ engine: 'native', reason: 'store-verified', yieldTo: null });
+    // …but only once the app agrees: protocol < 4 still means web.
+    expect(decideFaceEngine(input({}, { nativeFirst: false, protocolMax: 3 })).reason).toBe('protocol');
     // The server's explicit kill switch wins over an app that says yes.
     expect(decideFaceEngine(input({ descriptor: { assetId: ASSET, sha256: SHA, nativeFirst: false } })).reason).toBe('descriptor-off');
     // Absent key = the app's class default decides.
