@@ -1,3 +1,4 @@
+import { emergencyRenderEvidence } from '../screens/emergency-proof';
 import {
   Controller,
   Post,
@@ -347,6 +348,7 @@ export class TelemetryController {
             // Only read to MERGE a loop-boundary block into it (below).
             lastVideoReport: true,
             faceIndex: true,
+            nativeRuntimeReport: true,
             // The last page load (every proven register rotates it) — a video
             // sample inside the 3 minutes after it is recorded, never graded.
             credentialEpochRotatedAt: true,
@@ -466,7 +468,10 @@ export class TelemetryController {
     const nativeProven = !!nativeVideo && nativeVideo.state === 'presenting' && !!nativeOutput &&
       nativeOutput.attached && nativeOutput.visible && nativeOutput.ageMs <= 2500 && nativeOutput.viewUpdates > 0 &&
       nativeOutput.uniqueFrames > (previousNative?.sessionId === nativeVideo.sessionId ? previousNative?.output?.uniqueFrames ?? 0 : 0);
-    if (body.render && (!nativeVideo || nativeProven)) {
+    const episode = (screen.nativeRuntimeReport as any)?.emergencyProof?.faces?.find((f: {face: number}) => f.face === (screen.faceIndex ?? 0));
+    const emergencyEvidence = emergencyRenderEvidence(body.render?.hash, body.render?.emergencyProof, episode);
+    if (emergencyEvidence && !emergencyEvidence.painted) data.lastRenderedHash = emergencyEvidence.hash;
+    if (body.render && (!emergencyEvidence || emergencyEvidence.painted) && (emergencyEvidence?.painted || !nativeVideo || nativeProven)) {
       if (!shouldSkipRenderProofWrite(screenId, bundleSha ?? '', bundleId ?? '')) {
         markRenderProofWritten(screenId, bundleSha ?? '', bundleId ?? '');
         data.lastRenderedAt = now;
@@ -474,7 +479,8 @@ export class TelemetryController {
         if (typeof frames === 'number') {
           data.lastRenderedFrames = Math.min(Math.floor(frames), Number.MAX_SAFE_INTEGER);
         }
-        if (body.render.hash) data.lastRenderedHash = String(body.render.hash).slice(0, 128);
+        if (emergencyEvidence) data.lastRenderedHash = emergencyEvidence.hash;
+        else if (body.render.hash) data.lastRenderedHash = String(body.render.hash).slice(0, 128);
         if (bundleSha) {
           data.lastBundleSha = bundleSha;
           data.lastBundleShaAt = now;

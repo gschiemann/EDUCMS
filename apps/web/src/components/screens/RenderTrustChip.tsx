@@ -97,6 +97,16 @@ export function RenderTrustChip({
 
   if (variant === 'offline') return null;
 
+  if (variant === 'alert-not-painted') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-red-600 text-white shadow-sm" title={t('screens.trust.alertNotPaintedTitle')}>
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {t('screens.trust.alertNotPainted')}
+      </span>
+    );
+  }
+
+
   // ── CREDENTIAL TRUST GONE (2026-08-30 reliability program) ──────────
   // The server downgraded this device to temporary 1-hour tokens
   // (`requiresRePair` at register). It may well be painting — which is

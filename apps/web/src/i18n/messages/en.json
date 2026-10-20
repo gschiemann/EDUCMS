@@ -2399,6 +2399,8 @@
       }
     },
     "trust": {
+      "alertNotPainted": "Alert raised · no on-glass proof",
+      "alertNotPaintedTitle": "The alert was raised, but the page has not confirmed painting its overlay. Delivery is not confirmed.",
       "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",
       "stalledTitle": "The video stopped moving. The screen is fixing it on its own; if this keeps happening, check the file.",
       "paintingTitleAt": "This screen reported a picture — last check {time}",

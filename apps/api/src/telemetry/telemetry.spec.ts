@@ -147,6 +147,25 @@ describe('POST /screens/:id/telemetry', () => {
     });
   });
 
+  it('an alert selection never refreshes render health without overlay paint', async () => {
+    await controller.report(SCREEN_ID, makeReq(), { render: { hash: 'em:lockdown', frames: 900 } });
+    expect(writtenData()).toMatchObject({ lastRenderedHash: 'pending|em:lockdown' });
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+  });
+
+  it('a page overlay paint travels the ordinary render lane and a native hold rejects an old challenge', async () => {
+    const challenge = '00000000-0000-4000-8000-000000000001';
+    const proof = { identity: 'abcdef01', documentId: 'document-a', frames: 2, painted: true, challenge };
+    await controller.report(SCREEN_ID, makeReq(), { render: { hash: 'em:abcdef01', emergencyProof: { ...proof, challenge: undefined } } });
+    expect(writtenData()).toMatchObject({ lastRenderedHash: 'em:abcdef01', lastRenderedAt: expect.any(Date) });
+    jest.advanceTimersByTime(31_000);
+    prisma.client.screen.update.mockClear();
+    prisma.client.screen.findUnique.mockResolvedValue(baseRow({ faceIndex: 0, nativeRuntimeReport: { emergencyProof: { faces: [{ face: 0, challenge }] } } }));
+    await controller.report(SCREEN_ID, makeReq(), { render: { hash: 'em:abcdef01', emergencyProof: { ...proof, challenge: '00000000-0000-4000-8000-000000000002' } } });
+    expect(writtenData()).toMatchObject({ lastRenderedHash: 'pending|em:abcdef01' });
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+  });
+
   // ── 2. THE HOT-CACHE RULE ─────────────────────────────────────────────
   it('a full routine report writes ONLY telemetry columns — the manifest cache is not busted', async () => {
     await controller.report(SCREEN_ID, makeReq(), {
