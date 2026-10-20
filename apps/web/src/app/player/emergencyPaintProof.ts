@@ -1,0 +1,163 @@
+/** Emergency delivery uses the render lane; mounting state alone proves nothing. */
+export interface EmergencyPaintProof {
+  identity: string;
+  documentId: string;
+  frames: number;
+  painted: boolean;
+  challenge?: string;
+}
+
+/** Bounded opaque identity: alert text, URLs and customer details never leave in proof. */
+export function emergencyPaintIdentity(alert: unknown): string {
+  const text = JSON.stringify(alert) || '';
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function visible(el: Element, doc: Document): boolean {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const style = doc.defaultView?.getComputedStyle(node);
+    if (!style || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || (style.opacity !== '' && Number(style.opacity) === 0)) return false;
+  }
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+/** Check the painted target, including occlusion and decoded media, on BOTH frame samples. */
+export function visibleEmergencyRoot(doc: Document, identity?: string | null): HTMLElement | null {
+  if (doc.visibilityState !== 'visible') return null;
+  const roots = Array.from(doc.querySelectorAll<HTMLElement>('[data-edu-emergency-root][data-edu-emergency-identity]')).reverse();
+  for (const root of roots) {
+    if (identity && root.dataset.eduEmergencyIdentity !== identity) continue;
+    if (!root.isConnected || !visible(root, doc)) continue;
+    const rect = root.getBoundingClientRect();
+    const right = Math.min(rect.right, doc.documentElement.clientWidth || doc.defaultView?.innerWidth || 0);
+    const bottom = Math.min(rect.bottom, doc.documentElement.clientHeight || doc.defaultView?.innerHeight || 0);
+    const left = Math.max(0, rect.left);
+    const top = Math.max(0, rect.top);
+    if (right <= left || bottom <= top) continue;
+    const hit = doc.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+    if (!hit || !root.contains(hit) || hit.closest('[data-edu-emergency-root]') !== root) continue;
+    // A black media container is not the alert. Require decoded pixels at
+    // the sampled point; a legible built-in fallback has its own root.
+    if (root.dataset.eduEmergencyRoot === 'media') {
+      // Passive playlist media uses pointer-events:none. Hit-testing then
+      // reaches the root itself; inspect the visible media at that point,
+      // but never accept a different overlaid control that hid the alert.
+      const media = hit === root
+        ? Array.from(root.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img,video')).find(candidate => {
+            const bounds = candidate.getBoundingClientRect();
+            return visible(candidate, doc) && bounds.left <= (left + right) / 2 && bounds.right >= (left + right) / 2 && bounds.top <= (top + bottom) / 2 && bounds.bottom >= (top + bottom) / 2;
+          })
+        : hit;
+      if (media?.tagName === 'IMG') {
+        const image = media as HTMLImageElement;
+        if (!image.complete || image.naturalWidth <= 0) continue;
+      } else if (media?.tagName === 'VIDEO') {
+        const video = media as HTMLVideoElement;
+        if (video.readyState < 2 || video.videoWidth <= 0 || video.error) continue;
+      } else continue;
+    } else if (!root.textContent?.trim()) {
+      // Message media can be the entire alert; a failed image cannot prove it.
+      const media = root.querySelector<HTMLImageElement>('img');
+      if (!media?.complete || media.naturalWidth <= 0 || !visible(media, doc)) continue;
+    }
+    return root;
+  }
+  return null;
+}
+
+export interface EmergencyPaintWatcherOptions {
+  document: Document;
+  documentId: string;
+  expectedIdentity: () => string | null;
+  raiseHold: () => void;
+  readChallenge: () => Promise<string | undefined>;
+  report: (proof: EmergencyPaintProof) => void;
+  requestFrame: (callback: FrameRequestCallback) => number;
+  cancelFrame: (id: number) => void;
+}
+
+/**
+ * Two distinct animation frames with the SAME visible alert and native
+ * challenge. Stale content, a hidden root and a previous hold cannot satisfy
+ * this watcher. It never releases a hold; only the live manifest may do that.
+ */
+export class EmergencyPaintWatcher {
+  private identity: string | null = null;
+  private challenge: string | undefined;
+  private proof: EmergencyPaintProof | null = null;
+  private sampledAt = 0;
+  private generation = 0;
+  private raf = 0;
+  private reading = false;
+  private stopped = false;
+  private frames = 0;
+  constructor(private readonly options: EmergencyPaintWatcherOptions) {}
+
+  current(nowMs = Date.now()): EmergencyPaintProof | null {
+    if (!this.proof || !this.identity) return null;
+    if (this.proof.painted && (nowMs - this.sampledAt > 1500 || !visibleEmergencyRoot(this.options.document, this.identity))) {
+      return { ...this.proof, painted: false };
+    }
+    return this.proof;
+  }
+
+  scan(): void {
+    if (this.stopped) return;
+    const expected = this.options.expectedIdentity();
+    const root = visibleEmergencyRoot(this.options.document, expected);
+    const identity = expected || root?.dataset.eduEmergencyIdentity || null;
+    if (identity !== this.identity) {
+      this.generation += 1;
+      this.options.cancelFrame(this.raf);
+      this.raf = 0;
+      this.identity = identity;
+      this.challenge = undefined;
+      this.proof = null;
+      if (identity) {
+        // Synchronous and BEFORE any bridge round trip or paint wait.
+        this.options.raiseHold();
+        this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: false };
+        this.options.report(this.proof);
+      }
+    }
+    if (!identity) return;
+    if (!this.reading) {
+      this.reading = true;
+      const generation = this.generation;
+      this.options.readChallenge().then(challenge => {
+        if (this.stopped || generation !== this.generation) return;
+        if (challenge !== this.challenge) {
+          this.generation += 1;
+          this.challenge = challenge;
+          this.options.cancelFrame(this.raf);
+          this.raf = 0;
+          this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: false, ...(challenge ? { challenge } : {}) };
+        }
+      }).catch(() => { /* wake/bridge failures cannot block drawing */ }).finally(() => { this.reading = false; });
+    }
+    if (!root || this.raf) return;
+    const generation = this.generation;
+    this.raf = this.options.requestFrame(() => {
+      if (this.stopped || generation !== this.generation || !visibleEmergencyRoot(this.options.document, identity)) { this.raf = 0; return; }
+      this.frames += 1;
+      this.raf = this.options.requestFrame(() => {
+        this.raf = 0;
+        if (this.stopped || generation !== this.generation || !visibleEmergencyRoot(this.options.document, identity)) return;
+        this.frames += 1;
+        const first = !this.proof?.painted;
+        this.sampledAt = Date.now();
+        this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: true, ...(this.challenge ? { challenge: this.challenge } : {}) };
+        if (first) this.options.report(this.proof);
+      });
+    });
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.generation += 1;
+    this.options.cancelFrame(this.raf);
+  }
+}

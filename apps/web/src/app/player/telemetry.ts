@@ -1,4 +1,5 @@
 import { NATIVE_TIMING_EXTRA_KEYS, type NativeSharedVideoState } from './nativeSharedVideo';
+import type { EmergencyPaintProof } from './emergencyPaintProof';
 /**
  * telemetry.ts — the player's ONE routine report (2026-09-02, efficiency
  * program P0-1).
@@ -99,6 +100,7 @@ export interface TelemetryRenderBlock {
   hash: string;
   contentKind: string;
   sync?: TelemetrySyncReport;
+  emergencyProof?: EmergencyPaintProof;
 }
 
 /**

@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
+import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 
 /**
  * P0 (2026-06-27, Greg live-tested on the 960×1080 LED) — the full-screen
@@ -371,6 +372,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         role="alert"
         aria-live="assertive"
         data-edu-emergency-root="banner"
+        data-edu-emergency-identity={emergencyPaintIdentity(active)}
         className={`fixed top-0 left-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
         // Width pinned to the LED canvas (960 etc.) so the banner spans only the
         // visible panel, not the 1920 frame buffer. maxHeight in px off canvasH
@@ -403,6 +405,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       role="alert"
       aria-live="assertive"
       data-edu-emergency-root="full"
+      data-edu-emergency-identity={emergencyPaintIdentity(active)}
       className={`fixed z-[9999] ${style.bg} ${style.text} ${style.animate}`}
       // FULL-VIEWPORT opaque backdrop — ALWAYS covers the entire frame buffer
       // so the running playlist can NEVER show behind a life-safety takeover.

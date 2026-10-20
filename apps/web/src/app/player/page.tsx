@@ -38,6 +38,7 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
+import { EmergencyPaintWatcher, emergencyPaintIdentity, type EmergencyPaintProof } from './emergencyPaintProof';
 // 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
 // unit-tested without mounting this page.
 //   trustGuards — R-01: the `?api=` / localStorage API-root override is the
@@ -2627,6 +2628,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       return (
         <div
           data-edu-emergency-root="crash"
+          data-edu-emergency-identity={emergencyPaintIdentity(cachedEm)}
           className="fixed bg-red-700 text-white"
           style={{
             position: 'fixed',
@@ -2710,6 +2712,7 @@ export default function PlayerPageWrapper() {
 
 function bootContentSample(state: { rendering: boolean; sig: string; video?: boolean }, documentFrames: number) {
   if (!state.rendering) return undefined;
+  if (state.sig.startsWith('pending|em:')) return undefined;
   if (nativeSharedVideoEvidence.isSelected()) {
     if (!nativeSharedVideoEvidence.hasFreshFrames(Date.now())) return undefined;
     return { hash: state.sig, frames: nativeSharedVideoEvidence.frameCount() };
@@ -2817,7 +2820,10 @@ function PlayerPage() {
       // "operator content OR an emergency is on the glass" (it feeds the
       // render proof) — and it's a ref, safe inside this mount-once closure
       // where raw state like playbackStopped would be stale.
-      const contentOnGlass = renderStateRef.current.rendering && (!nativeSharedVideoEvidence.isSelected() || nativeSharedVideoEvidence.hasFreshFrames(Date.now()));
+      const emergencyPaint = emergencyPaintWatcherRef.current?.current();
+      const contentOnGlass = emergencyExpectedIdentityRef.current
+        ? emergencyPaint?.painted === true && emergencyPaint.identity === emergencyExpectedIdentityRef.current
+        : renderStateRef.current.rendering && (!nativeSharedVideoEvidence.isSelected() || nativeSharedVideoEvidence.hasFreshFrames(Date.now()));
       const syncOk = manifestFresh || contentOnGlass;
       // On the registering/pairing splash there is legitimately no manifest
       // to reconcile — stay on the legacy heartbeat so the native content
@@ -4521,6 +4527,70 @@ function PlayerPage() {
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
+  const emergencyExpectedIdentityRef = useRef<string | null>(null);
+  emergencyExpectedIdentityRef.current = pushedEmergencyMessage
+    ? emergencyPaintIdentity(pushedEmergencyMessage)
+    : activeEmergency ? emergencyPaintIdentity(activeEmergency) : null;
+  const emergencyPaintWatcherRef = useRef<EmergencyPaintWatcher | null>(null);
+  const emergencyRenderExtrasAllowedRef = useRef(true);
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    const documentId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    let stopped = false;
+    const retries = new Set<ReturnType<typeof setTimeout>>();
+    const report = (proof: EmergencyPaintProof) => {
+      // The native side additionally verifies its window is foreground,
+      // visible and opaque. It accepts only its current hold's challenge.
+      if (!proof.painted || proof.challenge) {
+        nativeFire('heartbeatV2', JSON.stringify({ emergencyPaint: proof }));
+      }
+      console.info(`[Player] emergency-${proof.painted ? 'overlay-painted' : 'raised-no-paint'} identity=${proof.identity} frames=${proof.frames}`);
+      const post = async (attempt: number) => {
+        if (stopped || emergencyPaintWatcherRef.current?.current()?.identity !== proof.identity) return;
+        if (emergencyPaintWatcherRef.current?.current()?.challenge !== proof.challenge) return;
+        // A late pending retry must never overwrite this alert's paint.
+        if (!proof.painted && emergencyPaintWatcherRef.current?.current()?.painted) return;
+        const token = getDeviceToken();
+        if (!token || !screenId) return;
+        try {
+          const { res } = await requestControlPlane(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames: proof.frames, hash: `${proof.painted ? '' : 'pending|'}em:${proof.identity}`, contentKind: 'emergency', emergencyProof: proof }),
+          }, 2_000);
+          if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) return;
+        } catch { /* bounded retry below; this never blocks the alert */ }
+        if (attempt < 2 && !stopped) {
+          const timer = setTimeout(() => { retries.delete(timer); void post(attempt + 1); }, 500 * (attempt + 1));
+          retries.add(timer);
+        }
+      };
+      void post(0);
+    };
+    const watcher = new EmergencyPaintWatcher({
+      document, documentId,
+      expectedIdentity: () => emergencyExpectedIdentityRef.current,
+      raiseHold: () => { signalDisplayEmergencyHold(true, true); },
+      readChallenge: async () => {
+        if (!nativeHas('sharedVideoState')) return undefined;
+        const reply = await nativeCall<unknown>('sharedVideoState');
+        const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
+        const challenge = (state as { emergencyProof?: { challenge?: unknown } } | null)?.emergencyProof?.challenge;
+        return typeof challenge === 'string' && challenge.length <= 64 ? challenge : undefined;
+      },
+      report,
+      requestFrame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id),
+    });
+    emergencyPaintWatcherRef.current = watcher;
+    watcher.scan();
+    const timer = setInterval(() => watcher.scan(), 250);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      retries.forEach(clearTimeout);
+      watcher.stop();
+      if (emergencyPaintWatcherRef.current === watcher) emergencyPaintWatcherRef.current = null;
+    };
+  }, [screenId]);
 
   // ── SOFT BLANK — the universal, unbrickable blank (2026-08-25) ─────────
   //
@@ -5620,7 +5690,7 @@ function PlayerPage() {
     // while sitting on the pairing/connecting splash (which DOES paint, but
     // isn't operator content — we only want to assert "the content the
     // operator scheduled is on screen").
-    const emergencyOn = !!activeEmergency || phase === 'emergency';
+    const emergencyOn = !!activeEmergency || !!pushedEmergencyMessage || phase === 'emergency';
     // `normalFilesSetAside` (2026-10-03): every file of the playlist is set
     // aside by the playback circuit breaker, so the glass shows the same
     // "Content Unavailable" card as `allAssetsFailed`. It used to prove
@@ -5639,8 +5709,7 @@ function PlayerPage() {
     let kind = 'idle';
     if (emergencyOn) {
       kind = 'emergency';
-      const em: any = activeEmergency || {};
-      sig = `em:${em.type || em.severity || 'active'}`;
+      sig = `pending|em:${emergencyExpectedIdentityRef.current || 'active'}`;
     } else if (playingContent) {
       kind = (playlist as any)?.template ? 'template' : 'playlist';
       // currentPlaylistSigRef already tracks the live playlist/template
@@ -5700,7 +5769,7 @@ function PlayerPage() {
         }
       } catch { /* cover bookkeeping must never touch playback */ }
     }
-  }, [phase, playlist, playbackStopped, activeEmergency, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
+  }, [phase, playlist, playbackStopped, activeEmergency, pushedEmergencyMessage, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
   // An alert is never behind a cover or the quiet-boot mark (2026-10-11).
   // `rendering` above already counts an active emergency; a PUSHED message
   // (SOS / broadcast) is drawn by EmergencyOverlay, outside that proof — take
@@ -5975,10 +6044,18 @@ function PlayerPage() {
   const renderProofFramesRef = useRef(-1);
   const renderProofIdleAtRef = useRef(0);
   const takeRenderProof = useCallback((nowMs: number) => {
-    const state = renderStateRef.current;
+    let state = renderStateRef.current;
+    const emergencyProof = emergencyPaintWatcherRef.current?.current(nowMs);
+    const emergencyOn = !!emergencyExpectedIdentityRef.current || !!emergencyProof;
+    if (emergencyOn) {
+      if (!emergencyProof || (emergencyExpectedIdentityRef.current && emergencyProof.identity !== emergencyExpectedIdentityRef.current)) return null;
+      // A refused extension drops only this render block, never liveness.
+      if (!emergencyRenderExtrasAllowedRef.current) return null;
+      state = { rendering: true, kind: 'emergency', sig: `${emergencyProof.painted ? '' : 'pending|'}em:${emergencyProof.identity}` };
+    }
     // The selected native path must prove THIS face's own new, fresh surface output.
     // Readiness/process heartbeat/document rAF cannot keep a failed native video green.
-    const nativeSelected = nativeSharedVideoEvidence.isSelected() && !state.sig.startsWith('em:');
+    const nativeSelected = nativeSharedVideoEvidence.isSelected() && !emergencyOn;
     if (nativeSelected && !nativeSharedVideoEvidence.canProve(nowMs)) return null;
 
     // Frame-locked sync telemetry rides the proof, exactly as it did on the
@@ -6044,6 +6121,7 @@ function PlayerPage() {
       sync: syncReport,
     });
     if (!proof) return null;
+    if (emergencyOn && emergencyProof) proof.block.emergencyProof = emergencyProof;
     return proof;
   }, [capabilityReportGate]);
 
@@ -8056,6 +8134,11 @@ function PlayerPage() {
         data = null;
       }
       if (cancelled) return;
+
+      if (status === 400 && body.render?.emergencyProof) {
+        emergencyRenderExtrasAllowedRef.current = false;
+        console.warn('[Player] server refused emergency proof extension — withholding emergency render blocks; liveness continues');
+      }
 
       if (cacheSourceRefused(status, body)) {
         // An API from before native-first's `cache.source` 400'd the strict
@@ -11702,6 +11785,28 @@ function PlayerPage() {
   // A dim can never reach opacity 1 (SOFT_DIM_MAX_ALPHA caps it at 0.85), so
   // "dimmed" always stays visibly distinguishable from "blanked" — and a
   // brightness slider can never black out a wall-mounted panel.
+  // An active status without decoded emergency media used to leave the
+  // screen black while still claiming `em:` render proof. Keep a legible,
+  // opaque alert on every render branch until its designed content loads.
+  const emergencyFallback = activeEmergency &&
+    (!playlist?.isEmergency || !mediaReady || displayIndex === null ||
+      !/^(image|video)\//.test(sorted[displayIndex]?.asset?.mimeType || '') ||
+      allAssetsFailed || normalFilesSetAside || allItemsUnplayable) ? (
+      <div
+        role="alert"
+        data-edu-emergency-root="fallback"
+        data-edu-emergency-identity={emergencyPaintIdentity(activeEmergency)}
+        style={{ position: 'fixed', top: 0, left: 0, width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)', backgroundColor: '#b91c1c', color: '#fff', zIndex: 9998 }}
+      >
+        <FitToViewport padding={40}>
+          <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
+            <AlertTriangle style={{ width: 96, height: 96, margin: '0 auto 24px' }} />
+            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || 'EMERGENCY'}</h1>
+            {activeEmergency.textBlob ? <p style={{ fontSize: 32, whiteSpace: 'pre-wrap' }}>{activeEmergency.textBlob}</p> : null}
+          </div>
+        </FitToViewport>
+      </div>
+    ) : null;
   const softBlankOverlay =
     (softBlank || softDim > 0) && !activeEmergency && !pushedEmergencyMessage ? (
       <div
@@ -11870,6 +11975,7 @@ function PlayerPage() {
         {connectivityToast}
         {canvasEditor}
         {softBlankOverlay}
+        {emergencyFallback}
         {preContentEscapeOverlay}
       </>
     );
@@ -11895,6 +12001,7 @@ function PlayerPage() {
         {renderRepairRequiredChip(true)}
         {canvasEditor}
         {softBlankOverlay}
+        {emergencyFallback}
         {preContentEscapeOverlay}
         {remoteBackHint}
       </>
@@ -11975,6 +12082,7 @@ function PlayerPage() {
         {renderRepairRequiredChip(true)}
         {canvasEditor}
         {softBlankOverlay}
+        {emergencyFallback}
         {preContentEscapeOverlay}
         {remoteBackHint}
       </>
@@ -12566,6 +12674,7 @@ function PlayerPage() {
             nothing at all while the server audited every press as
             dispatched + delivered. This is the branch that was missing. */}
         {softBlankOverlay}
+        {emergencyFallback}
 
         {/* 2026-05-14 — touch overlays. SAME AUDIT MISS AS
             otaOverlay above. The TouchOverlay + TouchNavOverlay
@@ -12698,6 +12807,7 @@ function PlayerPage() {
             overlay too rather than relying on N children all succeeding.
             Same uniform rule as every other exit; see the const's header. */}
         {softBlankOverlay}
+        {emergencyFallback}
         {/* Same rule for the update prompt: the parent owns the glass. */}
         {updatePromptNode}
       </>
@@ -12707,6 +12817,8 @@ function PlayerPage() {
   return (
     <div
       data-edu-player-root="media"
+      data-edu-emergency-root={activeEmergency && playlist?.isEmergency ? 'media' : undefined}
+      data-edu-emergency-identity={activeEmergency && playlist?.isEmergency ? emergencyPaintIdentity(activeEmergency) : undefined}
       className={`fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
       // 2026-05-13 — inline-style fallback. Same reasoning as
       // /player/layout.tsx: if Tailwind doesn't apply (CDN reach,
@@ -14646,6 +14758,7 @@ function PlayerPage() {
         {renderRepairRequiredChip(!(currentItem && !playbackStopped && !allAssetsFailed))}
       {canvasEditor}
       {softBlankOverlay}
+      {emergencyFallback}
       {/* Back-key discoverability on the post-pair "Connecting" hero — the
           escape surface itself is the playbackStopped branch above (its
           ternary now beats phase === 'connecting'; 2026-08-30 field fix). */}
