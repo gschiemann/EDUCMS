@@ -204,4 +204,15 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2479873,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39472974677',
   },
+  // Signed CI 39481406005 (PR #121): 30 fps releases locked to one phase of a 60 Hz grid
+  // (parityLocked / parityFlips / driftCorrections on the timing snapshot) — the M43/L55VEC
+  // 30 Hz-panel judder. Production certificate e45adf50…3d1897, versionCode 10147,
+  // non-debuggable. Hardware qualification pending.
+  '1.1.47-field.1': {
+    versionName: '1.1.47-field.1',
+    versionCode: 10147,
+    sha256: 'f534a70a4a53f7ced9338c95435d92a86e872b02b1afaa367a924143c57375b1', // gitleaks:allow -- verified public APK integrity digest
+    size: 2479865,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39481406005',
+  },
 };
