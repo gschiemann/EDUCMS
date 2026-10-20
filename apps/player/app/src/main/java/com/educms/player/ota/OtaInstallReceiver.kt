@@ -90,6 +90,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     confirm,
                     targetPackageOf(intent),
                     installedVersionCodeOf(context, targetPackageOf(intent)),
+                    selfOtaVc,
                 )
                 // USER STANDBY (2026-10-03, player 1.1.21) — a person has this
                 // panel off. Nobody is there to tap Install, and the trampoline
@@ -346,12 +347,14 @@ class OtaInstallReceiver : BroadcastReceiver() {
             intent: Intent,
             targetPackage: String?,
             targetVersionCodeAtStage: Int,
+            selfOtaVersionCode: Int = 0,
         ) {
             pendingInstallPrompt = StagedInstallPrompt(
                 intent = intent,
                 targetPackage = targetPackage,
                 targetVersionCodeAtStage = targetVersionCodeAtStage,
                 stagedAtMs = android.os.SystemClock.elapsedRealtime(),
+                selfOtaVersionCode = selfOtaVersionCode,
             )
         }
 
@@ -420,4 +423,6 @@ class StagedInstallPrompt(
     /** Installed versionCode of [targetPackage] when this was staged; -1 = unknown. */
     val targetVersionCodeAtStage: Int,
     val stagedAtMs: Long,
+    /** 1.1.46 — > 0 when this is the Player's OWN update (the build it installs). */
+    val selfOtaVersionCode: Int = 0,
 )

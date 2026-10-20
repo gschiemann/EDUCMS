@@ -99,6 +99,19 @@ object PendingInstallStore {
         }
     }
 
+    /**
+     * The confirmation of our own update [versionCode] was (re-)raised from the
+     * foreground (resume / the update card's OK): persist it as launched now,
+     * against the session we committed last.
+     */
+    fun noteRaisedFromForeground(ctx: Context, versionCode: Int) {
+        val session = runCatching {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(K_COMMITTED, 0)
+        }.getOrDefault(0)
+        val name = OtaAttemptStore.read(ctx)?.takeIf { it.versionCode == versionCode }?.versionName ?: "$versionCode"
+        noteLaunched(ctx, session, versionCode, name, lastCommittedPushKey(ctx))
+    }
+
     /** The push identity our last commit answered (a push is answered once). */
     fun lastCommittedPushKey(ctx: Context): String? = runCatching {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(K_COMMITTED_PUSH, null)
