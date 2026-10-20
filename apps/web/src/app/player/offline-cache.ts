@@ -56,6 +56,12 @@ export type PlaylistCacheOptions = {
    * 'emergency' = the never-evict tier, its own staging namespace.
    */
   tier?: 'emergency';
+  /**
+   * How long to wait before the next step of a large-file drive (1.1.45): a
+   * presenting native decoder gets the cores and the disk first
+   * (`nativeYield.ts`). Ignored for the emergency tier.
+   */
+  yieldMs?: () => number;
 };
 
 /**
@@ -155,6 +161,14 @@ function isFatalChunkReason(reason: unknown): boolean {
   return /^http-4(?!08$|29$)\d\d$/.test(reason);
 }
 
+/** Wait the caller's yield before a playlist-tier step; never for the emergency tier. */
+async function yieldStep(opts?: PlaylistCacheOptions): Promise<void> {
+  if (!opts?.yieldMs || opts.tier === 'emergency') return;
+  let ms = 0;
+  try { ms = opts.yieldMs(); } catch { ms = 0; }
+  if (ms > 0) await pause(ms, opts.signal);
+}
+
 /**
  * A legacy entry — on disk, never digest-verified — is adopted by hashing the
  * CACHED bytes (2026-09-26): no network, and the file keeps serving while the
@@ -200,6 +214,7 @@ async function downloadLargeAsset(
   // not re-downloaded (141 MB on the field 4K screen, for bytes it had).
   const tier = tierField(opts?.tier);
   if (asset.adoptable && sha256) {
+    await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const finishAdopt = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
     const adopted = await adoptCachedAsset(sw, asset, opts?.tier);
@@ -230,6 +245,7 @@ async function downloadLargeAsset(
   };
 
   for (let step = 0; step < MAX_CHUNK_STEPS; step++) {
+    await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const reply = await askWorker(sw, {
       type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, ...tier,
@@ -252,6 +268,7 @@ async function downloadLargeAsset(
     opts?.onProgress?.({ url: asset.url, bytesLoaded: offset, bytesTotal: total });
     if (reply.complete !== true) continue;
 
+    await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const finishVerify = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
     const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
@@ -270,6 +287,7 @@ async function downloadLargeAsset(
       }
       return false;
     }
+    await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const finishAssemble = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'assemble', Date.now());
     const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);

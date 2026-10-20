@@ -173,7 +173,7 @@ internal class FaceVideoSession(
 internal object FaceVideoBox {
     private val main = Handler(Looper.getMainLooper())
     private val meta = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-meta").apply { isDaemon = true } }
-    private val downloads = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-download").apply { isDaemon = true } }
+    private val downloads = Executors.newSingleThreadExecutor { r -> Thread(DecodeThreadPriority.background(r), "face-video-download").apply { isDaemon = true } }
     private val hosts = mutableMapOf<Int, SharedVideoHost>()
     private val diagnosticsPending = mutableSetOf<Int>()
     private val lastDiagnostics = mutableMapOf<Int, Long>()
@@ -1590,7 +1590,7 @@ internal object FaceVideoBox {
     // answers at once; an enrolled face also re-reads it at most every five minutes with a
     // conditional GET (a 304 costs nothing). A flip changes what the face advertises — never what
     // presents (an adopt of the same content is not a boundary).
-    private val switchIo = Executors.newSingleThreadExecutor { r -> Thread(r, "face-video-switch").apply { isDaemon = true } }
+    private val switchIo = Executors.newSingleThreadExecutor { r -> Thread(DecodeThreadPriority.background(r), "face-video-switch").apply { isDaemon = true } }
     private val switchValues = HashMap<Int, Boolean?>()
     private val switchLearnedAt = HashMap<Int, Long>()
     private val switchEtags = HashMap<Int, String>()
