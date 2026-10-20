@@ -2630,10 +2630,16 @@ class MainActivity : ComponentActivity() {
 
     /** UI-thread predicate shared with secondary faces; excludes the prepare-cleared operator latch. */
     internal fun nativeVideoUiClear(): Boolean =
-        !nativeCardOwnsRemote() && !managerGateShown &&
-            displayBlackoutView?.visibility != View.VISIBLE &&
-            binding.recoveryOverlay.visibility != View.VISIBLE &&
-            (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE)
+        com.educms.player.media.NativeStepAside.uiClear(
+            baseUiClear = !nativeCardOwnsRemote() && !managerGateShown &&
+                displayBlackoutView?.visibility != View.VISIBLE &&
+                binding.recoveryOverlay.visibility != View.VISIBLE &&
+                (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE),
+            // 1.1.46 — the native layer steps aside while an install
+            // confirmation is pending (it yields to an emergency hold itself).
+            installPending = installPromptOutstanding,
+            updateCardShowing = com.educms.player.ota.UpdateReadyCard.isShowing(),
+        )
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
@@ -5327,6 +5333,12 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         sharedVideoHost?.refreshReadiness()
+        // 1.1.46 — another window (the system install confirmation) took
+        // focus: end the above-window native session now, not on the next draw.
+        if (!hasFocus) sharedVideoHost?.let { h ->
+            runCatching { if (!h.canOwnWindow()) com.educms.player.media.FaceVideoBox.yieldToUi(h, "page-stopped") }
+                .onFailure { PlayerLogger.w("MainActivity", "native step-aside on focus loss failed: ${it.message}") }
+        }
         if (hasFocus) reapplyImmersive()
     }
 
