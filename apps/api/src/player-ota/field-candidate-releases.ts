@@ -193,4 +193,15 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2463489,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39457549024',
   },
+  // Signed CI 39472974677, source ba680515 (PR #120): a pending install is never buried by recovery;
+  // the Back menu shows "Install <target>" and opens Android's dialog on press; a re-push replaces a
+  // stuck install; correct version label; Android 9 push trigger. Production certificate e45adf50…3d1897,
+  // versionCode 10146, non-debuggable. Hardware qualification pending.
+  '1.1.46-field.1': {
+    versionName: '1.1.46-field.1',
+    versionCode: 10146,
+    sha256: '13c4737971d3d831b63ae0f1707963e4aceb32089e33c8371adccccd4efad27f', // gitleaks:allow -- verified public APK integrity digest
+    size: 2479873,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39472974677',
+  },
 };
