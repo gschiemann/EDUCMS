@@ -121,6 +121,11 @@ export interface NativeVideoTiming {
   vsyncSamples?: number;
   /** 1.1.43 — the grid-sized release lead (µs) the session ran with: 0.8 P on a 30 Hz grid, 0.5 P on 60 Hz. */
   releaseLeadUs?: number;
+  /** 1.1.47 — the parity lock: 30 fps on a 60 Hz grid stays on one phase; flips (expected 0), holds/skips, rescues. */
+  parityLocked?: boolean;
+  parityFlips?: number;
+  driftCorrections?: number;
+  parityRescues?: number;
   /** 1.1.42 — every mode the panel offers (`modeId:WxH@Hz`, ≤ 16, read when the session attached), and experiment 5's request. */
   supportedModes?: string[];
   preferredModeApplied?: number;
@@ -229,11 +234,13 @@ const NATIVE_TIMING_COUNT_KEYS = ["droppedFrames", "intervalUnitNs", "intervalCo
   // 1.1.42
   "snappedFrames", "snapErrorMaxUs", "snapErrorMeanUs", "vsyncPeriodUs", "vsyncSamples", "preferredModeApplied",
   // 1.1.43
-  "releaseLeadUs"] as const;
+  "releaseLeadUs",
+  // 1.1.47
+  "parityFlips", "driftCorrections", "parityRescues"] as const;
 /** 1.1.41's and 1.1.42's timing keys — the ones an older API's strict schema refuses (telemetry.ts holds them back after a 400). */
 export const NATIVE_TIMING_EXTRA_KEYS: readonly string[] = [
   ...NATIVE_TIMING_COUNT_KEYS, "sourceFps", "refreshRate", "displayMode", "intervalBuckets", "history",
-  "clockSlewUs", "supportedModes", "preferredModeResult", "keepScreenOn",
+  "clockSlewUs", "supportedModes", "preferredModeResult", "keepScreenOn", "parityLocked",
 ];
 const signedCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER;
 export const NATIVE_MAX_SUPPORTED_MODES = 16;
@@ -270,6 +277,7 @@ function readTimingExtras(value: Record<string, unknown>, out: Record<string, un
   if (modes) out.supportedModes = modes;
   if (typeof value.preferredModeResult === "string" && CODE_RE.test(value.preferredModeResult)) out.preferredModeResult = value.preferredModeResult;
   if (typeof value.keepScreenOn === "boolean") out.keepScreenOn = value.keepScreenOn;
+  if (typeof value.parityLocked === "boolean") out.parityLocked = value.parityLocked;
 }
 
 function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
