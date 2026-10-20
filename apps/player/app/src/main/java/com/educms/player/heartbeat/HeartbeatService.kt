@@ -464,21 +464,50 @@ class HeartbeatService : Service() {
             val lastKey = prefs.getString(KEY_LAST_FORCE_OTA_KEY, null)
             val lastAt = prefs.getLong(KEY_LAST_FORCE_OTA_AT, 0L)
 
-            if (pendingAt.isNotBlank()) {
-                if (pendingAt == lastKey) return
-            } else if (now - lastAt < FORCE_OTA_MIN_INTERVAL_MS) {
-                return
-            }
+            if (!OtaPushTrigger.isNewPush(pendingAt, lastKey, lastAt, now)) return
 
+            val pushKey = OtaPushTrigger.keyOf(pendingAt, now)
             prefs.edit()
-                .putString(KEY_LAST_FORCE_OTA_KEY, pendingAt.ifBlank { "legacy-$now" })
+                .putString(KEY_LAST_FORCE_OTA_KEY, pushKey)
                 .putLong(KEY_LAST_FORCE_OTA_AT, now)
                 .apply()
 
-            PlayerLogger.i(TAG, "Heartbeat detected forceUpdatePending; firing OTA check")
-            PlayerApp.fireOtaCheckNow(applicationContext)
+            PlayerLogger.i(TAG, "Heartbeat detected forceUpdatePending; firing OTA check (push=$pushKey)")
+            // 1.1.46 — the push identity rides the check (a new push re-opens
+            // a pending install dialog), the one-shot carries no network
+            // constraint, and if no check has started in 90 s the heartbeat
+            // runs it here itself (OtaPushTrigger — the Android 9 units whose
+            // WorkManager job never ran).
+            PlayerApp.fireOtaCheckForPush(applicationContext, pushKey)
+            scheduleInlineOtaFallback(pushKey, now)
         } catch (e: Exception) {
             PlayerLogger.w(TAG, "Heartbeat response parse failed: ${e.message}")
+        }
+    }
+
+    /**
+     * 1.1.46 — OtaPushTrigger rule 3: after [OtaPushTrigger.INLINE_AFTER_MS],
+     * if no update check has started since the push, run it in this process.
+     */
+    private fun scheduleInlineOtaFallback(pushKey: String, enqueuedAtMs: Long) {
+        scope.launch(Dispatchers.IO) {
+            delay(OtaPushTrigger.INLINE_AFTER_MS)
+            val prefs = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+            val startedAt = prefs.getLong(com.educms.player.ota.OtaCheck.KEY_CHECK_STARTED_AT, 0L)
+            if (!OtaPushTrigger.shouldRunInline(
+                    enqueuedAtMs, startedAt, com.educms.player.ota.OtaCheck.busy(), System.currentTimeMillis(),
+                )
+            ) {
+                PlayerLogger.i(TAG, "push $pushKey: update check already ran (startedAt=$startedAt) — no inline fallback")
+                return@launch
+            }
+            PlayerLogger.w(TAG, "push $pushKey: no update check started in ${OtaPushTrigger.INLINE_AFTER_MS / 1000}s — running it from the heartbeat")
+            runCatching {
+                val data = androidx.work.Data.Builder()
+                    .putString(com.educms.player.ota.OtaUpdateWorker.KEY_PUSH, pushKey)
+                    .build()
+                com.educms.player.ota.OtaCheck(applicationContext, data).run()
+            }.onFailure { PlayerLogger.e(TAG, "inline update check failed", it) }
         }
     }
 
@@ -489,7 +518,6 @@ class HeartbeatService : Service() {
         private const val NOTIF_ID = 1001
         private const val KEY_LAST_FORCE_OTA_KEY = "last_force_ota_key"
         private const val KEY_LAST_FORCE_OTA_AT = "last_force_ota_at"
-        private const val FORCE_OTA_MIN_INTERVAL_MS = 60_000L
 
         /** Prefs keys shared with the page (via MainActivity) — same
          *  `edu_player` file the fingerprint and api_root already live in,

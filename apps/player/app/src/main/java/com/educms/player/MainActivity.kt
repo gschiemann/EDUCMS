@@ -834,7 +834,18 @@ class MainActivity : ComponentActivity() {
          */
         @JvmStatic
         val installPromptOutstanding: Boolean
-            get() = InstallPromptGate.isOutstanding(installPromptFacts())
+            get() {
+                // 1.1.46 — the persisted pending confirmation of our OWN
+                // update holds recovery for its whole NEEDS_TAP window, not
+                // just the in-memory gate's ten minutes (the GUQ field
+                // failure: our Activity resurfaced over the dialog at ~10 min).
+                val held = InstallPromptGate.isOutstanding(installPromptFacts()) ||
+                    com.educms.player.ota.PendingInstallStore.holdsRecoveryNow()
+                if (!held) return false
+                // An emergency always wins: an install dialog must never keep
+                // an alert off the glass.
+                return !com.educms.player.ota.PendingInstallStore.emergencyHeldNow()
+            }
 
         /**
          * `elapsedRealtime` of the last raise, or null. Read by the F4

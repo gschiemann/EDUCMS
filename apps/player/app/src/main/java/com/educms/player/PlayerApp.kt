@@ -48,6 +48,8 @@ class PlayerApp : Application() {
         // Callers that invoke PlayerLogger.uploadRecent(...) pass the screen
         // fingerprint explicitly — no need for a static Context holder.
         PlayerLogger.init(applicationContext)
+        // 1.1.46 — load the pending install confirmation (and clear it if the install landed).
+        runCatching { com.educms.player.ota.PendingInstallStore.init(this) }
         ProcessExitDiagnostics.recordPreviousExit(applicationContext)
 
         // ⚠️ AND-001 (2026-08-01) — self-heal before ANY background job
@@ -400,6 +402,36 @@ class PlayerApp : Application() {
             // silent-install path (DEVICE_OWNER granted PackageInstaller
             // permission). On kiosks where Manager isn't installed
             // these broadcasts go nowhere — totally safe.
+            triggerManagerOtaCheck(ctx)
+        }
+
+        /**
+         * 1.1.46 — the native heartbeat saw an operator push ([pushKey] =
+         * `forceUpdatePendingAt`). Same gated (non-user) check as
+         * [fireOtaCheckNow], but it carries the push identity and NO network
+         * constraint: the heartbeat that saw the push has just proven the
+         * network, and on API 26–28 JobScheduler's CONNECTED means VALIDATED,
+         * which a signage ROM that cannot reach the captive-portal probe never
+         * reaches — the job then never runs (Android 9 "Commercial" units).
+         */
+        fun fireOtaCheckForPush(ctx: Context, pushKey: String) {
+            try {
+                val req = OneTimeWorkRequestBuilder<OtaUpdateWorker>()
+                    .setInputData(
+                        androidx.work.Data.Builder()
+                            .putString(OtaUpdateWorker.KEY_PUSH, pushKey)
+                            .build(),
+                    )
+                    .build()
+                WorkManager.getInstance(ctx).enqueueUniqueWork(
+                    "edu-ota-check-oneshot",
+                    ExistingWorkPolicy.REPLACE,
+                    req,
+                )
+                PlayerLogger.i("PlayerApp", "OTA one-shot check enqueued — heartbeat push $pushKey (no network constraint)")
+            } catch (e: Exception) {
+                PlayerLogger.w("PlayerApp", "fireOtaCheckForPush failed", e)
+            }
             triggerManagerOtaCheck(ctx)
         }
 

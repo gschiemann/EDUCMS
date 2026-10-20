@@ -142,7 +142,8 @@ object WakePolicy {
     fun step(f: Facts): Step {
         if (f.foreground) return Step.DONE_ON_GLASS
         if (f.standbyActive && !f.emergencyHeld) return Step.STOP_STANDBY
-        if (f.installPromptOutstanding) return Step.STOP_INSTALL_PROMPT
+        // 1.1.46 — an install dialog never keeps an alert off the glass.
+        if (f.installPromptOutstanding && !f.emergencyHeld) return Step.STOP_INSTALL_PROMPT
         if (f.setupYield) return Step.STOP_SETUP
         if (f.interactive != true) return if (f.lastCheck) Step.STOP_PANEL_DARK else Step.WAIT
         if (f.launchesThisWake >= MAX_LAUNCHES_PER_WAKE) return if (f.lastCheck) Step.STOP_BUDGET else Step.WAIT
