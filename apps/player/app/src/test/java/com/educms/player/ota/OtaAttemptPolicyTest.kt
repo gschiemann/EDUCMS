@@ -96,7 +96,7 @@ class OtaAttemptPolicyTest {
                     a = a!!.copy(outcome = Outcome.NEEDS_TAP)
                 }
                 Route.HOLD_NEEDS_TAP -> Unit
-                Route.HOLD_FAILED -> error("no failure in this shape")
+                Route.HOLD_FAILED, Route.HOLD_EXPIRED -> error("no failure in this shape")
             }
         }
         assertEquals(1, commits)
@@ -199,7 +199,7 @@ class OtaAttemptPolicyTest {
         val src = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
         assertTrue(src.contains("OtaAttemptPolicy.route("))
         val commit = src.indexOf("OtaAttemptPolicy.Route.COMMIT ->")
-        val install = src.indexOf("triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc)")
+        val install = src.indexOf("triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc, pushKey)")
         assertTrue("triggerInstall must live inside the COMMIT branch", commit in 1 until install)
         assertEquals("exactly one install call", 1, Regex("triggerInstall\\(outFile").findAll(src).count())
         assertTrue("held builds report NEEDS_TAP", src.contains("Route.HOLD_NEEDS_TAP ->"))
