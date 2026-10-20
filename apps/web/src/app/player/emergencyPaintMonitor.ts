@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof } from './emergencyPaintProof';
+import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof, type NativeEmergencyPaintState } from './emergencyPaintProof';
 import { signalDisplayEmergencyHold } from './emergencyHold';
 import { nativeCall, nativeFire, nativeHas } from './nativeBridge';
 
@@ -13,7 +13,7 @@ export interface EmergencyPaintMonitorRefs {
 interface EmergencyPaintMonitorOptions {
   disabled: () => boolean;
   /** The caller bounds the entire authenticated request, including its body. */
-  post: (proof: EmergencyPaintProof, hash: string) => Promise<number>;
+  post: (proof: EmergencyPaintProof, hash: string) => Promise<number | { status: number; emergencyPaintAccepted?: boolean }>;
 }
 
 /** Mount ABOVE the player error boundary: its cached fallback also needs proof. */
@@ -26,15 +26,17 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
     let stopped = false;
     const retries = new Set<ReturnType<typeof setTimeout>>();
     const report = (proof: EmergencyPaintProof) => {
-      if (!proof.painted || proof.challenge) nativeFire('heartbeatV2', JSON.stringify({ emergencyPaint: proof }));
+      if (!proof.painted) nativeFire('heartbeatV2', JSON.stringify({ emergencyPaint: proof }));
       console.info(`[Player] emergency-${proof.painted ? 'overlay-painted' : 'raised-no-paint'} identity=${proof.identity} frames=${proof.frames}`);
       const post = async (attempt: number) => {
         const current = refs.watcher.current?.current();
         if (stopped || current?.identity !== proof.identity || current.challenge !== proof.challenge) return;
         if (!proof.painted && current.painted) return;
         try {
-          const status = await latest.current.post(proof, emergencyRenderHash(proof, refs.manifestOkAt.current));
-          if ((status >= 200 && status < 300) || status === 400 || status === 401 || status === 403) return;
+          const result = await latest.current.post(proof, emergencyRenderHash(proof, refs.manifestOkAt.current));
+          const status = typeof result === 'number' ? result : result.status;
+          const refused = typeof result === 'object' && result.emergencyPaintAccepted === false;
+          if (((status >= 200 && status < 300) && !refused) || status === 400 || status === 401 || status === 403) return;
         } catch { /* bounded retry below, never block drawing */ }
         if (attempt < 2 && !stopped) {
           const timer = setTimeout(() => { retries.delete(timer); void post(attempt + 1); }, 500 * (attempt + 1));
@@ -51,10 +53,11 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
         if (!nativeHas('sharedVideoState')) return undefined;
         const reply = await nativeCall<unknown>('sharedVideoState');
         const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
-        const challenge = (state as { emergencyProof?: { challenge?: unknown } } | null)?.emergencyProof?.challenge;
-        return typeof challenge === 'string' && challenge.length <= 64 ? challenge : undefined;
+        const proof = (state as { emergencyProof?: NativeEmergencyPaintState } | null)?.emergencyProof;
+        return typeof proof?.challenge === 'string' && proof.challenge.length <= 64 ? proof : undefined;
       },
       report,
+      nativeReport: proof => { nativeFire('heartbeatV2', JSON.stringify({ emergencyPaint: proof })); },
       requestFrame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id),
     });
     refs.watcher.current = watcher;

@@ -80,10 +80,19 @@ export interface EmergencyPaintWatcherOptions {
   documentId: string;
   expectedIdentity: () => string | null;
   raiseHold: () => void;
-  readChallenge: () => Promise<string | undefined>;
+  readChallenge: () => Promise<string | NativeEmergencyPaintState | undefined>;
   report: (proof: EmergencyPaintProof) => void;
+  /** Fresh frame receipts retry independently from deduplicated API reports. */
+  nativeReport?: (proof: EmergencyPaintProof) => void;
   requestFrame: (callback: FrameRequestCallback) => number;
   cancelFrame: (id: number) => void;
+}
+
+export interface NativeEmergencyPaintState {
+  challenge: string;
+  status?: string;
+  identity?: string;
+  documentId?: string;
 }
 
 /**
@@ -101,6 +110,9 @@ export class EmergencyPaintWatcher {
   private reading = false;
   private stopped = false;
   private frames = 0;
+  private nativeAccepted = false;
+  private nativeAttempts = 0;
+  private nativeStartedAt = 0;
   constructor(private readonly options: EmergencyPaintWatcherOptions) {}
 
   current(nowMs = Date.now()): EmergencyPaintProof | null {
@@ -125,6 +137,9 @@ export class EmergencyPaintWatcher {
       this.identity = identity;
       this.challenge = undefined;
       this.proof = null;
+      this.nativeAccepted = false;
+      this.nativeAttempts = 0;
+      this.nativeStartedAt = 0;
       if (identity) {
         // Synchronous and BEFORE any bridge round trip or paint wait.
         this.options.raiseHold();
@@ -136,14 +151,24 @@ export class EmergencyPaintWatcher {
     if (!this.reading) {
       this.reading = true;
       const generation = this.generation;
-      this.options.readChallenge().then(challenge => {
+      this.options.readChallenge().then(state => {
         if (this.stopped || generation !== this.generation) return;
+        const challenge = typeof state === 'string' ? state : state?.challenge;
         if (challenge !== this.challenge) {
           this.generation += 1;
           this.challenge = challenge;
           this.options.cancelFrame(this.raf);
           this.raf = 0;
+          this.nativeAccepted = false;
+          this.nativeAttempts = 0;
+          this.nativeStartedAt = 0;
           this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: false, ...(challenge ? { challenge } : {}) };
+        }
+        if (typeof state === 'object' && state.status === 'painted' &&
+          challenge === this.challenge && state.identity === this.identity && state.documentId === this.options.documentId && !this.nativeAccepted) {
+          this.nativeAccepted = true;
+          const proof = this.current();
+          if (proof?.painted) this.options.report(proof);
         }
       }).catch(() => { /* wake/bridge failures cannot block drawing */ }).finally(() => { this.reading = false; });
     }
@@ -159,6 +184,14 @@ export class EmergencyPaintWatcher {
         const first = !this.proof?.painted;
         this.sampledAt = Date.now();
         this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: true, ...(this.challenge ? { challenge: this.challenge } : {}) };
+        if (this.challenge && !this.nativeAccepted && this.nativeAttempts < 40) {
+          const now = Date.now();
+          if (!this.nativeStartedAt) this.nativeStartedAt = now;
+          if (now - this.nativeStartedAt <= 10_000) {
+            this.nativeAttempts += 1;
+            this.options.nativeReport?.(this.proof);
+          }
+        }
         if (first) this.options.report(this.proof);
       });
     });

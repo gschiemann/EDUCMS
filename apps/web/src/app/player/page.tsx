@@ -2717,11 +2717,11 @@ export default function PlayerPageWrapper() {
       const token = getDeviceToken();
       const id = emergencyMonitor.screenId.current;
       if (!token || !id) return 204;
-      const { res } = await requestControlPlane(`${getApiRoot()}/api/v1/screens/${id}/render-proof`, {
+      const { res, json } = await requestControlPlane(`${getApiRoot()}/api/v1/screens/${id}/render-proof`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ frames: proof.frames, hash, contentKind: 'emergency', emergencyProof: proof }),
       }, 2_000);
-      return res.status;
+      return { status: res.status, emergencyPaintAccepted: (json as { emergencyPaintAccepted?: boolean } | null)?.emergencyPaintAccepted };
     },
   });
   return <PlayerErrorBoundary><PlayerPage emergencyMonitor={emergencyMonitor} /></PlayerErrorBoundary>;

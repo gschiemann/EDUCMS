@@ -1,7 +1,7 @@
 import { render, cleanup } from '@testing-library/react';
 import { Component, type ReactNode } from 'react';
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
-import { EmergencyPaintWatcher, emergencyPaintIdentity, emergencyRenderHash, visibleEmergencyRoot, type EmergencyPaintProof } from '../emergencyPaintProof';
+import { EmergencyPaintWatcher, emergencyPaintIdentity, emergencyRenderHash, visibleEmergencyRoot, type EmergencyPaintProof, type NativeEmergencyPaintState } from '../emergencyPaintProof';
 import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../emergencyPaintMonitor';
 
 jest.mock('../nativeBridge', () => ({ nativeHas: () => false, nativeCall: jest.fn(), nativeFire: jest.fn() }));
@@ -20,16 +20,18 @@ afterEach(() => { cleanup(); document.body.innerHTML = ''; jest.restoreAllMocks(
 
 function harness(expected: string | null = emergencyPaintIdentity(alert)) {
   let identity = expected;
-  let challenge: string | undefined;
+  let challenge: string | NativeEmergencyPaintState | undefined;
   let sequence = 0;
   const frames = new Map<number, FrameRequestCallback>();
   const proofs: EmergencyPaintProof[] = [];
+  const nativeReceipts: EmergencyPaintProof[] = [];
   const order: string[] = [];
   const watcher = new EmergencyPaintWatcher({
     document, documentId: 'test-document', expectedIdentity: () => identity,
     raiseHold: () => { order.push('hold'); },
     readChallenge: async () => { order.push('challenge'); return challenge; },
     report: proof => { order.push(proof.painted ? 'painted' : 'pending'); proofs.push(proof); },
+    nativeReport: proof => { nativeReceipts.push(proof); },
     requestFrame: callback => { sequence += 1; frames.set(sequence, callback); return sequence; },
     cancelFrame: id => { frames.delete(id); },
   });
@@ -38,7 +40,7 @@ function harness(expected: string | null = emergencyPaintIdentity(alert)) {
     if (!next) throw new Error('No animation frame scheduled');
     frames.delete(next[0]); next[1](sequence * 16);
   };
-  return { watcher, proofs, order, frame, setIdentity: (next: string | null) => { identity = next; }, setChallenge: (next: string) => { challenge = next; } };
+  return { watcher, proofs, nativeReceipts, order, frame, setIdentity: (next: string | null) => { identity = next; }, setChallenge: (next: string | NativeEmergencyPaintState) => { challenge = next; } };
 }
 
 function mountMessage() {
@@ -182,6 +184,65 @@ it('keeps no-paint and stale server confirmation as independent signatures', () 
   expect(emergencyRenderHash(proof, 1, 200_000)).toBe('unconfirmed|em:test');
   expect(emergencyRenderHash(proof, 199_000, 200_000)).toBe('em:test');
   expect(emergencyRenderHash({ ...proof, painted: false }, 0, 200_000)).toBe('pending|em:test');
+});
+
+it('retries fresh native paint after an initial visibility refusal, stops on exact acknowledgment, and reoffers HTTP once', async () => {
+  mountMessage();
+  const h = harness();
+  h.setChallenge({ challenge: 'current-hold', status: 'pending' }); h.watcher.scan();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.watcher.scan(); h.frame(); h.frame();
+  expect(h.nativeReceipts).toHaveLength(1);
+  expect(h.proofs).toHaveLength(2);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.watcher.scan(); h.frame(); h.frame();
+  expect(h.nativeReceipts).toHaveLength(2);
+  expect(h.nativeReceipts[1].frames).toBeGreaterThan(h.nativeReceipts[0].frames);
+  expect(h.proofs).toHaveLength(2);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.setChallenge({ challenge: 'current-hold', status: 'painted', identity: 'previous-alert', documentId: 'test-document' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0)); h.frame(); h.frame();
+  expect(h.nativeReceipts).toHaveLength(3);
+  h.setChallenge({ challenge: 'current-hold', status: 'painted', identity: emergencyPaintIdentity(alert), documentId: 'test-document' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0)); h.frame(); h.frame();
+  expect(h.nativeReceipts).toHaveLength(3);
+  expect(h.proofs).toHaveLength(3);
+  expect(h.proofs[2]).toMatchObject({ painted: true, challenge: 'current-hold' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0)); h.frame(); h.frame();
+  expect(h.proofs).toHaveLength(3);
+  expect(h.nativeReceipts).toHaveLength(3);
+  h.watcher.stop();
+});
+
+it('bounds unacknowledged native receipts to forty and ten seconds without flooding HTTP', async () => {
+  mountMessage();
+  let now = 1000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  const h = harness(); h.setChallenge({ challenge: 'current-hold', status: 'pending' }); h.watcher.scan();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  for (let i = 0; i < 50; i += 1) {
+    h.watcher.scan(); h.frame(); h.frame();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    now += 250;
+  }
+  expect(h.nativeReceipts).toHaveLength(40);
+  expect(h.proofs).toHaveLength(2);
+  h.watcher.stop();
+});
+
+it('retries an HTTP 200 whose emergency proof was not yet accepted, with a three-attempt bound', async () => {
+  jest.useFakeTimers();
+  jest.spyOn(console, 'info').mockImplementation(() => {});
+  const refs: EmergencyPaintMonitorRefs = { watcher: { current: null }, expectedIdentity: { current: 'pending-alert' }, screenId: { current: 'test-screen' }, manifestOkAt: { current: 0 } };
+  const post = jest.fn().mockResolvedValue({ status: 200, emergencyPaintAccepted: false });
+  function Monitor() { useEmergencyPaintMonitor(refs, { disabled: () => false, post }); return null; }
+  const mounted = render(<Monitor />);
+  await jest.advanceTimersByTimeAsync(3000);
+  expect(post).toHaveBeenCalledTimes(3);
+  await jest.advanceTimersByTimeAsync(20_000);
+  expect(post).toHaveBeenCalledTimes(3);
+  mounted.unmount();
+  jest.useRealTimers();
 });
 
 it('invalidates previous alert and native challenge evidence before accepting new samples', async () => {
