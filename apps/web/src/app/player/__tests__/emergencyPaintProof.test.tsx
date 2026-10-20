@@ -1,6 +1,11 @@
 import { render, cleanup } from '@testing-library/react';
+import { Component, type ReactNode } from 'react';
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
-import { EmergencyPaintWatcher, emergencyPaintIdentity, visibleEmergencyRoot, type EmergencyPaintProof } from '../emergencyPaintProof';
+import { EmergencyPaintWatcher, emergencyPaintIdentity, emergencyRenderHash, visibleEmergencyRoot, type EmergencyPaintProof } from '../emergencyPaintProof';
+import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../emergencyPaintMonitor';
+
+jest.mock('../nativeBridge', () => ({ nativeHas: () => false, nativeCall: jest.fn(), nativeFire: jest.fn() }));
+jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn() }));
 
 const alert: EmergencyMessageView = { id: 'test-alert', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Move to the designated safe area', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-01T00:00:00Z' };
 const rect = { top: 0, left: 0, right: 1280, bottom: 720, width: 1280, height: 720, x: 0, y: 0, toJSON: () => ({}) };
@@ -38,7 +43,7 @@ function harness(expected: string | null = emergencyPaintIdentity(alert)) {
 
 function mountMessage() {
   render(<EmergencyOverlay message={alert} />);
-  const root = document.querySelector<HTMLElement>('[data-edu-emergency-root]')!;
+  const root = document.querySelector<HTMLElement>('[data-edu-emergency-root="full"]')!;
   hit = root.querySelector('h1') || root;
   return root;
 }
@@ -125,6 +130,58 @@ it('the overlay polling fallback raises and proves a message independently of pa
     expect(h.watcher.current()).toMatchObject({ painted: true, identity: emergencyPaintIdentity(alert) });
     h.watcher.stop();
   } finally { global.fetch = fetchBefore; }
+});
+
+it('proves only the visible polled message when it covers a different tenant alert', () => {
+  document.body.innerHTML = '<div data-edu-emergency-root="fallback" data-edu-emergency-identity="tenant-alert">WEATHER</div>';
+  const message = mountMessage(); hit = message;
+  const h = harness('tenant-alert'); h.watcher.scan(); h.frame(); h.frame();
+  expect(h.watcher.current()).toMatchObject({ painted: true, identity: emergencyPaintIdentity(alert) });
+  expect(h.proofs.some(proof => proof.identity === 'tenant-alert' && proof.painted)).toBe(false);
+  h.watcher.stop();
+});
+
+it('the real monitor survives a player crash and proves the error boundary cached alert', () => {
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  jest.spyOn(console, 'info').mockImplementation(() => {});
+  let nextFrame = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.set(++nextFrame, callback); return nextFrame; });
+  jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => { frames.delete(id); });
+  const refs: EmergencyPaintMonitorRefs = { watcher: { current: null }, expectedIdentity: { current: 'cached-alert' }, screenId: { current: 'test-screen' }, manifestOkAt: { current: 0 } };
+  const post = jest.fn().mockResolvedValue(200);
+  class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+    state = { failed: false };
+    static getDerivedStateFromError() { return { failed: true }; }
+    render() { return this.state.failed ? <div data-edu-emergency-root="crash" data-edu-emergency-identity="cached-alert">LOCKDOWN</div> : this.props.children; }
+  }
+  function Page({ crash }: { crash: boolean }) { if (crash) throw new Error('Test player crash'); return <div>Player content</div>; }
+  function Wrapper({ crash }: { crash: boolean }) {
+    useEmergencyPaintMonitor(refs, { disabled: () => false, post });
+    return <Boundary><Page crash={crash} /></Boundary>;
+  }
+  const mounted = render(<Wrapper crash={false} />);
+  const runningMonitor = refs.watcher.current;
+  mounted.rerender(<Wrapper crash />);
+  const fallback = document.querySelector<HTMLElement>('[data-edu-emergency-root="crash"]')!;
+  expect(fallback.textContent).toBe('LOCKDOWN'); hit = fallback;
+  expect(refs.watcher.current).toBe(runningMonitor);
+  runningMonitor!.scan();
+  for (let i = 0; i < 2; i += 1) {
+    const [id, callback] = frames.entries().next().value!;
+    frames.delete(id); callback(i * 16);
+  }
+  expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ painted: true, identity: 'cached-alert' }), 'unconfirmed|em:cached-alert');
+  mounted.unmount();
+  expect(refs.watcher.current).toBeNull();
+});
+
+it('keeps no-paint and stale server confirmation as independent signatures', () => {
+  const proof: EmergencyPaintProof = { identity: 'test', documentId: 'document', frames: 2, painted: true };
+  expect(emergencyRenderHash(proof, 0, 200_000)).toBe('unconfirmed|em:test');
+  expect(emergencyRenderHash(proof, 1, 200_000)).toBe('unconfirmed|em:test');
+  expect(emergencyRenderHash(proof, 199_000, 200_000)).toBe('em:test');
+  expect(emergencyRenderHash({ ...proof, painted: false }, 0, 200_000)).toBe('pending|em:test');
 });
 
 it('invalidates previous alert and native challenge evidence before accepting new samples', async () => {

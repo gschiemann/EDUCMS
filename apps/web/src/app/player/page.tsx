@@ -38,7 +38,8 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
-import { EmergencyPaintWatcher, emergencyPaintIdentity, type EmergencyPaintProof } from './emergencyPaintProof';
+import { emergencyPaintIdentity, emergencyRenderHash } from './emergencyPaintProof';
+import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from './emergencyPaintMonitor';
 // 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
 // unit-tested without mounting this page.
 //   trustGuards — R-01: the `?api=` / localStorage API-root override is the
@@ -2706,7 +2707,24 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
 }
 
 export default function PlayerPageWrapper() {
-  return <PlayerErrorBoundary><PlayerPage /></PlayerErrorBoundary>;
+  const emergencyMonitor = useRef<EmergencyPaintMonitorRefs>({
+    watcher: { current: null }, expectedIdentity: { current: null },
+    screenId: { current: null }, manifestOkAt: { current: 0 },
+  }).current;
+  useEmergencyPaintMonitor(emergencyMonitor, {
+    disabled: isPreviewMode,
+    post: async (proof, hash) => {
+      const token = getDeviceToken();
+      const id = emergencyMonitor.screenId.current;
+      if (!token || !id) return 204;
+      const { res } = await requestControlPlane(`${getApiRoot()}/api/v1/screens/${id}/render-proof`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frames: proof.frames, hash, contentKind: 'emergency', emergencyProof: proof }),
+      }, 2_000);
+      return res.status;
+    },
+  });
+  return <PlayerErrorBoundary><PlayerPage emergencyMonitor={emergencyMonitor} /></PlayerErrorBoundary>;
 }
 
 
@@ -2726,7 +2744,12 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
   return frames > 0 ? { hash: state.sig, frames } : undefined;
 }
 
-function PlayerPage() {
+function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMonitorRefs }) {
+  const emergencyPaintWatcherRef = emergencyMonitor.watcher;
+  const emergencyExpectedIdentityRef = emergencyMonitor.expectedIdentity;
+  // Preserve the last authenticated reconcile across the error boundary so
+  // a crash fallback's paint cannot imply fresh server confirmation.
+  const lastManifestOkAtRef = emergencyMonitor.manifestOkAt;
   const [phase, setPhase] = useState<Phase>('registering');
   // 2026-05-13 — ref-mirror of phase so callbacks captured by long-
   // running timers (bundle-drift watcher, sustained-failure recovery,
@@ -2821,8 +2844,8 @@ function PlayerPage() {
       // render proof) — and it's a ref, safe inside this mount-once closure
       // where raw state like playbackStopped would be stale.
       const emergencyPaint = emergencyPaintWatcherRef.current?.current();
-      const contentOnGlass = emergencyExpectedIdentityRef.current
-        ? emergencyPaint?.painted === true && emergencyPaint.identity === emergencyExpectedIdentityRef.current
+      const contentOnGlass = emergencyExpectedIdentityRef.current || emergencyPaint
+        ? emergencyPaint?.painted === true
         : renderStateRef.current.rendering && (!nativeSharedVideoEvidence.isSelected() || nativeSharedVideoEvidence.hasFreshFrames(Date.now()));
       const syncOk = manifestFresh || contentOnGlass;
       // On the registering/pairing splash there is legitimately no manifest
@@ -3821,10 +3844,6 @@ function PlayerPage() {
   // broken server must surface as a failure state, not a register storm).
   const credRecoveryLastAtRef = useRef(0);
   const credRecoveryInFlightRef = useRef<Promise<'renewed' | 'repair-required' | 'failed' | 'cooldown' | 'skipped'> | null>(null);
-  // Freshness of the last successful (2xx/304) manifest reconcile — feeds
-  // the native heartbeatV2 `syncOk` signal (a stuck-unauthenticated player
-  // must stop certifying itself to the native watchdog).
-  const lastManifestOkAtRef = useRef(0);
 
   /**
    * ── Controlled credential recovery (2026-08-30, audit P0-1) ────────────
@@ -4527,70 +4546,11 @@ function PlayerPage() {
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
-  const emergencyExpectedIdentityRef = useRef<string | null>(null);
+  emergencyMonitor.screenId.current = screenId;
   emergencyExpectedIdentityRef.current = pushedEmergencyMessage
     ? emergencyPaintIdentity(pushedEmergencyMessage)
     : activeEmergency ? emergencyPaintIdentity(activeEmergency) : null;
-  const emergencyPaintWatcherRef = useRef<EmergencyPaintWatcher | null>(null);
   const emergencyRenderExtrasAllowedRef = useRef(true);
-  useEffect(() => {
-    if (isPreviewMode()) return;
-    const documentId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
-    let stopped = false;
-    const retries = new Set<ReturnType<typeof setTimeout>>();
-    const report = (proof: EmergencyPaintProof) => {
-      // The native side additionally verifies its window is foreground,
-      // visible and opaque. It accepts only its current hold's challenge.
-      if (!proof.painted || proof.challenge) {
-        nativeFire('heartbeatV2', JSON.stringify({ emergencyPaint: proof }));
-      }
-      console.info(`[Player] emergency-${proof.painted ? 'overlay-painted' : 'raised-no-paint'} identity=${proof.identity} frames=${proof.frames}`);
-      const post = async (attempt: number) => {
-        if (stopped || emergencyPaintWatcherRef.current?.current()?.identity !== proof.identity) return;
-        if (emergencyPaintWatcherRef.current?.current()?.challenge !== proof.challenge) return;
-        // A late pending retry must never overwrite this alert's paint.
-        if (!proof.painted && emergencyPaintWatcherRef.current?.current()?.painted) return;
-        const token = getDeviceToken();
-        if (!token || !screenId) return;
-        try {
-          const { res } = await requestControlPlane(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
-            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ frames: proof.frames, hash: `${proof.painted ? '' : 'pending|'}em:${proof.identity}`, contentKind: 'emergency', emergencyProof: proof }),
-          }, 2_000);
-          if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) return;
-        } catch { /* bounded retry below; this never blocks the alert */ }
-        if (attempt < 2 && !stopped) {
-          const timer = setTimeout(() => { retries.delete(timer); void post(attempt + 1); }, 500 * (attempt + 1));
-          retries.add(timer);
-        }
-      };
-      void post(0);
-    };
-    const watcher = new EmergencyPaintWatcher({
-      document, documentId,
-      expectedIdentity: () => emergencyExpectedIdentityRef.current,
-      raiseHold: () => { signalDisplayEmergencyHold(true, true); },
-      readChallenge: async () => {
-        if (!nativeHas('sharedVideoState')) return undefined;
-        const reply = await nativeCall<unknown>('sharedVideoState');
-        const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
-        const challenge = (state as { emergencyProof?: { challenge?: unknown } } | null)?.emergencyProof?.challenge;
-        return typeof challenge === 'string' && challenge.length <= 64 ? challenge : undefined;
-      },
-      report,
-      requestFrame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id),
-    });
-    emergencyPaintWatcherRef.current = watcher;
-    watcher.scan();
-    const timer = setInterval(() => watcher.scan(), 250);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-      retries.forEach(clearTimeout);
-      watcher.stop();
-      if (emergencyPaintWatcherRef.current === watcher) emergencyPaintWatcherRef.current = null;
-    };
-  }, [screenId]);
 
   // ── SOFT BLANK — the universal, unbrickable blank (2026-08-25) ─────────
   //
@@ -6048,10 +6008,10 @@ function PlayerPage() {
     const emergencyProof = emergencyPaintWatcherRef.current?.current(nowMs);
     const emergencyOn = !!emergencyExpectedIdentityRef.current || !!emergencyProof;
     if (emergencyOn) {
-      if (!emergencyProof || (emergencyExpectedIdentityRef.current && emergencyProof.identity !== emergencyExpectedIdentityRef.current)) return null;
+      if (!emergencyProof) return null;
       // A refused extension drops only this render block, never liveness.
       if (!emergencyRenderExtrasAllowedRef.current) return null;
-      state = { rendering: true, kind: 'emergency', sig: `${emergencyProof.painted ? '' : 'pending|'}em:${emergencyProof.identity}` };
+      state = { rendering: true, kind: 'emergency', sig: emergencyRenderHash(emergencyProof, lastManifestOkAtRef.current, nowMs) };
     }
     // The selected native path must prove THIS face's own new, fresh surface output.
     // Readiness/process heartbeat/document rAF cannot keep a failed native video green.

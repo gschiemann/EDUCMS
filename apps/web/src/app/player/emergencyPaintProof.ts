@@ -7,6 +7,13 @@ export interface EmergencyPaintProof {
   challenge?: string;
 }
 
+/** Paint and live server confirmation are independent emergency facts. */
+export function emergencyRenderHash(proof: EmergencyPaintProof, manifestOkAtMs: number, nowMs = Date.now()): string {
+  const identity = `em:${proof.identity}`;
+  if (!proof.painted) return `pending|${identity}`;
+  return manifestOkAtMs === 0 || nowMs - manifestOkAtMs > 120_000 ? `unconfirmed|${identity}` : identity;
+}
+
 /** Bounded opaque identity: alert text, URLs and customer details never leave in proof. */
 export function emergencyPaintIdentity(alert: unknown): string {
   const text = JSON.stringify(alert) || '';
@@ -107,8 +114,10 @@ export class EmergencyPaintWatcher {
   scan(): void {
     if (this.stopped) return;
     const expected = this.options.expectedIdentity();
-    const root = visibleEmergencyRoot(this.options.document, expected);
-    const identity = expected || root?.dataset.eduEmergencyIdentity || null;
+    // A polled message may cover a tenant alert. Prove only the actual top
+    // emergency, under its own identity; never certify the covered alert.
+    const root = visibleEmergencyRoot(this.options.document);
+    const identity = root?.dataset.eduEmergencyIdentity || expected;
     if (identity !== this.identity) {
       this.generation += 1;
       this.options.cancelFrame(this.raf);
