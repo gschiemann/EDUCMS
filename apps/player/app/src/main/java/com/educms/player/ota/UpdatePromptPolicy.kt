@@ -9,10 +9,11 @@ package com.educms.player.ota
  * cannot be started from the background, and the only way to raise it was
  * Back → the stop menu → "Install now", which nobody at a wall panel finds.
  *
- * So, from the foreground Activity:
- *  1. a staged confirmation of our own update that has not been raised yet
- *     (the trampoline was refused, or a person had the panel off) is raised
- *     as soon as the Activity is resumed;
+ * Owner decision (binding): the video is NEVER interrupted. An unattended
+ * commit is staged and reported NEEDS_TAP; the Back menu shows "Install
+ * <target version>" and a PERSON's press raises the dialog from the
+ * foreground. Then:
+ *  1. (removed — no auto-surfacing over content);
  *  2. a raise is VERIFIED — if the Activity was not paused within
  *     [VERIFY_AFTER_MS], Android refused the dialog, and a full-screen,
  *     remote-focused "Update ready — press OK to install" card goes up;
@@ -37,21 +38,6 @@ object UpdatePromptPolicy {
     fun dialogAppeared(raisedAtMs: Long, lastPausedAtMs: Long): Boolean =
         raisedAtMs > 0L && lastPausedAtMs >= raisedAtMs
 
-    /** Rule 1 — raise a staged own-update confirmation on resume? */
-    fun shouldRaiseStagedOnResume(
-        selfOta: Boolean,
-        stagedAtMs: Long,
-        lastRaisedStagedAtMs: Long,
-        emergencyHeld: Boolean,
-        standbyActive: Boolean,
-        nowMs: Long,
-    ): Boolean {
-        if (!selfOta || emergencyHeld || standbyActive) return false
-        if (stagedAtMs <= 0L || stagedAtMs == lastRaisedStagedAtMs) return false
-        val age = nowMs - stagedAtMs
-        return age in 0L until SHOW_WINDOW_MS
-    }
-
     /** Rule 2 — put the card up after a raise that did not take? */
     fun shouldShowCard(
         selfOta: Boolean,
@@ -71,6 +57,13 @@ object UpdatePromptPolicy {
         /** Nothing staged: ask for a person-initiated check (commits the kept file). */
         REQUEST_USER_CHECK,
     }
+
+    /**
+     * The card's version label: the build this screen was OFFERED (the push
+     * target, e.g. 1.1.45-field.1), never the stable release.
+     */
+    fun versionLabel(offeredVersionName: String?): String =
+        offeredVersionName?.trim()?.takeIf { it.isNotEmpty() }?.let { "v${it.removePrefix("v")}" } ?: "update"
 
     /** Rule 3. */
     fun onOk(stagedUsable: Boolean): OkAction =

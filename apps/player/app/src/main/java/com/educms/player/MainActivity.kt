@@ -2419,6 +2419,9 @@ class MainActivity : ComponentActivity() {
         // `getIntent()` and raise the confirmation again, outside the
         // re-issue budget that exists precisely to bound that.
         launchIntent.action = null
+        // 1.1.46 — for our OWN update the trampoline only arrives when a
+        // PERSON pressed Install (the Back menu's button); an unattended
+        // commit is staged without one, so video is never interrupted.
         raiseInstallPrompt(staged, "trampoline")
     }
 
@@ -2439,26 +2442,6 @@ class MainActivity : ComponentActivity() {
     /** 1.1.46 — `elapsedRealtime` of the last onPause (a raised dialog pauses us). */
     @Volatile
     private var lastPausedAtElapsedMs = 0L
-
-    /**
-     * 1.1.46 (UpdatePromptPolicy rule 1) — a staged confirmation of our OWN
-     * update that was never raised (the trampoline was refused, or a person
-     * had the panel off) goes up from the foreground as soon as we resume.
-     */
-    private fun maybeRaiseStagedOwnPrompt(trigger: String) {
-        val staged = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt() ?: return
-        val raise = com.educms.player.ota.UpdatePromptPolicy.shouldRaiseStagedOnResume(
-            selfOta = staged.selfOtaVersionCode > 0,
-            stagedAtMs = staged.stagedAtMs,
-            lastRaisedStagedAtMs = lastRaisedStagedAtMs,
-            emergencyHeld = com.educms.player.ota.PendingInstallStore.emergencyHeldNow(),
-            standbyActive = runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false),
-            nowMs = android.os.SystemClock.elapsedRealtime(),
-        )
-        if (!raise) return
-        PlayerLogger.i("MainActivity", "raising the staged update confirmation from the foreground ($trigger)")
-        raiseInstallPrompt(staged, "own-update-$trigger")
-    }
 
     /**
      * 1.1.46 (rule 2) — did the confirmation we just raised come up? If the
@@ -2485,9 +2468,15 @@ class MainActivity : ComponentActivity() {
         showUpdateReadyCard(staged.selfOtaVersionCode)
     }
 
-    private fun showUpdateReadyCard(versionCode: Int) {
-        val label = com.educms.player.ota.OtaAttemptStore.read(applicationContext)
-            ?.takeIf { it.versionCode == versionCode }?.versionName?.let { "v$it" } ?: "update"
+    private fun showUpdateReadyCard(versionCode: Int, versionName: String? = null) {
+        if (com.educms.player.ota.PendingInstallStore.emergencyHeldNow()) return
+        if (runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false)) return
+        // The label is the build THIS screen was offered (the push target),
+        // never the stable release.
+        val label = com.educms.player.ota.UpdatePromptPolicy.versionLabel(
+            versionName ?: com.educms.player.ota.OtaAttemptStore.read(applicationContext)
+                ?.takeIf { it.versionCode == versionCode }?.versionName,
+        )
         com.educms.player.ota.UpdateReadyCard.show(
             activity = this,
             versionLabel = label,
@@ -2504,6 +2493,12 @@ class MainActivity : ComponentActivity() {
                         // as the page's "Install now".
                         PlayerApp.fireOtaCheckNow(applicationContext, userInitiated = true)
                 }
+            },
+            onLater = {
+                // A person declined for now: release the holds so content (and
+                // native video) come back; the next push asks again.
+                clearInstallPromptHold("update card: not now")
+                runCatching { com.educms.player.ota.PendingInstallStore.clear(applicationContext, "a person chose not now") }
             },
             onClosed = { runCatching { if (!nativeCardOwnsRemote()) webView.requestFocus() } },
         )
@@ -2535,7 +2530,7 @@ class MainActivity : ComponentActivity() {
         )
         try {
             val raisedAt = android.os.SystemClock.elapsedRealtime()
-            if (staged.selfOtaVersionCode > 0 && !source.startsWith("trampoline")) {
+            if (staged.selfOtaVersionCode > 0) {
                 runCatching {
                     com.educms.player.ota.PendingInstallStore.noteRaisedFromForeground(applicationContext, staged.selfOtaVersionCode)
                 }
@@ -4335,8 +4330,6 @@ class MainActivity : ComponentActivity() {
             .onFailure { PlayerLogger.w("UserStandby", "onActivityResumed failed: ${it.message}") }
         // 1.1.46 — our own update's confirmation goes up from HERE, the
         // foreground, never from the background worker.
-        runCatching { maybeRaiseStagedOwnPrompt("resume") }
-            .onFailure { PlayerLogger.w("MainActivity", "own update prompt on resume failed: ${it.message}") }
         // 2026-10-11 — THE PROOF A WAKE LANDED. Stamps the wake timeline,
         // stands any in-flight foreground check down and pulls the native
         // heartbeat forward so the server sees `interactive`/`foreground`

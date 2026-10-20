@@ -583,7 +583,7 @@ internal class OtaCheck(
                     // 1.1.46 — never two of our sessions open at once.
                     PendingInstallStore.abandonOwnSessions(applicationContext, "committing v$latestVn")
                     PendingInstallStore.clear(applicationContext, "a new commit replaces it")
-                    triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc, pushKey)
+                    triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc, pushKey, userInitiated)
                     // Success state is reported on next boot via the heartbeat
                     // (new versionName lands in playerVersion, dashboard infers
                     // INSTALLED from a version change). We don't report
@@ -686,7 +686,7 @@ internal class OtaCheck(
      * The notification remains as a user-visible fallback for case 3
      * if the prompt gets dismissed.
      */
-    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String, versionCode: Int, pushKey: String?) {
+    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String, versionCode: Int, pushKey: String?, userInitiated: Boolean) {
         val ctx = applicationContext
 
         // v1.0.55 — Schedule a post-install relaunch safety net BEFORE
@@ -780,6 +780,9 @@ internal class OtaCheck(
                     // 1.1.46 — which session, and which push committed it.
                     putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_SESSION_ID, sessionId)
                     pushKey?.let { putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_PUSH_KEY, it) }
+                    // 1.1.46 (owner) — only a PERSON's press raises the dialog;
+                    // an unattended commit is staged for the Back menu's button.
+                    putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_USER, userInitiated)
                 }
                 val statusPi = PendingIntent.getBroadcast(
                     ctx,

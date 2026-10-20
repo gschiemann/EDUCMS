@@ -44,6 +44,7 @@ object UpdateReadyCard {
         emergencyHeld: () -> Boolean,
         decorate: (View) -> Unit,
         onInstall: () -> Unit,
+        onLater: () -> Unit = {},
         onClosed: () -> Unit = {},
     ) {
         if (view != null) return
@@ -106,7 +107,10 @@ object UpdateReadyCard {
             hide("install pressed")
             runCatching(onInstall).onFailure { PlayerLogger.e(TAG, "install from card failed", it) }
         }
-        later.setOnClickListener { hide("not now") }
+        later.setOnClickListener {
+            hide("not now")
+            runCatching(onLater)
+        }
 
         root.addView(card, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         card.bringToFront()

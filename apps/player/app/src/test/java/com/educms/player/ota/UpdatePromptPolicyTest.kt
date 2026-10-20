@@ -18,18 +18,16 @@ class UpdatePromptPolicyTest {
     private val t0 = 9_000_000L
 
     @Test
-    fun `a staged own-update confirmation is raised on resume, once`() {
-        assertTrue(UpdatePromptPolicy.shouldRaiseStagedOnResume(true, t0, 0L, false, false, t0 + 1_000L))
-        assertFalse("already raised", UpdatePromptPolicy.shouldRaiseStagedOnResume(true, t0, t0, false, false, t0 + 1_000L))
-        assertFalse("not ours (companion upgrade keeps its own gate)", UpdatePromptPolicy.shouldRaiseStagedOnResume(false, t0, 0L, false, false, t0 + 1_000L))
-        assertFalse("stale", UpdatePromptPolicy.shouldRaiseStagedOnResume(true, t0, 0L, false, false, t0 + UpdatePromptPolicy.SHOW_WINDOW_MS))
+    fun `an emergency or a person's standby keeps the card down`() {
+        assertFalse(UpdatePromptPolicy.shouldShowCard(true, dialogAppeared = false, foreground = true, emergencyHeld = true, standbyActive = false))
+        assertFalse(UpdatePromptPolicy.shouldShowCard(true, dialogAppeared = false, foreground = true, emergencyHeld = false, standbyActive = true))
     }
 
     @Test
-    fun `an emergency or a person's standby keeps it down`() {
-        assertFalse(UpdatePromptPolicy.shouldRaiseStagedOnResume(true, t0, 0L, emergencyHeld = true, standbyActive = false, nowMs = t0 + 1))
-        assertFalse(UpdatePromptPolicy.shouldRaiseStagedOnResume(true, t0, 0L, emergencyHeld = false, standbyActive = true, nowMs = t0 + 1))
-        assertFalse(UpdatePromptPolicy.shouldShowCard(true, dialogAppeared = false, foreground = true, emergencyHeld = true, standbyActive = false))
+    fun `the label names the offered build, never the stable release`() {
+        assertEquals("v1.1.45-field.1", UpdatePromptPolicy.versionLabel("1.1.45-field.1"))
+        assertEquals("v1.1.46", UpdatePromptPolicy.versionLabel("v1.1.46"))
+        assertEquals("update", UpdatePromptPolicy.versionLabel(null))
     }
 
     @Test
@@ -72,10 +70,21 @@ class UpdatePromptPolicyTest {
     @Test
     fun `the Activity raises on resume and verifies every own-update raise`() {
         val s = src("MainActivity.kt")
-        assertTrue(s.contains("maybeRaiseStagedOwnPrompt(\"resume\")"))
+        assertFalse("owner: nothing surfaces over content on resume", s.contains("maybeRaiseStagedOwnPrompt"))
         assertTrue(s.contains("verifyOwnPromptAppeared(staged, raisedAt)"))
         assertTrue("onPause stamps the pause the verification reads", s.contains("lastPausedAtElapsedMs = android.os.SystemClock.elapsedRealtime()"))
         assertTrue("the card owns the remote while it is up", s.contains("com.educms.player.ota.UpdateReadyCard.isShowing() ||"))
+    }
+
+    @Test
+    fun `an unattended own-update commit is staged, never raised over the video`() {
+        val r = src("ota/OtaInstallReceiver.kt")
+        val gate = r.indexOf("!intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false)")
+        assertTrue(gate > 0)
+        assertTrue("the gate precedes the trampoline", gate < r.indexOf("context.startActivity(trampoline)"))
+        val w = src("ota/OtaUpdateWorker.kt")
+        assertTrue(w.contains("putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_USER, userInitiated)"))
+        assertFalse("the worker never surfaces a card", w.contains("UpdateReadyCard"))
     }
 
     @Test

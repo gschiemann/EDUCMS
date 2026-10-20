@@ -97,6 +97,14 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // would start MainActivity, which is how a panel gets woken.
                 // The confirmation stays STAGED; the next update check or a
                 // person turning the panel back on gets it raised again.
+                // 1.1.46 (owner decision) — never interrupt the video for an
+                // unattended update: our own update's dialog is raised only by a
+                // person pressing Install in the Back menu (that press commits a
+                // fresh session with EXTRA_SELF_OTA_USER). Staged + NEEDS_TAP.
+                if (selfOtaVc > 0 && !intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false)) {
+                    PlayerLogger.i(TAG, "own update v$selfOtaVc waits for a person — staged for the Back menu's Install button, not raised")
+                    return
+                }
                 if (com.educms.player.standby.UserStandby.isActive(context)) {
                     PlayerLogger.i(
                         TAG,
@@ -332,6 +340,8 @@ class OtaInstallReceiver : BroadcastReceiver() {
         /** 1.1.46 — our own session's id and the push identity that committed it. */
         const val EXTRA_SELF_OTA_SESSION_ID = "com.educms.player.extra.SELF_OTA_SESSION_ID"
         const val EXTRA_SELF_OTA_PUSH_KEY = "com.educms.player.extra.SELF_OTA_PUSH_KEY"
+        /** 1.1.46 — true when a person pressed Install (the only case that raises our own dialog). */
+        const val EXTRA_SELF_OTA_USER = "com.educms.player.extra.SELF_OTA_USER"
 
         /**
          * AND-006 — in-process hand-off of the system-minted install
