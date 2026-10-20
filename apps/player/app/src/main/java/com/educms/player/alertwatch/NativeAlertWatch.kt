@@ -374,7 +374,9 @@ object NativeAlertWatch {
 
         override fun holdHeld(): Boolean = runCatching { DisplayEmergency.isHeld(app) }.getOrDefault(false)
 
-        override fun pageRaisedAtMs(face: Int): Long? = DisplayEmergency.pageRaisedAtMs(face)
+        // The historical port name stays for compatibility with the pure watch policy; its
+        // production evidence is now overlay paint, never merely displayEmergencyHold(true).
+        override fun pageRaisedAtMs(face: Int): Long? = com.educms.player.display.EmergencyPaintRecovery.paintedAtMs(face)
 
         override fun raise(face: Int, firstForThisAlert: Boolean) {
             runCatching { DisplayEmergency.raiseFromNativeWatch(app, face, firstForThisAlert) }
@@ -384,6 +386,7 @@ object NativeAlertWatch {
         override fun playerInForeground(): Boolean = MainActivity.isInForeground
 
         override fun bringPlayerForward(attempt: Int) {
+            if (!com.educms.player.display.EmergencyPaintRecovery.consumeLegacyAttempt(app, null, launch = true)) return
             // The raise has already ended any user standby (enforceNow), so
             // the Activity's turn-screen-on is armed again by the time this
             // launch is delivered.
@@ -392,6 +395,7 @@ object NativeAlertWatch {
         }
 
         override fun reloadPage(face: Int, attempt: Int, why: String) {
+            if (!com.educms.player.display.EmergencyPaintRecovery.consumeLegacyAttempt(app, face, launch = false)) return
             val host = pageHostRef?.get()
             if (host == null) {
                 PlayerLogger.e(TAG, "no player Activity to reload (face $face, attempt $attempt) — it is being relaunched instead")

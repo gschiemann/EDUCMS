@@ -2641,6 +2641,12 @@ class MainActivity : ComponentActivity() {
         val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv,
             foreground = { isInForeground }, window = { window }, operatorUiClear = ::nativeVideoUiClear)
         sharedVideoHost = sharedMedia
+        com.educms.player.display.EmergencyPaintRecovery.register(applicationContext, 0, wv,
+            reload = { alertWatchHost.reloadPage(0, "emergency overlay has no paint proof") },
+            relaunch = {
+                if (!isDestroyed && !isFinishing && isInForeground) recreate()
+                else com.educms.player.ota.RelaunchEscalation.launchNow(applicationContext, "emergency-paint")
+            })
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -3098,6 +3104,9 @@ class MainActivity : ComponentActivity() {
                 onWebBootContent = { hash, frames ->
                     if (wv === webView) com.educms.player.boot.BootDiagnostics.onContentPresented(hash, frames)
                 },
+                onWebEmergencyPaint = { json ->
+                    if (wv === webView) com.educms.player.display.EmergencyPaintRecovery.painted(applicationContext, 0, json)
+                },
                 onWebHeartbeatV2 = { syncOk ->
                     if (wv !== webView) return@WebAppBridge
                     val now = android.os.SystemClock.elapsedRealtime()
@@ -3360,6 +3369,7 @@ class MainActivity : ComponentActivity() {
             // opening the surface to everyone, so this is a bounded retry
             // rather than a single shot. See [bridgeNonceRetriesLeft].
             onMainFrameDocument = { view, _ -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view) },
+            onMainFrameStarted = { com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0) },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()

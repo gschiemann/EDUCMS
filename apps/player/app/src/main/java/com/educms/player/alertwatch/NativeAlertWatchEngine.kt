@@ -42,7 +42,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
         /** Is the emergency hold engaged, by anyone? */
         fun holdHeld(): Boolean
 
-        /** `elapsedRealtime` of [face]'s page's last raise in the current hold period; null = none. */
+        /** Historical name: production supplies the validated overlay PAINT time; null = no proof. */
         fun pageRaisedAtMs(face: Int): Long?
 
         /** `DisplayEmergency.raiseFromNativeWatch`. THE ONLY WRITE TO THE HOLD THIS MACHINE HAS. */
@@ -444,7 +444,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                     ports.log(
                         Level.ERROR,
                         "PLAYER_NATIVE_ALERT_CONFIRMED face=$face afterMs=${(raisedAt - ep.openedAtMs).coerceAtLeast(0L)} " +
-                            "reloads=${ep.reloads} — the page raised the hold itself: it has the alert",
+                            "reloads=${ep.reloads} — the page reported its emergency overlay painted",
                     )
                     ports.alertEpisodeSettled(face, "confirmed")
                 }
@@ -482,7 +482,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
                     ports.log(
                         Level.ERROR,
                         "PLAYER_NATIVE_ALERT_UNCONFIRMED face=$face reloads=${ep.reloads} " +
-                            "sinceRaiseMs=${nowMs - ep.openedAtMs} — the page never raised the hold itself. " +
+                            "sinceRaiseMs=${nowMs - ep.openedAtMs} — no emergency overlay paint proof arrived. " +
                             "The hold STAYS engaged and the panel stays lit; no further reloads for this alert",
                     )
                     ports.alertEpisodeSettled(face, "unconfirmed")

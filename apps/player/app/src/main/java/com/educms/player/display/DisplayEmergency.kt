@@ -519,11 +519,16 @@ object DisplayEmergency {
             val next = nextHoldFaces(current, face, active)
             val wasHeld = current.isNotEmpty()
 
-            if (active) return engage(app, wasHeld, next, face)
+            if (active) {
+                // Arm the independent proof deadline BEFORE any OEM wake/brightness code can fail.
+                EmergencyPaintRecovery.raised(app, face)
+                return engage(app, wasHeld, next, face)
+            }
             // Somebody else is still in an alert. Narrow the membership and
             // leave the screen exactly as it is.
-            if (next.isNotEmpty()) return narrowHold(app, next, face)
-            return release(app, wasHeld, face)
+            val persisted = if (next.isNotEmpty()) narrowHold(app, next, face) else release(app, wasHeld, face)
+            if (persisted) EmergencyPaintRecovery.released(app, face)
+            return persisted
         }
     }
 
@@ -734,23 +739,24 @@ object DisplayEmergency {
         }.getOrNull()
         val deferHardware = EmergencyBrightnessPolicy.providerDefers(brightnessProvider)
 
-        runCatching {
+        EmergencyPaintPolicy.bestEffort(wake = {
             // The ALERT's own wake — not a person's command, so it must not
             // cancel the all-clear restore (1.1.23; see UserStandby.noteDeliberateWake).
             com.educms.player.standby.UserStandby.duringOwnWake {
                 if (steps) EmergencyBrightness.step("registry-wake", durable = true)
                 DisplayControlRegistry.apply(app, DisplayAction.Wake, revertAfterMs = null, wakeSource = "emergency")
-                if (!deferHardware) {
-                    // Software floor (window only): nothing to wait for.
-                    if (steps) EmergencyBrightness.step("brightness-immediate", "provider=$brightnessProvider")
-                    DisplayControlRegistry.apply(
-                        app,
-                        DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
-                        revertAfterMs = null,
-                    )
-                }
             }
-        }.onFailure { PlayerLogger.e(TAG, "emergency wake through the registry failed", it) }
+        }, draw = {
+            if (!deferHardware) {
+                // Software floor (window only): nothing to wait for.
+                if (steps) EmergencyBrightness.step("brightness-immediate", "provider=$brightnessProvider")
+                DisplayControlRegistry.apply(
+                    app,
+                    DisplayAction.SetBrightness(EMERGENCY_BRIGHTNESS),
+                    revertAfterMs = null,
+                )
+            }
+        }, failed = { PlayerLogger.e(TAG, "emergency wake/brightness through the registry failed; alert recovery continues", it) })
 
         if (deferHardware) {
             // ⚠️ 2026-10-12 — THE HARDWARE WRITE WAITS FOR A SETTLED PANEL
@@ -780,6 +786,7 @@ object DisplayEmergency {
     /** Re-assert on process start / window attach. No-op when not held. */
     fun enforceIfHeld(ctx: Context) {
         if (isHeld(ctx)) {
+            holdingFaces(ctx).forEach { EmergencyPaintRecovery.raised(ctx, it) }
             PlayerLogger.i(TAG, "emergency hold is still active — re-asserting a visible screen")
             enforceNow(ctx)
         }

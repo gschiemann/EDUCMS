@@ -160,6 +160,8 @@ class WebAppBridge(
      */
     private val onWebTelemetryReported: (telemetryOk: Boolean) -> Unit = {},
     private val onWebBootContent: (hash: String?, frames: Long?) -> Unit = { _, _ -> },
+    /** Additive paint receipt on heartbeatV2, face-bound by the native host. */
+    private val onWebEmergencyPaint: (String) -> Unit = {},
     /**
      * 2026-05-24 — per-screen orientation lock. The /player route calls
      * `bridge.setOrientation('LANDSCAPE' | 'PORTRAIT' | 'AUTO')` when
@@ -450,6 +452,7 @@ class WebAppBridge(
             // not read it and keeps its current heartbeat cadence — correct
             // behaviour on an old APK, not a degradation.
             telemetryOk = json.opt("telemetryOk") as? Boolean ?: false
+            json.optJSONObject("emergencyPaint")?.let { onWebEmergencyPaint(it.toString()) }
         } catch (_: Throwable) {
             // Fail-soft, as documented: a malformed payload costs the screen
             // nothing. `syncOk` stays unknown (neither refreshes nor
