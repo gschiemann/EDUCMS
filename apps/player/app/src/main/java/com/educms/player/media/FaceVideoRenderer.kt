@@ -327,6 +327,9 @@ internal class FaceVideoRenderer(
                             .put("clockSlewUs", schedule.clockSlewNs / 1000)
                             .put("vsyncPeriodUs", vsync.periodNs / 1000).put("vsyncSamples", vsync.samples)
                             .put("releaseLeadUs", VideoFrameSchedule.releaseLeadNs(vsync.periodNs) / 1000)
+                            // 1.1.47: the parity lock (30 fps on a 60 Hz grid stays on ONE phase).
+                            .put("parityLocked", schedule.parityLocked).put("parityFlips", schedule.parityFlips)
+                            .put("driftCorrections", schedule.driftCorrections).put("parityRescues", schedule.parityRescues)
                     }
                     timingSnapshot = snap
                     nextTimingAt = nowMs + 1000

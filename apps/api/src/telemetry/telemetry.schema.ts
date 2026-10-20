@@ -240,6 +240,11 @@ const nativeTimingMeasurement = {
   vsyncSamples: safeCount().optional(),
   // 1.1.43: the grid-sized release lead the session ran with (0.8 P on a 30 Hz grid, 0.5 P on 60 Hz).
   releaseLeadUs: safeCount().optional(),
+  // 1.1.47: the parity lock — a 30 fps clip on a 60 Hz grid stays on ONE phase.
+  parityLocked: z.boolean().optional(),
+  parityFlips: safeCount().optional(),
+  driftCorrections: safeCount().optional(),
+  parityRescues: safeCount().optional(),
   preferredModeApplied: z.number().int().min(0).max(1_000_000).optional(),
   keepScreenOn: z.boolean().optional(),
 };

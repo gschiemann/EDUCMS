@@ -1,5 +1,7 @@
 package com.educms.player.media
 
+import kotlin.math.abs
+
 /** All operations stay on the codec thread and must be nonblocking. */
 internal class VideoDecodePump(
     private val feed: () -> Boolean,
@@ -55,6 +57,23 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val
     var lastTargetNs = 0L; private set
     /** The release lead (ns) used for the last snapped frame — [releaseLeadNs] of the grid's period at that moment. */
     var lastReleaseLeadNs = 0L; private set
+    // 1.1.47 — the PARITY LOCK (field 2026-10-20, M43 / L55VEC): a 30 fps clip on a 60 Hz vsync grid
+    // whose panel scans at 30 Hz. Every frame must land on the SAME one of the two 60 Hz phases; a
+    // release that moves to the other phase is shown one 60 Hz tick early or late by the 30 Hz scan —
+    // a judder no release-interval counter sees. See [releaseTime].
+    /** Vsyncs per frame while the lock holds (grid = N × fps, N ≥ 2); 0 when the cadence is not an integer multiple. */
+    var lockMultiple = 0; private set
+    /** The last locked target vsync: every later target sits a whole multiple of [lockMultiple] periods from it. */
+    private var lockBaseNs = 0L
+    private var lockBaseDueNs = 0L
+    /** True while releases are locked to one parity of the grid. */
+    val parityLocked: Boolean get() = lockMultiple >= 2 && lockBaseNs != 0L
+    /** Locked targets that landed on another parity than the lock (only a grid that itself stepped can do it; expected 0). */
+    var parityFlips = 0L; private set
+    /** Deliberate one-frame holds or skips at the locked cadence that absorbed media-clock drift. */
+    var driftCorrections = 0L; private set
+    /** Frames whose closest vsync was on the other parity and were kept on the locked one instead. */
+    var parityRescues = 0L; private set
 
     /** True while releases are being snapped (a grid exists and has enough samples). */
     val snapping: Boolean get() = vsync?.ready == true
@@ -66,6 +85,8 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val
         val v = vsync
         originNs = if (v != null && v.ready) v.nextVsyncAtOrAfter(nowNs + v.periodNs) else nowNs
         firstPtsUs = ptsUs
+        // The parity is chosen ONCE per session, by its first snapped frame.
+        lockBaseNs = 0L; lockBaseDueNs = 0L; lockMultiple = 0
         lastSubmittedNs = nowNs
         lastPresentationNs = nowNs
     }
@@ -89,7 +110,7 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val
     fun releaseTime(dueNs: Long, nowNs: Long): Long {
         val v = vsync
         if (v == null || !v.ready) return maxOf(dueNs, nowNs)
-        val snapped = v.closestVsync(dueNs)
+        val snapped = lockedTarget(v, dueNs)
         val err = snapped - dueNs
         snappedFrames++
         val errUs = (if (err < 0) -err else err) / 1000
@@ -102,6 +123,49 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val
         val lead = releaseLeadNs(v.periodNs)
         lastReleaseLeadNs = lead
         return maxOf(snapped - lead, nowNs)
+    }
+
+    /**
+     * 1.1.47 — THE PARITY LOCK. When the grid is an integer multiple N ≥ 2 of
+     * the clip's rate ([cadenceMultiple]: 30 fps on 60 Hz, 25 on 50, 24 on 48),
+     * the first snapped frame picks one of the N phases and every later target
+     * stays on it: the closest vsync of THAT phase, never the closest vsync
+     * overall. Drift between the clip's clock and the panel is absorbed by the
+     * same bounded slew; when it ever exceeds half a FRAME the target moves by
+     * a whole frame on the locked cadence (a deliberate one-frame hold or skip,
+     * counted in [driftCorrections]) — never by one vsync onto the other phase.
+     * Any other cadence (30 on 30 Hz, 60 on 60 Hz) snaps exactly as before.
+     */
+    private fun lockedTarget(v: VsyncGrid, dueNs: Long): Long {
+        val p = v.periodNs
+        val nearest = v.closestVsync(dueNs)
+        val n = cadenceMultiple(frameNs, p)
+        if (n < 2) { lockMultiple = 0; lockBaseNs = 0L; return nearest }
+        if (n != lockMultiple || lockBaseNs == 0L) {
+            // First snapped frame of the session (or the grid changed its multiple): choose the parity once.
+            lockMultiple = n; lockBaseNs = nearest; lockBaseDueNs = dueNs
+            return nearest
+        }
+        val base = lockBaseNs
+        val k = Math.floorDiv(nearest - base + p / 2, p)
+        val r = Math.floorMod(k, n.toLong())
+        val target = if (r == 0L) nearest else {
+            parityRescues++
+            // Re-snapped onto the CURRENT grid, so a grid that re-anchored still gets real vsyncs.
+            val lo = v.closestVsync(base + (k - r) * p)
+            val hi = v.closestVsync(base + (k + n - r) * p)
+            if (abs(dueNs - lo) <= abs(hi - dueNs)) lo else hi
+        }
+        // Honest bookkeeping against the lock base: the parity actually aimed at, and whether the step
+        // from the last target differs from the step the clip's own clock asked for (a hold or a skip).
+        val kt = Math.floorDiv(target - base + p / 2, p)
+        if (Math.floorMod(kt, n.toLong()) != 0L) parityFlips++
+        val step = n.toLong() * p
+        val asked = Math.floorDiv(dueNs - lockBaseDueNs + step / 2, step)
+        val got = Math.floorDiv(target - base + step / 2, step)
+        if (asked != got) driftCorrections++
+        lockBaseNs = target; lockBaseDueNs = dueNs
+        return target
     }
 
     fun shouldDrop(dueNs: Long, nowNs: Long): Boolean =
@@ -124,6 +188,22 @@ internal class VideoFrameSchedule(frameUs: Long, refreshRate: Float, private val
     fun endDeadline(nowNs: Long): Long = lastPresentationNs?.let { it + frameNs } ?: nowNs
 
     companion object {
+        /** A frame period within this fraction (per mille) of N grid periods counts as an N:1 cadence. */
+        const val CADENCE_TOLERANCE_PER_MILLE = 30L
+
+        /**
+         * N when one frame of [frameNs] spans N ≥ 2 whole periods of a grid of
+         * [periodNs] (within [CADENCE_TOLERANCE_PER_MILLE]); else 0 — 1:1 and
+         * non-integer cadences are not parity-locked.
+         */
+        fun cadenceMultiple(frameNs: Long, periodNs: Long): Int {
+            if (periodNs <= 0L || frameNs <= 0L) return 0
+            val n = (frameNs + periodNs / 2) / periodNs
+            if (n < 2L || n > 8L) return 0
+            val off = abs(frameNs - n * periodNs)
+            return if (off * 1000L <= n * periodNs * CADENCE_TOLERANCE_PER_MILLE) n.toInt() else 0
+        }
+
         /** "A few hundred microseconds per frame": 0.3 ms, i.e. at most 0.9 % of a 30 fps period. */
         const val MAX_SLEW_NS = 300_000L
         /**

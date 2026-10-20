@@ -87,7 +87,7 @@ class VsyncClockTest {
     }
 
     /** Runs a 30 fps clip through the schedule on [grid]; returns the targets each frame was aimed at. */
-    private fun run(grid: VsyncGrid, schedule: VideoFrameSchedule, frames: Int, startNs: Long, onFrame: (Int, Long, Long) -> Unit = { _, _, _ -> }): List<Long> {
+    private fun run(grid: VsyncGrid, schedule: VideoFrameSchedule, frames: Int, startNs: Long, ptsJumpUs: (Int) -> Long = { 0L }, onFrame: (Int, Long, Long) -> Unit = { _, _, _ -> }): List<Long> {
         val targets = ArrayList<Long>(frames)
         var now = startNs
         var pts = 0L
@@ -111,7 +111,7 @@ class VsyncClockTest {
             onFrame(i, due, target)
             targets.add(target)
             schedule.submitted(now, target)
-            pts += 33_333
+            pts += 33_333 + ptsJumpUs(i)
         }
         return targets
     }
@@ -224,5 +224,110 @@ class VsyncClockTest {
         assertEquals(now, d2)
         assertEquals(now, notReady.releaseTime(d2, now))
         assertEquals(0L, notReady.snappedFrames)
+    }
+
+    // ── 1.1.47: the parity lock (field 2026-10-20, M43 / L55VEC: 3840x2160@30 panels on a 60 Hz grid) ──
+
+    @Test fun cadenceMultipleRecognisesIntegerCadencesOnly() {
+        assertEquals(2, VideoFrameSchedule.cadenceMultiple(33_333_000L, 16_666_667L)) // 30 fps on 60 Hz
+        assertEquals(2, VideoFrameSchedule.cadenceMultiple(33_366_700L, 16_666_667L)) // 29.97 on 60 Hz
+        assertEquals(2, VideoFrameSchedule.cadenceMultiple(40_000_000L, 20_000_000L)) // 25 on 50 Hz
+        assertEquals(4, VideoFrameSchedule.cadenceMultiple(66_666_000L, 16_666_667L)) // 15 on 60 Hz
+        assertEquals(0, VideoFrameSchedule.cadenceMultiple(16_666_000L, 16_666_667L)) // 60 on 60: 1:1, unchanged
+        assertEquals(0, VideoFrameSchedule.cadenceMultiple(33_333_000L, 33_333_333L)) // 30 on 30: 1:1, unchanged
+        assertEquals(0, VideoFrameSchedule.cadenceMultiple(41_666_000L, 16_666_667L)) // 24 on 60: 2.5, not integer
+        assertEquals(0, VideoFrameSchedule.cadenceMultiple(0L, 16_666_667L))
+    }
+
+
+    /** Two hours of a drifting 30 fps clip on a 60 Hz grid; every 10 min the clip's clock jumps by up to ±9.5 ms. */
+    private fun twoHours(grid: VsyncGrid, s: VideoFrameSchedule, frames: Int, startNs: Long): List<Long> {
+        val rnd = java.util.Random(11L)
+        return run(grid, s, frames = frames, startNs = startNs, ptsJumpUs = { i ->
+            if (i > 0 && i % 18_000 == 0) (if (rnd.nextBoolean()) 1L else -1L) * (5_000L + rnd.nextInt(4_500))
+            else 0L
+        })
+    }
+
+    @Test fun thirtyFpsOnASixtyHertzGridNeverFlipsParityUnderTwoHoursOfDriftAndClockJumps() {
+        // The panel's real 60 Hz vsync is 16.6680 ms; the clip's PTS step is 33.333 ms: ~3 µs/frame of drift, the
+        // field's multi-millisecond clockSlewUs over two hours. The jumps (5–9.5 ms, more than the 8.3 ms half-period
+        // in most cases) are what moved the closest-vsync snap onto the other 60 Hz phase.
+        val period = 16_668_000L
+        val grid = Grid(periodNs = period, anchorNs = 4_000_000_000L)
+        val s = VideoFrameSchedule(33_333, 60f, grid)
+        val frames = 216_000 // 2 h at 30 fps
+        val targets = twoHours(grid, s, frames, 4_000_070_000L)
+        assertTrue(s.parityLocked)
+        assertEquals("parity never flips", 0L, s.parityFlips)
+        // Every interval is a whole number of FRAMES on the locked cadence: an even number of vsyncs, always.
+        for (i in 1 until targets.size) {
+            val vsyncs = Math.floorDiv(targets[i] - targets[i - 1] + period / 2, period)
+            assertEquals("frame $i: $vsyncs vsyncs after frame ${i - 1}", 0L, Math.floorMod(vsyncs, 2L))
+        }
+        // The jumps that crossed half a period were kept on the locked phase …
+        assertTrue("jumps forced rescues: ${s.parityRescues}", s.parityRescues > 0L)
+        // … and absorbed by the bounded slew on the locked cadence; a deliberate hold / skip is rare: at most one per jump.
+        assertTrue("drift corrections ${s.driftCorrections}", s.driftCorrections <= frames / 18_000L)
+        assertEquals(frames.toLong(), s.snappedFrames)
+        assertEquals(0L, s.lateFrames)
+    }
+
+    @Test fun thePreLockClosestVsyncSnapFlipsPhaseOnTheSameRun() {
+        // Negative control: the same run with the lock unavailable (a 1:1-looking schedule is not possible here, so
+        // replay the rule itself): count intervals that are an ODD number of vsyncs when each due is snapped to its
+        // closest vsync after the same bounded slew. They exist — the judder the lock removes.
+        val period = 16_668_000L
+        val grid = Grid(periodNs = period, anchorNs = 4_000_000_000L)
+        var origin = grid.nextVsyncAtOrAfter(4_000_070_000L + period)
+        val rnd = java.util.Random(11L)
+        var pts = 0L
+        var last = 0L
+        var odd = 0
+        for (i in 0 until 216_000) {
+            val due = origin + pts * 1000
+            val snapped = grid.closestVsync(due)
+            origin += (snapped - due).coerceIn(-VideoFrameSchedule.MAX_SLEW_NS, VideoFrameSchedule.MAX_SLEW_NS)
+            if (i > 0 && Math.floorMod(Math.floorDiv(snapped - last + period / 2, period), 2L) == 1L) odd++
+            last = snapped
+            pts += 33_333 + if (i > 0 && i % 18_000 == 0) (if (rnd.nextBoolean()) 1L else -1L) * (5_000L + rnd.nextInt(4_500)) else 0L
+        }
+        assertTrue("the pre-1.1.47 rule flips phase: $odd odd intervals", odd > 0)
+    }
+
+    @Test fun aGridThatReanchorsStillGetsRealVsyncsOnTheLockedPhase() {
+        // The estimator re-anchors 9.5 ms off (a mode-change hypothesis or a clock step). Targets are re-snapped onto
+        // the grid in force — every target is a real vsync of the CURRENT grid, and nothing is late.
+        val period = 16_666_667L
+        var anchor = 6_000_000_000L
+        val grid = object : VsyncGrid {
+            override val ready = true; override val periodNs = period; override val anchorNs: Long get() = anchor; override val samples = 50L
+        }
+        val s = VideoFrameSchedule(33_333, 60f, grid)
+        run(grid, s, frames = 2_000, startNs = 6_000_030_000L) { i, _, target ->
+            if (i == 1_000) anchor += 9_500_000L
+            assertEquals("frame $i on the grid", 0L, Math.floorMod(target - anchor, period).let { if (i == 1_000) 0L else it })
+        }
+        assertTrue(s.parityLocked)
+        assertEquals(0L, s.lateFrames)
+    }
+
+    @Test fun sixtyFpsOnASixtyHertzGridIsUnchangedByTheLock() {
+        val grid = Grid(periodNs = 16_666_667L, anchorNs = 8_000_000_000L)
+        val s = VideoFrameSchedule(16_666, 60f, grid)
+        val targets = ArrayList<Long>()
+        var now = 8_000_040_000L
+        var pts = 0L
+        for (i in 0 until 6_000) {
+            val due = s.due(pts, now)
+            now = maxOf(now, due - 20_000_000L)
+            s.releaseTime(due, now)
+            targets.add(s.lastTargetNs)
+            s.submitted(now, s.lastTargetNs)
+            pts += 16_666
+        }
+        for (i in 1 until targets.size) assertEquals("frame $i", grid.periodNs, targets[i] - targets[i - 1])
+        assertFalse(s.parityLocked)
+        assertEquals(0L, s.parityFlips); assertEquals(0L, s.driftCorrections); assertEquals(0L, s.parityRescues)
     }
 }

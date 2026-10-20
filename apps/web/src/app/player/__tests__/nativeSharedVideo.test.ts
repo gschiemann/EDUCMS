@@ -182,6 +182,10 @@ describe("optional native output handoff", () => {
     expect(t.releaseLeadUs).toBe(8333);
     expect(t.history?.entries[0]).toMatchObject({ prefer60hz: "blocked", releaseLeadUs: 26666 });
     expect(readNativeVideoTiming({ ...nine, releaseLeadUs: -1 })).toEqual(nine);
+    // 1.1.47: the parity lock's figures ride along; a malformed one is dropped.
+    const p = readNativeVideoTiming({ ...nine, parityLocked: true, parityFlips: 0, driftCorrections: 2, parityRescues: 31 })!;
+    expect(p).toMatchObject({ parityLocked: true, parityFlips: 0, driftCorrections: 2, parityRescues: 31 });
+    expect(readNativeVideoTiming({ ...nine, parityLocked: "yes", parityFlips: -1 })).toEqual(nine);
     // Since 1.1.43 every session report carries `requested` with EVERY key — `false` for whatever is not in effect
     // (FaceVideoBox.sessionJson). The API's strict schema accepts only `true`; the page passes exactly those on.
     const requested = { webviewInvisible: false, surfaceFrameRate: false, decoderRotation: false, vsyncSnap: true, prefer60hz: false };

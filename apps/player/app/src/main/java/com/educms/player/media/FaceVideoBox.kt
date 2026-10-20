@@ -1410,6 +1410,10 @@ internal object FaceVideoBox {
                 .put("vsyncPeriodUs", base.optLong("vsyncPeriodUs")).put("vsyncSamples", base.optLong("vsyncSamples"))
             // 1.1.43: the grid-sized release lead the session ran with.
             if (base.has("releaseLeadUs")) j.put("releaseLeadUs", base.optLong("releaseLeadUs"))
+            // 1.1.47: the parity lock.
+            if (base.has("parityLocked")) j.put("parityLocked", base.optBoolean("parityLocked"))
+                .put("parityFlips", base.optLong("parityFlips")).put("driftCorrections", base.optLong("driftCorrections"))
+                .put("parityRescues", base.optLong("parityRescues"))
         }
         s.intervals?.writeTo(j)
         // Native-first (§3.3): a v4 session, and how long its last frame was held for its successor.
