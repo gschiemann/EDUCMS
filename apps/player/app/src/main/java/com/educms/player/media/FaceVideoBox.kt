@@ -1633,7 +1633,11 @@ internal object FaceVideoBox {
                 val (manifest, etag) = SharedVideoSource(host.ctx).manifestIfChanged(face, screen, synchronized(this) { switchEtags[face] })
                 synchronized(this) { if (etag != null) switchEtags[face] = etag }
                 if (manifest == null) { synchronized(this) { switchLearnedAt[face] = SystemClock.elapsedRealtime() }; return@execute }
-                learnSwitch(host.ctx, face, FaceVideoDescriptor.nativeFirstOf(manifest.optJSONObject("nativeVideo")))
+                when (val read = FaceVideoDescriptor.switchReadOf(manifest)) {
+                    is SwitchRead.Learned -> learnSwitch(host.ctx, face, read.value)
+                    // No descriptor (an alert, a template, nothing native): keep the switch, retry at the normal cadence.
+                    SwitchRead.NoDescriptor -> synchronized(this) { switchLearnedAt[face] = SystemClock.elapsedRealtime() }
+                }
             } catch (e: Exception) {
                 PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_FIRST_SWITCH face=$face read=${FaceVideoReasons.code(e, "failed")}")
             } finally {
