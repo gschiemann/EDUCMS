@@ -12,12 +12,16 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.ListenableWorker.Result
 import androidx.work.WorkerParameters
 import com.educms.player.BuildConfig
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -57,8 +61,51 @@ class OtaUpdateWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(ctx, params) {
 
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+    override suspend fun doWork(): Result = OtaCheck(applicationContext, inputData).run()
+
+    companion object {
+        /**
+         * WorkManager `inputData` key carrying who asked for this check.
+         *
+         * ⚠️ Only [PlayerApp.fireOtaCheckNow]'s user-initiated path sets it.
+         * The 6-hourly periodic request is built with no input data at all,
+         * which is what keeps a background tick gated by the rollout policy.
+         */
+        const val KEY_SOURCE = "source"
+
+        /** The one value the server treats as operator authorization. */
+        const val SOURCE_USER = "user"
+
+        /**
+         * 1.1.46 — the operator push identity (`forceUpdatePendingAt`) the
+         * native heartbeat saw. Only [PlayerApp.fireOtaCheckForPush] sets it.
+         */
+        const val KEY_PUSH = "push"
+    }
+}
+
+/**
+ * The whole update check, as a plain class so it can run OUTSIDE WorkManager
+ * (1.1.46): the native heartbeat runs it in-process when a push's one-shot
+ * work never started (Android 9 "Commercial" units — see
+ * [com.educms.player.heartbeat.OtaPushTrigger]). One check at a time per
+ * process ([RUN_LOCK]).
+ */
+internal class OtaCheck(
+    private val applicationContext: Context,
+    private val inputData: Data,
+) {
+
+    suspend fun run(): Result = RUN_LOCK.withLock { runLocked() }
+
+    private suspend fun runLocked(): Result = withContext(Dispatchers.IO) {
         PlayerLogger.i(TAG, "OTA check starting (versionCode=${BuildConfig.VERSION_CODE}, versionName=${BuildConfig.VERSION_NAME})")
+        // 1.1.46 — when a check last STARTED, by any route (the heartbeat's
+        // push fallback reads it to tell "WorkManager ran it" from "never").
+        runCatching {
+            applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE).edit()
+                .putLong(KEY_CHECK_STARTED_AT, System.currentTimeMillis()).apply()
+        }
 
         // v1.0.53 — OPERATOR-REPORTED REGRESSION: "remote upgrade has
         // never worked. We are on version 52 motherfucker, and no
@@ -186,6 +233,43 @@ class OtaUpdateWorker(
             // OtaAttemptPolicy for the rules.
             val stored = OtaAttemptStore.read(applicationContext)
 
+            // ── 1.1.46 — the install confirmation this screen launched for
+            // our own update (PendingInstallConfirmation). A NEW push re-opens
+            // it; an aged-out one is abandoned and reported expired.
+            val pushKey = inputData.getString(KEY_PUSH)?.trim()?.takeIf { it.isNotEmpty() }
+            val confirmAction = PendingInstallConfirmation.onCheck(
+                PendingInstallStore.read(applicationContext),
+                pushKey,
+                System.currentTimeMillis(),
+                android.os.SystemClock.elapsedRealtime(),
+            )
+            val freshPush = pushKey != null &&
+                confirmAction != PendingInstallConfirmation.CheckAction.KEEP_NEEDS_TAP &&
+                pushKey != PendingInstallStore.lastCommittedPushKey(applicationContext)
+            when (confirmAction) {
+                PendingInstallConfirmation.CheckAction.REOPEN -> {
+                    PendingInstallStore.abandonOwnSessions(applicationContext, "push $pushKey re-opens the install dialog")
+                    PendingInstallStore.clear(applicationContext, "re-opened for push $pushKey")
+                }
+                PendingInstallConfirmation.CheckAction.EXPIRE -> {
+                    val expired = PendingInstallStore.read(applicationContext)
+                    PendingInstallStore.abandonOwnSessions(applicationContext, "install dialog unanswered — expired")
+                    PendingInstallStore.clear(applicationContext, "expired unanswered")
+                    if (expired != null) {
+                        OtaAttemptStore.recordOutcome(
+                            applicationContext, expired.versionCode, OtaAttemptPolicy.Outcome.EXPIRED,
+                            PendingInstallConfirmation.EXPIRED_STATE,
+                        )
+                    }
+                    reportOtaState(
+                        apiRoot, deviceFingerprint, PendingInstallConfirmation.EXPIRED_STATE, null,
+                        "Nobody tapped Install for ${expired?.versionName?.let { "v$it" } ?: "the update"} within 30 minutes — " +
+                            "the request expired. Push the update again to ask again.",
+                    )
+                }
+                else -> Unit
+            }
+
             // v1.0.12 — per-phase OTA progress reporting. The dashboard
             // and on-device overlay both subscribe to lastOtaState so
             // operators see real progress instead of stopwatch theater.
@@ -289,8 +373,14 @@ class OtaUpdateWorker(
                 when (OtaAttemptPolicy.readUpToDate(needsTap = json.optBoolean("needsTap", false))) {
                     OtaAttemptPolicy.UpToDateMeaning.HELD_NEEDS_TAP -> {
                         val target = stored?.versionName?.let { "v$it" } ?: "the update"
-                        PlayerLogger.i(TAG, "OTA check: push held — $target is waiting for a person to tap Install (kept file: ${stored != null})")
-                        reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage(target))
+                        // 1.1.46 — NEEDS_TAP only while a confirmation we
+                        // launched is fresh; never for a dialog nobody can see.
+                        if (confirmAction == PendingInstallConfirmation.CheckAction.KEEP_NEEDS_TAP) {
+                            PlayerLogger.i(TAG, "OTA check: push held — $target is waiting for a person to tap Install (kept file: ${stored != null})")
+                            reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage(target))
+                        } else {
+                            PlayerLogger.i(TAG, "OTA check: push held for a tap, but no install dialog is open — not re-reporting NEEDS_TAP (confirm=$confirmAction)")
+                        }
                     }
                     OtaAttemptPolicy.UpToDateMeaning.DROP -> {
                         if (stored != null) OtaAttemptStore.clear(applicationContext, "server offers nothing newer")
@@ -370,6 +460,11 @@ class OtaUpdateWorker(
                 OtaAttemptStore.clear(applicationContext, "a different build is offered (v$latestVn)")
             }
             OtaAttemptStore.deleteOtherApks(applicationContext, latestVc)
+            // 1.1.46 — a confirmation still open for an OLDER build is moot.
+            PendingInstallStore.read(applicationContext)?.takeIf { it.versionCode != latestVc }?.let {
+                PendingInstallStore.abandonOwnSessions(applicationContext, "v$latestVn offered over v${it.versionName}")
+                PendingInstallStore.clear(applicationContext, "superseded by v$latestVn")
+            }
 
             val reused = OtaAttemptPolicy.canReuse(attempt, latestVc, expectedSha, outFile.exists(), outFile.length()) &&
                 sha256(outFile).equals(expectedSha, ignoreCase = true)
@@ -455,7 +550,11 @@ class OtaUpdateWorker(
                 getInstallerOfRecord(applicationContext) == applicationContext.packageName
             val route = OtaAttemptPolicy.route(
                 OtaAttemptPolicy.Facts(
-                    trigger = if (userInitiated) OtaAttemptPolicy.Trigger.USER else OtaAttemptPolicy.Trigger.UNATTENDED,
+                    trigger = when {
+                        userInitiated -> OtaAttemptPolicy.Trigger.USER
+                        freshPush -> OtaAttemptPolicy.Trigger.PUSH
+                        else -> OtaAttemptPolicy.Trigger.UNATTENDED
+                    },
                     selfSilent = selfSilent,
                     attempt = attempt,
                 ),
@@ -463,7 +562,7 @@ class OtaUpdateWorker(
             PlayerLogger.i(
                 TAG,
                 "OTA install route=$route for v$latestVn (commits=${attempt.commits} outcome=${attempt.outcome} " +
-                    "selfSilent=$selfSilent trigger=${if (userInitiated) "user" else "unattended"})",
+                    "selfSilent=$selfSilent trigger=${if (userInitiated) "user" else if (freshPush) "push" else "unattended"} confirm=$confirmAction)",
             )
             when (route) {
                 OtaAttemptPolicy.Route.COMMIT -> {
@@ -481,7 +580,10 @@ class OtaUpdateWorker(
                     // reliable one — first install needs ONE tap, every install
                     // after is silent.
                     reportOtaState(apiRoot, deviceFingerprint, "INSTALLING", null, "v$latestVn")
-                    triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc)
+                    // 1.1.46 — never two of our sessions open at once.
+                    PendingInstallStore.abandonOwnSessions(applicationContext, "committing v$latestVn")
+                    PendingInstallStore.clear(applicationContext, "a new commit replaces it")
+                    triggerInstall(outFile, forced, apiRoot, deviceFingerprint, latestVc, pushKey, userInitiated)
                     // Success state is reported on next boot via the heartbeat
                     // (new versionName lands in playerVersion, dashboard infers
                     // INSTALLED from a version change). We don't report
@@ -491,7 +593,15 @@ class OtaUpdateWorker(
                     // is the only authoritative signal.
                 }
                 OtaAttemptPolicy.Route.HOLD_NEEDS_TAP ->
-                    reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage("v$latestVn"))
+                    // 1.1.46 rule 4 — NEEDS_TAP only while the dialog we
+                    // launched is fresh. An unanswered one was expired above.
+                    if (confirmAction == PendingInstallConfirmation.CheckAction.KEEP_NEEDS_TAP) {
+                        reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage("v$latestVn"))
+                    } else {
+                        PlayerLogger.i(TAG, "OTA: v$latestVn waits for a push or a person — no install dialog is open (confirm=$confirmAction)")
+                    }
+                OtaAttemptPolicy.Route.HOLD_EXPIRED ->
+                    PlayerLogger.i(TAG, "OTA: v$latestVn's install request expired unanswered — waiting for the next push")
                 OtaAttemptPolicy.Route.HOLD_FAILED ->
                     // Reported as FAILED_<CODE> when it failed (OtaInstallReceiver);
                     // only a person pressing Update on the panel retries it.
@@ -576,7 +686,7 @@ class OtaUpdateWorker(
      * The notification remains as a user-visible fallback for case 3
      * if the prompt gets dismissed.
      */
-    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String, versionCode: Int) {
+    private fun triggerInstall(apk: File, forced: Boolean, apiRoot: String, deviceFingerprint: String, versionCode: Int, pushKey: String?, userInitiated: Boolean) {
         val ctx = applicationContext
 
         // v1.0.55 — Schedule a post-install relaunch safety net BEFORE
@@ -667,6 +777,12 @@ class OtaUpdateWorker(
                     // names the build, so its outcome lands on the right
                     // OtaAttemptStore record.
                     putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_VERSION_CODE, versionCode)
+                    // 1.1.46 — which session, and which push committed it.
+                    putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_SESSION_ID, sessionId)
+                    pushKey?.let { putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_PUSH_KEY, it) }
+                    // 1.1.46 (owner) — only a PERSON's press raises the dialog;
+                    // an unattended commit is staged for the Back menu's button.
+                    putExtra(OtaInstallReceiver.EXTRA_SELF_OTA_USER, userInitiated)
                 }
                 val statusPi = PendingIntent.getBroadcast(
                     ctx,
@@ -674,6 +790,7 @@ class OtaUpdateWorker(
                     resultIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
                 )
+                PendingInstallStore.noteCommitted(ctx, sessionId, pushKey)
                 session.commit(statusPi.intentSender)
                 PlayerLogger.i(TAG, "OTA install committed via PackageInstaller.Session (sessionId=$sessionId)")
             } finally {
@@ -784,17 +901,17 @@ class OtaUpdateWorker(
 
     companion object {
         private const val TAG = "OtaUpdateWorker"
+        private const val KEY_SOURCE = OtaUpdateWorker.KEY_SOURCE
+        private const val SOURCE_USER = OtaUpdateWorker.SOURCE_USER
+        private const val KEY_PUSH = OtaUpdateWorker.KEY_PUSH
 
-        /**
-         * WorkManager `inputData` key carrying who asked for this check.
-         *
-         * ⚠️ Only [PlayerApp.fireOtaCheckNow]'s user-initiated path sets it.
-         * The 6-hourly periodic request is built with no input data at all,
-         * which is what keeps a background tick gated by the rollout policy.
-         */
-        const val KEY_SOURCE = "source"
+        /** `edu_player` pref: wall time the last check started (any route). */
+        const val KEY_CHECK_STARTED_AT = "ota_check_started_at"
 
-        /** The one value the server treats as operator authorization. */
-        const val SOURCE_USER = "user"
+        /** One check at a time in this process (the worker and the heartbeat fallback). */
+        val RUN_LOCK = Mutex()
+
+        /** Is a check running right now? (The heartbeat fallback never queues behind one.) */
+        fun busy(): Boolean = RUN_LOCK.isLocked
     }
 }

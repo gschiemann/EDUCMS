@@ -834,7 +834,18 @@ class MainActivity : ComponentActivity() {
          */
         @JvmStatic
         val installPromptOutstanding: Boolean
-            get() = InstallPromptGate.isOutstanding(installPromptFacts())
+            get() {
+                // 1.1.46 — the persisted pending confirmation of our OWN
+                // update holds recovery for its whole NEEDS_TAP window, not
+                // just the in-memory gate's ten minutes (the GUQ field
+                // failure: our Activity resurfaced over the dialog at ~10 min).
+                val held = InstallPromptGate.isOutstanding(installPromptFacts()) ||
+                    com.educms.player.ota.PendingInstallStore.holdsRecoveryNow()
+                if (!held) return false
+                // An emergency always wins: an install dialog must never keep
+                // an alert off the glass.
+                return !com.educms.player.ota.PendingInstallStore.emergencyHeldNow()
+            }
 
         /**
          * `elapsedRealtime` of the last raise, or null. Read by the F4
@@ -2408,6 +2419,9 @@ class MainActivity : ComponentActivity() {
         // `getIntent()` and raise the confirmation again, outside the
         // re-issue budget that exists precisely to bound that.
         launchIntent.action = null
+        // 1.1.46 — for our OWN update the trampoline only arrives when a
+        // PERSON pressed Install (the Back menu's button); an unattended
+        // commit is staged without one, so video is never interrupted.
         raiseInstallPrompt(staged, "trampoline")
     }
 
@@ -2422,10 +2436,79 @@ class MainActivity : ComponentActivity() {
      * post-hoc write lands. Ordering it first makes the suppression fact
      * true for the entire window in which it matters.
      */
+    /** 1.1.46 — `stagedAtMs` of the last staged prompt raised (rule 1: raise each once on resume). */
+    private var lastRaisedStagedAtMs = 0L
+
+    /** 1.1.46 — `elapsedRealtime` of the last onPause (a raised dialog pauses us). */
+    @Volatile
+    private var lastPausedAtElapsedMs = 0L
+
+    /**
+     * 1.1.46 (rule 2) — did the confirmation we just raised come up? If the
+     * Activity was not paused, Android refused it: put the remote-focused
+     * "Update ready" card up instead.
+     */
+    private fun verifyOwnPromptAppeared(staged: com.educms.player.ota.StagedInstallPrompt, raisedAtMs: Long) {
+        if (isFinishing || isDestroyed) return
+        val appeared = com.educms.player.ota.UpdatePromptPolicy.dialogAppeared(raisedAtMs, lastPausedAtElapsedMs)
+        val show = com.educms.player.ota.UpdatePromptPolicy.shouldShowCard(
+            selfOta = staged.selfOtaVersionCode > 0,
+            dialogAppeared = appeared,
+            foreground = isInForeground,
+            emergencyHeld = com.educms.player.ota.PendingInstallStore.emergencyHeldNow(),
+            standbyActive = runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false),
+        )
+        if (!show) {
+            if (!appeared) PlayerLogger.i("MainActivity", "update confirmation not confirmed on glass, card not shown (foreground=$isInForeground)")
+            return
+        }
+        // Nothing is on the glass to protect: release the recovery hold.
+        clearInstallPromptHold("the update confirmation did not come up")
+        runCatching { com.educms.player.ota.PendingInstallStore.clear(applicationContext, "confirmation refused by Android") }
+        showUpdateReadyCard(staged.selfOtaVersionCode)
+    }
+
+    private fun showUpdateReadyCard(versionCode: Int, versionName: String? = null) {
+        if (com.educms.player.ota.PendingInstallStore.emergencyHeldNow()) return
+        if (runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false)) return
+        // The label is the build THIS screen was offered (the push target),
+        // never the stable release.
+        val label = com.educms.player.ota.UpdatePromptPolicy.versionLabel(
+            versionName ?: com.educms.player.ota.OtaAttemptStore.read(applicationContext)
+                ?.takeIf { it.versionCode == versionCode }?.versionName,
+        )
+        com.educms.player.ota.UpdateReadyCard.show(
+            activity = this,
+            versionLabel = label,
+            emergencyHeld = { com.educms.player.ota.PendingInstallStore.emergencyHeldNow() },
+            decorate = ::applyRemoteFocus,
+            onInstall = {
+                val staged = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
+                    ?.takeIf { it.selfOtaVersionCode > 0 }
+                when (com.educms.player.ota.UpdatePromptPolicy.onOk(staged != null)) {
+                    com.educms.player.ota.UpdatePromptPolicy.OkAction.RAISE_STAGED ->
+                        raiseInstallPrompt(staged!!, "update-card-ok")
+                    com.educms.player.ota.UpdatePromptPolicy.OkAction.REQUEST_USER_CHECK ->
+                        // A person pressed OK at the panel: the same human path
+                        // as the page's "Install now".
+                        PlayerApp.fireOtaCheckNow(applicationContext, userInitiated = true)
+                }
+            },
+            onLater = {
+                // A person declined for now: release the holds so content (and
+                // native video) come back; the next push asks again.
+                clearInstallPromptHold("update card: not now")
+                runCatching { com.educms.player.ota.PendingInstallStore.clear(applicationContext, "a person chose not now") }
+            },
+            onClosed = { runCatching { if (!nativeCardOwnsRemote()) webView.requestFocus() } },
+        )
+    }
+
     private fun raiseInstallPrompt(
         staged: com.educms.player.ota.StagedInstallPrompt,
         source: String,
     ) {
+        lastRaisedStagedAtMs = staged.stagedAtMs
         // Assignment (not addFlags) — this REPLACES every flag the system
         // intent carried, including any FLAG_GRANT_*_URI_PERMISSION.
         staged.intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -2446,7 +2529,19 @@ class MainActivity : ComponentActivity() {
             "The Install button is on that page, off the LED.",
         )
         try {
+            val raisedAt = android.os.SystemClock.elapsedRealtime()
+            if (staged.selfOtaVersionCode > 0) {
+                runCatching {
+                    com.educms.player.ota.PendingInstallStore.noteRaisedFromForeground(applicationContext, staged.selfOtaVersionCode)
+                }
+            }
             startActivity(staged.intent)
+            if (staged.selfOtaVersionCode > 0) {
+                window.decorView.postDelayed(
+                    { verifyOwnPromptAppeared(staged, raisedAt) },
+                    com.educms.player.ota.UpdatePromptPolicy.VERIFY_AFTER_MS,
+                )
+            }
             PlayerLogger.i(
                 "MainActivity",
                 "install prompt launched from foreground (BAL bypass, source=$source, " +
@@ -2530,10 +2625,16 @@ class MainActivity : ComponentActivity() {
 
     /** UI-thread predicate shared with secondary faces; excludes the prepare-cleared operator latch. */
     internal fun nativeVideoUiClear(): Boolean =
-        !nativeCardOwnsRemote() && !managerGateShown &&
-            displayBlackoutView?.visibility != View.VISIBLE &&
-            binding.recoveryOverlay.visibility != View.VISIBLE &&
-            (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE)
+        com.educms.player.media.NativeStepAside.uiClear(
+            baseUiClear = !nativeCardOwnsRemote() && !managerGateShown &&
+                displayBlackoutView?.visibility != View.VISIBLE &&
+                binding.recoveryOverlay.visibility != View.VISIBLE &&
+                (!::urlOverlayView.isInitialized || urlOverlayView.visibility != View.VISIBLE),
+            // 1.1.46 — the native layer steps aside while an install
+            // confirmation is pending (it yields to an emergency hold itself).
+            installPending = installPromptOutstanding,
+            updateCardShowing = com.educms.player.ota.UpdateReadyCard.isShowing(),
+        )
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
@@ -4227,6 +4328,8 @@ class MainActivity : ComponentActivity() {
         // this catches a SCREEN_ON broadcast that never reached us.
         runCatching { com.educms.player.standby.UserStandby.onActivityResumed(applicationContext) }
             .onFailure { PlayerLogger.w("UserStandby", "onActivityResumed failed: ${it.message}") }
+        // 1.1.46 — our own update's confirmation goes up from HERE, the
+        // foreground, never from the background worker.
         // 2026-10-11 — THE PROOF A WAKE LANDED. Stamps the wake timeline,
         // stands any in-flight foreground check down and pulls the native
         // heartbeat forward so the server sees `interactive`/`foreground`
@@ -4378,6 +4481,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         isInForeground = false
+        lastPausedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
         sharedVideoHost?.refreshReadiness()
         runCatching { faceHosts?.onPause() }
             .onFailure { PlayerLogger.w("MainActivity", "face onPause failed: ${it.message}") }
@@ -5160,6 +5264,7 @@ class MainActivity : ComponentActivity() {
      * took it, and every key went to a page nobody could see).
      */
     private fun nativeCardOwnsRemote(): Boolean =
+        com.educms.player.ota.UpdateReadyCard.isShowing() ||
         runCatching { com.educms.player.setup.SetupCeremony.isShowing() }.getOrDefault(false) ||
             runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false)
 
@@ -5221,6 +5326,12 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         sharedVideoHost?.refreshReadiness()
+        // 1.1.46 — another window (the system install confirmation) took
+        // focus: end the above-window native session now, not on the next draw.
+        if (!hasFocus) sharedVideoHost?.let { h ->
+            runCatching { if (!h.canOwnWindow()) com.educms.player.media.FaceVideoBox.yieldToUi(h, "page-stopped") }
+                .onFailure { PlayerLogger.w("MainActivity", "native step-aside on focus loss failed: ${it.message}") }
+        }
         if (hasFocus) reapplyImmersive()
     }
 

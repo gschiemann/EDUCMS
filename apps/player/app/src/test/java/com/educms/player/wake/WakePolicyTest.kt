@@ -72,6 +72,11 @@ class WakePolicyTest {
     }
 
     @Test
+    fun `an emergency outranks a pending install confirmation (1_1_46)`() {
+        assertEquals(WakePolicy.Step.LAUNCH, WakePolicy.step(facts(installPromptOutstanding = true, emergencyHeld = true)))
+    }
+
+    @Test
     fun `the rate window spans wakes — a second wake inside a minute of a launch does not launch again`() {
         val now = 100_000L
         assertEquals(WakePolicy.Step.WAIT, WakePolicy.step(facts(lastLaunchAtMs = now - 10_000L, nowMs = now)))

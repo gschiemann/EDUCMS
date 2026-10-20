@@ -1,4 +1,5 @@
 'use client';
+import { otaTargetVersion } from './otaTargetVersion';
 import { NativeDualVideo, reportNativeFallback } from './NativeDualVideo';
 import { NativeSoloSlot } from './NativeSoloSlot';
 import { decideFaceEngine, type FaceEngineDecision, type FaceYield } from './decideFaceEngine';
@@ -11883,7 +11884,7 @@ function PlayerPage() {
           apkVersion={apkVersion}
           managerVersion={managerVersion}
           otaProgress={otaProgress}
-          latestApkVersion={latestApkVersion}
+          latestApkVersion={otaTargetVersion(serverOtaState?.message, latestApkVersion)}
           onInstallUpdate={handleInstallUpdate}
           hardwareModel={manifestHardwareModel}
         />
@@ -11912,7 +11913,7 @@ function PlayerPage() {
           apkVersion={apkVersion}
           managerVersion={managerVersion}
           otaProgress={otaProgress}
-          latestApkVersion={latestApkVersion}
+          latestApkVersion={otaTargetVersion(serverOtaState?.message, latestApkVersion)}
           onInstallUpdate={handleInstallUpdate}
           hardwareModel={manifestHardwareModel}
           pairDeepLinkUrl={
@@ -14123,7 +14124,9 @@ function PlayerPage() {
                 const realMsg = staleAnswer ? undefined : serverOtaState?.message;
                 let stage: { emoji: string; label: string; pct?: number };
                 if (realState) {
-                  const verLabel = latestApkVersion ? ` v${latestApkVersion}` : '';
+                  // 1.1.46 — the build actually being installed, not the stable release.
+                  const targetV = otaTargetVersion(realMsg, latestApkVersion);
+                  const verLabel = targetV ? ` v${targetV}` : '';
                   switch (realState) {
                     case 'CHECKING':
                       stage = { emoji: '📡', label: `Checking for update${verLabel}…` };
@@ -14249,6 +14252,10 @@ function PlayerPage() {
                       {(isNeedsTap || isFailed) && (
                         <button
                           type="button"
+                          // 1.1.46 (owner) — the waiting update's button is where
+                          // the remote lands when the Back menu opens.
+                          autoFocus
+                          data-ota-install="1"
                           onClick={(e) => {
                             e.stopPropagation();
                             // A person is standing here: this raises Android's
@@ -14258,7 +14265,7 @@ function PlayerPage() {
                           }}
                           className="shrink-0 ml-3 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm z-20 relative"
                         >
-                          Install now
+                          {(() => { const v = otaTargetVersion(realMsg, latestApkVersion); return v ? `Install v${v}` : 'Install now'; })()}
                         </button>
                       )}
                       {isPermissionError && (
@@ -14323,7 +14330,7 @@ function PlayerPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-amber-900">Update available</div>
                     <div className="text-xs text-amber-700 mt-0.5">
-                      Player <span className="font-mono font-bold">v{latestApkVersion}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
+                      Player <span className="font-mono font-bold">v{otaTargetVersion(serverOtaState?.message, latestApkVersion)}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
                       {/* 2026-10-17 — this screen already said Android needs a
                           person to confirm; the update will not install on its own. */}
                       {serverOtaState?.state === 'NEEDS_TAP' && ' Android on this screen needs someone to confirm: press Install now, then tap Install.'}

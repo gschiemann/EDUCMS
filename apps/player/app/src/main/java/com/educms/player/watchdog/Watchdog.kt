@@ -121,6 +121,14 @@ class WatchdogReceiver : android.content.BroadcastReceiver() {
             PlayerLogger.i("Watchdog", "Tick — player already foreground; not relaunching")
             return
         }
+        // 1.1.46 (GUQ field failure) — this tick never consulted the install
+        // gate, so a pending system "Install?" dialog was buried under our
+        // Activity on the first tick after it was raised. The getter already
+        // lets an emergency hold through.
+        if (MainActivity.installPromptOutstanding) {
+            PlayerLogger.i("Watchdog", "Tick — a system install confirmation is pending; not relaunching over it")
+            return
+        }
         // Recover a background/missing Activity. Best-effort — Android 10+ launch
         // restrictions might block this, but on rooted Taurus / Device-Owner
         // kiosks it's allowed.

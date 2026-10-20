@@ -27,6 +27,22 @@ class OtaInstallReceiver : BroadcastReceiver() {
         // status is for something else, e.g. the companion Manager install
         // ManagerBootstrap commits through this same receiver).
         val selfOtaVc = intent.getIntExtra(EXTRA_SELF_OTA_VERSION_CODE, 0)
+        // 1.1.46 — which of our sessions this is. A session we abandoned to
+        // re-open the dialog for a new push reports ABORTED afterwards; that
+        // is not news about the attempt that replaced it.
+        val sessionId = intent.getIntExtra(EXTRA_SELF_OTA_SESSION_ID, 0).takeIf { it > 0 }
+            ?: intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, 0)
+        if (selfOtaVc > 0 && !PendingInstallStore.isCurrentSession(context, sessionId)) {
+            PlayerLogger.i(TAG, "status=$status for superseded own session $sessionId — ignored")
+            return
+        }
+        if (selfOtaVc > 0) {
+            when (status) {
+                PackageInstaller.STATUS_PENDING_USER_ACTION -> Unit
+                PackageInstaller.STATUS_SUCCESS -> PendingInstallStore.clear(context, "install succeeded")
+                else -> PendingInstallStore.clearIfSession(context, sessionId, "session ended (status=$status)")
+            }
+        }
         if (selfOtaVc > 0) recordSelfOtaOutcome(context, selfOtaVc, status)
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -74,12 +90,21 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     confirm,
                     targetPackageOf(intent),
                     installedVersionCodeOf(context, targetPackageOf(intent)),
+                    selfOtaVc,
                 )
                 // USER STANDBY (2026-10-03, player 1.1.21) — a person has this
                 // panel off. Nobody is there to tap Install, and the trampoline
                 // would start MainActivity, which is how a panel gets woken.
                 // The confirmation stays STAGED; the next update check or a
                 // person turning the panel back on gets it raised again.
+                // 1.1.46 (owner decision) — never interrupt the video for an
+                // unattended update: our own update's dialog is raised only by a
+                // person pressing Install in the Back menu (that press commits a
+                // fresh session with EXTRA_SELF_OTA_USER). Staged + NEEDS_TAP.
+                if (selfOtaVc > 0 && !intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false)) {
+                    PlayerLogger.i(TAG, "own update v$selfOtaVc waits for a person — staged for the Back menu's Install button, not raised")
+                    return
+                }
                 if (com.educms.player.standby.UserStandby.isActive(context)) {
                     PlayerLogger.i(
                         TAG,
@@ -93,6 +118,18 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 }
                 try {
+                    // 1.1.46 rule 1 — persist the launch of OUR OWN update's
+                    // confirmation BEFORE it goes up, so no recovery actor
+                    // can resurface the Activity over it.
+                    if (selfOtaVc > 0) {
+                        PendingInstallStore.noteLaunched(
+                            context,
+                            sessionId,
+                            selfOtaVc,
+                            OtaAttemptStore.read(context)?.takeIf { it.versionCode == selfOtaVc }?.versionName ?: "$selfOtaVc",
+                            intent.getStringExtra(EXTRA_SELF_OTA_PUSH_KEY),
+                        )
+                    }
                     context.startActivity(trampoline)
                     PlayerLogger.i(TAG, "trampoline through MainActivity dispatched")
                 } catch (ex: Exception) {
@@ -300,6 +337,12 @@ class OtaInstallReceiver : BroadcastReceiver() {
          */
         const val EXTRA_SELF_OTA_VERSION_CODE = "com.educms.player.extra.SELF_OTA_VERSION_CODE"
 
+        /** 1.1.46 — our own session's id and the push identity that committed it. */
+        const val EXTRA_SELF_OTA_SESSION_ID = "com.educms.player.extra.SELF_OTA_SESSION_ID"
+        const val EXTRA_SELF_OTA_PUSH_KEY = "com.educms.player.extra.SELF_OTA_PUSH_KEY"
+        /** 1.1.46 — true when a person pressed Install (the only case that raises our own dialog). */
+        const val EXTRA_SELF_OTA_USER = "com.educms.player.extra.SELF_OTA_USER"
+
         /**
          * AND-006 — in-process hand-off of the system-minted install
          * confirmation Intent. Deliberately NOT an Intent extra:
@@ -314,12 +357,14 @@ class OtaInstallReceiver : BroadcastReceiver() {
             intent: Intent,
             targetPackage: String?,
             targetVersionCodeAtStage: Int,
+            selfOtaVersionCode: Int = 0,
         ) {
             pendingInstallPrompt = StagedInstallPrompt(
                 intent = intent,
                 targetPackage = targetPackage,
                 targetVersionCodeAtStage = targetVersionCodeAtStage,
                 stagedAtMs = android.os.SystemClock.elapsedRealtime(),
+                selfOtaVersionCode = selfOtaVersionCode,
             )
         }
 
@@ -388,4 +433,6 @@ class StagedInstallPrompt(
     /** Installed versionCode of [targetPackage] when this was staged; -1 = unknown. */
     val targetVersionCodeAtStage: Int,
     val stagedAtMs: Long,
+    /** 1.1.46 — > 0 when this is the Player's OWN update (the build it installs). */
+    val selfOtaVersionCode: Int = 0,
 )

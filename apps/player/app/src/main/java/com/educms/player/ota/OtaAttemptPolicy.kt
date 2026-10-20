@@ -45,6 +45,12 @@ object OtaAttemptPolicy {
         NEEDS_TAP,
         /** A terminal PackageInstaller failure (see [Attempt.failureCode]). */
         FAILED,
+        /**
+         * 1.1.46 — the confirmation was launched and nobody tapped it inside
+         * [PendingInstallConfirmation.NEEDS_TAP_WINDOW_MS]; the session was
+         * abandoned. Held until the next operator push.
+         */
+        EXPIRED,
     }
 
     /** What was offered, and what we did with it. Persisted by [OtaAttemptStore]. */
@@ -79,8 +85,16 @@ object OtaAttemptPolicy {
     enum class Trigger {
         /** A person pressed Update on this panel (source=user). */
         USER,
-        /** The 6-hour check, a dashboard push relay, a boot, a heartbeat. */
+        /** The 6-hour check, the web relay, a boot. */
         UNATTENDED,
+        /**
+         * 1.1.46 — a NEW operator push identity (the heartbeat's
+         * `forceUpdatePendingAt`) that this screen has not committed for yet.
+         * An operator deliberately asked again: re-open the dialog. Not a
+         * timer, so it does not re-create the M24 download loop (the kept,
+         * verified file is re-used).
+         */
+        PUSH,
     }
 
     enum class Route {
@@ -90,6 +104,8 @@ object OtaAttemptPolicy {
         HOLD_NEEDS_TAP,
         /** Do not commit; the last attempt failed terminally. */
         HOLD_FAILED,
+        /** Do not commit; the last confirmation expired unanswered (1.1.46). */
+        HOLD_EXPIRED,
     }
 
     data class Facts(
@@ -109,6 +125,8 @@ object OtaAttemptPolicy {
         if (f.selfSilent) return Route.COMMIT
         // A person at the panel asked for it: raise the dialog for them.
         if (f.trigger == Trigger.USER) return Route.COMMIT
+        // 1.1.46 — an operator pushed again: raise it again.
+        if (f.trigger == Trigger.PUSH) return Route.COMMIT
         if (a == null) return Route.COMMIT
         return when (a.outcome) {
             // The first unattended attempt raises the dialog once (the path
@@ -117,6 +135,7 @@ object OtaAttemptPolicy {
             Outcome.NONE -> if (a.commits == 0) Route.COMMIT else Route.HOLD_NEEDS_TAP
             Outcome.COMMITTED, Outcome.NEEDS_TAP -> Route.HOLD_NEEDS_TAP
             Outcome.FAILED -> Route.HOLD_FAILED
+            Outcome.EXPIRED -> Route.HOLD_EXPIRED
         }
     }
 
