@@ -110,4 +110,26 @@ class EmergencyPaintPolicyTest {
         assertFalse(wire.has("identity"))
         assertFalse(wire.has("documentId"))
     }
+
+    @Test fun `challenge reply acknowledges only accepted paint for the matching document and alert`() {
+        val pending = episode().copy(identity = "alert-a")
+        for (status in listOf("pending", "unconfirmed")) {
+            val reply = EmergencyPaintRecovery.challengeJson(pending.copy(status = status))
+            assertEquals(setOf("challenge", "status"), reply.keys().asSequence().toSet())
+            assertEquals(pending.challenge, reply.getString("challenge"))
+            assertEquals(status, reply.getString("status"))
+        }
+        val accepted = pending.copy(status = "painted", documentId = "document-a", paintedAtMs = 1_000)
+        val reply = EmergencyPaintRecovery.challengeJson(accepted)
+        assertEquals(setOf("challenge", "status", "identity", "documentId"), reply.keys().asSequence().toSet())
+        assertEquals("painted", reply.getString("status"))
+        assertEquals("alert-a", reply.getString("identity"))
+        assertEquals("document-a", reply.getString("documentId"))
+        val replaced = EmergencyPaintPolicy.documentStarted(accepted, "new-challenge", 2_000)
+        val freshReply = EmergencyPaintRecovery.challengeJson(replaced)
+        assertEquals("new-challenge", freshReply.getString("challenge"))
+        assertEquals("pending", freshReply.getString("status"))
+        assertFalse(freshReply.has("identity"))
+        assertFalse(freshReply.has("documentId"))
+    }
 }

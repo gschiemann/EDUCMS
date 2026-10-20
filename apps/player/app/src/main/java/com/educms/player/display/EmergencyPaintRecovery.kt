@@ -80,8 +80,18 @@ object EmergencyPaintRecovery {
     fun challenge(ctx: Context, face: Int): JSONObject? = synchronized(lock) {
         load(ctx)
         if (face !in DisplayEmergency.holdingFaces(ctx)) null
-        else episodes[face]?.let { JSONObject().put("challenge", it.challenge) }
+        else episodes[face]?.let(::challengeJson)
     }
+
+    /** The page retries fresh paint until this exact native visibility receipt is acknowledged. */
+    internal fun challengeJson(e: EmergencyPaintPolicy.Episode): JSONObject = JSONObject()
+        .put("challenge", e.challenge).put("status", e.status)
+        .apply {
+            if (e.status == "painted") {
+                e.identity?.let { put("identity", it) }
+                e.documentId?.let { put("documentId", it) }
+            }
+        }
 
     /** Existing heartbeatV2 carries the page's actual overlay paint receipt. */
     fun painted(ctx: Context, face: Int, raw: String) = safely {
