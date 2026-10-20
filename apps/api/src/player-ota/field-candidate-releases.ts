@@ -181,4 +181,16 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2463481,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39315500242',
   },
+  // Signed CI 39457549024, source 5179ca39 (PR #119): native-first restores after an all-clear
+  // (an emergency manifest no longer clears the persisted switch); GUQ decode-stall mitigations
+  // (decode thread display priority, background workers lowered, page cache work paused while
+  // native presents, never the emergency set). Production certificate e45adf50…3d1897,
+  // versionCode 10145, non-debuggable. Hardware qualification pending.
+  '1.1.45-field.1': {
+    versionName: '1.1.45-field.1',
+    versionCode: 10145,
+    sha256: 'ace0b655af64b46741d4153aae572e64f049be141a5b8a91cf31ad0df7c64714', // gitleaks:allow -- verified public APK integrity digest
+    size: 2463489,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39457549024',
+  },
 };
