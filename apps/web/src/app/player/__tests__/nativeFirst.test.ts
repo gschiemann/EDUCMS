@@ -20,6 +20,7 @@ import {
   type NativeIntentIdentity,
 } from '../nativeFirst';
 import { NativeFirstFace, nativeFirstDecisionSignature } from '../nativeFirstFace';
+import { decideFaceEngine } from '../decideFaceEngine';
 import { readNativeVideoProtocol } from '../nativeSharedVideo';
 import { isItemReady, readyItemIds, type ReadinessItem } from '../mediaReadiness';
 
@@ -203,6 +204,27 @@ describe('§4.3 re-attach and reconcile', () => {
   it('idle, intent suspended by the hold, no alert → restore: intend X now (frame 0)', () => {
     const f = facts({ intent: { ...X, suspended: 'hold' } });
     expect(reconcileFace(f, { kind: 'native', identity: X, verified: true }, false)).toEqual({ kind: 'intend', identity: X, start: 'now' });
+  });
+  it('drill → all-clear on an enrolled face whose class default is OFF: v4 intend now, never the old path (1.1.45 field bug)', () => {
+    // The enrolled screen (descriptor nativeFirst: true) on a class whose default is off. The app
+    // keeps advertising 4 through the hold (its switch is no longer re-learned from the drill's
+    // descriptor-less emergency manifest).
+    const enrolled = (over: Record<string, unknown>) => facts({ device: { ...reply().device, nativeFirst: false }, ...over });
+    const input = (f: NativeFirstFacts, holdRaised: boolean) => decideFaceEngine({
+      content: { solo: true, muted: true, mp4: true, daypart: false, assetId: ASSET_X, sha256: SHA_X },
+      descriptor: { assetId: ASSET_X, sha256: SHA_X, nativeFirst: true },
+      app: { protocolMax: f.protocolMax, nativeSolo: f.nativeSolo, nativeFirst: f.nativeFirst, storeMode: null, storeReady: new Set<string>() },
+      blocked: false, settled: false, emergencyContent: false, holdRaised, sync: false, preview: false, softDim: false, overlay: null,
+    });
+    const held = enrolled({ intent: { ...X, status: 'suspended-by-hold', lastEnd: 'emergency-held', settled: false } });
+    // During the hold: web, and reconcile sends nothing native.
+    expect(input(held, true)).toMatchObject({ engine: 'web', reason: 'hold-raised' });
+    expect(reconcileFace(held, { kind: 'native', identity: X, verified: true }, true)).toEqual({ kind: 'hold-first' });
+    // All-clear: native again, ONE v4 start at frame 0.
+    expect(input(held, false)).toMatchObject({ engine: 'native', reason: 'own-copy' });
+    expect(reconcileFace(held, { kind: 'native', identity: X, verified: true }, false)).toEqual({ kind: 'intend', identity: X, start: 'now' });
+    // The field bug's shape, for the record: an app that dropped to protocol 3 sends the page to the old path.
+    expect(input(enrolled({ protocolMax: 3 }), false)).toMatchObject({ engine: 'web', reason: 'protocol' });
   });
   it('idle, page wants native X still downloading → nothing yet', () => {
     expect(reconcileFace(facts(), { kind: 'native', identity: X, verified: false }, false)).toEqual({ kind: 'nothing' });

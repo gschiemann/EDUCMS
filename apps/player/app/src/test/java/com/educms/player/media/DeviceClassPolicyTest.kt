@@ -229,6 +229,23 @@ class DeviceClassPolicyTest {
         assertEquals(d, flipped)
     }
 
+    @Test fun aManifestWithNoNativeVideoBlockNeverTeachesTheSwitch() {
+        // 1.1.45 field bug: the refresh read the DRILL's emergency manifest (no descriptor), learned
+        // "absent", and after the all-clear the enrolled face advertised protocol 3 (the old path).
+        val emergency = JSONObject().put("emergency", JSONObject().put("type", "LOCKDOWN"))
+        assertEquals(SwitchRead.NoDescriptor, FaceVideoDescriptor.switchReadOf(emergency))
+        assertEquals(SwitchRead.NoDescriptor, FaceVideoDescriptor.switchReadOf(JSONObject()))
+        assertEquals(SwitchRead.NoDescriptor, FaceVideoDescriptor.switchReadOf(null))
+        // A real descriptor still teaches every value of the tri-state, a withdrawal included.
+        assertEquals(SwitchRead.Learned(true), FaceVideoDescriptor.switchReadOf(JSONObject().put("nativeVideo", JSONObject().put("nativeFirst", true))))
+        assertEquals(SwitchRead.Learned(false), FaceVideoDescriptor.switchReadOf(JSONObject().put("nativeVideo", JSONObject().put("nativeFirst", false))))
+        assertEquals(SwitchRead.Learned(null), FaceVideoDescriptor.switchReadOf(JSONObject().put("nativeVideo", JSONObject())))
+        // And the enrolled face keeps advertising 4 through a drill + all-clear on a class whose default is off.
+        val r = DeviceClassPolicy.resolve(t982a11)
+        val learned = (FaceVideoDescriptor.switchReadOf(JSONObject().put("nativeVideo", JSONObject().put("nativeFirst", true))) as SwitchRead.Learned).value
+        assertEquals(4, r.protocolMax(r.nativeFirst(learned)))
+    }
+
     @Test fun webviewMajorAndAndroidMajorReadWhatTheyCanAndNeverInvent() {
         assertEquals(101, DeviceClassPolicy.webviewMajor("101.0.4951.61"))
         assertEquals(66, DeviceClassPolicy.webviewMajor(" 66.0.3359.158 "))

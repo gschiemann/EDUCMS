@@ -78,6 +78,20 @@ internal data class FaceVideoDescriptor(
             else -> null
         }
 
+        /**
+         * What a background switch refresh may LEARN from a whole manifest (1.1.45, field bug
+         * 2026-10-20): the tri-state only when the manifest carries a `nativeVideo` block, else
+         * [SwitchRead.NoDescriptor] = keep what the face already knows. An emergency manifest never
+         * carries the block (the server builds no descriptor for an alert), so a refresh that
+         * landed during a drill used to learn "absent" — persisted — and after the all-clear an
+         * enrolled face whose class default is off advertised protocol 3 and resumed on the old
+         * path. Absence of the block is "no data", never "the switch was withdrawn".
+         */
+        fun switchReadOf(manifest: JSONObject?): SwitchRead {
+            val block = manifest?.optJSONObject("nativeVideo") ?: return SwitchRead.NoDescriptor
+            return SwitchRead.Learned(nativeFirstOf(block))
+        }
+
         fun parse(j: JSONObject): FaceVideoDescriptor {
             require(j.getInt("version") == 2) { "descriptor-version" }
             fun id(key: String): String = j.getString(key).also { require(uuid.matches(it)) { "descriptor-identity" } }
@@ -456,4 +470,10 @@ internal class LoopTimeline(private val frameUs: Long) {
         }
         return crossed
     }
+}
+
+/** The answer of [FaceVideoDescriptor.switchReadOf]: learn this value, or keep what is known. */
+sealed class SwitchRead {
+    data class Learned(val value: Boolean?) : SwitchRead()
+    object NoDescriptor : SwitchRead()
 }

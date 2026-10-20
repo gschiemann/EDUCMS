@@ -155,6 +155,7 @@ internal class FaceVideoRenderer(
     }
 
     private fun decode() {
+        DecodeThreadPriority.raiseDecodeThread("face=${d.faceIndex}")
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {

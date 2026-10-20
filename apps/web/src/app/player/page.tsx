@@ -227,6 +227,7 @@ import {
   type PlaylistCacheAsset,
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
+import { nativeYieldDelayMs } from './nativeYield';
 import { clearOfflineManifests, readOfflineManifest, recordManifestPairing, saveManifest, type SavedManifest } from './offlineBoot';
 // Readiness-gated playback (2026-09-26): a large file is never mounted or
 // streamed before its native bytes are on disk — download the whole file,
@@ -4873,6 +4874,8 @@ function PlayerPage() {
   // screen could stream its 4K clip from origin for the rest of the session.
   const playlistCacheAssetsRef = useRef<{ setHash: string; assets: PlaylistCacheAsset[]; keepUrls?: string[] } | null>(null);
   const playlistCacheRetryRef = useRef(new PlaylistCacheRetryPolicy());
+  // When this document first saw a native session presenting (cache-drive yield, nativeYield.ts).
+  const nativeYieldSinceRef = useRef<number | null>(null);
   const playlistCacheAbortRef = useRef<AbortController | null>(null);
   const startPlaylistPrecacheRef = useRef<(setHash: string, assets: PlaylistCacheAsset[], keepUrls?: string[]) => void>(() => {});
   // Stable keys (stableManifestUrlKey) of media the worker confirmed on disk.
@@ -10863,6 +10866,14 @@ function PlayerPage() {
     void precachePlaylist(assets, undefined, {
       signal: controller.signal,
       keepUrls,
+      // A presenting native decoder gets the cores and the disk first (1.1.45, nativeYield.ts).
+      yieldMs: () => {
+        const presenting = !!nativeFirstFaceRef.current?.presenting() || nativeSharedVideoEvidence.hasFreshFrames(Date.now());
+        const now = Date.now();
+        if (!presenting) nativeYieldSinceRef.current = null;
+        else if (nativeYieldSinceRef.current === null) nativeYieldSinceRef.current = now;
+        return nativeYieldDelayMs({ presenting, presentingSince: nativeYieldSinceRef.current, now });
+      },
       onAssetCached: (url) => markCached([url]),
       // The real download bar for the splash while nothing is ready to play.
       onProgress: (p) => setLargeDownload({
