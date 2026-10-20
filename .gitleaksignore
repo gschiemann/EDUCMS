@@ -135,3 +135,4 @@ c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-
 c283fc593d5ce7bde20d2608e0046434688b52b8:docs/implementation/business-profit-ui-received.md:venueos-hardcoded-256bit-hex-secret:26
 b4a0014936649f6f5ba1b82c749876f674a3a3bf:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:166
 ee087571b1d9527b08252fa98218750324808f91:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:180
+14eb22ec2cfe02bf89590403f698754cf2063d53:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:192
