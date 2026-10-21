@@ -14129,31 +14129,25 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 show the complete status of the upgrade whether i
                 trigger it from here or if i push it... feedback
                 should be from this screen."
-                Compares the APK version (?v= on URL) to the latest
-                published GitHub Release. Renders only when the kiosk
-                is behind. The Install button calls
+                Uses the APK's reported update status even when a private
+                field build is ahead of the public stable release. Otherwise
+                compares ?v= to that release. The Install button calls
                 EduCmsNative.checkForUpdates() — same path as the
                 dashboard's Push button. */}
             {(() => {
               // Hydration guard (see bootMounted): identical server/first-
               // client render; the ?v= read fills in a frame later.
               const apkV = bootMounted ? new URLSearchParams(window.location.search).get('v') : null;
-              // 2026-04-29 — operator: "i didnt have a playlist up
-              // and still saw nothing". Cause: the previous gate
-              // `if (!apkV || !latestApkVersion) return null` killed
-              // the entire banner block — including the in-progress
-              // branch — when latestApkVersion was still being
-              // fetched. Push during that window → no banner.
-              //
-              // New rule: ALWAYS render the in-progress banner when
-              // otaProgress is set, regardless of whether we know
-              // the latest version yet. The "Update available"
-              // amber-banner branch DOES still need both versions to
-              // compute isBehind, so the gate moved INTO the
-              // available branch instead of the IIFE entrance.
-              if (otaProgress) {
-                // Fall through to the in-progress render below.
-              } else if (!apkV || !latestApkVersion) {
+              // Native heartbeat checks can reach NEEDS_TAP without a web
+              // push ever setting otaProgress. The pending update belongs to
+              // that native attempt, regardless of public stable's version.
+              // Successful historical checks are sticky; do not reopen them.
+              const reportedState = serverOtaState?.state;
+              const hasReportedUpdate = !!reportedState && (
+                ['CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'NEEDS_TAP', 'ERROR'].includes(reportedState) ||
+                /^FAILED_[A-Z0-9_]+$/.test(reportedState)
+              );
+              if (!otaProgress && !hasReportedUpdate && (!apkV || !latestApkVersion)) {
                 return null;
               }
               // Simple semver-ish compare. If kiosk is at or past
@@ -14175,7 +14169,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 if (x < y) { isBehind = true; break; }
                 if (x > y) break;
               }
-              if (otaProgress) {
+              if (otaProgress || hasReportedUpdate) {
                 // 2026-04-29 — REAL stage from server-reported
                 // serverOtaState when present, else fall back to
                 // elapsed-time estimates. Operator pushed update
@@ -14188,7 +14182,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 // began) is not this attempt's stage — fall back to the
                 // elapsed-time estimate until the worker reports.
                 const staleAnswer =
-                  !!serverOtaState &&
+                  !!otaProgress && !!serverOtaState &&
                   otaBaselineAtRef.current !== undefined &&
                   (serverOtaState.at ?? null) === otaBaselineAtRef.current;
                 const realState = staleAnswer ? undefined : serverOtaState?.state;
@@ -14243,7 +14237,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                         ? { emoji: '⚠️', label: realMsg || `Install failed (${realState.slice(7)}).` }
                         : { emoji: '📡', label: `Update in progress (${realState})…` };
                   }
-                } else {
+                } else if (otaProgress) {
                   // 2026-05-04 — operator: "says downloading on the
                   // main splash screen but stays at 0% and then flips
                   // to installing". Cause: the elapsed-time fallback
@@ -14264,6 +14258,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   stage = elapsed < 300_000
                     ? { emoji: '⏳', label: `Update signal sent ${elapsedHuman} — waiting for kiosk to report progress…` }
                     : { emoji: '⏱', label: 'No response after 5 minutes — retry on next reboot or sideload manually' };
+                } else {
+                  return null;
                 }
                 const isNeedsTap = realState === 'NEEDS_TAP';
                 const isFailed = !!realState && /^FAILED_[A-Z0-9_]+$/.test(realState);
@@ -14510,7 +14506,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     // default action; press Enter on the remote to
                     // resume, or press Back to also resume (toggle
                     // behavior wired in the keydown listener above).
-                    autoFocus
+                    autoFocus={serverOtaState?.state !== 'NEEDS_TAP' && !serverOtaState?.state?.startsWith('FAILED_')}
                     onClick={(e) => {
                       e.stopPropagation();
                       // 2026-05-06 — operator: "i set the manager
