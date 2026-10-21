@@ -4977,6 +4977,57 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
 
   // Memoized sorted playlist + item-validity check.
   const isTemplate = !!playlist?.template;
+  const emergencyTemplateIdentity = activeEmergency && playlist?.isEmergency && isTemplate
+    ? emergencyPaintIdentity(activeEmergency) : null;
+  const [readyEmergencyTemplate, setReadyEmergencyTemplate] = useState<{ template: any; identity: string } | null>(null);
+  const emergencyTemplateReady = !!emergencyTemplateIdentity && !playbackStopped &&
+    readyEmergencyTemplate?.template === playlist?.template && readyEmergencyTemplate?.identity === emergencyTemplateIdentity;
+  useEffect(() => {
+    if (!emergencyTemplateIdentity || playbackStopped) {
+      setReadyEmergencyTemplate(null);
+      return;
+    }
+    const template = playlist?.template;
+    const identity = emergencyTemplateIdentity;
+    // The wrapper mounts before its lazy widgets. Keep the protective alert
+    // until a zone contains actual text/decoded pixels, and restore it if a
+    // quiet widget error leaves the template empty. Never count style text,
+    // the fallback itself, or a loading/failed image as template content.
+    const visible = (el: Element): boolean => {
+      for (let node: Element | null = el; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0') return false;
+        if (node === templateRootRef.current) break;
+      }
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+    const sample = () => {
+      const root = templateRootRef.current;
+      const ready = !!root && Array.from(root.querySelectorAll<HTMLElement>('[data-zone-id]')).some(zone => {
+        if (!visible(zone)) return false;
+        const walker = document.createTreeWalker(zone, NodeFilter.SHOW_TEXT);
+        let text: Node | null;
+        while ((text = walker.nextNode())) {
+          const parent = text.parentElement;
+          if (!text.textContent?.trim() || !parent || parent.closest('style,script,svg') || !visible(parent)) continue;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          if (Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) return true;
+        }
+        return Array.from(zone.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img,video')).some(media =>
+          visible(media) && (media instanceof HTMLImageElement
+            ? media.complete && media.naturalWidth > 0
+            : media.readyState >= 2 && media.videoWidth > 0 && !media.error));
+      });
+      setReadyEmergencyTemplate(previous => ready
+        ? previous?.template === template && previous?.identity === identity ? previous : { template, identity }
+        : previous === null ? previous : null);
+    };
+    const frame = requestAnimationFrame(sample);
+    const timer = setInterval(sample, 100);
+    return () => { cancelAnimationFrame(frame); clearInterval(timer); };
+  }, [emergencyTemplateIdentity, playlist?.template, playbackStopped]);
   // 2026-09-29 (RIOT Cleveland, both screens): N copies of ONE video are one
   // video that repeats. Three items are three slides, and a loop of three ended
   // every lap in a cut to black and a one-second fade up (the outgoing copy
@@ -7245,6 +7296,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
         }
         if (templateWinner) {
+          // A cached normal template is not an all-clear, even when its
+          // signature matches the live alert board. Retain the alert content
+          // and its classification until an authoritative manifest clears it.
+          if (cachedNormalWouldClearLiveAlert) return true;
           setNativeVideoDescriptor(null);
           emptyManifestStreakRef.current = 0; // real content applied (B-P2-10)
           // B-P2-9 (2026-08-30): a template takeover ignores append
@@ -7265,10 +7320,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             'tpl:' + (templateWinner.template?.id || templateWinner.template?.name || '')
             + (templateWinner.contentRev ? `:${templateWinner.contentRev}` : '');
           playbackManifestRef.current = { m: manifest, fromCache };
+          const isEmergencyContent = !!em;
+          contentIsEmergencyRef.current = isEmergencyContent;
           if (tplSig !== currentPlaylistSigRef.current) {
             currentPlaylistSigRef.current = tplSig;
-            setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [] });
+            setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [], isEmergency: isEmergencyContent });
             setCurrentIndex(0);
+          } else {
+            // The same template may be both the everyday and panic board.
+            // A live all-clear/raise must change classification without a remount.
+            setPlaylist((prev: any) => prev && prev.isEmergency !== isEmergencyContent ? { ...prev, isEmergency: isEmergencyContent } : prev);
           }
           // A template takeover applies at once; a media playlist deferred
           // for its download is no longer what the server wants on glass.
@@ -11765,9 +11826,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // screen black while still claiming `em:` render proof. Keep a legible,
   // opaque alert on every render branch until its designed content loads.
   const emergencyFallback = activeEmergency &&
-    (!playlist?.isEmergency || !mediaReady || displayIndex === null ||
+    (!playlist?.isEmergency || (isTemplate ? !emergencyTemplateReady :
+      !mediaReady || displayIndex === null ||
       !/^(image|video)\//.test(sorted[displayIndex]?.asset?.mimeType || '') ||
-      allAssetsFailed || normalFilesSetAside || allItemsUnplayable) ? (
+      allAssetsFailed || normalFilesSetAside || allItemsUnplayable)) ? (
       <div
         role="alert"
         data-edu-emergency-root="fallback"
@@ -12257,6 +12319,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // the Back menu (`edu-show-stop-overlay` / Escape — the window-level
         // listener, which needs no focus to work).
         data-edu-player-root="template"
+        data-edu-emergency-root={emergencyTemplateReady ? 'template' : undefined}
+        data-edu-emergency-identity={emergencyTemplateReady ? emergencyTemplateIdentity : undefined}
         ref={templateRootRef}
         style={{
           // 2026-05-13 — Inline-style fallback. Operator reported

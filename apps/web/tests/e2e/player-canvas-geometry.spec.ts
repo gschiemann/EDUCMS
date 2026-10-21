@@ -27,26 +27,27 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * STATE; fake API base only.
  */
 
-const FAKE_SCREEN_ID = 'test-screen-00000000geom';
-const FAKE_TENANT_ID = 'test-tenant-00000000geom';
+const FAKE_SCREEN_ID = '00000000-0000-4000-8000-0000000000a1';
+const FAKE_TENANT_ID = '00000000-0000-4000-8000-0000000000b1';
 const FAKE_FINGERPRINT = 'test-fp-canvas-geometry';
-const BOOT_TOKEN = 'boot.stored.token-not-real';
+const BOOT_TOKEN = `test.${Buffer.from(JSON.stringify({ kind: 'device', sub: FAKE_SCREEN_ID, tenantId: FAKE_TENANT_ID, exp: 4_102_444_800 })).toString('base64url')}.not-a-real-signature`;
 
-type MockState = { manifestMode: 'template' | 'emergency' };
+type MockState = { manifestMode: 'template' | 'emergency'; emptyTemplate?: boolean; failManifest?: boolean; proofs?: Array<any> };
 
 /** A 1080×1920 portrait template with one full-bleed TEXT zone — the shape of
  *  the API's own synthetic emergency template (screens.controller.ts). */
-function templatePlaylist() {
+function templatePlaylist(empty = false) {
   return [{
     id: 'pl-geometry',
     name: 'Geometry probe',
+    contentRev: empty ? 'empty' : 'ready',
     template: {
       id: 'tpl-geometry',
       name: 'Geometry probe',
       bgColor: '#123456',
       screenWidth: 1080,
       screenHeight: 1920,
-      zones: [{
+      zones: empty ? [] : [{
         id: 'z-full',
         x: 0, y: 0, width: 100, height: 100, zIndex: 1,
         widgetType: 'TEXT',
@@ -77,7 +78,7 @@ async function installMocks(page: Page, state: MockState) {
     screenId: FAKE_SCREEN_ID, deviceToken: BOOT_TOKEN, paired: true,
     tenantId: FAKE_TENANT_ID, tenantName: 'Geometry Tenant', status: 'ONLINE',
   }));
-  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, (route) => ok(route, {
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, (route) => state.failManifest ? ok(route, { error: 'offline test' }, 503) : ok(route, {
     screenId: FAKE_SCREEN_ID,
     screenName: 'Geometry Screen',
     tenantId: FAKE_TENANT_ID,
@@ -87,11 +88,16 @@ async function installMocks(page: Page, state: MockState) {
     ...(state.manifestMode === 'emergency'
       ? { emergencyType: 'LOCKDOWN', emergencySeverity: 'CRITICAL', emergencyScopeNote: 'Drill — geometry test' }
       : {}),
-    playlists: templatePlaylist(),
+    playlists: templatePlaylist(state.emptyTemplate),
   }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/status`, (route) => ok(route, { ok: true }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/cache-status`, (route) => route.fulfill({ status: 204, body: '' }));
-  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/render-proof`, (route) => ok(route, { ok: true }, 201));
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/render-proof`, (route) => {
+    state.proofs?.push(route.request().postDataJSON());
+    return ok(route, { ok: true, emergencyPaintAccepted: true }, 201);
+  });
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/telemetry`, (route) => ok(route, { ok: true }));
+  await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-rev*`, (route) => ok(route, { rev: 'geometry' }));
   await page.route('**/api/v1/emergency/status*', (route) => ok(route, { active: [] }));
   await page.route('**/api/v1/emergency/messages*', (route) => ok(route, { active: [] }));
   await page.route('**/api/v1/notifications/**', (route) => route.fulfill({ status: 204, body: '' }));
@@ -104,6 +110,7 @@ async function installMocks(page: Page, state: MockState) {
 async function installWsStub(page: Page) {
   await page.addInitScript(() => {
     const RealWS = window.WebSocket;
+    const sockets: any[] = [];
     function StubOrReal(this: unknown, url: string, protocols?: unknown) {
       if (!String(url).includes('/realtime')) return new (RealWS as any)(url, protocols);
       const listeners: Record<string, Array<(ev: any) => void>> = {};
@@ -115,6 +122,7 @@ async function installWsStub(page: Page) {
         addEventListener(type: string, fn: (ev: any) => void) { (listeners[type] ||= []).push(fn); },
         removeEventListener(type: string, fn: (ev: any) => void) { listeners[type] = (listeners[type] || []).filter((f) => f !== fn); },
       };
+      sockets.push(inst);
       const emit = (type: string, ev: any) => {
         const prop = inst['on' + type];
         if (typeof prop === 'function') prop.call(inst, ev);
@@ -133,6 +141,12 @@ async function installWsStub(page: Page) {
     (StubOrReal as any).CLOSING = RealWS.CLOSING;
     (StubOrReal as any).CLOSED = RealWS.CLOSED;
     (window as any).WebSocket = StubOrReal;
+    (window as any).__geometryPush = (type: string) => {
+      const socket = [...sockets].reverse().find(s => s.readyState === RealWS.OPEN && s.onmessage);
+      if (!socket) return false;
+      socket.onmessage({ data: JSON.stringify({ type, timestamp: Date.now(), eventId: `${type}-${Date.now()}`, signature: 'geometry-test-signature', payload: {} }) });
+      return true;
+    };
   });
 }
 
@@ -161,6 +175,24 @@ const stageRect = (page: Page): Promise<Rect | null> =>
     });
     return found.best ? { w: Math.round(found.best.width), h: Math.round(found.best.height) } : null;
   });
+
+async function reconcile(page: Page, type: 'SYNC' | 'OVERRIDE' | 'ALL_CLEAR') {
+  await expect.poll(() => page.evaluate(t => (window as any).__geometryPush(t), type)).toBe(true);
+}
+
+async function expectVisibleEmergencyTemplate(page: Page, state: MockState) {
+  const root = page.locator('[data-edu-player-root="template"]');
+  await expect(root).toHaveAttribute('data-edu-emergency-root', 'template');
+  await expect(root.getByText('GEOMETRY PROBE')).toBeVisible();
+  await expect(page.locator('[data-edu-emergency-root="fallback"]')).toHaveCount(0);
+  // Geometry alone passes when an opaque fallback still covers the template.
+  await expect.poll(() => page.evaluate(() => {
+    const hit = document.elementFromPoint(document.documentElement.clientWidth / 2, document.documentElement.clientHeight / 2);
+    return hit?.closest('[data-edu-emergency-root]')?.getAttribute('data-edu-emergency-root');
+  })).toBe('template');
+  const identity = await root.getAttribute('data-edu-emergency-identity');
+  await expect.poll(() => state.proofs?.some(p => p.emergencyProof?.painted === true && p.emergencyProof?.frames >= 2 && p.emergencyProof?.identity === identity), { timeout: 15_000 }).toBe(true);
+}
 
 function geometryCases() {
   return [
@@ -210,10 +242,12 @@ for (const c of geometryCases()) {
 
     test('the emergency takeover covers the pinned canvas', async ({ page }) => {
       test.setTimeout(120_000);
-      const state: MockState = { manifestMode: 'emergency' };
+      const state: MockState = { manifestMode: 'emergency', proofs: [] };
       await installWsStub(page);
       await installMocks(page, state);
       await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=${c.w}&h=${c.h}`);
+      await expectVisibleEmergencyTemplate(page, state);
+      await page.screenshot({ path: test.info().outputPath('emergency-template.png'), fullPage: true });
       // The tenant alert renders as the manifest's emergency template through
       // the same wrapper — that is the surface the drill photographed.
       await expect.poll(() => rectOf(page, '[data-edu-player-root="template"]'), { timeout: 60_000 })
@@ -223,6 +257,71 @@ for (const c of geometryCases()) {
         const s = await stageRect(page);
         return s ? Math.max(s.w / c.w, s.h / c.h) : 0;
       }, { timeout: 15_000 }).toBeGreaterThanOrEqual(0.98);
+    });
+
+    test('the same template raises, rejects cached all-clear, and clears live without hiding alert content', async ({ page }) => {
+      const state: MockState = { manifestMode: 'template', proofs: [] };
+      await installWsStub(page);
+      await installMocks(page, state);
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=${c.w}&h=${c.h}`);
+      const root = page.locator('[data-edu-player-root="template"]');
+      await expect(root.getByText('GEOMETRY PROBE')).toBeVisible();
+      const cacheKey = `edu_manifest_cache_v2:${FAKE_SCREEN_ID}`;
+      await expect.poll(() => page.evaluate(key => localStorage.getItem(`${key}:latest`), cacheKey)).not.toBeNull();
+      const normalCache = await page.evaluate(key => localStorage.getItem(`${key}:latest`), cacheKey);
+      state.manifestMode = 'emergency';
+      await reconcile(page, 'OVERRIDE');
+      await expectVisibleEmergencyTemplate(page, state);
+      const alertIdentity = await root.getAttribute('data-edu-emergency-identity');
+      // Cached normal data cannot replace/reclassify the active alert, with
+      // either the same template signature OR a different stale template.
+      let refusedCachedClears = 0;
+      page.on('console', message => { if (message.text().includes('cached (offline) manifest carries no emergency')) refusedCachedClears++; });
+      state.failManifest = true;
+      for (const changedSignature of [false, true]) {
+        const stale = JSON.parse(normalCache!);
+        if (changedSignature) {
+          stale.m.playlists[0].contentRev = 'stale-other-template';
+          stale.m.playlists[0].template.zones[0].defaultConfig.content = 'STALE NORMAL CONTENT';
+        }
+        await page.evaluate(({ key, value }) => {
+          localStorage.setItem(`${key}:latest`, value);
+          localStorage.setItem(`${key}:playing`, value);
+        }, { key: cacheKey, value: JSON.stringify(stale) });
+        const previousRefusals = refusedCachedClears;
+        await reconcile(page, 'SYNC');
+        await expect.poll(() => refusedCachedClears).toBeGreaterThan(previousRefusals);
+        await expectVisibleEmergencyTemplate(page, state);
+        await expect(root).toHaveAttribute('data-edu-emergency-identity', alertIdentity!);
+        await expect(page.getByText('STALE NORMAL CONTENT')).toHaveCount(0);
+      }
+      state.failManifest = false;
+      state.manifestMode = 'template';
+      await reconcile(page, 'ALL_CLEAR');
+      await expect(root).not.toHaveAttribute('data-edu-emergency-root', 'template');
+      await expect(root.getByText('GEOMETRY PROBE')).toBeVisible();
+      await expect(page.locator('[data-edu-emergency-root], [data-edu-emergency-pending]')).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => (window as any).__eduRenderProof?.().kind)).not.toBe('emergency');
+      state.manifestMode = 'emergency';
+      await reconcile(page, 'OVERRIDE');
+      await expectVisibleEmergencyTemplate(page, state);
+    });
+
+    test('an unavailable emergency template keeps the fallback until content renders', async ({ page }) => {
+      const state: MockState = { manifestMode: 'emergency', emptyTemplate: true, proofs: [] };
+      await installWsStub(page);
+      await installMocks(page, state);
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=${c.w}&h=${c.h}`);
+      await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
+      await expect(page.locator('[data-edu-player-root="template"]')).not.toHaveAttribute('data-edu-emergency-root', 'template');
+      state.emptyTemplate = false;
+      await reconcile(page, 'SYNC');
+      await expectVisibleEmergencyTemplate(page, state);
+      // A quiet widget crash removes its output without changing the
+      // manifest or template identity. The readiness check must notice it.
+      await page.locator('[data-zone-id="z-full"]').evaluate(zone => zone.replaceChildren());
+      await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
+      await expect(page.locator('[data-edu-player-root="template"]')).not.toHaveAttribute('data-edu-emergency-root', 'template');
     });
   });
 }
