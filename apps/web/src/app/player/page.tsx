@@ -13,7 +13,6 @@ import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, overlappedTemplate
 import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, nativeVideoFallbackLine, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
-import { useTranslations } from 'next-intl';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
@@ -2725,7 +2724,6 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
 }
 
 function PlayerPage() {
-  const tUpdates = useTranslations('playerUpdates');
   const [phase, setPhase] = useState<Phase>('registering');
   // 2026-05-13 — ref-mirror of phase so callbacks captured by long-
   // running timers (bundle-drift watcher, sustained-failure recovery,
@@ -14458,15 +14456,6 @@ function PlayerPage() {
                   >
                     <Play className="w-4 h-4 fill-current" /> Resume
                   </button>
-                  {bootMounted && nativeHas('checkForUpdates') && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleInstallUpdate(); }}
-                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
-                    >
-                      <Download className="w-4 h-4 text-slate-400" /> {tUpdates('checkForUpdates')}
-                    </button>
-                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); handleSyncWithFeedback(); }}
                     disabled={syncFeedback === 'syncing'}
