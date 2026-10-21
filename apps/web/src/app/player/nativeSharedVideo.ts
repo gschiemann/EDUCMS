@@ -215,6 +215,8 @@ export interface NativeExperimentFlags {
   /** 1.1.42: vsync-snapped release, and the same-resolution ~60 Hz mode request. */
   vsyncSnap?: true;
   prefer60hz?: true;
+  /** 1.1.49: match the composition rate to the clip on a 30 Hz panel composed at 60 Hz (dark). */
+  doublePost?: true;
 }
 
 type GuardedExperiment = "webviewInvisible" | "surfaceFrameRate" | "vsyncSnap" | "prefer60hz";
@@ -373,7 +375,7 @@ export const NATIVE_MAX_SYS_DISPLAY_CAPS = 16;
 const SYS_DISPLAY_MODE_RE = /^[A-Za-z0-9:_.*+/@-]{1,48}$/;
 const SYS_DISPLAY_CAP_RE = /^[A-Za-z0-9:_.*+/@-]{1,32}$/;
 
-const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"] as const;
+const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz", "doublePost"] as const;
 const GUARDED = ["webviewInvisible", "surfaceFrameRate", "vsyncSnap", "prefer60hz"] as const;
 
 /** Only `true` flags, by their known names; nothing else is an experiment. */

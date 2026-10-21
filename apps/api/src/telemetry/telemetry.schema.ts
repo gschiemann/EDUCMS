@@ -314,6 +314,8 @@ const experimentFlags = z.strictObject({
   // 1.1.42
   vsyncSnap: z.literal(true).optional(),
   prefer60hz: z.literal(true).optional(),
+  // 1.1.49
+  doublePost: z.literal(true).optional(),
 });
 const guardCodes = () => z.strictObject({
   webviewInvisible: code().optional(), surfaceFrameRate: code().optional(), vsyncSnap: code().optional(), prefer60hz: code().optional(),

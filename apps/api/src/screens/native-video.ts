@@ -134,6 +134,17 @@ export function parseNativeVideoRollout(
  *                       positive token is accepted and changes nothing — it
  *                       can never force a request past the safety net's block.
  * On an APK ≥ 1.1.43 a token for these two can only REMOVE behaviour.
+ *
+ * 1.1.49 (the M43 judder: the panel reports a 30 Hz mode while SurfaceFlinger
+ * composes at 60 Hz), default OFF, `true` switches it on:
+ *   double-post         when the measured composition grid is ≈ 2 × the clip's
+ *                       frame rate, the video surface asks for the clip's rate
+ *                       (`Surface.setFrameRate(fps, FIXED_SOURCE,
+ *                       CHANGE_FRAME_RATE_ALWAYS)`, API 31+) so the composition
+ *                       matches the panel's 30 Hz scan and every source frame is
+ *                       shown for the same time whichever phase the panel
+ *                       samples. Never under an emergency hold. A negative token
+ *                       changes nothing (it is off anyway).
  * A negative token for one of the three experiments changes nothing (they are
  * off anyway); an unknown or malformed token enables and disables nothing; a
  * negative token wins over a positive one for the same screen. The flags ride
@@ -144,7 +155,7 @@ export function parseNativeVideoRollout(
  * before 1.1.42 ignores the two pacing keys; 1.1.42 reads `true` as on and
  * ignores `false` (its defaults were off).
  */
-export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz'] as const;
+export const NATIVE_VIDEO_EXPERIMENTS = ['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz', 'doublePost'] as const;
 export type NativeVideoExperiment = (typeof NATIVE_VIDEO_EXPERIMENTS)[number];
 /** `true` switches an experiment on; `false` is the kill switch of a 1.1.43 default (`vsyncSnap`, `prefer60hz`). */
 export type NativeVideoExperimentFlags = Partial<Record<NativeVideoExperiment, boolean>>;
@@ -156,6 +167,7 @@ const EXPERIMENT_TOKENS: Record<string, NativeVideoExperiment> = {
   'decoder-rotation': 'decoderRotation',
   'vsync-snap': 'vsyncSnap',
   'prefer-60hz': 'prefer60hz',
+  'double-post': 'doublePost',
 };
 
 export interface NativeVideoExperimentTargets {
