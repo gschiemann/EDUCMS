@@ -71,6 +71,7 @@ async function expectQuietPlayback(page: Page) {
 
 for (const scenario of [
   { state: 'NEEDS_TAP', stable: '1.1.29', title: 'older public stable', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
+  { state: 'NEEDS_TAP', stable: '1.1.29', legacy: true, title: 'legacy APK fallback', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
   { state: 'NEEDS_TAP', stable: null, title: 'unavailable public stable', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
   { state: 'NEEDS_TAP', stable: '1.1.29', portrait: true, title: 'portrait display', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
   { state: 'FAILED_ABORTED', stable: '1.1.29', title: 'failed native install', heading: 'Update issue', message: `Install of v${TARGET} was cancelled on this screen.` },
@@ -97,28 +98,23 @@ for (const scenario of [
     await install.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath('update-target-menu.png'), animations: 'disabled' });
     await install.click();
-    expect(await updateCalls(page)).toEqual([{ method: 'checkForUpdatesUserInitiated', args: [] }]);
+    expect(await updateCalls(page)).toEqual([{ method: 'legacy' in scenario ? 'checkForUpdates' : 'checkForUpdatesUserInitiated', args: [] }]);
     await expect(page.getByText(/Update signal sent .*waiting for kiosk to report progress/)).toBeVisible();
     // The old NEEDS_TAP answer cannot masquerade as the new attempt's status.
     await expect(install).toHaveCount(0);
   });
 }
 
-for (const legacy of [false, true]) {
-  test(`Back offers a manual check when already ahead of stable (${legacy ? 'old APK fallback' : 'user-authorized bridge'})`, async ({ page }, info) => {
-    await bootUpdatePlayer(page, { state: 'UP_TO_DATE', message: 'No newer public release offered.', stable: '1.1.29', legacy });
-    await expectQuietPlayback(page);
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: /^Install/ })).toHaveCount(0);
-    const check = page.getByRole('button', { name: 'Check for updates', exact: true });
-    await expect(check).toBeVisible();
-    await page.screenshot({ path: info.outputPath('manual-update-check-menu.png'), animations: 'disabled' });
-    await check.click();
-    expect(await updateCalls(page)).toEqual([{ method: legacy ? 'checkForUpdates' : 'checkForUpdatesUserInitiated', args: [] }]);
-    await expect(page.getByText(/Update signal sent .*waiting for kiosk to report progress/)).toBeVisible();
-    await expect(page.getByText('Already up to date', { exact: true })).toHaveCount(0);
-  });
-}
+test('Back keeps the existing controls without an extra update button', async ({ page }, info) => {
+  await bootUpdatePlayer(page, { state: 'UP_TO_DATE', message: 'No newer public release offered.', stable: '1.1.29' });
+  await expectQuietPlayback(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Install|Check for updates)/ })).toHaveCount(0);
+  expect(await updateCalls(page)).toEqual([]);
+  await page.screenshot({ path: info.outputPath('existing-back-controls.png'), animations: 'disabled' });
+});
 
 test('a native-only pending update never covers or restarts playing video', async ({ page }) => {
   await bootUpdatePlayer(page, { state: 'NEEDS_TAP', message: `Tap to install v${TARGET}.`, stable: '1.1.29', video: true });
