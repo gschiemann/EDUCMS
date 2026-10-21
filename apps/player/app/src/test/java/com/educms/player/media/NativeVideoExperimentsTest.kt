@@ -52,7 +52,7 @@ class NativeVideoExperimentsTest {
         for (unknown in listOf("vsync-snap", "vsync_snap", "VsyncSnap", "snap")) {
             assertEquals(unknown, NativeVideoExperiments.NONE, NativeVideoExperiments.parse(JSONObject().put(unknown, false)))
         }
-        assertEquals(listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz"), NativeVideoExperiments.KNOWN)
+        assertEquals(listOf("webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz", "doublePost"), NativeVideoExperiments.KNOWN)
         // The fault guard covers the snap like the other presenting-session experiments; its names are stable codes.
         val g = NativeExperimentGuard()
         g.applied(NativeVideoExperiments.VSYNC_SNAP)

@@ -237,7 +237,22 @@ describe('native video engine — the three M43 experiments (1.1.41, plan §4E)'
     const on = build({ ...fixture(), env: env(`vsync-snap:${front},prefer-60hz:${front}`) as any })!;
     expect(on.experiments).toEqual({ vsyncSnap: true, prefer60hz: true });
     expect(on.revision).toBe(off.revision);
-    expect(NATIVE_VIDEO_EXPERIMENTS).toEqual(['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz']);
+    expect(NATIVE_VIDEO_EXPERIMENTS).toEqual(['webviewInvisible', 'surfaceFrameRate', 'decoderRotation', 'vsyncSnap', 'prefer60hz', 'doublePost']);
+  });
+
+  it('1.1.49: `double-post` is a dark experiment — on only by its exact token, a negative token changes nothing, outside the revision', () => {
+    expect(nativeVideoExperimentsFor(front, env(`double-post:${front}`))).toEqual({ doublePost: true });
+    expect(nativeVideoExperimentsFor(single, env('DOUBLE-POST:all'))).toEqual({ doublePost: true });
+    expect(nativeVideoExperimentsFor(back, env(`double-post:${front}`))).toBeNull();
+    expect(nativeVideoExperimentsFor(front, env(`-double-post:${front}`))).toBeNull();
+    expect(nativeVideoExperimentsFor(front, env(`-double-post:all,double-post:${front}`))).toEqual({ doublePost: true });
+    for (const v of ['doublePost:all', 'double_post:all', 'double-post', `double:${front}`, `double-post:${front}x`]) {
+      expect({ v, flags: nativeVideoExperimentsFor(front, env(v)) }).toEqual({ v, flags: null });
+    }
+    const off = build({ ...fixture(), env: env() as any })!;
+    const on = build({ ...fixture(), env: env(`double-post:${front}`) as any })!;
+    expect(on.experiments).toEqual({ doublePost: true });
+    expect(on.revision).toBe(off.revision);
   });
 
   it('1.1.43: a negative token sends `false` — the kill switch of the two pacing defaults — and never touches the three experiments', () => {

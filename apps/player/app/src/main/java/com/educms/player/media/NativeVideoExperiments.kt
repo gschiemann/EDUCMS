@@ -73,9 +73,11 @@ internal data class NativeVideoExperiments(
     val vsyncSnap: Boolean = true,
     /** 1.1.43: AUTO unless the descriptor says exactly `false` (OFF). */
     val prefer60hz: Prefer60Hz = Prefer60Hz.AUTO,
+    /** 1.1.49 (dark): match the composition rate to the clip on a 30 Hz panel composed at 60 Hz ([DoublePost]). OFF unless exactly `true`. */
+    val doublePost: Boolean = false,
 ) {
     /** Whether anything at all is in effect for a session (with the 1.1.43 defaults, always). */
-    val any: Boolean get() = webviewInvisible || surfaceFrameRate || decoderRotation || vsyncSnap || prefer60hz != Prefer60Hz.OFF
+    val any: Boolean get() = webviewInvisible || surfaceFrameRate || decoderRotation || vsyncSnap || prefer60hz != Prefer60Hz.OFF || doublePost
 
     /**
      * The `requested` block of the session report: what is in effect, as
@@ -89,6 +91,7 @@ internal data class NativeVideoExperiments(
         .put(DECODER_ROTATION, decoderRotation)
         .put(VSYNC_SNAP, vsyncSnap)
         .put(PREFER_60HZ, prefer60hz != Prefer60Hz.OFF)
+        .put(DOUBLE_POST, doublePost)
 
     companion object {
         const val WEBVIEW_INVISIBLE = "webviewInvisible"
@@ -96,8 +99,9 @@ internal data class NativeVideoExperiments(
         const val DECODER_ROTATION = "decoderRotation"
         const val VSYNC_SNAP = "vsyncSnap"
         const val PREFER_60HZ = "prefer60hz"
+        const val DOUBLE_POST = "doublePost"
         /** Every flag this build knows; anything else in the descriptor object is ignored. */
-        val KNOWN: List<String> = listOf(WEBVIEW_INVISIBLE, SURFACE_FRAME_RATE, DECODER_ROTATION, VSYNC_SNAP, PREFER_60HZ)
+        val KNOWN: List<String> = listOf(WEBVIEW_INVISIBLE, SURFACE_FRAME_RATE, DECODER_ROTATION, VSYNC_SNAP, PREFER_60HZ, DOUBLE_POST)
         /** The APK's own defaults: the three experiments off, the snap on, the 60 Hz request automatic. */
         val NONE = NativeVideoExperiments()
 
@@ -114,6 +118,7 @@ internal data class NativeVideoExperiments(
                 on(WEBVIEW_INVISIBLE), on(SURFACE_FRAME_RATE), on(DECODER_ROTATION),
                 vsyncSnap = j.opt(VSYNC_SNAP) != false,
                 prefer60hz = Prefer60Hz.parse(j.opt(PREFER_60HZ)),
+                doublePost = on(DOUBLE_POST),
             )
         }
     }
