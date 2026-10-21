@@ -116,6 +116,8 @@ internal class FaceVideoSession(
     // Experiments (§4E) applied to THIS session.
     var webHidden = false
     var frameRateRequested: String? = null
+    /** 1.1.49 experiment `doublePost` (dark): what was decided, requested and observed ([DoublePost]); null = not on. */
+    var doublePost: JSONObject? = null
     /** 1.1.42 — the display this session attached to, every mode it offers (flag or not), and experiments 4 / 5. */
     var supportedModes: List<String> = emptyList()
     var activeModeAtAttach = ""
@@ -183,6 +185,9 @@ internal object FaceVideoBox {
     private val vsync = VsyncSampler(main)
     /** 1.1.43: proof that the display keeps producing frames after an automatic 60 Hz request (DisplayModePolicy.kt). */
     private val modeFrames = ModeSwitchFrameWatch(main)
+    /** 1.1.49 `doublePost`: wait for a trusted vsync grid, then let the display settle before reading it back. */
+    private val DOUBLE_POST_DECIDE_MS = 1_500L
+    private val DOUBLE_POST_OBSERVE_MS = 2_500L
     /**
      * 1.1.43: the end code of a session whose stall was the 60 Hz mode switch's failure, not the
      * file's. TRANSIENT on both sides (NativeEndGrade / the page's table): native is tried again at
@@ -615,6 +620,11 @@ internal object FaceVideoBox {
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=vsyncSnap applied=false reason=display-not-default displayMode=${s.displayMode} sha=${s.sha256.take(8)}")
                 }
             }
+            // 1.1.49 experiment `doublePost` (dark): decided once the Choreographer grid is measured.
+            if (d.experiments.doublePost && experiments.allows(NativeVideoExperiments.DOUBLE_POST)) {
+                val g = grid; val fps = d.fps
+                main.postDelayed({ applyDoublePost(host, s, sv, fps, g) }, DOUBLE_POST_DECIDE_MS)
+            }
         }
         // Every callback resolves the session's CURRENT host (a v4 session may be re-homed, §4.2).
         val r = FaceVideoRenderer(file, d, sv.holder.surface, s.degrees, { s.alive && !s.host.detached },
@@ -666,6 +676,42 @@ internal object FaceVideoBox {
     }.getOrNull()?.also { bootCountMemo = it }
 
     /** `modeId:WxH@Hz` of the display the surface is on (API 23+), or "" when it cannot be read. UI thread. */
+    /**
+     * UI thread. 1.1.49 `doublePost`: on a panel that reports 30 Hz while the composition grid
+     * runs at 60 Hz, ask the session's own surface for the clip's rate with CHANGE_FRAME_RATE_ALWAYS
+     * (API 31+) so the composition matches the panel's scan. Never under an emergency hold; the
+     * vote dies with the surface. What the display reports afterwards is recorded on the report.
+     */
+    private fun applyDoublePost(host: SharedVideoHost, s: FaceVideoSession, sv: SurfaceView, fps: Double, grid: VsyncGrid?) {
+        val applied: Boolean
+        synchronized(this) {
+            if (!live(host, s) || s.surface !== sv) return
+            val held = DisplayEmergency.isHeld(host.ctx)
+            val nominal = sv.display?.refreshRate ?: 0f
+            val gridHz = DoublePost.gridHz(grid ?: vsync.estimator.takeIf { vsync.active }, nominal)
+            val verdict = DoublePost.decide(true, Build.VERSION.SDK_INT, held, gridHz, fps)
+            val result = if (verdict == DoublePost.APPLY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                Api31DoublePost.request(sv.holder.surface, fps.toFloat()) else verdict
+            applied = result == DoublePost.ALWAYS
+            if (applied) experiments.applied(NativeVideoExperiments.DOUBLE_POST)
+            s.doublePost = JSONObject().put("mode", result).put("applied", applied)
+                .put("gridHzBefore", Math.round(gridHz * 100.0) / 100.0).put("refreshRateBefore", nominal.toDouble())
+                .put("displayModeBefore", displayModeOf(sv))
+            PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost result=$result fps=$fps grid=${String.format(Locale.ROOT, "%.2f", gridHz)} refresh=$nominal displayMode=${displayModeOf(sv)} sha=${s.sha256.take(8)}")
+        }
+        if (!applied) return
+        main.postDelayed({
+            synchronized(this) {
+                if (!live(host, s) || s.surface !== sv) return@postDelayed
+                val after = sv.display?.refreshRate ?: 0f
+                val gridAfter = DoublePost.gridHz(grid ?: vsync.estimator.takeIf { vsync.active }, after)
+                s.doublePost?.put("refreshRate", after.toDouble())?.put("displayMode", displayModeOf(sv))
+                    ?.put("gridHzAfter", Math.round(gridAfter * 100.0) / 100.0)
+                PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost observed refresh=$after grid=${String.format(Locale.ROOT, "%.2f", gridAfter)} displayMode=${displayModeOf(sv)} modes=${s.supportedModes.joinToString("|")} sha=${s.sha256.take(8)}")
+            }
+        }, DOUBLE_POST_OBSERVE_MS)
+    }
+
     private fun displayModeOf(sv: SurfaceView): String = runCatching {
         val m = sv.display?.mode ?: return@runCatching ""
         "${m.modeId}:${m.physicalWidth}x${m.physicalHeight}@${String.format(Locale.ROOT, "%.2f", m.refreshRate)}"
@@ -1321,6 +1367,8 @@ internal object FaceVideoBox {
             PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=webviewInvisible disabled=$why")
         if (s.frameRateRequested != null && experiments.ended(NativeVideoExperiments.SURFACE_FRAME_RATE, why))
             PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=surfaceFrameRate disabled=$why")
+        if (s.doublePost?.optBoolean("applied") == true && experiments.ended(NativeVideoExperiments.DOUBLE_POST, why))
+            PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost disabled=$why")
         if (s.vsyncSnapped) {
             vsync.release()
             if (experiments.ended(NativeVideoExperiments.VSYNC_SNAP, why))
@@ -1404,6 +1452,8 @@ internal object FaceVideoBox {
             .put("vsyncSnap", s.vsyncSnapped).put("prefer60hz", s.preferredModeResult ?: JSONObject.NULL)
             .put("preferredModeApplied", s.preferredModeApplied)
             .put("keepScreenOn", s.keepScreenOn ?: JSONObject.NULL)
+        // 1.1.49: the double-post experiment, when it was on for this session.
+        s.doublePost?.let { j.put("doublePost", JSONObject(it.toString())) }
         if (base?.has("snappedFrames") == true) {
             j.put("snappedFrames", base.optLong("snappedFrames")).put("snapErrorMaxUs", base.optLong("snapErrorMaxUs"))
                 .put("snapErrorMeanUs", base.optLong("snapErrorMeanUs")).put("clockSlewUs", base.optLong("clockSlewUs"))
