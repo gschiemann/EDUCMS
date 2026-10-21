@@ -1,4 +1,3 @@
-import { signalDisplayEmergencyHold } from './emergencyHold';
 import { gradeNativeEnd } from "./nativeEndReasons";
 
 /** Optional, explicitly scoped renderer. Identity goes to native; URLs and tokens never do. */
@@ -1126,9 +1125,6 @@ export class SharedVideoController {
    */
   private fail(reason?: string): void {
     if (this.cancelled) return;
-    // Do this before fallback can mount regular web media. Native stopped
-    // for an alert; this is not permission to play a browser lap.
-    if (reason === 'emergency-held') signalDisplayEmergencyHold(true);
     this.stop();
     this.callbacks.fallback(reason);
   }
@@ -1189,8 +1185,6 @@ export class SharedVideoController {
     }
     if (s.sessionId) this.session = s.sessionId;
     if (s.state === "failed") {
-      // Notify before any update/fallback callback can mount regular media.
-      if (s.reason === "emergency-held") signalDisplayEmergencyHold(true);
       this.callbacks.update(s, false);
       this.fail(s.reason ?? "failed");
       return;

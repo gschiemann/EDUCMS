@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
+import { signalDisplayEmergencyHold } from "./emergencyHold";
 import {
   blockNativeVideo,
   NATIVE_VIDEO_MAX_ATTEMPTS,
@@ -149,6 +150,8 @@ export function NativeDualVideo({
     };
     const fallback = (reason?: string) => {
       if (!alive || ended) return;
+      // Raise before evidence or React can fall back to regular web media.
+      if (reason === "emergency-held") signalDisplayEmergencyHold(true);
       ended = true;
       markHandoff(false);
       if (gateTimer !== null) { clearTimeout(gateTimer); gateTimer = null; }
@@ -262,6 +265,7 @@ export function NativeDualVideo({
         },
         update: (state, fresh) => {
           if (!alive || ended) return;
+          if (state.reason === "emergency-held") signalDisplayEmergencyHold(true);
           nativeSharedVideoEvidence.update(owner, state, fresh, Date.now());
           if (fresh && !playingReported) {
             playingReported = true;

@@ -1513,12 +1513,14 @@ describe('page.tsx is actually wired to this module', () => {
     // The render condition is the LAST of three independent guarantees (the
     // dispatch-time drop and the state-edge effect are the other two).
     expect(src).toMatch(
-      /\(softBlank \|\| softDim > 0\) && !activeEmergency && !pushedEmergencyMessage/,
+      /\(softBlank \|\| softDim > 0\) && !activeEmergency && !pushedEmergencyMessage && !polledEmergencyHeld/,
     );
     // The state-edge effect force-clears BOTH states — a translucent film
     // over a lockdown notice is contrast taken away from the one thing on
     // that screen that matters.
-    const edge = src.slice(src.indexOf('if (activeEmergency || pushedEmergencyMessage) {'));
+    const start = src.indexOf('if (activeEmergency || pushedEmergencyMessage || polledEmergencyHeld) {');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const edge = src.slice(start);
     expect(edge.slice(0, 400)).toMatch(/applySoftBlank\(false\)/);
     expect(edge.slice(0, 400)).toMatch(/applySoftDim\(0\)/);
   });
