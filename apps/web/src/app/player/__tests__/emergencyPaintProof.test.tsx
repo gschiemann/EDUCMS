@@ -3,14 +3,17 @@ import { Component, type ReactNode } from 'react';
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { EmergencyPaintWatcher, emergencyPaintIdentity, emergencyRenderHash, visibleEmergencyRoot, type EmergencyPaintProof, type NativeEmergencyPaintState } from '../emergencyPaintProof';
 import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../emergencyPaintMonitor';
+import { apkVersionFromUserAgent, hasNativeBridge } from '../nativeBridge';
 
-jest.mock('../nativeBridge', () => ({ nativeHas: () => false, nativeCall: jest.fn(), nativeFire: jest.fn() }));
+jest.mock('../nativeBridge', () => ({ nativeHas: () => false, hasNativeBridge: jest.fn(() => false), apkVersionFromUserAgent: jest.fn(() => null), nativeCall: jest.fn(), nativeFire: jest.fn() }));
 jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn() }));
 
 const alert: EmergencyMessageView = { id: 'test-alert', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Move to the designated safe area', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-01T00:00:00Z' };
 const rect = { top: 0, left: 0, right: 1280, bottom: 720, width: 1280, height: 720, x: 0, y: 0, toJSON: () => ({}) };
 let hit: Element | null;
 beforeEach(() => {
+  (hasNativeBridge as jest.Mock).mockReturnValue(false);
+  (apkVersionFromUserAgent as jest.Mock).mockReturnValue(null);
   hit = null;
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => hit });
@@ -18,9 +21,10 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); document.body.innerHTML = ''; jest.restoreAllMocks(); });
 
-function harness(expected: string | null = emergencyPaintIdentity(alert)) {
+function harness(expected: string | null = emergencyPaintIdentity(alert), nativeRequired = false) {
   let identity = expected;
   let challenge: string | NativeEmergencyPaintState | undefined;
+  let failChallenge = false;
   let sequence = 0;
   const frames = new Map<number, FrameRequestCallback>();
   const proofs: EmergencyPaintProof[] = [];
@@ -29,7 +33,8 @@ function harness(expected: string | null = emergencyPaintIdentity(alert)) {
   const watcher = new EmergencyPaintWatcher({
     document, documentId: 'test-document', expectedIdentity: () => identity,
     raiseHold: () => { order.push('hold'); },
-    readChallenge: async () => { order.push('challenge'); return challenge; },
+    requiresNativeValidation: () => nativeRequired,
+    readChallenge: async () => { order.push('challenge'); if (failChallenge) throw new Error('Bridge unavailable'); return challenge; },
     report: proof => { order.push(proof.painted ? 'painted' : 'pending'); proofs.push(proof); },
     nativeReport: proof => { nativeReceipts.push(proof); },
     requestFrame: callback => { sequence += 1; frames.set(sequence, callback); return sequence; },
@@ -40,7 +45,11 @@ function harness(expected: string | null = emergencyPaintIdentity(alert)) {
     if (!next) throw new Error('No animation frame scheduled');
     frames.delete(next[0]); next[1](sequence * 16);
   };
-  return { watcher, proofs, nativeReceipts, order, frame, setIdentity: (next: string | null) => { identity = next; }, setChallenge: (next: string | NativeEmergencyPaintState) => { challenge = next; } };
+  return { watcher, proofs, nativeReceipts, order, frame,
+    setNative: (next: boolean) => { nativeRequired = next; },
+    setChallengeFailure: (next: boolean) => { failChallenge = next; },
+    setIdentity: (next: string | null) => { identity = next; },
+    setChallenge: (next: string | NativeEmergencyPaintState | undefined) => { challenge = next; } };
 }
 
 function mountMessage() {
@@ -72,6 +81,45 @@ it('an alert with no painted frame stays not delivered even though it mounted an
   h.watcher.scan();
   expect(h.watcher.current()?.painted).toBe(false);
   expect(h.proofs.some(proof => proof.painted)).toBe(false);
+  h.watcher.stop();
+});
+
+it.each([false, true])('keeps native delivery pending when the challenge is missing (bridge throws=%s), then recovers on an exact acknowledgment', async throws => {
+  mountMessage();
+  const h = harness(emergencyPaintIdentity(alert), true);
+  h.setChallengeFailure(throws);
+  h.watcher.scan();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.frame(); h.frame();
+  expect(h.watcher.current()).toMatchObject({ nativeRequired: true, painted: false, frames: 2 });
+  expect(h.proofs.some(proof => proof.painted)).toBe(false);
+  expect(h.nativeReceipts).toHaveLength(0);
+
+  h.setChallengeFailure(false);
+  h.setChallenge({ challenge: 'current-hold', status: 'pending' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
+  h.watcher.scan(); h.frame(); h.frame();
+  expect(h.nativeReceipts).toHaveLength(1);
+  expect(h.nativeReceipts[0]).toMatchObject({ painted: true, nativeRequired: true, challenge: 'current-hold' });
+  expect(h.watcher.current()?.painted).toBe(false);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.setChallenge({ challenge: 'current-hold', status: 'painted', identity: emergencyPaintIdentity(alert), documentId: 'test-document' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
+  expect(h.watcher.current()).toMatchObject({ painted: true, nativeRequired: true, challenge: 'current-hold' });
+  expect(h.proofs.at(-1)?.painted).toBe(true);
+  h.watcher.stop();
+});
+
+it('invalidates DOM-only delivery immediately when a native bridge appears and never downgrades that requirement', () => {
+  mountMessage();
+  const h = harness(); h.watcher.scan(); h.frame(); h.frame();
+  expect(h.watcher.current()?.painted).toBe(true);
+  h.setNative(true);
+  expect(h.watcher.current()).toMatchObject({ nativeRequired: true, painted: false });
+  h.watcher.scan();
+  expect(h.proofs.at(-1)).toMatchObject({ nativeRequired: true, painted: false });
+  h.setNative(false);
+  expect(h.watcher.current()).toMatchObject({ nativeRequired: true, painted: false });
   h.watcher.stop();
 });
 
@@ -178,6 +226,32 @@ it('the real monitor survives a player crash and proves the error boundary cache
   expect(refs.watcher.current).toBeNull();
 });
 
+it.each(['bridge', 'APK user agent'])('the monitor requires native validation from %s even without a state capability', mode => {
+  jest.spyOn(console, 'info').mockImplementation(() => {});
+  if (mode === 'bridge') (hasNativeBridge as jest.Mock).mockReturnValue(true);
+  else (apkVersionFromUserAgent as jest.Mock).mockReturnValue([1, 1, 44]);
+  let sequence = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.set(++sequence, callback); return sequence; });
+  jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => { frames.delete(id); });
+  const refs: EmergencyPaintMonitorRefs = { watcher: { current: null }, expectedIdentity: { current: 'cached-alert' }, screenId: { current: 'test-screen' }, manifestOkAt: { current: 0 } };
+  const post = jest.fn().mockResolvedValue(200);
+  function Monitor() {
+    useEmergencyPaintMonitor(refs, { disabled: () => false, post });
+    return <div data-edu-emergency-root="fallback" data-edu-emergency-identity="cached-alert">LOCKDOWN</div>;
+  }
+  const mounted = render(<Monitor />);
+  hit = document.querySelector('[data-edu-emergency-root]');
+  refs.watcher.current!.scan();
+  for (let i = 0; i < 2; i += 1) {
+    const [id, callback] = frames.entries().next().value!;
+    frames.delete(id); callback(i * 16);
+  }
+  expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ nativeRequired: true, painted: false }), 'pending|em:cached-alert');
+  expect(post.mock.calls.some(([proof]) => proof.painted)).toBe(false);
+  mounted.unmount();
+});
+
 it('keeps no-paint and stale server confirmation as independent signatures', () => {
   const proof: EmergencyPaintProof = { identity: 'test', documentId: 'document', frames: 2, painted: true };
   expect(emergencyRenderHash(proof, 0, 200_000)).toBe('unconfirmed|em:test');
@@ -188,7 +262,7 @@ it('keeps no-paint and stale server confirmation as independent signatures', () 
 
 it('retries fresh native paint after an initial visibility refusal, stops on exact acknowledgment, and reoffers HTTP once', async () => {
   mountMessage();
-  const h = harness();
+  const h = harness(emergencyPaintIdentity(alert), true);
   h.setChallenge({ challenge: 'current-hold', status: 'pending' }); h.watcher.scan();
   await new Promise(resolve => setTimeout(resolve, 0));
   h.watcher.scan(); h.frame(); h.frame();
@@ -218,7 +292,7 @@ it('bounds unacknowledged native receipts to forty and ten seconds without flood
   mountMessage();
   let now = 1000;
   jest.spyOn(Date, 'now').mockImplementation(() => now);
-  const h = harness(); h.setChallenge({ challenge: 'current-hold', status: 'pending' }); h.watcher.scan();
+  const h = harness(emergencyPaintIdentity(alert), true); h.setChallenge({ challenge: 'current-hold', status: 'pending' }); h.watcher.scan();
   await new Promise(resolve => setTimeout(resolve, 0));
   for (let i = 0; i < 50; i += 1) {
     h.watcher.scan(); h.frame(); h.frame();
@@ -247,7 +321,7 @@ it('retries an HTTP 200 whose emergency proof was not yet accepted, with a three
 
 it('invalidates previous alert and native challenge evidence before accepting new samples', async () => {
   const root = mountMessage();
-  const h = harness(); h.setChallenge('challenge-one'); h.watcher.scan();
+  const h = harness(); h.setChallenge({ challenge: 'challenge-one', status: 'painted', identity: emergencyPaintIdentity(alert), documentId: 'test-document' }); h.watcher.scan();
   await new Promise(resolve => setTimeout(resolve, 0));
   h.watcher.scan(); h.frame(); h.frame();
   expect(h.watcher.current()).toMatchObject({ painted: true, challenge: 'challenge-one' });
@@ -256,6 +330,10 @@ it('invalidates previous alert and native challenge evidence before accepting ne
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(h.watcher.current()).toMatchObject({ painted: false, challenge: 'challenge-two' });
   h.watcher.scan(); h.frame(); h.frame();
+  expect(h.watcher.current()).toMatchObject({ painted: false, nativeRequired: true, challenge: 'challenge-two' });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  h.setChallenge({ challenge: 'challenge-two', status: 'painted', identity: emergencyPaintIdentity(alert), documentId: 'test-document' });
+  h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
   expect(h.watcher.current()).toMatchObject({ painted: true, challenge: 'challenge-two' });
   h.setIdentity('replacement'); root.dataset.eduEmergencyIdentity = 'replacement'; h.watcher.scan();
   expect(h.watcher.current()).toMatchObject({ painted: false, identity: 'replacement' });

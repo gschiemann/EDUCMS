@@ -5,6 +5,8 @@ export interface EmergencyPaintProof {
   frames: number;
   painted: boolean;
   challenge?: string;
+  /** Native window validation is required even when its state read fails. */
+  nativeRequired?: boolean;
 }
 
 /** Paint and live server confirmation are independent emergency facts. */
@@ -80,6 +82,7 @@ export interface EmergencyPaintWatcherOptions {
   documentId: string;
   expectedIdentity: () => string | null;
   raiseHold: () => void;
+  requiresNativeValidation?: () => boolean;
   readChallenge: () => Promise<string | NativeEmergencyPaintState | undefined>;
   report: (proof: EmergencyPaintProof) => void;
   /** Fresh frame receipts retry independently from deduplicated API reports. */
@@ -113,14 +116,29 @@ export class EmergencyPaintWatcher {
   private nativeAccepted = false;
   private nativeAttempts = 0;
   private nativeStartedAt = 0;
+  private nativeRequired = false;
+  private reportedNativeRequired = false;
   constructor(private readonly options: EmergencyPaintWatcherOptions) {}
 
   current(nowMs = Date.now()): EmergencyPaintProof | null {
+    // Latch independently of a successful challenge read, including when the
+    // bridge appears after this monitor mounted. DOM hit-testing cannot see a
+    // native surface covering the WebView.
+    this.nativeRequired ||= !!this.challenge || !!this.options.requiresNativeValidation?.();
     if (!this.proof || !this.identity) return null;
-    if (this.proof.painted && (nowMs - this.sampledAt > 1500 || !visibleEmergencyRoot(this.options.document, this.identity))) {
-      return { ...this.proof, painted: false };
+    const proof = this.nativeRequired ? { ...this.proof, nativeRequired: true } : this.proof;
+    if (proof.painted && ((this.nativeRequired && (!this.challenge || !this.nativeAccepted)) ||
+      nowMs - this.sampledAt > 1500 || !visibleEmergencyRoot(this.options.document, this.identity))) {
+      return { ...proof, painted: false };
     }
-    return this.proof;
+    return proof;
+  }
+
+  private reportCurrent(): void {
+    const proof = this.current();
+    if (!proof) return;
+    this.reportedNativeRequired = this.nativeRequired;
+    this.options.report(proof);
   }
 
   scan(): void {
@@ -144,10 +162,12 @@ export class EmergencyPaintWatcher {
         // Synchronous and BEFORE any bridge round trip or paint wait.
         this.options.raiseHold();
         this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: false };
-        this.options.report(this.proof);
+        this.reportCurrent();
       }
     }
     if (!identity) return;
+    this.current();
+    if (this.nativeRequired && !this.reportedNativeRequired) this.reportCurrent();
     if (!this.reading) {
       this.reading = true;
       const generation = this.generation;
@@ -164,11 +184,11 @@ export class EmergencyPaintWatcher {
           this.nativeStartedAt = 0;
           this.proof = { identity, documentId: this.options.documentId, frames: this.frames, painted: false, ...(challenge ? { challenge } : {}) };
         }
-        if (typeof state === 'object' && state.status === 'painted' &&
+        if (challenge && typeof state === 'object' && state.status === 'painted' &&
           challenge === this.challenge && state.identity === this.identity && state.documentId === this.options.documentId && !this.nativeAccepted) {
           this.nativeAccepted = true;
           const proof = this.current();
-          if (proof?.painted) this.options.report(proof);
+          if (proof?.painted) this.reportCurrent();
         }
       }).catch(() => { /* wake/bridge failures cannot block drawing */ }).finally(() => { this.reading = false; });
     }
@@ -189,10 +209,12 @@ export class EmergencyPaintWatcher {
           if (!this.nativeStartedAt) this.nativeStartedAt = now;
           if (now - this.nativeStartedAt <= 10_000) {
             this.nativeAttempts += 1;
-            this.options.nativeReport?.(this.proof);
+            // The app needs fresh DOM samples to validate its own window.
+            // Delivery stays pending until its exact acknowledgment arrives.
+            this.options.nativeReport?.({ ...this.proof, nativeRequired: true });
           }
         }
-        if (first) this.options.report(this.proof);
+        if (first) this.reportCurrent();
       });
     });
   }

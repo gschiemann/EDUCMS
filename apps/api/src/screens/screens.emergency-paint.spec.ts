@@ -53,3 +53,12 @@ it('native visibility acknowledgment is required even if the first native status
   expect(await h.post({ hash: 'em:abcdef01', emergencyProof: proof })).toMatchObject({ emergencyPaintAccepted: false });
   expect(h.screen.update.mock.calls[1][0].data).not.toHaveProperty('lastRenderedAt');
 });
+
+it('cannot certify DOM paint when native state failed before returning a challenge', async () => {
+  const h = harness();
+  const result = await h.post({ hash: 'em:abcdef01', emergencyProof: { ...proof, challenge: undefined, nativeRequired: true } });
+  expect(result).toMatchObject({ emergencyPaintAccepted: false });
+  expect(h.screen.update.mock.calls[0][0].data).toMatchObject({ lastRenderedHash: 'pending|em:abcdef01' });
+  expect(h.screen.update.mock.calls[0][0].data).not.toHaveProperty('lastRenderedAt');
+  expect(h.auditLog.create.mock.calls[0][0].data.action).toBe('PLAYER_EMERGENCY_NO_PAINT_PROOF');
+});

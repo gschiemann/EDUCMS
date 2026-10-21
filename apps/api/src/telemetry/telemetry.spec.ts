@@ -153,6 +153,16 @@ describe('POST /screens/:id/telemetry', () => {
     expect(writtenData()).not.toHaveProperty('lastRenderedAt');
   });
 
+  it('native delivery stays pending when no challenge or native status could be read', async () => {
+    await controller.report(SCREEN_ID, makeReq(), { render: {
+      hash: 'em:abcdef01', frames: 900,
+      emergencyProof: { identity: 'abcdef01', documentId: 'document-a', frames: 2, painted: true, nativeRequired: true },
+    } });
+    expect(writtenData()).toMatchObject({ lastRenderedHash: 'pending|em:abcdef01' });
+    expect(writtenData()).not.toHaveProperty('lastRenderedAt');
+    expect(writtenData()).not.toHaveProperty('lastRenderedFrames');
+  });
+
   it('a page overlay paint travels the ordinary render lane and a native hold rejects an old challenge', async () => {
     const challenge = '00000000-0000-4000-8000-000000000001';
     const proof = { identity: 'abcdef01', documentId: 'document-a', frames: 2, painted: true, challenge };

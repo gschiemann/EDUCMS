@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof, type NativeEmergencyPaintState } from './emergencyPaintProof';
 import { signalDisplayEmergencyHold } from './emergencyHold';
-import { nativeCall, nativeFire, nativeHas } from './nativeBridge';
+import { apkVersionFromUserAgent, hasNativeBridge, nativeCall, nativeFire, nativeHas } from './nativeBridge';
 
 type ValueRef<T> = { current: T };
 export interface EmergencyPaintMonitorRefs {
@@ -30,7 +30,7 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
       console.info(`[Player] emergency-${proof.painted ? 'overlay-painted' : 'raised-no-paint'} identity=${proof.identity} frames=${proof.frames}`);
       const post = async (attempt: number) => {
         const current = refs.watcher.current?.current();
-        if (stopped || current?.identity !== proof.identity || current.challenge !== proof.challenge) return;
+        if (stopped || current?.identity !== proof.identity || current.challenge !== proof.challenge || current.nativeRequired !== proof.nativeRequired) return;
         if (!proof.painted && current.painted) return;
         try {
           const result = await latest.current.post(proof, emergencyRenderHash(proof, refs.manifestOkAt.current));
@@ -49,6 +49,7 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
       document, documentId,
       expectedIdentity: () => refs.expectedIdentity.current,
       raiseHold: () => { signalDisplayEmergencyHold(true, true); },
+      requiresNativeValidation: () => hasNativeBridge() || apkVersionFromUserAgent(navigator.userAgent) !== null,
       readChallenge: async () => {
         if (!nativeHas('sharedVideoState')) return undefined;
         const reply = await nativeCall<unknown>('sharedVideoState');

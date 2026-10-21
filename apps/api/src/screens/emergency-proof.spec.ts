@@ -15,6 +15,7 @@ it('never grades selecting an alert, ordinary content, or a stale challenge as d
   expect(emergencyRenderEvidence('em:abcdef01', paint)).toMatchObject({ painted: false });
   expect(emergencyRenderEvidence('em:abcdef01', paint, { ...episode, status: 'painted', identity: paint.identity, documentId: paint.documentId })).toEqual({ hash: 'em:abcdef01', painted: true });
   expect(emergencyRenderEvidence('em:abcdef01', { ...paint, challenge: undefined })).toEqual({ hash: 'em:abcdef01', painted: true });
+  expect(emergencyRenderEvidence('em:abcdef01', { ...paint, challenge: undefined, nativeRequired: true })).toEqual({ hash: 'pending|em:abcdef01', painted: false });
   expect(emergencyRenderEvidence('pl:normal')).toBeNull();
 });
 

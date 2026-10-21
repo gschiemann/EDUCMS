@@ -6,6 +6,7 @@ export const emergencyPaintSchema = z.strictObject({
   identity: token(),
   documentId: token(),
   challenge: z.string().uuid().optional(),
+  nativeRequired: z.boolean().optional(),
   frames: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   painted: z.boolean(),
 }).refine(p => !p.painted || p.frames >= 2);
@@ -34,7 +35,7 @@ export function emergencyRenderEvidence(hash: string | null | undefined, proof?:
   // A native nonce means this page cannot speak for the Android window.
   // Wait for the native side's visibility/surface/foreground validation,
   // including when its first heartbeat has not reached the API yet.
-  const nativeExpected = !!episode || !!proof?.challenge;
+  const nativeExpected = !!episode || !!proof?.challenge || proof?.nativeRequired === true;
   const nativeAccepted = !!episode && episode.status === 'painted' && proof?.painted === true &&
     proof.challenge === episode.challenge && proof.identity === episode.identity && proof.documentId === episode.documentId;
   if (nativeExpected && !nativeAccepted) {

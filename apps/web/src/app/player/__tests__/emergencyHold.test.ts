@@ -14,6 +14,8 @@
 
 import {
   signalDisplayEmergencyHold,
+  displayEmergencyHoldRaised,
+  subscribeDisplayEmergencyHold,
   DISPLAY_EMERGENCY_HOLD_METHOD,
   __resetDisplayEmergencyHoldForTests,
 } from '../emergencyHold';
@@ -161,5 +163,44 @@ describe('signalDisplayEmergencyHold', () => {
       expect(signalDisplayEmergencyHold(true, true)).toBe('applied');
       expect(fireMock).toHaveBeenCalledWith(DISPLAY_EMERGENCY_HOLD_METHOD, true);
     });
+  });
+});
+
+
+describe('regular-content render interlock', () => {
+  it('notifies before native surface removal can expose normal web video', () => {
+    const seen: boolean[] = [];
+    const unsubscribe = subscribeDisplayEmergencyHold(() => seen.push(displayEmergencyHoldRaised()));
+    fireMock.mockImplementation(() => {
+      expect(seen).toEqual([true]);
+      expect(displayEmergencyHoldRaised()).toBe(true);
+      return CHANNEL_OK;
+    });
+    signalDisplayEmergencyHold(true);
+    unsubscribe();
+  });
+
+  it('keeps rendering held when native refuses a raise or clear', () => {
+    fireMock.mockReturnValue(LEGACY_REFUSED);
+    signalDisplayEmergencyHold(true);
+    expect(displayEmergencyHoldRaised()).toBe(true);
+    signalDisplayEmergencyHold(false);
+    expect(displayEmergencyHoldRaised()).toBe(true);
+    fireMock.mockReturnValue(CHANNEL_OK);
+    signalDisplayEmergencyHold(false);
+    expect(displayEmergencyHoldRaised()).toBe(false);
+  });
+
+  it('notifies once per edge and stops after unsubscribe', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeDisplayEmergencyHold(listener);
+    signalDisplayEmergencyHold(true);
+    signalDisplayEmergencyHold(true, true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    signalDisplayEmergencyHold(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+    signalDisplayEmergencyHold(true);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

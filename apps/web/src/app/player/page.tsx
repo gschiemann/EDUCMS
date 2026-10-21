@@ -12,7 +12,8 @@ import { NativeZoneVideo, nativeZoneTelemetryRows } from './NativeZoneVideo';
 import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, overlappedTemplateZoneIds, readNativeVideoItems, templateZoneConfigEligible, templateZoneFit, templateZoneLocalRect, zoneDegrees, zoneLayout, type NativeVideoItemsDescriptor, type Rect as NativeHoleRect } from './nativeZones';
 import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, nativeVideoFallbackLine, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
-import { useState, useEffect, useCallback, useRef, useMemo, Component, Suspense, ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
+import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
@@ -335,7 +336,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyHoldRaised, signalDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyHoldRaised, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -2729,6 +2730,7 @@ export default function PlayerPageWrapper() {
 
 
 function bootContentSample(state: { rendering: boolean; sig: string; video?: boolean }, documentFrames: number) {
+  if (displayEmergencyHoldRaised()) return undefined;
   if (!state.rendering) return undefined;
   if (state.sig.startsWith('pending|em:')) return undefined;
   if (nativeSharedVideoEvidence.isSelected()) {
@@ -2745,6 +2747,8 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
 }
 
 function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMonitorRefs }) {
+  const tEmergency = useTranslations('emergency');
+  const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPaintWatcherRef = emergencyMonitor.watcher;
   const emergencyExpectedIdentityRef = emergencyMonitor.expectedIdentity;
   // Preserve the last authenticated reconcile across the error boundary so
@@ -2844,7 +2848,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // render proof) — and it's a ref, safe inside this mount-once closure
       // where raw state like playbackStopped would be stale.
       const emergencyPaint = emergencyPaintWatcherRef.current?.current();
-      const contentOnGlass = emergencyExpectedIdentityRef.current || emergencyPaint
+      const contentOnGlass = displayEmergencyHoldRaised() || emergencyExpectedIdentityRef.current || emergencyPaint
         ? emergencyPaint?.painted === true
         : renderStateRef.current.rendering && (!nativeSharedVideoEvidence.isSelected() || nativeSharedVideoEvidence.hasFreshFrames(Date.now()));
       const syncOk = manifestFresh || contentOnGlass;
@@ -4543,6 +4547,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // activeEmergencyRef — the key/back handlers live in a closure with
   // [playbackStopped] deps and must read live emergency state).
   const pushedEmergencyMessageRef = useRef<EmergencyMessageView | null>(null);
+  const [polledEmergencyHeld, setPolledEmergencyHeld] = useState(false);
+  const polledEmergencyHeldRef = useRef(false);
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
@@ -4678,14 +4684,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // painted behind a black div is the one failure mode of this feature that
   // could get someone hurt, and the three checks fail independently.
   useEffect(() => {
-    if (activeEmergency || pushedEmergencyMessage) {
+    if (activeEmergency || pushedEmergencyMessage || polledEmergencyHeld) {
       applySoftBlank(false);
       // The dim comes down too. A translucent black film over a lockdown
       // notice is not a blank, but it is contrast taken away from the one
       // thing on that screen that matters.
       applySoftDim(0);
     }
-  }, [activeEmergency, pushedEmergencyMessage, applySoftBlank, applySoftDim]);
+  }, [activeEmergency, pushedEmergencyMessage, polledEmergencyHeld, applySoftBlank, applySoftDim]);
 
   // ── DISPLAY-CONTROL EMERGENCY INTERLOCK (2026-08-13) ──────────────────
   // The display-control layer in the APK can add a full-screen blackout
@@ -5149,7 +5155,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // ── NATIVE-FIRST: the engine decision BEFORE the mount (design §3.1) ────
   // The raised hold, read the way applyManifest's emergency step reads it:
   // decideFaceEngine answers `web` for it first (§7 E2).
-  const nativeFirstHoldRaised = !!activeEmergency || !!pushedEmergencyMessage || !!pendingOverrideConfirmRef.current;
+  const nativeFirstHoldRaised = emergencyRenderHold || !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld || !!pendingOverrideConfirmRef.current;
   // Operator overlays are YIELDS (native steps aside, the same content resumes natively).
   const nativeFirstOverlay: FaceYield | null = showUpdatePrompt ? 'update-prompt'
     : softBlank ? 'soft-blank'
@@ -5650,7 +5656,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // while sitting on the pairing/connecting splash (which DOES paint, but
     // isn't operator content — we only want to assert "the content the
     // operator scheduled is on screen").
-    const emergencyOn = !!activeEmergency || !!pushedEmergencyMessage || phase === 'emergency';
+    const emergencyOn = emergencyRenderHold || polledEmergencyHeld || !!activeEmergency || !!pushedEmergencyMessage || phase === 'emergency';
     // `normalFilesSetAside` (2026-10-03): every file of the playlist is set
     // aside by the playback circuit breaker, so the glass shows the same
     // "Content Unavailable" card as `allAssetsFailed`. It used to prove
@@ -5729,7 +5735,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         }
       } catch { /* cover bookkeeping must never touch playback */ }
     }
-  }, [phase, playlist, playbackStopped, activeEmergency, pushedEmergencyMessage, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
+  }, [phase, playlist, playbackStopped, activeEmergency, pushedEmergencyMessage, emergencyRenderHold, polledEmergencyHeld, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
   // An alert is never behind a cover or the quiet-boot mark (2026-10-11).
   // `rendering` above already counts an active emergency; a PUSHED message
   // (SOS / broadcast) is drawn by EmergencyOverlay, outside that proof — take
@@ -5749,7 +5755,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // (no splash, no cards, no toasts), and switch the quiet rule on now.
   useEffect(() => {
     const st = renderStateRef.current;
-    if (!st.rendering || st.kind === 'emergency' || glassShownRef.current || !screenId || isPreviewMode()) return;
+    if (displayEmergencyHoldRaised() || !st.rendering || st.kind === 'emergency' || glassShownRef.current || !screenId || isPreviewMode()) return;
     try { markContentShown(window.localStorage, screenId); } catch { /* storage denied */ }
     glassShownRef.current = true;
     setGlassShown(true);
@@ -6006,7 +6012,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const takeRenderProof = useCallback((nowMs: number) => {
     let state = renderStateRef.current;
     const emergencyProof = emergencyPaintWatcherRef.current?.current(nowMs);
-    const emergencyOn = !!emergencyExpectedIdentityRef.current || !!emergencyProof;
+    const emergencyOn = displayEmergencyHoldRaised() || !!emergencyExpectedIdentityRef.current || !!emergencyProof;
     if (emergencyOn) {
       if (!emergencyProof) return null;
       // A refused extension drops only this render block, never liveness.
@@ -6676,7 +6682,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // transaction lands must not re-enable blanking. Bounded: the window
       // self-closes (confirm or 30s timeout) in the fetch path.
       const holdNow =
-        !!em || !!pushedEmergencyMessageRef.current || !!pendingOverrideConfirmRef.current;
+        !!em || !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current || !!pendingOverrideConfirmRef.current;
       if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
       // F8 — ENFORCED overlay interlock: a cached normal manifest replayed
       // during an outage cannot clear a live alert. Previously this was
@@ -7888,6 +7894,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // at the mount site re-created the prop every render, and the overlay's
   // poll effect (which lists it as a dep) tore down + re-armed its
   // interval each time — poll churn on every parent render.
+  const onPolledEmergencyActiveChange = useCallback((active: boolean) => {
+    if (polledEmergencyHeldRef.current === active) return;
+    polledEmergencyHeldRef.current = active;
+    if (active) signalDisplayEmergencyHold(true);
+    setPolledEmergencyHeld(active);
+    // Two empty overlay polls still do not release the device hold. Ask the
+    // authenticated manifest to confirm clear through its existing lane.
+    if (!active) preemptReconcile();
+  }, [preemptReconcile]);
+
   const onTenantEmergencyHint = useCallback(() => {
     if (activeEmergencyRef.current) return; // already on glass
     console.warn('[Player] emergency-messages poll reports an active tenant emergency with no overlay — forcing manifest reconcile (F2b backstop)');
@@ -11761,14 +11777,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         <FitToViewport padding={40}>
           <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
             <AlertTriangle style={{ width: 96, height: 96, margin: '0 auto 24px' }} />
-            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || 'EMERGENCY'}</h1>
+            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || tEmergency('trigger').toUpperCase()}</h1>
             {activeEmergency.textBlob ? <p style={{ fontSize: 32, whiteSpace: 'pre-wrap' }}>{activeEmergency.textBlob}</p> : null}
           </div>
         </FitToViewport>
       </div>
     ) : null;
   const softBlankOverlay =
-    (softBlank || softDim > 0) && !activeEmergency && !pushedEmergencyMessage ? (
+    (softBlank || softDim > 0) && !activeEmergency && !pushedEmergencyMessage && !polledEmergencyHeld ? (
       <div
         data-edu-soft-blank={softBlank ? '1' : undefined}
         onClick={e => e.stopPropagation()}
@@ -11920,6 +11936,49 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       Remote: press Back for screen options
     </div>
   ) : null;
+
+  const emergencyMessageOverlay = tenantId ? (
+        <EmergencyOverlay
+          key="emergency-message-overlay"
+          message={pushedEmergencyMessage}
+          tenantId={tenantId}
+          apiUrl={`${getApiRoot()}/api/v1`}
+          pollMs={10_000}
+          // P0-2 (life-safety) — paired kiosks carry a device JWT, not a
+          // session cookie. Passing it makes the overlay poll the
+          // device-authed /emergency/messages endpoint with a Bearer
+          // token (the user-session /emergency/status 401s for devices,
+          // and the old credentials:'include' poll silently swallowed
+          // it). screenId is passed for completeness; the server reads
+          // the screen id from the token's verified `sub`.
+          screenId={screenId}
+          deviceToken={getDeviceToken()}
+          // Deep-audit F2b (2026-08-30) — the second, manifest-independent
+          // leg for tenant-wide alerts: the overlay's own poll already
+          // carries the tenant's live emergencyStatus; when it says ACTIVE
+          // and this page is NOT displaying an alert, force an immediate
+          // (preempting) reconcile instead of waiting out a slow poll.
+          // Stable useCallback — see its definition for why.
+          onTenantEmergencyHint={onTenantEmergencyHint}
+          onPolledActiveChange={onPolledEmergencyActiveChange}
+        />
+      ) : null;
+
+  // A hold selects the web engine so the ALERT can draw. Until its playlist
+  // commits, the old regular playlist must not mount a web video (or its
+  // autoplay icon) in the gap left by the removed native surface.
+  if ((emergencyRenderHold || !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld) && !playlist?.isEmergency) {
+    return (
+      <div data-edu-emergency-transition="true" style={{ position: 'fixed', top: 0, left: 0, width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)', background: '#b91c1c', color: '#fff' }}>
+        {emergencyFallback || (!pushedEmergencyMessage && (
+          // No alert identity yet: this is a protective pending surface,
+          // never an overlay-painted receipt for an unknown alert.
+          <div role="alert" data-edu-emergency-pending="true" style={{ fontSize: 72, fontWeight: 900, textAlign: 'center', padding: 40 }}>{tEmergency('trigger').toUpperCase()}</div>
+        ))}
+        {emergencyMessageOverlay}
+      </div>
+    );
+  }
 
   // ─── Render: Registering ───
   // A quiet (paired, has shown content) screen never paints the splash: it
@@ -14760,30 +14819,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           path writes (rule 11 untouched: a cached manifest may raise it,
           only the server releases it). Nothing renders for a live alert. */}
       {/* No DRILL banner on the glass (owner 2026-10-12): customers design their own drill content. */}
-      {tenantId && (
-        <EmergencyOverlay
-          message={pushedEmergencyMessage}
-          tenantId={tenantId}
-          apiUrl={`${getApiRoot()}/api/v1`}
-          pollMs={10_000}
-          // P0-2 (life-safety) — paired kiosks carry a device JWT, not a
-          // session cookie. Passing it makes the overlay poll the
-          // device-authed /emergency/messages endpoint with a Bearer
-          // token (the user-session /emergency/status 401s for devices,
-          // and the old credentials:'include' poll silently swallowed
-          // it). screenId is passed for completeness; the server reads
-          // the screen id from the token's verified `sub`.
-          screenId={screenId}
-          deviceToken={getDeviceToken()}
-          // Deep-audit F2b (2026-08-30) — the second, manifest-independent
-          // leg for tenant-wide alerts: the overlay's own poll already
-          // carries the tenant's live emergencyStatus; when it says ACTIVE
-          // and this page is NOT displaying an alert, force an immediate
-          // (preempting) reconcile instead of waiting out a slow poll.
-          // Stable useCallback — see its definition for why.
-          onTenantEmergencyHint={onTenantEmergencyHint}
-        />
-      )}
+      {emergencyMessageOverlay}
       {/* Sprint 13 — scoreboard console bridge (CTS / Daktronics serial).
         *
         * K12-F32 (2026-09-27) — mounted from the MANIFEST when an operator
