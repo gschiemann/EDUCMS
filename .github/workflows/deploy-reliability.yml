@@ -546,8 +546,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Install
-        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install (with scripts, as the renderer tests always ran)
+        run: pnpm install --frozen-lockfile
       - name: Renderer tests (unit + real-Chromium integration)
         # RENDERER_REQUIRE_CHROMIUM turns a missing browser into a FAILURE
         # instead of a skip: a suite that silently skips its browser half is
