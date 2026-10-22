@@ -2399,6 +2399,8 @@
       }
     },
     "trust": {
+      "alertNotPainted": "Alerta activada · sin prueba en pantalla",
+      "alertNotPaintedTitle": "La alerta se activó, pero la página no ha confirmado que dibujó la alerta. La entrega no está confirmada.",
       "repairTitle": "Es necesario reparar la confianza del dispositivo. Restablece la confianza desde la configuración de esta pantalla.",
       "stalledTitle": "El video se detuvo. La pantalla lo está corrigiendo por su cuenta; si sigue pasando, revisa el archivo.",
       "paintingTitleAt": "Esta pantalla informó una imagen; última comprobación: {time}",

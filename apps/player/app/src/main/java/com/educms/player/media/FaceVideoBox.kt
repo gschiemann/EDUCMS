@@ -290,6 +290,30 @@ internal object FaceVideoBox {
 
     /** ⚠️ §7 E1: EVERY session of EVERY face — v2, v3, v4, a pre-roll, a held predecessor, attended or not. */
     @Synchronized fun suppress(why: String) { hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } } }
+    /** Re-assert removal even for already-retired output; an alert never trusts a prior stop. */
+    fun clearEmergencySurfaces() {
+        val remove = Runnable {
+            synchronized(this) {
+                hosts.values.forEach { h ->
+                    if (!DisplayEmergency.isHeld(h.ctx)) return@forEach
+                    h.web.visibility = View.VISIBLE
+                    h.web.alpha = 1f
+                    h.web.setBackgroundColor(Color.BLACK)
+                    h.faceSessions.values.forEach { s ->
+                        s.surface?.visibility = View.GONE
+                        (s.surface?.parent as? ViewGroup)?.removeView(s.surface)
+                        (s.box?.parent as? ViewGroup)?.removeView(s.box)
+                        (s.container?.parent as? ViewGroup)?.removeView(s.container)
+                    }
+                }
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) remove.run() else main.post(remove)
+    }
+
+    @Synchronized fun emergencyOutputClear(face: Int): Boolean = hosts[face]?.faceSessions?.values?.none {
+        it.alive || it.surface?.parent != null || it.box?.parent != null || it.container?.parent != null
+    } ?: true
     /** Every session is above the window now, so every one yields to operator UI. A v4 session says which cause (§4.2). */
     @Synchronized fun yieldToUi(host: SharedVideoHost, why: String) {
         host.faceSessions.values.toList().forEach { stopSession(host, it, if (it.v4) pageStopped(host, it) else why) }

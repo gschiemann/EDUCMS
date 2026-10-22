@@ -291,7 +291,8 @@ export type RenderTrustGrade =
    * is a fact the operator must see. Outranks every other painting-state
    * reinterpretation: it is the life-safety one.
    */
-  | 'alert-unconfirmed';
+  | 'alert-unconfirmed'
+  | 'alert-not-painted';
 
 /**
  * Grade the variant by how long the proof has been missing. Falls back to
@@ -303,6 +304,7 @@ export function deriveRenderTrustGrade(
   input: RenderTrustInput,
 ): RenderTrustGrade {
   const base = deriveRenderTrust(input);
+  if (input.lastRenderedHash?.startsWith('pending|em:')) return 'alert-not-painted';
   // A-F10 first among the painting-state reinterpretations — an alert the
   // server can't re-confirm is the life-safety observability gap.
   if (

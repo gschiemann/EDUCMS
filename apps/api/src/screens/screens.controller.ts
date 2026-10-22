@@ -1,3 +1,4 @@
+import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
@@ -1599,6 +1600,15 @@ export class ScreensController {
       if (presenting) nativeRuntime.nativePresenting = presenting;
     }
 
+    if (nativeRuntime?.emergencyProof && screen.tenantId) {
+      for (const event of newEmergencyEvents((screen.nativeRuntimeReport as any)?.emergencyProof, nativeRuntime.emergencyProof)) {
+        await this.prisma.client.auditLog.create({ data: {
+          tenantId: screen.tenantId, userId: null, action: 'PLAYER_EMERGENCY_RECOVERY',
+          targetType: 'Screen', targetId: screen.id, details: JSON.stringify(event),
+        }});
+      }
+    }
+
     // Update lastPingAt — and if the kiosk passed its app version on
     // this heartbeat, capture it too. Operator (2026-04-27): "we
     // shouldnt have to wait 6 hours to see an updated version, why
@@ -1618,6 +1628,11 @@ export class ScreensController {
     if (nativeRuntime) {
       data.nativeRuntimeReport = nativeRuntime;
       data.nativeRuntimeReportAt = new Date();
+      const episode = nativeRuntime.emergencyProof?.faces.find(f => f.face === ((screen as any).faceIndex ?? 0));
+      const prior = (screen.nativeRuntimeReport as any)?.emergencyProof?.faces?.find((f: {face: number}) => f.face === ((screen as any).faceIndex ?? 0));
+      if (episode && episode.status !== 'painted' && (prior?.challenge !== episode.challenge || prior?.status !== episode.status)) {
+        data.lastRenderedHash = `pending|em:${episode.challenge}`;
+      }
     }
     // Basic Android settings (2026-10-18, device-settings/): the unit's report
     // in, its desired set out — the same credential gate as the native report.
@@ -7784,6 +7799,7 @@ export class ScreensController {
        *  value (ms) this page has acted on. Value identity, never a clock
        *  comparison. */
       refreshAckMs?: number;
+      emergencyProof?: EmergencyPaint;
     },
   ) {
     // SEC-001 — prior behaviour, stated. Render proof is the fleet's claim
@@ -7829,7 +7845,13 @@ export class ScreensController {
     // The SHA is passed so a CHANGED bundle writes through immediately — a
     // panel that just reloaded onto the fix must stop reading "out of date"
     // on the dashboard at once, not up to 40s later.
-    if (shouldSkipRenderProofWrite(id, bundleSha ?? '', bundleId ?? '')) return { ok: true };
+    const parsedEmergency = body?.emergencyProof === undefined ? null : emergencyPaintSchema.safeParse(body.emergencyProof);
+    if (parsedEmergency && !parsedEmergency.success) {
+      throw new HttpException({ code: 'EMERGENCY_PROOF_INVALID' }, HttpStatus.BAD_REQUEST);
+    }
+    const pageEmergency = parsedEmergency?.success ? parsedEmergency.data : undefined;
+    const emergencySignature = !!pageEmergency || /^(?:pending\||unconfirmed\|)?em:/.test(body?.hash ?? '');
+    if (!emergencySignature && shouldSkipRenderProofWrite(id, bundleSha ?? '', bundleId ?? '')) return { ok: true };
     // ten-ok: identity-derived — `deviceAuth(req, id)` above proved the
     // credential names THIS screen. `tenantId` is selected so the refresh-ack
     // timeline row can be written against the SCREEN's own tenant, not a
@@ -7838,7 +7860,7 @@ export class ScreensController {
       where: { id },
       // tenantId is read for the ack timeline row below — same row, no
       // extra round trip.
-      select: { id: true, tenantId: true, pendingRefreshAt: true },
+      select: { id: true, tenantId: true, pendingRefreshAt: true, faceIndex: true, nativeRuntimeReport: true, lastRenderedHash: true },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
@@ -7864,6 +7886,17 @@ export class ScreensController {
         ? Math.min(Math.floor(body.frames), Number.MAX_SAFE_INTEGER)
         : null;
     const hash = body?.hash ? String(body.hash).slice(0, 128) : null;
+    const episode = (screen.nativeRuntimeReport as any)?.emergencyProof?.faces?.find((f: {face: number}) => f.face === (screen.faceIndex ?? 0));
+    const emergencyEvidence = emergencyRenderEvidence(hash, pageEmergency, episode);
+    const confirmedPaint = !emergencyEvidence || emergencyEvidence.painted;
+    if (emergencyEvidence && screen.tenantId && screen.lastRenderedHash !== emergencyEvidence.hash) {
+      await this.prisma.client.auditLog.create({ data: {
+        tenantId: screen.tenantId, userId: null, action: confirmedPaint ? 'PLAYER_EMERGENCY_PAINTED' : 'PLAYER_EMERGENCY_NO_PAINT_PROOF',
+        targetType: 'Screen', targetId: screen.id,
+        details: JSON.stringify({ identity: pageEmergency?.identity ?? null, challenge: pageEmergency?.challenge ?? episode?.challenge ?? null,
+          evidence: confirmedPaint ? 'page-overlay-paint' : 'alert-raised-no-overlay-paint-proof' }),
+      }});
+    }
 
     // Frame-locked sync telemetry — sanitize with the same hostile-device
     // posture as frames/hash: every number clamped, every string sliced,
@@ -7891,9 +7924,9 @@ export class ScreensController {
       this.prisma.client.screen.update({
       where: { id },
       data: {
-        lastRenderedAt: new Date(),
-        ...(frames != null ? { lastRenderedFrames: frames } : {}),
-        ...(hash != null ? { lastRenderedHash: hash } : {}),
+        ...(confirmedPaint ? { lastRenderedAt: new Date() } : {}),
+        ...(confirmedPaint && frames != null ? { lastRenderedFrames: frames } : {}),
+        ...(emergencyEvidence ? { lastRenderedHash: emergencyEvidence.hash } : hash != null ? { lastRenderedHash: hash } : {}),
         ...(bundleSha != null
           ? { lastBundleSha: bundleSha, lastBundleShaAt: new Date() }
           : {}),
@@ -7925,7 +7958,7 @@ export class ScreensController {
       } catch { /* timeline best-effort */ }
     }
     markRenderProofWritten(id, bundleSha ?? '', bundleId ?? '');
-    return { ok: true };
+    return { ok: true, ...(pageEmergency ? { emergencyPaintAccepted: confirmedPaint } : {}) };
   }
 
   // ─── PUBLIC: Emergency assets list (for offline pre-cache) ───

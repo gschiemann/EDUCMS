@@ -57,7 +57,7 @@ describe('§7 E2 / §3.1 — the decision before the mount', () => {
     const fn = block('const nativeFirstDecisionFor = (item: any, solo: boolean)', 3000);
     expect(fn).toMatch(/emergencyContent: playlist\?\.isEmergency === true/);
     expect(fn).toMatch(/holdRaised: nativeFirstHoldRaised/);
-    expect(PAGE).toMatch(/const nativeFirstHoldRaised = !!activeEmergency \|\| !!pushedEmergencyMessage \|\| !!pendingOverrideConfirmRef\.current;/);
+    expect(PAGE).toMatch(/const nativeFirstHoldRaised = emergencyRenderHold \|\| !!activeEmergency \|\| !!pushedEmergencyMessage \|\| polledEmergencyHeld \|\| !!pendingOverrideConfirmRef\.current;/);
   });
   it('the slide decides BEFORE the web-first takeover is built, and native / wait mount the slot', () => {
     expect(before(PAGE, 'const nativeFirstSlide = nativeFirstDecisionFor(item', 'const nativeChoice = pickNativeVideo({')).toBe(true);

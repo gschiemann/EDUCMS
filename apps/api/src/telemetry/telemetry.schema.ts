@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emergencyPaintSchema } from '../screens/emergency-proof';
 
 /**
  * telemetry.schema.ts — STRICT validation for the unified player telemetry
@@ -464,6 +465,7 @@ export const screenTelemetrySchema = z.strictObject({
       frames: z.number().finite().min(0).optional(),
       hash: z.string().max(256).optional(),
       contentKind: z.string().max(32).optional(),
+      emergencyProof: emergencyPaintSchema.optional(),
       sync: syncSchema.optional(),
     })
     .optional(),

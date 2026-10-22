@@ -58,6 +58,8 @@ class SafePlayerWebViewClient(
      * recovery step, not a player document.
      */
     private val onMainFrameDocument: ((view: WebView, url: String) -> Unit)? = null,
+    /** Once per navigation: prior document paint cannot certify the new document. */
+    private val onMainFrameStarted: (() -> Unit)? = null,
 ) : WebViewClient() {
 
     private fun notifyMainFrameDocument(view: WebView, url: String) {
@@ -194,6 +196,7 @@ class SafePlayerWebViewClient(
         // C-P1-3 — …and neither does the previous one's abort. A real
         // navigation is starting; whatever we killed before it is history.
         abortedByUs = false
+        if (!url.startsWith("about:")) runCatching { onMainFrameStarted?.invoke() }
         // SEC-002 — earliest point at which a top-frame script can land in
         // the new document.
         notifyMainFrameDocument(view, url)

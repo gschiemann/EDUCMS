@@ -286,10 +286,8 @@ test("an emergency manifest retires active native video and all-clear restores t
     .toBe("LOCKDOWN");
   await expect(page.locator("[data-native-shared-video]")).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__dualTest.stops)).toBe(1);
-  await expect(page.locator('[data-edu-player-root="media"]')).toHaveCSS(
-    "background-color",
-    "rgb(0, 0, 0)",
-  );
+  await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
+  await expect(page.locator("video")).toHaveCount(0);
   // The clear manifest intentionally removes the native admission. Existing browser playback is the recovery.
   const { nativeSharedVideo: _native, ...normal } = manifest;
   manifestRef.value = normal as typeof manifest;
@@ -307,4 +305,65 @@ test("an emergency manifest retires active native video and all-clear restores t
       page.evaluate(() => localStorage.getItem("edu_emergency_cache_v1")),
     )
     .toBeNull();
+});
+
+for (const source of ['native-v1', 'native-v2', 'websocket'] as const) {
+  test(`emergency handoff from ${source} never mounts a regular browser video while alert details are pending`, async ({ page }) => {
+    const { manifest } = await bootDual(page, source !== 'native-v1');
+    await page.evaluate(() => ((window as any).__dualTest.ready = true));
+    await expect(page.locator('[data-native-shared-video]')).toHaveAttribute('data-native-shared-video', 'presenting');
+    await expect(page.locator('video')).toHaveCount(0);
+    await page.evaluate(() => {
+      const w = window as any;
+      w.__emergencyWebStarts = 0;
+      w.__emergencyVideoMounts = 0;
+      const play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function () { w.__emergencyWebStarts++; return play.call(this); };
+      new MutationObserver(records => {
+        for (const record of records) for (const node of record.addedNodes) {
+          if (node instanceof Element) w.__emergencyVideoMounts += (node.matches('video') ? 1 : 0) + node.querySelectorAll('video').length;
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    const emergency = { ...manifest, isEmergency: true, emergencyType: 'LOCKDOWN', emergencySeverity: 'CRITICAL', emergencyScope: 'tenant', playlists: [] };
+    await page.route(`**/api/v1/screens/${screen}/manifest*`, async route => {
+      await new Promise(resolve => setTimeout(resolve, 900));
+      await ok(route, emergency);
+    });
+    if (source === 'websocket') await push(page, 'OVERRIDE');
+    else await page.evaluate(() => {
+      const d = (window as any).__dualTest;
+      d.reason = 'emergency-held'; d.fail = true;
+    });
+    await expect(page.locator('[data-edu-emergency-transition]')).toBeVisible();
+    await expect(page.locator('[data-edu-emergency-pending]')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).__eduRenderProof?.().sig ?? '')).toMatch(/^pending\|em:/);
+    await expect(page.locator('video')).toHaveCount(0);
+    // Native watch can win the race against the page's independent alert lane.
+    if (source !== 'websocket') await push(page, 'OVERRIDE');
+    await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'LOCKDOWN', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => ({ starts: (window as any).__emergencyWebStarts, mounts: (window as any).__emergencyVideoMounts }))).toEqual({ starts: 0, mounts: 0 });
+    await page.screenshot({ path: test.info().outputPath('direct-emergency-handoff.png'), animations: 'disabled' });
+  });
+}
+
+test('a poll-only message survives the render hold without remounting its overlay', async ({ page }) => {
+  await bootDual(page, true);
+  await page.evaluate(() => ((window as any).__dualTest.ready = true));
+  await expect(page.locator('[data-native-shared-video]')).toHaveAttribute('data-native-shared-video', 'presenting');
+  await page.route('**/api/v1/emergency/messages*', route => ok(route, { active: [{
+    id: 'synthetic-polled-message', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Synthetic emergency message', mediaUrls: [], createdAt: '2026-01-01T00:00:00Z',
+  }] }));
+  const message = page.getByText('Synthetic emergency message', { exact: true });
+  await expect(message).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => { (window as any).__polledEmergencyRoot = document.querySelector('[data-edu-emergency-root="full"], [data-edu-emergency-root="banner"]'); });
+  await expect(page.locator('[data-edu-emergency-transition]')).toBeVisible();
+  await page.waitForTimeout(750); // span the paint monitor's independent scan and two paint samples
+  await expect(message).toBeVisible();
+  await expect(page.locator('video')).toHaveCount(0);
+  expect(await page.evaluate(() => {
+    const root = (window as any).__polledEmergencyRoot;
+    return !!root?.isConnected && root === document.querySelector('[data-edu-emergency-root="full"], [data-edu-emergency-root="banner"]');
+  })).toBe(true);
 });

@@ -1,3 +1,4 @@
+import { signalDisplayEmergencyHold } from './emergencyHold';
 /**
  * NATIVE-FIRST — this page document's controller of its face's native
  * session (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.5 / §4).
@@ -141,7 +142,12 @@ export class NativeFirstFace {
     this.inflight = reply.then((facts) => {
       this.inflight = null;
       if (facts) {
+        const wasHeld = this.current?.intent?.suspended === 'hold';
         this.current = facts;
+        // Native watch can win the race against the page. Observe the EDGE:
+        // the saved intent stays suspended until a fresh intend after clear.
+        // Re-reading it must never re-raise a server-cleared hold.
+        if (!wasHeld && facts.intent?.suspended === 'hold') signalDisplayEmergencyHold(true);
         this.listeners.forEach((fn) => {
           try { fn(facts); } catch { /* a listener never breaks the poll */ }
         });

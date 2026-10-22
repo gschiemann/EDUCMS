@@ -213,6 +213,7 @@ export type StatusTone = 'ok' | 'warn' | 'bad' | 'neutral' | 'muted';
  * so the table's sort order and the taxonomy can never drift apart.
  */
 export const STATUS_ORDER = [
+  'alert-not-painted',
   'alert-unconfirmed', // emergency on glass, server contact lost
   'not-painting', // reachable, no confirmed picture
   'media-stalled', // video frame frozen, watchdog recovering
@@ -387,6 +388,20 @@ export function deriveScreenStatus({
     authState: screen.authState ?? null,
     nowMs: now,
   });
+
+
+  if (grade === 'alert-not-painted') {
+    return {
+      key: 'alert-not-painted', tone: 'bad',
+      label: 'Alert raised · no on-glass proof',
+      action: 'Troubleshoot', needsAttention: true,
+      detail: 'The alert was raised, but the page has not confirmed painting its overlay. Delivery is not confirmed.',
+      messages: {
+        label: { key: 'screens.trust.alertNotPainted' },
+        detail: { key: 'screens.trust.alertNotPaintedTitle' },
+      },
+    };
+  }
 
   // 1 ── an alert is on the glass that the server cannot re-confirm.
   if (grade === 'alert-unconfirmed') {
@@ -1312,6 +1327,10 @@ export interface Delivery {
 }
 
 export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now: number): Delivery {
+  if (status.key === 'alert-not-painted') {
+    return { state: 'pending', line: status.label, message: { key: 'screens.trust.alertNotPainted' } };
+  }
+
   const pendingMs = msOf(screen.pendingRefreshAt);
   const renderedMs = msOf(screen.lastRenderedAt);
   if (screen.status !== 'ONLINE') {

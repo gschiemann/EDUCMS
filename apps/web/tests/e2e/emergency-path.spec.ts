@@ -650,6 +650,13 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   });
 
   test('2. manifest FLAT shape (P0-2) sets activeEmergency + writes cache', async ({ page }) => {
+    const emergencyReports: Array<{ hash?: string; emergencyProof?: { painted?: boolean; frames?: number; identity?: string } }> = [];
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().endsWith('/render-proof')) {
+        const body = request.postDataJSON();
+        if (body?.emergencyProof) emergencyReports.push(body);
+      }
+    });
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);
 
@@ -695,6 +702,18 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     const cache = await readEmergencyCache(page);
     expect(cache?.payload?.active, 'cached emergency must mark active=true').toBe(true);
     expect(cache?.payload?.type, 'cached emergency must carry the flat type').toBe('LOCKDOWN');
+    await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
+    await expect.poll(() => emergencyReports.some(report => report.emergencyProof?.painted === true)).toBe(true);
+    const painted = emergencyReports.find(report => report.emergencyProof?.painted === true)!;
+    expect(painted.emergencyProof!.frames).toBeGreaterThanOrEqual(2);
+    expect(painted.hash).toBe(`em:${painted.emergencyProof!.identity}`);
+    await page.screenshot({ path: test.info().outputPath('emergency-fallback-painted.png') });
+
+    // A live all-clear is still the sole authority to release the alert.
+    manifestRef.value = baselineManifest();
+    await pushWs(page, { type: 'ALL_CLEAR', timestamp: Date.now(), eventId: 'clear-painted-test', signature: 'fake-sig', payload: {} });
+    await expect(page.locator('[data-edu-emergency-root="fallback"]')).toHaveCount(0);
+
   });
 
   // 2026-10-10 — EMERGENCY DRILLS. The manifest's `isDrill: true` paints the
@@ -817,6 +836,13 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   });
 
   test('5. SOS WS message renders "Staff SOS" overlay (P0-3)', async ({ page }) => {
+    let painted = false;
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().endsWith('/render-proof')) {
+        painted ||= request.postDataJSON()?.emergencyProof?.painted === true;
+      }
+    });
+
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);
 
@@ -843,6 +869,8 @@ test.describe('Emergency path — P0-8 regression suite', () => {
         'lost the SOS branch, so the EmergencyOverlay never received pushedEmergencyMessage.',
     ).toBeVisible({ timeout: 2_000 });
     await expect(page.getByText('Help in room 204')).toBeVisible();
+    await expect.poll(() => painted, { message: 'Visible SOS must report its overlay paint' }).toBe(true);
+    await page.screenshot({ path: test.info().outputPath('emergency-message-painted.png') });
   });
 
   /**

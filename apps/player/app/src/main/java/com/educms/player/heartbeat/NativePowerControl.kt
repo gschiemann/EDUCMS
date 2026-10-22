@@ -56,6 +56,7 @@ object NativePowerControl {
         // Activity resumed, and whether the process that reports is the one
         // that was woken. See `wake.WakeReport`.
         com.educms.player.wake.WakeRecovery.attachTo(out, ctx)
+        runCatching { com.educms.player.display.EmergencyPaintRecovery.report(ctx)?.let { out.put("emergencyProof", it) } }
         return out.toString()
     }
 

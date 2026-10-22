@@ -204,7 +204,7 @@ test.describe('off-hours background update', () => {
     console.log(`[offhours-update e2e] capture=${update.capture} device.blankMs=${update.blankMs} device.coverMs=${update.coverMs} node.oldDocGoneToNewDocMs=${nodeGapMs} node.coverSeenByProbe=${coverSeen > 0} samplesCovered=${samples.filter((s) => s.cover).length}`);
   });
 
-  test('3. an emergency on the glass blocks the window', async ({ page }) => {
+  test('3. a raised emergency blocks the window before paint is confirmed', async ({ page }) => {
     test.setTimeout(90_000);
     const id = playerIds('ohu-em');
     const logs: string[] = [];
@@ -220,9 +220,12 @@ test.describe('off-hours background update', () => {
         }));
       },
     });
+    // This hook exposes selected render state, not the independently sampled
+    // overlay receipt. The update must yield as soon as the emergency is raised,
+    // including while delivery still has no paint proof (emergency-path covers paint).
     await expect
       .poll(() => page.evaluate(() => (window as unknown as TestWindow).__eduRenderProof?.()?.sig ?? ''), { timeout: 30_000 })
-      .toMatch(/^em:/);
+      .toMatch(/^pending\|em:/);
     await page.evaluate(() => { (window as unknown as TestWindow).preservedDocument = 'live'; });
 
     await page.clock.fastForward(31_000);

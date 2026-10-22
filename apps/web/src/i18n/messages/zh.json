@@ -2399,6 +2399,8 @@
       }
     },
     "trust": {
+      "alertNotPainted": "警报已触发 · 尚无屏幕显示证据",
+      "alertNotPaintedTitle": "警报已触发，但页面尚未确认已绘制警报。尚未确认送达。",
       "repairTitle": "设备信任需要修复。请在此屏幕的设置中恢复信任。",
       "stalledTitle": "视频停止播放了。屏幕正在自行修复；如果反复出现，请检查该文件。",
       "paintingTitleAt": "此屏幕已上报画面——最近一次检查：{time}",

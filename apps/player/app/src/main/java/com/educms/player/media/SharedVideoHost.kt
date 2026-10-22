@@ -122,11 +122,13 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         }
         // Protocol 4's blocks (lease, intent, store, nativeFirst) — only where this face advertises 4 or holds v4 state.
         FaceVideoBox.writeNativeFirst(this, j, max, policy)
+        com.educms.player.display.EmergencyPaintRecovery.challenge(ctx, face)?.let { j.put("emergencyProof", it) }
         // The page refuses a reply over 16 384 characters: trim history before it could ever get there.
         return ReplyBudget.fit(j.put("protocol",2)).toString()
     }
     fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
     fun detach() {
+        com.educms.player.display.EmergencyPaintRecovery.unregister(face, web)
         if (web.viewTreeObserver.isAlive) web.viewTreeObserver.removeOnPreDrawListener(windowGuard)
         SharedVideoBox.invalidate(this,"host-detached")
         synchronized(SharedVideoBox) { detached = true }
@@ -155,7 +157,11 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
             return host
         }
         /** Called by the native hold path; it never releases or changes an emergency hold. */
-        fun suppressForEmergency() { SharedVideoBox.suppress("emergency-held"); FaceVideoBox.suppress("emergency-held") }
+        fun suppressForEmergency() {
+            SharedVideoBox.suppress("emergency-held")
+            FaceVideoBox.suppress("emergency-held")
+            FaceVideoBox.clearEmergencySurfaces()
+        }
         fun suspendAll() { SharedVideoBox.suppress("activity-paused"); FaceVideoBox.suppress("activity-paused") }
         internal const val ENGINE_SHARED = "shared"
         internal const val ENGINE_FACE = "face"

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { nativeEmergencyProofSchema } from './emergency-proof';
 
 /** Native heartbeat evidence is independent of web rendering and cache readiness. */
 export const NATIVE_RUNTIME_HEADER = 'x-venueos-native-runtime';
@@ -184,12 +185,13 @@ const runtimeSchema = z.object({
   // Additive (2026-10-19, native-first §4.4). Optional; a malformed block
   // drops the whole report like any other malformed field.
   nativePresenting: nativePresentingSchema.optional(),
+  emergencyProof: nativeEmergencyProofSchema.optional(),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;
 
 export function parseNativeRuntime(value: unknown): NativeRuntimeReport | null {
-  if (typeof value !== 'string' || value.length > 1024) return null;
+  if (typeof value !== 'string' || value.length > 8192) return null;
   try {
     const input: unknown = JSON.parse(value);
     const result = runtimeSchema.safeParse(input);
@@ -238,7 +240,8 @@ export function nativePowerStateChanged(
     a.wake?.onAt !== next.wake?.onAt ||
     a.wake?.resAt !== next.wake?.resAt ||
     a.wake?.out !== next.wake?.out ||
-    a.proc?.pid !== next.proc?.pid
+    a.proc?.pid !== next.proc?.pid ||
+    JSON.stringify(a.emergencyProof) !== JSON.stringify(next.emergencyProof)
   );
 }
 

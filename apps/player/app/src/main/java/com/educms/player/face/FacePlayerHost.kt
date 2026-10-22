@@ -201,6 +201,12 @@ class FacePlayerHost(
                 (activity as? com.educms.player.MainActivity)?.nativeVideoUiClear() == true
         }
         sharedVideoHost = sharedMedia
+        com.educms.player.display.EmergencyPaintRecovery.register(activity.applicationContext, faceIndex, wv,
+            reload = { reload("emergency overlay has no paint proof") },
+            relaunch = {
+                if (!activity.isDestroyed && !activity.isFinishing && com.educms.player.MainActivity.isInForeground) activity.recreate()
+                else com.educms.player.ota.RelaunchEscalation.launchNow(activity.applicationContext, "emergency-paint")
+            })
         // Deliberately the same settings the primary uses. A face is a
         // screen; it renders the same bundle and must not quietly differ.
         wv.settings.apply {
@@ -251,6 +257,9 @@ class FacePlayerHost(
         )
 
         val faceClient = SafePlayerWebViewClient(
+            onMainFrameStarted = {
+                com.educms.player.display.EmergencyPaintRecovery.documentStarted(activity.applicationContext, faceIndex)
+            },
             onRendererGone = { failed, didCrash ->
                 if (!destroyed && failed === webView) {
                     val (fresh, delayMs) = rendererRecovery.replace(failed, didCrash)
@@ -421,6 +430,10 @@ class FacePlayerHost(
         // object). A face relies on its own staleness ladder below plus its
         // own render proof on its own Screen row.
         onWebHeartbeatV2 = { /* see above */ },
+        onWebEmergencyPaint = { json ->
+            if (sharedMedia.web === webView && !destroyed)
+                com.educms.player.display.EmergencyPaintRecovery.painted(activity.applicationContext, faceIndex, json)
+        },
         // ⚠️ ORIENTATION IS WEB-SIDE ONLY ON A FACE. A Presentation is a
         // Dialog on a display and has no requestedOrientation at all, and the
         // primary's orientation must never be propagated onto a face

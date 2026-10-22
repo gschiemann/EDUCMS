@@ -544,3 +544,9 @@ describe('idleProofKind + the idle grades (2026-09-27)', () => {
     ).toBe('repair-required');
   });
 });
+
+it('an alert raised without overlay paint never grades as delivered, even after a normal-content proof', () => {
+  expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK', lastRenderedHash: 'pending|em:abcdef01' })).toBe('alert-not-painted');
+  expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'UNKNOWN', lastRenderedHash: 'pending|em:abcdef01' })).toBe('alert-not-painted');
+  expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK', lastRenderedHash: 'em:abcdef01' })).toBe('painting');
+});

@@ -102,6 +102,19 @@ export type HoldOutcome =
 
 let lastSent: boolean | null = null;
 let refusedReleases = 0;
+// Rendering follows the requested hold immediately, even if the native
+// transport refuses it. Only an accepted live clear may reopen content.
+let renderHold = false;
+const holdListeners = new Set<() => void>();
+function publishRenderHold(active: boolean): void {
+  if (renderHold === active) return;
+  renderHold = active;
+  holdListeners.forEach(listener => { try { listener(); } catch { /* one observer cannot block an alert */ } });
+}
+export function subscribeDisplayEmergencyHold(listener: () => void): () => void {
+  holdListeners.add(listener);
+  return () => { holdListeners.delete(listener); };
+}
 
 /**
  * Did the device answer with an explicit refusal?
@@ -133,8 +146,9 @@ function isRefusal(result: unknown): boolean {
  *                expected outcome in a browser player.
  */
 export function signalDisplayEmergencyHold(active: boolean, force = false): HoldOutcome {
+  if (active) publishRenderHold(true);
   try {
-    if (!force && lastSent === active) return 'skipped';
+    if (!force && lastSent === active) { publishRenderHold(active); return 'skipped'; }
 
     const outcome = nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
 
@@ -142,6 +156,7 @@ export function signalDisplayEmergencyHold(active: boolean, force = false): Hold
       // No transport, or the method does not exist on this APK. There is no
       // native display layer to hold, so record the state and stay quiet.
       lastSent = active;
+      publishRenderHold(active);
       return 'no-native';
     }
 
@@ -162,6 +177,7 @@ export function signalDisplayEmergencyHold(active: boolean, force = false): Hold
     }
 
     lastSent = active;
+    publishRenderHold(active);
     if (active) refusedReleases = 0;
     return 'applied';
   } catch {
@@ -172,17 +188,18 @@ export function signalDisplayEmergencyHold(active: boolean, force = false): Hold
 }
 
 /**
- * READ-ONLY: did this page last ask the device to HOLD (an alert surface is
+ * READ-ONLY: is regular playback held (an alert surface is
  * up, or a pushed OVERRIDE is still being confirmed)? Native-first never
  * asks the app for a picture while this is true (design §7 E1/E2). It
- * changes nothing about the signal above; it only reports what was sent.
+ * raises before transport dispatch and survives a refused release.
  */
 export function displayEmergencyHoldRaised(): boolean {
-  return lastSent === true;
+  return renderHold;
 }
 
 /** Test seam: forget what we last sent. Not used by production code. */
 export function __resetDisplayEmergencyHoldForTests(): void {
   lastSent = null;
   refusedReleases = 0;
+  publishRenderHold(false);
 }

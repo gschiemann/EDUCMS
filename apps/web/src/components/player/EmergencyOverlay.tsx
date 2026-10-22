@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
+import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 
 /**
  * P0 (2026-06-27, Greg live-tested on the 960×1080 LED) — the full-screen
@@ -189,6 +190,8 @@ interface Props {
    * PAGE decides whether it is already displaying the alert.
    */
   onTenantEmergencyHint?: () => void;
+  /** The page keeps regular playback held while a poll-only message is visible. */
+  onPolledActiveChange?: (active: boolean) => void;
   /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
@@ -237,12 +240,14 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
   // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
   const emptyPollStreakRef = useRef(0);
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
+  const polledActive = !!polled;
+  useEffect(() => { onPolledActiveChange?.(polledActive); }, [polledActive, onPolledActiveChange]);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
   // half / thinks it's 1920×1080" P0). Pass the active message id so the canvas
@@ -371,6 +376,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         role="alert"
         aria-live="assertive"
         data-edu-emergency-root="banner"
+        data-edu-emergency-identity={emergencyPaintIdentity(active)}
         className={`fixed top-0 left-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
         // Width pinned to the LED canvas (960 etc.) so the banner spans only the
         // visible panel, not the 1920 frame buffer. maxHeight in px off canvasH
@@ -403,6 +409,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       role="alert"
       aria-live="assertive"
       data-edu-emergency-root="full"
+      data-edu-emergency-identity={emergencyPaintIdentity(active)}
       className={`fixed z-[9999] ${style.bg} ${style.text} ${style.animate}`}
       // FULL-VIEWPORT opaque backdrop — ALWAYS covers the entire frame buffer
       // so the running playlist can NEVER show behind a life-safety takeover.

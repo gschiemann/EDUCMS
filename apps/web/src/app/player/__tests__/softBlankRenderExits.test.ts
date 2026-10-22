@@ -70,6 +70,7 @@ const PINNED_KNOWN_GAP = ['otaOverlay', 'connectivityToast', 'canvasEditor'];
 const PAGE = path.resolve(__dirname, '../page.tsx');
 
 interface Exit {
+  guard?: string;
   line: number;
   text: string;
 }
@@ -119,6 +120,7 @@ function componentRenderExits(): { name: string; exits: Exit[] } {
         exits.push({
           line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1,
           text: expr.getText(sf),
+          guard: ts.isBlock(n.parent) && ts.isIfStatement(n.parent.parent) ? n.parent.parent.expression.getText(sf) : undefined,
         });
       }
     }
@@ -137,6 +139,20 @@ function componentRenderExits(): { name: string; exits: Exit[] } {
 
 describe('player render exits all draw the cross-branch overlays', () => {
   const { name, exits } = componentRenderExits();
+  const emergencyExits = exits.filter(e => e.text.includes('data-edu-emergency-transition="true"'));
+  const normalExits = exits.filter(e => !emergencyExits.includes(e));
+
+  it('only the guarded emergency transition omits normal overlays', () => {
+    expect(emergencyExits).toHaveLength(1);
+    const exit = emergencyExits[0];
+    expect(exit.guard).toContain('emergencyRenderHold');
+    expect(exit.guard).toContain('!playlist?.isEmergency');
+    expect(exit.text).toContain('{emergencyMessageOverlay}');
+    expect(exit.text).toContain('{emergencyFallback');
+    for (const overlay of [...REQUIRED, ...PINNED_KNOWN_GAP, 'updatePromptNode']) {
+      expect(exit.text).not.toContain(`{${overlay}}`);
+    }
+  });
 
   it('finds the player component and more than one render exit', () => {
     // If this ever drops to 1 the parser is wrong, not the file — a
@@ -146,7 +162,7 @@ describe('player render exits all draw the cross-branch overlays', () => {
   });
 
   it.each(REQUIRED)('every render exit renders {%s}', (overlay) => {
-    const missing = exits
+    const missing = normalExits
       .filter((e) => !e.text.includes(`{${overlay}}`))
       .map((e) => `page.tsx:${e.line}  ${e.text.slice(0, 90).replace(/\s+/g, ' ')}…`);
 
@@ -168,7 +184,7 @@ describe('player render exits all draw the cross-branch overlays', () => {
   it.each(PINNED_KNOWN_GAP)(
     '{%s} is missing from exactly one exit (the ribbon-tile parent) — pinned, not forgotten',
     (overlay) => {
-      const missing = exits.filter((e) => !e.text.includes(`{${overlay}}`));
+      const missing = normalExits.filter((e) => !e.text.includes(`{${overlay}}`));
       // Exactly one, and it must be the iframe-only tile parent. If this
       // number GROWS, someone just reintroduced the 2026-04-29 bug. If it
       // drops to zero, someone fixed the tile parent — move this overlay into

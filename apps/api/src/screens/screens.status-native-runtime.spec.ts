@@ -36,8 +36,9 @@ function harness(proved = true, paired = true, id = 'wall') {
       .mockResolvedValue(row),
     count: jest.fn().mockResolvedValue(0),
   };
+  const auditLog = { create: jest.fn(async () => ({})) };
   const controller = new ScreensController(
-    { client: { screen } } as never,
+    { client: { screen, auditLog } } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -55,7 +56,7 @@ function harness(proved = true, paired = true, id = 'wall') {
       'heartbeatProvesDevice',
     )
     .mockResolvedValue({ presented: proved, proved });
-  return { row, screen, controller };
+  return { row, screen, controller, auditLog };
 }
 
 function poll(
@@ -200,5 +201,32 @@ describe('native-first §4.4 — stream B\'s x-venueos-native-presenting header'
     const { controller, screen } = harness(false, true, 'wall-presenting-anon');
     await pollWith(controller, { 'x-venueos-native-presenting': presenting });
     for (const call of screen.update.mock.calls) expect(call[0].data).not.toHaveProperty('nativeRuntimeReport');
+  });
+});
+
+
+describe('native emergency paint recovery reporting', () => {
+  const challenge = '00000000-0000-4000-8000-000000000001';
+  const episode = { face: 0, challenge, heldAtMs: 1000, status: 'unconfirmed', step: 4, events: [
+    { step: 0, atMs: 1000, outcome: 'pending' },
+    ...[1, 2, 3, 4].map(step => ({ step, atMs: 1000 + step * 1000, outcome: 'started' })),
+    { step: 4, atMs: 11000, outcome: 'unconfirmed' },
+  ] };
+  const report = { ...runtime, emergencyProof: { faces: [episode] } };
+  it('audits every escalation carried by one delayed heartbeat without inventing paint', async () => {
+    const { controller, row, screen, auditLog } = harness(true, true, 'wall-emergency-audit');
+    await poll(controller, JSON.stringify(report));
+    expect(auditLog.create).toHaveBeenCalledTimes(6);
+    expect(auditLog.create.mock.calls.every(c => c[0].data.action === 'PLAYER_EMERGENCY_RECOVERY')).toBe(true);
+    expect(screen.update.mock.calls[0][0].data).toMatchObject({ lastRenderedHash: `pending|em:${challenge}` });
+    expect(screen.update.mock.calls[0][0].data).not.toHaveProperty('lastRenderedAt');
+    row.nativeRuntimeReport = report;
+    await poll(controller, JSON.stringify(report));
+    expect(auditLog.create).toHaveBeenCalledTimes(6);
+  });
+  it('an anonymous heartbeat cannot forge a recovery audit event', async () => {
+    const { controller, auditLog } = harness(false, true, 'wall-emergency-anonymous');
+    await poll(controller, JSON.stringify(report));
+    expect(auditLog.create).not.toHaveBeenCalled();
   });
 });

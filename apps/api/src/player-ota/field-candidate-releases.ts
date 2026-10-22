@@ -215,6 +215,16 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2479865,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39481406005',
   },
+  // Signed CI 39607517698, source 101b0f5c; emergency presentation handoff.
+  // Production certificate e45adf50…3d1897, versionCode 10148, all four ABIs,
+  // non-debuggable and immutable private mirror verified. Hardware qualification pending.
+  '1.1.48-field.1': {
+    versionName: '1.1.48-field.1',
+    versionCode: 10148,
+    sha256: 'ae6017539339275988a45dbd13279f60cb906a5da80487c7b65c6dc2c4b66efd', // gitleaks:allow -- verified public APK integrity digest
+    size: 2479869,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39607517698',
+  },
   // Signed CI 39624248249 (PR #125): 30 Hz panels — with the `double-post` token, the video
   // surface asks Android to compose at the source rate (setFrameRate) when the grid is ~2x the
   // video's frame rate; reported as timing.doublePost. Production certificate e45adf50…3d1897,

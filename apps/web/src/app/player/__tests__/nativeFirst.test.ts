@@ -19,6 +19,7 @@ import {
   type NativeFirstFacts,
   type NativeIntentIdentity,
 } from '../nativeFirst';
+import { __resetDisplayEmergencyHoldForTests, displayEmergencyHoldRaised, signalDisplayEmergencyHold } from '../emergencyHold';
 import { NativeFirstFace, nativeFirstDecisionSignature } from '../nativeFirstFace';
 import { decideFaceEngine } from '../decideFaceEngine';
 import { readNativeVideoProtocol } from '../nativeSharedVideo';
@@ -287,6 +288,7 @@ describe('§6 store-mode readiness — mediaReadiness unchanged, only its inputs
 });
 
 describe('the per-document controller', () => {
+  beforeEach(() => __resetDisplayEmergencyHoldForTests());
   function rig(replies: unknown[] = [reply()]) {
     const fired: Array<[string, string]> = [];
     let n = 0;
@@ -307,6 +309,23 @@ describe('the per-document controller', () => {
     const runTimers = async () => { const fns = [...timers.values()]; timers.clear(); fns.forEach((f) => f()); await flush(); };
     return { face, bridge, fired, timers, runTimers, advance: (ms: number) => { clock += ms; } };
   }
+
+  it('raises the render hold before publishing a current native suspension, but ignores its history after clear', async () => {
+    const r = rig([
+      reply({ intent: { ...X, suspended: 'hold', status: 'suspended-by-hold', lastEnd: 'emergency-held' } }),
+      reply({ intent: { ...X, suspended: 'hold', status: 'suspended-by-hold', lastEnd: 'emergency-held' } }),
+      reply({ intent: { ...X, suspended: null, status: 'ended', lastEnd: 'emergency-held' } }),
+    ]);
+    const held: boolean[] = [];
+    r.face.subscribe(() => held.push(displayEmergencyHoldRaised()));
+    await r.face.read();
+    expect(held).toEqual([true]);
+    signalDisplayEmergencyHold(false);
+    await r.face.read();
+    expect(held).toEqual([true, false]);
+    await r.face.read();
+    expect(held).toEqual([true, false, false]);
+  });
 
   it('sends nothing before the app advertised v4, and nothing to an app that never does', async () => {
     const r = rig([reply({ protocolMax: 3 })]);
