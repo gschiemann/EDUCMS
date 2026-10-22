@@ -1,7 +1,8 @@
 'use client';
 
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
-import type { HelpArticle, HelpCategory, HelpTranslationLocale } from '@/content/help/types';
+import type { HelpArticle, HelpTranslationLocale } from '@/content/help/types';
+export { HELP_CATEGORY_KEY } from '@/content/help/types';
 
 /**
  * Help-center localization (2026-10-22). Category labels come from the
@@ -10,19 +11,6 @@ import type { HelpArticle, HelpCategory, HelpTranslationLocale } from '@/content
  * Locale is resolved on the client (see `i18n/config.ts`), so SSR renders
  * English and the reader's language applies right after mount.
  */
-export const HELP_CATEGORY_KEY: Record<HelpCategory, string> = {
-  'Getting Started': 'gettingStarted',
-  Templates: 'templates',
-  'AI Studio': 'aiStudio',
-  Screens: 'screens',
-  'Emergency System': 'emergency',
-  Sports: 'sports',
-  Integrations: 'integrations',
-  SSO: 'sso',
-  Clever: 'clever',
-  Billing: 'billing',
-  'IT & Security': 'itSecurity',
-};
 
 export interface LocalizedArticleText {
   title: string;

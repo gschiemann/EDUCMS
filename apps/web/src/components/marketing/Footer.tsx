@@ -1,16 +1,16 @@
-'use client';
-
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { BrandMark } from './BrandMark';
+import { PublicT } from './PublicText';
 
 /**
- * Public footer. Client component since 2026-10-22 so its labels follow the
- * reader's language (en / es / zh, `publicSite.footer.*`) like the rest of the
- * app; SSR renders English, the persisted locale applies after mount.
+ * Public footer. A SERVER component: only its labels are client leaves
+ * (`PublicT`, `publicSite.footer.*`), so they follow the reader's language
+ * without shipping the footer's markup as JavaScript on every public route.
  */
+const t = (k: string, values?: Record<string, string>) => <PublicT k={`footer.${k}`} values={values} />;
+
 export function Footer() {
-  const t = useTranslations('publicSite.footer');
   const year = new Date().getFullYear();
   return (
     <footer className="bg-[#070a14] border-t border-[#161e30]">
@@ -70,13 +70,13 @@ export function Footer() {
   );
 }
 
-function FooterCol({ title, links }: { title: string; links: { href: string; label: string }[] }) {
+function FooterCol({ title, links }: { title: ReactNode; links: { href: string; label: ReactNode }[] }) {
   return (
     <div>
       <h4 className="text-xs font-semibold tracking-wider uppercase text-slate-300 mb-4">{title}</h4>
       <ul className="space-y-2.5">
         {links.map((l) => (
-          <li key={l.href + l.label}>
+          <li key={l.href}>
             <Link href={l.href} className="text-sm text-slate-400 hover:text-white transition">
               {l.label}
             </Link>
