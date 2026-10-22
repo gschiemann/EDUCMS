@@ -9,6 +9,7 @@ import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '.
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
+import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { registeredResolution } from './registered-resolution';
@@ -5698,6 +5699,31 @@ export class ScreensController {
   // UNCHANGED. Any change re-verifies the credential at the normal 5 s
   // freshness before a single byte is disclosed, so the cheap path can never
   // become the cheap path for a credential we have stopped trusting.
+  /**
+   * GET /screens/:id/usb-key — the tenant's USB package key, for this paired
+   * screen only (2026-10-22, USB made simple). The Android player verifies a
+   * stick's package with it before importing anything. It used to ride only
+   * the `/devices/pair` answer, and only for tenants that had opted in — the
+   * web page pairs screens, so no APK ever stored it and no stick ever
+   * imported. Minted on first use; the player re-reads it while online.
+   */
+  @Get(':id/usb-key')
+  async getUsbKey(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: false });
+    if (!auth.ok || !auth.tenantId) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+        message: `Device auth required (${auth.ok ? 'unpaired' : auth.reason})`,
+      });
+    }
+    const key = await ensureUsbSigningKey(this.prisma as any, auth.tenantId);
+    if (!key) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ code: 'SCREEN_USB_KEY_UNAVAILABLE', message: 'USB key unavailable' });
+    }
+    return res.status(200).json({ tenantId: auth.tenantId, key });
+  }
+
   @Get(':id/emergency-rev')
   async getEmergencyRev(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     // Same non-storable posture as the manifest (2026-07-31 stuck-lockdown

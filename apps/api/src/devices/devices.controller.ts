@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
+import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 
 /**
  * Device-side endpoints — called by the Android player APK without admin
@@ -111,12 +112,11 @@ export class DevicesController {
       { expiresIn: '365d' }, // 1-year — kiosks shouldn't re-pair often
     );
 
-    const usb = target.tenant.usbIngestEnabled
-      ? {
-          usbIngestEnabled: true,
-          usbIngestKey: target.tenant.usbIngestKey || null,
-        }
-      : { usbIngestEnabled: false };
+    // USB is always on (2026-10-22): the key is minted on first use.
+    const usb = {
+      usbIngestEnabled: true,
+      usbIngestKey: await ensureUsbSigningKey(this.prisma as any, target.tenantId).catch(() => null),
+    };
 
     return {
       token,
