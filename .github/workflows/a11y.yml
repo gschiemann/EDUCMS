@@ -107,7 +107,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm --filter web exec playwright install --with-deps chromium || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps chromium; }
 
       # 2026-05-26 — fix: a11y CI was failing with "Module not found:
       # Can't resolve '@cms/api-types'" because the web build needs
