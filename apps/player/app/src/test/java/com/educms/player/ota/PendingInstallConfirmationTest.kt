@@ -31,6 +31,46 @@ class PendingInstallConfirmationTest {
         launchedAtElapsedMs = el0,
     )
 
+    // ── 1.1.51 — the bounded wait is a TIMER, and NEEDS_TAP says what is on the glass ──
+
+    @Test
+    fun `the expiry check lands just past the window, never inside it`() {
+        assertTrue(PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS > PendingInstallConfirmation.NEEDS_TAP_WINDOW_MS)
+        assertTrue(PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS - PendingInstallConfirmation.NEEDS_TAP_WINDOW_MS <= minute)
+        // At that moment onCheck expires the record (no new push).
+        val at = el0 + PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS
+        assertEquals(CheckAction.EXPIRE, PendingInstallConfirmation.onCheck(rec(), null, wall0 + PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS, at))
+    }
+
+    @Test
+    fun `launching a confirmation schedules the expiry check, and the receiver's message names staged vs raised`() {
+        val store = source("src/main/java/com/educms/player/ota/PendingInstallStore.kt")
+        val launched = store.substring(store.indexOf("fun noteLaunched("), store.indexOf("private fun scheduleExpiryCheck("))
+        assertTrue("every launch arms the timer", launched.contains("scheduleExpiryCheck(ctx)"))
+        val schedule = store.substring(store.indexOf("private fun scheduleExpiryCheck("))
+        assertTrue(schedule.contains("PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS"))
+        assertTrue("one timer, replaced by a newer launch", schedule.contains("ExistingWorkPolicy.REPLACE"))
+        val receiver = source("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
+        assertTrue(receiver.contains("recordSelfOtaOutcome(context, selfOtaVc, status, intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false))"))
+        val msg = receiver.substring(receiver.indexOf("internal fun needsTapMessage("), receiver.indexOf("private fun reportOtaError("))
+        assertTrue("a raised dialog is named", msg.contains("Install dialog"))
+        assertTrue("a staged commit points at the Back menu", msg.contains("press Back"))
+    }
+
+    private fun source(relative: String): String {
+        var dir: java.io.File? = java.io.File("").absoluteFile
+        var root: java.io.File? = null
+        while (dir != null) {
+            if (java.io.File(dir, "src/main/AndroidManifest.xml").isFile) { root = dir; break }
+            if (java.io.File(dir, "app/src/main/AndroidManifest.xml").isFile) { root = java.io.File(dir, "app"); break }
+            dir = dir.parentFile
+        }
+        Assume.assumeTrue("module root not on disk", root != null)
+        val f = java.io.File(root, relative)
+        Assume.assumeTrue("source not on disk: $relative", f.isFile)
+        return f.readText().replace(Regex("/\\*[\\s\\S]*?\\*/"), "").lines().joinToString("\n") { it.substringBefore("//") }
+    }
+
     // ── recovery is suppressed while pending ─────────────────────────────
 
     @Test

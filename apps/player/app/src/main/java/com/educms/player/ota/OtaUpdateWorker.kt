@@ -648,8 +648,9 @@ internal class OtaCheck(
     )
 
     /** What the panel and the dashboard say while a build waits for a person. */
+    /** Re-reported only while a confirmation WE launched is fresh (KEEP_NEEDS_TAP): the dialog is up. */
     private fun needsTapMessage(target: String): String =
-        "Android on this screen needs someone to tap Install for $target. Press Install now on the screen, then tap Install."
+        "Android's Install dialog for $target is open on the screen — tap Install."
 
     private fun sha256(f: File): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
