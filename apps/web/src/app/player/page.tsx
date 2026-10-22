@@ -37,6 +37,8 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // status when WS is unavailable, and accepts WS-pushed messages via
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
+import { useEmergencyFaceStage, readEmergencyFaceStage } from '@/components/player/useEmergencyFaceStage';
+import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 import { emergencyPaintIdentity, emergencyRenderHash } from './emergencyPaintProof';
@@ -2477,8 +2479,10 @@ function FitToViewport({ children, padding = 40 }: { children: ReactNode; paddin
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const faceStage = useEmergencyFaceStage();
 
   useEffect(() => {
+    if (faceStage) return;
     const measure = () => {
       const outer = outerRef.current;
       const inner = innerRef.current;
@@ -2507,7 +2511,12 @@ function FitToViewport({ children, padding = 40 }: { children: ReactNode; paddin
       ro?.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [children, padding]);
+  }, [children, padding, faceStage]);
+
+  if (faceStage) return <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+    boxSizing: 'border-box', padding, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ width: '100%', margin: 'auto 0', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>{children}</div>
+  </div>;
 
   return (
     <div
@@ -2627,6 +2636,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       // isn't cropped by half on a 960-wide panel during a crash. Same fix as
       // the live EmergencyOverlay. Falls back to full viewport when no override.
       const led = readCanvasOverride();
+      const faceStage = readEmergencyFaceStage();
       return (
         <div
           data-edu-emergency-root="crash"
@@ -2636,7 +2646,9 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
             position: 'fixed',
             top: 0,
             left: 0,
-            ...(led.w && led.h
+            ...(faceStage
+              ? { width: faceStage.width, height: faceStage.height }
+              : led.w && led.h
               ? { width: `${led.w}px`, height: `${led.h}px` }
               : { right: 0, bottom: 0 }),
           }}
@@ -2747,6 +2759,7 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
 }
 
 function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMonitorRefs }) {
+  const emergencyFaceStage = useEmergencyFaceStage();
   const tEmergency = useTranslations('emergency');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPaintWatcherRef = emergencyMonitor.watcher;
@@ -3163,7 +3176,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const root = document.documentElement;
       return root.getAttribute('data-led-cfg') === '1'
         || root.getAttribute('data-led-poster') === 'auto'
-        || !!root.style.getPropertyValue('--led-w');
+        // The shell also sets this variable from the browser viewport. That
+        // is not a hardware pin on a Presentation: it must retain CSS rotation.
+        || (Number(qp('face') || 0) < 1 && !!root.style.getPropertyValue('--led-w'));
     };
     if (manifestOrientation !== 'PORTRAIT') {
       // Clear any prior CSS fallback so a switch from PORTRAIT → LANDSCAPE
@@ -7321,15 +7336,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             + (templateWinner.contentRev ? `:${templateWinner.contentRev}` : '');
           playbackManifestRef.current = { m: manifest, fromCache };
           const isEmergencyContent = !!em;
+          const systemEmergencyLayout = isEmergencyContent && templateWinner.id === 'DEFAULT_EMERGENCY';
           contentIsEmergencyRef.current = isEmergencyContent;
           if (tplSig !== currentPlaylistSigRef.current) {
             currentPlaylistSigRef.current = tplSig;
-            setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [], isEmergency: isEmergencyContent });
+            setPlaylist({ name: templateWinner.template.name || 'Template Content', template: templateWinner.template, items: [], isEmergency: isEmergencyContent, systemEmergencyLayout });
             setCurrentIndex(0);
           } else {
             // The same template may be both the everyday and panic board.
             // A live all-clear/raise must change classification without a remount.
-            setPlaylist((prev: any) => prev && prev.isEmergency !== isEmergencyContent ? { ...prev, isEmergency: isEmergencyContent } : prev);
+            setPlaylist((prev: any) => prev && (prev.isEmergency !== isEmergencyContent || prev.systemEmergencyLayout !== systemEmergencyLayout) ? { ...prev, isEmergency: isEmergencyContent, systemEmergencyLayout } : prev);
           }
           // A template takeover applies at once; a media playlist deferred
           // for its download is no longer what the server wants on glass.
@@ -11834,7 +11850,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         role="alert"
         data-edu-emergency-root="fallback"
         data-edu-emergency-identity={emergencyPaintIdentity(activeEmergency)}
-        style={{ position: 'fixed', top: 0, left: 0, width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)', backgroundColor: '#b91c1c', color: '#fff', zIndex: 9998 }}
+        style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', backgroundColor: '#b91c1c', color: '#fff', zIndex: 9998 }}
       >
         <FitToViewport padding={40}>
           <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
@@ -12031,7 +12047,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // autoplay icon) in the gap left by the removed native surface.
   if ((emergencyRenderHold || !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld) && !playlist?.isEmergency) {
     return (
-      <div data-edu-emergency-transition="true" style={{ position: 'fixed', top: 0, left: 0, width: 'var(--led-w, 100vw)', height: 'var(--led-h, 100vh)', background: '#b91c1c', color: '#fff' }}>
+      <div data-edu-emergency-transition="true" style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: '#b91c1c', color: '#fff' }}>
         {emergencyFallback || (!pushedEmergencyMessage && (
           // No alert identity yet: this is a protective pending surface,
           // never an overlay-painted receipt for an unknown alert.
@@ -12283,8 +12299,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     };
     const templateHoles = Object.entries(nativeHoles).filter(([slot, r]) => slot.startsWith('zone:') && r).map(([, r]) => r as NativeHoleRect);
     const templateHoleOpen = templateHoles.length > 0;
-    const designW = tpl.screenWidth || 1920;
-    const designH = tpl.screenHeight || 1080;
+    const faceDefaultAlert = !!emergencyFaceStage && !!activeEmergency && playlist?.isEmergency === true && playlist.systemEmergencyLayout === true;
+    const designW = faceDefaultAlert ? emergencyFaceStage.width : tpl.screenWidth || 1920;
+    const designH = faceDefaultAlert ? emergencyFaceStage.height : tpl.screenHeight || 1080;
     const nativeZoneCount = (() => {
       if (!nativeVideoItems || nativeVideoProtocol !== 3 || isInteractive || tplScenes.length > 0 || !!activeEmergency || playlist?.isEmergency === true) return 0;
       return zones.filter((z: any) => z.widgetType === 'VIDEO' && !!nativeZoneItemFor(nativeVideoItems, `zone:${z.id}`)).length;
@@ -12350,8 +12367,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // exposed fleet-wide by the 08-24 AUTO→PORTRAIT orientation change).
           // The media branch below already sizes from --led-w/--led-h; this
           // wrapper was the one that was missed. Same var, same fallback.
-          width: 'var(--led-w, 100vw)',
-          height: 'var(--led-h, 100vh)',
+          width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)',
+          height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)',
           overflow: 'hidden',
           cursor: isInteractive ? undefined : 'none',
           // BLACK stays, deliberately: an unlit LED pixel is black, and
@@ -12515,7 +12532,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           };
           const _cssChunks: string[] = [];
           const _zoneSel = `[data-zone-id="${zone.id}"]`;
-          const zoneRules = _buildPlayerRules(cfg);
+          const zoneRules = _buildPlayerRules(faceDefaultAlert && zone.widgetType === 'TEXT' ? { ...cfg, fontSize: undefined } : cfg);
           if (zoneRules.length) {
             _cssChunks.push(`${_zoneSel} *:not(svg):not(svg *) { ${zoneRules.join('; ')} }`);
           }
@@ -12586,7 +12603,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 soft-blank overlay or any escape surface — all of which are
                 statically imported and render outside this subtree. */}
             {(() => {
-              const widget = (
+              const widget = faceDefaultAlert && zone.widgetType === 'TEXT'
+                ? <EmergencyFaceText text={String(cfg?.content || '')} fontSize={Number(cfg?.fontSize) || 100} />
+                : (
                 <Suspense fallback={null}>
                   <LazyPlayerZoneWidget
                     zoneId={zone.id}
@@ -12936,8 +12955,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // to `inset` at all. Zero behavior change: an unset side and an
         // explicit 'auto' side compute identically for a `position:fixed`
         // box whose size comes from width/height. See CLAUDE.md rule #10.
-        width: 'var(--led-w, 100vw)',
-        height: 'var(--led-h, 100vh)',
+        width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)',
+        height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)',
         // Protocol 3 (2026-10-12): while a native slide is on glass the root
         // is the hole — the hardware surface below the WebView shows through;
         // every other slide paints opaque over it (NativeZoneVideo.tsx).

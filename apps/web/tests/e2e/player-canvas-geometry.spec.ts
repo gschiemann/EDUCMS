@@ -32,18 +32,18 @@ const FAKE_TENANT_ID = '00000000-0000-4000-8000-0000000000b1';
 const FAKE_FINGERPRINT = 'test-fp-canvas-geometry';
 const BOOT_TOKEN = `test.${Buffer.from(JSON.stringify({ kind: 'device', sub: FAKE_SCREEN_ID, tenantId: FAKE_TENANT_ID, exp: 4_102_444_800 })).toString('base64url')}.not-a-real-signature`;
 
-type MockState = { manifestMode: 'template' | 'emergency'; emptyTemplate?: boolean; failManifest?: boolean; proofs?: Array<any> };
+type MockState = { manifestMode: 'template' | 'emergency'; emptyTemplate?: boolean; systemDefault?: boolean; drill?: boolean; orientation?: 'PORTRAIT' | 'LANDSCAPE'; message?: Record<string, unknown>; alertType?: string; failManifest?: boolean; proofs?: Array<any> };
 
 /** A 1080×1920 portrait template with one full-bleed TEXT zone — the shape of
  *  the API's own synthetic emergency template (screens.controller.ts). */
-function templatePlaylist(empty = false) {
+function templatePlaylist(empty = false, systemDefault = false, drill = false) {
   return [{
-    id: 'pl-geometry',
+    id: systemDefault ? 'DEFAULT_EMERGENCY' : 'pl-geometry',
     name: 'Geometry probe',
     contentRev: empty ? 'empty' : 'ready',
     template: {
-      id: 'tpl-geometry',
-      name: 'Geometry probe',
+      id: systemDefault ? undefined : 'tpl-geometry',
+      name: systemDefault ? 'EMERGENCY OVERRIDE' : 'Geometry probe',
       bgColor: '#123456',
       screenWidth: 1080,
       screenHeight: 1920,
@@ -53,7 +53,7 @@ function templatePlaylist(empty = false) {
         widgetType: 'TEXT',
         defaultConfig: {
           sizeMode: 'absolute',
-          content: 'GEOMETRY PROBE',
+          content: systemDefault ? `${drill ? 'DRILL — THIS IS A DRILL\n\n' : ''}LOCKDOWN PROTOCOL ACTIVE\n\nMove inside. Stay away from windows. Follow standard procedures.` : 'GEOMETRY PROBE',
           fontSize: 140,
           fontWeight: 800,
           color: 'white',
@@ -83,12 +83,13 @@ async function installMocks(page: Page, state: MockState) {
     screenName: 'Geometry Screen',
     tenantId: FAKE_TENANT_ID,
     tenantName: 'Geometry Tenant',
-    orientation: 'PORTRAIT',
+    orientation: state.orientation || 'PORTRAIT',
+    isDrill: !!state.drill,
     isEmergency: state.manifestMode === 'emergency',
     ...(state.manifestMode === 'emergency'
-      ? { emergencyType: 'LOCKDOWN', emergencySeverity: 'CRITICAL', emergencyScopeNote: 'Drill — geometry test' }
+      ? { emergencyType: state.alertType || 'LOCKDOWN', emergencySeverity: 'CRITICAL', emergencyScopeNote: 'Drill — geometry test' }
       : {}),
-    playlists: templatePlaylist(state.emptyTemplate),
+    playlists: templatePlaylist(state.emptyTemplate, state.systemDefault, state.drill),
   }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/status`, (route) => ok(route, { ok: true }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/cache-status`, (route) => route.fulfill({ status: 204, body: '' }));
@@ -98,8 +99,8 @@ async function installMocks(page: Page, state: MockState) {
   });
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/telemetry`, (route) => ok(route, { ok: true }));
   await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/emergency-rev*`, (route) => ok(route, { rev: 'geometry' }));
-  await page.route('**/api/v1/emergency/status*', (route) => ok(route, { active: [] }));
-  await page.route('**/api/v1/emergency/messages*', (route) => ok(route, { active: [] }));
+  await page.route('**/api/v1/emergency/status*', (route) => ok(route, { active: state.message ? [state.message] : [] }));
+  await page.route('**/api/v1/emergency/messages*', (route) => ok(route, { active: state.message ? [state.message] : [] }));
   await page.route('**/api/v1/notifications/**', (route) => route.fulfill({ status: 204, body: '' }));
   await page.route('**/api/v1/player/latest-version-public', (route) => ok(route, {}));
   await page.route('**/api/v1/player/update-check', (route) => ok(route, { available: false }));
@@ -141,10 +142,10 @@ async function installWsStub(page: Page) {
     (StubOrReal as any).CLOSING = RealWS.CLOSING;
     (StubOrReal as any).CLOSED = RealWS.CLOSED;
     (window as any).WebSocket = StubOrReal;
-    (window as any).__geometryPush = (type: string) => {
+    (window as any).__geometryPush = (type: string, payload: unknown = {}) => {
       const socket = [...sockets].reverse().find(s => s.readyState === RealWS.OPEN && s.onmessage);
       if (!socket) return false;
-      socket.onmessage({ data: JSON.stringify({ type, timestamp: Date.now(), eventId: `${type}-${Date.now()}`, signature: 'geometry-test-signature', payload: {} }) });
+      socket.onmessage({ data: JSON.stringify({ type, timestamp: Date.now(), eventId: `${type}-${Date.now()}`, signature: 'geometry-test-signature', payload }) });
       return true;
     };
   });
@@ -322,6 +323,81 @@ for (const c of geometryCases()) {
       await page.locator('[data-zone-id="z-full"]').evaluate(zone => zone.replaceChildren());
       await expect(page.locator('[data-edu-emergency-root="fallback"]')).toBeVisible();
       await expect(page.locator('[data-edu-player-root="template"]')).not.toHaveAttribute('data-edu-emergency-root', 'template');
+    });
+  });
+}
+
+
+for (const viewport of [{ width: 1920, height: 1080 }, { width: 1080, height: 1920 }, { width: 960, height: 540 }]) {
+  test.describe(`secondary emergency layout ${viewport.width}x${viewport.height}`, () => {
+    test.use({ viewport });
+    for (const drill of [false, true]) {
+      test(`reflows the default alert at readable size (${drill ? 'drill' : 'live'})`, async ({ page }) => {
+        const state: MockState = { manifestMode: 'emergency', systemDefault: true, drill, orientation: viewport.width === 960 || viewport.height > viewport.width ? 'PORTRAIT' : 'LANDSCAPE', proofs: [] };
+        await installWsStub(page);
+        await installMocks(page, state);
+        await page.goto(`/player?fp=${FAKE_FINGERPRINT}&face=1&dpr=1`);
+        const text = page.locator('[data-edu-emergency-text-floor]');
+        await expect(text).toBeVisible();
+        await expect(page.locator('[data-edu-player-root="template"]')).toHaveAttribute('data-edu-emergency-root', 'template');
+        await expect.poll(() => page.locator('[data-edu-player-root="template"]').evaluate(el => [el.clientWidth, el.clientHeight]))
+          .toEqual(viewport.width === 960 ? [540, 960] : [viewport.width, viewport.height]);
+        await expect.poll(() => text.evaluate(el => ({ height: el.scrollHeight - el.clientHeight, width: el.scrollWidth - el.clientWidth })))
+          .toEqual({ height: 0, width: 0 });
+        const metrics = await text.evaluate(el => {
+          const child = el.firstElementChild as HTMLElement;
+          const parent = document.querySelector('[data-edu-player-root="template"]') as HTMLElement;
+          return { font: parseFloat(getComputedStyle(child).fontSize), width: parent.offsetWidth, height: parent.offsetHeight,
+            clipped: el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1 };
+        });
+        expect(metrics.font).toBeGreaterThanOrEqual(32);
+        expect(metrics.clipped).toBe(false);
+        // Portrait fallback rotations belong to this face, including on a landscape OS viewport.
+        expect(metrics.width).toBe(viewport.width === 960 ? 540 : viewport.width);
+        expect(metrics.height).toBe(viewport.width === 960 ? 960 : viewport.height);
+        if (drill) await expect(text).toContainText('DRILL — THIS IS A DRILL');
+        await page.screenshot({ path: test.info().outputPath('face-emergency.png'), fullPage: true });
+      });
+    }
+    for (const type of ['SOS', 'TEXT_BROADCAST', 'MEDIA_ALERT'] as const) {
+      test(`${type} uses the same face viewport without text shrinking`, async ({ page }) => {
+        const state: MockState = { manifestMode: 'template',
+          orientation: viewport.width === 960 || viewport.height > viewport.width ? 'PORTRAIT' : 'LANDSCAPE',
+          message: { id: 'synthetic-message', type, severity: type === 'TEXT_BROADCAST' ? 'WARN' : 'CRITICAL',
+            textBlob: 'Move inside. Follow standard procedures.', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-21T12:00:00Z' } };
+        await installWsStub(page);
+        await installMocks(page, state);
+        await page.goto(`/player?fp=${FAKE_FINGERPRINT}&face=1&dpr=1`);
+        await expect.poll(() => page.evaluate(({ type, payload }) => (window as any).__geometryPush(type, payload), { type, payload: state.message })).toBe(true);
+        const root = page.locator(`[data-edu-emergency-root="${type === 'TEXT_BROADCAST' ? 'banner' : 'full'}"]`);
+        await expect(root).toBeVisible();
+        await expect.poll(() => root.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(viewport.width === 960 ? 540 : viewport.width);
+        const copy = type === 'TEXT_BROADCAST' ? root.getByText('Move inside. Follow standard procedures.', { exact: true }) : root.locator('h1');
+        const size = await copy.evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+        expect(size).toBeGreaterThanOrEqual(type === 'TEXT_BROADCAST' ? 20 : 32);
+        const bounds = await copy.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThanOrEqual(-1);
+        expect(bounds!.y).toBeGreaterThanOrEqual(-1);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
+      });
+    }
+    if (viewport.width === 960) test('normal, alert and all-clear retain the rotated face coverage', async ({ page }) => {
+      const state: MockState = { manifestMode: 'template', orientation: 'PORTRAIT', proofs: [] };
+      await installWsStub(page); await installMocks(page, state);
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&face=1&dpr=1`);
+      const root = page.locator('[data-edu-player-root="template"]');
+      const coverage = () => root.evaluate(el => [el.clientWidth, el.clientHeight]);
+      await expect.poll(coverage).toEqual([540, 960]);
+      state.manifestMode = 'emergency'; state.systemDefault = true;
+      await reconcile(page, 'OVERRIDE');
+      await expect(root).toHaveAttribute('data-edu-emergency-root', 'template');
+      await expect.poll(coverage).toEqual([540, 960]);
+      state.manifestMode = 'template'; state.systemDefault = false;
+      await reconcile(page, 'ALL_CLEAR');
+      await expect.poll(() => root.getAttribute('data-edu-emergency-root')).toBeNull();
+      await expect.poll(coverage).toEqual([540, 960]);
     });
   });
 }
