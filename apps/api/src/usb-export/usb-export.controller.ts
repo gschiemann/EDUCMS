@@ -462,9 +462,17 @@ export class UsbExportController {
       assetId: string | null,
     ): Promise<{ hash: string; path: string; size: number } | null> => {
       const ext = extFromMimeOrUrl(mime, url);
+      // The device maps every URL it plays to a file, so a second URL for
+      // bytes already in the package gets its own entry (same file, no copy).
+      const alias = (known: TopLevelAsset) => {
+        if (!topLevelAssets.some((a) => a.url === url && a.sha256 === known.sha256)) {
+          topLevelAssets.push({ ...known, url, mimeType: mime });
+        }
+        return { hash: known.sha256, path: known.localPath, size: known.sizeBytes };
+      };
       if (storedHash && seenHashes.has(storedHash)) {
         const known = topLevelAssets.find((a) => a.sha256 === storedHash);
-        if (known) return { hash: storedHash, path: known.localPath, size: known.sizeBytes };
+        if (known) return alias(known);
       }
       if (assetCount >= MAX_ASSETS_PER_BUNDLE) { truncated = true; return null; }
       let bytes: Buffer | null = null;
@@ -491,6 +499,9 @@ export class UsbExportController {
         totalBytes += bytes.byteLength;
         assetCount += 1;
         topLevelAssets.push({ url, sha256: hash, localPath: path, mimeType: mime, sizeBytes: bytes.byteLength });
+      } else {
+        const known = topLevelAssets.find((a) => a.sha256 === hash);
+        if (known) return alias(known);
       }
       return { hash, path, size: bytes.byteLength };
     };

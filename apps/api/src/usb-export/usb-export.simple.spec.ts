@@ -198,6 +198,24 @@ describe('USB export — the package keeps the playlist settings', () => {
     expect(mockedSafeFetch).not.toHaveBeenCalled();
   });
 
+  it('two URLs with the same bytes: one file in the package, both URLs mapped for the device', async () => {
+    const twin = {
+      ...playlist,
+      items: [
+        playlist.items[0],
+        { ...playlist.items[0], id: 'item-2', assetId: 'asset-2', asset: { ...playlist.items[0].asset, id: 'asset-2', fileUrl: 'https://cdn.test/copy.png', fileHash: null } },
+      ],
+    };
+    const h = harness({ playlists: { 'pl-1': twin } });
+    const r = res();
+    await h.controller.bundle(req, r, { playlistIds: ['pl-1'] });
+    const { manifest, fileNames } = await unzip(r.body);
+    expect(fileNames.filter((n) => n.startsWith('edu-cms-content/assets/') && !n.endsWith('/'))).toHaveLength(1);
+    expect(manifest.assets.map((a: any) => a.url).sort()).toEqual(['https://cdn.test/a.png', 'https://cdn.test/copy.png']);
+    expect(new Set(manifest.assets.map((a: any) => a.localPath)).size).toBe(1);
+    expect(manifest.assetCount).toBe(1);
+  });
+
   it('counts files it could not download instead of dropping them silently', async () => {
     mockedSafeFetch.mockRejectedValue(new Error('network down'));
     const h = harness();
