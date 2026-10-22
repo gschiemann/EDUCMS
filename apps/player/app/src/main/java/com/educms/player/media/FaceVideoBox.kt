@@ -1782,7 +1782,7 @@ internal object FaceVideoBox {
             true
         }
         // The store answers OUTSIDE this monitor (its own locks never nest inside ours).
-        if (wrote) j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: NoopContentStore.stateBlock())
+        if (wrote) j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: com.educms.player.store.NoopContentStore.stateBlock())
     }
 
     /** Under the monitor: the intent as the page reads it, with what the app is doing about it. */
