@@ -1195,7 +1195,7 @@ This list is the floor, not the ceiling. Add to it when a new integration domain
 ### 2. Storage + content pipeline
 - Supabase asset upload + Cache-Control / egress
 - Service-worker offline cache tiers (playlist + emergency, never-evict floor)
-- USB sneakernet ingest (signed manifest, SHA verify, operator PIN)
+- USB playlist sticks (2026-10-22 — no settings, no PIN): "Download to USB" / the wizard's "USB drive" destination (`@/lib/usb-export`) → API signs with a silently minted tenant key (`usb-export/usb-signing-key.ts`) → a paired APK fetches the key (`GET /screens/:id/usb-key`), auto-detects the stick, verifies HMAC + every SHA-256, imports (`usb/UsbPackage.kt`, `UsbAutoImport.kt`) and serves it to page + service worker; the web player overlays it on normal manifests only (`player/usbPackage.ts`) until the next server publish
 - Floor plan upload (Sprint 8b)
 - Asset re-cache backfill jobs
 - Image / video transcoding pipeline (if/when built)
