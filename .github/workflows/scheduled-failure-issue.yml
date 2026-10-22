@@ -30,24 +30,18 @@ on:
     workflows:
       - Accessibility (axe-core)
       - Android Player APK
-      - Capability Registry
       - CI & Security
       - Cross-Browser
       - DB Backup
       - Deploy Reliability
+      - E2E (full Playwright)
       - Emergency Path
       - Field Scripts
-      - Integration Truth
       - Keep API warm
       - Lighthouse CI
-      - Mobile Perf
-      - OTA Wiring Integrity
       - Player Kotlin Check
-      - Poster Freshness
       - Prod Smoke
-      - Signing Secrets
-      - Taurus Safety
-      - Tenant Isolation
+      - Supply Chain Scan
     types: [completed]
 
 permissions:

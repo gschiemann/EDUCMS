@@ -17,91 +17,23 @@ name: Emergency Path
 # <30s; the rest is browser install + Next compile cache cold start.
 
 on:
-  push:
-    branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
-  pull_request:
-    branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+  # 2026-10-22 (go-private CI budget): no longer triggered on its own. Deploy
+  # Reliability CALLS this workflow on every push / PR that can move it (its
+  # `changes` job decides — the lockdown/all-clear path is gated per change,
+  # exactly as before, just without a second copy of the change detection).
+  # Run it by hand from the Actions tab before a drill.
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  # 2026-08-04 — every workflow now declares one. Without it, pushing three
-  # commits in a minute leaves three full runs racing on the same ref.
-  # SUPERSEDED master runs are CANCELLED (changed 2026-09-09, operator's call).
-  #
-  # This deliberately REVERSES the 2026-08-04 decision below. That version keyed
-  # the group on the individual SHA for push, so two master commits were never in
-  # the same group and nothing could ever cancel — every commit kept its own
-  # verdict. The cost, measured on 2026-09-08: five pushes in one hour ran five
-  # full suites when only the tip mattered, ~100 of that day's ~200 billed
-  # minutes, and GitHub Actions then hit the Free-plan cap and stopped running
-  # ANYTHING for hours. A gate that is switched off by billing protects nothing.
-  #
-  # Operator (2026-09-09, $10 budget): "ya save the money, we got no customers so
-  # im not worried that much." The accepted trade: an intermediate commit that is
-  # superseded within minutes reads as "never checked" in the history. The TIP of
-  # master is always fully checked, which is what actually ships.
-  #
-  # ⚠️ If you are reading the 2026-08-04 rationale below and reaching for the
-  # per-SHA group again: that is the change this comment exists to prevent. Only
-  # restore it if per-commit verdicts become worth real money again (paid plan, a
-  # customer audit trail, or a compliance requirement) — and say so here.
-  #
-  # --- superseded 2026-08-04 rationale, kept for context ---
-  # cancel-in-progress was deliberately PULL-REQUEST ONLY: a superseded PR run
-  # is noise, but every commit that lands on master must keep its own verdict
-  # (a cancelled master run reads as "never checked" in the history). Expressing
-  # it as `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` did
-  # not work — master runs were still cancelled — so the GROUP was made unique
-  # per push instead.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   emergency-path:
-    name: ${{ matrix.browser }} · Emergency path
+    # ONE runner for both engines since 2026-10-22: the two matrix legs each
+    # installed, built the packages and ran `next build` — the same work twice
+    # for ~3 minutes of tests apiece. Both projects now run against one build.
+    name: Emergency path (chromium + webkit)
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
     # runner-image update (the same one forcing Node-24 action runtimes) wedges
     # Playwright 1.59 WebKit — WPEWebProcess launches then hangs until the job
@@ -109,15 +41,11 @@ jobs:
     # made it intermittent (same commit green 08-17, hung 08-18 with no code
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
     # this job on ubuntu-latest.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      # Both engines, in parallel. WebKit is the canary; Chromium is the
-      # primary target. A bug that only repros in WebKit is exactly what
-      # the holiday-bridge canary was built to catch — same principle here.
-      matrix:
-        browser: [chromium, webkit]
+    runs-on: ${{ vars.CI_RUNNER_PLAYWRIGHT || 'ubuntu-24.04' }}
+    timeout-minutes: 25
+    # Both engines. WebKit is the canary; Chromium is the primary target. A
+    # bug that only repros in WebKit is exactly what the holiday-bridge canary
+    # was built to catch — same principle here.
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -153,10 +81,10 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('apps/web/package.json', 'pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-chromium-webkit-${{ hashFiles('apps/web/package.json', 'pnpm-lock.yaml') }}
 
       - name: Install Playwright browser
-        run: pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }}
+        run: pnpm --filter web exec playwright install --with-deps chromium webkit
 
       # ── Build the web app BEFORE Playwright (2026-09-05) ─────────────────
       # Playwright now serves a PREBUILT production bundle (`next start`)
@@ -202,7 +130,7 @@ jobs:
         # projects on every matrix runner. The chromium runner has only
         # the chromium binary installed, so webkit failed with
         # "Executable doesn't exist" (and vice-versa).
-        run: pnpm --filter web exec playwright test --config playwright.config.ts tests/e2e/emergency-path.spec.ts tests/e2e/player-native-dual-video.spec.ts tests/e2e/player-offline-lazy-renderer.spec.ts --project=${{ matrix.browser }}
+        run: pnpm --filter web exec playwright test --config playwright.config.ts tests/e2e/emergency-path.spec.ts tests/e2e/player-native-dual-video.spec.ts tests/e2e/player-offline-lazy-renderer.spec.ts --project=chromium --project=webkit
         env:
           CI: 'true'
           # Force the API base URL onto an unroutable host so any
@@ -222,7 +150,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: emergency-path-report-${{ matrix.browser }}
+          name: emergency-path-report
           path: |
             apps/web/playwright-report/
             apps/web/test-results/

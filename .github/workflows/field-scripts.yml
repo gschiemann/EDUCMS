@@ -65,7 +65,7 @@ permissions:
 jobs:
   check:
     name: Shell syntax + shellcheck + locale bomb
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       FIELD_SCRIPTS: >-

@@ -24,37 +24,28 @@ name: Cross-Browser
 # fragility (don't add speculatively — keep CI under 2 min/browser).
 
 on:
-  # 2026-08-04 — moved OFF every-push.
-  # The widget-render leg is now covered by ci.yml's E2E job, which since
-  # this date runs a chromium+webkit MATRIX. What is unique here is the
-  # .cjs bridge-protocol suite, and that guards board files that change
-  # rarely. Nightly + PR + on demand gives the same protection at a
-  # fraction of the cost. Emergency Path still runs on EVERY push — the
-  # life-safety gate is deliberately not on this diet.
+  # 2026-10-22 (go-private CI budget): on a PR only when it touches what these
+  # canaries test — the board / holiday HTML and their shims, the widget
+  # renderers, the canaries themselves, or the dependency set — and not while
+  # the PR is a draft. A scheduled run against master three times a week
+  # catches drift (browser updates, anything the filter missed) within days.
+  # It used to run on EVERY PR push (~12 billed minutes each).
   schedule:
-    - cron: '0 7 * * *'   # 07:00 UTC nightly
+    - cron: '0 7 * * 1,3,5'
   pull_request:
     branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'apps/web/public/**'
+      - 'apps/web/scripts/**'
+      - 'apps/web/src/components/widgets/**'
+      - 'apps/web/src/lib/**'
+      - 'apps/web/tests/cross-browser/**'
+      - 'apps/web/tests/e2e/widget-render*'
+      - 'apps/web/tools/check-port-fidelity.cjs'
+      - 'apps/web/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cross-browser.yml'
   workflow_dispatch:
 
 permissions:
@@ -79,6 +70,8 @@ concurrency:
 
 jobs:
   webkit-holiday-bridge:
+    # A draft PR skips; "Ready for review" runs it before merge.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: WebKit · Holiday bridge + sports celebration pack
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
     # runner-image update (the same one forcing Node-24 action runtimes) wedges
@@ -87,8 +80,7 @@ jobs:
     # made it intermittent (same commit green 08-17, hung 08-18 with no code
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
     # this job on ubuntu-latest.
-    runs-on: ubuntu-24.04
-    # 2026-05-12 — the WebKit install on a cold runner (`apt-get
+    runs-on: ${{ vars.CI_RUNNER_PLAYWRIGHT || 'ubuntu-24.04' }}
     # update && apt-get install` for ~160 packages of WebKit system
     # deps) takes 3-7 min ON ITS OWN. The actual protocol test takes
     # under 2 min. Cap at 15 to absorb the longest cold-cache install
@@ -185,6 +177,8 @@ jobs:
           if-no-files-found: ignore
 
   webkit-widget-render:
+    # A draft PR skips; "Ready for review" runs it before merge.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: WebKit + Chromium · React widget render smoke
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
     # runner-image update (the same one forcing Node-24 action runtimes) wedges
@@ -193,8 +187,7 @@ jobs:
     # made it intermittent (same commit green 08-17, hung 08-18 with no code
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
     # this job on ubuntu-latest.
-    runs-on: ubuntu-24.04
-    # Boots `next dev` (first-compile of the /player route ~30-60s) then
+    runs-on: ${{ vars.CI_RUNNER_PLAYWRIGHT || 'ubuntu-24.04' }}
     # runs the widget grid in BOTH chromium and webkit. Cap generous to
     # absorb the cold WebKit-deps install + first Next compile; real test
     # failures surface in seconds inside the spec.

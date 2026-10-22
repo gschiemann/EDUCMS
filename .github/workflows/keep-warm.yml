@@ -22,7 +22,16 @@ name: Keep API warm
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    # 2026-10-22 (go-private CI budget, docs/research/2026-10-22-go-private/):
+    # was '*/5 * * * *'. On a PUBLIC repo GitHub throttled that to one run
+    # every ~3-5 hours (measured: 6-7 runs/day), so it cost nothing and caught
+    # little. On a PRIVATE repo every run is billed, rounded up to a whole
+    # minute: a cron that actually fired every 5 minutes would be 288 runs/day
+    # = ~8,600 billed minutes/month, 3x the whole Pro allowance. Every 3 hours
+    # keeps today's real cadence for <= 240 minutes/month. Real 5-minute
+    # outside-in monitoring belongs in a free uptime monitor (UptimeRobot /
+    # Better Stack keyword check on /api/v1/health) — see 02-checklist.md.
+    - cron: '7 */3 * * *'
   workflow_dispatch: {}
 
 permissions:
