@@ -6296,5 +6296,18 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
+  },
+  "usbDelivery": {
+    "button": "下载到 USB",
+    "building": "正在为 USB 准备 {name}…",
+    "writing": "正在写入 USB 驱动器… {done}/{total}",
+    "doneFolder": "{name} 已写入 USB 驱动器。插入任意已配对的屏幕即可自动播放。",
+    "doneZip": "{name} 已下载。将该文件复制到 USB 驱动器，然后插入任意已配对的屏幕即可，无需解压。",
+    "failed": "无法准备 USB 副本：{message}",
+    "dismiss": "关闭",
+    "destinationTitle": "USB 驱动器",
+    "destinationBody": "同时将此播放列表下载到 USB 驱动器，供没有网络的屏幕使用。将驱动器插入已配对的屏幕，它会自动播放。",
+    "destinationOnlyHint": "未选择屏幕：播放列表已保存，仅下载用于 USB。",
+    "settingsMoved": "USB 已无需任何设置。打开播放列表并选择\"下载到 USB\"。"
   }
 }

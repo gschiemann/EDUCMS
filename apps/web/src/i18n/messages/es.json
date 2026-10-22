@@ -6296,5 +6296,18 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "Esa pantalla no está en esta ventana.",
       "SUPPORT_ACCESS_REQUIRED": "El soporte de VenueOS no tiene acceso a una de estas organizaciones."
     }
+  },
+  "usbDelivery": {
+    "button": "Descargar a USB",
+    "building": "Preparando {name} para USB…",
+    "writing": "Escribiendo en la unidad USB… {done}/{total}",
+    "doneFolder": "{name} está en la unidad USB. Conéctela a cualquier pantalla vinculada y empezará a reproducirse.",
+    "doneZip": "{name} se descargó. Copie el archivo a una unidad USB y conéctela a cualquier pantalla vinculada; no hace falta descomprimirlo.",
+    "failed": "No se pudo preparar la copia USB: {message}",
+    "dismiss": "Cerrar",
+    "destinationTitle": "Unidad USB",
+    "destinationBody": "Descargue también esta lista para una unidad USB, para pantallas sin internet. Conecte la unidad a una pantalla vinculada y se reproducirá sola.",
+    "destinationOnlyHint": "No eligió pantallas: la lista se guarda y se descarga solo para USB.",
+    "settingsMoved": "USB ya no tiene ajustes. Abra una lista y elija Descargar a USB."
   }
 }

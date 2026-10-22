@@ -6296,5 +6296,18 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "That screen isn't in this window.",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS support doesn't have access to one of these organizations."
     }
+  },
+  "usbDelivery": {
+    "button": "Download to USB",
+    "building": "Preparing {name} for USB…",
+    "writing": "Writing to the USB drive… {done}/{total}",
+    "doneFolder": "{name} is on the USB drive. Plug it into any paired screen and it starts playing.",
+    "doneZip": "{name} downloaded. Copy the file onto a USB drive and plug it into any paired screen — no unzipping needed.",
+    "failed": "Couldn't prepare the USB copy: {message}",
+    "dismiss": "Dismiss",
+    "destinationTitle": "USB drive",
+    "destinationBody": "Also download this playlist for a USB drive — for screens without internet. Plug the drive into a paired screen and it plays by itself.",
+    "destinationOnlyHint": "No screens picked: the playlist is saved and downloaded for USB only.",
+    "settingsMoved": "USB has no settings any more. Open a playlist and choose Download to USB."
   }
 }
