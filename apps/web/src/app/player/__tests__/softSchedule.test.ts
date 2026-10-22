@@ -283,6 +283,36 @@ describe('SoftScheduleRunner', () => {
     expect(calls).toEqual([true, false]);
   });
 
+  it('EMERGENCY (1.1.51): an OFF already applied BEFORE the alert is re-applied after all-clear, not read as steady', () => {
+    let emergency = false;
+    const calls: boolean[] = [];
+    const sink = { set: (on: boolean) => calls.push(on), emergencyDisplayed: () => emergency };
+    const r = new SoftScheduleRunner(sink);
+    r.install(daytime, NIGHT); // 23:00 → applied OFF before any alert
+    expect(calls).toEqual([false]);
+    // The alert paints: the page tears the overlay down itself and tells the runner.
+    emergency = true;
+    r.alertTookOverlayDown();
+    expect(r.applied).toBeNull();
+    // While the alert is up the OFF is deferred, never drawn over the alert.
+    expect(r.tick(NIGHT + SOFT_SCHEDULE_TICK_MS)).toEqual({ status: 'deferred' });
+    expect(calls).toEqual([false]);
+    // All-clear: the very next tick puts the screen back to OFF.
+    emergency = false;
+    expect(r.tick(NIGHT + 2 * SOFT_SCHEDULE_TICK_MS)).toEqual({ status: 'applied', on: false });
+    expect(calls).toEqual([false, false]);
+  });
+
+  it('alertTookOverlayDown leaves an applied ON alone (nothing was taken down)', () => {
+    const { sink, calls } = mkSink();
+    const r = new SoftScheduleRunner(sink);
+    r.install(daytime, NOON);
+    expect(calls).toEqual([true]);
+    r.alertTookOverlayDown();
+    expect(r.applied).toBe(true);
+    expect(r.tick(NOON + SOFT_SCHEDULE_TICK_MS)).toEqual({ status: 'steady', on: true });
+  });
+
   it('an ON edge is never deferred by an alert — waking is always safe', () => {
     const { sink, calls } = mkSink(true);
     const r = new SoftScheduleRunner(sink);

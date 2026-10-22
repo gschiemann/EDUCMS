@@ -4690,6 +4690,21 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // notice is not a blank, but it is contrast taken away from the one
       // thing on that screen that matters.
       applySoftDim(0);
+      // 1.1.51 — tell the schedule runner its OFF was taken down, so the
+      // first tick after the all-clear puts a soft-scheduled-OFF screen back
+      // to OFF (it used to read `steady` until the next morning's boundary).
+      softScheduleRef.current?.alertTookOverlayDown();
+      return;
+    }
+    // The alert ended: re-evaluate the level now rather than at the next
+    // 30 s tick (an OFF deferred by rule 5, or one taken down above).
+    try {
+      const r = softScheduleRef.current?.tick(Date.now());
+      if (r && r.status === 'applied') {
+        console.log(`[display] soft schedule after all-clear → ${r.on ? 'WAKE' : 'BLANK'} (overlay ${r.on ? 'OFF' : 'ON'})`);
+      }
+    } catch (e) {
+      console.warn('[display] soft schedule re-evaluation after all-clear failed:', (e as Error)?.message);
     }
   }, [activeEmergency, pushedEmergencyMessage, polledEmergencyHeld, applySoftBlank, applySoftDim]);
 

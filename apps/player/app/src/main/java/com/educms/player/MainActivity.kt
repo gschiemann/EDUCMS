@@ -1408,7 +1408,17 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 if (isDestroyed || isFinishing || !::webView.isInitialized) return@runOnUiThread
                 if (face != DisplayEmergency.PRIMARY_FACE) {
-                    PlayerLogger.w("MainActivity", "native alert watch asked to reload face $face — only the primary is reloaded here")
+                    // 1.1.51 — a back face has its own page host: reload THAT
+                    // pane (the same mark-stop-load sequence, inside
+                    // FacePlayerHost.reload). A face no host serves is logged,
+                    // never guessed at.
+                    val host = faceHosts?.hostFor(face)
+                    if (host == null) {
+                        PlayerLogger.w("MainActivity", "native alert watch asked to reload face $face, which no face host serves")
+                    } else {
+                        PlayerLogger.e("MainActivity", "reloading face $face's player page for the native alert watch — $why")
+                        host.reload("native alert watch: $why")
+                    }
                     return@runOnUiThread
                 }
                 if (managerGateShown) {
@@ -1426,7 +1436,8 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun pageLoadStartedAtMs(face: Int): Long =
-            if (face == DisplayEmergency.PRIMARY_FACE) lastLoadStartedAtMs else 0L
+            if (face == DisplayEmergency.PRIMARY_FACE) lastLoadStartedAtMs
+            else runCatching { faceHosts?.hostFor(face)?.loadStartedAtMs() }.getOrNull() ?: 0L
     }
 
     @SuppressLint("SetJavaScriptEnabled")

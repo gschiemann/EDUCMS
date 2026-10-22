@@ -538,6 +538,13 @@ class FacePlayerHost(
         Pair(0, 0)
     }
 
+    /**
+     * `elapsedRealtime` of this face's last navigation start, 0 before the
+     * first (1.1.51 — the native alert watch's per-face reload grace reads it,
+     * as MainActivity's `lastLoadStartedAtMs` serves the primary).
+     */
+    fun loadStartedAtMs(): Long = lastLoadStartedAtMs
+
     /** Navigate this face. Safe to call from any thread. */
     fun load(reason: String) {
         if (destroyed) return
