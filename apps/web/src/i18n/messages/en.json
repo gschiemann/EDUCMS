@@ -2294,7 +2294,14 @@
       "syncLocked": "In sync with its group (±{ms} ms).",
       "syncDiverged": "This screen is playing different content from its group, so it can't stay in sync.",
       "syncLocking": "Getting in sync with its group — this takes a few seconds.",
-      "trustRequestedAnnounce": "Restore requested."
+      "trustRequestedAnnounce": "Restore requested.",
+      "technicalDetails": "Technical details",
+      "technicalDetailsHint": "For support: device facts, video measurements and connection.",
+      "lastVideoSample": "Last web video sample",
+      "nativePlayback": "Native playback",
+      "videoSampleOpenMedia": "Open this file in the Media Library — its “Playback on screens” card says whether the file itself is the reason.",
+      "liveLinkDown": "Live connection: down since {ago} ago. Changes still arrive on the screen’s own check-in, every few seconds.",
+      "liveLinkDownNoAge": "Live connection: down. Changes still arrive on the screen’s own check-in, every few seconds."
     },
     "ops": {
       "noGroupAddress": "No group address",
@@ -2734,7 +2741,8 @@
       "excludedHandoff": "the video was just starting on the screen",
       "excludedPlayerUpdate": "the player app had just been updated",
       "excludedFallbackEngine": "the backup player was covering for the screen’s built-in video engine",
-      "excludedGeneric": "the screen was just getting ready"
+      "excludedGeneric": "the screen was just getting ready",
+      "filesTitle": "Video measurements"
     },
     "interruptions": {
       "title": "Interruptions, last {hours} h",

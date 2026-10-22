@@ -2294,7 +2294,14 @@
       "syncLocked": "已与其分组同步（±{ms} 毫秒）。",
       "syncDiverged": "此屏幕播放的内容与其分组不同，因此无法保持同步。",
       "syncLocking": "正在与其分组同步，需要几秒钟。",
-      "trustRequestedAnnounce": "已请求恢复。"
+      "trustRequestedAnnounce": "已请求恢复。",
+      "technicalDetails": "技术详情",
+      "technicalDetailsHint": "供技术支持参考：设备信息、视频测量和连接状态。",
+      "lastVideoSample": "最近一次网页视频采样",
+      "nativePlayback": "原生播放",
+      "videoSampleOpenMedia": "在媒体库中打开此文件——其“屏幕播放”卡片会说明问题是否出在文件本身。",
+      "liveLinkDown": "实时连接：已断开 {ago}。屏幕每隔几秒自行签到时，更改仍会送达。",
+      "liveLinkDownNoAge": "实时连接：已断开。屏幕每隔几秒自行签到时，更改仍会送达。"
     },
     "ops": {
       "noGroupAddress": "无分组地址",
@@ -2734,7 +2741,8 @@
       "excludedHandoff": "视频刚开始在屏幕上播放",
       "excludedPlayerUpdate": "播放器应用刚刚更新",
       "excludedFallbackEngine": "备用播放器正在代替屏幕内置的视频引擎",
-      "excludedGeneric": "屏幕刚刚在准备中"
+      "excludedGeneric": "屏幕刚刚在准备中",
+      "filesTitle": "视频测量"
     },
     "interruptions": {
       "title": "最近 {hours} 小时的中断",
