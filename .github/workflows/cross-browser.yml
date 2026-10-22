@@ -130,7 +130,12 @@ jobs:
         # is chromium-only) after this step was authored webkit-only —
         # all masked behind the earlier holiday-bridge failure, so the
         # missing binary never surfaced until the chain ran this deep.
-        run: pnpm --filter web exec playwright install --with-deps webkit chromium
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm --filter web exec playwright install --with-deps webkit chromium || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps webkit chromium; }
 
       # The k12-menu stress checks apply the REAL brand fonts the boards
       # ship (Georgia / Verdana / Courier New) and then assert the
@@ -234,7 +239,12 @@ jobs:
           key: ${{ runner.os }}-playwright-cw-${{ hashFiles('apps/web/package.json') }}
 
       - name: Install Playwright Chromium + WebKit (with system deps)
-        run: pnpm --filter web exec playwright install --with-deps chromium webkit
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm --filter web exec playwright install --with-deps chromium webkit || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps chromium webkit; }
 
       # The widget-render spec mocks EVERY API call (fake host api.invalid
       # via playwright.config.ts webServer env) and boots `next dev` itself

@@ -261,7 +261,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser (${{ matrix.browser }})
-        run: pnpm exec playwright install ${{ matrix.browser }} --with-deps
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm exec playwright install ${{ matrix.browser }} --with-deps || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm exec playwright install ${{ matrix.browser }} --with-deps; }
 
       - name: Build workspace packages (specs import src that imports @cms/*)
         run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build

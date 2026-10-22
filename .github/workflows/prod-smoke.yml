@@ -97,7 +97,12 @@ jobs:
         # Chromium only — same engine as Chrome, the dominant customer
         # browser. holiday-bridge.cjs already covers WebKit; this guards
         # the broader app flow.
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm --filter web exec playwright install --with-deps chromium || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps chromium; }
 
       - name: Wait for THIS commit to be deployed (only if it deploys at all)
         # WHY (2026-09-08): this job runs on `push` and immediately hit the live
@@ -249,7 +254,12 @@ jobs:
           key: ${{ runner.os }}-playwright-webkit-${{ hashFiles('apps/web/package.json') }}
 
       - name: Install Playwright WebKit (with system deps)
-        run: pnpm --filter web exec playwright install --with-deps webkit
+        # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
+        # corefonts package) hung for 15-30 min, canceling every WebKit job before a
+        # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        run: |
+          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          timeout 360 pnpm --filter web exec playwright install --with-deps webkit || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps webkit; }
 
       - name: Wait for the pushed web artifact
         if: github.event_name == 'push'
