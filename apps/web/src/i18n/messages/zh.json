@@ -6216,6 +6216,7 @@
     "destinationTitle": "USB 驱动器",
     "destinationBody": "同时将此播放列表下载到 USB 驱动器，供没有网络的屏幕使用。将驱动器插入已配对的屏幕，它会自动播放。",
     "destinationOnlyHint": "未选择屏幕：播放列表已保存，仅下载用于 USB。",
-    "settingsMoved": "USB 已无需任何设置。打开播放列表并选择\"下载到 USB\"。"
+    "settingsMoved": "USB 已无需任何设置。打开播放列表并选择\"下载到 USB\"。",
+    "createForUsb": "创建并下载到 USB"
   }
 }

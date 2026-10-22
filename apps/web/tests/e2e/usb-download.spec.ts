@@ -96,20 +96,20 @@ test.describe('USB — download a playlist for a stick, no settings', () => {
     const wizard = page.getByRole('dialog', { name: 'Create new playlist' });
     await wizard.getByPlaceholder(/e\.g\.|name/i).fill('Gym Offline');
     await wizard.getByText('Media Playlist', { exact: true }).click();
-    await wizard.getByRole('button', { name: /^Next/ }).click();
+    await wizard.getByRole('button', { name: /Next$/ }).click();
     await wizard.getByText('Welcome.png', { exact: true }).click();
-    await wizard.getByRole('button', { name: /^Next/ }).click();
+    await wizard.getByRole('button', { name: /Next$/ }).click();
 
     const usb = wizard.getByTestId('wizard-usb-destination');
     await expect(usb).toContainText('USB drive');
     await usb.getByRole('switch', { name: 'USB drive' }).click();
     await expect(usb.getByRole('switch', { name: 'USB drive' })).toHaveAttribute('aria-checked', 'true');
     await expect(usb).toContainText('downloaded for USB only');
-    await wizard.getByRole('button', { name: /^Next/ }).click();
-    await wizard.getByRole('button', { name: /^Next/ }).click();
+    await wizard.getByRole('button', { name: /Next$/ }).click();
+    await wizard.getByRole('button', { name: /Next$/ }).click();
 
     const download = page.waitForEvent('download');
-    await wizard.getByRole('button', { name: /^Create/ }).click();
+    await wizard.getByRole('button', { name: 'Create & download for USB' }).click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/^VenueOS-USB-Gym_Offline-.*\.zip$/);
     await expect(page.getByRole('dialog').filter({ hasText: 'Copy the file onto a USB drive' })).toBeVisible();

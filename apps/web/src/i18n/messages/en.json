@@ -6216,6 +6216,7 @@
     "destinationTitle": "USB drive",
     "destinationBody": "Also download this playlist for a USB drive — for screens without internet. Plug the drive into a paired screen and it plays by itself.",
     "destinationOnlyHint": "No screens picked: the playlist is saved and downloaded for USB only.",
-    "settingsMoved": "USB has no settings any more. Open a playlist and choose Download to USB."
+    "settingsMoved": "USB has no settings any more. Open a playlist and choose Download to USB.",
+    "createForUsb": "Create & download for USB"
   }
 }

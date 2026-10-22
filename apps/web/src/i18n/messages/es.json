@@ -6216,6 +6216,7 @@
     "destinationTitle": "Unidad USB",
     "destinationBody": "Descargue también esta lista para una unidad USB, para pantallas sin internet. Conecte la unidad a una pantalla vinculada y se reproducirá sola.",
     "destinationOnlyHint": "No eligió pantallas: la lista se guarda y se descarga solo para USB.",
-    "settingsMoved": "USB ya no tiene ajustes. Abra una lista y elija Descargar a USB."
+    "settingsMoved": "USB ya no tiene ajustes. Abra una lista y elija Descargar a USB.",
+    "createForUsb": "Crear y descargar para USB"
   }
 }

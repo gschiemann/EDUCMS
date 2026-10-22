@@ -1819,7 +1819,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                     {fleetPublish ? 'Create & Publish' : willSubmitForReview
                       ? 'Create & Send for Review'
                       : blastRadius.screenCount === 0
-                        ? "Create (won't display yet)"
+                        ? (usbDestination && canUsb ? tUsb('createForUsb') : "Create (won't display yet)")
                         : 'Create Playlist'}
                   </>
                 )}
