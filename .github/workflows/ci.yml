@@ -752,7 +752,7 @@ jobs:
         # corefonts package) hung for 15-30 min, canceling every WebKit job before a
         # test ran. Use the main mirror and give each attempt a time limit + one retry.
         run: |
-          sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do [ -f "$f" ] && sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" "$f"; done; true
           timeout 360 pnpm exec playwright install ${{ matrix.browser }} --with-deps || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm exec playwright install ${{ matrix.browser }} --with-deps; }
 
       - name: Build workspace packages (specs import src that imports @cms/*)
