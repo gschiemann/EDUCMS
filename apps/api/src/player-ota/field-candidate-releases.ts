@@ -236,4 +236,15 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2479869,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39624248249',
   },
+  // Signed CI 39699920908, source df08018c: emergency paint proof/recovery
+  // plus the existing scoped composition experiment. Production certificate,
+  // non-debuggable universal APK and immutable private mirror verified.
+  // Hardware qualification and controlled emergency drills remain pending.
+  '1.1.50-field.1': {
+    versionName: '1.1.50-field.1',
+    versionCode: 10150,
+    sha256: 'a8aa414550d9bd243a4228aefa2f18dd5ff44a1d045a647a9b680d32abe5a169', // gitleaks:allow -- verified public APK integrity digest
+    size: 2496253,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39699920908',
+  },
 };
