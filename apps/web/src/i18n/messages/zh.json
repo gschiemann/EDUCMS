@@ -6296,5 +6296,179 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
+  },
+  "publicSite": {
+    "footer": {
+      "tagline": "一个平台搞定数字标牌、自助终端、实时记分牌和紧急警报 —— 覆盖您运营的每个场所。",
+      "product": "产品",
+      "overview": "概览",
+      "industries": "行业",
+      "templates": "模板",
+      "pricing": "价格",
+      "resources": "资源",
+      "helpCenter": "帮助中心",
+      "gettingStarted": "快速入门",
+      "emergencySystem": "紧急系统",
+      "ssoSetup": "SSO 设置",
+      "apiWebhooks": "API 与 Webhook",
+      "systemStatus": "系统状态",
+      "trust": "安全",
+      "itSecurity": "安全概览",
+      "networkRequirements": "网络要求",
+      "reportVulnerability": "报告漏洞",
+      "legal": "法律",
+      "privacy": "隐私政策",
+      "terms": "服务条款",
+      "dpa": "数据处理附录",
+      "subprocessors": "次级处理方",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS —— 一个平台，服务每个场所。",
+      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报"
+    },
+    "help": {
+      "back": "返回帮助中心",
+      "updated": "更新于 {date}",
+      "moreIn": "更多{category}文章",
+      "categories": {
+        "gettingStarted": {
+          "name": "快速入门",
+          "description": "设置工作区，点亮第一块屏幕。"
+        },
+        "templates": {
+          "name": "模板",
+          "description": "设计版式、导入现有设计，并统一品牌。"
+        },
+        "aiStudio": {
+          "name": "AI 工作室",
+          "description": "一句话生成画面，用日常语言修改。"
+        },
+        "screens": {
+          "name": "屏幕",
+          "description": "配对、分组和管理实体显示屏。"
+        },
+        "emergency": {
+          "name": "紧急系统",
+          "description": "封锁、天气和疏散警报 —— 以及各项保障。"
+        },
+        "sports": {
+          "name": "体育",
+          "description": "记分牌、环形广告屏、提示以及比赛日的现场运营。"
+        },
+        "integrations": {
+          "name": "集成",
+          "description": "收银系统菜单、实时价格和已连接的服务。"
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "连接 Google、Microsoft 或任何 OIDC 身份提供商。"
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "从学生信息系统自动同步员工和课表。"
+        },
+        "billing": {
+          "name": "账单",
+          "description": "发票、采购订单、升级和取消。"
+        },
+        "itSecurity": {
+          "name": "IT 与安全",
+          "description": "网络要求、登录、数据保护和安全审查。"
+        }
+      }
+    },
+    "security": {
+      "title": "报告安全漏洞",
+      "lead": "VenueOS 是关乎生命安全的软件：显示午餐菜单的同一块屏幕也会显示封锁警报。我们优先处理每一份安全报告，对遵守本政策的善意研究不会采取法律行动。",
+      "updated": "最后更新：{date}",
+      "howTitle": "如何报告",
+      "howBody": "请发送邮件至 <mail>security@venue-os.app</mail>。邮件是唯一的报告渠道。",
+      "includeTitle": "请包含以下内容",
+      "include1": "问题是什么，以及您认为它的影响。",
+      "include2": "复现步骤 —— 概念验证、请求与响应或一段短视频均可。",
+      "include3": "受影响的地址、接口或应用版本。",
+      "include4": "您是否访问、修改或保留了不属于您的数据。",
+      "expectTitle": "处理流程",
+      "stageCol": "阶段",
+      "commitmentCol": "我们的承诺",
+      "ackStage": "确认收到",
+      "ackTime": "3 个工作日内",
+      "assessStage": "初步评估和严重性定级",
+      "assessTime": "10 个工作日内",
+      "fixHighStage": "修复严重和高危问题",
+      "fixHighTime": "目标：定级后 30 天内",
+      "fixLowStage": "修复中危和低危问题",
+      "fixLowTime": "目标：定级后 90 天内",
+      "disclosureStage": "公开披露",
+      "disclosureTime": "与您协调，通常在修复发布之后",
+      "expectNote": "如果我们无法按期完成，会主动告知您，而不是沉默。除非报告者另有要求，我们会公开致谢。我们目前没有付费漏洞奖励计划。",
+      "scopeTitle": "范围之内",
+      "scope1": "venue-os.app 上的管理后台和网页播放器",
+      "scope2": "VenueOS API",
+      "scope3": "VenueOS Android 播放器应用",
+      "priorityTitle": "我们最关心的问题",
+      "priority1": "接管屏幕 —— 显示屏幕所有者未选择的内容。",
+      "priority2": "压制或伪造紧急警报。这是 VenueOS 最严重的一类问题。",
+      "priority3": "读取或修改其他组织的数据。",
+      "priority4": "从较低角色或未登录状态获得管理员能力。",
+      "priority5": "获取学生或员工信息。",
+      "outTitle": "范围之外",
+      "out1": "缺少安全响应头，但没有可演示的利用方式。",
+      "out2": "非登录、非破坏性接口的频率限制。",
+      "out3": "没有状态变更操作的页面上的点击劫持。",
+      "out4": "Self-XSS，或需要设备或浏览器已被攻陷的攻击。",
+      "out5": "针对我们员工或客户的社会工程。",
+      "out6": "依靠流量规模的拒绝服务攻击。",
+      "out7": "未经验证、无法复现影响的自动扫描结果。",
+      "out8": "我们所使用的第三方服务中的问题 —— 请报告给该服务商；如影响我们的客户，也请告诉我们。",
+      "rulesTitle": "测试规则",
+      "rule1": "使用您自己的试用账户和自己的数据 —— 绝不针对真实的学校或企业。",
+      "rule2": "不要访问、修改、删除或保留不属于您的数据。如果意外接触到他人数据，请立即停止并告诉我们您看到了什么。",
+      "rule3": "绝不在真实部署上触发紧急警报。请告诉我们方法，我们会在隔离账户中自行复现。",
+      "rule4": "禁止拒绝服务、压力测试或发送垃圾信息。",
+      "rule5": "禁止物理入侵和社会工程。",
+      "rule6": "点到为止：证明问题后立即停止 —— 不要横向移动、进一步提权或保持驻留。",
+      "harborTitle": "安全港",
+      "harborBody": "只要您善意地遵守本政策，我们会将您的研究视为已获授权，在该有限目的内放弃服务条款中原本禁止此类研究的限制，并且不会对您提起或支持任何法律行动。这不包括访问真实客户数据或触发真实紧急警报。不确定某项内容是否在范围内？请先发邮件至 <mail>security@venue-os.app</mail> 询问。",
+      "reviewsTitle": "安全审查与问卷",
+      "reviewsBody": "如需进行采购或学区安全审查，请发送邮件至 <mail>security@venue-os.app</mail>。我们的<overview>面向 IT 团队的安全概览</overview>和<network>网络要求</network>可以回答大多数初步问题，<dpa>数据处理附录</dpa>列出了全部次级处理方。",
+      "machineReadable": "本政策也以机器可读格式发布在 /.well-known/security.txt。"
+    },
+    "status": {
+      "title": "系统状态",
+      "subtitle": "VenueOS 平台的实时健康状况，直接从您的浏览器检查。每分钟自动刷新。",
+      "toneOk": "正常",
+      "toneDegraded": "降级",
+      "toneDown": "中断",
+      "toneUnknown": "检查中…",
+      "overallOk": "所有系统运行正常",
+      "overallDegraded": "部分降级 —— 服务仍在运行",
+      "overallDown": "服务中断",
+      "overallUnknown": "正在检查系统…",
+      "web": "网页管理后台",
+      "api": "API",
+      "database": "数据库",
+      "realtime": "实时推送",
+      "emergencyPath": "紧急警报链路",
+      "storage": "文件上传与存储",
+      "webOk": "您正在查看的就是它",
+      "checking": "检查中…",
+      "unknownApi": "未知 —— 无法连接 API",
+      "apiDown": "无法连接",
+      "apiOk": "正常处理请求",
+      "dbOk": "查询正常",
+      "dbDown": "查询无响应",
+      "realtimeOk": "即时推送已启用",
+      "realtimeDegraded": "轮询备用 —— 屏幕约每 10 秒检查一次变更",
+      "emergencyOk": "触发链路已验证",
+      "emergencyDown": "触发链路检查失败",
+      "storageOk": "上传正常",
+      "storageBackup": "通过备用通道运行",
+      "storageDown": "上传失败",
+      "lastChecked": "最后检查 {time}",
+      "apiBuild": "API 版本 {version}",
+      "firstCheck": "正在进行首次检查…",
+      "offlineNote": "屏幕断网时会继续播放已保存的内容，正在显示的紧急警报会一直保留到解除警报 —— 详见<help>紧急系统概览</help>。"
+    }
   }
 }

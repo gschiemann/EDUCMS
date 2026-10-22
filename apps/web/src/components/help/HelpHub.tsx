@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Search, ArrowRight, BookOpen, Mail, FileText, Sparkles, Printer } from 'lucide-react';
 import { HELP_CATEGORIES, type HelpArticle, type HelpCategory } from '@/content/help/types';
 import { searchArticles } from '@/content/help/search';
+import { useTranslations } from 'next-intl';
+import { HELP_CATEGORY_KEY, localizeArticle, useHelpLocale } from './localized-help';
 
 /**
  * Help hub — compact header + featured guide card + category grid +
@@ -19,6 +21,10 @@ import { searchArticles } from '@/content/help/search';
  */
 export function HelpHub({ articles }: { articles: HelpArticle[] }) {
   const [q, setQ] = useState('');
+  // Category labels follow the reader's language (2026-10-22); the rest of
+  // the hub chrome is still English-only, like the article corpus.
+  const t = useTranslations('publicSite.help');
+  const catName = (c: HelpCategory) => t(`categories.${HELP_CATEGORY_KEY[c]}.name`);
 
   // Word-wise search over titles, headings, excerpts and article bodies, with
   // stemming + a few synonyms ("pairing"/"pair", "test"/"drill", "api key").
@@ -134,9 +140,11 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-[family-name:var(--font-fredoka)] text-base font-semibold text-slate-900 group-hover:text-indigo-700 transition">
-                        {c.name}
+                        {catName(c.name)}
                       </h3>
-                      <p className="mt-0.5 text-xs text-slate-600 leading-relaxed line-clamp-2">{c.description}</p>
+                      <p className="mt-0.5 text-xs text-slate-600 leading-relaxed line-clamp-2">
+                        {t(`categories.${HELP_CATEGORY_KEY[c.name]}.description`)}
+                      </p>
                       <p className="mt-2 text-[11px] font-semibold text-indigo-600 inline-flex items-center gap-1">
                         {count} {count === 1 ? 'article' : 'articles'}
                         <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
@@ -174,17 +182,17 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
           ) : q ? (
             <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {filtered.map((a) => (
-                <ArticleCard key={a.slug} a={a} />
+                <ArticleCard key={a.slug} a={a} categoryLabel={catName(a.category)} />
               ))}
             </ul>
           ) : (
             <div className="space-y-8">
               {Array.from(byCategory.entries()).map(([cat, list]) => (
                 <div key={cat}>
-                  <h3 className="text-[10px] font-bold tracking-[0.14em] uppercase text-slate-500 mb-2.5">{cat}</h3>
+                  <h3 className="text-[10px] font-bold tracking-[0.14em] uppercase text-slate-500 mb-2.5">{catName(cat)}</h3>
                   <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {list.map((a) => (
-                      <ArticleCard key={a.slug} a={a} />
+                      <ArticleCard key={a.slug} a={a} categoryLabel={catName(a.category)} />
                     ))}
                   </ul>
                 </div>
@@ -221,16 +229,17 @@ export function HelpHub({ articles }: { articles: HelpArticle[] }) {
   );
 }
 
-function ArticleCard({ a }: { a: HelpArticle }) {
+function ArticleCard({ a, categoryLabel }: { a: HelpArticle; categoryLabel: string }) {
+  const text = localizeArticle(a, useHelpLocale());
   return (
     <li>
       <Link
         href={`/help/${a.slug}`}
         className="group block rounded-xl bg-white border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-md transition-all h-full"
       >
-        <p className="text-[10px] font-bold tracking-[0.12em] uppercase text-indigo-600">{a.category}</p>
-        <h4 className="mt-1 font-semibold text-slate-900 group-hover:text-indigo-700 transition text-sm">{a.title}</h4>
-        <p className="mt-1 text-xs text-slate-600 line-clamp-2 leading-relaxed">{a.excerpt}</p>
+        <p className="text-[10px] font-bold tracking-[0.12em] uppercase text-indigo-600">{categoryLabel}</p>
+        <h4 className="mt-1 font-semibold text-slate-900 group-hover:text-indigo-700 transition text-sm">{text.title}</h4>
+        <p className="mt-1 text-xs text-slate-600 line-clamp-2 leading-relaxed">{text.excerpt}</p>
       </Link>
     </li>
   );

@@ -52,7 +52,7 @@ export default function PrivacyPage() {
         <li>Screen names, status, player version, display and device details, and the network address a screen connects from.</li>
         <li>Playback records (what played on which screen, and when) used for proof-of-play reports.</li>
         <li>Audit records of privileged actions — for example who sent or cleared an emergency alert, who changed a schedule, or which API key made a change.</li>
-        <li>Diagnostic information a user chooses to include with a problem report.</li>
+        <li>Diagnostic information a user chooses to include with a problem report, such as a screenshot of the page and recent error messages. Screenshots are stored privately and can only be opened through links that expire after 30 minutes.</li>
       </ul>
       <h3>Billing</h3>
       <p>
@@ -106,20 +106,22 @@ export default function PrivacyPage() {
         <li><strong>Playback records</strong> — detailed records about 14 days; hourly totals about 13 months.</li>
         <li><strong>Audit records</strong> — kept for the life of the account and cannot be edited or deleted through the Service. They may be kept after the account ends where needed for security, safety or legal reasons.</li>
         <li><strong>Backups</strong> — nightly, encrypted, kept 30 days on a rolling basis.</li>
+        <li><strong>Exports</strong> — administrators can download uploaded files and export the audit log and proof-of-play reports as CSV at any time; a complete export is provided on written request.</li>
         <li><strong>After an account ends</strong> — the Customer can export its data for at least 90 days; after that, or sooner on written request, we delete Customer data. Backup copies expire within 30 days of deletion.</li>
       </ul>
 
       <h2>6. Security</h2>
       <ul>
         <li>Encryption in transit (TLS) for all connections, and encryption at rest by our hosting providers.</li>
-        <li>Passwords stored only as salted Argon2 hashes; passkeys, authenticator apps and emailed codes for multi-factor sign-in.</li>
+        <li>Passwords stored only as salted Argon2 hashes; passkeys, authenticator apps and emailed codes for multi-factor sign-in, which each organization can require for its administrators and for everyone permitted to send emergency alerts.</li>
         <li>Role-based access control on every API request, with organization-level data separation.</li>
         <li>Emergency alert messages are cryptographically signed before they are delivered to screens.</li>
         <li>Rate limiting on sign-in and other sensitive actions; audit records for privileged actions.</li>
       </ul>
       <p>
         Please report suspected vulnerabilities to{' '}
-        <a href={`mailto:${LEGAL_CONTACTS.security}`}>{LEGAL_CONTACTS.security}</a>.
+        <a href={`mailto:${LEGAL_CONTACTS.security}`}>{LEGAL_CONTACTS.security}</a> — see{' '}
+        <Link href="/security">how to report a vulnerability</Link>.
       </p>
 
       <h2>7. Educational institutions and student data</h2>

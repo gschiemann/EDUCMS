@@ -6296,5 +6296,179 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "Esa pantalla no está en esta ventana.",
       "SUPPORT_ACCESS_REQUIRED": "El soporte de VenueOS no tiene acceso a una de estas organizaciones."
     }
+  },
+  "publicSite": {
+    "footer": {
+      "tagline": "Una sola plataforma para señalización digital, quioscos, marcadores en vivo y alertas de emergencia — en todos los lugares que administra.",
+      "product": "Producto",
+      "overview": "Inicio",
+      "industries": "Industrias",
+      "templates": "Plantillas",
+      "pricing": "Precios",
+      "resources": "Recursos",
+      "helpCenter": "Centro de ayuda",
+      "gettingStarted": "Primeros pasos",
+      "emergencySystem": "Sistema de emergencia",
+      "ssoSetup": "Configurar SSO",
+      "apiWebhooks": "API y webhooks",
+      "systemStatus": "Estado del sistema",
+      "trust": "Seguridad",
+      "itSecurity": "Resumen de seguridad",
+      "networkRequirements": "Requisitos de red",
+      "reportVulnerability": "Reportar una vulnerabilidad",
+      "legal": "Legal",
+      "privacy": "Política de privacidad",
+      "terms": "Términos del servicio",
+      "dpa": "Adenda de procesamiento de datos",
+      "subprocessors": "Subencargados",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS — una sola plataforma para cada lugar.",
+      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia"
+    },
+    "help": {
+      "back": "Volver al centro de ayuda",
+      "updated": "Actualizado {date}",
+      "moreIn": "Más en {category}",
+      "categories": {
+        "gettingStarted": {
+          "name": "Primeros pasos",
+          "description": "Configure su espacio de trabajo y ponga en marcha su primera pantalla."
+        },
+        "templates": {
+          "name": "Plantillas",
+          "description": "Diseñe pantallas, importe diseños existentes y aplique su marca a todo."
+        },
+        "aiStudio": {
+          "name": "Estudio de IA",
+          "description": "Genere pantallas a partir de una frase y edítelas en lenguaje sencillo."
+        },
+        "screens": {
+          "name": "Pantallas",
+          "description": "Vincule, agrupe y administre pantallas físicas."
+        },
+        "emergency": {
+          "name": "Sistema de emergencia",
+          "description": "Alertas de confinamiento, clima y evacuación — y sus salvaguardas."
+        },
+        "sports": {
+          "name": "Deportes",
+          "description": "Marcadores, pantallas perimetrales, señales y la operación de un partido en vivo."
+        },
+        "integrations": {
+          "name": "Integraciones",
+          "description": "Menús de punto de venta, precios en vivo y servicios conectados."
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "Conecte Google, Microsoft o cualquier proveedor de identidad OIDC."
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "Sincronice automáticamente personal y horarios desde su SIS."
+        },
+        "billing": {
+          "name": "Facturación",
+          "description": "Facturas, órdenes de compra, cambios de plan y cancelaciones."
+        },
+        "itSecurity": {
+          "name": "TI y seguridad",
+          "description": "Requisitos de red, inicio de sesión, protección de datos y revisiones de seguridad."
+        }
+      }
+    },
+    "security": {
+      "title": "Reportar una vulnerabilidad de seguridad",
+      "lead": "VenueOS es software de seguridad de vidas: las mismas pantallas que muestran el menú del almuerzo pueden mostrar una alerta de confinamiento. Tratamos cada reporte de seguridad como prioridad y no emprenderemos acciones legales contra investigaciones de buena fe que sigan esta política.",
+      "updated": "Última actualización: {date}",
+      "howTitle": "Cómo reportar",
+      "howBody": "Escriba a <mail>security@venue-os.app</mail>. El correo es el único canal para reportes.",
+      "includeTitle": "Qué incluir",
+      "include1": "Cuál es el problema y qué impacto cree que tiene.",
+      "include2": "Pasos para reproducirlo: una prueba de concepto, una solicitud y su respuesta, o un video corto sirven.",
+      "include3": "La dirección, el endpoint o la versión de la app afectados.",
+      "include4": "Si accedió, cambió o guardó datos que no son suyos.",
+      "expectTitle": "Qué puede esperar",
+      "stageCol": "Etapa",
+      "commitmentCol": "Nuestro compromiso",
+      "ackStage": "Acuse de recibo",
+      "ackTime": "En un máximo de 3 días hábiles",
+      "assessStage": "Evaluación inicial y gravedad",
+      "assessTime": "En un máximo de 10 días hábiles",
+      "fixHighStage": "Corrección de gravedad crítica y alta",
+      "fixHighTime": "Objetivo: 30 días desde la clasificación",
+      "fixLowStage": "Corrección de gravedad media y baja",
+      "fixLowTime": "Objetivo: 90 días desde la clasificación",
+      "disclosureStage": "Divulgación pública",
+      "disclosureTime": "Coordinada con usted, normalmente después de publicar la corrección",
+      "expectNote": "Si no vamos a cumplir alguno de estos plazos, se lo diremos en lugar de quedarnos callados. Damos crédito a quien reporta, salvo que pida lo contrario. No tenemos un programa de recompensas pagadas.",
+      "scopeTitle": "Dentro del alcance",
+      "scope1": "El panel y el reproductor web en venue-os.app",
+      "scope2": "La API de VenueOS",
+      "scope3": "Las apps de reproducción de VenueOS para Android",
+      "priorityTitle": "Lo que más nos importa",
+      "priority1": "Tomar el control de una pantalla: mostrar contenido que su dueño no eligió.",
+      "priority2": "Suprimir o falsificar una alerta de emergencia. Es el tipo de problema más grave para VenueOS.",
+      "priority3": "Leer o cambiar datos de otra organización.",
+      "priority4": "Llegar a una función de administrador desde un rol menor o sin cuenta.",
+      "priority5": "Llegar a información de estudiantes o del personal.",
+      "outTitle": "Fuera del alcance",
+      "out1": "Encabezados de seguridad faltantes sin un ataque demostrado.",
+      "out2": "Límites de frecuencia en endpoints que no son de inicio de sesión ni destructivos.",
+      "out3": "Clickjacking en páginas sin acciones que cambien algo.",
+      "out4": "Self-XSS, o ataques que requieren un dispositivo o navegador ya comprometido.",
+      "out5": "Ingeniería social contra nuestro personal o clientes.",
+      "out6": "Denegación de servicio por volumen de tráfico.",
+      "out7": "Resultados de escáneres automáticos sin un impacto verificado y reproducible.",
+      "out8": "Problemas en servicios de terceros que usamos: repórtelos a ese proveedor y avísenos también si afectan a nuestros clientes.",
+      "rulesTitle": "Reglas de participación",
+      "rule1": "Use su propia cuenta de prueba y sus propios datos — nunca una escuela o empresa real.",
+      "rule2": "No acceda, cambie, borre ni guarde datos que no son suyos. Si llega por accidente a datos de otra persona, deténgase y díganos qué vio.",
+      "rule3": "Nunca active una alerta de emergencia en una instalación real. Díganos cómo y la reproduciremos nosotros en una cuenta aislada.",
+      "rule4": "Nada de denegación de servicio, pruebas de estrés ni spam.",
+      "rule5": "Nada de intrusión física ni ingeniería social.",
+      "rule6": "Deténgase en la prueba: demuestre el problema y pare — no pivote, no escale más ni se quede dentro.",
+      "harborTitle": "Puerto seguro",
+      "harborBody": "Si hace un esfuerzo de buena fe por seguir esta política, consideraremos autorizada su investigación, renunciaremos a cualquier restricción de los Términos del servicio que la prohíba para ese fin limitado y no emprenderemos ni apoyaremos acciones legales en su contra. Esto no cubre acceder a datos reales de clientes ni activar alertas de emergencia reales. ¿No sabe si algo está dentro del alcance? Pregunte primero en <mail>security@venue-os.app</mail>.",
+      "reviewsTitle": "Revisiones y cuestionarios de seguridad",
+      "reviewsBody": "Para una revisión de seguridad de compras o del distrito, escriba a <mail>security@venue-os.app</mail>. Nuestro <overview>resumen de seguridad para equipos de TI</overview> y los <network>requisitos de red</network> responden la mayoría de las primeras preguntas, y la <dpa>Adenda de procesamiento de datos</dpa> enumera todos los subencargados.",
+      "machineReadable": "Esta política también se publica en formato legible por máquinas en /.well-known/security.txt."
+    },
+    "status": {
+      "title": "Estado del sistema",
+      "subtitle": "Estado en vivo de la plataforma VenueOS, comprobado directamente desde su navegador. Se actualiza cada minuto.",
+      "toneOk": "Operativo",
+      "toneDegraded": "Degradado",
+      "toneDown": "Interrupción",
+      "toneUnknown": "Comprobando…",
+      "overallOk": "Todos los sistemas operativos",
+      "overallDegraded": "Degradación parcial — el servicio continúa",
+      "overallDown": "Interrupción del servicio",
+      "overallUnknown": "Comprobando los sistemas…",
+      "web": "Panel web",
+      "api": "API",
+      "database": "Base de datos",
+      "realtime": "Entrega en tiempo real",
+      "emergencyPath": "Ruta de alertas de emergencia",
+      "storage": "Subida y almacenamiento de archivos",
+      "webOk": "Lo está viendo ahora",
+      "checking": "Comprobando…",
+      "unknownApi": "Desconocido — no se puede llegar a la API",
+      "apiDown": "Inaccesible",
+      "apiOk": "Atendiendo solicitudes",
+      "dbOk": "Consultas en buen estado",
+      "dbDown": "No responde a consultas",
+      "realtimeOk": "Envío instantáneo activo",
+      "realtimeDegraded": "Respaldo por consultas — las pantallas buscan cambios cada 10 segundos aproximadamente",
+      "emergencyOk": "Cadena de activación verificada",
+      "emergencyDown": "Falla la comprobación de la cadena de activación",
+      "storageOk": "Subidas en buen estado",
+      "storageBackup": "Funcionando por la vía de respaldo",
+      "storageDown": "Las subidas fallan",
+      "lastChecked": "Última comprobación {time}",
+      "apiBuild": "Versión de la API {version}",
+      "firstCheck": "Haciendo la primera comprobación…",
+      "offlineNote": "Si una pantalla pierde la conexión, sigue reproduciendo su contenido guardado, y una alerta de emergencia que ya está en pantalla se mantiene hasta el fin de alerta — vea el <help>resumen del sistema de emergencia</help>."
+    }
   }
 }

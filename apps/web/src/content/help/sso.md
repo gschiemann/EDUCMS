@@ -1,7 +1,7 @@
 ---
 title: Setting up single sign-on (SSO)
 category: SSO
-updated: 2026-07-21
+updated: 2026-10-22
 excerpt: Let staff sign in with the account they already use — Google Workspace, Microsoft Entra ID, Okta, or any OIDC identity provider.
 ---
 
@@ -27,7 +27,7 @@ VenueOS connects to any **OpenID Connect (OIDC)** identity provider. That covers
 
 ## How staff sign in
 
-On the login page, staff click **Sign in with SSO** and enter your organization's short name once. They land in your IdP's familiar sign-in screen; after that it's one click.
+On the login page, staff type their work email. When it belongs to a domain your SSO is limited to, the page offers **Continue with single sign-on** and sends them to your IdP's familiar sign-in screen. They can also choose **Continue with SSO** and enter your organization's short name.
 
 ## Roles and provisioning
 
