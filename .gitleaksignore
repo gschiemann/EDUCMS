@@ -142,3 +142,6 @@ dbe1a48de2b8065bb58493e4db32915ee8c131aa:apps/api/src/player-ota/field-candidate
 57985ddb7c9e0d0994407b4a4e1c599fe477917d:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:225
 d213b57a4eb3c5abc5d4647dd7b71746ab60a4cc:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:224
 d213b57a4eb3c5abc5d4647dd7b71746ab60a4cc:apps/api/src/player-ota/field-candidate-releases.ts:venueos-hardcoded-256bit-hex-secret:235
+# USB package unit test (PR #128): a made-up HMAC test key ("0123456789abcdef" x4) in one
+# branch commit; the next commit builds it at runtime. Never a real key.
+d0814feb8c693565fb317021f5c9d08eddd904d1:apps/player/app/src/test/java/com/educms/player/usb/UsbPackageTest.kt:generic-api-key:23
