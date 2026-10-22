@@ -3412,6 +3412,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun notifyPageUsbImported() {
+        // Every face: a double-sided unit's second panel serves the same
+        // import and must switch with the first, not at its next reload.
+        runCatching { faceHosts?.dispatchPageEvent("venueos-usb-imported") }
         if (!::webView.isInitialized) return
         runCatching {
             webView.evaluateJavascript("window.dispatchEvent(new Event('venueos-usb-imported'))", null)
