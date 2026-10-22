@@ -69,6 +69,8 @@ internal class FaceVideoSession(
     var predecessor: FaceVideoSession? = null
     /** v4: how long this session's last frame was held on the glass for its successor (ledgered, §3.3). */
     var heldFrameMs = 0L
+    /** 1.1.51: this session started from the persisted last authenticated selection because the API was unreachable. */
+    @Volatile var offlineStart = false
     /** The stable reason this session may not run on this box, decided before any work; null = it may. */
     val refusal: String? = policy.refusal(protocol, face)
     /** ONE COMPOSITING CONTRACT: above the window — a solo dynamic (R+) or static (24–29), a slot always static; a refused session never uses it. */
@@ -392,15 +394,48 @@ internal object FaceVideoBox {
         return session
     }
 
-    /** THIS face's own authenticated manifest must name exactly what the page asked for. */
+    /**
+     * THIS face's own authenticated manifest must name exactly what the page asked for.
+     *
+     * 1.1.51 (Astra P1) — when the LIVE read fails because the API cannot be REACHED (never
+     * because the credential or the screen was refused), a solo session may start from the
+     * face's persisted LAST AUTHENTICATED SELECTION against the verified disk copy, emergency
+     * first (OfflineSelection). Every successful live read persists that selection.
+     */
     private fun select(host: SharedVideoHost, s: FaceVideoSession): FaceVideoDescriptor {
-        val manifest = SharedVideoSource(host.ctx).manifest(host.face, s.screenId)
+        val manifest = try {
+            SharedVideoSource(host.ctx).manifest(host.face, s.screenId)
+        } catch (e: Exception) {
+            if (s.zone != null || !OfflineSelection.unreachable(e)) throw e
+            val saved = OfflineSelection.decode(host.ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("selection.${host.face}", null))
+            val token = FaceTokenStore.read(host.ctx, host.face)
+            val out = OfflineSelection.accept(saved, host.face, NativeAlertWatchPolicy.screenIdOf(token), s.request!!,
+                DisplayEmergency.isHeld(host.ctx))
+            val d = out.descriptor
+            if (d == null) {
+                PlayerLogger.w("FaceVideoBox", "face ${host.face}: manifest unreachable (${FaceVideoReasons.code(e, "manifest-unreachable")}) and no usable saved selection (${out.reason})")
+                throw e
+            }
+            if (!s.offlineStart) {
+                s.offlineStart = true
+                PlayerLogger.e("FaceVideoBox", "PLAYER_NATIVE_OFFLINE_START face=${host.face} sha=${d.sha256.take(12)} — the manifest could not be read " +
+                    "(${FaceVideoReasons.code(e, "manifest-unreachable")}); starting from the persisted last authenticated selection on the verified disk copy")
+            }
+            // A cached selection teaches the face nothing (no learnSwitch) and never touches the hold.
+            return d
+        }
         val zone = s.zone
         if (zone == null) {
-            val d = FaceVideoDescriptor.parse(manifest.getJSONObject("nativeVideo"))
+            val raw = manifest.getJSONObject("nativeVideo")
+            val d = FaceVideoDescriptor.parse(raw)
             require(d.faceIndex == host.face && d.matches(s.request!!)) { "selection-changed" }
-            // Every authenticated read teaches the face its native-first enrolment (§8.1).
+            // Every authenticated read teaches the face its native-first enrolment (§8.1) …
             learnSwitch(host.ctx, host.face, d.nativeFirst)
+            // … and is remembered as the face's last authenticated selection (offline start).
+            runCatching {
+                host.ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("selection.${host.face}", OfflineSelection.encode(host.face, s.screenId, raw, System.currentTimeMillis())).apply()
+            }
             return d
         }
         val items = FaceVideoItems.parse(manifest.getJSONObject("nativeVideoItems"))
