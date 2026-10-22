@@ -334,3 +334,21 @@ describe('sentry redaction — safety of the filter itself', () => {
     }
   });
 });
+
+describe('sentry redaction — rotation companions (security/key-ring.ts, 2026-10-22)', () => {
+  it('redacts DEVICE_SECRET_KEY_PREVIOUS / DEVICE_JWT_SECRET_PREVIOUS exactly like the primaries', () => {
+    for (const key of ['DEVICE_SECRET_KEY', 'DEVICE_SECRET_KEY_PREVIOUS', 'DEVICE_JWT_SECRET', 'DEVICE_JWT_SECRET_PREVIOUS']) {
+      expect(isSensitiveKey(key)).toBe(true);
+    }
+    const hex = 'e'.repeat(64);
+    const out = redactValue({
+      env: { DEVICE_SECRET_KEY_PREVIOUS: hex, DEVICE_JWT_SECRET_PREVIOUS: 'f'.repeat(64) },
+      // Even under an innocent key the VALUE shape is caught.
+      note: hex,
+    }) as { env: Record<string, string>; note: string };
+    expect(out.env.DEVICE_SECRET_KEY_PREVIOUS).toBe(FILTERED);
+    expect(out.env.DEVICE_JWT_SECRET_PREVIOUS).toBe(FILTERED);
+    expect(out.note).toBe(FILTERED);
+    expect(findSecretLeaks(out, [hex, 'f'.repeat(64)])).toEqual([]);
+  });
+});

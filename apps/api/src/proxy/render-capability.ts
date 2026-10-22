@@ -51,7 +51,7 @@
  */
 
 import * as crypto from 'crypto';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 
 /**
  * How long a minted capability stays valid.
@@ -71,9 +71,15 @@ const VERSION = 'rc1';
 
 let warnedNoDedicatedSecret = false;
 
-function renderSecret(): string {
+/**
+ * `[dedicated]`, or the DEVICE_SECRET_KEY ring `[primary, previous?]` when no
+ * dedicated secret is set (security/key-ring.ts). Mint uses index 0; verify
+ * accepts any entry, so a DEVICE_SECRET_KEY rotation does not invalidate the
+ * six-hour capabilities already sitting in iframe `src`s.
+ */
+function renderSecrets(): string[] {
   const dedicated = process.env.PROXY_RENDER_SECRET;
-  if (dedicated && dedicated.trim().length >= 16) return dedicated;
+  if (dedicated && dedicated.trim().length >= 16) return [dedicated];
   if (process.env.NODE_ENV === 'production' && !warnedNoDedicatedSecret) {
     warnedNoDedicatedSecret = true;
     console.error(
@@ -82,9 +88,7 @@ function renderSecret(): string {
         'with WS/Redis control traffic and BYOK/MFA wrapping).',
     );
   }
-  return requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_render_capability_secret_CHANGE_ME',
-  });
+  return deviceSecretKeyCandidates('dev_only_render_capability_secret_CHANGE_ME');
 }
 
 export type RenderPrincipalKind = 'user' | 'device';
@@ -122,8 +126,18 @@ export function renderTargetDigest(url: string): string {
   return crypto.createHash('sha256').update(url, 'utf8').digest('base64url');
 }
 
+function signWith(secret: string, payload: string): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+/** Mint-side: always the primary (index 0). */
 function sign(payload: string): string {
-  return crypto.createHmac('sha256', renderSecret()).update(payload).digest('base64url');
+  return signWith(renderSecrets()[0], payload);
+}
+
+/** Verify-side: any key in the ring reproduces the signature (constant-time each). */
+function signatureMatches(payload: string, actual: string): boolean {
+  return renderSecrets().some((secret) => safeEq(signWith(secret, payload), actual));
 }
 
 function safeEq(expected: string, actual: string): boolean {
@@ -199,7 +213,7 @@ export function verifyRenderCapability(
   const [version, body, signature] = parts;
   if (version !== VERSION) return { ok: false, reason: 'version' };
 
-  if (!safeEq(sign(`${version}.${body}`), signature)) {
+  if (!signatureMatches(`${version}.${body}`, signature)) {
     return { ok: false, reason: 'bad_signature' };
   }
 
