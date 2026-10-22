@@ -21,6 +21,18 @@ import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 
+/** The API accepts only https:// emergency media (media-url-guard.ts); refuse
+ *  anything else here too, so a pushed message can never inject a script URL. */
+export function safeEmergencyMediaUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * P0 (2026-06-27, Greg live-tested on the 960×1080 LED) — the full-screen
  * emergency render used FIXED sizes (text-8xl headline, w-32 icon, p-12) and
@@ -493,7 +505,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           // 90°-rotated preview-mode body doesn't size against the
           // wrong axis on Taurus.
           <div className="grid grid-cols-1 md:grid-cols-2 mt-6 -m-2" style={{ maxHeight: '432px', ...(faceStage ? { gridTemplateColumns: faceStage.orientation === 'portrait' ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))' } : {}) }}>
-            {active.mediaUrls.slice(0, 4).map((url) => {
+            {active.mediaUrls.slice(0, 4).map(safeEmergencyMediaUrl).filter((url): url is string => !!url).map((url) => {
               const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(url);
               return (
                 <div key={url} className="p-2">
