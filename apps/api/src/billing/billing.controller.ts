@@ -425,6 +425,31 @@ export class BillingController {
   }
 
   /**
+   * 2026-10-22 (billing go-live) — does each STRIPE_PRICE_* charge what the dashboard and
+   * /pricing advertise? (amount, USD, monthly/yearly, per-screen, same mode as the key, both AI
+   * prices or neither — price-config-check.ts). VenueOS staff only: it names the deploy's price
+   * ids. Read-only; never returns the key. The same check is logged once after every boot.
+   */
+  @Get('config-check')
+  @RequireRoles(AppRole.SUPER_ADMIN)
+  async configCheck() {
+    if (!this.stripe.enabled()) {
+      return { enabled: false, message: 'Stripe is not configured. Set STRIPE_SECRET_KEY to enable billing.' };
+    }
+    try {
+      const r = await this.stripe.verifyPriceConfig();
+      return {
+        enabled: true,
+        webhookSecretSet: !!process.env.STRIPE_WEBHOOK_SECRET,
+        cardBillingReady: cardBillingReady(),
+        ...r,
+      };
+    } catch (e) {
+      throw new HttpException({ code: 'BILLING_CONFIG_CHECK_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
    * Free-tier status. No card required, and — importantly — **no
    * transaction is committed here**: the free pilot tier is the
    * no-License *default* state, so there is nothing to "activate." This
