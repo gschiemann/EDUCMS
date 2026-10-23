@@ -45,6 +45,9 @@ beforeEach(() => {
   });
   act(() => { useUIStore.setState({ overlayOpenCount: 0 }); });
 });
+beforeEach(() => {
+  act(() => { useUIStore.setState({ moreSheetOpen: false, installBannerShown: false }); });
+});
 afterEach(() => { jest.useRealTimers(); });
 
 describe('install prompt copy', () => {
@@ -95,6 +98,20 @@ describe('overlay lock', () => {
     act(() => { useUIStore.setState({ overlayOpenCount: 1 }); });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => { useUIStore.setState({ overlayOpenCount: 0 }); });
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+});
+
+describe('stays out of the More sheet (QA 2026-10-23)', () => {
+  it('hides while the phone More sheet is open and comes back when it closes', () => {
+    renderReady();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(useUIStore.getState().installBannerShown).toBe(true);
+    act(() => { useUIStore.setState({ moreSheetOpen: true }); });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    // …and tells the bug FAB it no longer has to yield.
+    expect(useUIStore.getState().installBannerShown).toBe(false);
+    act(() => { useUIStore.setState({ moreSheetOpen: false }); });
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 });

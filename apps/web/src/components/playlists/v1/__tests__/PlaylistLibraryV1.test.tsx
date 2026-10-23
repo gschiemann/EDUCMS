@@ -355,6 +355,13 @@ describe('search, filters, states', () => {
     expect(screen.getByText('Create your first playlist')).toBeInTheDocument();
   });
 
+  it('an empty library never shows two controls with the same name (QA 2026-10-23)', () => {
+    const { props } = mount({ rows: [] });
+    expect(screen.getAllByRole('button', { name: 'New playlist' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Create a playlist' }));
+    expect(props.onNew).toHaveBeenCalled();
+  });
+
   it('no filter match offers a way back (§22.3)', () => {
     mount();
     fireEvent.change(screen.getByLabelText('Search playlists'), { target: { value: 'zzzz' } });

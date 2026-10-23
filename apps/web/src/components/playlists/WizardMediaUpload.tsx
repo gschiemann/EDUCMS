@@ -51,7 +51,12 @@ export function WizardMediaUpload({ folderId, folderName, onUploaded, onBusy }: 
       <p className="break-words text-xs text-slate-600">{pending.files.map(file => file.name).join(', ')} · {pending.folderName}</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="min-h-11 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white" onClick={() => {
-          setIds(current => [...current, ...jobs.start(pending.files, pending.folderId)]); setPending(null);
+          // Start the uploads OUTSIDE the state updater: React may call an
+          // updater more than once (StrictMode always does), and every call
+          // here queued the whole selection again — five files became ten
+          // uploads and ten library rows (QA 2026-10-23).
+          const started = jobs.start(pending.files, pending.folderId);
+          setIds(current => [...current, ...started]); setPending(null);
         }}>{t('assetsLib.uploadSelected', { count: pending.files.length })}</button>
         <button type="button" className="min-h-11 px-3 text-sm font-semibold" onClick={() => setPending(null)}>{t('assetsLib.cancelUploadSelection')}</button>
       </div>

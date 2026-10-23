@@ -1,10 +1,22 @@
 "use client";
 
+/**
+ * /accept-invite/[token] — the page an invited teammate opens from their
+ * invitation. QA 2026-10-23: it was the pre-rebrand dark card with the old
+ * monitor icon, English-only, and showed the raw role code ("CONTRIBUTOR")
+ * where the People page calls the same person an "Editor". It now uses the
+ * /login card (AuthCardShell), the en/es/zh catalogue and the localized role
+ * label every other surface uses. Behaviour unchanged.
+ */
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { MonitorPlay, Loader2, AlertCircle } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import { useLocaleSwitch } from '@/i18n/I18nProvider';
+import { localizedRoleLabel } from '@/i18n/vertical-copy';
+import { ResetShell as AuthCardShell, RESET_INPUT_CLS, RESET_BUTTON_CLS } from '@/components/auth/AuthCardShell';
 
 interface InvitePreview {
   email: string;
@@ -19,6 +31,8 @@ export default function AcceptInvitePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = use(params);
+  const t = useTranslations('acceptInvite');
+  const { locale } = useLocaleSwitch();
   const router = useRouter();
   const login = useUIStore((s) => s.login);
 
@@ -37,19 +51,19 @@ export default function AcceptInvitePage({
         const data = await res.json();
         if (cancelled) return;
         if (res.ok) setPreview(data);
-        else setPreviewError(data.message || 'This invite link is not valid.');
+        else setPreviewError(data.message || t('invalid'));
       } catch {
-        if (!cancelled) setPreviewError(`Can't reach the server at ${API_URL}.`);
+        if (!cancelled) setPreviewError(t('unreachable'));
       }
     })();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirm) { setError('Passwords do not match.'); return; }
+    if (password.length < 8) { setError(t('tooShort')); return; }
+    if (password !== confirm) { setError(t('mismatch')); return; }
 
     setLoading(true);
     try {
@@ -71,84 +85,73 @@ export default function AcceptInvitePage({
         // fact been accepted — a dead end on an account that was already live.
         router.push('/login?reason=invite-mfa');
       } else {
-        setError(data.message || 'Could not accept the invitation.');
+        setError(data.message || t('acceptFailed'));
       }
     } catch {
-      setError(`Can't reach the server at ${API_URL}.`);
+      setError(t('unreachable'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl mb-4">
-            <MonitorPlay className="w-8 h-8 text-indigo-400" />
+    <AuthCardShell title={t('title')}>
+      {previewError ? (
+        <div role="alert" className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-xs text-red-700 font-medium">{previewError}</p>
+        </div>
+      ) : !preview ? (
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" aria-label={t('loading')} />
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <dl className="rounded-lg bg-slate-50 border border-slate-200 p-3.5 text-xs text-slate-700 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-slate-500">{t('workspace')}</dt>
+            <dd className="font-semibold text-slate-900 break-words">{preview.tenantName}</dd>
+            <dt className="text-slate-500">{t('email')}</dt>
+            <dd className="break-all">{preview.email}</dd>
+            <dt className="text-slate-500">{t('role')}</dt>
+            <dd>{localizedRoleLabel(locale, preview.role)}</dd>
+          </dl>
+          <div>
+            <label htmlFor="invite-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('password')}</label>
+            <input
+              id="invite-password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={RESET_INPUT_CLS}
+            />
+            <p className="mt-1 text-[11px] text-slate-500">{t('passwordHint')}</p>
           </div>
-          <h1 className="text-2xl font-bold text-white">Accept your invitation</h1>
-        </div>
-
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8">
-          {previewError ? (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-300 font-medium">{previewError}</p>
+          <div>
+            <label htmlFor="invite-confirm-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('confirmPassword')}</label>
+            <input
+              id="invite-confirm-password"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className={RESET_INPUT_CLS}
+            />
+          </div>
+          {error && (
+            <div role="alert" className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" aria-hidden />
+              <p className="text-xs text-red-700 font-medium">{error}</p>
             </div>
-          ) : !preview ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="rounded-xl bg-slate-800/40 border border-slate-700 p-4 text-xs text-slate-300 space-y-1">
-                <p><span className="text-slate-500">Workspace:</span> <span className="font-semibold text-white">{preview.tenantName}</span></p>
-                <p><span className="text-slate-500">Email:</span> {preview.email}</p>
-                <p><span className="text-slate-500">Role:</span> {preview.role}</p>
-              </div>
-              <div>
-                <label htmlFor="invite-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
-                <input
-                  id="invite-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="invite-confirm-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Confirm password</label>
-                <input
-                  id="invite-confirm-password"
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              {error && (
-                <div className="flex items-start gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-300 font-medium">{error}</p>
-                </div>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2"
-              >
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Joining…</> : 'Join workspace'}
-              </button>
-            </form>
           )}
-        </div>
-      </div>
-    </div>
+          <button type="submit" disabled={loading} className={RESET_BUTTON_CLS}>
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('joining')}</> : t('join')}
+          </button>
+        </form>
+      )}
+    </AuthCardShell>
   );
 }

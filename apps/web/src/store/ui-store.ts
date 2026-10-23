@@ -192,6 +192,15 @@ interface AppState {
    * double-invoke are handled correctly and the counter can never leak.
    */
   overlayOpenCount: number;
+  /**
+   * The phone's More sheet is open (QA 2026-10-23). It deliberately does NOT
+   * take the overlay lock — its primary tabs stay visible beside it — so the
+   * floating chrome that hides on `overlayOpenCount` (install banner, bug
+   * FAB) needs this separate signal or it floats over the sheet's items.
+   */
+  moreSheetOpen: boolean;
+  /** The "Install VenueOS" banner is on screen; the bug FAB yields to it. */
+  installBannerShown: boolean;
   activeTenant: string | null;
   isEmergencyActive: boolean;
   /** 2026-05-23 launch audit P2 #3 — store the overrideId returned from
@@ -237,6 +246,8 @@ interface AppState {
   pushOverlay: () => void;
   /** Decrement when an overlay unmounts; clamped at 0 so it can't underflow. */
   popOverlay: () => void;
+  setMoreSheetOpen: (open: boolean) => void;
+  setInstallBannerShown: (shown: boolean) => void;
   setActiveTenant: (tenantId: string) => void;
   setEmergencyActive: (active: boolean, overrideId?: string | null) => void;
 }
@@ -251,6 +262,8 @@ export const useUIStore = create<AppState>((set) => ({
   sidebarOpen: true,
   mobileSidebarOpen: false,
   overlayOpenCount: 0,
+  moreSheetOpen: false,
+  installBannerShown: false,
   activeTenant: initial.user?.tenantSlug || initial.user?.tenantId || null,
   isEmergencyActive: false,
   activeEmergencyOverrideId: null,
@@ -344,6 +357,8 @@ export const useUIStore = create<AppState>((set) => ({
   toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
   pushOverlay: () => set((state) => ({ overlayOpenCount: state.overlayOpenCount + 1 })),
   popOverlay: () => set((state) => ({ overlayOpenCount: Math.max(0, state.overlayOpenCount - 1) })),
+  setMoreSheetOpen: (open) => set({ moreSheetOpen: open }),
+  setInstallBannerShown: (shown) => set({ installBannerShown: shown }),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
   setEmergencyActive: (active, overrideId) =>
     set({

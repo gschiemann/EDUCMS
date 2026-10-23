@@ -1282,27 +1282,27 @@ export default function AssetsPage() {
               disabled={isViewer}
               /* 2026-05-29 (mobile P1) — min-h-11 on touch (was 34px). */
               className="min-h-11 sm:min-h-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isViewer ? readOnlyReason : 'Upload files, add a web page, or generate an image with AI'}
+              title={isViewer ? readOnlyReason : t('assetsLib.addAssetTitle')}
             >
               <UploadCloud className="w-4 h-4" />
-              Add asset <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+              {t('assetsLib.addAsset')} <ChevronDown className="w-3.5 h-3.5 opacity-80" />
             </button>
             <AnchoredMenu anchorRef={addMenuButtonRef} open={addMenuOpen} width={228} align="left">
               <div
                 data-asset-add-menu
                 role="menu"
                 tabIndex={-1}
-                aria-label="Add asset"
+                aria-label={t('assetsLib.addAsset')}
                 className="py-1"
               >
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => { setAddMenuOpen(false); openUploadPicker(); }}
-                  title="Pick a destination folder (root is an option), then select files"
+                  title={t('assetsLib.uploadFilesTitle')}
                   className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                 >
-                  <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Upload files
+                  <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.uploadFiles')}
                 </button>
                 {picker.ios && <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); openUploadPicker('photos'); }} className="w-full px-3 py-2 min-h-11 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">{t('assetsLib.photoLibrary')}</button>}
                 <button
@@ -1311,7 +1311,7 @@ export default function AssetsPage() {
                   onClick={() => { setAddMenuOpen(false); setShowUrlForm(true); }}
                   className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                 >
-                  <Link2 className="w-3.5 h-3.5 text-emerald-500" /> Add web URL
+                  <Link2 className="w-3.5 h-3.5 text-emerald-500" /> {t('assetsLib.addWebUrl')}
                 </button>
                 {/* Absent (not disabled) when no AI provider is configured, so
                     the menu never offers an option that can't work (§5). The
@@ -1416,7 +1416,7 @@ export default function AssetsPage() {
         </span>
         <span className="min-w-0">
           <span className="block text-xs font-bold text-slate-800">
-            {dragOver ? 'Drop the files — we’ll ask where to put them' : 'Drop files anywhere to upload'}
+            {dragOver ? t('assetsLib.dropNow') : t('assetsLib.dropAnywhere')}
           </span>
           <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()), ...uploadFormatsCopy() })}</span>
         </span>
@@ -2658,15 +2658,16 @@ function EmptyState({
   onLoadMore: () => void;
   disabled?: boolean;
 }) {
+  const t = useTranslations();
   // Not everything is loaded — we do NOT know this is empty. Say that.
   if (!allLoaded) {
     return (
       <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-partial">
         <Loader2 className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
-        <p className="text-sm font-bold text-slate-800">Nothing here in the {loadedCount} assets loaded so far</p>
-        <p className="text-xs text-slate-600 mt-1">Load the rest of the library to be sure.</p>
+        <p className="text-sm font-bold text-slate-800">{t('assetsLib.emptyPartialTitle', { count: loadedCount })}</p>
+        <p className="text-xs text-slate-600 mt-1">{t('assetsLib.emptyPartialBody')}</p>
         <button onClick={onLoadMore} className="mt-4 px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">
-          Load more
+          {t('assetsLib.loadMore')}
         </button>
       </div>
     );
@@ -2675,10 +2676,10 @@ function EmptyState({
     return (
       <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-search">
         <Search className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
-        <p className="text-sm font-bold text-slate-800">No assets match</p>
-        <p className="text-xs text-slate-600 mt-1">Try another search or clear the active filter.</p>
+        <p className="text-sm font-bold text-slate-800">{t('assetsLib.noMatchTitle')}</p>
+        <p className="text-xs text-slate-600 mt-1">{t('assetsLib.noMatchBody')}</p>
         <button onClick={onClearFilters} className="mt-4 px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">
-          Clear filters
+          {t('assetsLib.clearFilters')}
         </button>
       </div>
     );
@@ -2687,10 +2688,10 @@ function EmptyState({
     return (
       <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-folder">
         <FolderOpen className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
-        <p className="text-sm font-bold text-slate-800">This folder is empty</p>
-        <p className="text-xs text-slate-600 mt-1">Drop files here or move existing assets into this folder.</p>
+        <p className="text-sm font-bold text-slate-800">{t('assetsLib.folderEmptyTitle')}</p>
+        <p className="text-xs text-slate-600 mt-1">{t('assetsLib.folderEmptyBody')}</p>
         <button onClick={onUpload} disabled={disabled} className="mt-4 px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-50">
-          Upload files
+          {t('assetsLib.uploadFiles')}
         </button>
       </div>
     );
@@ -2698,14 +2699,14 @@ function EmptyState({
   return (
     <div className="text-center py-14 bg-white rounded-2xl border border-slate-200" data-testid="empty-library">
       <UploadCloud className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
-      <p className="text-sm font-bold text-slate-800">Add your first asset</p>
-      <p className="text-xs text-slate-600 mt-1">Upload an image, video, audio file or PDF to start building content.</p>
+      <p className="text-sm font-bold text-slate-800">{t('assetsLib.emptyTitle')}</p>
+      <p className="text-xs text-slate-600 mt-1">{t('assetsLib.emptyBody')}</p>
       <div className="mt-4 flex items-center justify-center gap-2">
         <button onClick={onUpload} disabled={disabled} className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-50">
-          Upload files
+          {t('assetsLib.uploadFiles')}
         </button>
         <button onClick={onAddUrl} disabled={disabled} className="px-4 py-2 min-h-11 sm:min-h-0 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-bold disabled:opacity-50">
-          Add web URL
+          {t('assetsLib.addWebUrl')}
         </button>
       </div>
     </div>

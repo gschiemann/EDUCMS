@@ -38,6 +38,8 @@ const NEVER_KEY = 'edu_install_prompt_never';
 export function InstallPromptBanner() {
   const isMobile = useIsMobile();
   const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
+  const moreSheetOpen = useAppStore((s) => s.moreSheetOpen);
+  const setInstallBannerShown = useAppStore((s) => s.setInstallBannerShown);
   const [deferredPrompt, setDeferredPrompt] = useState<PromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -122,6 +124,14 @@ export function InstallPromptBanner() {
 
   // Hide criteria: not mobile, already installed, user dismissed,
   // not "warmed up" yet, OR neither Android-install-prompt nor iOS-Safari.
+  const visible =
+    isMobile && !isStandalone && !dismissed && ready && (!!deferredPrompt || isIos) &&
+    overlayOpenCount === 0 && !moreSheetOpen;
+  // The bug FAB sits where this banner's action row is; it yields while we show.
+  useEffect(() => {
+    setInstallBannerShown(visible);
+    return () => setInstallBannerShown(false);
+  }, [visible, setInstallBannerShown]);
   if (!isMobile || isStandalone || dismissed || !ready) return null;
   if (!deferredPrompt && !isIos) return null;
   // …and never while an overlay owns the screen. This banner sits at z-[70],
@@ -130,7 +140,10 @@ export function InstallPromptBanner() {
   // navigation. §6.2 requires the More sheet to "clear the global tab bar and
   // any install banner"; the tab bar already obeys the shared overlay lock,
   // and now so does this.
-  if (overlayOpenCount > 0) return null;
+  // The More sheet does not take that lock (it keeps the tab bar), so it is
+  // checked on its own — before 2026-10-23 the banner covered the sheet's
+  // Owner console / Sign out rows on an iPhone.
+  if (overlayOpenCount > 0 || moreSheetOpen) return null;
 
   return (
     <div
