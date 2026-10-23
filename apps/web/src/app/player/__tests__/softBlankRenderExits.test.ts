@@ -50,7 +50,13 @@ import * as ts from 'typescript';
  * it is the only one this P0 change is entitled to move. The other
  * cross-branch overlays are pinned rather than required — see below.
  */
-const REQUIRED = ['softBlankOverlay'];
+// `emergencyMessageOverlay` (2026-10-23, launch QA B3): a banner-style
+// INFO / WARN broadcast no longer takes the red transition surface — it
+// OVERLAYS whatever exit is on glass. Until then it rode only the transition
+// and the main playback tree; a WARN broadcast over a TEMPLATE playlist, the
+// registering / pairing screens or a ribbon tile parent drew nothing
+// (player-canvas-geometry caught the template case in CI). Every exit now.
+const REQUIRED = ['softBlankOverlay', 'emergencyMessageOverlay'];
 
 /**
  * The OTHER cross-branch overlays, pinned to the exits that render them today.
@@ -165,6 +171,7 @@ describe('player render exits all draw the cross-branch overlays', () => {
     expect(exit.text).toContain('{emergencyMessageOverlay}');
     expect(exit.text).toContain('{emergencyFallback');
     for (const overlay of [...REQUIRED, ...PINNED_KNOWN_GAP, 'updatePromptNode']) {
+      if (overlay === 'emergencyMessageOverlay') continue; // the alert itself — asserted present above
       expect(exit.text).not.toContain(`{${overlay}}`);
     }
   });

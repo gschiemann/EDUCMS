@@ -12285,6 +12285,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {canvasEditor}
         {softBlankOverlay}
         {emergencyFallback}
+        {emergencyMessageOverlay}
         {preContentEscapeOverlay}
       </>
     );
@@ -12311,6 +12312,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {canvasEditor}
         {softBlankOverlay}
         {emergencyFallback}
+        {emergencyMessageOverlay}
         {preContentEscapeOverlay}
         {remoteBackHint}
       </>
@@ -12392,6 +12394,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {canvasEditor}
         {softBlankOverlay}
         {emergencyFallback}
+        {emergencyMessageOverlay}
         {preContentEscapeOverlay}
         {remoteBackHint}
       </>
@@ -12989,6 +12992,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             dispatched + delivered. This is the branch that was missing. */}
         {softBlankOverlay}
         {emergencyFallback}
+        {emergencyMessageOverlay}
 
         {/* 2026-05-14 — touch overlays. SAME AUDIT MISS AS
             otaOverlay above. The TouchOverlay + TouchNavOverlay
@@ -13122,6 +13126,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             Same uniform rule as every other exit; see the const's header. */}
         {softBlankOverlay}
         {emergencyFallback}
+        {emergencyMessageOverlay}
         {/* Same rule for the update prompt: the parent owns the glass. */}
         {updatePromptNode}
       </>
