@@ -34,7 +34,10 @@ been walked when this revision was written.
 | 1 | Sign up → trial | ✓ | ✓ | **PASS** | Signup → `/onboarding/branding` (welcome email + starter board + playlist seeded). See UX gaps U1, U2. |
 | 1 | Sign in (2-step email → password + EULA) | ✓ | ✓ | **PASS** | |
 | 1 | Password reset request | — | ✓ | **PASS (local)** | With no `RESEND_API_KEY` the page honestly says email isn't configured. Reset completion (token page) *not yet tested* — the dev stub doesn't log the link. |
-| 1 | First-login setup (email code, passkey/authenticator, backup codes) | | | *not yet tested* | |
+| 1 | First-login setup (provisioned account, `mustSetupCredentials`) | | ✓ | **PASS** | "Finish setting up your account" → work email ×2 + new password → dashboard, for an Editor and a School Admin. Email code not required locally (`SETUP_EMAIL_VERIFICATION=auto`, no verified sending domain) — the code step itself *not tested*. The setup screen's background queries (`/branding/me` …) 403 while the account is gated (console noise only). |
+| 1 | Authenticator 2FA: enroll → backup codes → sign in with TOTP → sign in with a backup code | | ✓ | **PASS** | Settings → My security → Enable 2FA → code → 10 backup codes with Copy / Download / I've saved them; both sign-in paths land on the dashboard. Passkeys *not tested* (needs a virtual authenticator). |
+| 1 | People → "Set password now" user | | ✓ | **PASS / gap S1** | Creates the account; the person signs straight in with the admin-chosen password — see S1. |
+| 1 | Editor role dashboard | | ✓ | **FIXED** (`6e793f2e`) | The dashboard fetched the admin-only `/audit/recent` for Editors → 403 + console errors on every load / 60 s poll. Editor crawl of 11 routes now clean. |
 | 2 | Pair a screen (`/player` code → Screens → Pair screen) | ✓ | ✓ | **PASS** | Player shows "Screen Paired Successfully"; list shows the screen online. `screens/webkit-pair-after.png`. Rename / group *not yet tested*. |
 | 3 | Media upload | | | **PARTIAL** | Local stack has no Supabase storage, so presign 500s — real uploads cannot be walked locally. Covered instead by the mocked-storage e2e (`mobile-usability.spec.ts`, which found the double-upload bug above) and the 10-04/10-05 media-matrix campaign. |
 | 4 | Playlists wizard (phone) | ✓ | ✓ | **FIXED** | Double upload + duplicate control (above). |
@@ -48,6 +51,12 @@ been walked when this revision was written.
 | 8 | Public pages / help / pricing / legal / status | ✓ | ✓ | **PASS except B2** | 18 routes + 31 discovered links: no 404 except `/security`. `/status` shows storage 503 locally (no Supabase) — expected. |
 | 9 | Mobile (iPhone 390×844, WebKit) | | ✓ | **FIXED** (`75302d50`) | 13 core routes: no horizontal scroll, no page errors. Bottom-nav taps soft-navigate in 70–190 ms. The "Install VenueOS" banner and the bug-report button floated over the More sheet's Owner console / Sign out rows and the button covered "Don't show again" — fixed + unit test (`iphone-more-sheet-AFTER.png`, `iphone-install-banner-AFTER.png`). Phone emergency trigger opens the full panel (LIVE/DRILL, send-to) with no horizontal scroll. See U8–U9. |
 
+## Security observations (not blockers)
+
+| # | Sev | Where | What |
+|---|---|---|---|
+| S1 | Medium | People → Invite user → "Set password now" (auth owner) | The admin picks the person's password and the account is NOT made to change it at first sign-in (`mustSetupCredentials` stays false; the copy says "they can change it after their first sign-in"). The admin therefore knows a live credential for someone else's account indefinitely, and audit rows under that user cannot be attributed with confidence. Competitors (and this repo's own provisioned-account path) force a reset. Suggest setting `mustSetupCredentials: true` for this path. |
+
 ## UX gaps vs. competitors
 
 | # | Sev | Where | Gap |
@@ -60,4 +69,5 @@ been walked when this revision was written.
 | U6 | Low | Signup value prop | "170+ templates" — the catalogue is 493 presets / 286 boards. |
 | U8 | Low | Phone dashboard | The bug-report button sits on the "View all" link of the Sites card at rest; "LOCAL TIME" label is offset under the clock. |
 | U9 | Low | Phone header | "Return to Springfield School District fleet" chip runs to the screen edge (text touches/clips at 390 px). |
+| U10 | Low (a11y) | Dashboard shell | Two nested `<main>` landmarks (`DashboardLayout` wraps `#main-content` in another `<main>`), so screen readers announce two main regions. |
 | U7 | Medium (a11y, emergency owner) | Emergency trigger modal | No `role="dialog"` / `aria-modal` on the Trigger Emergency / Start a Drill modal, so screen readers are not told a modal opened (the CLAUDE.md §18 emergency a11y bar). |
