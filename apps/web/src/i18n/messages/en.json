@@ -6463,5 +6463,19 @@
     "noScreensYet": "No screens yet",
     "showingOf": "Showing {shown} of {count, plural, one {# screen} other {# screens}}",
     "totalAcross": "{count, plural, one {# screen} other {# screens}} across {groups, plural, one {# group} other {# groups}}"
+  },
+  "templatesPage": {
+    "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
+    "summaryInUse": "{count, plural, one {# template} other {# templates}} · {inUse} currently in use",
+    "readOnly": "Read-only — viewer role",
+    "importHint": "Import a PDF / Canva / Slides export as a template or playlist",
+    "importDesign": "Import design",
+    "generateWithAi": "Generate with AI",
+    "newTemplate": "New template",
+    "sortLabel": "Sort your templates",
+    "yourTemplates": "Your templates",
+    "readyMade": "Ready-made templates",
+    "readyMadeSub": "Start with a professionally designed layout",
+    "browseAll": "Browse all {count}"
   }
 }

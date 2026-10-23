@@ -6463,5 +6463,19 @@
     "noScreensYet": "Aún no hay pantallas",
     "showingOf": "Mostrando {shown} de {count, plural, one {# pantalla} other {# pantallas}}",
     "totalAcross": "{count, plural, one {# pantalla} other {# pantallas}} en {groups, plural, one {# grupo} other {# grupos}}"
+  },
+  "templatesPage": {
+    "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
+    "summaryInUse": "{count, plural, one {# plantilla} other {# plantillas}} · {inUse} en uso ahora",
+    "readOnly": "Solo lectura — rol de lector",
+    "importHint": "Importa un PDF o una exportación de Canva o Slides como plantilla o lista",
+    "importDesign": "Importar diseño",
+    "generateWithAi": "Generar con IA",
+    "newTemplate": "Nueva plantilla",
+    "sortLabel": "Ordenar tus plantillas",
+    "yourTemplates": "Tus plantillas",
+    "readyMade": "Plantillas listas para usar",
+    "readyMadeSub": "Empieza con un diseño profesional",
+    "browseAll": "Ver las {count}"
   }
 }

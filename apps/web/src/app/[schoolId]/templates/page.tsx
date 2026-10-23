@@ -680,6 +680,9 @@ export default function TemplatesPage() {
   useEffect(() => { setMounted(true); }, []);
   const tAi = useTranslations('aiBoards') as unknown as AiBoardsT;
   const tDel = useTranslations('templateDelete');
+  // Page chrome (QA 2026-10-23: header, actions and section headings were
+  // English for es/zh operators).
+  const tTpl = useTranslations('templatesPage');
 
   const [activeCategory, setActiveCategory] = useState('');
   const [activeLevel, setActiveLevel] = useState('');
@@ -2112,8 +2115,8 @@ export default function TemplatesPage() {
     ? Object.values(usageByTemplate).filter((u) => (u?.playlists ?? 0) > 0 || (u?.screensReached ?? 0) > 0).length
     : null;
   const summaryLine = inUseCount === null
-    ? `${totalCount} template${totalCount === 1 ? '' : 's'} · ${ownedCount} ${ownedCount === 1 ? 'is yours' : 'are yours'}`
-    : `${totalCount} template${totalCount === 1 ? '' : 's'} · ${inUseCount} currently in use`;
+    ? tTpl('summaryYours', { count: totalCount, owned: ownedCount })
+    : tTpl('summaryInUse', { count: totalCount, inUse: inUseCount });
 
   /** The tenant's own word for a category key, for card metadata (§3). */
   const categoryChipLabel = (key: string): string => {
@@ -2454,10 +2457,10 @@ export default function TemplatesPage() {
           <button
             onClick={() => router.push(`/${params?.schoolId ?? ''}/templates/imports`)}
             disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : 'Import a PDF / Canva / Slides export as a template or playlist'}
+            title={isViewer ? tTpl('readOnly') : tTpl('importHint')}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
           >
-            <Upload className="h-4 w-4" /> Import design
+            <Upload className="h-4 w-4" /> {tTpl('importDesign')}
           </button>
           {/* Phase D3 — AI generate. 2026-06-09: if AI isn't configured we
               tell the operator to contact their admin instead of opening a
@@ -2470,16 +2473,16 @@ export default function TemplatesPage() {
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border bg-white px-3.5 text-[13px] font-semibold transition-colors hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9 motion-reduce:transition-none"
             style={{ borderColor: 'var(--brand-primary-soft, #cfc4ff)', color: 'var(--brand-primary, #4f46e5)' }}
           >
-            <Sparkles className="h-4 w-4" /> Generate with AI
+            <Sparkles className="h-4 w-4" /> {tTpl('generateWithAi')}
           </button>
           <button
             onClick={() => setShowCreate(true)}
             disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
+            title={isViewer ? tTpl('readOnly') : undefined}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-[13px] font-bold text-white shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 max-md:col-span-2 sm:min-h-9 motion-reduce:transition-none"
             style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
           >
-            <Plus className="h-4 w-4" /> New template
+            <Plus className="h-4 w-4" /> {tTpl('newTemplate')}
           </button>
         </div>
       </div>
@@ -3379,7 +3382,7 @@ export default function TemplatesPage() {
                 searching). A native <select> is deliberate: it is
                 keyboard- and screen-reader-correct for free, and it is
                 the control an operator on a phone already knows. */}
-            <label className="sr-only" htmlFor="tpl-sort">Sort your templates</label>
+            <label className="sr-only" htmlFor="tpl-sort">{tTpl('sortLabel')}</label>
             <select
               id="tpl-sort"
               value={sortMode}
@@ -3558,7 +3561,7 @@ export default function TemplatesPage() {
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold text-white"
                 style={{ backgroundColor: 'var(--brand-primary, #4f46e5)' }}
               >
-                <Sparkles className="h-3.5 w-3.5" /> Generate with AI
+                <Sparkles className="h-3.5 w-3.5" /> {tTpl('generateWithAi')}
               </button>
             )}
           </div>
@@ -3575,7 +3578,7 @@ export default function TemplatesPage() {
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
-                Your templates
+                {tTpl('yourTemplates')}
                 {customTemplates.length > 0 && (
                   <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500 tabular-nums">
                     {customTemplates.length}
@@ -3660,8 +3663,8 @@ export default function TemplatesPage() {
             <section aria-labelledby="ready-made-heading" ref={readyMadeRef}>
               <div className="mb-3 flex items-end justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 id="ready-made-heading" className="text-[17px] font-bold text-slate-800">Ready-made templates</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">Start with a professionally designed layout</p>
+                  <h2 id="ready-made-heading" className="text-[17px] font-bold text-slate-800">{tTpl('readyMade')}</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">{tTpl('readyMadeSub')}</p>
                 </div>
                 {hiddenPresets > 0 && (
                   <button
@@ -3669,7 +3672,7 @@ export default function TemplatesPage() {
                     onClick={() => setPresetPages(Math.ceil(systemTemplates.length / SECTION_PAGE_SIZE))}
                     className="inline-flex shrink-0 items-center gap-1 rounded text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500"
                   >
-                    Browse all {systemTemplates.length} <ChevronRight className="h-3.5 w-3.5" />
+                    {tTpl('browseAll', { count: systemTemplates.length })} <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>

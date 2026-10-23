@@ -6463,5 +6463,19 @@
     "noScreensYet": "还没有屏幕",
     "showingOf": "显示 {shown} / {count} 块屏幕",
     "totalAcross": "{count} 块屏幕，分布在 {groups} 个分组"
+  },
+  "templatesPage": {
+    "summaryYours": "{count} 个模板 · {owned} 个属于你",
+    "summaryInUse": "{count} 个模板 · {inUse} 个正在使用",
+    "readOnly": "只读 — 查看者角色",
+    "importHint": "将 PDF / Canva / Slides 导出文件导入为模板或播放列表",
+    "importDesign": "导入设计",
+    "generateWithAi": "用 AI 生成",
+    "newTemplate": "新建模板",
+    "sortLabel": "排序你的模板",
+    "yourTemplates": "你的模板",
+    "readyMade": "现成模板",
+    "readyMadeSub": "从专业设计的版式开始",
+    "browseAll": "浏览全部 {count} 个"
   }
 }
