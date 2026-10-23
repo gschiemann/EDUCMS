@@ -16,7 +16,7 @@
 
 - **Enforced:** the ruleset above, the CI gates, the health-gated cutover, and the pre-commit hook.
 - **Not enforced:** a second human reviewer. The repository has one maintainer, the ruleset has no required-review rule, and the repository admin can bypass the ruleset, which the owner does when committing directly to master. Deploys do not wait for CI to finish, which is why step 7 and the rollback options below matter. There is no separate staging environment; Vercel builds a preview for pull requests.
-- Documentation-only changes skip the build workflows by path filter. A path filter removes cost, not coverage, because any change to code still runs everything.
+- Documentation-only changes skip the build workflows by path filter. The ruleset's required checks therefore never report on them, and the repository admin merges them with the ruleset bypass. Any change to code runs everything.
 
 ## Database changes
 
