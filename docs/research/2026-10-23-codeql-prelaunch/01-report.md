@@ -9,7 +9,7 @@
 | disposition | count | how |
 |---|---|---|
 | **fixed** (in this PR, test beside each) | 49 | 4 commits — 1da772b6, 1016a3e9, 1d460537, a2c6f48a |
-| **dismissed** on GitHub (code-scanning PATCH, state=dismissed) | 64 | 37 used-in-tests, 25 false-positive, 2 won't-fix — every comment is one precise sentence |
+| **dismissed** on GitHub (code-scanning PATCH, state=dismissed) | 64 (+19 residue re-reported on the PR head, see below) | 37 used-in-tests, 25 false-positive, 2 won't-fix — every comment is one precise sentence |
 | **handed to the player engineer** (apps/web/src/app/player/**, untouched) | 5 | #2020–#2023, #1468 — verdicts below |
 
 Open application-code alerts on master after the dismissals: **54** — the 49 locations this PR changes (they close when CodeQL rescans master after merge) plus the 5 player ones. See "After merge" at the bottom.
@@ -51,6 +51,10 @@ Not dismissed, per instruction. Rationale for whoever triages them:
 - packages/api-types: playback-capability.spec.ts, sports-semantics.spec.ts — 81 passed. scripts/__tests__/check-hardware-qual.test.cjs — 25 passed.
 - tsc --noEmit for the API (tsconfig.build.json) and the web app: clean. node apps/web/tools/check-inset-serialization.cjs: clean. Inline scripts of deck.html / viewer.html / celebration-engine.js parse (vm.Script).
 - Security pass over the diff: the fixpoint loops are capped at 10 passes and only iterate while the document still changes (ordinary pages exit after 2); trusted runtimes re-match as themselves every pass (the byte-for-byte parity test between the API render document and the web wrapper is still green); the proxy's static-mode spatial-nav shim is injected after the strip and is the only script left (test); the href scheme test still passes mailto:/tel: through untouched and still refuses data:.
+
+## CodeQL residue on the PR head — already handled
+
+CodeQL's analysis of the PR head (a2c6f48a, 19 new results) behaved exactly as predicted: the 12 js/bad-tag-filter alerts are gone (the end-tag regexes are fixed), and it re-reported the fixpoint-looped strips as 18 NEW js/incomplete-multi-character-sanitization alerts (#2718–#2735 minus #2726/#2727–#2729/#2730–#2731 groupings — i.e. designer-prompt.ts, designer-render-document.ts, designer-safe-srcdoc.ts, ai.service.ts, bugs.controller.ts, proxy.controller.ts) plus one js/bad-tag-filter in the web test helper (#2717). CodeQL does not model a loop-until-stable strip. All 19 were dismissed on 2026-10-23 with the reason in each comment (won't fix: fixpoint strip + the real barrier — nonce CSP + sandbox iframe / proxy sandbox CSP / React text; #2717 used in tests). **The PR head now has zero open non-board alerts**, so the master scan after merge should close the 49 "fixed" rows and open nothing new in application code.
 
 ## After merge — the two things to check
 
