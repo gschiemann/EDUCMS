@@ -176,6 +176,15 @@ const REQUIRED = [
   // passphrase on disk), so "not entirely skipped" matters.
   { cls: 'com.educms.player.settings.DeviceSettingsPolicyTest', min: 15 },
   { cls: 'com.educms.player.settings.DeviceSettingsWiringTest', min: 8 },
+  // Wi-Fi on every Android class (2026-10-23). The engine test is the
+  // never-strand rule itself (claim, add, persist, journal before the connect
+  // request, prove or switch back, only VenueOS's own networks removed); the
+  // policy test pins the mechanism per Android version; the screen model pins
+  // "never over an alert" and the D-pad keyboard.
+  { cls: 'com.educms.player.settings.LegacyWifiEngineTest', min: 8 },
+  { cls: 'com.educms.player.settings.WifiSetupPolicyTest', min: 10 },
+  { cls: 'com.educms.player.settings.NetworkPolicyTest', min: 5 },
+  { cls: 'com.educms.player.network.NetworkScreenModelTest', min: 4 },
   // Native-first, one verified store (design NATIVE-FIRST-ONE-STORE §5–§7). EmergencyPinTest is
   // the §7 E3 ship-gate evidence: one case per emergency-set guarantee.
   { cls: 'com.educms.player.store.ContentStorePolicyTest', min: 10 },
