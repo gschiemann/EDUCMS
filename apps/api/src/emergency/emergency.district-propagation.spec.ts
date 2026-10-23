@@ -50,6 +50,7 @@ import {
   resetManifestCacheForTests,
   bumpManifestContentRev,
 } from '../screens/manifest-hot-cache';
+import { invalidateAncestorTenantIds } from './tenant-ancestors';
 
 jest.mock('../security/required-secret', () => ({
   requireSecret: (_name: string, opts?: { devFallback?: string }) =>
@@ -164,10 +165,35 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
     return true;
   };
 
+  /** EmergencyMessage `where` — the shapes the poll, the clear and the
+   *  fan-out emit (2026-10-22). Until then this spec's message mock returned
+   *  nothing from `findMany`, so its "bus + poll" claim never checked the
+   *  poll: the poll's `scopeId: screen.tenantId` pin silently excluded every
+   *  district copy and no test could see it. */
+  const messageMatches = (row: any, where: any): boolean => {
+    if (!where) return true;
+    if (where.id !== undefined && !idMatches(row.id, where.id)) return false;
+    if (where.tenantId !== undefined && !idMatches(row.tenantId, where.tenantId)) return false;
+    if (where.scopeType !== undefined && !idMatches(row.scopeType, where.scopeType)) return false;
+    if (where.scopeId !== undefined && !idMatches(row.scopeId, where.scopeId)) return false;
+    if (where.clearedAt === null && row.clearedAt != null) return false;
+    if (where.expiresAt !== undefined) {
+      if (where.expiresAt === null) {
+        if (row.expiresAt != null) return false;
+      } else if (where.expiresAt.gt !== undefined) {
+        if (!(row.expiresAt instanceof Date) || row.expiresAt.getTime() <= where.expiresAt.gt.getTime()) return false;
+      }
+    }
+    if (Array.isArray(where.OR) && !where.OR.some((c: any) => messageMatches(row, c))) return false;
+    if (Array.isArray(where.AND) && !where.AND.every((c: any) => messageMatches(row, c))) return false;
+    return true;
+  };
+
   beforeEach(async () => {
     // Module-level caches in manifest-hot-cache.ts survive between specs.
     resetManifestCacheForTests();
     for (const id of [...ALL_TENANTS, 'school-c']) invalidateTenantState(id);
+    invalidateAncestorTenantIds();
 
     tenants = new Map(
       [
@@ -322,10 +348,34 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
           // EM-01: capture the rows so the fan-out can be asserted. The device
           // poll finds a broadcast by `where: { tenantId: screen.tenantId }`,
           // so ONE row per affected tenant is what makes it reachable at all.
-          create: jest.fn(async ({ data }: any) => { emergencyMessages.push(data); return data; }),
-          findMany: jest.fn(async () => []),
-          findUnique: jest.fn(async () => null),
-          updateMany: jest.fn(async () => ({ count: 0 })),
+          // 2026-10-22: a REAL store — `findMany` / `findUnique` / `updateMany`
+          // evaluate their `where`, so the poll and the clear are exercised
+          // against the rows the fan-out wrote (see `messageMatches`).
+          create: jest.fn(async ({ data }: any) => {
+            const row = { clearedAt: null, clearedByUserId: null, createdAt: new Date(), ...data };
+            emergencyMessages.push(row);
+            return row;
+          }),
+          findMany: jest.fn(async ({ where, take }: any = {}) => {
+            const out = emergencyMessages
+              .filter((m) => messageMatches(m, where))
+              .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+              .map((m) => ({ ...m }));
+            return typeof take === 'number' ? out.slice(0, take) : out;
+          }),
+          findUnique: jest.fn(async ({ where }: any) => {
+            const row = emergencyMessages.find((m) => m.id === where.id);
+            return row ? { ...row } : null;
+          }),
+          updateMany: jest.fn(async ({ where, data }: any) => {
+            let count = 0;
+            for (const row of emergencyMessages) {
+              if (!messageMatches(row, where)) continue;
+              Object.assign(row, data);
+              count++;
+            }
+            return { count };
+          }),
         },
         // No schedules anywhere → the non-emergency manifest is the explicit
         // `isEmergency:false` empty body, which is exactly the assertion we
@@ -771,5 +821,207 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
     const tenants = emergencyMessages.map((m) => m.tenantId);
     expect(tenants).not.toContain(DISTRICT);
     expect(tenants).not.toContain(SCHOOL_A);
+  });
+
+  // ── 2026-10-22 — the POLL and the CLEAR for a district broadcast ──────────
+  // EM-01 wrote one row per child tenant with `scopeId: <district>`; the device
+  // poll pinned `scopeId` to the screen's OWN tenant, so no child copy was ever
+  // returned. The live push painted it, the player's two-miss reconcile took it
+  // down ~24 s later, and a screen that missed the push never saw it. The
+  // district's Clear cleared one row and left every child copy live until
+  // expiry. These cases drive the REAL handlers against the fan-out rows.
+  describe('district broadcast — poll + clear reach every child copy', () => {
+    /** The device-authed poll, exactly as a paired screen calls it. */
+    const pollFor = async (screenId: string) =>
+      (await emergency.deviceMessages({ user: { kind: 'device', sub: screenId } })) as any;
+    const activeIdsFor = async (screenId: string): Promise<string[]> =>
+      ((await pollFor(screenId)).active as any[]).map((m) => m.id);
+    /** The id the bus handed a tenant's screens (the signed payload's messageId). */
+    const pushedIdOn = (channel: string, type: string): string | undefined =>
+      redis.publish.mock.calls.find((c) => c[0] === channel && c[1]?.type === type)?.[1]?.payload?.messageId;
+
+    it('a district TEXT BROADCAST is RETURNED by every child screen’s poll, with the id its push carried', async () => {
+      const res: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'Shelter in place', severity: 'CRITICAL' } as any,
+        districtAdmin,
+      );
+      for (const [screenId, tenantId] of [
+        ['scr-district', DISTRICT],
+        ['scr-a1', SCHOOL_A],
+        ['scr-a2', SCHOOL_A],
+        ['scr-b1', SCHOOL_B],
+        ['scr-annex', ANNEX],
+      ] as const) {
+        const ids = await activeIdsFor(screenId);
+        const pushed = pushedIdOn(`tenant:${tenantId}`, 'TEXT_BROADCAST');
+        expect(pushed).toBeDefined();
+        // The poll lists the SAME id the push carried — the player's 12 s
+        // reconcile keeps the overlay up only while that id stays active.
+        expect(ids).toEqual([pushed]);
+        const view = (await pollFor(screenId)).active[0];
+        expect(view.textBlob).toBe('Shelter in place');
+        expect(view.scopeId).toBe(DISTRICT);
+      }
+      expect(await activeIdsFor('scr-district')).toEqual([res.messageId]);
+      // Another organisation never sees it.
+      expect(await activeIdsFor('scr-other')).toEqual([]);
+    });
+
+    it('a district MEDIA ALERT is returned the same way', async () => {
+      await emergency.mediaAlert(
+        { scopeType: 'tenant', scopeId: DISTRICT, mediaUrls: [], severity: 'CRITICAL', textBlob: 'Evacuate' } as any,
+        districtAdmin,
+      );
+      expect(await activeIdsFor('scr-b1')).toEqual([pushedIdOn(`tenant:${SCHOOL_B}`, 'MEDIA_ALERT')]);
+      expect(await activeIdsFor('scr-annex')).toEqual([pushedIdOn(`tenant:${ANNEX}`, 'MEDIA_ALERT')]);
+      expect(await activeIdsFor('scr-other')).toEqual([]);
+    });
+
+    it('the device branch of GET /status returns the child copy too', async () => {
+      await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'Shelter in place', severity: 'WARN' } as any,
+        districtAdmin,
+      );
+      const res: any = await emergency.status(
+        { user: { kind: 'device', sub: 'scr-a1', tenantId: SCHOOL_A, schoolId: SCHOOL_A } },
+        undefined as any,
+      );
+      expect(res.active.map((m: any) => m.id)).toEqual([pushedIdOn(`tenant:${SCHOOL_A}`, 'TEXT_BROADCAST')]);
+    });
+
+    it('a district admin aiming at ONE school: that school’s subtree sees it, the sibling and the district do not', async () => {
+      await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: SCHOOL_A, text: 'Gym closed', severity: 'INFO' } as any,
+        districtAdmin,
+      );
+      expect(await activeIdsFor('scr-a1')).toHaveLength(1);
+      expect(await activeIdsFor('scr-annex')).toHaveLength(1);
+      expect(await activeIdsFor('scr-b1')).toEqual([]);
+      expect(await activeIdsFor('scr-district')).toEqual([]);
+      expect(await activeIdsFor('scr-other')).toEqual([]);
+    });
+
+    it('a CHILD-level broadcast is unchanged: its own screens only, siblings and the district untouched', async () => {
+      const res: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: SCHOOL_B, text: 'Gym closed', severity: 'INFO' } as any,
+        { user: { id: 'badmin', role: 'SCHOOL_ADMIN', tenantId: SCHOOL_B, schoolId: SCHOOL_B } },
+      );
+      expect(res.affectedTenantIds).toEqual([SCHOOL_B]);
+      expect(await activeIdsFor('scr-b1')).toEqual([res.messageId]);
+      expect(await activeIdsFor('scr-a1')).toEqual([]);
+      expect(await activeIdsFor('scr-district')).toEqual([]);
+    });
+
+    it('a DEVICE-scoped message still reaches only that screen (membership filter intact)', async () => {
+      await emergency.broadcastText(
+        { scopeType: 'device', scopeId: 'scr-a1', text: 'Room 12 only', severity: 'INFO' } as any,
+        schoolAAdmin,
+      );
+      expect(await activeIdsFor('scr-a1')).toHaveLength(1);
+      expect(await activeIdsFor('scr-a2')).toEqual([]);
+    });
+
+    it('a row stored under a tenant but scoped to a NON-ancestor is withheld (fail closed)', async () => {
+      // No writer produces this shape; a bad backfill or a future writer bug
+      // must not turn into a sibling's message on this wall.
+      emergencyMessages.push({
+        id: 'stray', tenantId: SCHOOL_A, type: 'TEXT_BROADCAST', severity: 'INFO', textBlob: 'x',
+        mediaUrls: null, audioUrl: null, scopeType: 'tenant', scopeId: SCHOOL_B,
+        expiresAt: null, clearedAt: null, clearedByUserId: null, createdAt: new Date(), triggeredByUserId: null,
+      });
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        expect(await activeIdsFor('scr-a1')).toEqual([]);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('stray'));
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('a district CLEAR takes every copy down, writes ONE audit row naming them, and pushes each copy’s own id', async () => {
+      const sent: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'Shelter in place', severity: 'CRITICAL' } as any,
+        districtAdmin,
+      );
+      const childIds = Object.fromEntries(
+        [SCHOOL_A, SCHOOL_B, ANNEX].map((t) => [t, pushedIdOn(`tenant:${t}`, 'TEXT_BROADCAST')]),
+      );
+      redis.publish.mockClear();
+
+      const res: any = await emergency.clearMessage(sent.messageId, districtAdmin);
+      expect(res.success).toBe(true);
+      expect([...res.affectedTenantIds].sort()).toEqual([ANNEX, DISTRICT, SCHOOL_A, SCHOOL_B].sort());
+
+      for (const s of ['scr-district', 'scr-a1', 'scr-a2', 'scr-b1', 'scr-annex']) {
+        expect(await activeIdsFor(s)).toEqual([]);
+      }
+      // Every copy is stamped cleared by the operator who cleared it.
+      const copies = emergencyMessages.filter((m) => m.type === 'TEXT_BROADCAST');
+      expect(copies).toHaveLength(4);
+      for (const c of copies) {
+        expect(c.clearedAt).toBeInstanceOf(Date);
+        expect(c.clearedByUserId).toBe('dadmin');
+      }
+      // ONE audit row — exactly as a single-tenant clear writes — with the reach in its details.
+      const clears = auditLogs.filter((r) => r.action === 'CLEAR_EMERGENCY_MESSAGE');
+      expect(clears).toHaveLength(1);
+      expect(clears[0]).toEqual(expect.objectContaining({ tenantId: DISTRICT, userId: 'dadmin', targetType: 'tenant', targetId: DISTRICT }));
+      const details = JSON.parse(clears[0].details);
+      expect(details.messageId).toBe(sent.messageId);
+      expect([...details.affectedTenantIds].sort()).toEqual([ANNEX, DISTRICT, SCHOOL_A, SCHOOL_B].sort());
+      expect(details.clearedMessageIds).toEqual(expect.arrayContaining([sent.messageId, ...Object.values(childIds)]));
+      // The bus: ALL_CLEAR_MESSAGE on each tenant's own channel, carrying the
+      // id THAT tenant's screens were handed — never the district's id.
+      for (const t of [SCHOOL_A, SCHOOL_B, ANNEX]) {
+        expect(pushedIdOn(`tenant:${t}`, 'ALL_CLEAR_MESSAGE')).toBe(childIds[t]);
+      }
+      expect(pushedIdOn(`tenant:${DISTRICT}`, 'ALL_CLEAR_MESSAGE')).toBe(sent.messageId);
+      expect(publishedChannels()).not.toContain(`tenant:${OTHER_SCHOOL}`);
+    });
+
+    it('one school clearing ITS copy clears its own subtree only — the district and a sibling keep theirs', async () => {
+      const sent: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'Shelter in place', severity: 'CRITICAL' } as any,
+        districtAdmin,
+      );
+      const schoolACopy = pushedIdOn(`tenant:${SCHOOL_A}`, 'TEXT_BROADCAST')!;
+      await emergency.clearMessage(schoolACopy, schoolAAdmin);
+      expect(await activeIdsFor('scr-a1')).toEqual([]);
+      expect(await activeIdsFor('scr-annex')).toEqual([]); // annex sits under school-a
+      expect(await activeIdsFor('scr-b1')).toHaveLength(1);
+      expect(await activeIdsFor('scr-district')).toEqual([sent.messageId]);
+    });
+
+    it('a SCHOOL_ADMIN still cannot clear the district’s own copy', async () => {
+      const sent: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'x', severity: 'INFO' } as any,
+        districtAdmin,
+      );
+      await expect(emergency.clearMessage(sent.messageId, schoolAAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(await activeIdsFor('scr-a1')).toHaveLength(1);
+    });
+
+    it('expiry behaves identically for every copy', async () => {
+      // Already expired at send time: nobody sees it, parent or child.
+      await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'old', severity: 'INFO', expiresAt: Math.floor(Date.now() / 1000) - 1 } as any,
+        districtAdmin,
+      );
+      for (const s of ['scr-district', 'scr-a1', 'scr-b1', 'scr-annex']) {
+        expect(await activeIdsFor(s)).toEqual([]);
+      }
+      // Still live: everybody sees exactly one, with the same expiry.
+      await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: DISTRICT, text: 'new', severity: 'INFO', durationMs: 60_000 } as any,
+        districtAdmin,
+      );
+      const expiries = new Set<number>();
+      for (const s of ['scr-district', 'scr-a1', 'scr-b1', 'scr-annex']) {
+        const active = (await pollFor(s)).active;
+        expect(active).toHaveLength(1);
+        expiries.add(active[0].expiresAt);
+      }
+      expect(expiries.size).toBe(1);
+    });
   });
 });

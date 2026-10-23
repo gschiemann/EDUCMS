@@ -40,6 +40,20 @@ import {
   collectOrganisationTenantIds,
   isDescendantTenant,
 } from './tenant-hierarchy';
+// 2026-10-22 — a district BROADCAST / MEDIA ALERT is fanned out as one row
+// per child tenant whose `scopeId` is the DISTRICT; the device poll pinned
+// `scopeId` to the screen's own tenant and never returned those copies, so
+// the alert fell off every child screen after the player's two-miss
+// reconcile (~24 s) and never reached a screen that missed the push. The
+// rule now lives in `message-visibility.ts`; the ancestor chain it checks
+// against is memoised in `tenant-ancestors.ts`.
+import {
+  clearTargetMessageIds,
+  deviceMessagesWhere,
+  isMessageVisibleToTenant,
+  type DeviceMessageScope,
+} from './message-visibility';
+import { ancestorTenantIdsCached } from './tenant-ancestors';
 // 2026-09-16 — double-sided displays. A device-scoped alert names ONE screen
 // id, and with faces that id is one PANE of a physical display. An alert that
 // lit the front while the back kept running the lunch menu is exactly the
@@ -2382,14 +2396,47 @@ export class EmergencyController {
     }
     await assertSupportReach(user, existing.tenantId); // SUPPORT ACCESS (2026-10-11)
 
+    // ── 2026-10-22 — a clear reaches every copy the send fanned out ──────
+    // A tenant-scoped broadcast / media alert is stored as one row per
+    // descendant tenant (`idForTenant` in broadcastText / mediaAlert). This
+    // handler cleared exactly the row the operator named, so a district
+    // "Clear" took the district's own copy down and left every school's copy
+    // live until expiry — the same subtree-blindness the lockdown all-clear
+    // was fixed for on 2026-08-03. Reach is the VERIFIED owning tenant plus
+    // its descendants (the same subtree a tenant all-clear covers); the id
+    // set is derived from the row's own id, and every write below is pinned
+    // to that subtree so an id collision could never reach outside it.
+    // A group / device-scoped message has no copies; the walk is skipped.
+    const descendantTenantIds =
+      existing.scopeType === 'tenant'
+        ? await collectDescendantTenantIds(this.prisma.client.tenant as any, existing.tenantId)
+        : [];
+    const affectedTenantIds = [existing.tenantId, ...descendantTenantIds];
+    const targetIds = clearTargetMessageIds(messageId, existing.tenantId, descendantTenantIds);
+    // ten-ok: id set derived from the verified row above; tenantId pinned to the verified subtree
+    const copies: Array<{ id: string; tenantId: string; scopeType: string; scopeId: string }> =
+      (await this.prisma.client.emergencyMessage.findMany({
+        where: { id: { in: targetIds }, tenantId: { in: affectedTenantIds } },
+        select: { id: true, tenantId: true, scopeType: true, scopeId: true },
+      })) ?? [];
+    if (!copies.some((c) => c.id === existing.id)) {
+      copies.unshift({
+        id: existing.id,
+        tenantId: existing.tenantId,
+        scopeType: existing.scopeType,
+        scopeId: existing.scopeId,
+      });
+    }
+
     // Atomic clear + audit — if audit fails we must not leave the
-    // message marked cleared with no trail of who did it.
+    // message marked cleared with no trail of who did it. ONE audit row,
+    // exactly as before, now naming every copy and tenant it reached.
     await this.prisma.client.$transaction([
-      // Scoped by the VERIFIED owning tenant (defense-in-depth vs the
+      // Scoped by the VERIFIED owning subtree (defense-in-depth vs the
       // ownership check above racing a re-parent — updateMany because a
       // compound {id, tenantId} isn't a Prisma unique input).
       this.prisma.client.emergencyMessage.updateMany({
-        where: { id: messageId, tenantId: existing.tenantId },
+        where: { id: { in: targetIds }, tenantId: { in: affectedTenantIds } },
         data: { clearedAt: new Date(), clearedByUserId: user.id || null },
       }),
       this.prisma.client.auditLog.create({
@@ -2399,39 +2446,70 @@ export class EmergencyController {
           targetId: existing.scopeId,
           tenantId: existing.tenantId,
           userId: user.id,
-          details: JSON.stringify({ messageId, type: existing.type }),
+          details: JSON.stringify({
+            messageId,
+            type: existing.type,
+            clearedMessageIds: copies.map((c) => c.id),
+            affectedTenantIds: [...new Set(copies.map((c) => c.tenantId))],
+            affectedTenantCount: new Set(copies.map((c) => c.tenantId)).size,
+          }),
         },
       }),
     ]);
 
-    const channel = `${existing.scopeType}:${existing.scopeId}`;
     // Pushed SOS/TEXT_BROADCAST/MEDIA_ALERT overlays are cleared on the player
     // by the ALL_CLEAR_MESSAGE type (setPushedEmergencyMessage(null)); the bare
     // ALL_CLEAR type only triggers a manifest re-fetch (the secure path for
     // OVERRIDE lockdowns) and never drops a pushed message — so signing
     // ALL_CLEAR here left the overlay stuck on screen with no way to clear it.
-    const signedMessage = this.signer.signMessage('ALL_CLEAR_MESSAGE', {
-      messageId,
-      clearedBy: user.id || 'admin_system',
-    });
+    //
+    // One publish per COPY, on the channel that copy was pushed on: a
+    // tenant-scoped copy rode `tenant:<its own tenantId>` (the gateway matches
+    // a tenant publish against the DEVICE's own tenant), a group / device
+    // message rode `<scopeType>:<scopeId>`. Each carries ITS OWN id — the one
+    // the screen was handed — so the player's reconcile and the push agree.
+    const publishTargets = copies.map((c) => ({
+      ch: c.scopeType === 'tenant' ? `tenant:${c.tenantId}` : `${c.scopeType}:${c.scopeId}`,
+      id: c.id,
+      tenantId: c.tenantId,
+    }));
     // Same reasoning as the broadcast/SOS bumps: move the revision, leave
     // `active` alone (clearing a pushed message is not a tenant all-clear).
-    bumpTenantEmergencyEpoch({ redis: this.redisService }, existing.tenantId);
-    try {
-      await this.redisService.publish(channel, signedMessage);
-    } catch (error) {
-      Sentry.withScope((s) => {
-        s.setTag('emergency.action', 'clear-message');
-        s.setTag('emergency.scopeType', existing.scopeType);
-        s.setUser({ id: user.id });
-        s.setExtra('messageId', messageId);
-        s.setExtra('channel', channel);
-        Sentry.captureException(error);
+    for (const tid of new Set(publishTargets.map((p) => p.tenantId))) {
+      bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+    }
+    // Each publish is caught INDEPENDENTLY (same rule as the fan-out): one
+    // school's Redis hiccup must not skip the rest — they fall back to the
+    // poll tier, which no longer lists the copy, so the player's two-miss
+    // reconcile takes the overlay down there too.
+    for (const target of publishTargets) {
+      const signedMessage = this.signer.signMessage('ALL_CLEAR_MESSAGE', {
+        messageId: target.id,
+        clearedBy: user.id || 'admin_system',
       });
-      console.warn(`[Emergency] Clear publish failed for ${channel}. Error: ${error}`);
+      try {
+        await this.redisService.publish(target.ch, signedMessage);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', 'clear-message');
+          s.setTag('emergency.scopeType', existing.scopeType);
+          s.setUser({ id: user.id });
+          s.setExtra('messageId', target.id);
+          s.setExtra('channel', target.ch);
+          Sentry.captureException(error);
+        });
+        console.warn(`[Emergency] Clear publish failed for ${target.ch}. Error: ${error}`);
+      }
     }
 
-    return { success: true, message: `All clear for ${messageId} dispatched to ${channel}` };
+    const channel = `${existing.scopeType}:${existing.scopeId}`;
+    return {
+      success: true,
+      clearedMessageIds: copies.map((c) => c.id),
+      affectedTenantIds: [...new Set(copies.map((c) => c.tenantId))],
+      affectedTenantCount: new Set(copies.map((c) => c.tenantId)).size,
+      message: `All clear for ${messageId} dispatched to ${channel} (${copies.length} location copies)`,
+    };
   }
 
   /**
@@ -2782,30 +2860,34 @@ export class EmergencyController {
     if (isSuper) await assertSupportReach(req.user, tenantId); // SUPPORT ACCESS (2026-10-11)
 
     const now = new Date();
-    const where: any = {
-      tenantId,
-      clearedAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    };
-    if (scopeType) where.scopeType = scopeType;
-    if (scopeId) where.scopeId = scopeId;
-
+    let rows: any[];
     if (isDevicePrincipal) {
-      const screenId = typeof req.user?.sub === 'string' ? req.user.sub : null;
-      const groupId = req.user?.screenGroupId || null;
-      const scopeOr: Array<{ scopeType: string; scopeId: string }> = [
-        { scopeType: 'tenant', scopeId: tenantId },
-      ];
-      if (screenId) scopeOr.push({ scopeType: 'device', scopeId: screenId });
-      if (groupId) scopeOr.push({ scopeType: 'group', scopeId: groupId });
-      where.AND = [...(where.AND ?? []), { OR: scopeOr }];
+      // Same visibility rule as the device poll below (2026-10-22): a copy
+      // fanned out to this screen's tenant from a PARENT tenant is this
+      // screen's message too. The optional scopeType/scopeId query filters
+      // are an operator-console affordance and are not applied to a device.
+      rows = await this.visibleDeviceMessages(
+        {
+          tenantId,
+          screenId: typeof req.user?.sub === 'string' ? req.user.sub : '',
+          groupId: req.user?.screenGroupId || null,
+        },
+        now,
+      );
+    } else {
+      const where: any = {
+        tenantId,
+        clearedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      };
+      if (scopeType) where.scopeType = scopeType;
+      if (scopeId) where.scopeId = scopeId;
+      rows = await this.prisma.client.emergencyMessage.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
     }
-
-    const rows = await this.prisma.client.emergencyMessage.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
 
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
 
@@ -2864,10 +2946,12 @@ export class EmergencyController {
    *     a stale claim until its 365-day token rotates; reading the
    *     live row prevents a cross-tenant leak through an old token.
    *   - Per-scope filter: a device only sees messages addressed to a
-   *     scope it actually belongs to — tenant:<tenantId>,
-   *     group:<screenGroupId>, or device:<screenId>. This stops a
-   *     per-screen (Sprint 8b device-scoped) message for screen B
-   *     from leaking onto screen A in the same tenant.
+   *     scope it actually belongs to — tenant:<tenantId> (including a
+   *     copy fanned out to that tenant by a send aimed at an ancestor,
+   *     2026-10-22 — see `visibleDeviceMessages`), group:<screenGroupId>,
+   *     or device:<screenId>. This stops a per-screen (Sprint 8b
+   *     device-scoped) message for screen B from leaking onto screen A
+   *     in the same tenant.
    *
    * No signing/HMAC/freshness/dedup is weakened: this is a READ of
    * the same EmergencyMessage rows the signer/AuditLog already
@@ -2897,16 +2981,6 @@ export class EmergencyController {
     const tenantId = screen.tenantId;
     const now = new Date();
 
-    // Scopes this exact device is a member of. A message only reaches
-    // the wall if its (scopeType:scopeId) matches one of these.
-    const scopeOr: Array<{ scopeType: string; scopeId: string }> = [
-      { scopeType: 'tenant', scopeId: tenantId },
-      { scopeType: 'device', scopeId: screen.id },
-    ];
-    if (screen.screenGroupId) {
-      scopeOr.push({ scopeType: 'group', scopeId: screen.screenGroupId });
-    }
-
     // 2026-08-16 (efficiency audit) — these two reads are independent once
     // tenantId is known, and this endpoint runs every ~10s on EVERY device,
     // uncached by design (it is the emergency HTTP backstop). Sequential,
@@ -2916,16 +2990,10 @@ export class EmergencyController {
     // those two: less wire, and an OAuth token has no business riding a
     // device-poll buffer every ten seconds.
     const [rows, tenant] = await Promise.all([
-      this.prisma.client.emergencyMessage.findMany({
-        where: {
-          tenantId,
-          clearedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          AND: [{ OR: scopeOr }],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-      }),
+      this.visibleDeviceMessages(
+        { tenantId, screenId: screen.id, groupId: screen.screenGroupId },
+        now,
+      ),
       this.prisma.client.tenant.findUnique({
         where: { id: tenantId },
         select: { emergencyStatus: true, emergencyPlaylistId: true },
@@ -2938,5 +3006,45 @@ export class EmergencyController {
       tenantPlaylistId: tenant?.emergencyPlaylistId || null,
       active: rows.map(r => this.toEmergencyMessageView(r)),
     };
+  }
+
+  /**
+   * The active EmergencyMessage rows ONE screen may see (2026-10-22).
+   *
+   * Scopes this exact device is a member of: its own tenant — INCLUDING a
+   * copy fanned out to that tenant by a send aimed at an ANCESTOR (a
+   * district broadcast is every school's broadcast) — its group, and
+   * itself. `deviceMessagesWhere` matches tenant-scoped rows by the row's
+   * `tenantId` (that is what "fanned out to me" means); the row's `scopeId`
+   * is then checked against the screen's ancestor chain so a copy is shown
+   * only when the send was aimed at this tenant or above it. The chain is
+   * read only when such a copy is present, and memoised for 30 s, so the
+   * idle poll costs exactly what it did before. See `message-visibility.ts`.
+   *
+   * A row that fails the check is dropped and logged: no writer produces
+   * one today, so its presence would be a bug worth seeing.
+   */
+  private async visibleDeviceMessages(scope: DeviceMessageScope, now: Date): Promise<any[]> {
+    const rows: any[] = await this.prisma.client.emergencyMessage.findMany({
+      where: deviceMessagesWhere(scope, now),
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    const needsChain = rows.some((r) => r.scopeType === 'tenant' && r.scopeId !== scope.tenantId);
+    const ancestors: ReadonlySet<string> = needsChain
+      ? await ancestorTenantIdsCached(this.prisma.client.tenant as any, scope.tenantId)
+      : new Set<string>();
+    const visible: any[] = [];
+    for (const r of rows) {
+      if (isMessageVisibleToTenant(r, scope.tenantId, ancestors)) {
+        visible.push(r);
+      } else {
+        console.warn(
+          `[Emergency] message ${r.id} is stored under tenant ${scope.tenantId} but scoped to ` +
+            `tenant ${r.scopeId}, which is not that tenant or an ancestor — withheld from screen ${scope.screenId}`,
+        );
+      }
+    }
+    return visible;
   }
 }
