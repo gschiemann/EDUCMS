@@ -189,3 +189,33 @@ export async function isDescendantTenant(
 
   return false;
 }
+
+/**
+ * Walk UP from `tenantId` and return its ancestors, nearest first (parent,
+ * grandparent, …) — WITHOUT `tenantId` itself. The device message poll uses
+ * it to decide whether a fan-out copy stored under the screen's tenant was
+ * aimed at that tenant or at an organisation above it
+ * (`message-visibility.ts`, 2026-10-22).
+ *
+ * Depth-bounded and cycle-guarded like every other walk here. A row that
+ * cannot be read ends the chain where it stands — the result is never wider
+ * than the real tree.
+ */
+export async function collectAncestorTenantIds(
+  tenant: TenantHierarchyDelegate,
+  tenantId: string,
+): Promise<string[]> {
+  if (!tenantId) return [];
+  const out: string[] = [];
+  const seen = new Set<string>([tenantId]);
+  let cursor: string = tenantId;
+  for (let hop = 0; hop < MAX_TENANT_TREE_DEPTH; hop++) {
+    const row = await tenant.findUnique({ where: { id: cursor }, select: { parentId: true } });
+    const parentId = row?.parentId ?? null;
+    if (!parentId || seen.has(parentId)) return out; // top, or a cycle
+    seen.add(parentId);
+    out.push(parentId);
+    cursor = parentId;
+  }
+  return out;
+}

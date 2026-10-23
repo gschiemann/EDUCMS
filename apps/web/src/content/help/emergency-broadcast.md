@@ -11,7 +11,7 @@ An **emergency broadcast** puts an urgent message on top of whatever your screen
 
 ## Open the Broadcast page
 
-**Emergency Broadcast** lives at your workspace address followed by `/emergency/broadcast`. If your dashboard is at `venue-os.app/lincoln-high/dashboard`, open `venue-os.app/lincoln-high/emergency/broadcast` — and bookmark it. While an alert is active, the red banner on the dashboard also has an **Emergency Console** button that opens it.
+Open **Broadcast** in the sidebar (on a phone, under **More**) — it is shown to everyone who can send. The page also lives at your workspace address followed by `/emergency/broadcast`: if your dashboard is at `venue-os.app/lincoln-high/dashboard`, open `venue-os.app/lincoln-high/emergency/broadcast` — and bookmark it. While an alert is active, the red banner on the dashboard also has an **Emergency Console** button that opens it.
 
 ## Send a text broadcast
 
@@ -22,7 +22,7 @@ An **emergency broadcast** puts an urgent message on top of whatever your screen
 
 **Broadcast dispatched.** confirms that it went out, and the message appears under **Active broadcasts**. If sending fails, a red message says so: nothing went out, so try again.
 
-A broadcast goes to every screen at the location you are working in; to reach one location's screens, switch to that location first. There is no screen or group picker on this page.
+A broadcast goes to every screen at the location you are working in — and, when you work at an organization with locations under it, to every screen at those locations too. To reach one location's screens only, switch to that location first. There is no screen or group picker on this page.
 
 ## Add pictures, video or sound
 
@@ -61,7 +61,7 @@ The **Voice on** / **Silent** switch at the top of `/panic` only makes your phon
 | Media alert | 1 hour |
 | Staff SOS | 30 minutes |
 
-Screens take a message down on their own when its time runs out. To end one sooner, a Super Admin presses **Clear** next to it under **Active broadcasts**. If the page then says the clear failed, the message may still be on screens — press **Clear** again.
+Screens take a message down on their own when its time runs out. To end one sooner, press **Clear** next to it under **Active broadcasts** — anyone who can send can clear. Clearing a broadcast you sent from an organization also clears it at every location under it. If the page then says the clear failed, the message may still be on screens — press **Clear** again.
 
 A full alert (Lockdown, Evacuate and the rest) ends differently: type **CLEAR** and press **Terminate Emergency (All Clear)** on the dashboard, or use **Hold to send all-clear** on `/panic`.
 
@@ -74,7 +74,7 @@ The Broadcast page has no **LIVE | DRILL** switch: every broadcast is real, and 
 - **Super Admins** and **Admins** can send text broadcasts and media alerts.
 - **Editors** can send them only when an administrator has turned on their **Emergency alerts** permission — see [delegating panic access](/help/panic-delegation). Without it, sending is refused.
 - **Viewers** can see **Active broadcasts** but can't send.
-- **Clear** on this page is shown to Super Admins.
+- **Clear** on this page is shown to everyone who can send — the same rule the server applies.
 - **API keys** can never send or clear a broadcast.
 
 ## What the audit log records

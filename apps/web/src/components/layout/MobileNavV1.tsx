@@ -6,9 +6,10 @@ import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay, MoreHorizontal,
   Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
-  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint,
+  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint, Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { useAppStore } from '@/lib/store';
 import { useNotifications, usePasskeys } from '@/hooks/use-api';
 import { passkeysSupported } from '@/lib/passkeys';
@@ -161,6 +162,12 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
         : []),
     ...(isAdmin
       ? [{ key: 'audit', label: t('nav.audit'), icon: FileClock, href: `${base}/audit` }]
+      : []),
+    // Emergency → Broadcast (2026-10-22): same capability the API honours
+    // for POST /emergency/broadcast (admins + canTriggerPanic), one shared
+    // answer — see Sidebar. §10: emergency discovery follows the capability.
+    ...(hasPanicAuthority(user)
+      ? [{ key: 'broadcast', label: t('nav.broadcast'), icon: Megaphone, href: `${base}/emergency/broadcast` }]
       : []),
     { key: 'settings', label: t('nav.settings'), icon: Settings, href: `${base}/settings` },
     { key: 'account', label: t('nav.account'), icon: User, href: `${base}/account` },

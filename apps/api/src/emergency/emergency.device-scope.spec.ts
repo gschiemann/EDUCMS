@@ -58,10 +58,14 @@ describe('GET /emergency/status — device principals', () => {
     );
     const where = whereOf(prisma);
     expect(where.tenantId).toBe('tenant-1');
+    // The tenant clause carries no scopeId since 2026-10-22: `where.tenantId`
+    // pins the row to this device's tenant, and a copy fanned out from an
+    // ANCESTOR (district broadcast) names the district as its scopeId — the
+    // ancestor check runs after the read (message-visibility.ts).
     expect(where.AND).toEqual([
       {
         OR: [
-          { scopeType: 'tenant', scopeId: 'tenant-1' },
+          { scopeType: 'tenant' },
           { scopeType: 'device', scopeId: 'screen-A' },
           { scopeType: 'group', scopeId: 'group-9' },
         ],

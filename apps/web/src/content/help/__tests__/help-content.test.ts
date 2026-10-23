@@ -274,9 +274,17 @@ describe('signing-in and emergency-broadcast articles match the product', () => 
     expect(api).toMatch(/new Date\(Date\.now\(\) \+ 30 \* 60 \* 1000\); \/\/ 30 min/);
     expect(en).toMatch(/\| Media alert \| 1 hour \|/);
     expect(en).toMatch(/\| Staff SOS \| 30 minutes \|/);
-    // "Clear" is shown to Super Admins only (the page's rule, not the API's).
-    expect(page).toMatch(/const canClear = role === 'DISTRICT_ADMIN' \|\| role === 'SUPER_ADMIN';/);
-    expect(en).toContain('**Clear** on this page is shown to Super Admins');
+    // "Clear" follows the API's own rule since 2026-10-22 (admins + the
+    // delegated panic flag, never a viewer) — the same capability that gates
+    // sending — and the article says so.
+    expect(page).toMatch(/const canClear = canSendAllClear\(user\) && !isViewer;/);
+    expect(page).toMatch(/const canSend = hasPanicAuthority\(user\) && !isViewer;/);
+    expect(en).toContain('**Clear** on this page is shown to everyone who can send');
+    // A broadcast from an organization reaches the locations under it (the
+    // poll and the clear fan out — emergency.district-propagation.spec.ts).
+    expect(api).toMatch(/deviceMessagesWhere\(/);
+    expect(api).toMatch(/clearTargetMessageIds\(/);
+    expect(en).toContain('to every screen at those locations too');
     // The page has no LIVE | DRILL switch, and the article says so.
     expect(page).not.toMatch(/LiveDrillSwitch/);
     expect(en).toContain('no **LIVE | DRILL** switch');
