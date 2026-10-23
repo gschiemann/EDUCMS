@@ -70,8 +70,9 @@ export interface BrandIdentity {
  */
 export function decodeBrandText(s: string | undefined | null): string {
   if (!s) return '';
+  // `&amp;` is decoded LAST: decoding it first turns `&amp;lt;` into `<`
+  // (a double-decode — one entity, two passes).
   return s
-    .replace(/&amp;|&#38;/gi, '&')
     .replace(/&lt;|&#60;/gi, '<')
     .replace(/&gt;|&#62;/gi, '>')
     .replace(/&quot;|&#34;/gi, '"')
@@ -79,7 +80,8 @@ export function decodeBrandText(s: string | undefined | null): string {
     .replace(/&ldquo;|&rdquo;/gi, '"')
     .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&ndash;/gi, '–')
-    .replace(/&mdash;/gi, '—');
+    .replace(/&mdash;/gi, '—')
+    .replace(/&amp;|&#38;/gi, '&');
 }
 
 /**

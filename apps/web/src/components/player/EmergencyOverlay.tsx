@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
+import { isBannerEmergencyMessage } from '@/app/player/emergencySurface';
 
 /** The API accepts only https:// emergency media (media-url-guard.ts); refuse
  *  anything else here too, so a pushed message can never inject a script URL. */
@@ -210,8 +211,13 @@ interface Props {
    * PAGE decides whether it is already displaying the alert.
    */
   onTenantEmergencyHint?: () => void;
-  /** The page keeps regular playback held while a poll-only message is visible. */
-  onPolledActiveChange?: (active: boolean) => void;
+  /**
+   * The page keeps regular playback held while a poll-only message is
+   * visible. `takeover` (2026-10-23, B3) says whether that message is a
+   * FULL-SCREEN one (SOS / media / CRITICAL text) — a banner-style INFO /
+   * WARN broadcast overlays the content instead of taking it down.
+   */
+  onPolledActiveChange?: (active: boolean, takeover: boolean) => void;
   /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
@@ -267,7 +273,8 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const emptyPollStreakRef = useRef(0);
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
   const polledActive = !!polled;
-  useEffect(() => { onPolledActiveChange?.(polledActive); }, [polledActive, onPolledActiveChange]);
+  const polledTakeover = polledActive && !isBannerEmergencyMessage(polled);
+  useEffect(() => { onPolledActiveChange?.(polledActive, polledTakeover); }, [polledActive, polledTakeover, onPolledActiveChange]);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
   // half / thinks it's 1920×1080" P0). Pass the active message id so the canvas
@@ -365,7 +372,9 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const Icon = style.icon;
 
   // Banner-style for INFO text broadcasts, full-screen for everything else.
-  const isBanner = active.type === 'TEXT_BROADCAST' && active.severity !== 'CRITICAL';
+  // Shared with the page's surface decision (`emergencySurface.ts`) so the
+  // two can never disagree about which messages take the content down.
+  const isBanner = isBannerEmergencyMessage(active);
 
   // 2026-05-26 P0-5 — Chromium-83 sweep on a life-safety surface.
   // NovaStar Taurus LED controllers ship Chromium 83 and several K-12

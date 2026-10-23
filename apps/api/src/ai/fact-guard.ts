@@ -699,8 +699,8 @@ export function enforceGroundedFactsInHtml(
   if (typeof html !== 'string' || !html) return { html, dropped: [], removedNodes: 0 };
   const flatText = decodeEntities(
     html
-      .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
-      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' ')
+      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ')
       .replace(/<[^>]*>/g, ' '),
   );
   // Fast path — no money-shaped text at all, or (with no content rows to check

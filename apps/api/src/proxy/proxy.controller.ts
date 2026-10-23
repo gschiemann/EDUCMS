@@ -321,9 +321,25 @@ export class ProxyController {
         // backtracking on crafted upstream HTML (this runs on
         // attacker-controlled pages, up to 10 MB). A lazy [\s\S]*?
         // scans linearly for the closing tag instead.
-        html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
-        html = html.replace(/\s(on\w+)\s*=\s*["'][^"']*["']/gi, '');
-        html = html.replace(/<\/?noscript[^>]*>/gi, '');
+        //
+        // Looped to a fixpoint (CodeQL, 2026-10-22): a removal can expose a
+        // new match (`<scr<script></script>ipt>`), an end tag may carry junk
+        // (`</script foo>`) and an on* value may be unquoted. The response
+        // is served under `Content-Security-Policy: sandbox allow-scripts`
+        // in an opaque origin either way — this strip is for page stability
+        // in static mode, the sandbox is the security boundary.
+        {
+          let prev = '';
+          let guard = 0;
+          while (html !== prev && guard < 10) {
+            prev = html;
+            html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '');
+            html = html.replace(/<script\b[^>]*\/?>/gi, '');
+            html = html.replace(/(<[a-zA-Z][^>]*?)\s+on[a-zA-Z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g, '$1');
+            html = html.replace(/<\/?noscript\b[^>]*>/gi, '');
+            guard++;
+          }
+        }
       }
       // <meta http-equiv="refresh"> stripping is safe in BOTH modes —
       // an embedded auto-refresh would break out of the iframe by
@@ -501,13 +517,14 @@ export class ProxyController {
           /(<a\b[^>]*?(?:\s|(?<=<a))href\s*=\s*)(["'])([^"']+)\2/gi,
           (_match, prefix, q, href) => {
             const trimmed = String(href).trim();
+            // Scheme test is case-insensitive and tolerates the control
+            // characters / whitespace a URL parser strips (`JavaScript:`,
+            // `java\tscript:`) — CodeQL js/incomplete-url-scheme-check.
+            const scheme = trimmed.replace(/[\u0000-\u0020]+/g, '').toLowerCase();
             if (
               !trimmed ||
               trimmed.startsWith('#') ||
-              trimmed.startsWith('javascript:') ||
-              trimmed.startsWith('mailto:') ||
-              trimmed.startsWith('tel:') ||
-              trimmed.startsWith('data:') ||
+              /^(?:javascript|vbscript|data|mailto|tel):/.test(scheme) ||
               trimmed.includes('/api/v1/proxy/web')
             ) {
               return `${prefix}${q}${href}${q}`;

@@ -144,11 +144,12 @@ export function isTrustedImageUrl(
   }
 }
 
+// `&amp;` LAST: decoding it first turns `&amp;quot;` into `"` (double-decode).
 const decodeAttr = (s: string) =>
   s
-    .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
 
 /** Every image reference in a board: `<img src>` and CSS `url(…)`, as written (raw) and decoded. */
 export function boardImageRefs(

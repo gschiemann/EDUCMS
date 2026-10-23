@@ -9,6 +9,7 @@ import path from 'node:path';
 import {
   DesignerRendererClient,
   RENDER_IMAGE_CAPS,
+  boardImageRefs,
   isTrustedImageUrl,
   rendererBaseUrl,
 } from './designer-renderer.client';
@@ -279,5 +280,20 @@ describe('loadModelImage — the logo / photo for the draw', () => {
     });
     expect(await off.loadModelImage(OURS)).toBeNull();
     expect(safeFetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('boardImageRefs — attribute decode is ONE pass (CodeQL js/double-escaping)', () => {
+  it('decodes &amp; / &quot; / &#39; once and keeps an escaped entity escaped', () => {
+    const html =
+      '<img src="https://x.test/a.png?u=1&amp;v=2">' +
+      '<div style="background:url(&quot;https://x.test/b.png&quot;)"></div>' +
+      '<img src="https://x.test/c.png?q=&amp;quot;">';
+    const refs = boardImageRefs(html);
+    const byRaw = new Map(refs.map((r) => [r.raw, r.url]));
+    expect(byRaw.get('https://x.test/a.png?u=1&amp;v=2')).toBe('https://x.test/a.png?u=1&v=2');
+    // `&amp;quot;` is the six characters `&quot;` after ONE decode — never a quote.
+    expect(byRaw.get('https://x.test/c.png?q=&amp;quot;')).toBe('https://x.test/c.png?q=&quot;');
+    expect(refs.some((r) => r.raw.includes('b.png'))).toBe(true);
   });
 });

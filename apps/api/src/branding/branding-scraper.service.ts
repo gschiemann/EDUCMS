@@ -582,8 +582,9 @@ export class BrandingScraperService {
     // OR a tiny manual decoder. Manual is more deterministic.
     const decodeEntities = (s: string | undefined | null): string | undefined => {
       if (!s) return s ?? undefined;
+      // `&amp;` is decoded LAST (below the numeric entities): decoding it
+      // first turns `&amp;lt;` into `<` — a double-decode.
       return s
-        .replace(/&amp;|&#38;/gi, '&')
         .replace(/&lt;|&#60;/gi, '<')
         .replace(/&gt;|&#62;/gi, '>')
         .replace(/&quot;|&#34;/gi, '"')
