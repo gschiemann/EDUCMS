@@ -6537,7 +6537,9 @@
     "noScreensYet": "Aún no hay pantallas",
     "showingOf": "Mostrando {shown} de {count, plural, one {# pantalla} other {# pantallas}}",
     "totalAcross": "{count, plural, one {# pantalla} other {# pantallas}} en {groups, plural, one {# grupo} other {# grupos}}",
-    "notInGroup": "Sin grupo"
+    "notInGroup": "Sin grupo",
+    "youreIn": "Estás en",
+    "returnToFleet": "Volver a la flota de {name}"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
