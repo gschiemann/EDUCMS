@@ -836,15 +836,18 @@ Safari for months. Local dev was Chrome-only so we never saw it.
 1. **Test in WebKit before considering anything `done`.** `pnpm --filter
    web run test:cross-browser` runs the holiday-bridge protocol checks
    (18 templates × 5 protocol assertions = 90 in WebKit). It runs in
-   under a minute. CI runs it on every push + PR via
-   `.github/workflows/cross-browser.yml` and blocks merge on red.
+   under a minute. CI runs it via `.github/workflows/cross-browser.yml` on
+   every non-draft PR that touches boards, shims, widgets or the canaries,
+   and Mon/Wed/Fri against master (2026-10-22, CI minute budget — see
+   `docs/research/2026-10-22-go-private/`); red blocks merge.
    For the **authed dashboard's client-side navigation** (the surface the
    2026-06-08 favicon-crash class lived in), `pnpm --filter web run
    test:webkit-nav` logs into the live deploy in WebKit, clicks the sidebar
    nav, and fails on any React `removeChild`/`parentNode` crash or a
-   click that full-reloads instead of soft-navigating. CI runs it on push
-   to master via the `webkit-nav` job in `.github/workflows/prod-smoke.yml`
-   (live-login, so it's post-deploy — the same window as prod-smoke).
+   click that full-reloads instead of soft-navigating. CI runs it twice a
+   day (and on demand: `gh workflow run prod-smoke.yml`) via the
+   `webkit-nav` job in `.github/workflows/prod-smoke.yml` (live-login
+   against production; no longer per push since 2026-10-22).
 2. **No "minified" inline JS unless you've verified it parses in WebKit.**
    Tools that emit JS (minifiers, bundlers, hand-rolled scripts) are
    the usual culprit class. Run the script through Safari Develop →
@@ -900,7 +903,7 @@ mobile bottom-nav + "More" sheet had major tap lag — and since the "More"
 sheet is a pure local-`useState` toggle (no fetch, no navigation), its lag
 proved the **main thread / GPU was busy at tap time**: app-wide contention,
 not the tab bar. Two root-cause classes, both now fixed and **locked in by CI**
-(`Mobile Perf` workflow → `node apps/web/tools/check-mobile-perf.cjs`, also
+(Deploy Reliability → `Static guards` → `node apps/web/tools/check-mobile-perf.cjs`, also
 `pnpm mobile-perf-guard`). Full write-up:
 `docs/research/2026-06-16-mobile-perf-deepdive/`.
 

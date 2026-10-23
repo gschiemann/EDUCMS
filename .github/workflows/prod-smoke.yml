@@ -21,33 +21,17 @@ name: Prod Smoke
 # touch real customer data on Chardon HS, AGC, etc.
 
 on:
-  push:
-    branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+  # 2026-10-22 (go-private CI budget, docs/research/2026-10-22-go-private/):
+  # the per-push trigger is gone. Each run waits for the deploy and drives a
+  # real browser against production — ~7 billed minutes, on every one of ~80
+  # master pushes a month. It now runs TWICE A DAY against whatever is live,
+  # and on demand right after a deploy you need verified:
+  #   gh workflow run prod-smoke.yml
+  # — once the deploy shows Ready, since a dispatch smokes whatever is live
+  # (the wait-for-this-commit steps below only act on a push event).
   workflow_dispatch:
   schedule:
-    # 06:00 UTC = 23:00 PT = midnight ET — fires while the customer's
-    # building is empty so a transient red doesn't sit visible all day.
-    - cron: '0 6 * * *'
+    - cron: '0 6,18 * * *' 
 
 permissions:
   contents: read
@@ -88,7 +72,7 @@ concurrency:
 jobs:
   prod-smoke:
     name: Prod smoke (Chromium)
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # 2026-05-11 — bumped 8 → 12 min after the login retry budget
     # extended to 5 attempts × up to 90 s backoffs. Worst-case the
     # Supabase pgbouncer is degraded enough that we burn ~4 min in
@@ -246,8 +230,7 @@ jobs:
     # made it intermittent (same commit green 08-17, hung 08-18 with no code
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
     # this job on ubuntu-latest.
-    runs-on: ubuntu-24.04
-    # WebKit cold-install of ~160 system deps is the slow part (3-7 min); the
+    runs-on: ${{ vars.CI_RUNNER_PLAYWRIGHT || 'ubuntu-24.04' }}
     # nav smoke itself runs in well under a minute. Cap at 15 to absorb it.
     timeout-minutes: 15
     steps:

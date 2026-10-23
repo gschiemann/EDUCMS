@@ -111,3 +111,7 @@ apps/web/src/app/dev/mobile-home-mock/
 # Load-test working directory: throwaway stack secrets + a fleet.json full of
 # device tokens. Disposable-stack only, but it must never enter git.
 scripts/loadtest/.out/
+
+# Semgrep CI outputs (scripts/ci-semgrep.sh)
+semgrep.json
+semgrep.sarif

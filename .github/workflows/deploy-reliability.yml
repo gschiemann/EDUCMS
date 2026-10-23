@@ -1,59 +1,62 @@
 name: Deploy Reliability
 
-# Runs on every push to master + every PR. Blocks the bad-build classes
-# we hit in production debugging on 2026-04-19:
+# THE per-change gate workflow. Runs on every push to master + every PR and
+# blocks the bad-build classes we hit in production debugging on 2026-04-19:
 #   - native deps not compiling on Alpine (argon2/bcrypt)
 #   - Prisma schema missing at install time
 #   - workspace TS packages not built before Node tries to require them
 #   - lockfile drift
 #   - TS errors in apps/web that break the Vercel build
-# See CLAUDE.md "Build failure modes" appendix for the full story.
+# See CLAUDE.md "Deploy Reliability" for the full story.
+#
+# ── 2026-10-22: consolidated for the private repo's minute budget ──────────
+# Full measurements and the before/after projection:
+#   docs/research/2026-10-22-go-private/01-ci-minutes.md
+#
+# On a private repo every JOB is billed, each rounded UP to a whole minute,
+# on a 2-vCPU runner. This workflow now carries what used to be spread over
+# ten workflows, with NO gate removed:
+#   * API Jest (blocking) — was ci.yml "Build, Lint & Test"; it now runs in
+#     "API + workspace packages build", which installed and built the same
+#     packages anyway. The old continue-on-error Jest step here is gone.
+#   * jsx-a11y + rules-of-hooks ESLint gates and Web Jest — were ci.yml
+#     "Accessibility Lint" and the "Web Jest (unit)" job; they now run in
+#     "Web typecheck + build".
+#   * The static guards (taurus-safety, mobile-perf, tenant isolation,
+#     capability registry, integration truth, OTA wiring, signing secrets,
+#     poster freshness) + schema-has-migration + APK-version-tag — were nine
+#     separate one-minute jobs in eight workflows; now one "Static guards" job.
+#   * Emergency path e2e (emergency-path.yml) is called from here, so it sees
+#     the same change detection.
+#   * Semgrep SAST (new, report-only — replaces what CodeQL default setup did
+#     for free on the public repo).
+#
+# What decides what runs: the `changes` job (scripts/ci-changed-areas.cjs,
+# seconds). It fails OPEN. A job it skips reports "skipped", which a REQUIRED
+# check accepts — that is why there is no `paths-ignore` on this workflow any
+# more: a workflow skipped by paths-ignore never reports its required checks,
+# so a docs-only PR could never merge without admin bypass.
+#
+# Two skips beyond "nothing relevant changed" (`heavy=false`), both with no
+# loss of coverage (details in the script header):
+#   * DRAFT PRs run only the change detection. Click "Ready for review" and the
+#     full set runs (`ready_for_review` is a trigger) before it can merge.
+#   * A push to master whose tree is byte-identical to a PR head that already
+#     passed this workflow (up to date with master, same jobs green) is not
+#     re-run. A direct push, or a merge of a stale/red PR, runs everything.
+#
+# Runner: `vars.CI_RUNNER` (repo Settings → Secrets and variables → Actions →
+# Variables) moves the heavy jobs to another runner label — a self-hosted box
+# or a cheaper hosted-runner provider — with no code change. Unset = GitHub's
+# ubuntu-latest. See 02-checklist.md.
 
 on:
   push:
     branches: [master, main]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
   pull_request:
     branches: [master, main]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -64,23 +67,102 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apk-version-tag-sync:
-    # The #1 recurring OTA failure: a developer bumps versionCode /
-    # versionName in build.gradle.kts but forgets to push the matching
-    # `player-v*` / `manager-v*` git tag. CI then never builds a GitHub
-    # Release, every kiosk polling /update-check correctly sees the old
-    # tag as "latest", and the whole fleet silently stays on a months-
-    # old build — with zero errors anywhere. This job turns that silent
-    # failure into a red check that prints the exact `git tag` command.
-    name: APK version is tagged
+  changes:
+    name: Changed areas
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.areas.outputs.code }}
+      app: ${{ steps.areas.outputs.app }}
+      server: ${{ steps.areas.outputs.server }}
+      player: ${{ steps.areas.outputs.player }}
+      renderer: ${{ steps.areas.outputs.renderer }}
+      heavy: ${{ steps.areas.outputs.heavy }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - id: areas
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_FILE: deploy-reliability.yml
+          # The jobs that must have concluded SUCCESS on the PR head before a
+          # master push of the identical tree may skip them (keyed by area).
+          TESTED_JOBS: >-
+            {"code": ["Static guards", "pnpm lockfile drift", "Semgrep SAST (diff-aware, report-only)"],
+             "app": ["API + workspace packages build", "Web typecheck + build"],
+             "server": ["Docker build + boot smoke test", "Emergency path / Emergency path (chromium + webkit)"],
+             "renderer": "Renderer image build + render smoke test"}
+        run: node scripts/ci-changed-areas.cjs
+
+  lockfile-check:
+    name: pnpm lockfile drift
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Verify lockfile matches package.json
+        run: pnpm install --frozen-lockfile --lockfile-only
+
+  guards:
+    # Every check here is a script that finishes in seconds; one runner, one
+    # install. Each check step runs even when an earlier CHECK failed
+    # (`!cancelled()` + setup succeeded), so one red guard never hides another.
+    # The reasoning for each guard lives in the script it runs.
+    name: Static guards
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # schema + poster checks diff against the base; the APK check reads tags
           fetch-tags: true
-      - name: Player + Manager versionName must have a matching git tag
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install (no scripts — the guards only read files; the schema check needs the prisma CLI)
+        id: install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build @cms/api-types (capability registry reads it)
+        id: build
+        run: pnpm --filter @cms/api-types build
+
+      # ── Deploy-safety guards ───────────────────────────────────────────────
+      - name: "Schema change ships a migration (2026-09-16 fleet incident)"
+        # A schema.prisma change that alters the database MUST ship a migration
+        # file: production applies migration files only (railway-start.sh →
+        # `prisma migrate deploy`), and `pnpm db:push` hides a missing one on
+        # the author's machine. Database-free; see the script header.
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/check-schema-has-migration.cjs
+      - name: "APK version is tagged (player + manager versionName has its git tag)"
+        # The #1 recurring OTA failure: versionCode/versionName bumped in
+        # build.gradle.kts without the matching player-v* / manager-v* tag, so
+        # no Release is built and the fleet silently stays on an old build.
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           fail=0
           for entry in "app:player" "manager:manager"; do
@@ -101,14 +183,8 @@ jobs:
               echo "::error file=$gradle::$dir is at versionName=$vn but git tag '$tag' does NOT exist. CI only ships an OTA release on a $prefix-v* tag. Run:  git tag $tag && git push origin $tag"
               fail=1
             fi
-
-            # Hardening (the v1.0.66 incident): the checks above work
-            # FROM the gradle outward and cannot catch a tag cut on an
-            # un-bumped tree — player-v1.0.66 was tagged while the gradle
-            # still said 1.0.65, so the APK shipped mis-stamped and every
-            # kiosk looped on install. This check works FROM the tags:
-            # the newest $prefix-v* tag must point at a commit whose
-            # build.gradle.kts versionName equals the tag.
+            # Hardening (the v1.0.66 incident): the newest $prefix-v* tag must
+            # point at a commit whose build.gradle.kts versionName equals the tag.
             latest=$(git tag -l "${prefix}-v*" | sort -V | tail -1)
             if [ -n "$latest" ]; then
               tagver="${latest#${prefix}-v}"
@@ -123,53 +199,86 @@ jobs:
           done
           exit $fail
 
-  lockfile-check:
-    name: pnpm lockfile drift
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 9.0.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Verify lockfile matches package.json
-        run: pnpm install --frozen-lockfile --lockfile-only
+      # ── Taurus safety (Chromium 83 player/widget surfaces) ────────────────
+      - name: "Taurus: Chromium-83 forbidden patterns (flex gap, container queries)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-taurus-safety.cjs
+      - name: "Taurus: inset-shorthand CSSOM-serialization landmine"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-inset-serialization.cjs
+      - name: "Taurus: every widget <style> routes through sceneCss()"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-scene-css.cjs
+      - name: "Taurus: variant registry (duplicate ids, missing renderers)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-variant-registry.cjs
+      - name: "Taurus: every signage board is click-editable"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-board-editability.cjs
+      - name: "Taurus: widgets never fabricate content they do not have (§19)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-widget-truth.cjs
+      - name: "Taurus: widget type can grow on a wall (font ceilings)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-font-ceilings.cjs
 
-  schema-has-migration:
-    # 2026-09-19 — the guard the 2026-09-16 fleet incident was missing. A
-    # schema.prisma change that alters the database MUST ship a migration file:
-    # production applies migration files only (railway-start.sh → `prisma
-    # migrate deploy`), and `pnpm db:push` makes a missing one invisible on the
-    # author's machine. Database-free; see the script header.
-    name: schema change ships a migration
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 9.0.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install (no scripts — only the prisma CLI is needed)
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: A schema DDL change must add a prisma/migrations/<dir>/migration.sql
+      # ── Mobile perf standard + i18n parity ────────────────────────────────
+      - name: "Mobile perf: no bg polling / focus storm / mobile-chrome blur"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-mobile-perf.cjs
+      - name: "Mobile perf: i18n catalog parity (en/es/zh keys + ICU shapes)"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-i18n-parity.cjs
+
+      # ── Tenant isolation (static; the two-tenant role matrix specs run in
+      #    the full API Jest suite below) ─────────────────────────────────────
+      - name: "Tenant isolation: no new unscoped bare-id access"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/api/tools/check-tenant-isolation.cjs
+
+      # ── Truth gates ───────────────────────────────────────────────────────
+      - name: "Capability registry truth (§21)"
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node scripts/check-capability-registry.cjs
+      - name: "Integration truth: media integrations claim only rights they can back"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/web/tools/check-integration-truth.cjs
+
+      # ── Player / signing ──────────────────────────────────────────────────
+      - name: "OTA wiring integrity"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bash scripts/ota-wiring-check.sh
+      - name: "Signing: no new keystore or hardcoded signing password"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node scripts/check-tracked-keystores.cjs
+
+      # ── Gallery posters regenerated for changed boards ────────────────────
+      - name: "Poster freshness"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: node scripts/check-schema-has-migration.cjs
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: origin/${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            BASE="$PUSH_BEFORE"
+          else
+            BASE="HEAD~1"
+          fi
+          echo "poster-freshness base ref: $BASE"
+          POSTER_CHECK_BASE="$BASE" node apps/web/tools/check-poster-freshness.cjs
 
   api-build:
+    # Was two jobs: this one (build only, with a continue-on-error Jest step
+    # that could never fail anything) and ci.yml "Build, Lint & Test" (the
+    # BLOCKING Jest run, which installed and built the same packages again).
     name: API + workspace packages build
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
+    needs: changes
+    if: needs.changes.outputs.app == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -179,35 +288,46 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Install
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Generate Prisma client (must run BEFORE workspace builds — packages import @prisma/client transitively)
-        run: cd packages/database && npx prisma generate
+      - name: Install (WITH scripts — argon2/bcrypt native bindings, Prisma client)
+        # A full install, not --ignore-scripts: the API suite loads argon2's
+        # native binding, which --ignore-scripts never builds (that is why the
+        # old Jest step in this job had to be continue-on-error). The root
+        # postinstall also runs `prisma generate`.
+        run: pnpm install --frozen-lockfile
+      - name: AI model retirement gate (audit W0-03)
+        # Fails if any AI model we ship is past its provider's announced
+        # shutdown date; warns 60 days out.
+        run: node apps/api/tools/check-model-retirements.cjs
+      - name: Gate-script unit tests (scripts/__tests__)
+        # SHELL-globbed on purpose: Node 22 treats an explicitly passed
+        # directory as a file to execute (2026-09-08), so `node --test dir/`
+        # would run nothing and fail as one confusing "test".
+        run: node --test scripts/__tests__/*.test.cjs
       - name: Build workspace packages
-        run: |
-          pnpm --filter @cms/api-types build
-          pnpm --filter @cms/scoreboard-cts build
-          pnpm --filter @cms/signage-design build
+        run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
+      - name: Every package can run the tests it ships
+        run: node scripts/check-package-tests.cjs
+      - name: Run Package Tests
+        run: pnpm --filter "./packages/*" test
+      - name: API tests (Jest — BLOCKING)
+        # BLOCKING since governance review #1 (2026-05-29). --maxWorkers=2 and
+        # a 4 GB heap are sized for the 2-vCPU / 7 GB private runner: without
+        # them the suite died with "Ineffective mark-compacts near heap limit"
+        # (2026-09-08) the first time the repo was private.
+        run: pnpm --filter api exec jest --maxWorkers=2
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
       - name: Build API
         run: pnpm --filter api build
 
-      - name: Run API tests (Jest)
-        # continue-on-error RESTORED 2026-05-31. The suite is green LOCALLY
-        # (55 suites / 719) and in the Docker/prod build, but 5 suites FAIL
-        # TO LOAD on the raw ubuntu runner: argon2's native binding
-        # (argon2.node) isn't built by `pnpm install --frozen-lockfile` here
-        # (the Dockerfile builds it via apk + node-gyp; local has it cached).
-        # Flipping this to blocking off a local-green run was premature — CI
-        # caught it immediately. To make it blocking for real: add an argon2
-        # rebuild step (or pnpm build-script allowlist) so the binding exists,
-        # verify CI green, THEN drop this flag. Tracked: audit §17 G2.
-        continue-on-error: true
-        run: pnpm --filter api run test
-
-  web-jest:
-    name: Web Jest (unit)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  web-build:
+    # Was three jobs: this one, "Web Jest (unit)" and ci.yml "Accessibility
+    # Lint (jsx-a11y)" — three installs and three package builds of one tree.
+    name: Web typecheck + build
+    needs: changes
+    if: needs.changes.outputs.app == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -221,114 +341,112 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate Prisma client
         run: cd packages/database && npx prisma generate
-      # Same reason as web-build: --ignore-scripts skips postinstall, and the
-      # web suite imports @cms/* packages whose `main` points at dist/index.js.
-      # Without these built, Jest parses raw .ts and dies on `Unexpected token
-      # 'export'`. (The "rebuild api-types before marketing jest" trap.)
+      # --ignore-scripts skips postinstall, and web imports @cms/* packages
+      # whose `main` points at dist/index.js — build them first or Next/Jest
+      # parse raw .ts and die on `Unexpected token 'export'`.
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
-      # BLOCKING, deliberately — unlike the API Jest job, which is
-      # continue-on-error because a fresh runner cannot rebuild argon2's native
-      # binding under --ignore-scripts. The web suite is pure JS/TS with no
-      # native deps, so there is no such excuse here.
-      #
-      # WHY THIS JOB EXISTS: from 2026-07-22 to 2026-08-03, 22 web suites
-      # failed to LOAD (next-intl shipping untransformed ESM) and nothing
-      # noticed, because no workflow ran web Jest at all — the three that
-      # mention `--filter web` all run Playwright, not Jest. A suite nobody
-      # runs is not a test, it is a comment. Fixed by
-      # apps/web/test-mocks/next-intl.tsx; this job keeps it fixed.
-      - name: Web Jest
-        # --maxWorkers/heap for the same reason as the API suite's cap in
-        # ci.yml (2026-09-08): the private-runner downgrade (4-vCPU/16 GB ->
-        # 2-vCPU/7 GB) leaves React Testing Library renders competing for CPU,
-        # and `waitFor`/`findBy*` assertions start timing out under contention.
-        # This job passed on 085a89e0 and failed on the very next commit with
-        # `Unable to find an element with the display value: …` in
-        # wall-clock-field.test.tsx — a file untouched for days, which passes
-        # locally (22/22). That is a resource symptom, not a product defect.
-        # Capped here rather than raising individual test timeouts, because the
-        # timeouts are not wrong — the box is smaller.
+
+      - name: a11y lint (jsx-a11y — NEW errors fail the build)
+        # Baseline count in .a11y-baseline; only growth fails, and the baseline
+        # may only be RATCHETED DOWN. 2026-07-13 (audit W0-05): this used to be
+        # FALSE-GREEN — ESLint crashed (exit 2) and `|| true` + a grep over the
+        # crash text printed success. Exit >= 2 now fails before any counting,
+        # and exit 1 must come with a real ESLint problem summary.
+        run: |
+          set -o pipefail
+          CODE=0
+          pnpm --filter web lint 2>&1 | tee /tmp/lint.txt || CODE=$?
+          echo "eslint exit code: $CODE"
+          if [ "$CODE" -ge 2 ]; then
+            echo "FAIL: ESLint crashed (exit $CODE). That is a configuration error, not a lint result."
+            exit "$CODE"
+          fi
+          if [ "$CODE" -eq 1 ] && ! grep -qE "[0-9]+ problems" /tmp/lint.txt; then
+            echo "FAIL: ESLint exited 1 without a problem summary — broken run, not a lint result."
+            exit 1
+          fi
+          ACTUAL=$(grep -cE "error[[:space:]]+.*jsx-a11y/" /tmp/lint.txt || true)
+          BASELINE=$(cat .a11y-baseline)
+          echo "a11y errors — actual=$ACTUAL baseline=$BASELINE"
+          if [ "$ACTUAL" -gt "$BASELINE" ]; then
+            echo "FAIL: a11y error count increased. New violations:"
+            grep -E "error[[:space:]]+.*jsx-a11y/" /tmp/lint.txt
+            echo ""
+            echo "Fix the new violations. Do NOT raise .a11y-baseline to get green."
+            exit 1
+          fi
+          if [ "$ACTUAL" -lt "$BASELINE" ]; then
+            echo "::notice::a11y errors dropped to $ACTUAL (baseline $BASELINE). Ratchet down: echo $ACTUAL > .a11y-baseline"
+          fi
+          echo "OK: a11y errors did not increase"
+      - name: Rules-of-hooks gate (zero tolerance for NEW violations)
+        # A conditional hook crashes the page with React error #310 the moment
+        # the branch flips (PlaylistCreateWizard, 2026-05-27). The 10 survivors
+        # in WidgetRenderer.tsx are held in .hooks-baseline, ratchet-down only.
+        run: |
+          HOOK_ERRS=$(grep -cE "error[[:space:]]+.*react-hooks/rules-of-hooks" /tmp/lint.txt || true)
+          HOOK_BASELINE=$(cat .hooks-baseline)
+          echo "react-hooks/rules-of-hooks errors: $HOOK_ERRS (baseline $HOOK_BASELINE)"
+          if [ "$HOOK_ERRS" -gt "$HOOK_BASELINE" ]; then
+            echo ""
+            echo "FAIL: NEW conditional-hook violations detected."
+            echo "These crash the page at runtime with React error #310"
+            echo "the moment the conditional branch flips."
+            echo ""
+            grep -B1 -A4 "react-hooks/rules-of-hooks" /tmp/lint.txt
+            echo ""
+            echo "Fix them. Do NOT raise .hooks-baseline to get green."
+            exit 1
+          fi
+          if [ "$HOOK_ERRS" -lt "$HOOK_BASELINE" ]; then
+            echo "::notice::hooks violations dropped to $HOOK_ERRS (baseline $HOOK_BASELINE). Ratchet down: echo $HOOK_ERRS > .hooks-baseline"
+          fi
+          echo "OK: no new conditional-hook violations"
+
+      - name: Web Jest (BLOCKING)
+        # From 2026-07-22 to 2026-08-03, 22 web suites failed to LOAD and
+        # nothing noticed because no workflow ran web Jest. --maxWorkers/heap:
+        # on the 2-vCPU runner RTL renders compete for CPU and waitFor/findBy
+        # time out under contention (2026-09-08) — a resource symptom, not a
+        # product defect, so the box is capped rather than the timeouts raised.
         run: pnpm --filter web exec jest --ci --maxWorkers=2
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
-  web-build:
-    name: Web typecheck + build
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 9.0.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Generate Prisma client
-        run: cd packages/database && npx prisma generate
-      # 2026-05-04 — Web build was failing on CI but passing locally.
-      # Cause: --ignore-scripts skips the postinstall hook + this job
-      # didn't build the workspace TS packages before the Next.js
-      # build. Web imports @cms/api-types whose
-      # `main` points at dist/index.js — without those built, Next
-      # tries to parse raw .ts source at runtime and crashes
-      # (`Unexpected token 'export'`). Locally the dist folders
-      # already exist from prior dev runs which is why it worked.
-      # api-build job at lines 60-64 already runs these three builds;
-      # mirror them here.
-      - name: Build workspace packages
-        run: |
-          pnpm --filter @cms/api-types build
-          pnpm --filter @cms/scoreboard-cts build
-          pnpm --filter @cms/signage-design build
       - name: Build web
         env:
           NEXT_PUBLIC_API_URL: https://api-production-39a1.up.railway.app/api/v1
+          # Measured 5.23 GB peak RSS on the 7 GB private runner; an explicit
+          # ceiling fails legibly instead of taking the runner VM with it.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm --filter web build
-      # Bundle-budget ratchet (efficiency audit 2026-07-20, F3) — the widget
-      # world already compiles to ~3.4 MB chunks; this locks today's sizes as
-      # the CEILING (down-only, like taurus-safety) so growth reds the build
-      # instead of silently landing on player CPUs.
+      # Bundle-budget ratchet (efficiency audit 2026-07-20, F3): today's sizes
+      # are the CEILING, down-only, so growth reds the build.
       - name: Bundle budget (ratchet down only)
         run: node apps/web/tools/check-bundle-budget.cjs
-
-      # Player SW invariants: app-shell tier present + BUG #5 version-sort
-      # regression cases (migrated from a .test.ts that NO runner executed —
-      # apps/web has no unit-test script; this gate actually runs).
       - name: Player SW shell invariants
         run: node apps/web/tools/check-sw-shell.cjs
-
-      # Every registered help article must actually prerender with content —
-      # caught one silently rendering as "Article not found" in a green build.
       - name: Help-center prerender integrity
         run: node apps/web/tools/check-help-prerender.cjs
-
-      # Brand palettes must never make chrome unreadable (VisionCore cream
-      # incident): the Tailwind-scale takeover serves contrast-guaranteed
-      # derivatives; this gate runs the literal incident palette.
       - name: Brand contrast contract
         run: node apps/web/tools/check-brand-contrast.cjs
-
       # SEC-010: a PRERENDERED route must never receive the enforced,
-      # nonce-based script-src — its inline scripts were built without a nonce,
-      # so the browser would refuse them and the page would render blank. This
-      # reads the build's own prerender-manifest, so it catches a new static
-      # page landing inside the enforced prefixes at BUILD time rather than on
-      # a customer's screen.
+      # nonce-based script-src (its inline scripts have no nonce → blank page).
       - name: CSP nonce vs prerendered routes
         run: node apps/web/tools/check-csp-prerender.cjs
 
   docker-build:
     name: Docker build + boot smoke test
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
+    needs: changes
+    # `server`: what can change the API image — not a player-only or
+    # renderer-only change.
+    if: needs.changes.outputs.server == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build the same image Railway will build
@@ -351,6 +469,7 @@ jobs:
             -e ALLOWED_ORIGINS='http://localhost:3000' \
             -e SKIP_MIGRATE='true' \
             educms-api:ci
+
           # Poll up to 60s for "API listening" or container exit.
           for i in $(seq 1 30); do
             STATE=$(docker inspect -f '{{.State.Status}}' api-smoke 2>/dev/null || echo "missing")
@@ -406,16 +525,37 @@ jobs:
           docker rm api-smoke 2>/dev/null || true
 
   renderer-docker:
-    # 2026-09-22 — the board renderer (apps/renderer) is its own Railway
-    # service. Build the exact image Railway will build and prove it boots,
-    # launches Chromium, answers /health, renders a board whose Google font is
-    # served from the bundle (and whose external image is blocked — the image
-    # has no network), and runs as a non-root user. Nothing is pushed.
+    # The board renderer (apps/renderer) is its own Railway service. Build the
+    # exact image Railway will build and prove it boots, launches Chromium,
+    # answers /health, renders a board whose Google font is served from the
+    # bundle (and whose external image is blocked), and runs as non-root.
+    # 2026-10-22: also runs the renderer's own unit + real-Chromium tests
+    # (moved from ci.yml "Build, Lint & Test"), and only when the renderer or
+    # its inputs changed.
     name: Renderer image build + render smoke test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.renderer == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install (with scripts, as the renderer tests always ran)
+        run: pnpm install --frozen-lockfile
+      - name: Renderer tests (unit + real-Chromium integration)
+        # RENDERER_REQUIRE_CHROMIUM turns a missing browser into a FAILURE
+        # instead of a skip: a suite that silently skips its browser half is
+        # green and proves nothing. Uses the Chrome the ubuntu image ships.
+        run: pnpm --filter ./apps/renderer test
+        env:
+          RENDERER_REQUIRE_CHROMIUM: '1'
+          CHROME_PATH: /usr/bin/google-chrome
       - name: Build the renderer image Railway will build
         run: docker build -f apps/renderer/Dockerfile -t venueos-renderer:ci .
       - name: Boot, health, render, non-root
@@ -462,3 +602,54 @@ jobs:
         run: |
           docker stop renderer-smoke 2>/dev/null || true
           docker rm renderer-smoke 2>/dev/null || true
+
+  emergency-path:
+    # The lockdown / all-clear end-to-end path plus the player native-video and
+    # offline specs, Chromium + WebKit, BLOCKING. Defined in emergency-path.yml
+    # (also runnable on its own from the Actions tab for a drill check).
+    # `server`: the specs drive the web player against mocked API routes, so a
+    # player-Kotlin-only or renderer-only change cannot move them.
+    name: Emergency path
+    needs: changes
+    if: needs.changes.outputs.server == 'true' && needs.changes.outputs.heavy == 'true'
+    uses: ./.github/workflows/emergency-path.yml
+
+  semgrep:
+    # SAST — added 2026-10-22 to replace what going private takes away (CodeQL
+    # default setup and GitHub secret scanning are free only on PUBLIC repos;
+    # gitleaks in ci.yml remains the secret scanner).
+    #
+    # REPORT-ONLY today: it never fails the run. On a PR (and a master push)
+    # it is DIFF-AWARE (`--baseline-commit`): only findings the change
+    # INTRODUCES are reported, so the existing backlog never shows up as noise.
+    # The full-tree scan runs nightly in container-scan.yml.
+    #
+    # Switch to BLOCKING for NEW findings: set the repository variable
+    # SEMGREP_BLOCKING=true (Settings → Secrets and variables → Actions →
+    # Variables). No code change. Findings are in the job summary and the
+    # `semgrep-<sha>` SARIF artifact (Code Scanning upload needs GitHub
+    # Advanced Security, which a private Pro repo does not have).
+    name: Semgrep SAST (diff-aware, report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.heavy == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep:1.179.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Semgrep (new findings only)
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          SEMGREP_BLOCKING: ${{ vars.SEMGREP_BLOCKING }}
+        run: sh scripts/ci-semgrep.sh diff
+      - name: Keep the SARIF
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semgrep-${{ github.sha }}
+          path: semgrep.sarif
+          retention-days: 14
+          if-no-files-found: ignore

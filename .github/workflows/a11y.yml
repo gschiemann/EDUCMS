@@ -1,41 +1,14 @@
 name: Accessibility (axe-core)
 
 on:
-  workflow_dispatch: {}   # 2026-09-14: lets the ops sweep's stale-ledger entries be refreshed on demand
-  # A11y audit (2026-05-25, A4): also run on push to master so a
-  # hot-fix that bypasses code review can't skip the a11y gate.
-  # Previously this workflow only ran on PRs, leaving direct pushes
-  # (rebase-and-push, emergency hot-fixes, agent commits) unaudited.
-  # 2026-08-04 — the push trigger is replaced by a NIGHTLY run.
-  # The 2026-05-25 rationale (a direct push must not skip the a11y gate)
-  # still holds, so the gate is NOT simply deleted — it moves to a nightly
-  # sweep of master plus the existing PR gate. A regression is caught within
-  # a day instead of within a push, which is the right trade for a 15-minute
-  # browser job on a repo that pushes to master dozens of times a day.
+  workflow_dispatch: {}
+  # 2026-10-22 (go-private CI budget): WEEKLY, no longer on every PR. The axe
+  # run boots Postgres + the API + the web app (~5 billed minutes) and grades
+  # whole pages, which change slowly; the per-change a11y gate is the jsx-a11y
+  # ESLint ratchet in Deploy Reliability → "Web typecheck + build", which
+  # still blocks every new violation. Run it by hand for an a11y-heavy PR.
   schedule:
-    - cron: '30 7 * * *'  # 07:30 UTC nightly, staggered off cross-browser
-  pull_request:
-    branches: [main, master, develop]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    - cron: '30 7 * * 1'  # Monday 07:30 UTC
 
 permissions:
   contents: read
@@ -60,7 +33,7 @@ concurrency:
 jobs:
   axe:
     name: axe-core Automated Audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # 2026-08-24 (a11y wave, §1 fix) — was 15. The job now also boots a real
     # Postgres + the NestJS API so the scan covers AUTHENTICATED content
     # instead of just the login shell (see a11y-audit.ts's header comment).

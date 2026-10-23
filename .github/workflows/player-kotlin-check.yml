@@ -38,6 +38,9 @@ on:
       - '.github/workflows/player-kotlin-check.yml'
   pull_request:
     branches: [master]
+    # ready_for_review: a draft PR skips this job (see the job's `if`), and
+    # marking it ready runs it on the same commit before it can merge.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'apps/player/**'
       - 'scripts/check-player-test-execution.cjs'
@@ -56,8 +59,10 @@ permissions:
 
 jobs:
   kotlin-check:
+    # A draft PR skips; "Ready for review" runs it before merge.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Unit tests + lint (no APK)
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       # SUPPLY-02: pinned to full commit SHAs, same as the release workflow.
