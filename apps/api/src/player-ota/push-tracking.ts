@@ -289,6 +289,10 @@ export function holdSentence(
     case 'FAILED':
       return `Installing ${target} failed on the screen (${reason.replace(/^device-reported-/, '')}).`;
     case 'EXPIRED':
+      if (reason === 'device-reported-tap-expired') {
+        return `Nobody tapped Install for ${target} within 30 minutes of Android's Install dialog, so the screen ` +
+          'abandoned the request and nothing will install later. Send the update again to ask again.';
+      }
       return 'The update was not handed to this screen within 24 hours of the push (it may have been offline, ' +
         'outside its update window, or held by a staged rollout), so the push was stopped and nothing will ' +
         'install later. Send the update again if it is still needed.';

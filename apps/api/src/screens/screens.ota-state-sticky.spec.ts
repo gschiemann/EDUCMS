@@ -137,3 +137,34 @@ describe('OTA-02 — the failure signal must survive the device’s own next pol
     expect(prisma.client.screen.update).not.toHaveBeenCalled();
   });
 });
+
+describe('1.1.51 — a device tap-expiry moves a NEEDS_TAP-held push to EXPIRED', () => {
+  it('FAILED_TAP_EXPIRED from the device, on a push held NEEDS_TAP → hold EXPIRED with the 30-minute sentence', async () => {
+    const { controller, prisma } = harness();
+    prisma.client.screen.findUnique.mockResolvedValue({
+      id: SCREEN_ID, name: 'Hallway', tenantId: 'tenant-1', screenGroupId: null, status: 'ONLINE',
+      credentialEpoch: 0, credentialEpochRotatedAt: null, lastOtaState: 'NEEDS_TAP', playerVersionCode: 10146,
+      forceApkUpdatePendingAt: new Date('2026-10-22T10:00:00Z'), forceApkUpdateHold: 'NEEDS_TAP',
+      forceApkUpdateTargetVersion: '1.1.47-field.1', forceApkUpdateTargetVersionCode: 10147,
+    });
+    await controller.reportOtaState(FP, { state: 'FAILED_TAP_EXPIRED', message: 'Nobody tapped Install' }, deviceReq());
+    const data = writtenData(prisma);
+    expect(data.lastOtaState).toBe('FAILED_TAP_EXPIRED');
+    expect(data.forceApkUpdateHold).toBe('EXPIRED');
+    expect(String(data.forceApkUpdateHoldReason)).toContain('device-reported-tap-expired');
+    expect(String(data.forceApkUpdateHoldReason)).toContain('30 minutes');
+  });
+
+  it('…but an ANONYMOUS tap-expiry records the state and holds nothing', async () => {
+    const { controller, prisma } = harness();
+    prisma.client.screen.findUnique.mockResolvedValue({
+      id: SCREEN_ID, name: 'Hallway', tenantId: 'tenant-1', screenGroupId: null, status: 'ONLINE',
+      credentialEpoch: 0, credentialEpochRotatedAt: null, lastOtaState: 'NEEDS_TAP', playerVersionCode: 10146,
+      forceApkUpdatePendingAt: new Date('2026-10-22T10:00:00Z'), forceApkUpdateHold: 'NEEDS_TAP',
+    });
+    await controller.reportOtaState(FP, { state: 'FAILED_TAP_EXPIRED' }, anonReq());
+    const data = writtenData(prisma);
+    expect(data.lastOtaState).toBe('FAILED_TAP_EXPIRED');
+    expect(data).not.toHaveProperty('forceApkUpdateHold');
+  });
+});

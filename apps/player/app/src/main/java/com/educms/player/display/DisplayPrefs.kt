@@ -255,6 +255,36 @@ object DisplayPrefs {
         }.onFailure { PlayerLogger.w(TAG, "setPreHoldBrightnessPercent failed: ${it.message}") }
     }
 
+    // ─── pre-hold blank snapshot (1.1.51 — RestoreBlankAfterAlertPolicy) ──
+
+    private const val KEY_PREHOLD_BLANKED = "display_prehold_blanked"
+    private const val KEY_WAKE_CMD_DURING_HOLD = "display_wake_cmd_during_hold"
+
+    /** Was the screen blanked (hard BLANK / POWER_OFF) when the alert engaged? Null = nothing saved. */
+    fun preHoldBlanked(ctx: Context): Boolean? = runCatching {
+        val p = prefs(ctx)
+        if (p.contains(KEY_PREHOLD_BLANKED)) p.getBoolean(KEY_PREHOLD_BLANKED, false) else null
+    }.getOrNull()
+
+    /** Snapshot (or clear, with null) the pre-hold blank. Synchronous: read on the release path of a life-safety hold. */
+    fun setPreHoldBlanked(ctx: Context, blanked: Boolean?) {
+        runCatching {
+            val editor = prefs(ctx).edit()
+            if (blanked == null) editor.remove(KEY_PREHOLD_BLANKED).remove(KEY_WAKE_CMD_DURING_HOLD)
+            else editor.putBoolean(KEY_PREHOLD_BLANKED, blanked).remove(KEY_WAKE_CMD_DURING_HOLD)
+            editor.commit()
+        }.onFailure { PlayerLogger.w(TAG, "setPreHoldBlanked failed: ${it.message}") }
+    }
+
+    /** A WAKE COMMAND (never the alert's own wake) ran while the hold was engaged: the pre-hold blank is not restored. */
+    fun noteWakeCommandDuringHold(ctx: Context) {
+        runCatching { prefs(ctx).edit().putBoolean(KEY_WAKE_CMD_DURING_HOLD, true).commit() }
+    }
+
+    fun wakeCommandDuringHold(ctx: Context): Boolean = runCatching {
+        prefs(ctx).getBoolean(KEY_WAKE_CMD_DURING_HOLD, false)
+    }.getOrDefault(false)
+
     // ─── screen-off timeout snapshot ───────────────────────────────
 
     /** Null when nothing was saved (i.e. we have not shortened it). */

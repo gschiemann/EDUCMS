@@ -43,7 +43,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 else -> PendingInstallStore.clearIfSession(context, sessionId, "session ended (status=$status)")
             }
         }
-        if (selfOtaVc > 0) recordSelfOtaOutcome(context, selfOtaVc, status)
+        if (selfOtaVc > 0) recordSelfOtaOutcome(context, selfOtaVc, status, intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false))
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // 2026-04-28 (v1.0.22) — Android specialist audit found
@@ -199,7 +199,14 @@ class OtaInstallReceiver : BroadcastReceiver() {
      * offering the push to this screen, and the companion Manager's anonymous
      * 30-minute reports can no longer overwrite the NEEDS_TAP.
      */
-    private fun recordSelfOtaOutcome(context: Context, versionCode: Int, status: Int) {
+    /**
+     * 1.1.51 (Fix 9, item 3) — the NEEDS_TAP message says what is actually on
+     * the glass. An unattended commit is STAGED (owner decision ba680515: the
+     * video is never interrupted) and nothing is on screen until a person
+     * presses Install in the Back menu; a person's press RAISES the system
+     * dialog. The dashboard used to say "tap Install" for both.
+     */
+    private fun recordSelfOtaOutcome(context: Context, versionCode: Int, status: Int, userRaised: Boolean) {
         val (outcome, state) = when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION ->
                 OtaAttemptPolicy.Outcome.NEEDS_TAP to "NEEDS_TAP"
@@ -219,7 +226,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
         val name = OtaAttemptStore.read(context)?.takeIf { it.versionCode == versionCode }?.versionName
         val target = name?.let { "v$it" } ?: "the update"
         val message = if (outcome == OtaAttemptPolicy.Outcome.NEEDS_TAP) {
-            "Android on this screen needs someone to tap Install for $target. Press Install now on the screen, then tap Install."
+            needsTapMessage(target, userRaised)
         } else {
             "Installing $target failed (${OtaAttemptPolicy.failureCode(status)})."
         }
@@ -235,6 +242,11 @@ class OtaInstallReceiver : BroadcastReceiver() {
             }
         }.start()
     }
+
+    /** What a person at the screen has to do — staged (Back menu) vs raised (the dialog is up). */
+    internal fun needsTapMessage(target: String, dialogRaised: Boolean): String =
+        if (dialogRaised) "Android's Install dialog for $target is open on the screen — tap Install."
+        else "$target is downloaded and waiting for a person: on the screen press Back, choose Install $target, then tap Install."
 
     private fun reportOtaError(context: Context, message: String) {
         try {

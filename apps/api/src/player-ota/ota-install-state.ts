@@ -33,6 +33,38 @@ export const FAILED_STATE = /^FAILED_[A-Z0-9_]{1,40}$/;
 
 export const NEEDS_TAP = 'NEEDS_TAP';
 
+/** The Player's "nobody tapped Install within 30 minutes of the dialog" (PendingInstallConfirmation.EXPIRED_STATE). */
+export const TAP_EXPIRED = 'FAILED_TAP_EXPIRED';
+
+export type ReportHold = 'NEEDS_TAP' | 'FAILED' | 'EXPIRED';
+
+/**
+ * Which hold, if any, a DEVICE-AUTHENTICATED ota-state report puts on an
+ * active push (player 1.1.51 — the API half of Fix 9, item 4).
+ *
+ * Before: a report could only hold a push that was NOT already held, so the
+ * Player's `FAILED_TAP_EXPIRED` landed on a push already held NEEDS_TAP and
+ * changed nothing — the dashboard kept saying "tap Install" after the dialog
+ * had expired and been abandoned. Now a tap-expiry moves a NEEDS_TAP hold (or
+ * an unheld push) to EXPIRED; every other hold stays as it was. Anonymous
+ * reports hold nothing (the state is still recorded).
+ */
+export function holdFromOtaReport(f: {
+  deviceAuthenticated: boolean;
+  pendingAt: Date | string | null | undefined;
+  currentHold: string | null | undefined;
+  state: string;
+}): ReportHold | null {
+  if (!f.deviceAuthenticated || !f.pendingAt) return null;
+  if (f.state === TAP_EXPIRED) {
+    return !f.currentHold || f.currentHold === NEEDS_TAP ? 'EXPIRED' : null;
+  }
+  if (f.currentHold) return null;
+  if (f.state === NEEDS_TAP) return 'NEEDS_TAP';
+  if (FAILED_STATE.test(f.state)) return 'FAILED';
+  return null;
+}
+
 /** ERROR or a FAILED_<CODE>: stamps the sticky OTA failure (OTA-02). */
 export function isFailureState(state: string): boolean {
   return state === 'ERROR' || FAILED_STATE.test(state);

@@ -48,6 +48,16 @@ object PendingInstallConfirmation {
     /** The dashboard state written when a launched confirmation aged out. */
     const val EXPIRED_STATE = "FAILED_TAP_EXPIRED"
 
+    /**
+     * 1.1.51 (Fix 9, item 4) — the wait is bounded by a TIMER, not by the next
+     * check. [onCheck] expired a confirmation only when a check happened to
+     * run (the 6-hour tick, a push, a boot), so a dialog nobody answered sat
+     * reported NEEDS_TAP for up to six hours. A one-shot check is scheduled
+     * when the confirmation is launched, just past the window, so the
+     * EXPIRE branch runs at 30 minutes and reports [EXPIRED_STATE].
+     */
+    const val EXPIRY_CHECK_DELAY_MS = NEEDS_TAP_WINDOW_MS + 15_000L
+
     data class Record(
         val sessionId: Int,
         val versionCode: Int,
