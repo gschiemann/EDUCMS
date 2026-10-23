@@ -70,6 +70,13 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   useEffect(() => { setMoreOpen(false); }, [pathname]);
+  // Tell the floating chrome (install banner, bug FAB) the sheet is up — the
+  // sheet keeps the tab bar, so it does not take the overlay lock.
+  const setMoreSheetOpen = useAppStore((s) => s.setMoreSheetOpen);
+  useEffect(() => {
+    setMoreSheetOpen(moreOpen);
+    return () => setMoreSheetOpen(false);
+  }, [moreOpen, setMoreSheetOpen]);
 
   // The passkey row in the account area of the sheet (2026-09-24) — the
   // phone's counterpart of TopToolbar's account-menu entry (the avatar is

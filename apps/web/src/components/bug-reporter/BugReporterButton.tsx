@@ -90,7 +90,11 @@ export function BugReporterButton() {
   // `{open && …}`). The keyboard shortcut + modal mount stay gated on
   // `shouldRender` (NOT this) so a modal that's already open keeps rendering.
   const overlayOpenCount = useAppStore((s) => s.overlayOpenCount);
-  const showFab = shouldRender && overlayOpenCount === 0;
+  // QA 2026-10-23: the FAB also covered the phone's More sheet and the
+  // install banner's "Don't show again" — yield to both.
+  const moreSheetOpen = useAppStore((s) => s.moreSheetOpen);
+  const installBannerShown = useAppStore((s) => s.installBannerShown);
+  const showFab = shouldRender && overlayOpenCount === 0 && !moreSheetOpen && !installBannerShown;
 
   useEffect(() => {
     if (!shouldRender) return;
