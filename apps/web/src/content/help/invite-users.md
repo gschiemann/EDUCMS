@@ -1,7 +1,7 @@
 ---
 title: Inviting staff and assigning roles
 category: Getting Started
-updated: 2026-10-11
+updated: 2026-10-22
 excerpt: Bring your team into VenueOS, give them the right permissions, and revoke access cleanly when someone leaves.
 ---
 
@@ -33,7 +33,7 @@ You can only give roles below your own. Triggering emergency alerts is a separat
    - **Set password now** — you create the account immediately with a temporary password (at least 8 characters) and hand it over in person or over chat. They can change it after first sign-in.
 4. Click **Send invitation** (or **Create user**).
 
-Invited people appear under **Pending invitations** until they first sign in.
+Invited people appear under **Pending invitations** until they first sign in. What they see when they do — choosing a password, passkeys, two-step sign-in — is in [Signing in, passkeys and two-step sign-in](/help/signing-in).
 
 If you have SSO enabled, invited users can sign in with their organization account directly — they don't need a separate password. See [the SSO guide](/help/sso).
 

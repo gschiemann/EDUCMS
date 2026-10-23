@@ -27,11 +27,13 @@ feature-specific or historical.
 
 ## Never commit a secret
 
-`gschiemann/EDUCMS` is **private** today — verify with
-`gh repo view gschiemann/EDUCMS --json visibility`. That is not a licence to
-relax: git history is permanent and outlives any visibility flip, so treat
-every commit, PR, and issue as if it will be published. Never commit `.env*`,
-API keys, or PII. Secrets live in env vars; `.env` is gitignored.
+`gschiemann/EDUCMS` is **public** (source-available, all rights reserved — see
+`LICENSE`; verify with `gh repo view gschiemann/EDUCMS --json visibility`).
+Every commit, PR, and issue is world-readable, and git history is permanent
+and outlives any visibility flip. Never commit `.env*`, API keys, customer
+names, or PII. Secrets live in env vars; `.env` is gitignored. Security
+issues go to security@venue-os.app or GitHub private vulnerability reporting,
+never a public issue (see `SECURITY.md`).
 
 ## Before you push
 
