@@ -24,6 +24,7 @@ import { buildTextStyleRules, buildFieldOnlyStyleRules, textBoxRadius } from '@/
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
 import { assignMediaSource } from './media-source';
+import { cssStringValue } from './css-string-value';
 import { appZoneInfo } from '@/components/apps/app-zone';
 import { AppSetupCard } from '@/components/apps/AppSetupCard';
 
@@ -767,7 +768,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           // CSS attribute selector escaping — field keys may include
           // dots (e.g. "agenda.0.t"). The dot inside an attribute
           // value is fine; the value just needs quoting.
-          const sel = `${contentSel} [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
+          const sel = `${contentSel} [data-field="${cssStringValue(fieldKey)}"]`;
           if (r.length) cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
           if (fieldOnly.length) cssChunks.push(`${sel} { ${fieldOnly.join('; ')} }`);
         }

@@ -99,7 +99,8 @@ if(d.pos&&typeof d.pos==="object"&&d.pos.v===1)apply(d.pos);}catch(_){}});
 
 // ─────────────────────────────────────────────────────────────────────────
 
-const SCRIPT_BLOCK = /^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i;
+// `<\/script\b[^>]*>`: the parser ends a script at `</script foo>` too.
+const SCRIPT_BLOCK = /^<script\b[^>]*>([\s\S]*)<\/script\b[^>]*>$/i;
 const VOS_CANVAS_SHAPE =
   /^\/\*VOS-CANVAS\*\/window\.__VOS_CW=\d{1,6};(?:window\.__VOS_CH=\d{1,6};)?$/;
 
@@ -154,24 +155,35 @@ export function wrapDesignerSrcdoc(rawHtml: string, nonce: string): string {
   let html = rawHtml;
 
   // 1) Scripts: keep only our runtimes (nonce-stamped), drop the rest.
-  html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (block) => {
-    const m = block.match(SCRIPT_BLOCK);
-    if (!m || !isOurRuntime(m[1])) return '';
-    return block.replace(/<script\b[^>]*>/i, `<script nonce="${nonce}">`);
-  });
-  html = html.replace(/<script\b[^>]*\/>/gi, '');
-
   // 2) Passive-vector strips.
-  html = stripEventHandlerAttrs(html);
-  html = html.replace(
-    /((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi,
-    '$1$2#$3',
-  );
-  html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '');
-  html = html.replace(/<base\b[^>]*>/gi, '');
-  html = html
-    .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+  // Both run to a FIXPOINT: a removal can expose a new match
+  // (`<scr<script></script>ipt>` → `<script>`), so one pass is not a strip
+  // (CodeQL js/incomplete-multi-character-sanitization, 2026-10-22). A kept
+  // runtime re-matches as itself on every pass, so the loop settles.
+  {
+    let prev = '';
+    let guard = 0;
+    while (html !== prev && guard < 10) {
+      prev = html;
+      html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, (block) => {
+        const m = block.match(SCRIPT_BLOCK);
+        if (!m || !isOurRuntime(m[1])) return '';
+        return block.replace(/<script\b[^>]*>/i, `<script nonce="${nonce}">`);
+      });
+      html = html.replace(/<script\b[^>]*\/>/gi, '');
+      html = stripEventHandlerAttrs(html);
+      html = html.replace(
+        /((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi,
+        '$1$2#$3',
+      );
+      html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '');
+      html = html.replace(/<base\b[^>]*>/gi, '');
+      html = html
+        .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\b[^>]*>/gi, '')
+        .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+      guard++;
+    }
+  }
 
   // 3) CSP meta first in <head>; the runtimes last in <head>.
   html = html.replace(/<meta\b[^>]*data-vos-csp[^>]*>/gi, '');

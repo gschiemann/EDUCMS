@@ -29,6 +29,7 @@
  * Every sample row gets a `[Sample]` prefix on its display name so
  * an admin can tell at a glance what's real vs. demo data.
  */
+import { randomBytes } from 'crypto';
 import { Body, Controller, Delete, Logger, Post, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -197,7 +198,7 @@ export class SampleDataController {
           userId,
           providerId: 'custom-webhook',
           displayName: restaurantDisplayName,
-          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+          credentials: { webhookSecret: 'sample-' + randomBytes(16).toString('hex') },
         });
       } catch (err: any) {
         // The unique([tenantId, providerId]) constraint already holds a
@@ -306,7 +307,7 @@ export class SampleDataController {
           userId,
           providerId: 'custom-webhook',
           displayName: retailDisplayName,
-          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+          credentials: { webhookSecret: 'sample-' + randomBytes(16).toString('hex') },
         });
       } catch (err: any) {
         if (String(err?.message || '').includes('Unique')) {

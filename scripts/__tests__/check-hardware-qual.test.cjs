@@ -359,3 +359,20 @@ test('the real matrix contains no fabricated PASS rows', () => {
   const releaseBody = text.split(/^## Release:/m).slice(1).join('\n');
   assert.ok(!/\|\s*PASS\b/.test(releaseBody), 'seeded releases must not claim any PASS');
 });
+
+// ── regex escaping in recordOverride (CodeQL js/regex-injection) ───────────
+test('recordOverride matches the release heading literally — `.` in a version is not "any char"', () => {
+  // `9x9x9` is what the unescaped `9.9.9` regex ALSO matched: its section would
+  // have been replaced by the 9.9.9 override and the 9x9x9 release lost.
+  const text = fixture({
+    classes: TWO_CLASSES,
+    releases: [{ app: 'player', version: '9x9x9', rows: { 'goodview-lcd-a9': CHECKS.map(() => 'UNQUALIFIED') } }],
+  });
+  const res = recordOverride(text, { app: 'player', version: '9.9.9', operator: 'GS', reason: 'hotfix', date: '2026-09-02' });
+  assert.match(res.text, /## Release: player 9x9x9/, 'the look-alike heading survives');
+  assert.match(res.text, /## Release: player 9\.9\.9/, 'the real heading was added');
+  assert.equal(evaluate(res.text, 'player', '9x9x9').ok, false, 'the look-alike release stays unqualified');
+  assert.equal(evaluate(res.text, 'player', '9.9.9').ok, true);
+  // A version carrying regex metacharacters is a literal, not a pattern.
+  assert.doesNotThrow(() => recordOverride(text, { app: 'player(', version: '1.1.12[', operator: 'GS', reason: 'x', date: '2026-09-02' }));
+});

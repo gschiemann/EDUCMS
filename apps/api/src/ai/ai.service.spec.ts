@@ -552,6 +552,20 @@ describe('AiService — Slice 1d inline rewrite', () => {
     expect(sanitizeRewriteText('click javascript:alert(1) now', 'plain')).not.toContain('javascript:');
   });
 
+  it('sanitizeRewriteText: a split tag or a junk end tag cannot rebuild a script (CodeQL 2026-10-22)', () => {
+    // Whatever text is left, no script OPEN tag is — in either field kind.
+    for (const kind of ['plain', 'rich'] as const) {
+      const a = sanitizeRewriteText('<scr<script></script>ipt>bad()</script foo>Hello', kind);
+      expect(a).not.toMatch(/<script\b/i);
+      expect(a).toContain('Hello');
+      const b = sanitizeRewriteText('<scr<!---->ipt>bad()</script>Hello', kind);
+      expect(b).not.toMatch(/<script\b/i);
+      expect(b).toContain('Hello');
+    }
+    // A split tag built from WHITELISTED names only ever yields whitelisted tags.
+    expect(sanitizeRewriteText('<b<i></i>>bold</b>', 'rich')).not.toMatch(/<(?!\/?(?:b|i|em|strong|br|u|span)>)[a-z/]/i);
+  });
+
   it('sanitizeRewriteText: rich keeps a whitelist + drops attributes', () => {
     expect(sanitizeRewriteText('Hello <b>hi</b> <span onclick="x()">y</span>', 'rich')).toBe('Hello <b>hi</b> <span>y</span>');
     expect(sanitizeRewriteText('<div class="evil">x</div>', 'rich')).toBe('x'); // div not whitelisted

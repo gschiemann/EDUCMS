@@ -33,7 +33,9 @@
 <script>
   const qs = new URLSearchParams(location.search);
   const file = qs.get('file') || '';
-  if (!file || file.includes('..') || !file.endsWith('.html')) {
+  // Relative .html path only — a scheme (`javascript:`, `data:`), a leading
+  // slash, a backslash or `..` is refused before it reaches frame.src / href.
+  if (!file || !/^(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.html$/.test(file) || file.includes('..')) {
     document.body.innerHTML = '<div class="err">Missing or invalid ?file= param. <a href="index.html">Back to bake-off</a></div>';
   } else {
     const frame = document.getElementById('frame');

@@ -403,7 +403,8 @@ export function upgradeEditShimV6Body(body: string): string | null {
   return EDIT_SHIM_V7 + body.slice(EDIT_SHIM_V6.length, cut) + PARENT_ONLY_GUARD + body.slice(cut);
 }
 
-const SCRIPT_BLOCK = /^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i;
+// `<\/script\b[^>]*>`: the parser ends a script at `</script foo>` too.
+const SCRIPT_BLOCK = /^<script\b[^>]*>([\s\S]*)<\/script\b[^>]*>$/i;
 
 /**
  * Which of OUR runtimes is this script body, byte for byte? Its marker — or
@@ -487,29 +488,41 @@ export function buildSafeDesignerSrcdoc(rawHtml: string): string {
   // 1) Scripts: keep only our baked runtimes (nonce-stamped), drop the rest.
   //    A pinned EDUCMS-SHIM-V6 comes back as its V7, where it stood (see
   //    upgradeEditShimV6Body) — a board kept before V7 hears its parent only.
-  html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (block) => {
-    const m = block.match(SCRIPT_BLOCK);
-    const marker = m ? trustedMarkerOf(m[1]) : null;
-    if (!m || !marker) return '';
-    if (marker === 'EDUCMS-SHIM-V6') {
-      const v7 = upgradeEditShimV6Body(m[1]);
-      if (v7 !== null) return `<script nonce="${nonce}">${v7}</script>`;
-    }
-    // Re-stamp the open tag with the render nonce (drop any prior attrs
-    // except type; our runtimes carry none that matter).
-    return block.replace(/<script\b[^>]*>/i, `<script nonce="${nonce}">`);
-  });
-  // Self-closing / dangling script tags (malformed docs) — no marker, drop.
-  html = html.replace(/<script\b[^>]*\/>/gi, '');
+  //    Steps 1 and 2 run to a FIXPOINT: a removal can expose a new match
+  //    (`<scr<script></script>ipt>` → `<script>`), so one pass is not a strip
+  //    (CodeQL js/incomplete-multi-character-sanitization, 2026-10-22). A
+  //    kept runtime re-matches as itself on every pass, so the loop settles.
+  {
+    let prev = '';
+    let guard = 0;
+    while (html !== prev && guard < 10) {
+      prev = html;
+      html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, (block) => {
+        const m = block.match(SCRIPT_BLOCK);
+        const marker = m ? trustedMarkerOf(m[1]) : null;
+        if (!m || !marker) return '';
+        if (marker === 'EDUCMS-SHIM-V6') {
+          const v7 = upgradeEditShimV6Body(m[1]);
+          if (v7 !== null) return `<script nonce="${nonce}">${v7}</script>`;
+        }
+        // Re-stamp the open tag with the render nonce (drop any prior attrs
+        // except type; our runtimes carry none that matter).
+        return block.replace(/<script\b[^>]*>/i, `<script nonce="${nonce}">`);
+      });
+      // Self-closing / dangling script tags (malformed docs) — no marker, drop.
+      html = html.replace(/<script\b[^>]*\/>/gi, '');
 
-  // 2) Passive-vector strips.
-  html = stripEventHandlerAttrs(html);
-  html = html.replace(/((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi, '$1$2#$3');
-  html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '');
-  html = html.replace(/<base\b[^>]*>/gi, '');
-  html = html
-    .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+      // 2) Passive-vector strips.
+      html = stripEventHandlerAttrs(html);
+      html = html.replace(/((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi, '$1$2#$3');
+      html = html.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '');
+      html = html.replace(/<base\b[^>]*>/gi, '');
+      html = html
+        .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\b[^>]*>/gi, '')
+        .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+      guard++;
+    }
+  }
 
   // 3) CSP meta (fresh each render; remove any stale one from a prior wrap).
   html = html.replace(/<meta\b[^>]*data-vos-csp[^>]*>/gi, '');

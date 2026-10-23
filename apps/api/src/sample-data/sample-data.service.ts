@@ -15,6 +15,7 @@
  *   - Non-blocking: errors are swallowed + logged so a seeder failure
  *     never prevents a new signup from completing.
  */
+import { randomBytes } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PosService } from '../pos/pos.service';
@@ -103,7 +104,7 @@ export class SampleDataService {
           userId,
           providerId: 'custom-webhook',
           displayName,
-          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+          credentials: { webhookSecret: 'sample-' + randomBytes(16).toString('hex') },
         });
       } catch {
         return; // unique-constraint race or table-absent — skip silently
@@ -168,7 +169,7 @@ export class SampleDataService {
           userId,
           providerId: 'custom-webhook',
           displayName,
-          credentials: { webhookSecret: 'sample-' + Math.random().toString(36).slice(2) },
+          credentials: { webhookSecret: 'sample-' + randomBytes(16).toString('hex') },
         });
       } catch {
         return;
