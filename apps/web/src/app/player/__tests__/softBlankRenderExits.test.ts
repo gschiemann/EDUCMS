@@ -50,7 +50,13 @@ import * as ts from 'typescript';
  * it is the only one this P0 change is entitled to move. The other
  * cross-branch overlays are pinned rather than required — see below.
  */
-const REQUIRED = ['softBlankOverlay'];
+// `emergencyMessageOverlay` (2026-10-23, launch QA B3): a banner-style
+// INFO / WARN broadcast no longer takes the red transition surface — it
+// OVERLAYS whatever exit is on glass. Until then it rode only the transition
+// and the main playback tree; a WARN broadcast over a TEMPLATE playlist, the
+// registering / pairing screens or a ribbon tile parent drew nothing
+// (player-canvas-geometry caught the template case in CI). Every exit now.
+const REQUIRED = ['softBlankOverlay', 'emergencyMessageOverlay'];
 
 /**
  * The OTHER cross-branch overlays, pinned to the exits that render them today.
@@ -145,11 +151,27 @@ describe('player render exits all draw the cross-branch overlays', () => {
   it('only the guarded emergency transition omits normal overlays', () => {
     expect(emergencyExits).toHaveLength(1);
     const exit = emergencyExits[0];
-    expect(exit.guard).toContain('emergencyRenderHold');
+    // 2026-10-23 (B3): the guard is the pure surface decision — only a
+    // TAKEOVER alert omits the normal overlays; a banner broadcast renders
+    // through the normal branch WITH them. The decision is still fed every
+    // input the guard used to name (pinned on the page source below).
+    expect(exit.guard).toContain("emergencySurface === 'takeover'");
     expect(exit.guard).toContain('!playlist?.isEmergency');
+    const src = fs.readFileSync(PAGE, 'utf8');
+    const decision = src.slice(src.indexOf('const emergencySurface = decideEmergencySurface({'));
+    for (const input of [
+      'activeEmergency: !!activeEmergency',
+      'pushed: pushedEmergencyMessage',
+      'polledActive: polledEmergencyHeld',
+      'renderHold: emergencyRenderHold',
+      'pendingOverrideConfirm: !!pendingOverrideConfirmRef.current',
+    ]) {
+      expect(decision.slice(0, 600)).toContain(input);
+    }
     expect(exit.text).toContain('{emergencyMessageOverlay}');
     expect(exit.text).toContain('{emergencyFallback');
     for (const overlay of [...REQUIRED, ...PINNED_KNOWN_GAP, 'updatePromptNode']) {
+      if (overlay === 'emergencyMessageOverlay') continue; // the alert itself — asserted present above
       expect(exit.text).not.toContain(`{${overlay}}`);
     }
   });
