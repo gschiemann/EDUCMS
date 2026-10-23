@@ -35,7 +35,7 @@ function apiConstant(name: string): string {
   return eval(m[1]) as string;
 }
 function scriptBody(block: string): string {
-  const m = block.match(/^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i);
+  const m = block.match(/^<script\b[^>]*>([\s\S]*)<\/script\b[^>]*>$/i);
   if (!m) throw new Error('not a script block');
   return m[1];
 }
@@ -324,5 +324,28 @@ describe('sha256Hex', () => {
     for (const b of [scriptBody(REAL_EDIT_SHIM), scriptBody(REAL_FIT_ENGINE)]) {
       expect(sha256Hex(b)).toBe(crypto.createHash('sha256').update(b, 'utf8').digest('hex'));
     }
+  });
+});
+
+describe('strip runs to a fixpoint (CodeQL js/incomplete-multi-character-sanitization, 2026-10-22)', () => {
+  it('a split tag and a junk end tag do not survive, our runtime does', () => {
+    const doc =
+      '<!doctype html><html><head></head><body>' +
+      '<scr<script></script>ipt>evil()</script foo>' +
+      '<iframe src="https://evil.example"></iframe bar>' +
+      '<scr<!---->ipt>evil2()</script>' +
+      '<script>/*VOS-CANVAS*/window.__VOS_CW=1920;window.__VOS_CH=1080;</script>' +
+      '</body></html>';
+    const out = buildSafeDesignerSrcdoc(doc);
+    // No frame survives; `evil()` may remain as INERT TEXT (its open tag is
+    // gone) — the nonce check below is what proves nothing executes.
+    expect(out).not.toMatch(/<iframe\b/i);
+    expect(out).toContain('/*VOS-CANVAS*/window.__VOS_CW=1920;window.__VOS_CH=1080;');
+    // every surviving script tag carries the one render nonce
+    const nonce = (out.match(/'nonce-([a-f0-9]+)'/) || [])[1];
+    expect(nonce).toBeTruthy();
+    const opens = out.match(/<script\b[^>]*>/g) || [];
+    expect(opens.length).toBe(3);
+    for (const o of opens) expect(o).toBe(`<script nonce="${nonce}">`);
   });
 });

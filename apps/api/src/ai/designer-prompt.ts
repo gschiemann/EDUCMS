@@ -950,14 +950,28 @@ export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
   // SECURITY (W0-02): drop EVERY script (inline included), event-handler
   // attribute, javascript: URL, meta refresh, <base>, and nested-framing
   // vector the model authored. Trusted runtimes are injected AFTER this.
-  html = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-    .replace(/<script\b[^>]*\/?>/gi, '')
-    .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '')
-    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '')
-    .replace(/<base\b[^>]*>/gi, '')
-    .replace(/((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi, '$1$2#$3');
+  // Looped to a fixpoint (CodeQL js/incomplete-multi-character-sanitization,
+  // 2026-10-22): one removal can EXPOSE a new match — `<scr<script></script>ipt>`
+  // collapses to `<script>` — and an end tag may carry junk (`</script foo>`),
+  // which the HTML parser accepts as the end tag. The render-time wrapper
+  // (designer-safe-srcdoc / designer-render-document) strips again under a
+  // nonce CSP, so this is defence in depth, not the barrier.
+  {
+    let prev = '';
+    let guard = 0;
+    while (html !== prev && guard < 10) {
+      prev = html;
+      html = html
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '')
+        .replace(/<script\b[^>]*\/?>/gi, '')
+        .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\b[^>]*>/gi, '')
+        .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '')
+        .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '')
+        .replace(/<base\b[^>]*>/gi, '')
+        .replace(/((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi, '$1$2#$3');
+      guard++;
+    }
+  }
   // on* handler attributes — looped: removing one can expose another match.
   {
     const onAttr = /(<[a-zA-Z][^>]*?)\s+on[a-zA-Z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g;
