@@ -143,7 +143,7 @@ describe('IT & security section + public security pages (2026-10-22)', () => {
   const itSlugs = articles.filter((a) => a.category === 'IT & Security').map((a) => a.slug);
 
   it('ships the IT & security articles, each in en + es + zh', () => {
-    expect(itSlugs).toEqual(['it-security-overview', 'network-requirements']);
+    expect(itSlugs).toEqual(['it-security-overview', 'signing-in', 'network-requirements']);
     for (const slug of itSlugs) {
       const a = articles.find((x) => x.slug === slug)!;
       for (const loc of ['es', 'zh'] as const) {
@@ -184,6 +184,8 @@ describe('IT & security section + public security pages (2026-10-22)', () => {
   it('security.txt is valid: contact, an Expires within a year, and the policy page', () => {
     const txt = fs.readFileSync(path.join(process.cwd(), 'public', '.well-known', 'security.txt'), 'utf8');
     expect(txt).toMatch(/^Contact: mailto:security@venue-os\.app$/m);
+    // GitHub private vulnerability reporting (repo public + PVR enabled, 2026-10-22).
+    expect(txt).toMatch(/^Contact: https:\/\/github\.com\/gschiemann\/EDUCMS\/security\/advisories\/new$/m);
     expect(txt).toMatch(/^Policy: https:\/\/venue-os\.app\/security$/m);
     expect(txt).toMatch(/^Preferred-Languages: en$/m);
     const expires = Date.parse(/^Expires: (.+)$/m.exec(txt)![1]);
@@ -192,5 +194,112 @@ describe('IT & security section + public security pages (2026-10-22)', () => {
     expect(expires).toBeGreaterThan(Date.now());
     expect(expires - Date.now()).toBeLessThan(366 * 24 * 3600 * 1000);
     expect(fs.existsSync(path.join(process.cwd(), 'src', 'app', 'security', 'page.tsx'))).toBe(true);
+  });
+});
+
+/**
+ * Signing-in + emergency-broadcast articles (2026-10-22). Every number these
+ * articles state is read back from the code that enforces it, so a change to a
+ * limit turns this red until the article (in all three languages) follows.
+ */
+describe('signing-in and emergency-broadcast articles match the product', () => {
+  const repo = (...p: string[]) => fs.readFileSync(path.join(process.cwd(), '..', ...p), 'utf8');
+  /** `NAME = 7 * 24 * 60 * 60_000;` → the product of the factors. */
+  const constant = (src: string, name: string): number => {
+    const m = new RegExp(`\\b${name} = ([\\d_ *]+);`).exec(src);
+    if (!m) throw new Error(`${name} not found — did the constant move?`);
+    return m[1].split('*').reduce((acc, f) => acc * Number(f.trim().replace(/_/g, '')), 1);
+  };
+  const article = (slug: string) => articles.find((a) => a.slug === slug)!;
+  const bodies = (slug: string) => {
+    const a = article(slug);
+    return [a.body, a.translations?.es?.body ?? '', a.translations?.zh?.body ?? ''];
+  };
+  const links = (s: string) => (s.match(/\]\(\/[^)]+\)/g) || []).sort();
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+
+  it('both ship in en + es + zh, translated, with the same internal links', () => {
+    for (const slug of ['signing-in', 'emergency-broadcast']) {
+      const a = article(slug);
+      expect(a).toBeDefined();
+      for (const loc of ['es', 'zh'] as const) {
+        const tr = a.translations?.[loc];
+        expect(tr).toBeDefined();
+        expect(tr!.title).not.toBe(a.title);
+        expect(tr!.body.length).toBeGreaterThan(2000);
+        expect(links(tr!.body)).toEqual(links(a.body));
+      }
+    }
+  });
+
+  it('signing-in states the sign-in limits the API enforces', () => {
+    const en = article('signing-in').body;
+    const backup = constant(repo('api', 'src', 'auth', 'mfa-backup-codes.ts'), 'BACKUP_CODE_COUNT');
+    const passkeys = constant(repo('api', 'src', 'auth', 'passkey-limits.ts'), 'MAX_PASSKEYS_PER_USER');
+    const limiter = repo('api', 'src', 'auth', 'login-attempt-limiter.ts');
+    const emailCode = repo('api', 'src', 'auth', 'mfa-email-code.ts');
+    const onboarding = repo('api', 'src', 'onboarding', 'onboarding.service.ts');
+    const setupLink = repo('api', 'src', 'auth', 'account-setup-link.ts');
+
+    expect(en).toContain(`shows ${backup} backup codes`);
+    expect(en).toContain(`up to ${passkeys} passkeys`);
+    expect(en).toContain(`after ${constant(limiter, 'LOGIN_LOCK_AFTER')} in ${constant(limiter, 'LOGIN_FAIL_WINDOW_MS') / MIN} minutes`);
+    expect(en).toContain(`pauses that email for ${constant(limiter, 'LOGIN_LOCK_MS') / MIN} minutes`);
+    expect(constant(onboarding, 'PASSWORD_RESET_TTL_MS')).toBe(HOUR);
+    expect(en).toMatch(/reset link works for one hour/);
+    expect(en).toContain(`it works for ${constant(onboarding, 'INVITE_TTL_MS') / DAY} days`);
+    expect(en).toContain(`expires after ${constant(setupLink, 'SETUP_LINK_TTL_MS') / DAY} days`);
+    expect(en).toContain(`works once, for ${constant(emailCode, 'MFA_EMAIL_CODE_TTL_MS') / MIN} minutes`);
+    expect(en).toContain(`not offered for ${constant(emailCode, 'MFA_EMAIL_CODE_RESET_COOLDOWN_MS') / DAY} days after a password reset`);
+    for (const body of bodies('signing-in')) {
+      expect(body).toContain('venue-os.app/login');
+      expect(body).not.toMatch(/SAML|SOC ?2|ISO ?27001|FedRAMP|HIPAA/i);
+    }
+  });
+
+  it('emergency-broadcast states what the Broadcast page and the API really do', () => {
+    const en = article('emergency-broadcast').body;
+    const page = fs.readFileSync(path.join(process.cwd(), 'src', 'app', '[schoolId]', 'emergency', 'broadcast', 'page.tsx'), 'utf8');
+    const api = repo('api', 'src', 'emergency', 'emergency.controller.ts');
+
+    // Hold-to-send, the duration range and its default.
+    expect(constant(page, 'HOLD_MS')).toBe(3000);
+    expect(page).toMatch(/min=\{1\}\s+max=\{120\}/);
+    expect(page).toMatch(/\[durationMin, setDurationMin\] = useState\(5\)/);
+    expect(en).toContain('from 1 to 120 minutes. The default is 5');
+    // Built-in lifetimes: text 5 min unless set, media 1 hour, SOS 30 minutes.
+    expect(api).toMatch(/new Date\(Date\.now\(\) \+ 60 \* 60 \* 1000\); \/\/ 1 hr default/);
+    expect(api).toMatch(/new Date\(Date\.now\(\) \+ 30 \* 60 \* 1000\); \/\/ 30 min/);
+    expect(en).toMatch(/\| Media alert \| 1 hour \|/);
+    expect(en).toMatch(/\| Staff SOS \| 30 minutes \|/);
+    // "Clear" is shown to Super Admins only (the page's rule, not the API's).
+    expect(page).toMatch(/const canClear = role === 'DISTRICT_ADMIN' \|\| role === 'SUPER_ADMIN';/);
+    expect(en).toContain('**Clear** on this page is shown to Super Admins');
+    // The page has no LIVE | DRILL switch, and the article says so.
+    expect(page).not.toMatch(/LiveDrillSwitch/);
+    expect(en).toContain('no **LIVE | DRILL** switch');
+    // Audit actions named in the article are the ones the controller writes.
+    for (const action of ['BROADCAST_TEXT', 'MEDIA_ALERT', 'SOS_TRIGGER', 'CLEAR_EMERGENCY_MESSAGE']) {
+      expect(api).toContain(`action: '${action}'`);
+      for (const body of bodies('emergency-broadcast')) expect(body).toContain(`\`${action}\``);
+    }
+  });
+
+  it('says plainly that no screen in the product sends an SOS yet', () => {
+    // If a web surface starts calling the SOS endpoint, this goes red: update
+    // the "Staff SOS and voice notes" section in all three languages.
+    const callers: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') walk(p); }
+        else if (/\.(tsx?|jsx?)$/.test(e.name) && /emergency\/sos\b/.test(fs.readFileSync(p, 'utf8'))) callers.push(p);
+      }
+    };
+    walk(path.join(process.cwd(), 'src'));
+    expect(callers).toEqual([]);
+    expect(article('emergency-broadcast').body).toMatch(/there is no button yet[^.]*to send an SOS or record a voice note/);
   });
 });
