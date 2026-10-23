@@ -7,8 +7,16 @@ Drivers: Playwright scripts (Chromium + WebKit, 1325×758 desktop, 390×844 iPho
 
 **CI:** all 14 workflows green on `831c3297` (Deploy Reliability, CI & Security incl. the 8 Playwright shards, Emergency Path, Cross-Browser, axe, Lighthouse, Mobile Perf, Tenant Isolation, …). Later commits are copy/i18n and docs on top of that.
 
-**Status of this report: LIVE — updated after each fix group.** Flows marked *not yet tested* had not
-been walked when this revision was written.
+**Status of this report:** final for this pass (2026-10-23). Everything not walked is listed under "Not covered".
+
+## Not covered (and why)
+
+- **Real media uploads** (image / video / PDF / MOV / HEIC conversion, too-big and fake files): the local stack has no Supabase storage, so presign answers 500. Covered instead by the mocked-storage e2e (`mobile-usability.spec.ts`, which found the double-upload bug) and the 2026-10-04/05 media-matrix + upload-truth campaigns. Media Library details panel was walked with inserted asset rows.
+- **Media alert with real media / SOS**: the API accepts emergency media only from the tenant's https Supabase storage; SOS not walked.
+- **Passkeys**: not walked by hand (CI's `sign-in-steps.spec.ts` drives a real virtual-authenticator ceremony and is green).
+- **First-login email code**: not required locally (no verified sending domain), so the code step itself was not exercised.
+- **Playlist detail editor reorder / per-item durations after creation**: the wizard's ordering and seconds were exercised; the post-create editor was not.
+- Local e2e of `sign-in-steps.spec.ts` needs the web server built against `http://api.invalid` (its mock origin); against this stack it fails for that reason only — CI runs it correctly and it is green.
 
 ## Launch blockers (still open)
 
@@ -62,6 +70,7 @@ Method: crawl the same routes in `en` and `es` and list visible lines that are i
 |---|---|---|---|---|---|
 | 1 | Sign up → trial | ✓ | ✓ | **PASS** | Signup → `/onboarding/branding` (welcome email + starter board + playlist seeded). See UX gaps U1, U2. |
 | 1 | Sign in (2-step email → password + EULA) | ✓ | ✓ | **PASS** | |
+| 1 | Sign out | | ✓ | **PASS** | Sidebar Sign Out → /login; the dashboard URL then redirects to `/login?redirect=…`; Back stays signed out. |
 | 1 | Password reset request | — | ✓ | **PASS (local)** | With no `RESEND_API_KEY` the page honestly says email isn't configured. |
 | 1 | Password reset completion | | ✓ | **PASS** | Token page → new password ×2 → 200 `sessionsRevoked:true` → back to /login → signs in with the new password; reusing the link says "already been used". See U11. |
 | 1 | First-login setup (provisioned account, `mustSetupCredentials`) | | ✓ | **PASS** | "Finish setting up your account" → work email ×2 + new password → dashboard, for an Editor and a School Admin. Email code not required locally (`SETUP_EMAIL_VERIFICATION=auto`, no verified sending domain) — the code step itself *not tested*. The setup screen's background queries (`/branding/me` …) 403 while the account is gated (console noise only). |
