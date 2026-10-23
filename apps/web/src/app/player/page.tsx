@@ -9618,15 +9618,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // Interlock: a pushed alert takes the glass exactly like a
               // tenant override, so the display hold goes up with it.
               signalDisplayEmergencyHold(true, true);
-              // 2026-10-22 — the shared mapper (`pushedEmergencyMessage.ts`).
-              // This branch used to read `p.id || msg.eventId`, but the API
-              // signs the DB row id as `messageId`, so a WS-pushed overlay
-              // carried the envelope's random eventId; the 12 s life-safety
-              // reconcile below could never find that id in the poll and
-              // cleared the alert ~24 s after it was pushed. The SSE branch
-              // already read `messageId`; both now share one function. The
-              // `text` / `textBlob` alias (P0-2 adjacent fix, 2026-05-28) is
-              // preserved inside it.
+              // 2026-10-22 — id = the signed `messageId`, never the eventId
+              // (the 12 s reconcile must find it). See pushedEmergencyMessage.ts.
               setPushedEmergencyMessage(
                 pushedEmergencyFromPayload(
                   msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
