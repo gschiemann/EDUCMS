@@ -22,7 +22,7 @@ Una **transmisión de emergencia** pone un mensaje urgente encima de lo que est�
 
 **Transmisión enviada.** confirma que salió, y el mensaje aparece en **Transmisiones activas**. Si el envío falla, un mensaje en rojo lo indica: no salió nada, así que vuelva a intentarlo.
 
-Una transmisión llega a todas las pantallas de la ubicación en la que está trabajando y, si trabaja en una organización con ubicaciones dependientes, también a todas las pantallas de esas ubicaciones. Esta página no permite elegir pantallas ni grupos.
+Una transmisión llega a todas las pantallas de la ubicación en la que está trabajando; para llegar a las pantallas de una ubicación concreta, cámbiese primero a esa ubicación. Esta página no permite elegir pantallas ni grupos.
 
 ## Agregar imágenes, video o sonido
 

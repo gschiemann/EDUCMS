@@ -22,7 +22,7 @@ An **emergency broadcast** puts an urgent message on top of whatever your screen
 
 **Broadcast dispatched.** confirms that it went out, and the message appears under **Active broadcasts**. If sending fails, a red message says so: nothing went out, so try again.
 
-A broadcast goes to every screen at the location you are working in — and, when you work at an organization with locations under it, to every screen at those locations too. There is no screen or group picker on this page.
+A broadcast goes to every screen at the location you are working in; to reach one location's screens, switch to that location first. There is no screen or group picker on this page.
 
 ## Add pictures, video or sound
 
