@@ -213,6 +213,9 @@
 
   window.VENUE={
     run:function(cfg){
+      // Never write into a caller's object that might be a prototype (a cue
+      // looked up by an attacker-chosen key): work on an own-property copy.
+      cfg=Object.assign({},cfg&&typeof cfg==='object'?cfg:{});
       cv=document.getElementById('c');ctx=cv.getContext('2d');
       cfg.T=Object.assign({fadeIn:420,impact:1000,head:1020,hold:3300,end:4300},cfg.T||{});
       CFG=cfg;
