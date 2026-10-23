@@ -6367,5 +6367,30 @@
     "socialRetry": "请在模板中该应用的设置里重试。",
     "backToPos": "返回 POS 设置",
     "backToVenueOS": "返回 VenueOS"
+  },
+  "passwordReset": {
+    "backToSignIn": "返回登录",
+    "requestTitle": "重置密码",
+    "requestSubtitle": "我们会通过邮件发送一个链接，让你设置新密码。",
+    "emailLabel": "邮箱",
+    "sendLink": "发送重置链接",
+    "sending": "正在发送…",
+    "checkInboxTitle": "请查看收件箱",
+    "checkInboxBody": "如果该邮箱有对应的账户，我们已发送重置链接。链接一小时后失效。",
+    "emailOffTitle": "此部署未配置邮件",
+    "emailOffBody": "此处未设置外发邮件，无法发送重置链接。请联系管理员为你重置密码或开启外发邮件。",
+    "genericError": "出现问题，请重试。",
+    "unreachable": "暂时无法连接 VenueOS。请检查网络后重试。",
+    "completeTitle": "设置新密码",
+    "newPassword": "新密码",
+    "newPasswordHint": "至少 8 个字符。",
+    "confirmPassword": "确认密码",
+    "updatePassword": "更新密码",
+    "saving": "正在保存…",
+    "tooShort": "密码至少需要 8 个字符。",
+    "mismatch": "两次输入的密码不一致。",
+    "linkInvalid": "该链接已失效。",
+    "updatedTitle": "密码已更新",
+    "updatedBody": "正在前往登录…"
   }
 }

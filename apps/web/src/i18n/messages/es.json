@@ -6367,5 +6367,30 @@
     "socialRetry": "Inténtalo de nuevo desde la configuración de la app en tu plantilla.",
     "backToPos": "Volver a la configuración POS",
     "backToVenueOS": "Volver a VenueOS"
+  },
+  "passwordReset": {
+    "backToSignIn": "Volver a iniciar sesión",
+    "requestTitle": "Restablece tu contraseña",
+    "requestSubtitle": "Te enviaremos un enlace por correo para elegir una nueva.",
+    "emailLabel": "Correo electrónico",
+    "sendLink": "Enviar enlace",
+    "sending": "Enviando…",
+    "checkInboxTitle": "Revisa tu bandeja de entrada",
+    "checkInboxBody": "Si existe una cuenta con ese correo, acabamos de enviar un enlace. Caduca en una hora.",
+    "emailOffTitle": "El correo no está configurado en esta instalación",
+    "emailOffBody": "Aquí no está configurado el correo saliente, así que no podemos enviar el enlace. Pide a tu administrador que restablezca tu contraseña o que active el correo saliente.",
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "unreachable": "No se puede conectar con VenueOS ahora mismo. Revisa tu conexión e inténtalo de nuevo.",
+    "completeTitle": "Elige una nueva contraseña",
+    "newPassword": "Nueva contraseña",
+    "newPasswordHint": "Al menos 8 caracteres.",
+    "confirmPassword": "Confirma la contraseña",
+    "updatePassword": "Actualizar contraseña",
+    "saving": "Guardando…",
+    "tooShort": "La contraseña debe tener al menos 8 caracteres.",
+    "mismatch": "Las contraseñas no coinciden.",
+    "linkInvalid": "Ese enlace ya no es válido.",
+    "updatedTitle": "Contraseña actualizada",
+    "updatedBody": "Te llevamos a iniciar sesión…"
   }
 }

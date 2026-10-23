@@ -6367,5 +6367,30 @@
     "socialRetry": "Try again from the app's settings in your template.",
     "backToPos": "Back to POS settings",
     "backToVenueOS": "Back to VenueOS"
+  },
+  "passwordReset": {
+    "backToSignIn": "Back to sign in",
+    "requestTitle": "Reset your password",
+    "requestSubtitle": "We'll email you a link to choose a new one.",
+    "emailLabel": "Email",
+    "sendLink": "Send reset link",
+    "sending": "Sending…",
+    "checkInboxTitle": "Check your inbox",
+    "checkInboxBody": "If an account exists for that email, we just sent a reset link. It expires in one hour.",
+    "emailOffTitle": "Email is not configured on this deployment",
+    "emailOffBody": "Outbound email isn't set up here, so we can't send a reset link. Ask your administrator to reset your password or to turn on outbound email.",
+    "genericError": "Something went wrong. Please try again.",
+    "unreachable": "Can't reach VenueOS right now. Check your connection and try again.",
+    "completeTitle": "Choose a new password",
+    "newPassword": "New password",
+    "newPasswordHint": "At least 8 characters.",
+    "confirmPassword": "Confirm password",
+    "updatePassword": "Update password",
+    "saving": "Saving…",
+    "tooShort": "Password must be at least 8 characters.",
+    "mismatch": "Passwords do not match.",
+    "linkInvalid": "That link is no longer valid.",
+    "updatedTitle": "Password updated",
+    "updatedBody": "Taking you to sign in…"
   }
 }
