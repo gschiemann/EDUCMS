@@ -77,7 +77,7 @@ export default function CoppaPage() {
       <h2>Security</h2>
       <p>
         See the security section of our <Link href="/privacy">Privacy Policy</Link>: encryption in
-        transit and at rest, role-based access control, multi-factor sign-in for administrators,
+        transit and at rest, role-based access control, multi-factor sign-in that the school can require for administrators,
         signed emergency alerts and immutable audit records.
       </p>
 

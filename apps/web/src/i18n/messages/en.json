@@ -6296,5 +6296,122 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "That screen isn't in this window.",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS support doesn't have access to one of these organizations."
     }
+  },
+  "publicSite": {
+    "footer": {
+      "tagline": "One platform for digital signage, kiosks, live scoreboards, and emergency alerts — across every venue you run.",
+      "product": "Product",
+      "overview": "Overview",
+      "industries": "Industries",
+      "templates": "Templates",
+      "pricing": "Pricing",
+      "resources": "Resources",
+      "helpCenter": "Help center",
+      "gettingStarted": "Getting started",
+      "emergencySystem": "Emergency system",
+      "ssoSetup": "SSO setup",
+      "apiWebhooks": "API & webhooks",
+      "systemStatus": "System status",
+      "trust": "Security",
+      "itSecurity": "Security overview",
+      "networkRequirements": "Network requirements",
+      "reportVulnerability": "Report a vulnerability",
+      "legal": "Legal",
+      "privacy": "Privacy policy",
+      "terms": "Terms of service",
+      "dpa": "Data processing addendum",
+      "subprocessors": "Sub-processors",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS — one platform for every venue.",
+      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts"
+    },
+    "help": {
+      "back": "Back to help center",
+      "updated": "Updated {date}",
+      "moreIn": "More in {category}",
+      "categories": {
+        "gettingStarted": {
+          "name": "Getting Started",
+          "description": "Set up your workspace and launch your first screen."
+        },
+        "templates": {
+          "name": "Templates",
+          "description": "Design layouts, import existing designs, and brand everything."
+        },
+        "aiStudio": {
+          "name": "AI Studio",
+          "description": "Generate boards from a sentence and edit them with plain English."
+        },
+        "screens": {
+          "name": "Screens",
+          "description": "Pair, group, and manage physical displays."
+        },
+        "emergency": {
+          "name": "Emergency System",
+          "description": "Lockdown, weather, and evacuation alerts — plus safeguards."
+        },
+        "sports": {
+          "name": "Sports",
+          "description": "Scoreboards, ribbon boards, cues, and running a live game day."
+        },
+        "integrations": {
+          "name": "Integrations",
+          "description": "Point-of-sale menus, live prices, and connected services."
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "Connect Google, Microsoft, or any OIDC identity provider."
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "Auto-sync staff and schedules from your SIS."
+        },
+        "billing": {
+          "name": "Billing",
+          "description": "Invoices, POs, upgrading, canceling."
+        },
+        "itSecurity": {
+          "name": "IT & Security",
+          "description": "Network requirements, sign-in, data protection and security reviews."
+        }
+      }
+    },
+    "status": {
+      "title": "System status",
+      "subtitle": "Live health of the VenueOS platform, checked directly from your browser. Auto-refreshes every minute.",
+      "toneOk": "Operational",
+      "toneDegraded": "Degraded",
+      "toneDown": "Outage",
+      "toneUnknown": "Checking…",
+      "overallOk": "All systems operational",
+      "overallDegraded": "Partial degradation — service continues",
+      "overallDown": "Service disruption",
+      "overallUnknown": "Checking systems…",
+      "web": "Web dashboard",
+      "api": "API",
+      "database": "Database",
+      "realtime": "Realtime delivery",
+      "emergencyPath": "Emergency alert path",
+      "storage": "File uploads & storage",
+      "webOk": "You are looking at it",
+      "checking": "Checking…",
+      "unknownApi": "Unknown — API unreachable",
+      "apiDown": "Unreachable",
+      "apiOk": "Serving requests",
+      "dbOk": "Queries healthy",
+      "dbDown": "Not responding to queries",
+      "realtimeOk": "Instant push active",
+      "realtimeDegraded": "Polling fallback — screens check for changes about every 10 seconds",
+      "emergencyOk": "Trigger chain verified",
+      "emergencyDown": "Trigger chain check failing",
+      "storageOk": "Uploads healthy",
+      "storageBackup": "Working via backup transport",
+      "storageDown": "Uploads failing",
+      "lastChecked": "Last checked {time}",
+      "apiBuild": "API build {version}",
+      "firstCheck": "Running first check…",
+      "offlineNote": "If a screen loses its connection it keeps playing its stored content, and an emergency alert already on screen stays up until an all-clear — see the <help>emergency system overview</help>."
+    }
   }
 }

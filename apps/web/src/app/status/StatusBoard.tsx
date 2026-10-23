@@ -12,10 +12,13 @@
  * never poll a backgrounded tab) — refreshes immediately on return.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { API_URL } from '@/lib/api-url';
 
 type Tone = 'ok' | 'degraded' | 'down' | 'unknown';
 
+/** `name` / `detail` are keys under `publicSite.status` (en / es / zh). */
 interface ComponentStatus {
   name: string;
   detail: string;
@@ -23,10 +26,10 @@ interface ComponentStatus {
 }
 
 const TONE_STYLES: Record<Tone, { dot: string; label: string; text: string }> = {
-  ok: { dot: 'bg-emerald-500', label: 'Operational', text: 'text-emerald-600' },
-  degraded: { dot: 'bg-amber-500', label: 'Degraded', text: 'text-amber-600' },
-  down: { dot: 'bg-red-500', label: 'Outage', text: 'text-red-600' },
-  unknown: { dot: 'bg-slate-300', label: 'Checking…', text: 'text-slate-400' },
+  ok: { dot: 'bg-emerald-500', label: 'toneOk', text: 'text-emerald-600' },
+  degraded: { dot: 'bg-amber-500', label: 'toneDegraded', text: 'text-amber-600' },
+  down: { dot: 'bg-red-500', label: 'toneDown', text: 'text-red-600' },
+  unknown: { dot: 'bg-slate-300', label: 'toneUnknown', text: 'text-slate-400' },
 };
 
 async function fetchJson(path: string): Promise<{ httpOk: boolean; body: any } | null> {
@@ -57,23 +60,23 @@ async function takeSnapshot(): Promise<Snapshot> {
 
   // Web dashboard — this page rendering IS the check (served by a separate
   // deploy surface than the API).
-  components.push({ name: 'Web dashboard', detail: 'You are looking at it', tone: 'ok' });
+  components.push({ name: 'web', detail: 'webOk', tone: 'ok' });
 
   // API
   if (!live) {
-    components.push({ name: 'API', detail: 'Unreachable', tone: 'down' });
+    components.push({ name: 'api', detail: 'apiDown', tone: 'down' });
   } else {
-    components.push({ name: 'API', detail: 'Serving requests', tone: 'ok' });
+    components.push({ name: 'api', detail: 'apiOk', tone: 'ok' });
   }
 
   // Database
   const db = live?.body?.db;
   components.push(
     !live
-      ? { name: 'Database', detail: 'Unknown — API unreachable', tone: 'unknown' }
+      ? { name: 'database', detail: 'unknownApi', tone: 'unknown' }
       : db === 'ok'
-        ? { name: 'Database', detail: 'Queries healthy', tone: 'ok' }
-        : { name: 'Database', detail: 'Not responding to queries', tone: 'down' },
+        ? { name: 'database', detail: 'dbOk', tone: 'ok' }
+        : { name: 'database', detail: 'dbDown', tone: 'down' },
   );
 
   // Realtime delivery — 'fallback'/'off' is a designed mode: screens poll
@@ -81,31 +84,31 @@ async function takeSnapshot(): Promise<Snapshot> {
   const redis = live?.body?.redis;
   components.push(
     !live
-      ? { name: 'Realtime delivery', detail: 'Unknown — API unreachable', tone: 'unknown' }
+      ? { name: 'realtime', detail: 'unknownApi', tone: 'unknown' }
       : redis === 'ok'
-        ? { name: 'Realtime delivery', detail: 'Instant push active', tone: 'ok' }
-        : { name: 'Realtime delivery', detail: 'Polling fallback — updates within ~30s', tone: 'degraded' },
+        ? { name: 'realtime', detail: 'realtimeOk', tone: 'ok' }
+        : { name: 'realtime', detail: 'realtimeDegraded', tone: 'degraded' },
   );
 
   // Emergency alert path — the life-safety chain (DB + signing).
   components.push(
     !emergency
-      ? { name: 'Emergency alert path', detail: 'Unknown — API unreachable', tone: 'unknown' }
+      ? { name: 'emergencyPath', detail: 'unknownApi', tone: 'unknown' }
       : emergency.httpOk
-        ? { name: 'Emergency alert path', detail: 'Trigger chain verified', tone: 'ok' }
-        : { name: 'Emergency alert path', detail: 'Trigger chain check failing', tone: 'down' },
+        ? { name: 'emergencyPath', detail: 'emergencyOk', tone: 'ok' }
+        : { name: 'emergencyPath', detail: 'emergencyDown', tone: 'down' },
   );
 
   // File storage
   const transport = storage?.body?.storage?.transport;
   components.push(
     !storage
-      ? { name: 'File uploads & storage', detail: 'Unknown — API unreachable', tone: 'unknown' }
+      ? { name: 'storage', detail: 'unknownApi', tone: 'unknown' }
       : storage.httpOk && transport === 'primary'
-        ? { name: 'File uploads & storage', detail: 'Uploads healthy', tone: 'ok' }
+        ? { name: 'storage', detail: 'storageOk', tone: 'ok' }
         : storage.httpOk
-          ? { name: 'File uploads & storage', detail: 'Working via backup transport', tone: 'degraded' }
-          : { name: 'File uploads & storage', detail: 'Uploads failing', tone: 'down' },
+          ? { name: 'storage', detail: 'storageBackup', tone: 'degraded' }
+          : { name: 'storage', detail: 'storageDown', tone: 'down' },
   );
 
   return {
@@ -123,13 +126,14 @@ function overallTone(components: ComponentStatus[]): Tone {
 }
 
 const OVERALL_COPY: Record<Tone, string> = {
-  ok: 'All systems operational',
-  degraded: 'Partial degradation — service continues',
-  down: 'Service disruption',
-  unknown: 'Checking systems…',
+  ok: 'overallOk',
+  degraded: 'overallDegraded',
+  down: 'overallDown',
+  unknown: 'overallUnknown',
 };
 
 export function StatusBoard() {
+  const t = useTranslations('publicSite.status');
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const refreshing = useRef(false);
 
@@ -160,24 +164,19 @@ export function StatusBoard() {
 
   const components: ComponentStatus[] =
     snapshot?.components ??
-    [
-      'Web dashboard',
-      'API',
-      'Database',
-      'Realtime delivery',
-      'Emergency alert path',
-      'File uploads & storage',
-    ].map((name) => ({ name, detail: 'Checking…', tone: 'unknown' as Tone }));
+    ['web', 'api', 'database', 'realtime', 'emergencyPath', 'storage'].map((name) => ({
+      name,
+      detail: 'checking',
+      tone: 'unknown' as Tone,
+    }));
 
   const overall = snapshot ? overallTone(snapshot.components) : 'unknown';
   const overallStyle = TONE_STYLES[overall];
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-16">
-      <h1 className="text-3xl font-bold tracking-tight">System status</h1>
-      <p className="mt-2 text-slate-500 text-sm">
-        Live health of the VenueOS platform, checked directly from your browser. Auto-refreshes every minute.
-      </p>
+      <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
+      <p className="mt-2 text-slate-500 text-sm">{t('subtitle')}</p>
 
       <div
         className={`mt-8 rounded-xl border px-5 py-4 flex items-center gap-3 ${
@@ -191,7 +190,7 @@ export function StatusBoard() {
         }`}
       >
         <span className={`h-3 w-3 rounded-full ${overallStyle.dot}`} aria-hidden />
-        <span className="font-semibold">{OVERALL_COPY[overall]}</span>
+        <span className="font-semibold">{t(OVERALL_COPY[overall])}</span>
       </div>
 
       <ul className="mt-6 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
@@ -200,12 +199,12 @@ export function StatusBoard() {
           return (
             <li key={c.name} className="flex items-center justify-between px-5 py-4">
               <div>
-                <div className="font-medium text-slate-900">{c.name}</div>
-                <div className="text-sm text-slate-500">{c.detail}</div>
+                <div className="font-medium text-slate-900">{t(c.name)}</div>
+                <div className="text-sm text-slate-500">{t(c.detail)}</div>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`h-2.5 w-2.5 rounded-full ${s.dot}`} aria-hidden />
-                <span className={`text-sm font-medium ${s.text}`}>{s.label}</span>
+                <span className={`text-sm font-medium ${s.text}`}>{t(s.label)}</span>
               </div>
             </li>
           );
@@ -214,13 +213,21 @@ export function StatusBoard() {
 
       <p className="mt-4 text-xs text-slate-400">
         {snapshot
-          ? `Last checked ${snapshot.checkedAt.toLocaleTimeString()}${snapshot.version ? ` · API build ${snapshot.version}` : ''}`
-          : 'Running first check…'}
-        {' · '}Emergency alerts also have an offline-capable path on every screen — see{' '}
-        <a href="/help" className="underline hover:text-slate-600">
-          Help
-        </a>{' '}
-        for details.
+          ? [
+              t('lastChecked', { time: snapshot.checkedAt.toLocaleTimeString() }),
+              snapshot.version ? t('apiBuild', { version: snapshot.version }) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : t('firstCheck')}
+        {' · '}
+        {t.rich('offlineNote', {
+          help: (chunks) => (
+            <Link href="/help/emergency-system" className="underline hover:text-slate-600">
+              {chunks}
+            </Link>
+          ),
+        })}
       </p>
     </main>
   );
