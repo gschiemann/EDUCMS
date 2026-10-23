@@ -5,6 +5,8 @@ scratch Postgres `qa_launch_1023` (`prisma migrate deploy` + seed) + Redis db 9.
 Drivers: Playwright scripts (Chromium + WebKit, 1325×758 desktop, 390×844 iPhone UA) and
 `audit-builder.mjs` (the 42-check builder harness) in WebKit.
 
+**CI:** all 14 workflows green on `831c3297` (Deploy Reliability, CI & Security incl. the 8 Playwright shards, Emergency Path, Cross-Browser, axe, Lighthouse, Mobile Perf, Tenant Isolation, …). Later commits are copy/i18n and docs on top of that.
+
 **Status of this report: LIVE — updated after each fix group.** Flows marked *not yet tested* had not
 been walked when this revision was written.
 
