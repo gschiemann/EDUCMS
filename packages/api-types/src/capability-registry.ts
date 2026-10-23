@@ -93,7 +93,7 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
     state: 'VERIFIED',
     owner: 'billing',
     surface: 'pricing page / signup / /license/tiers / billing UI / checkout',
-    publicClaim: '$25 per screen / month, or $240 / screen / year ($20/mo effective).',
+    publicClaim: '$20 per screen / month or $200 / screen / year; with AI $25 / month or $250 / year.',
     evidenceTest: 'packages/api-types/src/billing.spec.ts',
     verifiedAt: '2026-07-16',
     expiresAt: null,

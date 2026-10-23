@@ -1,51 +1,65 @@
 ---
-title: Playlists, schedules, and priority
+title: Playlists, schedules, and what plays where
 category: Screens
-updated: 2026-04-16
-excerpt: Build rotating playlists, schedule them for specific days and times, and control what wins when multiple schedules overlap.
+updated: 2026-10-22
+excerpt: Build a playlist, publish it to screens or groups, schedule it for certain days and times, and see what happens when two playlists want the same screen.
 ---
 
-# Playlists, schedules, and priority
+# Playlists, schedules, and what plays where
 
-A **template** defines layout. A **playlist** is a rotating sequence of assets (or templates). A **schedule** says when and where a playlist plays.
+A **playlist** is the sequence of content a screen plays — images, videos, documents, web pages and templates. Publishing a playlist to screens is what puts it on the wall, and its **schedule** says when.
 
-## Playlists
+Everything lives on the **Playlists** page in the sidebar. There is no separate Schedules page: you schedule a playlist while you publish it.
 
-Create one from **Playlists → New playlist**:
+## Create a playlist
 
-- Give it a name (e.g. "Morning announcements loop")
-- Add items — each item references an asset (image, video, announcement) or a sub-template
-- Set **dwell duration** per item (how long each one shows, in milliseconds)
-- Pick a **transition** (fade, cut, slide, wipe)
+Click **New Playlist**. The wizard has five short steps:
 
-Playlists can be nested: a playlist item can itself be a playlist. This is useful for "day of the week"-style variations.
+1. **Name & type** — give it a name (for example "Lobby morning loop") and choose whether it plays your media or a template.
+2. **Pick content** — choose files from your Media Library, or upload new ones. Set how long each image or page shows, in **seconds** (use **Set All** to give every slide the same time). Videos and audio always play their full length, then the playlist moves on.
+3. **Pick screens** — choose screens or whole screen groups. For a video wall or boards side by side, turn on **Keep screens in sync** so every screen changes slides at the same instant.
+4. **Publishing** — **Activate immediately** plays it around the clock until you stop it. **Schedule a window** plays it only on the days, times and dates you pick (use **Weekdays**, **Weekends** or **Every day** for quick choices).
+5. **Review** — check everything, then create it.
 
-## Schedules
+Screens pick up the change within seconds over their live connection — no need to restart a display.
 
-A schedule binds a playlist to a target (screen or screen group) for a specific time window:
+## Fine-tune each slide
 
-- **Date range** — start and end date (end date optional)
-- **Days of week** — any subset of M T W Th F Sa Su
-- **Time range** — e.g. 7:30 AM to 3:30 PM
-- **Priority** — higher number wins when two schedules overlap
+Open a playlist to edit it. For each slide you can:
 
-## Priority and conflicts
+- Change its **duration** or drag to **reorder**.
+- Pick a **transition**: None, Fade, or Slide (left, right, up or down).
+- Turn **sound** on or off for a video. Videos play muted unless you turn sound on.
+- Add **slide scheduling** — **Active Days** and a **Start Time** / **End Time** — so that one slide only plays during those hours while the rest of the playlist keeps running.
 
-When multiple schedules apply to the same screen at the same time, the one with the **highest priority** wins. For ties, the most recently created schedule wins.
+Click **Save** to apply your changes.
 
-Common priority conventions:
+## Publish to more screens later
 
-- **0–10** — default content, daily announcements
-- **50** — special event overrides (pep rallies, guest speakers)
-- **100+** — reserved for emergency-adjacent scheduling (don't use casually)
-- **∞** — emergency alerts (bypass schedules entirely — nothing overrides them except an all-clear)
+From the playlist, use **Publish to Screens** to add screens or groups, choose **When to Play**, and decide whether videos are muted. Organizations with several locations can also copy a playlist to screens across all their locations.
 
-## Preview before scheduling
+## When two playlists want the same screen
 
-From any playlist detail page, click **Preview** to see a 1:1 render of what the playlist looks like on a 1080p display. This runs entirely in your browser — no screens are affected.
+A screen plays one playlist at a time. If you publish to a screen that already has a playlist at the **same time**, VenueOS asks before it changes anything — for example **"Replace on 1 screen?"**:
 
-## Scheduling tips
+- **Replace** moves that screen to the new playlist.
+- Declining keeps the screen on what it plays now; your new playlist is still saved, just without that screen.
 
-- **Don't stack too many schedules** on one screen. If you have more than 3 overlapping schedules, it becomes hard to reason about what's showing. Consolidate into a single playlist with internal day-of-week rules instead.
-- **End-date everything**. Open-ended schedules accumulate over years and eventually confuse everyone. Use a one-season or one-year end date by default.
-- **Test schedules against a test screen group** before rolling out to every location. Easy to get the time zone wrong.
+Playlists with **different time windows** never conflict. A restaurant can run a breakfast, lunch and dinner playlist on the same menu screen, each in its own window, and VenueOS switches between them on time.
+
+A schedule set on a single screen takes priority over one set on its screen group. Emergency alerts override every playlist until someone sends the all-clear.
+
+## Big videos and 1080p screens
+
+When a playlist goes to 1080p screens and a video is larger than that, VenueOS first prepares a screen-sized copy. The playlist shows **Preparing 1080p copy** while that happens and goes live by itself when the copy is ready; the screens keep playing what they had until then. If you change your mind, use **Stop and cancel publish**.
+
+## Turning a playlist off, and deleting it
+
+- Turning a playlist off stops it on every screen it was published to. Screens fall back to their default content, so they never go blank.
+- Deleting a published playlist asks you to confirm first and lists where it is playing. Content that is part of an emergency alert cannot be deleted this way.
+
+## Tips
+
+- **Keep it simple.** One playlist per screen per time of day is easy to reason about. If you need day-of-week variety, use slide scheduling inside one playlist.
+- **Give events an end date.** A one-off event playlist with a **Schedule a window** end date turns itself off when the event is over.
+- **Try changes on one screen first**, then publish to the whole group.

@@ -20,7 +20,7 @@
  *   STRIPE_WEBHOOK_SECRET     whsec_…  (used by the webhook controller)
  * Without the two AI prices the AI plan is simply not offered (billing/ai-plan.ts).
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { withDbRetry } from '../prisma/with-db-retry';
@@ -34,6 +34,14 @@ import {
 import { checkoutTrialEnd, MAX_SELF_SERVE_SCREENS } from './trial-policy';
 import { planOfPriceId, priceIdForPlan, switchedPriceId } from './ai-plan';
 import { DUNNING_CLEARED, dunningOnFailure } from './dunning-policy';
+import {
+  checkPlanPrice,
+  keyModeOf,
+  PRICE_SLOTS,
+  summarizePriceCheck,
+  type PriceCheckSummary,
+  type PriceSlotResult,
+} from './price-config-check';
 
 /** Outcome of `retryAfterCardUpdate` — what the Billing page tells the customer. */
 export type RetryPaymentResult =
@@ -141,11 +149,72 @@ export class SeatChangeError extends Error {
 }
 
 @Injectable()
-export class StripeService {
+export class StripeService implements OnApplicationBootstrap {
   private readonly logger = new Logger(StripeService.name);
   private client: StripeClient | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 2026-10-22 (billing go-live) — one price check a few seconds after boot, so the deploy log
+   * says plainly whether the four STRIPE_PRICE_* ids charge what the dashboard advertises (see
+   * price-config-check.ts). Never blocks boot, never throws, a no-op without Stripe, under
+   * NODE_ENV=test, or with BILLING_PRICE_CHECK_DISABLED=1. Read-only: four `prices.retrieve`.
+   */
+  onApplicationBootstrap(): void {
+    if (!this.enabled() || process.env.NODE_ENV === 'test' || process.env.BILLING_PRICE_CHECK_DISABLED === '1') return;
+    const t = setTimeout(() => {
+      this.verifyPriceConfig()
+        .then((r) => r && this.logPriceCheck(r))
+        .catch((e) => this.logger.warn(`billing: price check could not run — ${(e as Error)?.message ?? e}`));
+    }, 5000);
+    t.unref?.();
+  }
+
+  private logPriceCheck(r: PriceCheckSummary): void {
+    const lines = r.slots
+      .filter((s) => s.state !== 'missing' || s.problems.length)
+      .map((s) => `${s.slot}=${s.priceId ?? 'unset'} ${s.state}${s.problems.length ? ': ' + s.problems.join(' ') : ''}`);
+    if (r.ok) {
+      this.logger.log(
+        `billing: price check OK (${r.keyMode} key; AI plan ${r.aiPlanOffered ? 'offered' : 'not offered'}) — ${lines.join(' | ')}`,
+      );
+    } else {
+      this.logger.error(
+        `billing: PRICE CHECK FAILED (${r.keyMode} key) — customers would be charged something other than the advertised price, ` +
+          `or checkout cannot work. ${[...r.problems, ...lines].join(' | ')}`,
+      );
+    }
+  }
+
+  /**
+   * Compare every configured STRIPE_PRICE_* with the price the dashboard advertises for it
+   * (price-config-check.ts). Read-only. `null` when Stripe is not configured on this deploy.
+   */
+  async verifyPriceConfig(): Promise<PriceCheckSummary | null> {
+    const stripe = this.getClient();
+    if (!stripe) return null;
+    const keyMode = keyModeOf(process.env.STRIPE_SECRET_KEY);
+    const keyLive = keyMode === 'unknown' ? null : keyMode === 'live';
+    const slots: PriceSlotResult[] = [];
+    for (const spec of PRICE_SLOTS) {
+      const raw = process.env[spec.slot];
+      const priceId = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+      if (!priceId) {
+        slots.push(checkPlanPrice(spec, null, null, keyLive));
+        continue;
+      }
+      try {
+        const price: any = await stripe.prices.retrieve(priceId);
+        slots.push(checkPlanPrice(spec, priceId, price, keyLive));
+      } catch (e) {
+        // Stripe's own error text can echo a masked key ("sk_live_****1234") — strip any key-shaped token.
+        const msg = ((e as Error)?.message ?? '').replace(/\b(sk|rk|pk)_(live|test)_[*A-Za-z0-9]+/g, '[key]') || null;
+        slots.push(checkPlanPrice(spec, priceId, null, keyLive, msg));
+      }
+    }
+    return summarizePriceCheck(slots, keyMode);
+  }
 
   /** True only when STRIPE_SECRET_KEY is set — i.e. billing is live. */
   enabled(): boolean {
@@ -1065,6 +1134,13 @@ export class StripeService {
     // subscription's trial_end (a card added during the free trial bills from
     // the trial's original end date — the dashboard says when).
     const seatLimit = seatsFromQuantity(sub.items?.data?.[0]?.quantity);
+    // 2026-10-22 (billing go-live) — trialEndsAt MIRRORS the subscription, null included. It used
+    // to be written only when the subscription carried a trial_end, so a License kept an OLD trial
+    // date after a plan with no trial replaced it (cancel during the card trial, then restart; or a
+    // re-subscribe after a cancellation). billingStateOf then read "card on file + trial end in the
+    // future" as `trial_card` — the Billing page said "billing starts <old date>" to a customer
+    // being charged today, and aiEntitlementOf granted the TRIAL AI allowance on our keys to a plan
+    // without AI. Once a card subscription exists, Stripe owns the trial clock.
     const trialEndsAt =
       typeof sub.trial_end === 'number' && sub.trial_end > 0 ? new Date(sub.trial_end * 1000) : null;
     // current_period_start/end moved off the top-level Subscription onto
@@ -1133,7 +1209,7 @@ export class StripeService {
                 status,
                 seatLimit,
                 monthlyPriceCents,
-                ...(trialEndsAt ? { trialEndsAt } : {}),
+                trialEndsAt,
                 ...aiStamp,
                 stripeCustomerId: customerId,
                 stripeSubscriptionId: sub.id,
@@ -1344,6 +1420,23 @@ export class StripeService {
       pick(anyInv.subscription) ??
       pick(anyInv.parent?.subscription_details?.subscription) ??
       pick(anyInv.lines?.data?.find((l: any) => l?.subscription)?.subscription);
+
+    // 2026-10-22 (billing go-live) — an invoice of a subscription this License no longer runs on
+    // says nothing about the plan it is on now. The License is found by CUSTOMER id, and a customer
+    // who restarts keeps their customer: Checkout cancels the leftover `unpaid` subscription and
+    // opens a new one. A late `invoice.payment_failed` of the OLD subscription used to re-fetch that
+    // subscription (`canceled` → CANCELLED) — or, with Stripe unreachable, fall back to PAST_DUE —
+    // and write it onto the NEW, paid plan: a paying customer dropped to view-only or past-due by
+    // an invoice they no longer owe. Acknowledged (200) and logged, never applied. An invoice with no
+    // subscription id, or a License with none recorded, takes the path below as before.
+    if (subId && license.stripeSubscriptionId && subId !== license.stripeSubscriptionId) {
+      this.logger.warn(
+        `webhook: ${event.type} ${inv.id} is for subscription ${subId}, but tenant ${license.tenantId} ` +
+          `is on ${license.stripeSubscriptionId} — not applied (an earlier subscription's invoice)`,
+      );
+      return { ignored: true };
+    }
+
     let status: string | null = null;
     let liveStatusUsed = false;
     if (subId) {

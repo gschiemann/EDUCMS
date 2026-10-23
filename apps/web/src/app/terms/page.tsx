@@ -126,9 +126,9 @@ export default function TermsPage() {
           charged separately.
         </li>
         <li>
-          New accounts may start with a free trial with a limited number of Screens. When a trial
-          ends without a payment method, the account may move to a limited, view-only state until
-          a plan is chosen.
+          New accounts may start with a 14-day free trial for up to 3 Screens. When a trial ends
+          without a payment method, the account may move to a limited, view-only state until a plan
+          is chosen.
         </li>
         <li>Card payments are processed by Stripe on Stripe-hosted pages; we do not receive or store full card numbers.</li>
         <li>
@@ -154,6 +154,11 @@ export default function TermsPage() {
         not cured within 30 days of written notice. We may suspend access immediately where needed to
         prevent harm to the Service, other customers or the public, including misuse of the emergency
         features.
+      </p>
+      <p>
+        {/* 2026-10-22: there is no self-serve "export everything" button — say what exists. */}
+        During the subscription, administrators can download uploaded files (one at a time or as a ZIP), export the audit log and proof-of-play reports as CSV, and remove content, playlists, screens and users in the Service. A complete export of Customer Data in a machine-readable format is provided on written request to{' '}
+        <a href={`mailto:${LEGAL_CONTACTS.privacy}`}>{LEGAL_CONTACTS.privacy}</a>.
       </p>
       <p>
         After the subscription ends, the Customer may export its Customer Data for at least 90 days.

@@ -1,3 +1,4 @@
+import { emergencyLayoutIsPortrait, emergencyLayoutOrientation } from './emergency-layout';
 import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
@@ -75,7 +76,8 @@ import { StripeService } from '../billing/stripe.service';
 // Menu-mgmt-at-scale (2026-05-29) — device-authed GET /screens/:id/menu
 // resolves the screen's location → per-location menu via MenuService.
 import { MenuService } from '../pos/menu.service';
-import { requireSecret } from '../security/required-secret';
+import { deviceJwtSecretRing } from '../security/key-ring';
+import { verifyDeviceJwt } from '../security/device-jwt';
 import { clientIpFromRequest } from '../security/client-ip';
 import {
   getTenantState,
@@ -755,7 +757,9 @@ export class ScreensController {
     // it. Strict is now unconditional: fingerprint-only re-registration
     // gets a 1-hour token and `requiresRePair`, never a long-lived one.
 
-    const deviceJwtSecret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
+    // MINT with the PRIMARY of the DEVICE_JWT_SECRET ring, always — a rotation
+    // window only widens what verifiers ACCEPT (security/key-ring.ts).
+    const deviceJwtSecret = deviceJwtSecretRing().primary;
 
     // CYCLE-3 emergency-011: include `deviceId` and `tenantId` in the payload.
     // The realtime gateway (apps/api/src/realtime/realtime.gateway.ts:125-127)
@@ -886,9 +890,13 @@ export class ScreensController {
         credentialEpochRotatedAt: screen.credentialEpochRotatedAt ?? null,
       };
       try {
-        const decoded = jwt.verify(body.priorDeviceToken, deviceJwtSecret, {
+        // Ring-aware (primary, then previous): a screen renewing DURING a
+        // DEVICE_JWT_SECRET rotation presents a token minted on the old key,
+        // and that must still count as proof of possession or the whole
+        // fleet would be downgraded to `requiresRePair` by the rotation.
+        const decoded = verifyDeviceJwt<any>(body.priorDeviceToken, {
           algorithms: DEVICE_JWT_ALGORITHMS,
-        }) as any;
+        });
         if (decoded?.kind !== 'device') return 'invalid';
         if (decoded?.sub !== screen.id) return 'invalid';
         verifiedPriorClaims = { epoch: epochFromClaim(decoded), unproven: isUnprovenDeviceClaim(decoded) };
@@ -6270,19 +6278,7 @@ export class ScreensController {
         // strictly greater than width. If resolution is null or
         // unparseable we default to landscape (safe: the original
         // emergencyPlaylistId is what every tenant already has wired up).
-        const isPortrait = (() => {
-          // Prefer the operator's explicit LED canvas dims: a 960×1080 poster
-          // reports DEVICE resolution 1920×1080 (landscape) but is physically
-          // portrait — same precedence the scoreboard manifest + board page use.
-          // Fall back to stored resolution when no canvas is configured.
-          const cw = Number((screen as any).canvasW);
-          const ch = Number((screen as any).canvasH);
-          if (Number.isFinite(cw) && Number.isFinite(ch) && cw > 0 && ch > 0) return ch > cw;
-          const r = (screen.resolution || '').trim();
-          const m = r.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
-          if (!m) return false;
-          return parseInt(m[2], 10) > parseInt(m[1], 10);
-        })();
+        const isPortrait = emergencyLayoutIsPortrait(screen);
 
         // Sprint 8b — per-screen emergency content config takes
         // priority over the tenant defaults. FOUR tiers, in order:
@@ -6670,7 +6666,10 @@ export class ScreensController {
           emergencyExpiresAt: activeScreenOverride?.expiresAt
             ? Math.floor(new Date(activeScreenOverride.expiresAt).getTime() / 1000)
             : null,
-          orientation: isPortrait ? 'portrait' : 'landscape',
+          // A Presentation has no native rotation: its page consumes uppercase
+          // orientation, including when it boots straight into an alert.
+          // Preserve the established primary/single-sided wire value.
+          orientation: emergencyLayoutOrientation(screen),
           // 2026-06-25 — carry the LED canvas dims + tile-repeat on the
           // EMERGENCY manifest too (scoreboard + normal playlist branches
           // already do). Without these the player's TemplateScaler renders the

@@ -27,7 +27,7 @@ Larger organizations, chains, and venues can also talk to us about a custom **En
 
 ## Free trial
 
-Every new account starts with a **14-day free trial** — **no credit card required**. Connect up to **3 screens** and use every feature while you evaluate — including AI (**10 board designs and 10 images** for the trial). Add a payment method whenever you're ready to go live or to connect more than three screens.
+Every new account starts with a **14-day free trial** — **no credit card required**. Connect up to **3 screens** and use every feature while you evaluate — including AI (**2 board designs and 2 images** for the trial). Add a payment method whenever you're ready to go live or to connect more than three screens.
 
 Your billing status never gates an emergency alert. There is no seat check, license check, or payment check anywhere on the emergency trigger path — an expired trial, a failed card, or a past-due invoice cannot stop a lockdown from dispatching. (Delivery to any individual screen still depends on that screen being powered on and reachable; see the *Emergency system overview*.)
 

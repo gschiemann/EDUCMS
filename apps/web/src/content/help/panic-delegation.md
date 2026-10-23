@@ -1,7 +1,7 @@
 ---
 title: Delegating panic-button access
 category: Emergency System
-updated: 2026-10-11
+updated: 2026-10-22
 excerpt: Give specific non-admin staff the ability to trigger emergencies without handing them the admin keys.
 ---
 
@@ -41,7 +41,7 @@ A person with the capability sees the Emergency button in their dashboard and ca
 ## Best practices
 
 - **Train every delegated person** on the 3-second hold, on choosing where an alert goes (all screens, a group, or one screen), on the **LIVE | DRILL** switch, and on when to call 911 first.
-- **Require two-factor** for anyone who can trigger an alert. When an organization requires two-factor, people who can trigger an emergency must set up an authenticator app before they can sign in.
+- **Require two-factor** for anyone who can trigger an alert. When an organization requires two-factor, people who can trigger an emergency must set up two-step sign-in — a passkey (Face ID, Touch ID, Windows Hello or a security key) or an authenticator app — before they can sign in.
 - **Review delegations quarterly.** People move on. The audit log has every grant and revoke.
 - **Never delegate to contractors or temporary staff.** Create a break-glass admin account if a vendor needs temporary access for a specific event.
 - **Drills**: delegated people can run drills too. Flip the switch to **DRILL** and scope the drill to a test group or a single screen so you don't alarm the whole building. See the [emergency system overview](/help/emergency-system).

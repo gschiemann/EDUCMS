@@ -6309,6 +6309,123 @@
       "SUPPORT_ACCESS_REQUIRED": "El soporte de VenueOS no tiene acceso a una de estas organizaciones."
     }
   },
+  "publicSite": {
+    "footer": {
+      "tagline": "Una sola plataforma para señalización digital, quioscos, marcadores en vivo y alertas de emergencia — en todos los lugares que administra.",
+      "product": "Producto",
+      "overview": "Inicio",
+      "industries": "Industrias",
+      "templates": "Plantillas",
+      "pricing": "Precios",
+      "resources": "Recursos",
+      "helpCenter": "Centro de ayuda",
+      "gettingStarted": "Primeros pasos",
+      "emergencySystem": "Sistema de emergencia",
+      "ssoSetup": "Configurar SSO",
+      "apiWebhooks": "API y webhooks",
+      "systemStatus": "Estado del sistema",
+      "trust": "Seguridad",
+      "itSecurity": "Resumen de seguridad",
+      "networkRequirements": "Requisitos de red",
+      "reportVulnerability": "Reportar una vulnerabilidad",
+      "legal": "Legal",
+      "privacy": "Política de privacidad",
+      "terms": "Términos del servicio",
+      "dpa": "Adenda de procesamiento de datos",
+      "subprocessors": "Subencargados",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS — una sola plataforma para cada lugar.",
+      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia"
+    },
+    "help": {
+      "back": "Volver al centro de ayuda",
+      "updated": "Actualizado {date}",
+      "moreIn": "Más en {category}",
+      "categories": {
+        "gettingStarted": {
+          "name": "Primeros pasos",
+          "description": "Configure su espacio de trabajo y ponga en marcha su primera pantalla."
+        },
+        "templates": {
+          "name": "Plantillas",
+          "description": "Diseñe pantallas, importe diseños existentes y aplique su marca a todo."
+        },
+        "aiStudio": {
+          "name": "Estudio de IA",
+          "description": "Genere pantallas a partir de una frase y edítelas en lenguaje sencillo."
+        },
+        "screens": {
+          "name": "Pantallas",
+          "description": "Vincule, agrupe y administre pantallas físicas."
+        },
+        "emergency": {
+          "name": "Sistema de emergencia",
+          "description": "Alertas de confinamiento, clima y evacuación — y sus salvaguardas."
+        },
+        "sports": {
+          "name": "Deportes",
+          "description": "Marcadores, pantallas perimetrales, señales y la operación de un partido en vivo."
+        },
+        "integrations": {
+          "name": "Integraciones",
+          "description": "Menús de punto de venta, precios en vivo y servicios conectados."
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "Conecte Google, Microsoft o cualquier proveedor de identidad OIDC."
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "Sincronice automáticamente personal y horarios desde su SIS."
+        },
+        "billing": {
+          "name": "Facturación",
+          "description": "Facturas, órdenes de compra, cambios de plan y cancelaciones."
+        },
+        "itSecurity": {
+          "name": "TI y seguridad",
+          "description": "Requisitos de red, inicio de sesión, protección de datos y revisiones de seguridad."
+        }
+      }
+    },
+    "status": {
+      "title": "Estado del sistema",
+      "subtitle": "Estado en vivo de la plataforma VenueOS, comprobado directamente desde su navegador. Se actualiza cada minuto.",
+      "toneOk": "Operativo",
+      "toneDegraded": "Degradado",
+      "toneDown": "Interrupción",
+      "toneUnknown": "Comprobando…",
+      "overallOk": "Todos los sistemas operativos",
+      "overallDegraded": "Degradación parcial — el servicio continúa",
+      "overallDown": "Interrupción del servicio",
+      "overallUnknown": "Comprobando los sistemas…",
+      "web": "Panel web",
+      "api": "API",
+      "database": "Base de datos",
+      "realtime": "Entrega en tiempo real",
+      "emergencyPath": "Ruta de alertas de emergencia",
+      "storage": "Subida y almacenamiento de archivos",
+      "webOk": "Lo está viendo ahora",
+      "checking": "Comprobando…",
+      "unknownApi": "Desconocido — no se puede llegar a la API",
+      "apiDown": "Inaccesible",
+      "apiOk": "Atendiendo solicitudes",
+      "dbOk": "Consultas en buen estado",
+      "dbDown": "No responde a consultas",
+      "realtimeOk": "Envío instantáneo activo",
+      "realtimeDegraded": "Respaldo por consultas — las pantallas buscan cambios cada 10 segundos aproximadamente",
+      "emergencyOk": "Cadena de activación verificada",
+      "emergencyDown": "Falla la comprobación de la cadena de activación",
+      "storageOk": "Subidas en buen estado",
+      "storageBackup": "Funcionando por la vía de respaldo",
+      "storageDown": "Las subidas fallan",
+      "lastChecked": "Última comprobación {time}",
+      "apiBuild": "Versión de la API {version}",
+      "firstCheck": "Haciendo la primera comprobación…",
+      "offlineNote": "Si una pantalla pierde la conexión, sigue reproduciendo su contenido guardado, y una alerta de emergencia que ya está en pantalla se mantiene hasta el fin de alerta — vea el <help>resumen del sistema de emergencia</help>."
+    }
+  },
   "connectDone": {
     "unknownProvider": "tu cuenta",
     "connected": "{provider} conectado",

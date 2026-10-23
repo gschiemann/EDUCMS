@@ -3,6 +3,8 @@
  * Reads the real articles from disk, so a regression in the copy or in the
  * search fails here.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { getAllArticles } from '../index';
 import { searchArticles, stem } from '../search';
 
@@ -134,5 +136,61 @@ describe('help search', () => {
 
   it('requires every word to be found', () => {
     expect(slugs('pair zzqxjv')).toHaveLength(0);
+  });
+});
+
+describe('IT & security section + public security pages (2026-10-22)', () => {
+  const itSlugs = articles.filter((a) => a.category === 'IT & Security').map((a) => a.slug);
+
+  it('ships the IT & security articles, each in en + es + zh', () => {
+    expect(itSlugs).toEqual(['it-security-overview', 'network-requirements']);
+    for (const slug of itSlugs) {
+      const a = articles.find((x) => x.slug === slug)!;
+      for (const loc of ['es', 'zh'] as const) {
+        const tr = a.translations?.[loc];
+        expect(tr).toBeDefined();
+        expect(tr!.title).not.toBe(a.title);
+        expect(tr!.body.length).toBeGreaterThan(400);
+        // Same structure: a translation keeps every internal link of the original.
+        expect((tr!.body.match(/\]\(\//g) || []).length).toBe((a.body.match(/\]\(\//g) || []).length);
+      }
+    }
+  });
+
+  it('never claims a certification VenueOS does not hold, nor SAML', () => {
+    for (const slug of itSlugs) {
+      const a = articles.find((x) => x.slug === slug)!;
+      for (const body of [a.body, a.translations?.es?.body ?? '', a.translations?.zh?.body ?? '']) {
+        expect(body).not.toMatch(/SOC ?2|ISO ?27001|FedRAMP|HIPAA|SAML/i);
+      }
+    }
+  });
+
+  it('tells IT teams the network is outbound-443-only and names the real hosts', () => {
+    const net = articles.find((a) => a.slug === 'network-requirements')!;
+    expect(net.body).toMatch(/Outbound HTTPS \(TCP 443\)/);
+    for (const host of ['venue-os.app', 'api-production-39a1.up.railway.app', 'bhdaxzfalaycfopvcopm.supabase.co', 'wss://']) {
+      expect(net.body).toContain(host);
+    }
+  });
+
+  it('playlists help matches the product: no Schedules page, durations in seconds', () => {
+    const pl = articles.find((a) => a.slug === 'playlists-and-schedules')!;
+    expect(pl.body).not.toMatch(/milliseconds|Schedules → New schedule|Priority —/);
+    const gs = articles.find((a) => a.slug === 'getting-started')!;
+    expect(gs.body).not.toMatch(/Schedules → New schedule/);
+  });
+
+  it('security.txt is valid: contact, an Expires within a year, and the policy page', () => {
+    const txt = fs.readFileSync(path.join(process.cwd(), 'public', '.well-known', 'security.txt'), 'utf8');
+    expect(txt).toMatch(/^Contact: mailto:security@venue-os\.app$/m);
+    expect(txt).toMatch(/^Policy: https:\/\/venue-os\.app\/security$/m);
+    expect(txt).toMatch(/^Preferred-Languages: en$/m);
+    const expires = Date.parse(/^Expires: (.+)$/m.exec(txt)![1]);
+    // RFC 9116 asks for less than a year. This goes red when the date passes —
+    // that is the reminder to renew it.
+    expect(expires).toBeGreaterThan(Date.now());
+    expect(expires - Date.now()).toBeLessThan(366 * 24 * 3600 * 1000);
+    expect(fs.existsSync(path.join(process.cwd(), 'src', 'app', 'security', 'page.tsx'))).toBe(true);
   });
 });

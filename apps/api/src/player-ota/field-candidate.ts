@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { deviceSecretKeyCandidatesFromEnv } from '../security/key-ring';
 import {
   FIELD_CANDIDATE_RELEASES,
   type FieldCandidateRelease,
@@ -179,10 +180,21 @@ interface FieldTicket {
   versionCode: number;
   exp: number;
 }
-function mac(payload: string, env: NodeJS.ProcessEnv): Buffer {
-  return createHmac('sha256', env.DEVICE_SECRET_KEY ?? '')
+function macWith(secret: string, payload: string): Buffer {
+  return createHmac('sha256', secret)
     .update(`player-private-field-apk:v1:${payload}`)
     .digest();
+}
+/** Mint-side: the PRIMARY of the DEVICE_SECRET_KEY ring (security/key-ring.ts). */
+function mac(payload: string, env: NodeJS.ProcessEnv): Buffer {
+  return macWith(env.DEVICE_SECRET_KEY ?? '', payload);
+}
+/** Verify-side: primary, then previous during a rotation window; constant-time each. */
+function macMatches(payload: string, signature: Buffer, env: NodeJS.ProcessEnv): boolean {
+  return deviceSecretKeyCandidatesFromEnv(env).some((secret) => {
+    const expected = macWith(secret, payload);
+    return signature.length === expected.length && timingSafeEqual(signature, expected);
+  });
 }
 export function mintFieldTicket(
   r: FieldCandidateRelease,
@@ -222,13 +234,8 @@ export function verifyFieldTicket(
     const parts = raw.split('.');
     if (parts.length !== 2 || !parts.every((s) => /^[A-Za-z0-9_-]+$/.test(s)))
       return null;
-    const signature = Buffer.from(parts[1], 'base64url'),
-      expected = mac(parts[0], env);
-    if (
-      signature.length !== expected.length ||
-      !timingSafeEqual(signature, expected)
-    )
-      return null;
+    const signature = Buffer.from(parts[1], 'base64url');
+    if (!macMatches(parts[0], signature, env)) return null;
     const v = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
     if (
       !v ||

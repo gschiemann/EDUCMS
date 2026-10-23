@@ -138,6 +138,7 @@ import { BugsController } from './bugs/bugs.controller';
 // 2026-05-30 — Real-time efficiency observability: per-route bytes/latency,
 // slow-query logging, egress budget alerting, /super/efficiency endpoint.
 import { EfficiencyModule } from './efficiency/efficiency.module';
+import { KeyRotationModule } from './security/key-rotation.module';
 // 2026-08-24 — Activation-funnel observability: derives signup -> board ->
 // screen -> publish -> render-proof per tenant from existing rows, zero new
 // instrumentation. /super/activation-funnel endpoint (SUPER_ADMIN only).
@@ -239,6 +240,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     ScreenEventsModule,
     BugsModule,
     EfficiencyModule,
+    // 2026-10-22 — secret-rotation windows (security/key-ring.ts): the leased
+    // boot re-wrap of stored credential envelopes + the SUPER_ADMIN trigger.
+    KeyRotationModule,
     ActivationFunnelModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
