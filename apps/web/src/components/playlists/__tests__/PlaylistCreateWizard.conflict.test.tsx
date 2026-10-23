@@ -192,3 +192,29 @@ describe('new-playlist wizard — the fourth door', () => {
     expect(appConfirmMock).not.toHaveBeenCalled();
   });
 });
+
+// QA 2026-10-23: a publish that failed AFTER the playlist row was created
+// (here: the screen-copy step refusing the files) left the wizard on Review
+// with "Create Playlist" enabled; every retry POSTed another identical
+// playlist. The saved playlist must be handed back instead.
+describe('a failed publish never invites a duplicate', () => {
+  it('hands the saved playlist to onCreated when schedules fail', async () => {
+    createScheduleSpy.mockRejectedValueOnce(new Error('These files can\'t be prepared for 1080p screens'));
+    const onCreated = jest.fn();
+    render(
+      <PlaylistCreateWizard open onClose={() => {}} onCreated={onCreated} playlists={PLAYLISTS} allSchedules={[]} />,
+    );
+    fireEvent.change(rtl.getByPlaceholderText(/e\.g\.|name/i), { target: { value: 'Dinner Board' } });
+    fireEvent.click(rtl.getByText('Media Playlist'));
+    fireEvent.click(rtl.getByRole('button', { name: /^Next/ }));
+    fireEvent.click(rtl.getByText('Welcome.png'));
+    fireEvent.click(rtl.getByRole('button', { name: /Next/ }));
+    fireEvent.click(rtl.getByText('Cafeteria'));
+    fireEvent.click(rtl.getByRole('button', { name: /^Next/ }));
+    fireEvent.click(rtl.getByRole('button', { name: /^Next/ }));
+    fireEvent.click(rtl.getByRole('button', { name: /Create Playlist|Create \(won't display yet\)/ }));
+
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'p-new' })));
+  });
+});

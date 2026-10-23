@@ -1070,6 +1070,13 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       if (!playlistId) {
         throw new Error('Playlist created without an id');
       }
+      // From here on the playlist EXISTS. Any later failure (a screen copy
+      // that cannot be prepared, a 5xx on schedules) must hand the operator
+      // the saved playlist — never leave "Create" enabled on the same form,
+      // where every retry POSTed another identical playlist (QA 2026-10-23:
+      // three tries, three "QA Media retry" rows). The fleet path below
+      // already did this; now every path does.
+      savedForRecovery = { id: playlistId, name: created.name || name.trim(), templateId: created.templateId ?? null, items: [] };
 
       // 1b. Sync, if the operator asked for it on the screen step. A separate
       //     call because create takes only { name, templateId }.
@@ -1137,6 +1144,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           })
           .filter((x): x is PlaylistCreatedItem => x !== null);
       }
+
+      savedForRecovery = { id: playlistId, name: created.name || name.trim(), templateId: created.templateId ?? null, items: editorItems };
 
       // 3. Build schedules.
       //    - If screens are picked: one schedule per screen, isActive based

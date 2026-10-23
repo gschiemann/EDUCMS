@@ -13,10 +13,12 @@
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Building2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useAccessibleTenants } from '@/hooks/use-api';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 
 export function ReturnToFleetBanner() {
+  const t = useTranslations('screensOps');
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId ?? '';
   const { data } = useAccessibleTenants();
@@ -42,13 +44,17 @@ export function ReturnToFleetBanner() {
         color: 'var(--brand-primary, #4f46e5)',
       }}
     >
-      <ArrowLeft className="w-4 h-4 shrink-0" />
-      <span className="truncate">
-        You&rsquo;re in <strong>{current?.name || schoolId}</strong>
+      <ArrowLeft className="w-4 h-4 shrink-0" aria-hidden />
+      {/* On a phone the action alone fits; "You're in X ·" joins it from sm up.
+          The action itself truncates instead of running off the edge
+          (QA 2026-10-23, 390 px: "…District fleet" was clipped by the screen). */}
+      <span className="hidden sm:inline truncate min-w-0">
+        {t('youreIn')} <strong>{current?.name || schoolId}</strong>
       </span>
-      <span className="opacity-40">·</span>
-      <span className="inline-flex items-center gap-1 shrink-0">
-        <Building2 className="w-3.5 h-3.5" /> Return to {parent.name} fleet
+      <span className="hidden sm:inline opacity-40" aria-hidden>·</span>
+      <span className="inline-flex items-center gap-1 min-w-0">
+        <Building2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{t('returnToFleet', { name: parent.name })}</span>
       </span>
     </button>
   );

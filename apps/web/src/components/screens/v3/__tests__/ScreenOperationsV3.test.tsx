@@ -645,6 +645,17 @@ describe('deep link + rollback', () => {
     // And there is no overflow menu left to hide anything in (classic retired 2026-09-14).
     expect(rtl.queryByRole('button', { name: 'More screen actions' })).not.toBeInTheDocument();
   });
+
+  it('refuses a name another group already has (QA 2026-10-23)', () => {
+    createGroupMutate.mockClear();
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: /New group/ }));
+    const form = rtl.getByRole('form', { name: 'New group' });
+    fireEvent.change(within(form).getByLabelText('New group name'), { target: { value: '  riot henderson ' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Create group' }));
+    expect(within(form).getByRole('alert')).toHaveTextContent('A group named “riot henderson” already exists');
+    expect(createGroupMutate).not.toHaveBeenCalled();
+  });
 });
 
 describe('filter chips carry only what has screens behind it (2026-09-14)', () => {
@@ -746,7 +757,9 @@ describe('states (§13)', () => {
   it('an empty fleet invites the first pairing', () => {
     renderPage({ screens: [] });
     expect(rtl.getByText('Connect your first screen')).toBeInTheDocument();
-    fireEvent.click(rtl.getAllByRole('button', { name: /Pair screen/ })[1]);
+    // One "Pair screen" (the header) — the empty state has a name of its own.
+    expect(rtl.getAllByRole('button', { name: 'Pair screen' })).toHaveLength(1);
+    fireEvent.click(rtl.getByRole('button', { name: 'Pair your first screen' }));
     expect(onPairScreen).toHaveBeenCalled();
   });
 
@@ -880,7 +893,7 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates the empty-fleet Pair screen button', () => {
       renderPage({ canControl, screens: [] });
-      check(rtl.getAllByRole('button', { name: /Pair screen/ })[1]);
+      check(rtl.getByRole('button', { name: 'Pair your first screen' }));
     });
 
     it('gates the row Resync (POST /screens/:id/refresh-web)', () => {

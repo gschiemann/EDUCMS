@@ -269,7 +269,7 @@ function ClassicMobileDashboard({ schoolId }: { schoolId: string }) {
           <div className="text-xl font-bold text-slate-900 mt-0.5 leading-tight">
             {userFirstName(user) || 'there'}{' '}
             <span className="text-slate-400 font-medium">·</span>{' '}
-            <span className="text-slate-600 font-semibold">{tenant?.name || 'Venue OS'}</span>
+            <span className="text-slate-600 font-semibold">{tenant?.name || 'VenueOS'}</span>
           </div>
         </div>
       </div>

@@ -1,0 +1,266 @@
+{
+ "engine": "webkit",
+ "pass": 37,
+ "fail": 6,
+ "skip": 0,
+ "results": [
+  {
+   "area": "gallery",
+   "check": "login with the fixture account",
+   "status": "PASS",
+   "evidence": "/springfield-elementary/dashboard"
+  },
+  {
+   "area": "gallery",
+   "check": "templates page lists templates and the primary actions",
+   "status": "PASS",
+   "evidence": "primary actions present; 0 card-ish elements"
+  },
+  {
+   "area": "gallery",
+   "check": "new-template wizard: name required, shape choice, Continue enabled after naming",
+   "status": "PASS",
+   "evidence": "name gate + shape toggle work"
+  },
+  {
+   "area": "gallery",
+   "check": "starter picker: start from blank opens the builder with a placeholder zone",
+   "status": "PASS",
+   "evidence": "builder opened, zones=1"
+  },
+  {
+   "area": "gallery",
+   "check": "starter picker: start from blank opens the builder with a placeholder zone · side effects",
+   "status": "FAIL",
+   "evidence": "http:  console: PAGEERROR Fetch API cannot load http: /localhost:8095/api/v1/screens due to access control checks. | PAGEERROR Fetch API cannot load http: /localhost:8095/api/v1/screens due to access control checks."
+  },
+  {
+   "area": "gallery",
+   "check": "starter-card previews do not show a zero-day countdown (stale preset dates)",
+   "status": "PASS",
+   "evidence": "no zero-day countdowns in previews"
+  },
+  {
+   "area": "builder",
+   "check": "all eight panel tabs exist and switch",
+   "status": "FAIL",
+   "evidence": "missing tabs: Scenes"
+  },
+  {
+   "area": "widgets",
+   "check": "clicking a widget card fills the empty board (the demo bug)",
+   "status": "PASS",
+   "evidence": "zones=1"
+  },
+  {
+   "area": "widgets",
+   "check": "search box filters the picker",
+   "status": "PASS",
+   "evidence": "tiles 84 -> 52 for \"clock\""
+  },
+  {
+   "area": "widgets",
+   "check": "clicking a card on a NON-blank board adds a zone",
+   "status": "PASS",
+   "evidence": "zones 1 -> 2"
+  },
+  {
+   "area": "widgets",
+   "check": "dragging a card onto the canvas adds a zone (human-speed drag)",
+   "status": "PASS",
+   "evidence": "zones 2 -> 3"
+  },
+  {
+   "area": "canvas",
+   "check": "selecting a zone switches to Properties with editable fields",
+   "status": "PASS",
+   "evidence": "10 editable fields"
+  },
+  {
+   "area": "properties",
+   "check": "editing the text field updates the canvas",
+   "status": "PASS",
+   "evidence": "canvas reflects typed text"
+  },
+  {
+   "area": "properties",
+   "check": "Bold toggles font-weight on the canvas text",
+   "status": "PASS",
+   "evidence": "font-weight 700 -> 800"
+  },
+  {
+   "area": "canvas",
+   "check": "clicking canvas text edits it in place (EditableText → textarea); Enter commits to canvas AND panel",
+   "status": "PASS",
+   "evidence": "in-place edit committed to canvas + panel"
+  },
+  {
+   "area": "canvas",
+   "check": "selecting the full-screen zone does NOT hide the widgets on top of it",
+   "status": "PASS",
+   "evidence": "clock stays clickable while the full-screen note is selected"
+  },
+  {
+   "area": "canvas",
+   "check": "dragging a zone (from a non-hotspot point) moves it",
+   "status": "PASS",
+   "evidence": "10%,10% -> 22%,20% (hotspots cover 0% of the zone)"
+  },
+  {
+   "area": "canvas",
+   "check": "undo reverts the move, redo re-applies it",
+   "status": "PASS",
+   "evidence": "undo/redo round-trip ok"
+  },
+  {
+   "area": "canvas",
+   "check": "arrow-key nudge moves the selected zone",
+   "status": "PASS",
+   "evidence": "22% -> 24%"
+  },
+  {
+   "area": "canvas",
+   "check": "resize handle changes width",
+   "status": "PASS",
+   "evidence": "28% -> 36%"
+  },
+  {
+   "area": "canvas",
+   "check": "Cmd+D duplicates, Delete removes",
+   "status": "PASS",
+   "evidence": "dup 3->4, delete ->3"
+  },
+  {
+   "area": "canvas",
+   "check": "lock prevents dragging; unlock restores it",
+   "status": "PASS",
+   "evidence": "lock held against a drag; unlock restored dragging"
+  },
+  {
+   "area": "canvas",
+   "check": "a widget whose whole body is a hotspot (Sunshine Calendar) can still be DRAGGED; a clean click still jumps to its editor",
+   "status": "PASS",
+   "evidence": "Add Notebook Page: hotspot 48%; drag moved 10%,51.227395% → 0%,57.345254%; click opened Properties"
+  },
+  {
+   "area": "canvas",
+   "check": "right-click on a zone opens a context menu with layer actions; Escape closes it",
+   "status": "PASS",
+   "evidence": "11 items: Duplicate ⌘D | Copy ⌘C | Paste ⌘V | Copy style | Paste style | Bring forward | Send back"
+  },
+  {
+   "area": "canvas",
+   "check": "Bring forward / Send back change the zone z-index",
+   "status": "PASS",
+   "evidence": "z 1 -> 2 -> 1"
+  },
+  {
+   "area": "properties",
+   "check": "Position & size: Width, Rotation and Opacity typed in the panel reach the canvas zone (and the selection chrome rotates with it)",
+   "status": "FAIL",
+   "evidence": "no Width (%) field"
+  },
+  {
+   "area": "toolbar",
+   "check": "Zoom in ENLARGES the canvas (label and box agree); Zoom out shrinks it; Show grid toggles",
+   "status": "PASS",
+   "evidence": "100% 988px → 125% 1235px → 75% 741px; grid true -> null"
+  },
+  {
+   "area": "toolbar",
+   "check": "keyboard shortcuts modal opens on ? and closes on Escape",
+   "status": "PASS",
+   "evidence": "opened on ?, closed on Escape"
+  },
+  {
+   "area": "properties",
+   "check": "Clock: Format select switches 12-hour / 24-hour",
+   "status": "PASS",
+   "evidence": "format 12h -> 24h -> 12h"
+  },
+  {
+   "area": "properties",
+   "check": "Countdown: the Target date typed in the panel drives the number on the canvas",
+   "status": "PASS",
+   "evidence": "target 2026-11-01 → canvas shows \"10\""
+  },
+  {
+   "area": "properties",
+   "check": "Ticker: adding a line to the messages box puts it on the canvas",
+   "status": "PASS",
+   "evidence": "1 -> 2 messages; new line on canvas"
+  },
+  {
+   "area": "brand",
+   "check": "Brand tab: no kit → the empty state offers \"Detect brand\" + Settings → Branding; with a kit → \"Apply brand across template\"",
+   "status": "FAIL",
+   "evidence": "neither the Apply button nor the \"Detect brand for this template\" empty state is present"
+  },
+  {
+   "area": "layers",
+   "check": "Layers lists every zone; renaming in Properties shows up in the Layers list; Bring forward really reorders",
+   "status": "PASS",
+   "evidence": "6 rows for 5 zones; rename visible in Layers; Bring forward swapped past f4738c4b-a1a2-4101-8e1e-7efd09194e5e with unique z-indexes"
+  },
+  {
+   "area": "scenes",
+   "check": "Scenes: add a scene and switch",
+   "status": "FAIL",
+   "evidence": "locator.click: Timeout 30000ms exceeded."
+  },
+  {
+   "area": "background",
+   "check": "Background: solid colour applies to the canvas",
+   "status": "PASS",
+   "evidence": "rgb(255, 255, 255) → rgba(0, 0, 0, 0)"
+  },
+  {
+   "area": "apps",
+   "check": "Apps: an invalid URL keeps Add disabled with a reason; a valid one adds a zone",
+   "status": "FAIL",
+   "evidence": "Add enabled for \"not a valid url\""
+  },
+  {
+   "area": "review",
+   "check": "Review tab runs and reports",
+   "status": "PASS",
+   "evidence": "Review 1 Automatic checks against what plays well on real screens — off-screen elements, finger-friendly tap targets, an"
+  },
+  {
+   "area": "toolbar",
+   "check": "Save persists: reload shows the same zones and the edited text",
+   "status": "PASS",
+   "evidence": "saved 6 zones; text persisted"
+  },
+  {
+   "area": "toolbar",
+   "check": "Version history: restore a previous version keeps zones (no blank board, no [object Object])",
+   "status": "PASS",
+   "evidence": "zones 6 → 6"
+  },
+  {
+   "area": "toolbar",
+   "check": "Preview opens a rendered preview",
+   "status": "PASS",
+   "evidence": "in-page preview shows the board"
+  },
+  {
+   "area": "toolbar",
+   "check": "Save as copy creates a second template",
+   "status": "PASS",
+   "evidence": "/springfield-elementary/templates/builder/5f0a7065-3d30-40b4-8d27-2452ba742373"
+  },
+  {
+   "area": "gallery",
+   "check": "the audit templates appear in the gallery and can be deleted",
+   "status": "PASS",
+   "evidence": "2 audit template(s) listed (left in place for manual review)"
+  },
+  {
+   "area": "mobile",
+   "check": "builder on a phone viewport tells the operator it needs a larger screen",
+   "status": "PASS",
+   "evidence": "larger-screen wall shown"
+  }
+ ]
+}

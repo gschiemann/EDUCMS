@@ -487,6 +487,14 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
           `Can't reach the server at ${API_URL}. The API may be restarting — please try again in a moment.`,
         );
       }
+      // A request the page aborted itself (navigation, an unmounted query,
+      // a superseded search) is not a failure. Logging it as an error put a
+      // red "Issue" on every dashboard navigation and filled bug-report
+      // console captures with noise that hid the real errors (QA 2026-10-23).
+      if (err instanceof Error && err.name === 'AbortError') {
+        clog.debug('api', 'Request aborted', { url: fullUrl });
+        throw err;
+      }
       clog.error('api', 'Request failed (non-network)', { url: fullUrl, err: String(err) });
       throw err;
     }

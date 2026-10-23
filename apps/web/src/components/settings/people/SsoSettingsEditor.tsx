@@ -174,6 +174,9 @@ export function SsoSettingsEditor() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which request failed: a failed READ must never be reported as a failed
+  // save ("Could not save" on a page the operator has not touched yet).
+  const [errorKind, setErrorKind] = useState<'load' | 'save'>('save');
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [config, setConfig] = useState<SsoConfigSafe | null>(null);
   const [sp, setSp] = useState<SpMeta | null>(null);
@@ -184,8 +187,12 @@ export function SsoSettingsEditor() {
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const getToken = () =>
-    typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : '';
+  // The access token lives in the UI store (sessionStorage since SEC-010).
+  // This editor used to read localStorage 'auth_token' — a key nothing has
+  // written since then — so every load, save, test and domain check went
+  // out as "Bearer " and 401'd: the SSO page could never load or save
+  // (QA 2026-10-23).
+  const getToken = () => useUIStore.getState().token || '';
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -205,6 +212,7 @@ export function SsoSettingsEditor() {
       setForm(next);
       setBaseline(next);
     } catch (e) {
+      setErrorKind('load');
       setError((e as Error).message);
     } finally {
       setLoading(false);
@@ -263,6 +271,7 @@ export function SsoSettingsEditor() {
       // values that came BACK from the server become the new baseline.
       await loadConfig();
     } catch (e) {
+      setErrorKind('save');
       setError((e as Error).message);
       // Keep every typed value; move focus to the summary after a failed submit.
       setTimeout(() => errorRef.current?.focus(), 0);
@@ -372,7 +381,7 @@ export function SsoSettingsEditor() {
         <>
           {error && (
             <div ref={errorRef} tabIndex={-1} className="focus:outline-none">
-              <ErrorSummary title={t('settings.cc.people.ssoSaveFailed')} errors={[{ message: error }]} />
+              <ErrorSummary title={t(errorKind === 'load' ? 'settings.cc.people.ssoLoadFailed' : 'settings.cc.people.ssoSaveFailed')} errors={[{ message: error }]} />
             </div>
           )}
 
