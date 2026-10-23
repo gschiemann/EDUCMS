@@ -56,6 +56,10 @@ describe('public legal pages', () => {
       expect(t).toContain(LEGAL_ENTITY.mailingAddress);
     }
     expect(text(TermsPage)).toContain(LEGAL_CONTACTS.legal);
+    // legal@ is not a forwarded mailbox; notices must reach one that is.
+    expect(LEGAL_CONTACTS.legal).toBe('support@venue-os.app');
+    expect(text(TermsPage)).toMatch(/Legal notices: support@venue-os\.app/);
+    expect(text(TermsPage)).not.toMatch(/legal@/);
   });
 
   it('the DPA renders every sub-processor', () => {
