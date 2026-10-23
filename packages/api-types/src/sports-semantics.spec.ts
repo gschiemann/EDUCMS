@@ -143,6 +143,16 @@ describe('parseStatValue', () => {
     expect(parseStatValue('0.0')).toBe(0);
   });
 
+  it('rejects a long digit run that is not a number in linear time (CodeQL polynomial-redos)', () => {
+    const t0 = Date.now();
+    expect(parseStatValue('1'.repeat(100_000) + 'x')).toBeNull();
+    expect(parseStatValue('1'.repeat(100_000) + '.' + '2'.repeat(100_000) + 'x')).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(parseStatValue('12.')).toBe(12);
+    expect(parseStatValue('1,250.5')).toBeCloseTo(1250.5, 6);
+    expect(parseStatValue('1.2.3')).toBeNull();
+  });
+
   it('parses signed / over-par values', () => {
     expect(parseStatValue('-3')).toBe(-3);
     expect(parseStatValue('+2')).toBe(2);

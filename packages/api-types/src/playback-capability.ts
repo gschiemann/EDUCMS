@@ -281,8 +281,17 @@ export interface PlaybackBuildInfo {
   sdk?: unknown;
 }
 
+/** Trim leading / trailing `-` without a regex: `-+$` is quadratic on a device-reported string. */
+const trimDashes = (s: string): string => {
+  let a = 0;
+  let b = s.length;
+  while (a < b && s.charCodeAt(a) === 45) a++;
+  while (b > a && s.charCodeAt(b - 1) === 45) b--;
+  return s.slice(a, b);
+};
+
 const classPart = (v: unknown): string =>
-  typeof v === 'string' ? v.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) : '';
+  typeof v === 'string' ? trimDashes(v.trim().toLowerCase().slice(0, 256).replace(/[^a-z0-9._-]+/g, '-')).slice(0, 48) : '';
 
 /**
  * `${manufacturer}/${model}/${device}/sdk${sdk}`, normalised, or null when the
