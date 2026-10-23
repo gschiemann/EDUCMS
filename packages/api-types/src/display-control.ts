@@ -104,6 +104,10 @@ export type DisplayBrightnessMechanism =
  */
 export type DisplayBlankMechanism =
   | 'vendor-recipe'
+  // Player 1.1.52 — the panel vendor's own backlight service (Goodview GUQ /
+  // IFPDOS OpenSDK, `VendorBacklightProvider`): the backlight goes off while
+  // Android, the page and the native alert watch keep running.
+  | 'vendor-backlight'
   | 'device-admin'
   // The player's "VenueOS sleep" accessibility service (2026-10-11).
   | 'accessibility-lock'
@@ -208,6 +212,11 @@ export const DISPLAY_BRIGHTNESS_MECHANISMS = [
 ] as const;
 export const DISPLAY_BLANK_MECHANISMS = [
   'vendor-recipe',
+  // 2026-10-23 (player 1.1.52) — `VendorBacklightProvider`: the vendor's own
+  // backlight command on a Goodview GUQ. Sits between the recipe and the
+  // device-admin lock in the chain; auto-detected, so it is emitted only by a
+  // box whose vendor service answered. See DISPLAY_POWER_PROVEN_MECHANISMS.
+  'vendor-backlight',
   'device-admin',
   // 2026-10-11 — the player's "VenueOS sleep" accessibility service
   // (`AccessibilityLockProvider`): the power key's own goToSleep, for a box
@@ -472,8 +481,20 @@ export const DISPLAY_SOFT_BLANK_MECHANISM = 'web-overlay' as const;
  *
  * A hardware model rejoins this list only after a supervised on-site
  * round-trip test, never from anything the probe can infer.
+ *
+ * `vendor-backlight` (player 1.1.52, 2026-10-23) — the SAME class of control
+ * as a recipe, by construction rather than by observation: the panel vendor's
+ * own backlight command (`SDKDeviceHelper.setScreenStatus`, the call the
+ * vendor's player makes), reversed by the same command, with ANDROID AWAKE
+ * throughout — the panel never enters the vendor standby whose exit the
+ * admin-lock family hands to firmware. It is auto-detected (the service must
+ * bind and answer before the device reports it) and the APK turns the
+ * backlight on FIRST on every alert. Listed here so the dashboard's Turn off
+ * and the hard on/off schedule reach it; the on-glass verification is in
+ * `docs/research/2026-10-23-guq-enhancements/02-backlight-standby.md`, and
+ * removing this one entry routes the GUQ class soft again.
  */
-export const DISPLAY_POWER_PROVEN_MECHANISMS = ['vendor-recipe'] as const;
+export const DISPLAY_POWER_PROVEN_MECHANISMS = ['vendor-recipe', 'vendor-backlight'] as const;
 
 /**
  * ── THE BRIGHTNESS SPLIT (field evidence, 2026-08-25) ─────────────────
@@ -1706,7 +1727,8 @@ export interface DisplayManifestBlock {
    *
    * ⚠️ EMITTED ONLY TO A PANEL WHOSE POWER MECHANISM IS PROVEN
    * (`resolveDisplayScheduleOffPath` → 'hard-power'; today that is
-   * `vendor-recipe` alone). Every other panel — the admin-lock family,
+   * `vendor-recipe` and, since player 1.1.52, `vendor-backlight`). Every
+   * other panel — the admin-lock family,
    * `screen-timeout`, `software-dim`, `none`, and a screen that has never
    * reported — gets an EMPTY array here and its windows in `softSchedules`
    * instead.
@@ -1756,6 +1778,16 @@ export interface DisplayManifestBlock {
    * it is pointed at an OLD server that still emits every window as hard.
    */
   softSchedules: DisplayScheduleManifestEntry[];
+  /**
+   * Player 1.1.52 — the lead's KILL SWITCH for the vendor-backlight blank
+   * (`PLAYER_VENDOR_BACKLIGHT` on the API: `off` / `-all` for the fleet,
+   * `-<screen uuid>` per screen). PRESENT, and exactly `false`, only for a
+   * screen it names; omitted for everyone else so nobody else's ETag moves.
+   * The APK reads exactly `false` as "do not use the vendor backlight" and
+   * anything else as nothing; an older APK drops the key. It can only REMOVE
+   * the behaviour — there is no `true` that forces it.
+   */
+  vendorBacklight?: false;
   /** Server-tunable safety policy, so the floor can move without an APK. */
   brightness: {
     minSafePercent: number;

@@ -134,6 +134,15 @@ data class DisplayConfig(
      * off) is untouched. An older APK drops the key (org.json ignores it).
      */
     val wakeOnlySchedules: List<DisplaySchedule> = emptyList(),
+    /**
+     * 1.1.52 — the lead's KILL SWITCH for [VendorBacklightProvider]
+     * (`PLAYER_VENDOR_BACKLIGHT` on the API → `display.vendorBacklight: false`
+     * in the manifest). Exactly a JSON `false` disables the vendor-backlight
+     * blank on this screen; absent, `true` or anything else changes nothing
+     * (a key can only REMOVE the behaviour, as the 1.1.43 pacing switches).
+     * An older APK drops the key.
+     */
+    val vendorBacklightDisabled: Boolean = false,
 ) {
     /**
      * The highest-priority recipe whose `match` block fits this box, or
@@ -197,6 +206,9 @@ object DisplayConfigParser {
             recipes = parseRecipes(root, warnings),
             warnings = warnings,
             wakeOnlySchedules = wakeOnly,
+            // Exactly `false`; `optBoolean` would read a string "false" as false
+            // too, and a kill switch must be deliberate.
+            vendorBacklightDisabled = root.opt("vendorBacklight") == false,
         )
     }
 

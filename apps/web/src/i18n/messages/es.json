@@ -1943,6 +1943,7 @@
         "blankScreenTimeout": "Usa el tiempo de espera de pantalla de Android para apagar el panel. La mayoría de equipos de señalización lo respetan; algunos lo ignoran y solo muestran negro.",
         "blankNotReported": "No disponible hasta que esta pantalla informe de lo que puede hacer. Encender y subir el brillo siguen funcionando.",
         "wakeNotReported": "Encender siempre funciona, incluso antes de que la pantalla informe: solo puede hacer visible una pantalla apagada.",
+        "powerOffVendorBacklight": "Apaga la retroiluminación del panel mientras el reproductor sigue funcionando, así una alerta de emergencia la vuelve a encender de inmediato. “Encender panel” la restaura.",
         "brightnessVendorRecipe": "Usa el comando de retroiluminación propio de este fabricante — bajarlo ahorra energía de verdad.",
         "brightnessRecoveryOnly": "Hasta que esta pantalla informe de lo que puede hacer, el brillo solo puede subir (no por debajo del {min} %)."
       },

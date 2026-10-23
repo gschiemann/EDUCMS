@@ -1122,6 +1122,18 @@ describe('END-TO-END: the manifest display block installs on the device', () => 
     );
   });
 
+  // ── Player 1.1.52 — the vendor-backlight kill switch ──────────────────
+  it('forwards vendorBacklight only when the manifest says exactly false, and it moves the fingerprint', () => {
+    expect(toDeviceDisplayConfig(BLOCK, {})).not.toHaveProperty('vendorBacklight');
+    expect(toDeviceDisplayConfig({ ...BLOCK, vendorBacklight: true }, {})).not.toHaveProperty('vendorBacklight');
+    expect(toDeviceDisplayConfig({ ...BLOCK, vendorBacklight: 'false' }, {})).not.toHaveProperty('vendorBacklight');
+    const off = toDeviceDisplayConfig({ ...BLOCK, vendorBacklight: false }, {});
+    expect(off?.vendorBacklight).toBe(false);
+    expect(displayConfigFingerprint(off)).not.toBe(displayConfigFingerprint(toDeviceDisplayConfig(BLOCK, {})));
+    // The device parser reads exactly `false` (DisplayConfigParser) — the wire carries a JSON boolean.
+    expect(JSON.parse(JSON.stringify(off)).vendorBacklight).toBe(false);
+  });
+
   it('rolls the fingerprint back when the device rejects the install', async () => {
     callMock.mockRejectedValue(new Error('insecure-transport'));
     const fpRef = { current: '' };

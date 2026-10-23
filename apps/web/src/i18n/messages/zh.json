@@ -1943,6 +1943,7 @@
         "blankScreenTimeout": "通过 Android 屏幕超时来关闭面板。多数标牌设备支持；少数会忽略，仅显示黑屏。",
         "blankNotReported": "在此屏幕上报其支持的功能之前不可用。唤醒和调高亮度仍可使用。",
         "wakeNotReported": "唤醒始终可用，即使屏幕尚未上报：它只会让黑屏重新可见。",
+        "powerOffVendorBacklight": "关闭面板背光，播放器继续运行，紧急警报会立即重新点亮。“开启面板”可将其恢复。",
         "brightnessVendorRecipe": "使用该厂商自有的背光指令 — 调低确实能省电。",
         "brightnessRecoveryOnly": "在此屏幕上报其支持的功能之前，亮度只能调高（不低于 {min}%）。"
       },

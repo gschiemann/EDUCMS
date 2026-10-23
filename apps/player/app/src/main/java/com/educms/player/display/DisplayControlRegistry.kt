@@ -63,6 +63,16 @@ object DisplayControlRegistry {
     // provable no-op: every chain below resolves exactly as it did in
     // 1.1.14 on every box in the fleet. Read that file's drop-in checklist
     // before flipping anything.
+    //
+    // 1.1.52 — [VendorBacklightProvider] sits in BLANK / WAKE AFTER an explicit
+    // vendor recipe (a per-model command an operator configured wins over
+    // auto-detection) and BEFORE every mechanism that puts ANDROID to sleep: it
+    // switches the panel's backlight off through the vendor's own control
+    // service while the process, the WebView and the native alert watch keep
+    // running. Its supports() is empty on every box without that service, so
+    // the chains resolve exactly as in 1.1.51 everywhere else. (The comment
+    // lives HERE, not between two chain entries: the API's drift guard parses
+    // the `Capability.X to listOf(...)` entries textually.)
     private val CHAINS: Map<Capability, List<DisplayControlProvider>> = mapOf(
         Capability.BRIGHTNESS to listOf(
             NovaStarTaurusProvider,
@@ -74,6 +84,7 @@ object DisplayControlRegistry {
         Capability.BLANK to listOf(
             NovaStarTaurusProvider,
             VendorRecipeProvider,
+            VendorBacklightProvider,
             DeviceAdminBlankProvider,
             AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
@@ -82,6 +93,7 @@ object DisplayControlRegistry {
         Capability.WAKE to listOf(
             NovaStarTaurusProvider,
             VendorRecipeProvider,
+            VendorBacklightProvider,
             DeviceAdminBlankProvider,
             AccessibilityLockProvider,
             ScreenTimeoutBlankProvider,
@@ -243,6 +255,18 @@ object DisplayControlRegistry {
             for (next in chain) {
                 if (next === provider) continue
                 if (allowProvider != null && !allowProvider(next.id)) continue
+                // 1.1.52 — a failed VENDOR-BACKLIGHT blank never falls through to
+                // a latch-prone lock on an Android where one has latched (the
+                // GUQ class is the G43's firmware class). Every other
+                // fall-through is unchanged. VendorBacklightPolicy rule 6.
+                if (action == DisplayAction.Blank &&
+                    !VendorBacklightPolicy.fallThroughAllows(
+                        provider.id, next.id, android.os.Build.VERSION.SDK_INT, android.os.Build.MODEL,
+                    )
+                ) {
+                    PlayerLogger.w(TAG, "Blank fall-through skips ${next.id} after ${provider.id}: a lock may latch this panel")
+                    continue
+                }
                 if (action.capability !in supportsQuietly(app, next)) continue
                 PlayerLogger.w(
                     TAG,

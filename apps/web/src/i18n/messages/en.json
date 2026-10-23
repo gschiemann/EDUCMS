@@ -1943,6 +1943,7 @@
         "blankScreenTimeout": "Uses the Android screen timeout to power the panel down. Most signage boxes honour it; a few ignore it and just show black.",
         "blankNotReported": "Not available until this screen reports what it can do. Wake and brightness up still work.",
         "wakeNotReported": "Wake always works, even before a screen reports: it can only ever make a dark screen visible.",
+        "powerOffVendorBacklight": "Turns the panel’s backlight off while the player keeps running, so an emergency alert lights it straight back up. “Turn panel on” brings it back.",
         "brightnessVendorRecipe": "Uses this manufacturer’s own backlight command — lower settings actually save power.",
         "brightnessRecoveryOnly": "Until this screen reports what it can do, brightness can only go up (not below {min}%)."
       },

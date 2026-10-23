@@ -648,6 +648,14 @@ export interface DeviceDisplayConfig {
    * byte-identical install (and fingerprint).
    */
   wakeOnlySchedules?: Array<Record<string, unknown>>;
+  /**
+   * Player 1.1.52 — the lead's KILL SWITCH for the vendor-backlight blank,
+   * forwarded only when the manifest carries exactly `false` (see
+   * `DisplayManifestBlock.vendorBacklight`). Absent for every other screen, so
+   * the install (and its fingerprint) is byte-identical to before; an older
+   * APK drops the key. Nothing here can ever force the mechanism ON.
+   */
+  vendorBacklight?: false;
 }
 
 /** One manifest window → the row `DisplayConfigParser.parseSchedules` reads. */
@@ -716,6 +724,9 @@ export function toDeviceDisplayConfig(
   // no soft windows translates (and fingerprints) exactly as before.
   const wakeOnly = toDeviceScheduleRows(b.softSchedules);
   if (wakeOnly.length > 0) out.wakeOnlySchedules = wakeOnly;
+
+  // Player 1.1.52 — the vendor-backlight kill switch: exactly `false` or nothing.
+  if (b.vendorBacklight === false) out.vendorBacklight = false;
 
   return out;
 }

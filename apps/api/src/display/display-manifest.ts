@@ -59,6 +59,8 @@ import {
   type DisplayVendorRecipeManifestEntry,
 } from '@cms/api-types';
 
+import { vendorBacklightFlagFor } from './vendor-backlight-flag';
+
 const logger = new Logger('DisplayManifest');
 
 /** Minimal Prisma surface — keeps this unit-testable without Nest. */
@@ -255,8 +257,10 @@ export function routeScheduleWindows(
 function assembleBlock(
   parts: UnroutedParts,
   displayCapabilities: unknown,
+  screenId: string,
+  env: Record<string, string | undefined> = process.env,
 ): DisplayManifestBlock {
-  return {
+  const block: DisplayManifestBlock = {
     ...routeScheduleWindows(parts.windows, displayCapabilities),
     brightness: {
       // Server-tunable so the floor can move without an APK release. The
@@ -270,6 +274,12 @@ function assembleBlock(
     },
     vendorRecipes: parts.vendorRecipes,
   };
+  // Player 1.1.52 — the vendor-backlight KILL SWITCH, present (and exactly
+  // `false`) only for a screen `PLAYER_VENDOR_BACKLIGHT` names. Deterministic
+  // per (screen, env), so it is as stable as the rest of the block; omitted
+  // for every other screen so nobody else's ETag moves.
+  if (vendorBacklightFlagFor(screenId, env) === false) block.vendorBacklight = false;
+  return block;
 }
 
 /**
@@ -293,7 +303,7 @@ export async function buildDisplayManifestBlock(
   ) {
     // Memo hit on the DB read only — the routing is still derived from the
     // verdict on THIS request.
-    return assembleBlock(cached.parts, screen.displayCapabilities);
+    return assembleBlock(cached.parts, screen.displayCapabilities, screen.id);
   }
 
   // A schedule targets EXACTLY ONE thing — this screen, or the group it is
@@ -351,7 +361,7 @@ export async function buildDisplayManifestBlock(
       `[display] manifest block read failed for screen=${screen.id} ` +
         `(serving ${known ? 'last known-good' : 'null'}): ${e}`,
     );
-    return known ? assembleBlock(known, screen.displayCapabilities) : null;
+    return known ? assembleBlock(known, screen.displayCapabilities, screen.id) : null;
   }
 
   const parts: UnroutedParts = {
@@ -392,5 +402,5 @@ export async function buildDisplayManifestBlock(
     const oldest = lastGoodParts.keys().next().value;
     if (oldest) lastGoodParts.delete(oldest);
   }
-  return assembleBlock(parts, screen.displayCapabilities);
+  return assembleBlock(parts, screen.displayCapabilities, screen.id);
 }

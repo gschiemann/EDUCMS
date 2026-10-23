@@ -138,6 +138,50 @@ describe('buildDisplayManifestBlock', () => {
     }
   });
 
+  // ── Player 1.1.52 — the vendor-backlight kill switch ──────────────────
+  describe('vendorBacklight (PLAYER_VENDOR_BACKLIGHT, lead-only kill switch)', () => {
+    const GUQ = { ...SCREEN, id: '7d0c4a3e-1b2f-4c5d-8e9f-0a1b2c3d4e5f' };
+    const OTHER = { ...SCREEN, id: '11111111-2222-4333-8444-555555555555' };
+    const saved = process.env.PLAYER_VENDOR_BACKLIGHT;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.PLAYER_VENDOR_BACKLIGHT;
+      else process.env.PLAYER_VENDOR_BACKLIGHT = saved;
+    });
+
+    it("carries NO key by default — the APK decides from its own facts and nobody's ETag moves", async () => {
+      delete process.env.PLAYER_VENDOR_BACKLIGHT;
+      const block = await buildDisplayManifestBlock(makePrisma(), GUQ, 1);
+      expect(block).not.toHaveProperty('vendorBacklight');
+    });
+
+    it('carries exactly `false` for a screen the env names, and nothing for its neighbour', async () => {
+      process.env.PLAYER_VENDOR_BACKLIGHT = `-${GUQ.id.toUpperCase()}`;
+      expect((await buildDisplayManifestBlock(makePrisma(), GUQ, 1))!.vendorBacklight).toBe(false);
+      clearDisplayManifestCache();
+      expect(await buildDisplayManifestBlock(makePrisma(), OTHER, 1)).not.toHaveProperty('vendorBacklight');
+    });
+
+    it('`off` switches the whole fleet off', async () => {
+      process.env.PLAYER_VENDOR_BACKLIGHT = 'off';
+      expect((await buildDisplayManifestBlock(makePrisma(), OTHER, 1))!.vendorBacklight).toBe(false);
+    });
+
+    it('a positive token or a typo changes nothing — the key can only remove', async () => {
+      process.env.PLAYER_VENDOR_BACKLIGHT = `all,${GUQ.id},of`;
+      expect(await buildDisplayManifestBlock(makePrisma(), GUQ, 1)).not.toHaveProperty('vendorBacklight');
+    });
+
+    it('is applied on every assemble, memo hit or not — never cached with the DB read', async () => {
+      const prisma = makePrisma();
+      delete process.env.PLAYER_VENDOR_BACKLIGHT;
+      expect(await buildDisplayManifestBlock(prisma, GUQ, 1)).not.toHaveProperty('vendorBacklight');
+      process.env.PLAYER_VENDOR_BACKLIGHT = 'off';
+      // Same rev → memo hit; the flag is still live.
+      expect((await buildDisplayManifestBlock(prisma, GUQ, 1))!.vendorBacklight).toBe(false);
+      expect(prisma.client.displaySchedule.findMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('sorts daysOfWeek so click order cannot flip the ETag', async () => {
     const block = await buildDisplayManifestBlock(makePrisma(), SCREEN, 1);
     expect(allWindows(block)[0].daysOfWeek).toEqual([1, 3, 5]);

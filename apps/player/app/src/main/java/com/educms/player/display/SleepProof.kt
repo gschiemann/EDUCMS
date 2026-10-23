@@ -90,7 +90,14 @@ object SleepProof {
      */
     fun expect(ctx: Context, providerId: String) {
         val app = ctx.applicationContext
-        val immediate = SleepProofPolicy.immediateOutcomeFor(providerId)
+        // 1.1.52 — a vendor-backlight blank proves itself by the MCU's own
+        // readback (off / on / unknown); Android stays interactive by design.
+        val observed = if (providerId == VendorBacklightPolicy.PROVIDER_ID) {
+            runCatching { VendorBacklightProvider.lastBlankOutcome() }.getOrNull()
+        } else {
+            null
+        }
+        val immediate = SleepProofPolicy.immediateOutcomeFor(providerId, observed)
         val settle = SleepProofPolicy.settleMsFor(providerId)
         if (immediate != null || settle == null) {
             // Nothing Android-visible to wait for: the software floor is a
@@ -228,6 +235,9 @@ object SleepProof {
             ?.let { out.put("blank", it.take(32)) }
         out.put("dream", dreamObserved(app))
         out.put("a11y", SleepAccessibilityService.isConnected())
+        // 1.1.52 — the vendor backlight: `d` detection, `off` dark by our hand,
+        // `f` a fault reason. Omitted on a box without the vendor service.
+        runCatching { VendorBacklightProvider.reportJson() }.getOrNull()?.let { out.put("vb", it) }
         runCatching { DeviceAdminBlankProvider.isOurAdminActive(app) }.getOrNull()?.let { out.put("admin", it) }
         val lastAt = p.getLong(KEY_LAST_AT, 0L)
         val lastM = p.getString(KEY_LAST_MECHANISM, null)
@@ -391,15 +401,18 @@ object SleepProofPolicy {
      * so "interactive" says nothing about the glass (unknown, never "on").
      * Null = an Android sleep, checked after [settleMsFor].
      */
-    fun immediateOutcomeFor(providerId: String): String? = when (providerId) {
+    fun immediateOutcomeFor(providerId: String, observed: String? = null): String? = when (providerId) {
         "software-dim" -> OUTCOME_BLACK
         "vendor-recipe", "novastar-sdk" -> OUTCOME_UNKNOWN
+        // 1.1.52 — the backlight command leaves Android interactive by design;
+        // what it proved is the MCU's own readback, carried in [observed].
+        "vendor-backlight" -> observed?.takeIf { it == OUTCOME_OFF || it == OUTCOME_ON } ?: OUTCOME_UNKNOWN
         else -> null
     }
 
     /** How long to wait before asking; null = nothing to wait for ([immediateOutcomeFor]). */
     fun settleMsFor(providerId: String): Long? = when (providerId) {
-        "software-dim", "vendor-recipe", "novastar-sdk" -> null
+        "software-dim", "vendor-recipe", "novastar-sdk", "vendor-backlight" -> null
         "screen-timeout" -> SCREEN_TIMEOUT_SETTLE_MS
         else -> IMMEDIATE_SETTLE_MS
     }

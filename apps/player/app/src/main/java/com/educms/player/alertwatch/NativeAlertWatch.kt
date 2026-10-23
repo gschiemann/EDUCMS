@@ -272,9 +272,17 @@ object NativeAlertWatch {
          * stand the watch down. The cost of being wrong that way is a few
          * extra polls; the other way it is an alert nobody sees.
          */
-        override fun panelInteractive(): Boolean = runCatching {
-            (app.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
-        }.getOrNull() ?: false
+        override fun panelInteractive(): Boolean {
+            // 1.1.52 — a panel whose BACKLIGHT we switched off through the vendor
+            // service (VendorBacklightProvider) is a dark panel with Android
+            // awake: `isInteractive` says true and the page may well be alive,
+            // but nobody can see it, so the watch treats it as dark and polls.
+            // Both paths may raise; a re-raise re-enforces.
+            if (runCatching { com.educms.player.display.VendorBacklightProvider.isDarkByUs() }.getOrDefault(false)) return false
+            return runCatching {
+                (app.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive
+            }.getOrNull() ?: false
+        }
 
         override fun plan(): NativeAlertWatchEngine.WatchPlan {
             val prefs = runCatching { app.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }.getOrNull()
