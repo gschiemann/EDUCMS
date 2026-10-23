@@ -89,7 +89,7 @@
 # pin, the pre-pull warms a different digest and this build pulls its own —
 # one extra pull, no failure, and it self-heals the next time the pin is
 # rolled.
-ARG NODE_IMAGE=node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+ARG NODE_IMAGE=node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stage 1 — builder. Full dev toolchain; compiles TypeScript to dist/.
