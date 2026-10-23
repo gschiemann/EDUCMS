@@ -3389,7 +3389,7 @@ export default function TemplatesPage() {
               onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
               className="min-h-11 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-semibold text-slate-600 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:min-h-9"
             >
-              {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+              {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tTpl(`sort.${o.key}`)}</option>)}
             </select>
             <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="View">
               {([
@@ -3434,7 +3434,7 @@ export default function TemplatesPage() {
                   }`}
                 >
                   <span aria-hidden>{chip.emoji}</span>
-                  {chip.label}
+                  {tTpl(`level.${chip.key || 'ALL'}`)}
                 </button>
               );
             })}
@@ -3651,7 +3651,7 @@ export default function TemplatesPage() {
                   onClick={() => setShowAllCustom(true)}
                   className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
                 >
-                  Show {hiddenCustom} more
+                  {tTpl('showMore', { count: hiddenCustom })}
                 </button>
               </div>
             )}
@@ -3711,7 +3711,7 @@ export default function TemplatesPage() {
                     onClick={() => setPresetPages((p) => p + 1)}
                     className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 hover:border-slate-300"
                   >
-                    Show {Math.min(hiddenPresets, SECTION_PAGE_SIZE)} more
+                    {tTpl('showMore', { count: Math.min(hiddenPresets, SECTION_PAGE_SIZE) })}
                     <span className="ml-1.5 text-slate-500 tabular-nums">({hiddenPresets} left)</span>
                   </button>
                 </div>

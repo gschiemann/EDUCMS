@@ -6536,7 +6536,8 @@
     "expandGroup": "展开 {name}",
     "noScreensYet": "还没有屏幕",
     "showingOf": "显示 {shown} / {count} 块屏幕",
-    "totalAcross": "{count} 块屏幕，分布在 {groups} 个分组"
+    "totalAcross": "{count} 块屏幕，分布在 {groups} 个分组",
+    "notInGroup": "未分组"
   },
   "templatesPage": {
     "summaryYours": "{count} 个模板 · {owned} 个属于你",
@@ -6550,6 +6551,20 @@
     "yourTemplates": "你的模板",
     "readyMade": "现成模板",
     "readyMadeSub": "从专业设计的版式开始",
-    "browseAll": "浏览全部 {count} 个"
+    "browseAll": "浏览全部 {count} 个",
+    "level": {
+      "ALL": "所有年龄段",
+      "ELEMENTARY": "小学",
+      "MIDDLE": "初中",
+      "HIGH": "高中"
+    },
+    "sort": {
+      "recent": "最近编辑",
+      "name": "名称 A–Z",
+      "most-used": "最常用",
+      "newest": "最新",
+      "oldest": "最早"
+    },
+    "showMore": "再显示 {count} 个"
   }
 }

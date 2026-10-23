@@ -6536,7 +6536,8 @@
     "expandGroup": "Expand {name}",
     "noScreensYet": "No screens yet",
     "showingOf": "Showing {shown} of {count, plural, one {# screen} other {# screens}}",
-    "totalAcross": "{count, plural, one {# screen} other {# screens}} across {groups, plural, one {# group} other {# groups}}"
+    "totalAcross": "{count, plural, one {# screen} other {# screens}} across {groups, plural, one {# group} other {# groups}}",
+    "notInGroup": "Not in a group"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
@@ -6550,6 +6551,20 @@
     "yourTemplates": "Your templates",
     "readyMade": "Ready-made templates",
     "readyMadeSub": "Start with a professionally designed layout",
-    "browseAll": "Browse all {count}"
+    "browseAll": "Browse all {count}",
+    "level": {
+      "ALL": "All ages",
+      "ELEMENTARY": "Elementary School",
+      "MIDDLE": "Middle School",
+      "HIGH": "High School"
+    },
+    "sort": {
+      "recent": "Recently edited",
+      "name": "Name A–Z",
+      "most-used": "Most used",
+      "newest": "Newest",
+      "oldest": "Oldest"
+    },
+    "showMore": "Show {count} more"
   }
 }

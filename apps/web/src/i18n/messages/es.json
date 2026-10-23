@@ -6536,7 +6536,8 @@
     "expandGroup": "Expandir {name}",
     "noScreensYet": "Aún no hay pantallas",
     "showingOf": "Mostrando {shown} de {count, plural, one {# pantalla} other {# pantallas}}",
-    "totalAcross": "{count, plural, one {# pantalla} other {# pantallas}} en {groups, plural, one {# grupo} other {# grupos}}"
+    "totalAcross": "{count, plural, one {# pantalla} other {# pantallas}} en {groups, plural, one {# grupo} other {# grupos}}",
+    "notInGroup": "Sin grupo"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
@@ -6550,6 +6551,20 @@
     "yourTemplates": "Tus plantillas",
     "readyMade": "Plantillas listas para usar",
     "readyMadeSub": "Empieza con un diseño profesional",
-    "browseAll": "Ver las {count}"
+    "browseAll": "Ver las {count}",
+    "level": {
+      "ALL": "Todas las edades",
+      "ELEMENTARY": "Primaria",
+      "MIDDLE": "Secundaria",
+      "HIGH": "Preparatoria"
+    },
+    "sort": {
+      "recent": "Editadas recientemente",
+      "name": "Nombre A–Z",
+      "most-used": "Más usadas",
+      "newest": "Más recientes",
+      "oldest": "Más antiguas"
+    },
+    "showMore": "Mostrar {count} más"
   }
 }

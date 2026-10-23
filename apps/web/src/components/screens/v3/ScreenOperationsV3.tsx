@@ -248,6 +248,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   // The states added 2026-09-27 carry catalogue references; everything else
   // is still the module's English.
   const t = useTranslations();
+  // The ungrouped bucket's name is built in screenOps.ts (a pure module) in
+  // English; translate it at display time (QA 2026-10-23).
+  const groupLabel = (g: { id: string; name: string }) =>
+    g.id.startsWith(UNGROUPED_ID) ? g.name.replace(/Not in a group$/, t('screensOps.notInGroup')) : g.name;
   const text = (en: string | undefined, m?: OpsMessage): string => (m ? t(m.key, m.values) : en ?? '');
 
   const [query, setQuery] = useState('');
@@ -955,7 +959,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 {expanded
                                   ? <ChevronDown className="w-4 h-4" aria-hidden />
                                   : <ChevronRight className="w-4 h-4" aria-hidden />}
-                                <span className="sr-only">{t(expanded ? 'screensOps.collapseGroup' : 'screensOps.expandGroup', { name: g.name })}</span>
+                                <span className="sr-only">{t(expanded ? 'screensOps.collapseGroup' : 'screensOps.expandGroup', { name: groupLabel(g) })}</span>
                               </button>
                               {editingGroup === g.id ? (
                                 <input
@@ -973,7 +977,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                               ) : (
                                 <>
                                   <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                                  <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
+                                  <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{groupLabel(g)}</h3>
                                   <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
                                 </>
                               )}
@@ -1021,7 +1025,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         {expanded && g.rows.length > 0 && (
                           <table className="w-full border-collapse">
                             <caption className="sr-only">
-                              {t('screensOps.groupCaption', { name: g.name, count: g.rows.length })}
+                              {t('screensOps.groupCaption', { name: groupLabel(g), count: g.rows.length })}
                             </caption>
                             <thead>
                               <tr className="border-t border-slate-100">
@@ -1181,7 +1185,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                       <div style={GROUP_ROW_STYLE} className="flex items-center gap-3 px-5 py-2.5">
                         <div className="flex items-center gap-2 min-w-0 flex-1 pl-8">
                           <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                          <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
+                          <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{groupLabel(g)}</h3>
                           <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
                         </div>
                         <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">{t('screensOps.noScreensYet')}</span>
@@ -1226,7 +1230,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           className={`flex-1 min-w-0 min-h-11 ${selectable ? 'pl-1 pr-4' : 'px-4'} py-3 flex items-center gap-2 text-left`}
                         >
                           {expanded ? <ChevronDown className="w-4 h-4 text-slate-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-slate-400" aria-hidden />}
-                          <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
+                          <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{groupLabel(g)}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
                           <span className={`text-[11.5px] font-bold ${g.attention > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                             {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
@@ -1288,7 +1292,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   {emptyGroups.map((g) => (
                     <li key={g.id} style={GROUP_ROW_STYLE} className={`${GROUP_CARD_CLASS} px-4 py-3 flex items-center gap-2`} data-testid="empty-group">
                       <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
-                      <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
+                      <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{groupLabel(g)}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
                       <span className="text-[11.5px] font-semibold text-slate-400">{t('screensOps.noScreensYet')}</span>
                       <div className="relative inline-block">
                         <button
@@ -1371,7 +1375,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       {selectedRow && (
         <ScreenDetailDrawer
           row={selectedRow}
-          placeName={selectedRow.screen.screenGroup?.name ?? 'Not in a group'}
+          placeName={selectedRow.screen.screenGroup?.name ?? t('screensOps.notInGroup')}
           previewHref={buildPreviewHref(selectedRow.screen)}
           canControl={canControl}
           groups={groups}
