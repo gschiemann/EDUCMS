@@ -3027,7 +3027,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                   const source = new DOMParser().parseFromString(await response.text(), 'text/html');
                   const document = JSON.parse(source.getElementById('arc-directory-document')?.textContent || 'null');
                   if (document?.format !== 'arc-riot.directory') throw new Error('Directory content is missing');
-                  setField({ url, html: '', directoryDocument: document, touchDocument: null });
+                  setField({ url, html: '', directoryDocument: document, touchDocument: null, contentChanged: false });
                 } catch {
                   // Keep the current choice when its replacement cannot be read.
                 }
@@ -3037,12 +3037,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                   if (!response.ok) throw new Error('Property content could not load');
                   const document = await response.json();
                   if (document?.format !== 'arc-riot.touch-property') throw new Error('Property content is missing');
-                  setField({ url, html: '', directoryDocument: null, touchDocument: document });
+                  setField({ url, html: '', directoryDocument: null, touchDocument: document, contentChanged: false });
                 } catch {
                   // Keep the current choice when its replacement cannot be read.
                 }
               } else {
-                setField({ url, html: '', directoryDocument: null, touchDocument: null });
+                setField({ url, html: '', directoryDocument: null, touchDocument: null, contentChanged: false });
               }
             }}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"

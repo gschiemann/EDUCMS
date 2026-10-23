@@ -37,7 +37,7 @@ export function TouchPropertyEditor({ cfg, setField }: {
         const previous = latest.current.cfg.textOverrides;
         const text = { ...(previous && typeof previous === 'object' ? previous : {}) } as Record<string, unknown>;
         delete text['cre.payload'];
-        latest.current.setField({ touchDocument: message.document, textOverrides: text });
+        latest.current.setField({ touchDocument: message.document, contentChanged: true, textOverrides: text });
       }
     }
     window.addEventListener('message', onMessage);

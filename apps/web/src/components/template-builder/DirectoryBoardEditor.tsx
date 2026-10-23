@@ -52,6 +52,7 @@ export function DirectoryBoardEditor({ cfg, setField }: {
           delete text['directory.payload'];
           latest.current.setField({
             directoryDocument: doc,
+            contentChanged: true,
             textOverrides: text,
           });
         }

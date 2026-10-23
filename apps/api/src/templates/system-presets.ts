@@ -1,3 +1,4 @@
+import { TOUCH_PROPERTY_TEMPLATE_PRESETS } from './touch-property-presets';
 import { DIRECTORY_TEMPLATE_PRESETS } from './directory-presets';
 import { HOMEBUILDER_TEMPLATE_PRESETS } from './homebuilder-presets';
 import { GAP_TEMPLATE_PRESETS } from './gap-presets';
@@ -3471,5 +3472,6 @@ export const SYSTEM_TEMPLATE_PRESETS: SystemPreset[] = [
   ...REVIEWED_BOARD_PORTRAITS,
   ...HOMEBUILDER_TEMPLATE_PRESETS,
   ...DIRECTORY_TEMPLATE_PRESETS,
+  ...TOUCH_PROPERTY_TEMPLATE_PRESETS,
   ...GAP_TEMPLATE_PRESETS,
 ];

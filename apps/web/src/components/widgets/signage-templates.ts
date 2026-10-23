@@ -16,8 +16,21 @@ export interface SignageTemplate {
   url: string;
 }
 
-export const SIGNAGE_TEMPLATES: SignageTemplate[
-] = [
+export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+  // ARC RIOT COMMERCIAL TOUCH COLLECTION
+  {"id": "preset-corporate-touch-harbor-cinema-landscape", "name": "Corporate · Commercial Real Estate · Harbor Cinema", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/harbor-cinema-landscape.html"},
+  {"id": "preset-corporate-touch-harbor-cinema-portrait", "name": "Corporate · Commercial Real Estate · Harbor Cinema — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/harbor-cinema-portrait.html"},
+  {"id": "preset-corporate-touch-vertical-atlas-landscape", "name": "Corporate · Commercial Real Estate · Vertical Atlas", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/vertical-atlas-landscape.html"},
+  {"id": "preset-corporate-touch-vertical-atlas-portrait", "name": "Corporate · Commercial Real Estate · Vertical Atlas — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/vertical-atlas-portrait.html"},
+  {"id": "preset-corporate-touch-district-fieldnotes-landscape", "name": "Corporate · Commercial Real Estate · District Fieldnotes", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/district-fieldnotes-landscape.html"},
+  {"id": "preset-corporate-touch-district-fieldnotes-portrait", "name": "Corporate · Commercial Real Estate · District Fieldnotes — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/district-fieldnotes-portrait.html"},
+  {"id": "preset-corporate-touch-the-arrival-club-landscape", "name": "Corporate · Commercial Real Estate · The Arrival Club", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/the-arrival-club-landscape.html"},
+  {"id": "preset-corporate-touch-the-arrival-club-portrait", "name": "Corporate · Commercial Real Estate · The Arrival Club — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/the-arrival-club-portrait.html"},
+  {"id": "preset-corporate-touch-occupier-lab-landscape", "name": "Corporate · Commercial Real Estate · Occupier Lab", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/occupier-lab-landscape.html"},
+  {"id": "preset-corporate-touch-occupier-lab-portrait", "name": "Corporate · Commercial Real Estate · Occupier Lab — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/occupier-lab-portrait.html"},
+  {"id": "preset-corporate-touch-future-studio-landscape", "name": "Corporate · Commercial Real Estate · Future Studio", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/future-studio-landscape.html"},
+  {"id": "preset-corporate-touch-future-studio-portrait", "name": "Corporate · Commercial Real Estate · Future Studio — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/future-studio-portrait.html"},
+
   // ARC RIOT DIRECTORY COLLECTION
   {"id": "preset-corporate-directory-pacific-editorial-landscape", "name": "Corporate · Directory · Pacific Editorial", "url": "/templates/signage/corporate/directory/pacific-editorial-landscape.html", "group": "Corporate"},
   {"id": "preset-corporate-directory-pacific-editorial-portrait", "name": "Corporate · Directory · Pacific Editorial — Portrait", "url": "/templates/signage/corporate/directory/pacific-editorial-portrait.html", "group": "Corporate"},
