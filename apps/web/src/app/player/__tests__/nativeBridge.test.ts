@@ -652,7 +652,9 @@ describe('method tables stay in sync with the APK', () => {
     // (Website Tabs, next APK ≥ 1.1.19): `webTabsShow` lays the native site
     // WebView over the widget's measured bounds with a default-deny host
     // allowlist, `webTabsHide` takes it down and can sign the sites out.
-    expect(all).toHaveLength(36);
+    // → 37 on 2026-10-23 (APK 1.1.53): `openNetworkScreen`, the Back menu's
+    // way to VenueOS's own on-screen Network screen.
+    expect(all).toHaveLength(37);
   });
 
   /**

@@ -223,6 +223,11 @@ class HeartbeatService : Service() {
             // A watch loop that died, or that was never started, is put back
             // within a minute. Idempotent; one binder call when the panel is on.
             NativeAlertWatch.kick(ctx, "heartbeat loop")
+            // 2026-10-23 — Wi-Fi (settings.WifiSetup): a network switch left
+            // mid-proof by a process that died, or by a reboot, is proved or
+            // undone HERE, whether or not the server can be reached — that is
+            // the case it exists for. Never throws; one prefs read when idle.
+            DeviceSettings.maintain(ctx)
             val fp = prefs.getString("device_fingerprint", null)
             val apiRoot = prefs.getString("api_root", null)
             if (!fp.isNullOrBlank() && !apiRoot.isNullOrBlank() && shouldTickNow(prefs)) {

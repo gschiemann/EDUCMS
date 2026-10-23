@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_title">Red</string>
+    <string name="net_hint">Use el control remoto: flechas para moverse, OK para elegir, Atrás para volver.</string>
+
+    <string name="net_status_wifi">Conectada a la Wi-Fi “%1$s” · señal %2$s</string>
+    <string name="net_status_wifi_unnamed">Conectada a Wi-Fi · señal %1$s</string>
+    <string name="net_status_ethernet">Conectada por cable (Ethernet)</string>
+    <string name="net_status_other">Conectada</string>
+    <string name="net_status_offline">Sin conexión a una red</string>
+    <string name="net_status_unvalidated">Android no ha confirmado acceso a internet en esta red.</string>
+    <string name="net_status_address">Dirección %1$s</string>
+
+    <string name="net_wifi_section">Wi-Fi</string>
+    <string name="net_scan_again">Buscar de nuevo</string>
+    <string name="net_scanning">Buscando redes…</string>
+    <string name="net_none_found">No se encontraron redes Wi-Fi cerca.</string>
+    <string name="net_add_hidden">Agregar una red oculta</string>
+    <string name="net_mark_connected">conectada</string>
+    <string name="net_mark_saved">guardada</string>
+    <string name="net_mark_cannot_join">requiere un inicio de sesión que VenueOS no puede escribir</string>
+    <string name="net_access_permission">Para ver las redes cercanas, Android necesita que VenueOS tenga acceso a la ubicación. VenueOS nunca lee dónde está esta pantalla.</string>
+    <string name="net_allow">Permitir</string>
+    <string name="net_access_denied">Se rechazó el acceso a la ubicación. Para ver las redes, permita Ubicación para VenueOS Player en los ajustes de Android.</string>
+    <string name="net_access_location_off">La ubicación está desactivada en esta pantalla. Android solo muestra redes cercanas con la ubicación activada.</string>
+    <string name="net_location_settings">Ajustes de ubicación de Android</string>
+    <string name="net_app_settings">VenueOS Player en los ajustes de Android</string>
+    <string name="net_access_wifi_off">La Wi-Fi está desactivada en esta pantalla. VenueOS no la activa: use los ajustes de red de Android.</string>
+    <string name="net_access_no_wifi">Esta pantalla no tiene Wi-Fi.</string>
+    <string name="net_access_alert">Hay una alerta en esta pantalla.</string>
+
+    <string name="net_ethernet_section">Ethernet</string>
+    <string name="net_ethernet_cable_yes">Cable conectado</string>
+    <string name="net_ethernet_cable_no">Ningún cable conectado</string>
+    <string name="net_ethernet_address">Dirección IP: %1$s</string>
+    <string name="net_ethernet_auto">Dirección: automática (DHCP)</string>
+    <string name="net_ethernet_fixed">Dirección: fija</string>
+    <string name="net_ethernet_mode_unknown">Android no indica si esta dirección es automática o fija.</string>
+    <string name="net_ethernet_fixed_note">Una dirección fija, el DNS o el proxy se configuran en los ajustes de red de Android.</string>
+    <string name="net_android_settings">Avanzado: ajustes de red de Android</string>
+    <string name="net_close">Cerrar</string>
+
+    <string name="net_password_for">Contraseña de “%1$s”</string>
+    <string name="net_password_hint">De 8 a 63 caracteres</string>
+    <string name="net_show_password">Mostrar contraseña</string>
+    <string name="net_hide_password">Ocultar contraseña</string>
+    <string name="net_connect">Conectar</string>
+    <string name="net_cancel">Cancelar</string>
+    <string name="net_password_short">La contraseña necesita al menos 8 caracteres.</string>
+    <string name="net_hidden_name">Nombre de la red oculta</string>
+    <string name="net_next">Siguiente</string>
+    <string name="net_choose_security">¿Cómo está protegida “%1$s”?</string>
+    <string name="net_security_open">Abierta (sin contraseña)</string>
+    <string name="net_security_wpa2">WPA2 (contraseña)</string>
+    <string name="net_security_wpa3">WPA3 (contraseña)</string>
+
+    <string name="net_key_shift">Mayús</string>
+    <string name="net_key_symbols">#+=</string>
+    <string name="net_key_space">Espacio</string>
+    <string name="net_key_delete">Borrar</string>
+    <string name="net_key_clear">Vaciar</string>
+
+    <string name="net_result_connected">Conectada a “%1$s”.</string>
+    <string name="net_result_saved">“%1$s” guardada. La pantalla se conecta cuando es la red que debe usar.</string>
+    <string name="net_result_suggested">“%1$s” se ofreció a Android. Android puede pedir una vez, en esta pantalla, que se permitan las redes de VenueOS.</string>
+    <string name="net_result_waiting_approval">Esperando la confirmación de Android: permita las redes Wi-Fi de VenueOS cuando Android lo pida en esta pantalla.</string>
+    <string name="net_result_waiting_dialog">Esperando a que elija Guardar en el diálogo de Android.</string>
+    <string name="net_result_joining">Conectándose a “%1$s”… VenueOS la conserva solo cuando llega al servidor de VenueOS a través de ella.</string>
+    <string name="net_result_wrong_password">Android no aceptó la contraseña de “%1$s”.</string>
+    <string name="net_result_could_not_join">No se pudo conectar a “%1$s” (revise la contraseña y que esté al alcance). Sigue en %2$s.</string>
+    <string name="net_result_no_server">Se conectó a “%1$s” pero no pudo llegar al servidor de VenueOS a través de ella. Se volvió atrás: sigue en %2$s.</string>
+    <string name="net_result_declined">No se guardó: se eligió Cancelar en el diálogo de Android.</string>
+    <string name="net_result_alert">Ahora no: hay una alerta en esta pantalla.</string>
+    <string name="net_result_wifi_off">La Wi-Fi está desactivada en esta pantalla.</string>
+    <string name="net_result_name_taken">“%1$s” ya está guardada en esta pantalla por otra persona. VenueOS la deja como está.</string>
+    <string name="net_result_not_supported">Esta pantalla no puede conectarse a “%1$s” de esta forma.</string>
+    <string name="net_result_failed">No se pudo conectar a “%1$s”.</string>
+    <string name="net_previous_network">la red anterior</string>
+    <string name="net_previous_ethernet">el cable (Ethernet)</string>
+
+    <string name="wifi_card_title">Guardar red Wi-Fi</string>
+    <string name="wifi_card_body">Su panel de VenueOS pidió a esta pantalla guardar “%1$s”. Pulse OK en el control remoto (o toque Guardar red) y luego elija Guardar.</string>
+    <string name="wifi_card_save">Guardar red</string>
+    <string name="wifi_card_later">Ahora no</string>
+</resources>

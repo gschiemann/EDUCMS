@@ -210,6 +210,100 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
     expect(rtl.getByTestId('device-settings-old-android')).toHaveTextContent('Android API level 30');
   });
 
+  // ── Wi-Fi on every Android class (2026-10-23) ─────────────────────────
+
+  const legacy: DeviceSettingsView = {
+    ...READY,
+    desired: {},
+    report: {
+      schema: 1,
+      rev: 0,
+      sdk: 25,
+      cap: {
+        brightness: 'api-level', volume: 'api-level', screenOffTimeoutMs: 'api-level', attentiveTimeoutMs: 'api-level',
+        rotationLock: 'api-level', autoTime: 'api-level', autoTimeZone: 'api-level', ntpServer: 'api-level', wifi: 'ok',
+      },
+      obs: { wifi: { ssid: null, approval: 'approved' } },
+      wifi: { via: 'legacy', radio: true, dialog: false, wpa3: false },
+      net: { t: 'wifi', ok: true, ssid: 'Installer', bars: 3, ip: '192.168.1.20', auto: true },
+    },
+  };
+
+  it('an Android 7 screen gets Wi-Fi, says it joins with no one touching it, and one note for the rest', async () => {
+    renderSection(legacy);
+    await open();
+    expect(rtl.getByTestId('device-settings-older-android')).toHaveTextContent('API level 25');
+    expect(rtl.queryByTestId('device-setting-brightness')).not.toBeInTheDocument();
+    expect(rtl.getByTestId('device-setting-wifi-plan')).toHaveTextContent('Joins automatically — no one needs to touch the screen');
+    // No WPA3 below Android 10, and no "save permanently" (every network is saved there anyway).
+    expect(rtl.queryByRole('option', { name: 'WPA3' })).not.toBeInTheDocument();
+    expect(rtl.queryByLabelText(/Save it on the screen permanently/)).not.toBeInTheDocument();
+    expect(rtl.getByTestId('device-setting-wifi')).toHaveTextContent('Static IP, DNS, proxy and Ethernet stay installer settings');
+  });
+
+  it('shows the connection the screen reports: Wi-Fi name and signal, or the cable, or offline', async () => {
+    renderSection(legacy);
+    await open();
+    expect(rtl.getByTestId('device-network-status')).toHaveTextContent('Network: Wi-Fi “Installer” · signal 3/4 · address 192.168.1.20 · automatic address (DHCP)');
+  });
+
+  it('an Ethernet screen with a fixed address, and an offline one', async () => {
+    const wired = { ...legacy, report: { ...legacy.report!, net: { t: 'ethernet' as const, ok: false, ip: '10.0.0.12', auto: false, eth: true } } };
+    const { unmount } = renderSection(wired);
+    await open();
+    expect(rtl.getByTestId('device-network-status')).toHaveTextContent('Network: Ethernet cable · address 10.0.0.12 · fixed address');
+    expect(rtl.getByTestId('device-network-status')).toHaveTextContent('Android has not confirmed internet access');
+    unmount();
+    renderSection({ ...legacy, report: { ...legacy.report!, net: { t: 'none' as const } } });
+    await open();
+    expect(rtl.getByTestId('device-network-status')).toHaveTextContent('Network: not connected');
+  });
+
+  it('an Android 13 screen says the one-time tap, and "save permanently" switches to Android’s dialog', async () => {
+    const a13: DeviceSettingsView = {
+      ...READY,
+      report: {
+        ...READY.report!,
+        sdk: 33,
+        obs: { ...READY.report!.obs, wifi: { ssid: null, approval: 'pending' } },
+        wifi: { via: 'suggestion', radio: true, dialog: true, wpa3: true },
+      },
+    };
+    renderSection(a13);
+    await open();
+    expect(rtl.getByTestId('device-setting-wifi-plan')).toHaveTextContent('Needs one tap on the screen the first time');
+    const permanent = rtl.getByLabelText(/Save it on the screen permanently/) as HTMLInputElement;
+    fireEvent.click(permanent);
+    expect(rtl.getByTestId('device-setting-wifi-plan')).toHaveTextContent('someone presses OK on the remote');
+    fireEvent.change(rtl.getByLabelText('Network name'), { target: { value: 'Lobby' } });
+    fireEvent.change(rtl.getByLabelText('Password'), { target: { value: 'correct horse' } });
+    await act(async () => {
+      fireEvent.click(rtl.getAllByRole('button', { name: 'Save' }).pop()!);
+    });
+    const put = apiFetchMock.mock.calls.filter((c) => c[1]?.method === 'PUT').pop();
+    expect(JSON.parse(put![1].body)).toEqual({ wifi: { ssid: 'Lobby', security: 'wpa2', hidden: false, passphrase: 'correct horse', permanent: true } });
+  });
+
+  it('an Android 11 screen says Android never tells VenueOS about the approval', async () => {
+    const a11 = { ...legacy, report: { ...legacy.report!, sdk: 30, cap: { ...legacy.report!.cap, wifi: 'ok' as const }, obs: { wifi: { ssid: null, approval: 'unknown' as const } }, wifi: { via: 'suggestion' as const, radio: true, dialog: true, wpa3: true } } };
+    renderSection(a11);
+    await open();
+    expect(rtl.getByTestId('device-setting-wifi-plan')).toHaveTextContent('doesn’t tell VenueOS whether that happened');
+  });
+
+  it('a switch the screen undid says so, and Save is the way to try again', async () => {
+    const failed: DeviceSettingsView = {
+      ...legacy,
+      desired: { wifi: { value: { ssid: 'Lobby', security: 'wpa2', hidden: false, passphraseSaved: true }, id: 'r3', changedAt: 'x' } },
+      report: { ...legacy.report!, ack: { wifi: { id: 'r3', st: 'failed', n: 1, why: 'wifi-unreachable' } } },
+    };
+    renderSection(failed);
+    await open();
+    const row = rtl.getByTestId('device-setting-wifi');
+    expect(row).toHaveTextContent('couldn’t reach VenueOS over it — the screen went back to its previous network');
+    expect(row).toHaveTextContent('To try again, press Save.');
+  });
+
   it('a role that cannot read the settings sees nothing, not an error', async () => {
     renderSection(Object.assign(new Error('Forbidden'), { status: 403 }));
     fireEvent.click(rtl.getByRole('button', { name: /Android settings/ }));

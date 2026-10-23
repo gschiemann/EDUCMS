@@ -52,6 +52,8 @@ object DeviceSettings {
                 observed = DeviceSettingsFacts.forReport(DeviceSettingsProbe.observe(app)),
                 acks = acks,
                 load = runCatching { DeviceLoad.sample(app) }.getOrNull(),
+                wifi = runCatching { WifiSetup.facts(app) }.getOrNull(),
+                net = runCatching { NetworkStatus.read(app) }.getOrNull(),
             ),
         )
     } catch (t: Throwable) {
@@ -86,6 +88,8 @@ object DeviceSettings {
                 parsed.items
             }
         }
+        // A staged save dialog for a network the operator moved away from goes.
+        WifiSetup.reconcile(app, items.firstOrNull { it.key == DeviceSettingKey.WIFI }?.id)
         if (items.isEmpty()) return
 
         val capabilities = DeviceSettingsProbe.capabilities(app)
@@ -102,6 +106,39 @@ object DeviceSettings {
         // Say what happened now rather than on the next periodic tick (bounded
         // by PromptTickPolicy) — the operator is usually watching the drawer.
         if (changed) HeartbeatService.requestPromptTick(app, "device-settings")
+    }
+
+    /**
+     * Every heartbeat LOOP — whether or not the server answers (2026-10-23):
+     * a Wi-Fi switch left by a process that died, or by a reboot, is proved
+     * or undone; a save dialog nobody answered in time is recorded. Never
+     * throws; nothing to do costs one prefs read.
+     */
+    fun maintain(ctx: Context) {
+        runCatching { WifiSetup.maintain(ctx.applicationContext) }
+            .onFailure { PlayerLogger.w(TAG, "wifi maintenance failed: ${it.message}") }
+    }
+
+    /**
+     * A Wi-Fi switch for identity [id] was proved or undone on its own
+     * thread. Recorded only if [id] is still the desired Wi-Fi identity and
+     * its record is still the attempt that started it — the operator may have
+     * moved on meanwhile, and then there is nothing to say about [id].
+     */
+    @Synchronized
+    internal fun finishWifi(ctx: Context, id: String, outcome: DeviceSettingsPolicy.Outcome) {
+        val app = ctx.applicationContext
+        val store = DeviceSettingsStore(app)
+        val item = store.items().firstOrNull { it.key == DeviceSettingKey.WIFI }
+        val previous = store.ack(DeviceSettingKey.WIFI)
+        if (item == null || item.id != id || previous == null || previous.id != id) {
+            PlayerLogger.i(TAG, "wifi $id: switch finished, but the desired network changed — nothing recorded")
+            return
+        }
+        val ack = DeviceSettingsPolicy.afterApply(previous, outcome, null, System.currentTimeMillis())
+        store.commitAck(DeviceSettingKey.WIFI, ack)
+        PlayerLogger.i(TAG, "wifi $id: ${ack.status.wire}${ack.why?.let { " ($it)" } ?: ""}")
+        HeartbeatService.requestPromptTick(app, "wifi-switch")
     }
 
     private class Step(val changed: Boolean, val observedAfter: DeviceSettingsFacts.Observation?)
@@ -125,6 +162,8 @@ object DeviceSettings {
                 conditions = conditions,
                 nowElapsedMs = SystemClock.elapsedRealtime(),
                 boot = boot,
+                wifi = if (item.key == DeviceSettingKey.WIFI) runCatching { WifiSetup.progress(app) }.getOrNull() else null,
+                nowWallMs = System.currentTimeMillis(),
             ),
         )
         return when (decision) {

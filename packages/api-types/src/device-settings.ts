@@ -88,12 +88,43 @@ export const DEVICE_SETTING_WHY_CODES = [
   'wifi-invalid',
   'wifi-restricted',
   'wifi-error',
+  // Wi-Fi on every Android class (2026-10-23) — what actually happened.
+  // An older API drops a reason it does not know (the `why` catch below),
+  // so these are additive in both directions.
+  'wifi-joined',
+  'wifi-saved',
+  'wifi-suggested',
+  'wifi-approval',
+  'wifi-dialog',
+  'wifi-switching',
+  'wifi-off',
+  'wifi-declined',
+  'wifi-no-answer',
+  'wifi-no-dialog',
+  'wifi-unreachable',
+  'wifi-no-connect',
+  'wifi-exists',
+  'wifi-security',
 ] as const;
 export type DeviceSettingWhy = (typeof DEVICE_SETTING_WHY_CODES)[number];
 
 export const DEVICE_WIFI_SECURITY = ['open', 'wpa2', 'wpa3'] as const;
 export type DeviceWifiSecurity = (typeof DEVICE_WIFI_SECURITY)[number];
 export const DEVICE_WIFI_APPROVAL = ['approved', 'pending', 'rejected', 'unknown'] as const;
+
+/**
+ * How a unit puts a network on (2026-10-23), chosen by the unit from its
+ * Android version — never an operator setting: `legacy` = Android 9 and
+ * older, saved and joined silently (switched to only with proof, switched
+ * back otherwise); `suggestion` = Android 10+, a network suggestion Android
+ * approves once on the screen.
+ */
+export const DEVICE_WIFI_VIA = ['legacy', 'suggestion'] as const;
+export type DeviceWifiVia = (typeof DEVICE_WIFI_VIA)[number];
+
+/** The connection's kind, as the unit's `net` block says it. */
+export const DEVICE_NET_TRANSPORTS = ['wifi', 'ethernet', 'other', 'none'] as const;
+export type DeviceNetTransport = (typeof DEVICE_NET_TRANSPORTS)[number];
 
 // ─────────────────────────────────────────────────────────────────────
 // Value rules — the SAME rules the unit applies on its own side
@@ -178,6 +209,13 @@ export const DeviceWifiInputSchema = z
       .string()
       .refine(isValidWifiPassphrase, 'The Wi-Fi password must be 8–63 characters.')
       .optional(),
+    /**
+     * Save the network on the screen permanently through Android's own save
+     * dialog (Android 11+, where the unit reports `wifi.dialog`) — a person
+     * at the screen confirms it once. Android 9 and older save every network
+     * permanently anyway. Optional and additive: an older unit ignores it.
+     */
+    permanent: z.boolean().optional(),
   })
   .strict()
   .refine((w) => w.security !== 'open' || w.passphrase === undefined, {
@@ -260,6 +298,44 @@ export const DeviceLoadSchema = z.object({
 });
 export type DeviceLoad = z.infer<typeof DeviceLoadSchema>;
 
+/**
+ * How Wi-Fi works on the unit (2026-10-23) — facts the dashboard words its
+ * "what will happen" line from. Every field optional, and a malformed block
+ * is dropped rather than costing the report.
+ */
+export const DeviceWifiFactsSchema = z.object({
+  via: z.enum(DEVICE_WIFI_VIA).optional().catch(undefined),
+  /** The Wi-Fi radio is on. */
+  radio: z.boolean().optional(),
+  /** Android's save-network dialog opens on this unit. */
+  dialog: z.boolean().optional(),
+  /** The unit can join WPA3 networks. */
+  wpa3: z.boolean().optional(),
+  /** The unit is on VenueOS's network now (only where Android lets an app see it). */
+  joined: z.boolean().optional(),
+});
+export type DeviceWifiFacts = z.infer<typeof DeviceWifiFactsSchema>;
+
+/**
+ * The connection right now (2026-10-23): Wi-Fi (name — only where Android
+ * lets an app read it —, signal, address), Ethernet (cable, address,
+ * automatic or fixed), or none. Read-only facts.
+ */
+export const DeviceNetStatusSchema = z.object({
+  t: z.enum(DEVICE_NET_TRANSPORTS).catch('other'),
+  /** Android validated internet access on it. */
+  ok: z.boolean().optional(),
+  ssid: z.string().max(64).optional(),
+  rssi: z.number().int().min(-127).max(0).optional(),
+  bars: z.number().int().min(0).max(4).optional(),
+  ip: z.string().max(45).optional(),
+  /** true = automatic (DHCP), false = fixed; absent = Android does not say (below Android 11). */
+  auto: z.boolean().optional(),
+  /** An Ethernet cable is up (even while Wi-Fi carries the traffic). */
+  eth: z.boolean().optional(),
+});
+export type DeviceNetStatus = z.infer<typeof DeviceNetStatusSchema>;
+
 export const DeviceSettingsReportSchema = z.object({
   schema: z.literal(1),
   rev: z.number().int().min(0).max(2_147_483_647),
@@ -311,6 +387,9 @@ export const DeviceSettingsReportSchema = z.object({
     })
     .optional(),
   load: DeviceLoadSchema.optional(),
+  // 2026-10-23 — additive; a malformed block reads as absent, never as a broken report.
+  wifi: DeviceWifiFactsSchema.optional().catch(undefined),
+  net: DeviceNetStatusSchema.optional().catch(undefined),
 });
 export type DeviceSettingsReport = z.infer<typeof DeviceSettingsReportSchema>;
 
@@ -335,7 +414,14 @@ export type DeviceSettingDesiredValue =
   | number
   | boolean
   | string
-  | { ssid: string; security: DeviceWifiSecurity; hidden: boolean; passphraseSaved: boolean };
+  | {
+      ssid: string;
+      security: DeviceWifiSecurity;
+      hidden: boolean;
+      passphraseSaved: boolean;
+      /** Saved through Android's dialog on the screen (2026-10-23). Absent = false. */
+      permanent?: boolean;
+    };
 
 export interface DeviceSettingDesired {
   value: DeviceSettingDesiredValue;

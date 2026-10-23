@@ -51,7 +51,8 @@ object DeviceSettingsProbe {
                 hasWifi = safe { app.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI) } == true &&
                     wifi(app) != null,
                 canChangeWifi = granted(app, Manifest.permission.CHANGE_WIFI_STATE),
-                wifiApproval = wifiApproval(app),
+                wifiApproval = safe { WifiSetup.approval(app) } ?: DeviceSettingsFacts.WIFI_UNKNOWN,
+                wifiDialog = safe { WifiSetup.dialogAvailable(app) } ?: false,
             ),
         )
     }
@@ -117,26 +118,13 @@ object DeviceSettingsProbe {
             ntpServer = safe { Settings.Global.getString(cr, NTP_SERVER_KEY) ?: "" },
         )
 
-        if (Build.VERSION.SDK_INT >= DeviceSettingsFacts.MIN_SDK && wifi(app) != null) {
-            o = o.copy(
-                wifi = DeviceSettingsWire.WifiObserved(
-                    ssid = safe { Api33WifiSuggestions.ourSsid(app) },
-                    approval = wifiApproval(app),
-                ),
-            )
-        }
+        // Wi-Fi on every Android (2026-10-23): VenueOS's network and its approval.
+        safe { WifiSetup.observed(app) }?.let { o = o.copy(wifi = it) }
         return o
     }
 
     /** Android's `SCREEN_BRIGHTNESS` scale (same constant as SettingsBrightnessProvider's). */
     const val SETTINGS_BRIGHTNESS_MAX = 255
-
-    private fun wifiApproval(app: Context): String =
-        if (Build.VERSION.SDK_INT >= DeviceSettingsFacts.MIN_SDK) {
-            safe { Api33WifiSuggestions.approval(app) } ?: DeviceSettingsFacts.WIFI_UNKNOWN
-        } else {
-            DeviceSettingsFacts.WIFI_UNKNOWN
-        }
 
     internal fun audio(app: Context): AudioManager? =
         safe { app.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }

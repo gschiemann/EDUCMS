@@ -168,6 +168,13 @@ object NativeBridgeChannel {
         // trust-gated. THREE-FILE ATOMIC CHANGE: this array, the web's
         // NATIVE_VOID_METHODS, and the drift-guard canary count.
         "openSetupChecklist",
+        // 2026-10-23 — the Back menu's Network entry: VenueOS's own
+        // on-screen Network screen. Grants nothing; the Activity refuses it
+        // over an alert. THREE-FILE ATOMIC CHANGE: this array, the dispatch
+        // arm below, the web's NATIVE_VOID_METHODS (kept OUT of the web's
+        // KNOWN_METHODS until the fleet floor includes this APK) and the
+        // drift-guard canary count.
+        "openNetworkScreen",
         // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ────────
         // The three facts the native side cannot observe for itself. An
         // HTTP 200 plus `onPageFinished` is satisfied perfectly by a
@@ -659,6 +666,7 @@ object NativeBridgeChannel {
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(bridge.channelNonce()); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
+            "openNetworkScreen" -> { bridge.openNetworkScreen(); null }
             // 2026-09-02 (P0-2). No arguments to validate on the first two —
             // their whole content is "this happened, now". The third carries
             // a JSON verdict that degrades inside the handler (an
