@@ -209,7 +209,7 @@ class OtaAttemptPolicyTest {
     fun `the install receiver records our own outcome and only ours`() {
         val receiver = source("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
         assertTrue(receiver.contains("intent.getIntExtra(EXTRA_SELF_OTA_VERSION_CODE, 0)"))
-        assertTrue(receiver.contains("recordSelfOtaOutcome(context, selfOtaVc, status)"))
+        assertTrue(receiver.contains("recordSelfOtaOutcome(context, selfOtaVc, status, intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false))"))
         assertTrue("NEEDS_TAP comes from PENDING_USER_ACTION", receiver.contains("OtaAttemptPolicy.Outcome.NEEDS_TAP to \"NEEDS_TAP\""))
         val worker = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
         assertTrue(

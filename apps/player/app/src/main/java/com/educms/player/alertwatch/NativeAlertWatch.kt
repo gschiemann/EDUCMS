@@ -281,17 +281,23 @@ object NativeAlertWatch {
             val targets = ArrayList<WatchTarget>()
             if (prefs != null) {
                 // The canonical primary store — READ ONLY (player rule 3).
-                //
-                // ⚠️ PRIMARY ONLY (1.1.22). A double-sided unit's back side has
-                // its own screen row and its own manifest, and is NOT watched
-                // here: an alert scoped to the back side alone cannot wake the
-                // unit while its panel is off. A tenant-wide alert, or one that
-                // includes the front, does. The policy and the engine are
-                // already per-face; what is missing is this list and a reload
-                // path for a face.
                 NativeAlertWatchPolicy.targetOf(
                     DisplayEmergency.PRIMARY_FACE,
                     runCatching { prefs.getString(KEY_DEVICE_TOKEN, null) }.getOrNull(),
+                )?.let { targets.add(it) }
+            }
+            // 1.1.51 — EVERY FACE THAT HOLDS A TOKEN, primary first. Until now
+            // only the primary's manifest was watched: a double-sided unit's
+            // back side has its own screen row and its own manifest, so an
+            // alert scoped to the back side alone could not wake the unit
+            // while its panel was off, and an unattended back face presenting
+            // natively (no page lease) was refused by the engine ("the
+            // primary's alone"). The per-face token store is READ ONLY here
+            // (rule 3); the policy and the engine were already per-face.
+            for (face in 1 until com.educms.player.face.FaceDisplayMap.MAX_FACES) {
+                NativeAlertWatchPolicy.targetOf(
+                    face,
+                    runCatching { com.educms.player.face.FaceTokenStore.read(app, face) }.getOrNull(),
                 )?.let { targets.add(it) }
             }
             // The facts only — whether they add up to "may poll" is

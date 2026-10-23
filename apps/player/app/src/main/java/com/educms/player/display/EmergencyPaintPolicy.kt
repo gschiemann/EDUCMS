@@ -63,9 +63,62 @@ internal object EmergencyPaintPolicy {
         nowMs - e.startedAtMs >= FINISH_AT_MS && (e.status == "painted" || e.step == 4) &&
             if (launch) e.legacyLaunches < 6 else e.legacyReloads < 3
 
-    /** A vendor wake failure must not skip the remaining immediate drawing work. */
-    fun bestEffort(wake: () -> Unit, draw: () -> Unit, failed: (Throwable) -> Unit) {
-        try { wake() } catch (t: Throwable) { failed(t) }
+    /**
+     * How long the hold path waits for a vendor WAKE provider before it goes on
+     * without it (1.1.51). A provider that BLOCKS in a binder/kernel call (not
+     * one that throws) used to run synchronously under the hold lock on the
+     * bridge thread, where the page's own paint receipts queue behind it.
+     */
+    const val WAKE_BUDGET_MS = 2_000L
+
+    /**
+     * A vendor wake failure must not skip the remaining immediate drawing work,
+     * and a vendor wake that HANGS must not delay it either: [wake] runs on its
+     * own daemon thread and is given [wakeBudgetMs]; past that the drawing goes
+     * ahead while the wake finishes (or never does) in the background. A throw
+     * inside the wake is reported through [failed] exactly as before.
+     */
+    fun bestEffort(
+        wake: () -> Unit,
+        draw: () -> Unit,
+        failed: (Throwable) -> Unit,
+        wakeBudgetMs: Long = WAKE_BUDGET_MS,
+        timedOut: (Long) -> Unit = {},
+    ) {
+        val waker = Thread({
+            try { wake() } catch (t: Throwable) { runCatching { failed(t) } }
+        }, "emergency-registry-wake").apply { isDaemon = true }
+        try {
+            waker.start()
+            waker.join(wakeBudgetMs.coerceAtLeast(1L))
+            if (waker.isAlive) runCatching { timedOut(wakeBudgetMs) }
+        } catch (t: Throwable) {
+            // The thread could not even start (an exhausted ROM): run it inline, bounded by nothing but the try.
+            runCatching { failed(t) }
+            try { wake() } catch (w: Throwable) { runCatching { failed(w) } }
+        }
         try { draw() } catch (t: Throwable) { failed(t) }
+    }
+
+    /**
+     * Is the WebView's background opaque, as far as a View can tell (1.1.51)?
+     *
+     * `WebView.setBackgroundColor` hands the colour to the Chromium provider and
+     * does NOT set the View's background drawable, so on every real WebView the
+     * drawable is null — and the previous acceptance rule (`background?.alpha ==
+     * 255`) could never be satisfied: no paint was ever accepted natively, and
+     * every alert climbed the ladder to a reload and a relaunch (steps 3–4)
+     * before ending "unconfirmed". A null drawable means the WebView paints its
+     * own base layer (black, which the host sets) — that is opaque. A drawable
+     * that IS present must itself be opaque.
+     *
+     * @param hasDrawable whether `View.background` is non-null
+     * @param drawableAlpha that drawable's `alpha` (0–255) when present
+     * @param colorAlpha the alpha of a `ColorDrawable`'s colour when it is one (0–255)
+     */
+    fun opaqueBackground(hasDrawable: Boolean, drawableAlpha: Int?, colorAlpha: Int?): Boolean {
+        if (!hasDrawable) return true
+        if (drawableAlpha == null || drawableAlpha < 255) return false
+        return colorAlpha == null || colorAlpha >= 255
     }
 }

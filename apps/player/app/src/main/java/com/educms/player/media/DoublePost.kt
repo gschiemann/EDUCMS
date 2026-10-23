@@ -40,6 +40,27 @@ internal object DoublePost {
     const val ALWAYS = "fixed-source-always"
     const val REFUSED = "refused"
 
+    /**
+     * 1.1.51 — the decision is NEVER invisible. The M43 (1.1.50) reported
+     * `requested.doublePost: true` with no `doublePost` anywhere in `applied`
+     * or the timing snapshot: the session wrote its verdict only into
+     * `timing.doublePost`, which the page's reader and the API's strict schema
+     * both dropped, and `applied` never carried it. Every path now records a
+     * code on the session (`doublePostResult`, reported as
+     * `experiments.applied.doublePost`): the verdicts above, or one of these.
+     */
+    /** Scheduled; the grid is still being measured. */
+    const val PENDING = "pending"
+    /** The process-wide fault guard has this experiment off. */
+    const val GUARD_DISABLED = "guard-disabled"
+    /** The session ended before the decision ran. */
+    const val SESSION_ENDED = "session-ended"
+    /** The session has no surface to vote on. */
+    const val NO_SURFACE = "no-surface"
+
+    /** Every code this experiment can report, each a `[a-z0-9-]` token the API's `code()` accepts. */
+    val CODES: Set<String> = setOf(APPLY, OFF, SDK, HELD, NO_RATE, NOT_DOUBLE, ALWAYS, REFUSED, PENDING, GUARD_DISABLED, SESSION_ENDED, NO_SURFACE)
+
     /** Relative tolerance on "grid ≈ 2 × fps" (60 vs 59.94, 29.97 …). */
     const val TOLERANCE = 0.04
 

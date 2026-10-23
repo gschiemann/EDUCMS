@@ -69,6 +69,8 @@ internal class FaceVideoSession(
     var predecessor: FaceVideoSession? = null
     /** v4: how long this session's last frame was held on the glass for its successor (ledgered, §3.3). */
     var heldFrameMs = 0L
+    /** 1.1.51: this session started from the persisted last authenticated selection because the API was unreachable. */
+    @Volatile var offlineStart = false
     /** The stable reason this session may not run on this box, decided before any work; null = it may. */
     val refusal: String? = policy.refusal(protocol, face)
     /** ONE COMPOSITING CONTRACT: above the window — a solo dynamic (R+) or static (24–29), a slot always static; a refused session never uses it. */
@@ -118,6 +120,8 @@ internal class FaceVideoSession(
     var frameRateRequested: String? = null
     /** 1.1.49 experiment `doublePost` (dark): what was decided, requested and observed ([DoublePost]); null = not on. */
     var doublePost: JSONObject? = null
+    /** 1.1.51: the one-word verdict of [doublePost], reported as `experiments.applied.doublePost`; null = the token was not on. */
+    @Volatile var doublePostResult: String? = null
     /** 1.1.42 — the display this session attached to, every mode it offers (flag or not), and experiments 4 / 5. */
     var supportedModes: List<String> = emptyList()
     var activeModeAtAttach = ""
@@ -392,15 +396,48 @@ internal object FaceVideoBox {
         return session
     }
 
-    /** THIS face's own authenticated manifest must name exactly what the page asked for. */
+    /**
+     * THIS face's own authenticated manifest must name exactly what the page asked for.
+     *
+     * 1.1.51 (Astra P1) — when the LIVE read fails because the API cannot be REACHED (never
+     * because the credential or the screen was refused), a solo session may start from the
+     * face's persisted LAST AUTHENTICATED SELECTION against the verified disk copy, emergency
+     * first (OfflineSelection). Every successful live read persists that selection.
+     */
     private fun select(host: SharedVideoHost, s: FaceVideoSession): FaceVideoDescriptor {
-        val manifest = SharedVideoSource(host.ctx).manifest(host.face, s.screenId)
+        val manifest = try {
+            SharedVideoSource(host.ctx).manifest(host.face, s.screenId)
+        } catch (e: Exception) {
+            if (s.zone != null || !OfflineSelection.unreachable(e)) throw e
+            val saved = OfflineSelection.decode(host.ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("selection.${host.face}", null))
+            val token = FaceTokenStore.read(host.ctx, host.face)
+            val out = OfflineSelection.accept(saved, host.face, NativeAlertWatchPolicy.screenIdOf(token), s.request!!,
+                DisplayEmergency.isHeld(host.ctx))
+            val d = out.descriptor
+            if (d == null) {
+                PlayerLogger.w("FaceVideoBox", "face ${host.face}: manifest unreachable (${FaceVideoReasons.code(e, "manifest-unreachable")}) and no usable saved selection (${out.reason})")
+                throw e
+            }
+            if (!s.offlineStart) {
+                s.offlineStart = true
+                PlayerLogger.e("FaceVideoBox", "PLAYER_NATIVE_OFFLINE_START face=${host.face} sha=${d.sha256.take(12)} — the manifest could not be read " +
+                    "(${FaceVideoReasons.code(e, "manifest-unreachable")}); starting from the persisted last authenticated selection on the verified disk copy")
+            }
+            // A cached selection teaches the face nothing (no learnSwitch) and never touches the hold.
+            return d
+        }
         val zone = s.zone
         if (zone == null) {
-            val d = FaceVideoDescriptor.parse(manifest.getJSONObject("nativeVideo"))
+            val raw = manifest.getJSONObject("nativeVideo")
+            val d = FaceVideoDescriptor.parse(raw)
             require(d.faceIndex == host.face && d.matches(s.request!!)) { "selection-changed" }
-            // Every authenticated read teaches the face its native-first enrolment (§8.1).
+            // Every authenticated read teaches the face its native-first enrolment (§8.1) …
             learnSwitch(host.ctx, host.face, d.nativeFirst)
+            // … and is remembered as the face's last authenticated selection (offline start).
+            runCatching {
+                host.ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("selection.${host.face}", OfflineSelection.encode(host.face, s.screenId, raw, System.currentTimeMillis())).apply()
+            }
             return d
         }
         val items = FaceVideoItems.parse(manifest.getJSONObject("nativeVideoItems"))
@@ -645,9 +682,19 @@ internal object FaceVideoBox {
                 }
             }
             // 1.1.49 experiment `doublePost` (dark): decided once the Choreographer grid is measured.
-            if (d.experiments.doublePost && experiments.allows(NativeVideoExperiments.DOUBLE_POST)) {
-                val g = grid; val fps = d.fps
-                main.postDelayed({ applyDoublePost(host, s, sv, fps, g) }, DOUBLE_POST_DECIDE_MS)
+            // 1.1.51: the verdict is recorded on EVERY path (pending now, the decision later, the guard's
+            // refusal here) and the delayed decision resolves the session's CURRENT host and surface.
+            if (d.experiments.doublePost) {
+                if (experiments.allows(NativeVideoExperiments.DOUBLE_POST)) {
+                    s.doublePostResult = DoublePost.PENDING
+                    s.doublePost = JSONObject().put("mode", DoublePost.PENDING).put("applied", false)
+                    val g = grid; val fps = d.fps
+                    main.postDelayed({ applyDoublePost(s, sv, fps, g) }, DOUBLE_POST_DECIDE_MS)
+                } else {
+                    s.doublePostResult = DoublePost.GUARD_DISABLED
+                    s.doublePost = JSONObject().put("mode", DoublePost.GUARD_DISABLED).put("applied", false)
+                    PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost result=${DoublePost.GUARD_DISABLED} guard=${experiments.disabledReason(NativeVideoExperiments.DOUBLE_POST)} sha=${s.sha256.take(8)}")
+                }
             }
         }
         // Every callback resolves the session's CURRENT host (a v4 session may be re-homed, §4.2).
@@ -706,10 +753,28 @@ internal object FaceVideoBox {
      * (API 31+) so the composition matches the panel's scan. Never under an emergency hold; the
      * vote dies with the surface. What the display reports afterwards is recorded on the report.
      */
-    private fun applyDoublePost(host: SharedVideoHost, s: FaceVideoSession, sv: SurfaceView, fps: Double, grid: VsyncGrid?) {
+    private fun applyDoublePost(s: FaceVideoSession, scheduledOn: SurfaceView, fps: Double, grid: VsyncGrid?) {
         val applied: Boolean
+        val host: SharedVideoHost
+        val sv: SurfaceView
         synchronized(this) {
-            if (!live(host, s) || s.surface !== sv) return
+            // Every callback resolves the session's CURRENT host (a v4 session may be re-homed, §4.2) —
+            // the captured one used to make this return silently after a re-home, with nothing recorded.
+            host = s.host
+            if (!live(host, s)) {
+                s.doublePostResult = DoublePost.SESSION_ENDED
+                s.doublePost = JSONObject().put("mode", DoublePost.SESSION_ENDED).put("applied", false)
+                return
+            }
+            val current = s.surface
+            if (current == null) {
+                s.doublePostResult = DoublePost.NO_SURFACE
+                s.doublePost = JSONObject().put("mode", DoublePost.NO_SURFACE).put("applied", false)
+                PlayerLogger.w("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost result=${DoublePost.NO_SURFACE} sha=${s.sha256.take(8)}")
+                return
+            }
+            sv = current
+            if (sv !== scheduledOn) PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost note=surface-replaced-voting-on-current sha=${s.sha256.take(8)}")
             val held = DisplayEmergency.isHeld(host.ctx)
             val nominal = sv.display?.refreshRate ?: 0f
             val gridHz = DoublePost.gridHz(grid ?: vsync.estimator.takeIf { vsync.active }, nominal)
@@ -718,9 +783,11 @@ internal object FaceVideoBox {
                 Api31DoublePost.request(sv.holder.surface, fps.toFloat()) else verdict
             applied = result == DoublePost.ALWAYS
             if (applied) experiments.applied(NativeVideoExperiments.DOUBLE_POST)
+            s.doublePostResult = result
             s.doublePost = JSONObject().put("mode", result).put("applied", applied)
                 .put("gridHzBefore", Math.round(gridHz * 100.0) / 100.0).put("refreshRateBefore", nominal.toDouble())
-                .put("displayModeBefore", displayModeOf(sv))
+            // An unreadable mode is OMITTED (the API's `displayMode()` shape refuses an empty string).
+            displayModeOf(sv).takeIf { it.isNotEmpty() }?.let { s.doublePost?.put("displayModeBefore", it) }
             PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost result=$result fps=$fps grid=${String.format(Locale.ROOT, "%.2f", gridHz)} refresh=$nominal displayMode=${displayModeOf(sv)} sha=${s.sha256.take(8)}")
         }
         if (!applied) return
@@ -729,8 +796,8 @@ internal object FaceVideoBox {
                 if (!live(host, s) || s.surface !== sv) return@postDelayed
                 val after = sv.display?.refreshRate ?: 0f
                 val gridAfter = DoublePost.gridHz(grid ?: vsync.estimator.takeIf { vsync.active }, after)
-                s.doublePost?.put("refreshRate", after.toDouble())?.put("displayMode", displayModeOf(sv))
-                    ?.put("gridHzAfter", Math.round(gridAfter * 100.0) / 100.0)
+                s.doublePost?.put("refreshRate", after.toDouble())?.put("gridHzAfter", Math.round(gridAfter * 100.0) / 100.0)
+                displayModeOf(sv).takeIf { it.isNotEmpty() }?.let { s.doublePost?.put("displayMode", it) }
                 PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_EXPERIMENT face=${host.face} name=doublePost observed refresh=$after grid=${String.format(Locale.ROOT, "%.2f", gridAfter)} displayMode=${displayModeOf(sv)} modes=${s.supportedModes.joinToString("|")} sha=${s.sha256.take(8)}")
             }
         }, DOUBLE_POST_OBSERVE_MS)
@@ -1559,7 +1626,9 @@ internal object FaceVideoBox {
                 .put("applied", JSONObject().put(NativeVideoExperiments.WEBVIEW_INVISIBLE, s.webHidden)
                     .put(NativeVideoExperiments.SURFACE_FRAME_RATE, s.frameRateRequested ?: JSONObject.NULL)
                     .put(NativeVideoExperiments.VSYNC_SNAP, s.vsyncSnapped)
-                    .put(NativeVideoExperiments.PREFER_60HZ, s.preferredModeResult ?: JSONObject.NULL))
+                    .put(NativeVideoExperiments.PREFER_60HZ, s.preferredModeResult ?: JSONObject.NULL)
+                    // 1.1.51: the double-post verdict, so a requested token is never silently unanswered.
+                    .put(NativeVideoExperiments.DOUBLE_POST, s.doublePostResult ?: JSONObject.NULL))
                 .put("guard", experiments.toJson()))
         }
         return j
@@ -1782,7 +1851,7 @@ internal object FaceVideoBox {
             true
         }
         // The store answers OUTSIDE this monitor (its own locks never nest inside ours).
-        if (wrote) j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: NoopContentStore.stateBlock())
+        if (wrote) j.put("store", runCatching { ContentStorePort.store.stateBlock() }.getOrNull() ?: com.educms.player.store.NoopContentStore.stateBlock())
     }
 
     /** Under the monitor: the intent as the page reads it, with what the app is doing about it. */

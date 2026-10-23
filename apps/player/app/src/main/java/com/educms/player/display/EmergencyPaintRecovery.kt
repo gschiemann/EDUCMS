@@ -123,8 +123,15 @@ object EmergencyPaintRecovery {
                 if (face !in DisplayEmergency.holdingFaces(ctx)) return@receipt
                 val host = synchronized(lock) { hosts[face] } ?: return@receipt
                 val web = host.web.get() ?: return@receipt
+                // 1.1.51 — `setBackgroundColor` never sets a WebView's background DRAWABLE, so a null
+                // drawable is the normal opaque case (EmergencyPaintPolicy.opaqueBackground).
+                val bg = web.background
                 val visible = web.isAttachedToWindow && web.isShown && web.visibility == View.VISIBLE && web.alpha >= .99f &&
-                    web.width > 0 && web.height > 0 && web.background?.alpha == 255
+                    web.width > 0 && web.height > 0 && EmergencyPaintPolicy.opaqueBackground(
+                        hasDrawable = bg != null,
+                        drawableAlpha = bg?.alpha,
+                        colorAlpha = (bg as? android.graphics.drawable.ColorDrawable)?.let { Color.alpha(it.color) },
+                    )
                 val nativeClear = com.educms.player.media.FaceVideoBox.emergencyOutputClear(face)
                 val interactive = (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
                 synchronized(lock) {

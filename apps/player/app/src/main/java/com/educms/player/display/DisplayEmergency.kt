@@ -584,6 +584,11 @@ object DisplayEmergency {
         // Capture what the operator had configured BEFORE we drive to
         // full, so the release path can put it back.
         DisplayPrefs.setPreHoldBrightnessPercent(app, DisplayPrefs.brightnessPercent(app))
+        // 1.1.51 — and whether it was BLANKED (dashboard Turn off / hard BLANK),
+        // so the all-clear can put a screen that was off back to off
+        // (RestoreBlankAfterAlertPolicy). Snapshot once per alert, like the
+        // brightness: enforceNow drives the mirror to false right after this.
+        DisplayPrefs.setPreHoldBlanked(app, DisplayPrefs.blanked(app))
         PlayerLogger.e(
             TAG,
             "EMERGENCY HOLD ENGAGED by face $face — blank/dim/reboot are refused until all-clear",
@@ -649,7 +654,45 @@ object DisplayEmergency {
         // alert (the registry also refuses every blank while one is held).
         runCatching { com.educms.player.standby.UserStandby.restoreAfterAlertIfDue(app) }
             .onFailure { PlayerLogger.w(TAG, "post-release standby restore failed: ${it.message}") }
+
+        // (g) 1.1.51 — a screen WE had blanked (dashboard Turn off / hard BLANK)
+        // goes back to blank. Last of all, after (e) and (f) have had their say,
+        // on the committed release only (RestoreBlankAfterAlertPolicy).
+        runCatching { restoreBlankIfDue(app) }
+            .onFailure { PlayerLogger.w(TAG, "post-release blank restore failed: ${it.message}") }
         return persisted
+    }
+
+    private fun restoreBlankIfDue(app: Context) {
+        val pre = DisplayPrefs.preHoldBlanked(app)
+        val wakeCmd = DisplayPrefs.wakeCommandDuringHold(app)
+        // One-shot: the snapshot is consumed whatever the decision.
+        DisplayPrefs.setPreHoldBlanked(app, null)
+        if (pre == null) return
+        val desiredOn = runCatching {
+            DisplayScheduleMath.desiredOnAt(DisplayConfigStore.load(app).schedules, System.currentTimeMillis())
+        }.getOrNull()
+        val decision = RestoreBlankAfterAlertPolicy.decide(
+            preHoldBlanked = pre,
+            blankedNow = DisplayPrefs.blanked(app),
+            hardScheduleDesiredOn = desiredOn,
+            wakeCommandDuringAlert = wakeCmd,
+            stillHeld = isHeld(app),
+        )
+        if (decision != RestoreBlankAfterAlertPolicy.Decision.RESTORE_BLANK) {
+            if (pre) PlayerLogger.i(TAG, "all-clear: the screen was blanked before the alert but is not put back — $decision")
+            return
+        }
+        PlayerLogger.i(TAG, "all-clear: the screen was blanked before the alert — putting it back to blank")
+        // Ours, recorded BEFORE the provider runs, so the screen-off it causes
+        // is never read as a person's remote (the registry does this too).
+        com.educms.player.standby.UserStandby.noteOwnBlank()
+        val result = DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null, allowProvider = { id ->
+            // Never a latch-prone lock on hardware where one has latched: the
+            // next alert must still be able to wake this panel.
+            com.educms.player.standby.RestoreBlankPolicy.allows(id, android.os.Build.VERSION.SDK_INT, android.os.Build.MODEL)
+        })
+        if (!result.ok) PlayerLogger.w(TAG, "all-clear: could not put the screen back to blank ($result) — leaving it on")
     }
 
     /**
@@ -756,7 +799,13 @@ object DisplayEmergency {
                     revertAfterMs = null,
                 )
             }
-        }, failed = { PlayerLogger.e(TAG, "emergency wake/brightness through the registry failed; alert recovery continues", it) })
+        }, failed = { PlayerLogger.e(TAG, "emergency wake/brightness through the registry failed; alert recovery continues", it) },
+            timedOut = { budget ->
+                // 1.1.51 — a vendor wake that blocks (not throws) no longer holds the hold path, the
+                // hold lock or the bridge thread: the drawing goes ahead; the wake finishes in the background.
+                if (steps) EmergencyBrightness.step("registry-wake-timeout", "budgetMs=$budget", durable = true)
+                PlayerLogger.e(TAG, "emergency registry wake did not return within ${budget}ms — continuing without it")
+            })
 
         if (deferHardware) {
             // ⚠️ 2026-10-12 — THE HARDWARE WRITE WAITS FOR A SETTLED PANEL

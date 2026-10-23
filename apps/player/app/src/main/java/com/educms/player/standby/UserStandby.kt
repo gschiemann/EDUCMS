@@ -318,6 +318,15 @@ object UserStandby {
     fun noteDeliberateWake(ctx: Context) {
         if (ownWakeDepth.get()!! > 0) return
         val app = ctx.applicationContext
+        // 1.1.51 — the same "last command wins" for a screen WE had blanked
+        // before the alert (RestoreBlankAfterAlertPolicy): a wake command during
+        // the hold means the pre-hold blank is not put back. Own wakes (the
+        // alert's, the standby-end's, the restore's) returned above.
+        runCatching {
+            if (com.educms.player.display.DisplayEmergency.isHeld(app)) {
+                com.educms.player.display.DisplayPrefs.noteWakeCommandDuringHold(app)
+            }
+        }
         val p = prefs(app)
         if (!p.contains(KEY_INT_AT_ELAPSED)) return
         runCatching {

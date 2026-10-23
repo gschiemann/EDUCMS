@@ -175,7 +175,7 @@ class NativeAlertWatchEngine(private val ports: Ports) {
         val plan = if (interactive && unattended.isEmpty()) null else ports.plan()
         val watchable = plan?.targets.orEmpty().filter { !interactive || it.face in unattended }
         val refusal = if (interactive && unattended.isNotEmpty() && plan?.targets.orEmpty().isNotEmpty() && watchable.isEmpty()) {
-            "a face is unattended, but its manifest is not one the native watch reads (the primary's alone); the page owns the rest"
+            "a face is unattended, but it holds no device token the native watch can read its manifest with; the page owns the rest"
         } else NativeAlertWatchPolicy.pollRefusal(
             panelInteractive = interactive,
             apiRoot = plan?.apiRoot,

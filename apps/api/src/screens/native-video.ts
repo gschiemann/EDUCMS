@@ -345,6 +345,42 @@ export function nativeFirstFor(
 }
 
 /**
+ * THE CONTENT STORE's own switch (player 1.1.51, `PLAYER_CONTENT_STORE`). The
+ * APK's one verified content store (`store/ContentStore.kt`) is wired in 1.1.51
+ * and ships DARK: it adopts and downloads only for a face whose descriptor
+ * carries BOTH `nativeFirst: true` and `store: true`. Native-first alone is
+ * true across the launch fleet, so this second key is what keeps the store off
+ * the fleet until a screen is named here. Grammar: unset / empty → nobody
+ * (no key), `all`, `<screen uuid>`, `-<uuid>` (wins), `off`/`0`/`false`/`no`
+ * (wins over everything). Carried OUTSIDE `revision` like `nativeFirst`.
+ */
+export function contentStoreFor(
+  screen: { id: string },
+  env: Record<string, string | undefined> = process.env,
+): boolean | null {
+  const id = String(screen?.id ?? '').toLowerCase();
+  if (!UUID_RE.test(id)) return null;
+  const raw = (env.PLAYER_CONTENT_STORE ?? '').trim();
+  if (!raw) return null;
+  let all = false;
+  let off = false;
+  const ids = new Set<string>();
+  const exclude = new Set<string>();
+  for (const t0 of raw.split(',')) {
+    const t = t0.trim().toLowerCase();
+    if (!t) continue;
+    const negative = t.startsWith('-');
+    const body = negative ? t.slice(1).trim() : t;
+    if (!negative && ['off', '0', 'false', 'no'].includes(body)) off = true;
+    else if (!negative && body === 'all') all = true;
+    else if (UUID_RE.test(body)) (negative ? exclude : ids).add(body);
+  }
+  if (off || exclude.has(id)) return false;
+  if (all || ids.has(id)) return true;
+  return null;
+}
+
+/**
  * Is this screen enrolled? `hasBackFace` is asked ONLY when the answer turns
  * on it (a primary under `faces`), so the single-sided fleet pays no query.
  */
@@ -472,6 +508,8 @@ export function buildNativeVideoDescriptor(input: {
   // Native-first (§8.1): outside the revision too — a flip never restarts a
   // presenting session; absent when the env names nobody (class default).
   const nativeFirst = nativeFirstFor(s as { id: string }, env);
+  // 1.1.51 — the content store's own key, same posture (outside the revision, absent when unnamed).
+  const store = contentStoreFor(s as { id: string }, env);
   return {
     version: 2,
     screenId: s.id,
@@ -482,5 +520,6 @@ export function buildNativeVideoDescriptor(input: {
     transform,
     ...(experiments ? { experiments } : {}),
     ...(nativeFirst !== null ? { nativeFirst } : {}),
+    ...(store !== null ? { store } : {}),
   };
 }

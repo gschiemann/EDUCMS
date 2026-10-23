@@ -41,6 +41,10 @@ class NativeAlertWatchEngineTest {
 
         /** What the server would answer right now. */
         var serverAlert = false
+        /** 1.1.51 — per-face answers (a back-side-only alert); null = [serverAlert] for every face. */
+        var alertFaces: Set<Int>? = null
+        val fetchFaces = ArrayList<Int>()
+        val raiseFaces = ArrayList<Int>()
         var serverFails: PollOutcome? = null
         private var etagSeq = 0
         private var currentEtag = "etag-0"
@@ -76,9 +80,15 @@ class NativeAlertWatchEngineTest {
 
         override fun fetchManifest(target: WatchTarget, ifNoneMatch: String?): PollOutcome {
             fetchAt.add(now)
+            fetchFaces.add(target.face)
             conditional.add(ifNoneMatch != null)
             duringFetch?.invoke()
             serverFails?.let { return it.copy(sentEtag = ifNoneMatch) }
+            alertFaces?.let { faces ->
+                val alert = target.face in faces
+                return PollOutcome(200, if (alert) ManifestScan.ALERT else ManifestScan.NO_ALERT,
+                    etag = if (alert) null else "etag-face-${target.face}", sentEtag = ifNoneMatch)
+            }
             if (serverAlert != etagAlert) {
                 etagAlert = serverAlert
                 currentEtag = "etag-${++etagSeq}"
@@ -98,6 +108,7 @@ class NativeAlertWatchEngineTest {
         override fun raise(face: Int, firstForThisAlert: Boolean) {
             held = true
             raiseAt.add(now)
+            raiseFaces.add(face)
             events.add(if (firstForThisAlert) "raise" else "re-raise")
         }
 
@@ -442,6 +453,48 @@ class NativeAlertWatchEngineTest {
         // The existing escalation brought a page back — bounded.
         assertTrue(sim.reloadAt.size in 1..NativeAlertWatchPolicy.MAX_RELOADS_PER_ALERT)
         sim.reloadAt.zipWithNext().forEach { (a, b) -> assertTrue(b - a >= NativeAlertWatchPolicy.RELOAD_MIN_GAP_MS) }
+    }
+
+    // ─── 1.1.51 — the back face of a double-sided unit is watched too ──
+
+    private val back = NativeAlertWatchPolicy.targetOf(1, jwt())!!
+
+    @Test
+    fun `PANEL OFF — an alert scoped to the BACK face alone is raised natively, credited to that face`() {
+        val sim = Sim().apply { targets = listOf(primary, back); alertFaces = emptySet() }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 20_000L)
+        assertTrue("both faces are polled while the panel is dark", sim.fetchFaces.contains(0) && sim.fetchFaces.contains(1))
+        sim.alertFaces = setOf(1)
+        val triggeredAt = sim.now
+        run(sim, engine, triggeredAt + 16_000L)
+        assertTrue("the back-face alert raised the hold within one poll", sim.raiseAt.isNotEmpty() && sim.raiseAt[0] - triggeredAt <= NativeAlertWatchPolicy.POLL_INTERVAL_MS)
+        assertEquals("credited to face 1, never the primary", listOf(1), sim.raiseFaces.distinct())
+        assertTrue(sim.held)
+    }
+
+    @Test
+    fun `PANEL ON — an unattended BACK face is polled on its own manifest while the attended primary is left to its page`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; targets = listOf(primary, back); unattended = mapOf(1 to 0L); alertFaces = emptySet() }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 19_000L)
+        assertEquals(listOf(3_000L, 8_000L, 13_000L, 18_000L), sim.fetchAt)
+        assertEquals("only the unattended face's manifest is read", setOf(1), sim.fetchFaces.toSet())
+        assertFalse("a lit panel with a watchable face never logs the old primary-only refusal", sim.logs.any { it.contains("holds no device token") })
+        sim.alertFaces = setOf(1)
+        val triggeredAt = sim.now
+        run(sim, engine, triggeredAt + 6_000L)
+        assertTrue(sim.raiseAt.isNotEmpty() && sim.raiseAt[0] - triggeredAt <= NativeAlertWatchPolicy.UNATTENDED_POLL_INTERVAL_MS)
+        assertEquals(listOf(1), sim.raiseFaces.distinct())
+    }
+
+    @Test
+    fun `PANEL ON — an unattended face with NO token of its own is still refused (the primary's manifest is never read for it)`() {
+        val sim = Sim().apply { interactive = true; inForeground = true; targets = listOf(primary); unattended = mapOf(1 to 0L) }
+        val engine = NativeAlertWatchEngine(sim)
+        run(sim, engine, 19_000L)
+        assertTrue("no manifest is polled on a face's behalf with another face's credential", sim.fetchAt.isEmpty())
+        assertFalse(sim.cpuHeld)
     }
 
     @Test
