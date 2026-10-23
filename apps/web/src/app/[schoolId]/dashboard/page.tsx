@@ -863,7 +863,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <Link href={`${tenantBase}/screens`} className="dash-link text-xs font-semibold">
-              View all →
+              {t('dashboard.viewAll')}
             </Link>
           </div>
           <div>
@@ -975,7 +975,7 @@ export default function DashboardPage() {
                     <div className={`w-1 h-10 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`} />
                     <ExpectedThumb expected={{ name: pl?.name || sched.name || null, thumbnailUrl: preview.url, thumbnailKind: preview.kind, thumbnailTint: preview.tint, posterUrl: preview.posterUrl, templatePreview: preview.templatePreview, thumbnailFrames: preview.frames }} className={`${thumbDims} border border-slate-300 shrink-0`} rounded="rounded-none" />
                     <div className="w-16 text-[11px] font-mono font-semibold text-slate-500 shrink-0">
-                      {sched.timeStart || 'All day'}
+                      {sched.timeStart || t('dashboard.allDay')}
                       <div className="text-slate-400">{sched.timeEnd || ''}</div>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1098,7 +1098,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <Link href={`${tenantBase}/screens`} className="text-[11px] font-semibold text-red-700 hover:text-red-800">
-                  View all →
+                  {t('dashboard.viewAll')}
                 </Link>
               </div>
               <div className="divide-y divide-slate-50">
@@ -1126,7 +1126,7 @@ export default function DashboardPage() {
                   <h2 className="text-sm font-bold text-slate-800">{t('dashboard.mySubmissions')}</h2>
                 </div>
                 <Link href={`${tenantBase}/reviews`} className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800">
-                  View all →
+                  {t('dashboard.viewAll')}
                 </Link>
               </div>
               <div className="divide-y divide-slate-50">
