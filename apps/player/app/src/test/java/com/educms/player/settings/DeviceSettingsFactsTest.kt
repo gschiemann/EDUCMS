@@ -34,12 +34,20 @@ class DeviceSettingsFactsTest {
         assertTrue(c.toString(), c.values.all { it == DeviceSettingCodes.OK })
     }
 
-    @Test fun belowAndroid13EverySettingSaysSoAndNothingElse() {
-        for (sdk in listOf(24, 29, 30, 32)) {
+    @Test fun belowAndroid13EverySettingButWifiSaysSoAndWifiHasItsOwnVerdict() {
+        for (sdk in listOf(24, 25, 28, 29, 30, 32)) {
             val c = caps(android13.copy(sdk = sdk))
             assertEquals(DeviceSettingKey.values().toSet(), c.keys)
-            assertTrue(c.values.all { it == DeviceSettingCodes.API_LEVEL })
+            assertTrue(c.filterKeys { it != DeviceSettingKey.WIFI }.values.all { it == DeviceSettingCodes.API_LEVEL })
+            assertEquals("Wi-Fi works on Android $sdk", DeviceSettingCodes.OK, c[DeviceSettingKey.WIFI])
+            assertEquals(DeviceSettingCodes.NO_WIFI, caps(android13.copy(sdk = sdk, hasWifi = false))[DeviceSettingKey.WIFI])
         }
+    }
+
+    @Test fun declinedSuggestionsCloseWifiOnlyWhereAndroidsSaveDialogCannotOpen() {
+        val rejected = android13.copy(wifiApproval = DeviceSettingsFacts.WIFI_REJECTED)
+        assertEquals(DeviceSettingCodes.WIFI_DISALLOWED, caps(rejected)[DeviceSettingKey.WIFI])
+        assertEquals(DeviceSettingCodes.OK, caps(rejected.copy(wifiDialog = true))[DeviceSettingKey.WIFI])
     }
 
     @Test fun withoutModifySystemSettingsTheTimeoutRotationAndAndroidBrightnessSayWhy() {

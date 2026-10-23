@@ -2062,6 +2062,19 @@
           "pending": "esperando a que alguien la permita en la pantalla",
           "rejected": "rechazada en la pantalla",
           "unknown": "aprobación no informada"
+        },
+        "permanent": "Guardarla en la pantalla de forma permanente (alguien en la pantalla la confirma una vez)",
+        "installerOnly": "La IP fija, el DNS, el proxy y Ethernet siguen siendo ajustes del instalador; en la pantalla: Atrás → Red → Avanzado.",
+        "retry": "Para intentarlo de nuevo, pulse Guardar.",
+        "plan": {
+          "legacy": "Se conecta automáticamente, sin que nadie toque la pantalla. VenueOS conserva la nueva red solo cuando llega a VenueOS a través de ella, y vuelve atrás si no puede.",
+          "legacyOff": "La Wi-Fi está desactivada en esta pantalla. VenueOS guarda la red en cuanto alguien active la Wi-Fi (VenueOS nunca la activa).",
+          "allowed": "Se conecta automáticamente cuando la red está al alcance: esta pantalla ya permite las redes de VenueOS.",
+          "approval": "Necesita un toque en la pantalla la primera vez: Android pide a alguien que permita las redes Wi-Fi de VenueOS.",
+          "approvalUnknown": "Android pide una vez, en la pantalla, que se permitan las redes Wi-Fi de VenueOS; esta versión de Android no le indica a VenueOS si se hizo. Para estar seguro, marque “Guardarla en la pantalla de forma permanente”.",
+          "dialog": "Necesita un toque en la pantalla: alguien pulsa OK en el control remoto (o toca la pantalla) y luego Guardar en el diálogo de Android.",
+          "dialogFallback": "Esta pantalla rechazó las redes sugeridas de VenueOS, así que alguien en la pantalla la guarda una vez: pulse OK en el control remoto (o toque la pantalla) y luego Guardar.",
+          "unavailable": "No disponible en esta pantalla."
         }
       },
       "state": {
@@ -2072,7 +2085,10 @@
         "failed": "No se pudo aplicar: {reason}",
         "waiting": "En espera: {reason}",
         "notPossible": "No es posible en esta unidad: {reason}",
-        "notPossibleNow": "Ahora no es posible en esta unidad: {reason}"
+        "notPossibleNow": "Ahora no es posible en esta unidad: {reason}",
+        "wifiJoined": "Conectada: la pantalla llegó a VenueOS a través de esta red",
+        "wifiSaved": "Guardada en la pantalla: se conecta cuando es la red que debe usar",
+        "wifiSuggested": "Ofrecida a Android: Android puede pedir una vez en la pantalla que se permitan las redes de VenueOS"
       },
       "why": {
         "api-level": "requiere Android 13 o posterior",
@@ -2099,7 +2115,21 @@
         "wifi-limit": "la pantalla tiene demasiadas redes sugeridas",
         "wifi-invalid": "Android no aceptó los datos de la red",
         "wifi-restricted": "los cambios de Wi-Fi están restringidos en esta unidad",
-        "wifi-error": "Android no pudo añadir la red"
+        "wifi-error": "Android no pudo añadir la red",
+        "wifi-joined": "en esta red ahora",
+        "wifi-saved": "guardada en la pantalla",
+        "wifi-suggested": "ofrecida a Android",
+        "wifi-approval": "alguien debe permitir las redes Wi-Fi de VenueOS en la pantalla (una vez)",
+        "wifi-dialog": "alguien en la pantalla pulsa OK en el control remoto (o toca la pantalla) y luego Guardar",
+        "wifi-switching": "conectándose ahora; se conserva solo cuando llega a VenueOS",
+        "wifi-off": "la Wi-Fi está desactivada en esta pantalla",
+        "wifi-declined": "alguien eligió Ahora no o Cancelar en la pantalla",
+        "wifi-no-answer": "nadie la confirmó en la pantalla en una hora",
+        "wifi-no-dialog": "esta pantalla no tiene un diálogo de Android para guardarla que se pueda usar",
+        "wifi-unreachable": "se conectó, pero no pudo llegar a VenueOS a través de ella; la pantalla volvió a su red anterior",
+        "wifi-no-connect": "no pudo conectarse (revise la contraseña y que esté al alcance); la pantalla siguió en su red anterior",
+        "wifi-exists": "otra persona ya guardó en la pantalla una red con este nombre (VenueOS no la toca)",
+        "wifi-security": "el Android de esta pantalla no puede conectarse a redes WPA3"
       },
       "load": {
         "title": "Temperatura y carga",
@@ -2126,6 +2156,20 @@
       "errors": {
         "save": "No se pudo guardar: {message}",
         "passwordRequired": "Escribe la contraseña del Wi-Fi: esta red aún no tiene ninguna guardada."
+      },
+      "olderAndroidNote": "Los demás ajustes de Android necesitan Android 13 o posterior. Esta unidad indica el nivel de API de Android {sdk}.",
+      "net": {
+        "title": "Red",
+        "wifi": "Wi-Fi “{ssid}” · señal {bars}/4",
+        "wifiUnnamed": "Wi-Fi · señal {bars}/4 (Android solo muestra el nombre de la red con acceso a la ubicación en la pantalla)",
+        "ethernet": "Cable Ethernet",
+        "other": "conectada",
+        "none": "sin conexión",
+        "ip": "dirección {ip}",
+        "auto": "dirección automática (DHCP)",
+        "fixed": "dirección fija",
+        "cableAlso": "también hay un cable Ethernet conectado",
+        "noInternet": "Android no ha confirmado acceso a internet en esta red."
       }
     },
     "setLocation": "Añadir dirección",

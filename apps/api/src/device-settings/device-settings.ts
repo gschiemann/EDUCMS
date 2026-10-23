@@ -50,6 +50,8 @@ const storedWifi = z.object({
   ssid: z.string().min(1).max(64),
   security: z.enum(DEVICE_WIFI_SECURITY),
   hidden: z.boolean(),
+  /** 2026-10-23 — save through Android's dialog on the screen. Stored only when true. */
+  permanent: z.boolean().optional(),
 });
 const storedItem = z.object({
   v: z.union([z.number(), z.boolean(), z.string(), storedWifi]),
@@ -95,11 +97,17 @@ export type WifiSecretChange = { kind: 'keep' } | { kind: 'clear' } | { kind: 's
  * but only for the SAME network and security; a different network, or a
  * secured network with nothing saved, needs it. A passphrase that is sent is
  * always a change (it cannot be compared without opening the old one).
+ *
+ * 2026-10-23 — saving the SAME Wi-Fi network again after the screen gave up
+ * on it (`wifiFailed`: its acknowledgement for the current identity is
+ * `failed` — a switch that could not be proved, a "Not now" on the screen)
+ * is a new identity, so the screen tries again. The unit never retries those
+ * on its own; this is the operator's "try again".
  */
 export function applyPatch(
   current: StoredSettings,
   patch: DeviceSettingsPatch,
-  ctx: { revision: number; now: Date; userId: string | null; hasSecret: boolean },
+  ctx: { revision: number; now: Date; userId: string | null; hasSecret: boolean; wifiFailed?: boolean },
 ): { next: StoredSettings; changed: DeviceSettingKey[]; wifiSecret: WifiSecretChange } {
   const next: StoredSettings = { ...current };
   const changed: DeviceSettingKey[] = [];
@@ -125,7 +133,12 @@ export function applyPatch(
     }
     if (key === 'wifi') {
       const w = incoming as NonNullable<DeviceSettingsPatch['wifi']>;
-      const value: StoredWifi = { ssid: w.ssid, security: w.security, hidden: w.hidden ?? false };
+      const value: StoredWifi = {
+        ssid: w.ssid,
+        security: w.security,
+        hidden: w.hidden ?? false,
+        ...(w.permanent ? { permanent: true } : {}),
+      };
       const prev = next.wifi?.v as StoredWifi | undefined;
       const sameNetwork = !!prev && prev.ssid === value.ssid && prev.security === value.security;
       if (value.security === 'open') {
@@ -135,8 +148,12 @@ export function applyPatch(
       } else if (!(sameNetwork && ctx.hasSecret)) {
         throw new WifiPassphraseRequiredError();
       }
-      const unchanged = sameNetwork && prev!.hidden === value.hidden && wifiSecret.kind !== 'set' &&
-        !(value.security === 'open' && ctx.hasSecret);
+      const unchanged = sameNetwork && prev!.hidden === value.hidden &&
+        (prev!.permanent ?? false) === (value.permanent ?? false) &&
+        wifiSecret.kind !== 'set' &&
+        !(value.security === 'open' && ctx.hasSecret) &&
+        // The screen gave up on this identity: the same value again is "try again".
+        !ctx.wifiFailed;
       if (!unchanged) {
         next.wifi = stamp(value);
         changed.push('wifi');
@@ -149,6 +166,16 @@ export function applyPatch(
     changed.push(key);
   }
   return { next, changed, wifiSecret };
+}
+
+/**
+ * Did the unit give up on the CURRENT Wi-Fi identity? Then saving the same
+ * network again tries again ([applyPatch]'s `wifiFailed`).
+ */
+export function wifiGaveUp(stored: StoredSettings, report: DeviceSettingsReport | null): boolean {
+  const wifi = stored.wifi;
+  const ack = report?.ack?.wifi;
+  return !!wifi && !!ack && ack.id === wifi.id && ack.st === 'failed';
 }
 
 /** The desired set as the dashboard and the audit log may see it — never a passphrase. */
@@ -290,7 +317,14 @@ export function fullReply(
       const w = item.v as StoredWifi;
       items.wifi = {
         id: item.id,
-        v: { ssid: w.ssid, security: w.security, hidden: w.hidden, ...(passphrase ? { passphrase } : {}) },
+        v: {
+          ssid: w.ssid,
+          security: w.security,
+          hidden: w.hidden,
+          // Only when asked for: an older unit ignores it, a newer one routes to Android's save dialog.
+          ...(w.permanent ? { permanent: true } : {}),
+          ...(passphrase ? { passphrase } : {}),
+        },
       };
     } else {
       items[key] = { id: item.id, v: item.v };

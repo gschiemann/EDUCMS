@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<!--
+  English-only strings (the pairing screen and Android's own device-admin /
+  accessibility descriptions). values-es and values-zh exist since 2026-10-23
+  for strings_network.xml only; these stay English until they are translated
+  on purpose, so MissingTranslation is waived for THIS file alone.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="app_name">VenueOS Player</string>
 
     <string name="pairing_title">Pair this display</string>

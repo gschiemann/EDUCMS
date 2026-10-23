@@ -130,7 +130,49 @@ class DeviceSettingsWireTest {
             ),
             acks = acks,
             load = DeviceLoadMath.Load(6, Long.MAX_VALUE, 10.0, 100, 100, 1_048_576, 1_048_576, true, -40, 16),
+            wifi = DeviceSettingsWire.WifiFacts(via = "suggestion", radio = true, dialog = true, wpa3 = true, joined = true),
+            net = DeviceSettingsWire.NetStatus(
+                transport = "wifi", validated = true, ssid = "☕".repeat(10), rssi = -126, bars = 4,
+                ip = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", auto = true, ethernetLink = true,
+            ),
         )
+    }
+
+    @Test fun aWifiItemCarriesPermanentThroughTheStoreButNeverItsPassphrase() {
+        val r = DeviceSettingsWire.parseReply(
+            block("""{"schema":1,"rev":8,"items":{"wifi":{"id":"r8","v":{"ssid":"Lobby","security":"wpa2","permanent":true,"passphrase":"correct horse"}}}}"""),
+        ) as DeviceSettingsWire.Reply.Full
+        val v = r.items.single().value as DesiredValue.WifiValue
+        assertTrue(v.permanent)
+        val stored = DeviceSettingsWire.encodeItems(r.items)
+        assertFalse(stored.contains("correct horse"))
+        assertTrue(stored.contains("\"permanent\":true"))
+        assertEquals(v.withoutSecret(), DeviceSettingsWire.decodeItems(stored).single().value)
+        // An older server never sends it: false, and nothing new is stored.
+        val plain = DeviceSettingsWire.parseValue(DeviceSettingKey.WIFI, JSONObject("""{"ssid":"Lobby","security":"open"}""")) as DesiredValue.WifiValue
+        assertFalse(plain.permanent)
+        assertFalse(DeviceSettingsWire.encodeItems(listOf(DesiredItem(DeviceSettingKey.WIFI, "r1", plain))).contains("permanent"))
+        assertFalse(v.toString().contains("correct horse"))
+    }
+
+    @Test fun theReportCarriesWifiFactsAndTheConnectionAsOptionalBlocks() {
+        val text = DeviceSettingsWire.encodeReport(
+            DeviceSettingsWire.Report(
+                rev = 3, need = false, sdk = 25, capabilities = emptyMap(), observed = emptyMap(), acks = emptyMap(),
+                wifi = DeviceSettingsWire.WifiFacts(via = "legacy", radio = false, dialog = false, wpa3 = false, joined = null),
+                net = DeviceSettingsWire.NetStatus(transport = "ethernet", validated = true, ip = "10.0.0.12", auto = null, ethernetLink = true),
+            ),
+        )
+        val o = JSONObject(text)
+        val wifi = o.getJSONObject("wifi")
+        assertEquals("legacy", wifi.getString("via"))
+        assertFalse(wifi.getBoolean("radio"))
+        assertFalse("unknown is omitted, never guessed", wifi.has("joined"))
+        val net = o.getJSONObject("net")
+        assertEquals("ethernet", net.getString("t"))
+        assertEquals("10.0.0.12", net.getString("ip"))
+        assertFalse(net.has("auto"))
+        assertFalse(net.has("ssid"))
     }
 
     @Test fun theReportStaysUnderTheServersLimitEvenInTheWorstCase() {
@@ -140,6 +182,9 @@ class DeviceSettingsWireTest {
         assertEquals(1, o.getInt("schema"))
         assertTrue(o.getBoolean("need"))
         assertEquals(DeviceSettingKey.values().size, o.getJSONObject("ack").length())
+        // Over the limit, the optional blocks give way before the read-back values.
+        assertFalse("the connection line gives way first", o.has("net"))
+        assertTrue(o.getJSONObject("obs").has("wifi"))
     }
 
     @Test fun theHeaderIsPrintableAsciiAndStillCarriesEveryCharacter() {

@@ -24,6 +24,7 @@ import {
   DEVICE_THERMAL_LEVELS,
   deviceSettingState,
   type DeviceLoad,
+  type DeviceNetStatus,
   type DeviceSettingDesired,
   type DeviceSettingKey,
   type DeviceSettingState,
@@ -51,7 +52,21 @@ export interface DeviceSettingRow {
 export type SectionModel =
   | { kind: 'not-reported'; desired: DeviceSettingsView['desired'] }
   | { kind: 'old-android'; sdk: number | null }
-  | { kind: 'ready'; rows: DeviceSettingRow[]; load: DeviceLoad | null };
+  | {
+      kind: 'ready';
+      rows: DeviceSettingRow[];
+      load: DeviceLoad | null;
+      /**
+       * Wi-Fi works below Android 13 (2026-10-23) but the other settings do
+       * not: their identical "needs Android 13" rows collapse into this one
+       * note instead of eight rows saying the same thing.
+       */
+      olderAndroidSdk: number | null;
+      /** How Wi-Fi works on this unit, worded before Save (null = the unit does not say). */
+      wifiPlan: WifiPlan | null;
+      /** The connection right now, as the unit reports it. */
+      net: DeviceNetStatus | null;
+    };
 
 export function buildSection(view: DeviceSettingsView): SectionModel {
   const report = view.report;
@@ -60,19 +75,82 @@ export function buildSection(view: DeviceSettingsView): SectionModel {
   if (caps.length > 0 && caps.every((c) => c === 'api-level')) {
     return { kind: 'old-android', sdk: report.sdk ?? null };
   }
-  const rows = DEVICE_SETTING_KEYS.map((key): DeviceSettingRow => {
+  // An older Android with Wi-Fi: everything else is "needs Android 13".
+  const olderAndroid = DEVICE_SETTING_KEYS.filter((k) => k !== 'wifi').every((k) => report.cap?.[k] === 'api-level');
+  const rows = DEVICE_SETTING_KEYS.flatMap((key): DeviceSettingRow[] => {
     const desired = view.desired[key];
+    // Collapsed into the note — unless something is stored, which keeps its row so it can be cleared.
+    if (olderAndroid && key !== 'wifi' && !desired) return [];
     const state = deviceSettingState(key, desired, report);
-    return {
-      key,
-      state,
-      editable: state.kind !== 'not-possible' && state.kind !== 'unknown',
-      desired,
-      observed: report.obs?.[key],
-    };
+    return [
+      {
+        key,
+        state,
+        editable: state.kind !== 'not-possible' && state.kind !== 'unknown',
+        desired,
+        observed: report.obs?.[key],
+      },
+    ];
   });
-  return { kind: 'ready', rows, load: report.load ?? null };
+  return {
+    kind: 'ready',
+    rows,
+    load: report.load ?? null,
+    olderAndroidSdk: olderAndroid ? (report.sdk ?? null) : null,
+    wifiPlan: wifiPlan(report),
+    net: report.net ?? null,
+  };
 }
+
+/**
+ * WHAT WILL HAPPEN when the operator presses Save on the Wi-Fi row — said
+ * per screen BEFORE they press it (2026-10-23), from the facts the unit
+ * reports. Pure; the words live in the i18n catalogue (`wifi.plan.*`).
+ *
+ *  • `silent`          Android 9 and older: joined with no one touching the screen.
+ *  • `allowed`         Android 10+, VenueOS's networks already allowed: joins when in range.
+ *  • `approval`        Android 12+, not allowed yet: one tap on the screen the first time.
+ *  • `approval-unknown` Android 10–11: Android asks once and never says whether it was allowed.
+ *  • `dialog-fallback` declined suggestions, but Android's save dialog opens: one person, once.
+ *  • `unavailable`     no Wi-Fi, or declined with no dialog.
+ */
+export type WifiPlanKind = 'silent' | 'allowed' | 'approval' | 'approval-unknown' | 'dialog-fallback' | 'unavailable';
+
+export interface WifiPlan {
+  kind: WifiPlanKind;
+  /** "Save it on the screen permanently" can be offered (Android's dialog opens here). */
+  dialog: boolean;
+  /** WPA3 can be offered. */
+  wpa3: boolean;
+  /** The Wi-Fi radio is off (Android 9 and older wait for it; nothing turns it on). */
+  radioOff: boolean;
+}
+
+export function wifiPlan(report: DeviceSettingsReport | null): WifiPlan | null {
+  const facts = report?.wifi;
+  if (!report || !facts || !facts.via) return null;
+  const cap = report.cap?.wifi;
+  const approval = report.obs?.wifi?.approval;
+  const dialog = facts.dialog === true;
+  const base = { dialog, wpa3: facts.wpa3 !== false, radioOff: facts.radio === false };
+  if (cap === 'no-wifi' || cap === 'unsupported') return { ...base, kind: 'unavailable', dialog: false };
+  if (facts.via === 'legacy') return { ...base, kind: 'silent', dialog: false };
+  if (approval === 'rejected') return { ...base, kind: dialog ? 'dialog-fallback' : 'unavailable' };
+  if (approval === 'approved') return { ...base, kind: 'allowed' };
+  if ((report.sdk ?? 0) >= 31) return { ...base, kind: 'approval' };
+  return { ...base, kind: 'approval-unknown' };
+}
+
+/** Wi-Fi reasons a "Save" fixes — the screen never retries them by itself. */
+export const WIFI_RETRY_WHYS: ReadonlySet<string> = new Set([
+  'wifi-unreachable',
+  'wifi-no-connect',
+  'wifi-declined',
+  'wifi-no-answer',
+  'wifi-error',
+  'not-taken',
+  'error',
+]);
 
 /** The value a select shows: the stored one, or '' for "not managed". */
 export function selectValue(row: DeviceSettingRow): string {

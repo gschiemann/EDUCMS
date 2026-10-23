@@ -162,6 +162,15 @@ export const NATIVE_VOID_METHODS = [
   // logs its own refusal — a return value would be a promise this side
   // cannot keep.
   'openSetupChecklist',
+  // 2026-10-23 (APK ≥ 1.1.53) — the Back menu's "Network" entry: opens
+  // VenueOS's own on-screen Network screen (Wi-Fi + Ethernet). Fire-and-
+  // forget; the APK refuses it over an alert and every network change still
+  // runs its one Wi-Fi engine. THREE-FILE ATOMIC CHANGE with the Kotlin
+  // METHODS array + dispatch arm and the drift-guard canary count.
+  // Deliberately EXCLUDED from KNOWN_METHODS below (rule 9): a manifest-less
+  // channel WebView could be an older APK with no such arm, so the Back menu
+  // shows the entry only when `nativeHas` proves it (manifest or UA floor).
+  'openNetworkScreen',
   // ⚠️ LIFE SAFETY — the display-control EMERGENCY INTERLOCK (2026-08-13).
   // See ./emergencyHold.ts. The Kotlin allowlist
   // (`NativeBridgeChannel.METHODS`, commit 3e9f7cd1) carries it, so this
@@ -278,6 +287,9 @@ const KNOWN_METHODS: readonly string[] = [
   // 2026-09-28 — the two Website Tabs methods are excluded on the same rule
   // (a manifest-less channel could be 1.1.18, which has no such arms).
   // Remove them from this filter only when the fleet floor is ≥1.1.19.
+  //
+  // 2026-10-23 — `openNetworkScreen` likewise (first APK: 1.1.53). Remove it
+  // from this filter only when the fleet floor is ≥1.1.53.
 ].filter(
   (m) =>
     m !== 'heartbeatV2' &&
@@ -286,6 +298,7 @@ const KNOWN_METHODS: readonly string[] = [
     m !== 'registerResult' &&
     m !== 'webTabsShow' &&
     m !== 'webTabsHide' &&
+    m !== 'openNetworkScreen' &&
     m !== 'sharedVideoPrepare' && m !== 'sharedVideoCommit' && m !== 'sharedVideoStop' && m !== 'sharedVideoState',
 );
 
@@ -321,6 +334,8 @@ const METHOD_FLOORS: Readonly<Record<string, readonly [number, number, number]>>
   // is ever cut WITHOUT these arms, raise this before that tag.
   webTabsShow: [1, 1, 19],
   webTabsHide: [1, 1, 19],
+  // The Back menu's Network entry ships in the 1.1.53 field candidate.
+  openNetworkScreen: [1, 1, 53],
 };
 
 /** `EduCmsPlayer/1.1.16` → [1, 1, 16]; anything else → null. */

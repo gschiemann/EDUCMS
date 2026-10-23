@@ -2062,6 +2062,19 @@
           "pending": "等待有人在屏幕上允许",
           "rejected": "已在屏幕上拒绝",
           "unknown": "未上报审批状态"
+        },
+        "permanent": "在屏幕上永久保存（需要有人在屏幕前确认一次）",
+        "installerOnly": "固定 IP、DNS、代理和以太网仍由安装人员设置——在屏幕上：返回 → 网络 → 高级。",
+        "retry": "要重试，请按“保存”。",
+        "plan": {
+          "legacy": "自动连接，无需任何人触碰屏幕。只有通过新网络连上 VenueOS 后，VenueOS 才会保留它；否则会切换回原来的网络。",
+          "legacyOff": "此屏幕的 Wi-Fi 已关闭。一旦有人打开 Wi-Fi，VenueOS 就会保存该网络（VenueOS 从不自行打开 Wi-Fi）。",
+          "allowed": "网络在范围内时自动连接——此屏幕已允许 VenueOS 的网络。",
+          "approval": "首次需要在屏幕上点按一次：Android 会请人允许 VenueOS 的 Wi-Fi 网络。",
+          "approvalUnknown": "Android 会在屏幕上询问一次是否允许 VenueOS 的 Wi-Fi 网络——此 Android 版本不会告诉 VenueOS 是否已允许。为确保成功，请勾选“在屏幕上永久保存”。",
+          "dialog": "需要在屏幕上点按一次：有人按遥控器上的确定键（或点按屏幕），然后在 Android 对话框中选择“保存”。",
+          "dialogFallback": "此屏幕拒绝了 VenueOS 建议的网络，因此需要有人在屏幕前保存一次：按遥控器上的确定键（或点按屏幕），然后选择“保存”。",
+          "unavailable": "此屏幕不支持。"
         }
       },
       "state": {
@@ -2072,7 +2085,10 @@
         "failed": "无法设置：{reason}",
         "waiting": "等待中：{reason}",
         "notPossible": "此设备无法设置：{reason}",
-        "notPossibleNow": "此设备目前无法设置：{reason}"
+        "notPossibleNow": "此设备目前无法设置：{reason}",
+        "wifiJoined": "已连接——屏幕通过此网络连上了 VenueOS",
+        "wifiSaved": "已保存在屏幕上——需要使用此网络时会自动连接",
+        "wifiSuggested": "已提供给 Android——Android 可能会在屏幕上询问一次是否允许 VenueOS 的网络"
       },
       "why": {
         "api-level": "需要 Android 13 或更高版本",
@@ -2099,7 +2115,21 @@
         "wifi-limit": "屏幕上建议的网络过多",
         "wifi-invalid": "Android 不接受该网络信息",
         "wifi-restricted": "此设备限制了 Wi-Fi 更改",
-        "wifi-error": "Android 无法添加该网络"
+        "wifi-error": "Android 无法添加该网络",
+        "wifi-joined": "当前正在使用此网络",
+        "wifi-saved": "已保存在屏幕上",
+        "wifi-suggested": "已提供给 Android",
+        "wifi-approval": "需要有人在屏幕上允许 VenueOS 的 Wi-Fi 网络（仅一次）",
+        "wifi-dialog": "需要有人在屏幕前按遥控器上的确定键（或点按屏幕），然后选择“保存”",
+        "wifi-switching": "正在连接——只有连上 VenueOS 后才会保留",
+        "wifi-off": "此屏幕的 Wi-Fi 已关闭",
+        "wifi-declined": "有人在屏幕上选择了“暂不”或“取消”",
+        "wifi-no-answer": "一小时内无人在屏幕上确认",
+        "wifi-no-dialog": "此屏幕没有可用的 Android 保存对话框",
+        "wifi-unreachable": "已连接，但无法通过它连上 VenueOS——屏幕已切换回之前的网络",
+        "wifi-no-connect": "无法连接（请检查密码以及是否在信号范围内）——屏幕仍在使用之前的网络",
+        "wifi-exists": "已有他人在屏幕上保存了同名网络（VenueOS 不会更改它）",
+        "wifi-security": "此屏幕的 Android 无法连接 WPA3 网络"
       },
       "load": {
         "title": "温度与负载",
@@ -2126,6 +2156,20 @@
       "errors": {
         "save": "无法保存：{message}",
         "passwordRequired": "请输入 Wi-Fi 密码——此网络尚未保存密码。"
+      },
+      "olderAndroidNote": "其他 Android 设置需要 Android 13 或更高版本。此设备报告的 Android API 级别为 {sdk}。",
+      "net": {
+        "title": "网络",
+        "wifi": "Wi-Fi“{ssid}” · 信号 {bars}/4",
+        "wifiUnnamed": "Wi-Fi · 信号 {bars}/4（只有在屏幕上授予位置权限后，Android 才会显示网络名称）",
+        "ethernet": "以太网网线",
+        "other": "已连接",
+        "none": "未连接",
+        "ip": "地址 {ip}",
+        "auto": "自动地址（DHCP）",
+        "fixed": "固定地址",
+        "cableAlso": "同时连接了以太网网线",
+        "noInternet": "Android 尚未确认此网络可以访问互联网。"
       }
     },
     "setLocation": "设置地址",

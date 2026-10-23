@@ -52,6 +52,7 @@ import {
   readStoredReport,
   readStoredSettings,
   viewDesired,
+  wifiGaveUp,
   type StoredSettings,
 } from './device-settings';
 
@@ -186,7 +187,15 @@ export class DeviceSettingsController {
       const hadSecret = !!row?.wifiSecret;
       const revision = (row?.revision ?? 0) + 1;
       const now = new Date();
-      const { next, changed, wifiSecret } = applyPatch(current, body, { revision, now, userId, hasSecret: hadSecret });
+      // 2026-10-23 — saving a Wi-Fi network the screen gave up on is "try again".
+      const wifiFailed = wifiGaveUp(current, row ? readStoredReport(row.report) : null);
+      const { next, changed, wifiSecret } = applyPatch(current, body, {
+        revision,
+        now,
+        userId,
+        hasSecret: hadSecret,
+        wifiFailed,
+      });
 
       if (changed.length === 0) {
         return { revision: row?.revision ?? 0, changed: [] as string[], before: {}, after: {}, wifiPassphrase: null };

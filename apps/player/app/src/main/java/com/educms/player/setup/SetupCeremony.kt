@@ -1834,7 +1834,10 @@ object SetupCeremony {
             awaySinceMs = awayFromCardSinceMs,
             nowElapsedMs = SystemClock.elapsedRealtime(),
             emergencyHeld = DisplayEmergency.isHeld(ctx.applicationContext),
-        )
+        ) ||
+            // 2026-10-23 — the same courtesy for a person inside Android's
+            // "save Wi-Fi network" dialog (bounded; never during an alert).
+            com.educms.player.settings.WifiSavePrompt.relaunchShouldYield(ctx)
     } catch (_: Throwable) {
         false
     }

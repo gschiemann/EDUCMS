@@ -70,6 +70,51 @@ describe('device settings — PUT body', () => {
     expect(parse({ wifi: { ssid: 'Lobby', security: 'wpa2' } }).success).toBe(true);
     expect(parse({ wifi: { ssid: 'Guest', security: 'open', hidden: true } }).success).toBe(true);
   });
+
+  it('takes the optional "save it permanently" choice and nothing else new (2026-10-23)', () => {
+    expect(parse({ wifi: { ssid: 'Lobby', security: 'wpa2', permanent: true } }).success).toBe(true);
+    expect(parse({ wifi: { ssid: 'Lobby', security: 'wpa2', permanent: 'yes' } }).success).toBe(false);
+  });
+});
+
+describe('device settings — Wi-Fi on every Android class (2026-10-23)', () => {
+  const base = { schema: 1, rev: 3, sdk: 25, cap: { wifi: 'ok' } };
+
+  it('reads the unit’s Wi-Fi facts and connection line as optional additions', () => {
+    const r = parseDeviceSettingsReport(
+      JSON.stringify({
+        ...base,
+        wifi: { via: 'legacy', radio: true, dialog: false, wpa3: false, joined: true },
+        net: { t: 'ethernet', ok: true, ip: '10.0.0.12', auto: false, eth: true },
+        ack: { wifi: { id: 'r3', st: 'applied', n: 1, why: 'wifi-joined' } },
+      }),
+    );
+    expect(r?.wifi).toEqual({ via: 'legacy', radio: true, dialog: false, wpa3: false, joined: true });
+    expect(r?.net).toEqual({ t: 'ethernet', ok: true, ip: '10.0.0.12', auto: false, eth: true });
+    expect(r?.ack?.wifi?.why).toBe('wifi-joined');
+  });
+
+  it('a malformed or newer block never costs the report', () => {
+    const r = parseDeviceSettingsReport(JSON.stringify({ ...base, wifi: { via: 'telepathy' }, net: { t: 'ethernet', rssi: 'loud' } }));
+    expect(r).not.toBeNull();
+    expect(r?.wifi?.via).toBeUndefined();
+    expect(r?.net).toBeUndefined();
+    const transport = parseDeviceSettingsReport(JSON.stringify({ ...base, net: { t: 'satellite' } }));
+    expect(transport?.net?.t).toBe('other');
+  });
+
+  it('an older report (no facts) still parses exactly as before', () => {
+    const r = parseDeviceSettingsReport(JSON.stringify(base));
+    expect(r?.wifi).toBeUndefined();
+    expect(r?.net).toBeUndefined();
+  });
+
+  it('every Wi-Fi outcome is a known reason', () => {
+    for (const why of ['wifi-saved', 'wifi-approval', 'wifi-dialog', 'wifi-switching', 'wifi-unreachable', 'wifi-no-connect', 'wifi-off']) {
+      const r = parseDeviceSettingsReport(JSON.stringify({ ...base, ack: { wifi: { id: 'r3', st: 'waiting', n: 1, why } } }));
+      expect(r?.ack?.wifi?.why).toBe(why);
+    }
+  });
 });
 
 describe('device settings — the unit report header', () => {

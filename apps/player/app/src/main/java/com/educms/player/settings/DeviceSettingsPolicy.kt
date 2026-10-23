@@ -10,6 +10,11 @@ package com.educms.player.settings
  *  1. A value this unit does not accept is FAILED (`invalid-value`) and never
  *     retried — it is written into the system, so it is refused, not trusted.
  *  2. An identity already APPLIED or FAILED in this boot is left alone.
+ *  2w. A Wi-Fi identity that is IN PROGRESS outside this record — a switch
+ *     being proved, a save dialog waiting for a person, Android's one-time
+ *     approval — is re-described from what [WifiProgress] says now and is
+ *     never applied again while that is alive. While a switch is being proved
+ *     for one identity, no other identity starts one.
  *  3. After a reboot an APPLIED identity stays applied while Android still
  *     reads it back (or offers no read-back). Only a setting whose read-back
  *     DRIFTED is set again — some signage firmware resets the timeout,
@@ -27,6 +32,9 @@ package com.educms.player.settings
  *     evidence: a hardware brightness write while the display pipeline was
  *     still powering up reset an L55VEC (EmergencyBrightnessPolicy's header);
  *     a basic setting can always wait a minute.
+ *  6w. Below Android 10 a Wi-Fi network can only be saved with the radio on:
+ *     while Wi-Fi is off the item WAITS (`wifi-off`). VenueOS never turns
+ *     Wi-Fi on.
  *  7. A Wi-Fi item whose passphrase has not arrived is PENDING (`needs-secret`)
  *     and this unit asks for it in its next report.
  *  8. At most [MAX_ATTEMPTS] attempts per identity per boot, [RETRY_GAP_MS]
@@ -107,6 +115,28 @@ object DeviceSettingsPolicy {
         val conditions: Conditions,
         val nowElapsedMs: Long,
         val boot: Int,
+        /** The Wi-Fi item's progress outside this record (rules 2w and 6w); null for every other key. */
+        val wifi: WifiProgress? = null,
+        /** Device wall clock — stamped on a Wi-Fi identity that lands without a write of its own. */
+        val nowWallMs: Long = 0L,
+    )
+
+    /**
+     * Where a Wi-Fi identity stands OUTSIDE its record, read by `WifiSetup`.
+     * Pure data, so rules 2w and 6w have JVM tests.
+     */
+    data class WifiProgress(
+        /** Android 9 and older: is the Wi-Fi radio on? null = not that path, or unreadable. */
+        val legacyRadioOn: Boolean? = null,
+        /** The identity whose switch is being proved right now (a persisted journal), or null. */
+        val switchingId: String? = null,
+        /** The identity whose save dialog is staged in THIS process, or null. */
+        val dialogStagedId: String? = null,
+        /** A finished save dialog: the identity and what happened ([DeviceSettingCodes] Wi-Fi code). */
+        val dialogResultId: String? = null,
+        val dialogResult: String? = null,
+        /** Android's approval of VenueOS's suggestions (`approved` / `pending` / `rejected` / `unknown`). */
+        val approval: String = "unknown",
     )
 
     sealed class Decision {
@@ -123,6 +153,20 @@ object DeviceSettingsPolicy {
     /** How one write went. */
     sealed class Outcome {
         object Done : Outcome()
+
+        /**
+         * The write landed and [why] says what it means — a Wi-Fi outcome
+         * Android offers no read-back for (`wifi-joined`, `wifi-saved`, …).
+         */
+        data class Landed(val why: String) : Outcome()
+
+        /**
+         * The write was made and now waits on something outside VenueOS — a
+         * person, Android's approval, a switch being proved. The attempt is
+         * spent; rule 2w keeps it from being made again while that lasts.
+         */
+        data class Held(val status: Status, val why: String) : Outcome()
+
         data class Error(val code: String) : Outcome()
     }
 
@@ -158,6 +202,11 @@ object DeviceSettingsPolicy {
             return Decision.Report(prev.copy(boot = input.boot))
         }
 
+        // 2w — a Wi-Fi identity in progress is re-described, never applied again.
+        if (item.key == DeviceSettingKey.WIFI) {
+            wifiInProgress(item, prev, input)?.let { return Decision.Report(it) }
+        }
+
         // 3 — a new boot re-checks an applied setting; only a drift re-applies.
         if (prev != null && !sameBoot && prev.status == Status.APPLIED &&
             (!item.key.recheckAfterBoot || input.observedMatches != false)
@@ -183,6 +232,13 @@ object DeviceSettingsPolicy {
             c.blankedByUs || (item.key == DeviceSettingKey.SCREEN_OFF_TIMEOUT && c.timeoutBlankActive) ->
                 return Decision.Report(ack(Status.WAITING, DeviceSettingCodes.WAIT_BLANKED))
             !c.settled() -> return Decision.Report(ack(Status.WAITING, DeviceSettingCodes.WAIT_SETTLING))
+        }
+
+        // 6w — below Android 10 a network is saved only with the radio on, and
+        // VenueOS never turns it on. No attempt is spent: it is picked up the
+        // first heartbeat after someone turns Wi-Fi on.
+        if (item.key == DeviceSettingKey.WIFI && input.wifi?.legacyRadioOn == false) {
+            return Decision.Report(ack(Status.WAITING, DeviceSettingCodes.WIFI_OFF))
         }
 
         // 7 — the passphrase is never stored here; ask for it.
@@ -226,6 +282,8 @@ object DeviceSettingsPolicy {
             val terminal = outcome.code in DeviceSettingCodes.NEVER_RETRIED || attempt.attempts >= MAX_ATTEMPTS
             attempt.copy(status = if (terminal) Status.FAILED else Status.PENDING, why = outcome.code)
         }
+        is Outcome.Landed -> attempt.copy(status = Status.APPLIED, why = outcome.why, appliedAtWallMs = nowWallMs)
+        is Outcome.Held -> attempt.copy(status = outcome.status, why = outcome.why)
         Outcome.Done -> when (observedMatches) {
             true -> attempt.copy(status = Status.APPLIED, why = null, appliedAtWallMs = nowWallMs)
             null -> attempt.copy(status = Status.APPLIED, why = DeviceSettingCodes.UNVERIFIED, appliedAtWallMs = nowWallMs)
@@ -233,6 +291,68 @@ object DeviceSettingsPolicy {
                 status = if (attempt.attempts >= MAX_ATTEMPTS) Status.FAILED else Status.PENDING,
                 why = DeviceSettingCodes.NOT_TAKEN,
             )
+        }
+    }
+
+    /**
+     * Rule 2w. Null = nothing is in progress for this identity outside its
+     * record: carry on with the ordinary rules. Reading is all this does —
+     * a person's answer, Android's approval or a proved switch is RECORDED
+     * here, never acted on.
+     */
+    private fun wifiInProgress(item: DesiredItem, prev: Ack?, input: Input): Ack? {
+        val w = input.wifi ?: return null
+        val stamp = input.nowWallMs.takeIf { it > 0L }
+        val switching = w.switchingId
+        // One switch at a time: while another identity's switch is being
+        // proved, this one waits — never a second switch on top of the first.
+        if (switching != null && switching != item.id) {
+            return Ack(
+                id = item.id,
+                status = Status.PENDING,
+                why = DeviceSettingCodes.WIFI_SWITCHING,
+                attempts = if (prev != null && prev.boot == input.boot) prev.attempts else 0,
+                lastAttemptElapsedMs = if (prev != null && prev.boot == input.boot) prev.lastAttemptElapsedMs else 0L,
+                boot = input.boot,
+                appliedAtWallMs = prev?.appliedAtWallMs,
+            )
+        }
+        if (prev == null) return null
+        return when (prev.why) {
+            DeviceSettingCodes.WIFI_SWITCHING ->
+                // The journal outlives the process; once it is gone the
+                // switch has been recorded (or was lost) — the rules decide.
+                if (switching == item.id) prev.copy(boot = input.boot) else null
+            DeviceSettingCodes.WIFI_DIALOG -> {
+                val result = w.dialogResult?.takeIf { w.dialogResultId == item.id }
+                when {
+                    result == DeviceSettingCodes.WIFI_SAVED -> prev.copy(
+                        status = Status.APPLIED,
+                        why = DeviceSettingCodes.WIFI_SAVED,
+                        boot = input.boot,
+                        appliedAtWallMs = stamp ?: prev.appliedAtWallMs,
+                    )
+                    result != null -> prev.copy(status = Status.FAILED, why = result, boot = input.boot)
+                    w.dialogStagedId == item.id -> prev.copy(boot = input.boot)
+                    // The stage lived in a process that is gone (its passphrase
+                    // with it): the ordinary rules ask for the passphrase and
+                    // stage it again, inside the same attempt budget.
+                    else -> null
+                }
+            }
+            DeviceSettingCodes.WIFI_APPROVAL -> when (w.approval) {
+                DeviceSettingsFacts.WIFI_APPROVED -> prev.copy(
+                    status = Status.APPLIED,
+                    why = DeviceSettingCodes.WIFI_SAVED,
+                    boot = input.boot,
+                    appliedAtWallMs = stamp ?: prev.appliedAtWallMs,
+                )
+                // Declined: the ordinary rules apply again, and the applier
+                // routes to the save dialog where the screen has one.
+                DeviceSettingsFacts.WIFI_REJECTED -> null
+                else -> prev.copy(boot = input.boot)
+            }
+            else -> null
         }
     }
 

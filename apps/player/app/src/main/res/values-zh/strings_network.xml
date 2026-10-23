@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_title">网络</string>
+    <string name="net_hint">使用遥控器：方向键移动，确定键选择，返回键返回。</string>
+
+    <string name="net_status_wifi">已连接 Wi-Fi“%1$s” · 信号 %2$s</string>
+    <string name="net_status_wifi_unnamed">已连接 Wi-Fi · 信号 %1$s</string>
+    <string name="net_status_ethernet">已通过网线连接（以太网）</string>
+    <string name="net_status_other">已连接</string>
+    <string name="net_status_offline">未连接任何网络</string>
+    <string name="net_status_unvalidated">Android 尚未确认此网络可以访问互联网。</string>
+    <string name="net_status_address">地址 %1$s</string>
+
+    <string name="net_wifi_section">Wi-Fi</string>
+    <string name="net_scan_again">重新扫描</string>
+    <string name="net_scanning">正在查找网络…</string>
+    <string name="net_none_found">附近未找到 Wi-Fi 网络。</string>
+    <string name="net_add_hidden">添加隐藏网络</string>
+    <string name="net_mark_connected">已连接</string>
+    <string name="net_mark_saved">已保存</string>
+    <string name="net_mark_cannot_join">需要 VenueOS 无法输入的登录信息</string>
+    <string name="net_access_permission">要列出附近的网络，Android 需要 VenueOS 获得位置权限。VenueOS 从不读取此屏幕的位置。</string>
+    <string name="net_allow">允许</string>
+    <string name="net_access_denied">位置权限已被拒绝。要列出网络，请在 Android 设置中为 VenueOS Player 允许位置权限。</string>
+    <string name="net_access_location_off">此屏幕的位置信息已关闭。只有在位置信息开启时，Android 才会列出附近的网络。</string>
+    <string name="net_location_settings">Android 位置设置</string>
+    <string name="net_app_settings">在 Android 设置中打开 VenueOS Player</string>
+    <string name="net_access_wifi_off">此屏幕的 Wi-Fi 已关闭。VenueOS 不会将其打开，请使用 Android 的网络设置。</string>
+    <string name="net_access_no_wifi">此屏幕没有 Wi-Fi。</string>
+    <string name="net_access_alert">此屏幕上正在显示警报。</string>
+
+    <string name="net_ethernet_section">以太网</string>
+    <string name="net_ethernet_cable_yes">网线已连接</string>
+    <string name="net_ethernet_cable_no">未连接网线</string>
+    <string name="net_ethernet_address">IP 地址：%1$s</string>
+    <string name="net_ethernet_auto">地址：自动（DHCP）</string>
+    <string name="net_ethernet_fixed">地址：固定</string>
+    <string name="net_ethernet_mode_unknown">Android 未说明此地址是自动还是固定的。</string>
+    <string name="net_ethernet_fixed_note">固定地址、DNS 或代理需在 Android 自带的网络设置中设置。</string>
+    <string name="net_android_settings">高级：Android 网络设置</string>
+    <string name="net_close">关闭</string>
+
+    <string name="net_password_for">“%1$s”的密码</string>
+    <string name="net_password_hint">8–63 个字符</string>
+    <string name="net_show_password">显示密码</string>
+    <string name="net_hide_password">隐藏密码</string>
+    <string name="net_connect">连接</string>
+    <string name="net_cancel">取消</string>
+    <string name="net_password_short">密码至少需要 8 个字符。</string>
+    <string name="net_hidden_name">隐藏网络的名称</string>
+    <string name="net_next">下一步</string>
+    <string name="net_choose_security">“%1$s”使用哪种加密方式？</string>
+    <string name="net_security_open">开放（无密码）</string>
+    <string name="net_security_wpa2">WPA2（密码）</string>
+    <string name="net_security_wpa3">WPA3（密码）</string>
+
+    <string name="net_key_shift">大写</string>
+    <string name="net_key_symbols">#+=</string>
+    <string name="net_key_space">空格</string>
+    <string name="net_key_delete">删除</string>
+    <string name="net_key_clear">清空</string>
+
+    <string name="net_result_connected">已连接到“%1$s”。</string>
+    <string name="net_result_saved">已保存“%1$s”。屏幕会在需要使用该网络时自动连接。</string>
+    <string name="net_result_suggested">已向 Android 提供“%1$s”。Android 可能会在此屏幕上询问一次，是否允许 VenueOS 的网络。</string>
+    <string name="net_result_waiting_approval">正在等待 Android 确认：当 Android 在此屏幕上询问时，请允许 VenueOS 的 Wi-Fi 网络。</string>
+    <string name="net_result_waiting_dialog">正在等待您在 Android 对话框中选择“保存”。</string>
+    <string name="net_result_joining">正在连接“%1$s”… 只有通过它连上 VenueOS 服务器后，VenueOS 才会保留该网络。</string>
+    <string name="net_result_wrong_password">Android 未接受“%1$s”的密码。</string>
+    <string name="net_result_could_not_join">无法连接“%1$s”（请检查密码以及是否在信号范围内）。仍在使用%2$s。</string>
+    <string name="net_result_no_server">已连接“%1$s”，但无法通过它连上 VenueOS 服务器。已切换回去，仍在使用%2$s。</string>
+    <string name="net_result_declined">未保存：在 Android 对话框中选择了“取消”。</string>
+    <string name="net_result_alert">暂时不行：此屏幕上正在显示警报。</string>
+    <string name="net_result_wifi_off">此屏幕的 Wi-Fi 已关闭。</string>
+    <string name="net_result_name_taken">“%1$s”已由他人保存在此屏幕上，VenueOS 不会更改它。</string>
+    <string name="net_result_not_supported">此屏幕无法以这种方式连接“%1$s”。</string>
+    <string name="net_result_failed">无法连接到“%1$s”。</string>
+    <string name="net_previous_network">之前的网络</string>
+    <string name="net_previous_ethernet">网线（以太网）</string>
+
+    <string name="wifi_card_title">保存 Wi-Fi 网络</string>
+    <string name="wifi_card_body">您的 VenueOS 管理后台要求此屏幕保存“%1$s”。请按遥控器上的确定键（或点按“保存网络”），然后选择“保存”。</string>
+    <string name="wifi_card_save">保存网络</string>
+    <string name="wifi_card_later">暂不</string>
+</resources>

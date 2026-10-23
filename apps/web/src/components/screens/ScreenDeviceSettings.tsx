@@ -27,11 +27,13 @@ import { useLocale, useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Settings2, Thermometer } from 'lucide-react';
 import type { DeviceSettingKey, DeviceSettingsPatch, DeviceWifiSecurity } from '@cms/api-types';
 import { useDeviceSettings, useUpdateDeviceSettings } from '@/hooks/use-device-settings';
+import type { DeviceNetStatus } from '@cms/api-types';
 import {
   ATTENTIVE_OPTIONS,
   BRIGHTNESS_OPTIONS,
   TIMEOUT_OPTIONS,
   VOLUME_OPTIONS,
+  WIFI_RETRY_WHYS,
   buildSection,
   formatMemory,
   hasLoadFacts,
@@ -40,6 +42,7 @@ import {
   thermalLevel,
   timeoutParts,
   type DeviceSettingRow,
+  type WifiPlan,
 } from './deviceSettingsView';
 
 function relative(locale: string, atMs: number, nowMs: number): string {
@@ -175,10 +178,17 @@ function DeviceSettingsBody({ screenId, readOnly, nowMs }: { screenId: string; r
   return (
     <div className="pb-2">
       {header}
+      <NetworkLine net={model.net} />
+      {model.olderAndroidSdk !== null && (
+        <p className="px-3.5 pb-1 text-[10px] text-slate-400 leading-snug" data-testid="device-settings-older-android">
+          {t('olderAndroidNote', { sdk: model.olderAndroidSdk })}
+        </p>
+      )}
       {model.rows.map((row) => (
         <SettingRow
           key={row.key}
           row={row}
+          plan={row.key === 'wifi' ? model.wifiPlan : null}
           disabled={readOnly || busy !== null}
           saving={busy === row.key}
           onSave={(patch) => void submit(row.key, patch)}
@@ -198,13 +208,57 @@ function DeviceSettingsBody({ screenId, readOnly, nowMs }: { screenId: string; r
   );
 }
 
+/**
+ * The connection right now (2026-10-23): Wi-Fi name + signal, or the
+ * Ethernet cable, or offline — exactly what the unit reported, nothing
+ * guessed (Android hides a Wi-Fi name without location access).
+ */
+function NetworkLine({ net }: { net: DeviceNetStatus | null }) {
+  const t = useTranslations('screens.deviceSettings');
+  if (!net) return null;
+  const parts: string[] = [];
+  switch (net.t) {
+    case 'wifi':
+      parts.push(
+        net.ssid
+          ? t('net.wifi', { ssid: net.ssid, bars: net.bars ?? 0 })
+          : t('net.wifiUnnamed', { bars: net.bars ?? 0 }),
+      );
+      break;
+    case 'ethernet':
+      parts.push(t('net.ethernet'));
+      break;
+    case 'other':
+      parts.push(t('net.other'));
+      break;
+    default:
+      parts.push(t('net.none'));
+  }
+  if (net.t !== 'none' && net.ip) parts.push(t('net.ip', { ip: net.ip }));
+  if (net.t !== 'none' && net.auto !== undefined) parts.push(net.auto ? t('net.auto') : t('net.fixed'));
+  if (net.t !== 'ethernet' && net.eth) parts.push(t('net.cableAlso'));
+  return (
+    <div className="px-3.5 pb-1.5" data-testid="device-network-status">
+      <p className={`text-[11px] leading-snug ${net.t === 'none' ? 'text-amber-700' : 'text-slate-700'}`}>
+        <span className="font-bold">{t('net.title')}: </span>
+        {parts.join(' · ')}
+      </p>
+      {net.t !== 'none' && net.ok === false && (
+        <p className="text-[10px] text-amber-700 leading-snug">{t('net.noInternet')}</p>
+      )}
+    </div>
+  );
+}
+
 function SettingRow({
   row,
+  plan,
   disabled,
   saving,
   onSave,
 }: {
   row: DeviceSettingRow;
+  plan: WifiPlan | null;
   disabled: boolean;
   saving: boolean;
   onSave: (patch: DeviceSettingsPatch) => void;
@@ -236,7 +290,7 @@ function SettingRow({
         <NtpEditor row={row} disabled={disabled} onSave={onSave} inputId={`${id}-input`} />
       )}
       {row.editable && row.key === 'wifi' && (
-        <WifiEditor row={row} disabled={disabled} onSave={onSave} inputId={`${id}-input`} />
+        <WifiEditor row={row} plan={plan} disabled={disabled} onSave={onSave} inputId={`${id}-input`} />
       )}
       {row.key === 'attentiveTimeoutMs' && row.editable && (
         <p className="text-[10px] text-slate-400 leading-snug mt-1">{t('attentive.help')}</p>
@@ -249,6 +303,10 @@ function SettingRow({
           {saving ? t('saving') : state!.text}
         </p>
       )}
+      {!saving && row.key === 'wifi' && row.editable && row.state.kind === 'failed' &&
+        row.state.why !== undefined && WIFI_RETRY_WHYS.has(row.state.why) && (
+          <p className="text-[10px] text-slate-500 leading-snug mt-0.5">{t('wifi.retry')}</p>
+        )}
     </div>
   );
 }
@@ -340,7 +398,17 @@ function stateLine(t: T, row: DeviceSettingRow): { text: string; tone: string } 
     case 'applied':
       return {
         text:
-          s.why === 'already-set' ? t('state.alreadySet') : s.why === 'unverified' ? t('state.unverified') : t('state.applied'),
+          s.why === 'already-set'
+            ? t('state.alreadySet')
+            : s.why === 'unverified'
+              ? t('state.unverified')
+              : s.why === 'wifi-joined'
+                ? t('state.wifiJoined')
+                : s.why === 'wifi-saved'
+                  ? t('state.wifiSaved')
+                  : s.why === 'wifi-suggested'
+                    ? t('state.wifiSuggested')
+                    : t('state.applied'),
         tone: 'text-emerald-700',
       };
     case 'waiting':
@@ -403,11 +471,13 @@ function NtpEditor({
 
 function WifiEditor({
   row,
+  plan,
   disabled,
   onSave,
   inputId,
 }: {
   row: DeviceSettingRow;
+  plan: WifiPlan | null;
   disabled: boolean;
   onSave: (patch: DeviceSettingsPatch) => void;
   inputId: string;
@@ -420,16 +490,42 @@ function WifiEditor({
   const [ssid, setSsid] = useState(stored?.ssid ?? '');
   const [security, setSecurity] = useState<DeviceWifiSecurity>(stored?.security ?? 'wpa2');
   const [hidden, setHidden] = useState(stored?.hidden ?? false);
+  const [permanent, setPermanent] = useState(stored?.permanent ?? false);
   // Write-only: never pre-filled, never read back.
   const [password, setPassword] = useState('');
   const keepSaved = !!stored?.passphraseSaved && stored.ssid === ssid.trim() && stored.security === security;
+  // Offered only where the unit says Android's save dialog opens (Android 11+).
+  const canPermanent = plan?.dialog === true;
+  // WPA3 only where the unit says it can join one (never below Android 10).
+  const wpa3 = plan?.wpa3 !== false || security === 'wpa3';
 
   const submit = () => {
     const wifi: NonNullable<DeviceSettingsPatch['wifi']> = { ssid: ssid.trim(), security, hidden };
     if (security !== 'open' && password !== '') wifi.passphrase = password;
+    if (canPermanent && permanent) wifi.permanent = true;
     onSave({ wifi });
     setPassword('');
   };
+
+  // What will happen, said BEFORE Save (the unit's own facts; the generic note for an older unit).
+  const planText = (() => {
+    if (!plan) return t('wifi.note');
+    if (canPermanent && permanent) return t('wifi.plan.dialog');
+    switch (plan.kind) {
+      case 'silent':
+        return plan.radioOff ? t('wifi.plan.legacyOff') : t('wifi.plan.legacy');
+      case 'allowed':
+        return t('wifi.plan.allowed');
+      case 'approval':
+        return t('wifi.plan.approval');
+      case 'approval-unknown':
+        return t('wifi.plan.approvalUnknown');
+      case 'dialog-fallback':
+        return t('wifi.plan.dialogFallback');
+      case 'unavailable':
+        return t('wifi.plan.unavailable');
+    }
+  })();
 
   return (
     <div className="mt-1.5 space-y-1.5">
@@ -455,7 +551,7 @@ function WifiEditor({
           onChange={(e) => setSecurity(e.target.value as DeviceWifiSecurity)}
         >
           <option value="wpa2">{t('wifi.wpa2')}</option>
-          <option value="wpa3">{t('wifi.wpa3')}</option>
+          {wpa3 && <option value="wpa3">{t('wifi.wpa3')}</option>}
           <option value="open">{t('wifi.open')}</option>
         </Select>
         {security !== 'open' && (
@@ -476,6 +572,20 @@ function WifiEditor({
         <input type="checkbox" checked={hidden} disabled={disabled} onChange={(e) => setHidden(e.target.checked)} />
         {t('wifi.hidden')}
       </label>
+      {canPermanent && (
+        <label className="flex items-center gap-2 text-[11px] text-slate-600 min-h-[32px]">
+          <input
+            type="checkbox"
+            checked={permanent}
+            disabled={disabled}
+            onChange={(e) => setPermanent(e.target.checked)}
+          />
+          {t('wifi.permanent')}
+        </label>
+      )}
+      <p className="text-[10px] text-slate-600 leading-snug" data-testid="device-setting-wifi-plan">
+        {planText}
+      </p>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -491,7 +601,7 @@ function WifiEditor({
           </button>
         )}
       </div>
-      <p className="text-[10px] text-slate-400 leading-snug">{t('wifi.note')}</p>
+      <p className="text-[10px] text-slate-400 leading-snug">{t('wifi.installerOnly')}</p>
     </div>
   );
 }

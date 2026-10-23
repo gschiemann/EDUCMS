@@ -12171,6 +12171,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               Device setup
             </button>
           )}
+          {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
+            <button
+              onClick={() => {
+                // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen Network
+                // screen (Wi-Fi + Ethernet). Fire-and-forget; the APK refuses
+                // it over an alert and logs why. This menu stays open under
+                // it, so Back from the Network screen comes back HERE.
+                nativeFire('openNetworkScreen');
+              }}
+              className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
+            >
+              Network
+            </button>
+          )}
           <button
             onClick={handleExitApp}
             disabled={exitUnavailable}
@@ -14918,6 +14932,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   >
                     <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
                   </button>
+                  {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
+                    <button
+                      // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen
+                      // Network screen (Wi-Fi + Ethernet), above this menu;
+                      // Back there returns here. The APK refuses it over an
+                      // alert. Hidden on an APK that does not prove the method.
+                      onClick={(e) => { e.stopPropagation(); nativeFire('openNetworkScreen'); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Network className="w-4 h-4 text-slate-400" /> Network
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); handleExitApp(); }}
                     disabled={exitUnavailable}

@@ -281,6 +281,91 @@ class DeviceSettingsPolicyTest {
         assertEquals(DeviceSettingsPolicy.MAX_ATTEMPTS, prev!!.attempts)
     }
 
+    // ── Wi-Fi in progress outside the record (rules 2w and 6w, 2026-10-23) ──
+
+    private val progress = DeviceSettingsPolicy.WifiProgress()
+
+    @Test fun aSuggestionWaitingForAndroidsApprovalIsRecordedTheMomentItIsGivenNeverAppliedAgain() {
+        val waiting = Ack("r5", Status.WAITING, DeviceSettingCodes.WIFI_APPROVAL, attempts = 1, boot = boot)
+        // Still pending: nothing is applied, and no passphrase is asked for.
+        val still = reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = progress.copy(approval = "pending"))))
+        assertEquals(Status.WAITING, still.status)
+        assertFalse(DeviceSettingsPolicy.needsSecret(listOf(still)))
+        // Allowed on the glass: applied, with no write of its own — even during an alert (it only records).
+        val allowed = reported(
+            DeviceSettingsPolicy.decide(
+                input(item = wifiNoSecret, matches = null, previous = waiting, conditions = lit.copy(emergencyHeld = true))
+                    .copy(wifi = progress.copy(approval = "approved"), nowWallMs = 77L),
+            ),
+        )
+        assertEquals(Status.APPLIED, allowed.status)
+        assertEquals(DeviceSettingCodes.WIFI_SAVED, allowed.why)
+        assertEquals(77L, allowed.appliedAtWallMs)
+        // Declined: the ordinary rules apply again (the applier routes to the dialog or fails).
+        val declined = DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null, previous = waiting).copy(wifi = progress.copy(approval = "rejected")))
+        assertTrue(declined is Decision.Apply)
+    }
+
+    @Test fun aStagedSaveDialogWaitsForAPersonAndItsAnswerIsRecorded() {
+        val waiting = Ack("r5", Status.WAITING, DeviceSettingCodes.WIFI_DIALOG, attempts = 1, boot = boot)
+        val staged = progress.copy(dialogStagedId = "r5")
+        assertEquals(waiting, reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = staged))))
+        val saved = reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = progress.copy(dialogResultId = "r5", dialogResult = DeviceSettingCodes.WIFI_SAVED))))
+        assertEquals(Status.APPLIED, saved.status)
+        val no = reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = progress.copy(dialogResultId = "r5", dialogResult = DeviceSettingCodes.WIFI_DECLINED))))
+        assertEquals(Status.FAILED, no.status)
+        assertEquals(DeviceSettingCodes.WIFI_DECLINED, no.why)
+        // A person's "no" is never asked again, not even after a reboot.
+        assertEquals(Status.FAILED, reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = no, bootCount = boot + 1).copy(wifi = progress))).status)
+        // An answer for another identity changes nothing for this one.
+        assertEquals(waiting, reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = staged.copy(dialogResultId = "r4", dialogResult = DeviceSettingCodes.WIFI_SAVED)))))
+        // The stage died with its process: ask for the passphrase and stage again.
+        val lost = reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, matches = null, previous = waiting).copy(wifi = progress)))
+        assertEquals(DeviceSettingCodes.NEEDS_SECRET, lost.why)
+    }
+
+    @Test fun aSwitchBeingProvedIsNeverStartedAgainAndBlocksAnyOtherIdentitysSwitch() {
+        val switching = Ack("r5", Status.PENDING, DeviceSettingCodes.WIFI_SWITCHING, attempts = 1, lastAttemptElapsedMs = 1L, boot = boot)
+        val proving = progress.copy(switchingId = "r5")
+        assertEquals(switching, reported(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null, previous = switching, now = 999_999L).copy(wifi = proving))))
+        // The operator saved ANOTHER network meanwhile: it waits, spending nothing.
+        val next = reported(DeviceSettingsPolicy.decide(input(item = wifiWithSecret.copy(id = "r9"), matches = null, previous = switching).copy(wifi = proving)))
+        assertEquals(Status.PENDING, next.status)
+        assertEquals(DeviceSettingCodes.WIFI_SWITCHING, next.why)
+        assertEquals(0, next.attempts)
+        // The journal is gone but the record still says switching (a crash between the two): the rules decide, bounded.
+        assertTrue(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null, previous = switching, now = 999_999L).copy(wifi = progress)) is Decision.Apply)
+    }
+
+    @Test fun belowAndroidTenAnOffRadioWaitsAndSpendsNothing() {
+        val off = reported(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null).copy(wifi = progress.copy(legacyRadioOn = false))))
+        assertEquals(Status.WAITING, off.status)
+        assertEquals(DeviceSettingCodes.WIFI_OFF, off.why)
+        assertEquals(0, off.attempts)
+        // …but an alert still comes first in what the operator is told.
+        val alert = reported(
+            DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null, conditions = lit.copy(emergencyHeld = true)).copy(wifi = progress.copy(legacyRadioOn = false))),
+        )
+        assertEquals(DeviceSettingCodes.WAIT_EMERGENCY, alert.why)
+        attempt(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null).copy(wifi = progress.copy(legacyRadioOn = true))))
+    }
+
+    @Test fun wifiOutcomesAreRecordedAsTheySayAndAnUnprovedSwitchIsNeverRetriedOnItsOwn() {
+        val a = attempt(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, matches = null)))
+        assertEquals(Status.APPLIED, DeviceSettingsPolicy.afterApply(a, Outcome.Landed(DeviceSettingCodes.WIFI_JOINED), null, 5L).status)
+        assertEquals(DeviceSettingCodes.WIFI_JOINED, DeviceSettingsPolicy.afterApply(a, Outcome.Landed(DeviceSettingCodes.WIFI_JOINED), null, 5L).why)
+        val held = DeviceSettingsPolicy.afterApply(a, Outcome.Held(Status.PENDING, DeviceSettingCodes.WIFI_SWITCHING), null, 5L)
+        assertEquals(Status.PENDING, held.status)
+        assertEquals(1, held.attempts)
+        for (code in listOf(DeviceSettingCodes.WIFI_UNREACHABLE, DeviceSettingCodes.WIFI_NO_CONNECT, DeviceSettingCodes.WIFI_EXISTS, DeviceSettingCodes.WIFI_SECURITY, DeviceSettingCodes.WIFI_NO_DIALOG)) {
+            val failed = DeviceSettingsPolicy.afterApply(a, Outcome.Error(code), null, 5L)
+            assertEquals(code, Status.FAILED, failed.status)
+            assertEquals(code, Status.FAILED, reported(DeviceSettingsPolicy.decide(input(item = wifiWithSecret, previous = failed, matches = null, bootCount = boot + 1))).status)
+        }
+        // An alert that cut a switch short is retried once the alert is over (within the budget).
+        assertEquals(Status.PENDING, DeviceSettingsPolicy.afterApply(a, Outcome.Error(DeviceSettingCodes.WAIT_EMERGENCY), null, 5L).status)
+    }
+
     @Test fun aRetryableErrorWaitsForTheGapAndKeepsItsReason() {
         val a = attempt(DeviceSettingsPolicy.decide(input(now = 100L)))
         val refused = DeviceSettingsPolicy.afterApply(a, Outcome.Error(DeviceSettingCodes.WRITE_REFUSED), null, 1L)
