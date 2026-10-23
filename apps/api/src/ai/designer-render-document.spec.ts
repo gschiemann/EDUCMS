@@ -187,6 +187,21 @@ describe('designer-render-document — a byte-for-byte copy of what a screen ren
     expect((doc.match(/<script\b/g) || []).length).toBe(4); // canvas dims, fit engine, stage scale, live menu
   });
 
+  it('strips a split tag and a junk end tag, and still keeps our runtime (CodeQL 2026-10-22)', () => {
+    const doc =
+      '<!doctype html><html><head></head><body>' +
+      '<scr<script></script>ipt>evil()</script foo>' +
+      '<iframe src="https://evil.example"></iframe bar>' +
+      '<script>/*VOS-CANVAS*/window.__VOS_CW=3840;window.__VOS_CH=2160;</script>' +
+      '</body></html>';
+    const out = wrapDesignerSrcdoc(doc, NONCE);
+    expect(out).not.toMatch(/evil\(\)|<iframe/i);
+    expect(out).toContain(`<script nonce="${NONCE}">/*VOS-CANVAS*/window.__VOS_CW=3840;window.__VOS_CH=2160;</script>`);
+    // every surviving script is nonce-stamped: canvas dims + the two injected runtimes
+    expect((out.match(/<script\b/g) || []).length).toBe(3);
+    expect((out.match(new RegExp(`<script nonce="${NONCE}">`, 'g')) || []).length).toBe(3);
+  });
+
   it('a fresh nonce per document by default', () => {
     const a = assembleDesignerRenderDocument(superTaco, 3840, 2160);
     const b = assembleDesignerRenderDocument(superTaco, 3840, 2160);

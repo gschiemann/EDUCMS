@@ -1001,6 +1001,35 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
       expect(await activeIdsFor('scr-a1')).toHaveLength(1);
     });
 
+    // Launch QA B1 (2026-10-23): the desktop Broadcast console sent the URL
+    // SLUG as `scopeId`. The API scopes by tenant id and must keep refusing a
+    // slug — it is not the caller's tenant, so it is a 403, never a silent
+    // success somewhere else. The console now sends `user.tenantId`.
+    it('a tenant-scope broadcast whose scopeId is a workspace SLUG is refused; the tenant id is accepted', async () => {
+      const badmin = { user: { id: 'badmin', role: 'SCHOOL_ADMIN', tenantId: SCHOOL_B, schoolId: SCHOOL_B } };
+      await expect(
+        emergency.broadcastText(
+          { scopeType: 'tenant', scopeId: 'springfield-elementary', text: 'x', severity: 'INFO' } as any,
+          badmin,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(emergencyMessages).toHaveLength(0);
+      await expect(
+        emergency.mediaAlert(
+          { scopeType: 'tenant', scopeId: 'springfield-elementary', mediaUrls: [], severity: 'INFO', textBlob: 'x' } as any,
+          badmin,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(emergencyMessages).toHaveLength(0);
+
+      const res: any = await emergency.broadcastText(
+        { scopeType: 'tenant', scopeId: SCHOOL_B, text: 'x', severity: 'INFO' } as any,
+        badmin,
+      );
+      expect(res.success).toBe(true);
+      expect(await activeIdsFor('scr-b1')).toEqual([res.messageId]);
+    });
+
     it('expiry behaves identically for every copy', async () => {
       // Already expired at send time: nobody sees it, parent or child.
       await emergency.broadcastText(

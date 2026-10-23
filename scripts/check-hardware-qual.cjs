@@ -44,6 +44,8 @@ const SATISFYING = new Set(['PASS', 'NA', 'OVERRIDE']);
 const KNOWN_STATUSES = new Set(['PASS', 'FAIL', 'NA', 'UNQUALIFIED', 'OVERRIDE']);
 
 const DATE_RE = /\b(\d{4}-\d{2}-\d{2})\b/;
+/** Every regex metacharacter, not just `.` — the app / version come from the CLI. */
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const INITIALS_RE = /\b([A-Z]{2,4})\b/;
 
 // ── markdown helpers ───────────────────────────────────────────────────────
@@ -263,7 +265,7 @@ function recordOverride(matrixText, { app, version, operator, reason, date }) {
   ];
 
   const lines = matrixText.split(/\r?\n/);
-  const headingIdx = lines.findIndex((l) => new RegExp(`^##\\s+Release:\\s+${app}\\s+${version.replace(/\./g, '\\.')}\\s*$`).test(l.trim()));
+  const headingIdx = lines.findIndex((l) => new RegExp(`^##\\s+Release:\\s+${escapeRegExp(app)}\\s+${escapeRegExp(version)}\\s*$`).test(l.trim()));
 
   let out;
   if (headingIdx !== -1) {

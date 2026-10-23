@@ -6478,17 +6478,27 @@ function sanitizeRewriteText(input: string, kind: TextFieldKind): string {
   s = s.replace(/^["'“”]+|["'“”]+$/g, '').trim();
   // Drop script/style blocks (content + tags) and HTML comments outright,
   // so executable/inert junk never leaks as visible text.
-  s = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
-  s = s.replace(/<!--[\s\S]*?-->/g, '');
-  s = s.replace(REWRITE_URL_RE, '').replace(REWRITE_DANGEROUS_SCHEME_RE, '');
-  if (kind === 'rich') {
-    s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, tag) => {
-      const t = String(tag).toLowerCase();
-      if (!RICH_ALLOWED_TAGS.has(t)) return '';
-      return m.startsWith('</') ? `</${t}>` : `<${t}>`;
-    });
-  } else {
-    s = s.replace(/<[^>]*>/g, '');
+  // To a fixpoint: a removal can expose a new match (`<scr<!---->ipt>`), and
+  // an end tag may carry junk (`</script foo>`) — CodeQL, 2026-10-22.
+  {
+    let prev = '';
+    let guard = 0;
+    while (s !== prev && guard < 10) {
+      prev = s;
+      s = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\b[^>]*>/gi, '');
+      s = s.replace(/<!--[\s\S]*?-->/g, '');
+      s = s.replace(REWRITE_URL_RE, '').replace(REWRITE_DANGEROUS_SCHEME_RE, '');
+      if (kind === 'rich') {
+        s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, tag) => {
+          const t = String(tag).toLowerCase();
+          if (!RICH_ALLOWED_TAGS.has(t)) return '';
+          return m.startsWith('</') ? `</${t}>` : `<${t}>`;
+        });
+      } else {
+        s = s.replace(/<[^>]*>/g, '');
+      }
+      guard++;
+    }
   }
   s = s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   return s.slice(0, 2000);

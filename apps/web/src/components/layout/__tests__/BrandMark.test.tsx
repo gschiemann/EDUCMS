@@ -13,7 +13,7 @@
  * so the test would notice if that contract moved.
  */
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import { BrandMark } from '../BrandMark';
+import { BrandMark, decodeBrandText } from '../BrandMark';
 import { useAppStore } from '@/lib/store';
 
 const LS_KEY = 'edu-cms-branding-cache-v1:t1';
@@ -200,5 +200,16 @@ describe('reset to default (Greg, 2026-09-28: "it keeps the old logo")', () => {
 
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByTestId('brandmark-default')).toBeInTheDocument();
+  });
+});
+
+describe('decodeBrandText — one decode pass, never two (CodeQL js/double-escaping)', () => {
+  it('decodes the common scraper entities', () => {
+    expect(decodeBrandText('Pizza Delivery &amp; Carryout')).toBe('Pizza Delivery & Carryout');
+    expect(decodeBrandText('Tom&rsquo;s &ldquo;Diner&rdquo;')).toBe('Tom\'s "Diner"');
+  });
+  it('an escaped entity stays escaped: `&amp;lt;` is the TEXT `&lt;`, not `<`', () => {
+    expect(decodeBrandText('a &amp;lt;b&amp;gt; c')).toBe('a &lt;b&gt; c');
+    expect(decodeBrandText('&amp;amp;')).toBe('&amp;');
   });
 });

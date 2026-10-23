@@ -207,15 +207,22 @@ function redactSecretLeaves(value: any, depth = 0): any {
  * escaped) but defense in depth + the description also flows into
  * the AI prompt where weird HTML would just noise the model.
  */
-function sanitizeDescription(raw: unknown): string | null {
+export function sanitizeDescription(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
-  const s = typeof raw === 'string' ? raw : String(raw);
-  return s
-    // Drop entire <script>...</script> blocks
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<\/?[a-z][^>]*>/gi, '')
-    .trim()
-    .slice(0, 5000) || null;
+  let s = typeof raw === 'string' ? raw : String(raw);
+  // To a fixpoint: one removal can expose a new tag (`<scr<b></b>ipt>`), and
+  // an end tag may carry junk (`</script foo>`) — CodeQL, 2026-10-22.
+  let prev = '';
+  let guard = 0;
+  while (s !== prev && guard < 10) {
+    prev = s;
+    s = s
+      // Drop entire <script>...</script> blocks
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '')
+      .replace(/<\/?[a-z][^>]*>/gi, '');
+    guard++;
+  }
+  return s.trim().slice(0, 5000) || null;
 }
 
 /**

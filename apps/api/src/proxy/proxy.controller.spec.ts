@@ -178,3 +178,50 @@ describe('ProxyController — spatial-nav shim injection', () => {
     expect(res.headers['cache-control']).toContain('no-store');
   });
 });
+
+describe('static-mode strip + href scheme check (CodeQL, 2026-10-22)', () => {
+  beforeEach(() => mockedFetch.mockReset());
+  const controller = new ProxyController();
+
+  it('static mode removes a split script tag, a junk end tag and an unquoted on* handler', async () => {
+    mockedFetch.mockResolvedValue({
+      status: 200,
+      contentType: 'text/html; charset=utf-8',
+      body: Buffer.from(
+        '<!doctype html><html><head></head><body>' +
+          '<scr<script></script>ipt>upstreamEvil()</script foo>' +
+          '<img src="x" onerror=upstreamEvil2()>' +
+          '<p>kept</p></body></html>',
+        'utf8',
+      ),
+      finalUrl: 'https://example.com/',
+    });
+    const res = fakeRes();
+    await controller.proxyWeb('https://example.com/', undefined, undefined, res as never);
+    expect(res.headers['x-educms-mode']).toBe('static');
+    // Our spatial-nav runtime is the ONLY script left; no on* handler survives.
+    expect((res.body.match(/<script\b/g) || []).length).toBe(1);
+    expect(res.body).not.toMatch(/onerror/);
+    expect(res.body).toContain('<p>kept</p>');
+    expect(res.body).toContain('/*VOS-SPATIAL-NAV*/');
+  });
+
+  it('interactive mode never turns a case-variant javascript: href into a proxy URL', async () => {
+    mockedFetch.mockResolvedValue({
+      status: 200,
+      contentType: 'text/html; charset=utf-8',
+      body: Buffer.from(
+        '<!doctype html><html><head></head><body>' +
+          '<a href="JavaScript:alert(1)">a</a>' +
+          '<a href="java\tscript:alert(2)">b</a>' +
+          '<a href="/about">c</a></body></html>',
+        'utf8',
+      ),
+      finalUrl: 'https://example.com/',
+    });
+    const res = fakeRes();
+    await controller.proxyWeb('https://example.com/', 'true', undefined, res as never);
+    expect(res.body).not.toContain('url=javascript');
+    expect(res.body).toContain('/api/v1/proxy/web?url=' + encodeURIComponent('https://example.com/about'));
+  });
+});

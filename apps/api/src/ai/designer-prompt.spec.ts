@@ -596,6 +596,16 @@ describe('sanitizeDesignerHtml', () => {
     expect(html).not.toMatch(/<script/i);
   });
 
+  it('strips a split tag and a junk end tag the HTML parser still honours (CodeQL 2026-10-22)', () => {
+    // One removal used to EXPOSE the real tag: `<scr<script></script>ipt>` → `<script>`.
+    const split = DOC.replace('</body>', '<scr<script></script>ipt>var s=1;</script foo><iframe src="x"></iframe bar></body>');
+    const { html } = sanitizeDesignerHtml(split);
+    // No script or frame OPEN tag survives — what is left (`var s=1;` and a
+    // stray end tag the parser ignores) is inert text.
+    expect(html).not.toMatch(/<script\b|<iframe\b/i);
+    expect(html).toContain('</body>');
+  });
+
   it('strips the malicious-payload corpus: on* handlers, javascript: URLs, SVG onload, meta refresh, nested frames', () => {
     const bad = DOC.replace(
       '</body>',

@@ -2131,7 +2131,9 @@ export function parseStatValue(
   // Strip thousands separators, then require a clean numeric shape:
   // optional sign, optional digits, optional single decimal point.
   const cleaned = s.replace(/,/g, '');
-  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(cleaned)) return null;
+  // `\d+(\.\d*)?` — the digits before the point are one run, so the regex
+  // is linear (`\d+\.?\d*` was two overlapping runs: quadratic on "1111…x").
+  if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(cleaned)) return null;
 
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;

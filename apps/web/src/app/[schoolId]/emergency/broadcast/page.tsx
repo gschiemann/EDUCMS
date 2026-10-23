@@ -58,6 +58,11 @@ export default function BroadcastPage() {
   const schoolId = params.schoolId;
   const t = useTranslations();
   const { user, token } = useAppStore();
+  // The URL segment is the workspace SLUG; the API scopes by tenant UUID.
+  // Sending the slug 403d every broadcast for school admins (scope mismatch)
+  // and every status read for super admins (QA 2026-10-23). Same source as
+  // EmergencyTriggerModal: the signed-in workspace.
+  const tenantId = user?.tenantId || schoolId;
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
 
@@ -100,7 +105,7 @@ export default function BroadcastPage() {
   const fetchActive = useCallback(async () => {
     try {
       const res = await fetchWithTimeout(
-        `${API_URL}/emergency/status?tenantId=${encodeURIComponent(schoolId)}`,
+        `${API_URL}/emergency/status?tenantId=${encodeURIComponent(tenantId)}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
         4000, // < 5s poll interval — a stalled poll aborts before the next fires
       );
@@ -108,7 +113,7 @@ export default function BroadcastPage() {
       const json = await res.json();
       setActive(json.active || []);
     } catch { /* offline — ignore */ }
-  }, [schoolId, token]);
+  }, [tenantId, token]);
 
   useEffect(() => {
     fetchActive();
@@ -182,7 +187,7 @@ export default function BroadcastPage() {
       const body: any = withMedia
         ? {
             scopeType: 'tenant',
-            scopeId: schoolId,
+            scopeId: tenantId,
             mediaUrls,
             audioUrl: audioUrl || undefined,
             textBlob: text,
@@ -190,7 +195,7 @@ export default function BroadcastPage() {
           }
         : {
             scopeType: 'tenant',
-            scopeId: schoolId,
+            scopeId: tenantId,
             text,
             severity,
             durationMs: durationMin * 60 * 1000,

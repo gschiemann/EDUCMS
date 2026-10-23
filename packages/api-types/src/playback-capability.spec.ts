@@ -141,6 +141,17 @@ describe('device class', () => {
     expect(playbackDeviceClass(null)).toBeNull();
   });
 
+  it('trims edge dashes and bounds a hostile model string in linear time (CodeQL polynomial-redos)', () => {
+    expect(playbackDeviceClass({ manufacturer: '--Acme--', model: ' Box!! ', device: '-x-', sdk: 30 }))
+      .toBe('acme/box/x/sdk30');
+    expect(playbackDeviceClass({ manufacturer: 'a', model: '-'.repeat(100) + 'z', sdk: 30 })).toBe('a/z/unknown/sdk30');
+    // A 200k-dash model is cut to 256 chars BEFORE any regex runs, so the
+    // quadratic `-+$` case can no longer be reached; it answers at once.
+    const t0 = Date.now();
+    playbackDeviceClass({ manufacturer: 'a', model: '-'.repeat(200_000) + 'z', sdk: 30 });
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+
   it('class defaults: GUQ 4K, rk3288 1080p with one video per unit, M75 deliberately absent', () => {
     expect(playbackClassDefault('goodview/m55guq-cs1382d-c/x/sdk30')).toMatchObject({ maxShortEdge: 2160, maxUnitConcurrentVideos: 1 });
     expect(playbackClassDefault('rockchip/rk3288/rk3288/sdk25')).toMatchObject({ maxShortEdge: 1080, maxUnitConcurrentVideos: 1 });

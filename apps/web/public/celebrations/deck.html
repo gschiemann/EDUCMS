@@ -138,19 +138,28 @@
   var LIVE=decodeLive();
   var FORMAT=q.get('format')||'scoreboard';
 
-  if(cue&&CUES[cue]){
+  // Own-key lookup only: `?cue=__proto__` / `constructor` would otherwise hand
+  // applyLive() Object.prototype to write into (prototype pollution).
+  if(cue&&Object.prototype.hasOwnProperty.call(CUES,cue)&&CUES[cue]&&typeof CUES[cue]==='object'){
     document.querySelector('[data-label]').textContent='VenueOS · '+cue;
-    var cfg=applyLive(CUES[cue], LIVE);
+    var cfg=applyLive(Object.assign({},CUES[cue]), LIVE);
     cfg.format=FORMAT;
     VENUE.run(cfg);
   } else {
     // show the index
     document.getElementById('stage').style.display='none';
     var idx=document.getElementById('index');idx.style.display='block';
-    var team=q.get('team')?('&team='+q.get('team')):'';
-    var html='<h1>VenueOS — Celebration Deck</h1><p>Every remaining cue, reusing the shared engine. Click one to play it. Add a colour with the swatches.</p>';
-    for(var g in GROUPS){html+='<div class="grp"><b>'+g+'</b>';GROUPS[g].forEach(function(k){html+='<a href="?cue='+k+team+'">'+CUES[k].headline+'</a>';});html+='</div>';}
-    idx.innerHTML=html;
+    // The index is built with DOM nodes, never an HTML string: `?team=` is
+    // attacker-chosen and this file is served on the dashboard origin (it sits
+    // outside the CSP middleware's matcher), so a `"><img onerror=…>` in it used
+    // to run as same-origin script. Every value is a text node or an
+    // encodeURIComponent'd query parameter now.
+    var team=q.get('team')?('&team='+encodeURIComponent(q.get('team'))):'';
+    idx.textContent='';
+    var h1=document.createElement('h1');h1.textContent='VenueOS — Celebration Deck';idx.appendChild(h1);
+    var p=document.createElement('p');p.textContent='Every remaining cue, reusing the shared engine. Click one to play it. Add a colour with the swatches.';idx.appendChild(p);
+    for(var g in GROUPS){if(!Object.prototype.hasOwnProperty.call(GROUPS,g))continue;var grp=document.createElement('div');grp.className='grp';var b=document.createElement('b');b.textContent=g;grp.appendChild(b);
+      GROUPS[g].forEach(function(k){var a=document.createElement('a');a.setAttribute('href','?cue='+encodeURIComponent(k)+team);a.textContent=CUES[k].headline;grp.appendChild(a);});idx.appendChild(grp);}
   }
   document.getElementById('idxBtn').addEventListener('click',function(){location.search='';});
   }
