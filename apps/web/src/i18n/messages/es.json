@@ -6539,7 +6539,8 @@
     "totalAcross": "{count, plural, one {# pantalla} other {# pantallas}} en {groups, plural, one {# grupo} other {# grupos}}",
     "notInGroup": "Sin grupo",
     "youreIn": "Estás en",
-    "returnToFleet": "Volver a la flota de {name}"
+    "returnToFleet": "Volver a la flota de {name}",
+    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo."
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",

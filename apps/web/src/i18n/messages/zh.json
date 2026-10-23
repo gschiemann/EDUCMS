@@ -6539,7 +6539,8 @@
     "totalAcross": "{count} 块屏幕，分布在 {groups} 个分组",
     "notInGroup": "未分组",
     "youreIn": "当前位置：",
-    "returnToFleet": "返回 {name} 的设备总览"
+    "returnToFleet": "返回 {name} 的设备总览",
+    "groupNameTaken": "已存在名为“{name}”的分组。请换个名称，或将屏幕添加到该分组。"
   },
   "templatesPage": {
     "summaryYours": "{count} 个模板 · {owned} 个属于你",

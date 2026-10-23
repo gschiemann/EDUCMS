@@ -312,6 +312,12 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const submitNewGroup = async () => {
     const name = newGroupName.trim();
     if (!name || newGroupBusy) return;
+    // Two groups with one name read as one in every picker (drawer, playlist
+    // wizard, filters) — QA 2026-10-23 ended with three "Front Lobby" groups.
+    if (groups.some((g) => (g.name || '').trim().toLowerCase() === name.toLowerCase())) {
+      setNewGroupError(t('screensOps.groupNameTaken', { name }));
+      return;
+    }
     setNewGroupBusy(true); setNewGroupError(null);
     try {
       const address = newGroupAddress.trim();

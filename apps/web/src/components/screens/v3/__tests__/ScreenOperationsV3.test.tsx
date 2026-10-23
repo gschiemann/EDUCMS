@@ -645,6 +645,17 @@ describe('deep link + rollback', () => {
     // And there is no overflow menu left to hide anything in (classic retired 2026-09-14).
     expect(rtl.queryByRole('button', { name: 'More screen actions' })).not.toBeInTheDocument();
   });
+
+  it('refuses a name another group already has (QA 2026-10-23)', () => {
+    createGroupMutate.mockClear();
+    renderPage();
+    fireEvent.click(rtl.getByRole('button', { name: /New group/ }));
+    const form = rtl.getByRole('form', { name: 'New group' });
+    fireEvent.change(within(form).getByLabelText('New group name'), { target: { value: '  riot henderson ' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Create group' }));
+    expect(within(form).getByRole('alert')).toHaveTextContent('A group named “riot henderson” already exists');
+    expect(createGroupMutate).not.toHaveBeenCalled();
+  });
 });
 
 describe('filter chips carry only what has screens behind it (2026-09-14)', () => {

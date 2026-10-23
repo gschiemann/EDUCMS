@@ -6539,7 +6539,8 @@
     "totalAcross": "{count, plural, one {# screen} other {# screens}} across {groups, plural, one {# group} other {# groups}}",
     "notInGroup": "Not in a group",
     "youreIn": "You’re in",
-    "returnToFleet": "Return to {name} fleet"
+    "returnToFleet": "Return to {name} fleet",
+    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group."
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
