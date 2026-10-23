@@ -11,7 +11,7 @@ Una **transmisión de emergencia** pone un mensaje urgente encima de lo que est�
 
 ## Abrir la página de transmisión
 
-**Transmisión de emergencia** está en la dirección de su espacio de trabajo seguida de `/emergency/broadcast`. Si su panel está en `venue-os.app/lincoln-high/dashboard`, abra `venue-os.app/lincoln-high/emergency/broadcast` y guárdela en favoritos. Mientras hay una alerta activa, el aviso rojo del panel también tiene un botón **Consola de emergencia** que la abre.
+Abra **Transmisión** en el menú lateral (en un teléfono, en **Más**); aparece a todas las personas que pueden enviar. La página también está en la dirección de su espacio de trabajo seguida de `/emergency/broadcast`: si su panel está en `venue-os.app/lincoln-high/dashboard`, abra `venue-os.app/lincoln-high/emergency/broadcast` y guárdela en favoritos. Mientras hay una alerta activa, el aviso rojo del panel también tiene un botón **Consola de emergencia** que la abre.
 
 ## Enviar una transmisión de texto
 
@@ -22,7 +22,7 @@ Una **transmisión de emergencia** pone un mensaje urgente encima de lo que est�
 
 **Transmisión enviada.** confirma que salió, y el mensaje aparece en **Transmisiones activas**. Si el envío falla, un mensaje en rojo lo indica: no salió nada, así que vuelva a intentarlo.
 
-Una transmisión llega a todas las pantallas de la ubicación en la que está trabajando; para llegar a las pantallas de una ubicación concreta, cámbiese primero a esa ubicación. Esta página no permite elegir pantallas ni grupos.
+Una transmisión llega a todas las pantallas de la ubicación en la que está trabajando y, si trabaja en una organización con ubicaciones dependientes, también a todas las pantallas de esas ubicaciones. Para llegar solo a las pantallas de una ubicación concreta, cámbiese primero a esa ubicación. Esta página no permite elegir pantallas ni grupos.
 
 ## Agregar imágenes, video o sonido
 
@@ -61,7 +61,7 @@ El interruptor **Voz activada** / **Silencio** de la parte superior de `/panic` 
 | Alerta con multimedia | 1 hora |
 | SOS del personal | 30 minutos |
 
-Las pantallas retiran el mensaje solas cuando se acaba su tiempo. Para finalizarlo antes, un Superadministrador pulsa **Finalizar** junto a él en **Transmisiones activas**. Si la página indica que la finalización falló, el mensaje puede seguir en las pantallas: pulse **Finalizar** otra vez.
+Las pantallas retiran el mensaje solas cuando se acaba su tiempo. Para finalizarlo antes, pulse **Finalizar** junto a él en **Transmisiones activas**: cualquier persona que pueda enviar puede finalizar. Finalizar una transmisión enviada desde una organización también la finaliza en todas sus ubicaciones dependientes. Si la página indica que la finalización falló, el mensaje puede seguir en las pantallas: pulse **Finalizar** otra vez.
 
 Una alerta completa (Confinamiento, Evacuación y las demás) termina de otra forma: escriba **CLEAR** y pulse **Finalizar la emergencia (fin de emergencia)** en el panel, o use **Mantén pulsado para enviar el fin de alerta** en `/panic`.
 
@@ -74,7 +74,7 @@ La página de transmisión no tiene el interruptor **REAL | SIMULACRO**: cada tr
 - Los **Superadministradores** y los **Administradores** pueden enviar transmisiones de texto y alertas con multimedia.
 - Los **Editores** solo pueden enviarlas cuando un administrador les activa el permiso **Alertas de emergencia**; vea [delegar el acceso al botón de pánico](/help/panic-delegation). Sin ese permiso, el envío se rechaza.
 - Los **Visualizadores** ven **Transmisiones activas**, pero no pueden enviar.
-- En esta página, **Finalizar** se muestra a los Superadministradores.
+- En esta página, **Finalizar** se muestra a todas las personas que pueden enviar: la misma regla que aplica el servidor.
 - Las **claves de API** nunca pueden enviar ni finalizar una transmisión.
 
 ## Qué guarda el registro de auditoría

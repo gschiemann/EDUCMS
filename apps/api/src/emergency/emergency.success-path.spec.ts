@@ -75,8 +75,11 @@ function rowMatches(row: MsgRow, where: any): boolean {
   if (Array.isArray(where.AND)) {
     for (const andClause of where.AND) {
       if (Array.isArray(andClause.OR)) {
+        // 2026-10-22: a tenant-scope clause carries NO scopeId — the row's
+        // own `tenantId` (pinned above) is what says "fanned out to me"; the
+        // ancestor check happens after the read (message-visibility.ts).
         const okScope = andClause.OR.some(
-          (s: any) => s.scopeType === row.scopeType && s.scopeId === row.scopeId,
+          (s: any) => s.scopeType === row.scopeType && (s.scopeId === undefined || s.scopeId === row.scopeId),
         );
         if (!okScope) return false;
       }
@@ -132,9 +135,10 @@ describe('Emergency broadcast SUCCESS path (end-to-end, stateful)', () => {
         return Promise.resolve(row);
       }),
       updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
-        const rows = messages.filter(
-          (m) => m.id === where.id && (where.tenantId === undefined || m.tenantId === where.tenantId),
-        );
+        // Scalar or `{ in: [...] }` — the clear writes id/tenant SETS since 2026-10-22.
+        const matches = (value: string, clause: any) =>
+          clause === undefined || (Array.isArray(clause?.in) ? clause.in.includes(value) : value === clause);
+        const rows = messages.filter((m) => matches(m.id, where.id) && matches(m.tenantId, where.tenantId));
         rows.forEach((row) => Object.assign(row, data));
         return Promise.resolve({ count: rows.length });
       }),
