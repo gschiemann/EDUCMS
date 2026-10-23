@@ -320,7 +320,9 @@ const POWER_ON_NOTE = 'Turns the panel back on if something left it dark.';
  */
 function powerOffNote(mech: ScreenBlankVerdict | undefined): {
   available: boolean;
-  noteText: string;
+  noteText: string | null;
+  /** i18n key, used INSTEAD of `noteText` when present (the 1.1.52 note ships in en/es/zh). */
+  noteKey?: string;
 } {
   switch (mech) {
     case 'vendor-recipe':
@@ -328,6 +330,16 @@ function powerOffNote(mech: ScreenBlankVerdict | undefined): {
         available: true,
         noteText:
           'Switches the panel itself off. “Turn panel on” brings it back.',
+      };
+    // Player 1.1.52 — the panel vendor's own backlight service (Goodview GUQ).
+    // The backlight goes off while the player keeps running, so an emergency
+    // alert turns it straight back on; same proven class as a recipe (see
+    // DISPLAY_POWER_PROVEN_MECHANISMS in @cms/api-types).
+    case 'vendor-backlight':
+      return {
+        available: true,
+        noteText: null,
+        noteKey: 'screens.display.note.powerOffVendorBacklight',
       };
     case 'device-admin':
     case 'device-owner':
@@ -523,8 +535,8 @@ export function resolvePowerAxes(
     off: {
       available: off.available,
       softwareOnly: false,
-      noteKey: null,
-      noteText: off.noteText,
+      noteKey: off.noteKey ?? null,
+      noteText: off.noteKey ? null : off.noteText,
     },
     on: {
       available: true,

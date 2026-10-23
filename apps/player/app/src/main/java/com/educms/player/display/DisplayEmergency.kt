@@ -736,6 +736,18 @@ object DisplayEmergency {
                 durable = true,
             )
         }
+        // ⚠️ 1.1.52 — THE BACKLIGHT FIRST (VendorBacklightPolicy rule 3). On a
+        // panel whose blank is the vendor's backlight command, the glass is dark
+        // while Android is awake — nothing below (window hooks, wake lock,
+        // registry WAKE) lights it. So the ON is asked for HERE, before the
+        // first window hook, on the provider's own worker, and this thread never
+        // waits for it: a failed or hanging vendor call cannot delay one line of
+        // the drawing below. The registry WAKE further down asks again, bounded
+        // by EmergencyPaintPolicy.WAKE_BUDGET_MS, and a re-raise re-asks while
+        // our record says the backlight is off. No-op on every other box.
+        if (steps) EmergencyBrightness.step("vendor-backlight-on")
+        runCatching { VendorBacklightProvider.emergencyOn(app, quiet) }
+            .onFailure { PlayerLogger.e(TAG, "vendor backlight ON could not be queued; alert drawing continues", it) }
         // Normal video yields; this observer never acquires/releases a hold.
         if (isHeld(ctx)) {
             if (steps) EmergencyBrightness.step("shared-video-suppress")

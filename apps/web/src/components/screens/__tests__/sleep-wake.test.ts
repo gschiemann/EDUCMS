@@ -89,6 +89,9 @@ describe('sleep & wake — what each screen can do, and what it proved', () => {
     expect(mechanismKind('device-admin', false)).toBe('device-admin');
     expect(mechanismKind('accessibility-lock', false)).toBe('accessibility');
     expect(mechanismKind('vendor-recipe', false)).toBe('vendor');
+    // 1.1.52 — the vendor backlight is a real sleep for the glass, on every Android.
+    expect(mechanismKind('vendor-backlight', false)).toBe('vendor');
+    expect(mechanismKind('vendor-backlight', false, 30)).toBe('vendor');
     expect(mechanismKind(null, false)).toBe('unknown');
   });
 
