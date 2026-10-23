@@ -25,7 +25,7 @@ Every provider that processes customer data, and when it does, is listed in [Ann
 ## Sign-in and identity
 
 - **Passwords** must be at least 8 characters and are stored only as salted Argon2 hashes. Sign-in attempts are rate-limited.
-- **Two-step sign-in**: passkeys (Face ID, Touch ID, Windows Hello or a hardware security key), authenticator apps with one-time backup codes, and an emailed one-time code as a fallback. The emailed code is not accepted for 7 days after a password reset.
+- **Two-step sign-in**: passkeys (Face ID, Touch ID, Windows Hello or a hardware security key), authenticator apps with one-time backup codes, and an emailed one-time code as a fallback. The emailed code is not accepted for 7 days after a password reset. What staff see, step by step, is in [Signing in, passkeys and two-step sign-in](/help/signing-in).
 - **Who must use it**: your organization can require two-step sign-in for every admin and for everyone allowed to send emergency alerts, and an admin can require it for any individual person.
 - **First sign-in**: each new person sets their own password and email address the first time they sign in.
 - **Single sign-on**: any OpenID Connect (OIDC) identity provider — for example Google Workspace, Microsoft Entra ID or Okta — limited to the email domains you choose. See [Setting up single sign-on](/help/sso).
@@ -66,7 +66,7 @@ What your network must allow is on [Network and firewall requirements](/help/net
 
 ## Emergency alerts
 
-Only people granted the alert permission can send alerts, with a deliberate press-and-hold or a typed confirmation, and every alert and all-clear is recorded in the audit log. Alert messages are cryptographically signed before they go out, reach screens over the real-time connection, and fall back to ordinary polling if that connection is unavailable. The [emergency system overview](/help/emergency-system) has the details, including what the system does not cover.
+Only people granted the alert permission can send alerts, with a deliberate press-and-hold or a typed confirmation, and every alert and all-clear is recorded in the audit log. Alert messages are cryptographically signed before they go out, reach screens over the real-time connection, and fall back to ordinary polling if that connection is unavailable. The [emergency system overview](/help/emergency-system) has the details, including what the system does not cover; text and media messages shown over normal content are covered in [Emergency broadcasts and staff SOS](/help/emergency-broadcast).
 
 ## How we build and run it
 

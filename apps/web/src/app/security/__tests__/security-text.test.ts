@@ -23,9 +23,18 @@ describe('/security policy text', () => {
   it('only uses the link tags the page knows', () => {
     for (const loc of ['en', 'es', 'zh'] as const) {
       for (const v of Object.values(SECURITY_POLICY_TEXT[loc] as Record<string, string>)) {
-        for (const t of tags(v).split(',').filter(Boolean)) expect(['mail', 'overview', 'network', 'dpa']).toContain(t);
+        for (const t of tags(v).split(',').filter(Boolean)) expect(['mail', 'github', 'overview', 'network', 'dpa']).toContain(t);
       }
     }
+  });
+
+  it('names both private reporting channels, as SECURITY.md does (repo public, 2026-10-22)', () => {
+    for (const loc of ['en', 'es', 'zh'] as const) {
+      const how = (SECURITY_POLICY_TEXT[loc] as Record<string, string>).howBody;
+      expect(how).toMatch(/<mail>security@venue-os\.app<\/mail>/);
+      expect(how).toMatch(/<github>[^<]+<\/github>/);
+    }
+    expect(en.howBody).not.toMatch(/only reporting channel/);
   });
 
   it('states the commitments SECURITY.md makes, and no bounty or certification', () => {

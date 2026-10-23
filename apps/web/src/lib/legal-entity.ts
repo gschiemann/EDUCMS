@@ -7,9 +7,8 @@
  * the entity or address into a page.
  *
  * The contact addresses: privacy@, security@ and support@ are forwarded
- * (Forward Email, 2026-10-10). legal@ was NOT among the forwarded aliases
- * confirmed on that date — add it in Forward Email (or change `legal` below)
- * before these pages go live.
+ * (Forward Email, 2026-10-10). There is no legal@ mailbox, so legal notices
+ * go to support@ (2026-10-22) — never name an address that is not forwarded.
  *
  * Nothing here is legal advice; the documents need attorney review.
  */
@@ -40,10 +39,9 @@ export const LEGAL_ENTITY = {
 export const GOVERNING_STATE = 'Alabama';
 
 export const LEGAL_CONTACTS = {
-  // TODO(owner): legal@ was not among the forwarded aliases confirmed on
-  // 2026-10-10. Add it in Forward Email (or point this at a forwarded alias)
-  // before launch — /terms names it as the address for legal notices.
-  legal: 'legal@venue-os.app',
+  // Legal notices (/terms, /terms/eula). legal@ is not a forwarded alias —
+  // support@ is, so notices sent here reach a person (2026-10-22).
+  legal: 'support@venue-os.app',
   privacy: 'privacy@venue-os.app',
   security: 'security@venue-os.app',
   support: 'support@venue-os.app',
@@ -101,6 +99,13 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     purpose: 'Transactional email (sign-in codes, invitations, notifications)',
     location: 'United States',
     when: 'Always',
+  },
+  {
+    name: 'Forward Email',
+    purpose:
+      'Inbound email forwarding for support@venue-os.app and security@venue-os.app, including the content of messages sent to those addresses',
+    location: 'United States / European Union',
+    when: 'When someone emails a VenueOS support or security address',
   },
   {
     name: 'Sentry',

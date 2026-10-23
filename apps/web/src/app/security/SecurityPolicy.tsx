@@ -8,8 +8,12 @@ import { SECURITY_POLICY_TEXT, type SecurityPolicyText } from './policy-text';
 /** Shown as "Last updated" on /security. Keep in step with security.txt. */
 export const SECURITY_POLICY_UPDATED = '2026-10-22';
 
+/** GitHub private vulnerability reporting (enabled on the public repo, 2026-10-22). */
+export const GITHUB_PRIVATE_REPORT_URL = 'https://github.com/gschiemann/EDUCMS/security/advisories/new';
+
 const LINKS: Record<string, (c: string) => ReactNode> = {
   mail: (c) => <a href={`mailto:${LEGAL_CONTACTS.security}`}>{c}</a>,
+  github: (c) => <a href={GITHUB_PRIVATE_REPORT_URL}>{c}</a>,
   overview: (c) => <Link href="/help/it-security-overview">{c}</Link>,
   network: (c) => <Link href="/help/network-requirements">{c}</Link>,
   dpa: (c) => <Link href="/dpa#subprocessors">{c}</Link>,

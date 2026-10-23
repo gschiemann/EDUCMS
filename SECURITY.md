@@ -12,7 +12,13 @@ take legal action against you for reporting it in good faith. See
 
 ## Reporting a vulnerability
 
-**Email: security@venue-os.app**
+Report privately, through either channel:
+
+- **Email: security@venue-os.app**
+- **GitHub private vulnerability reporting** — on this repository's
+  **Security** tab, choose **Report a vulnerability**
+  (<https://github.com/gschiemann/EDUCMS/security/advisories/new>). Only you
+  and the maintainers can see the report.
 
 Please include, as far as you have it:
 
@@ -23,12 +29,9 @@ Please include, as far as you have it:
 - Whether you accessed, modified, or retained any data (see
   [Rules of engagement](#rules-of-engagement))
 
-Email is the only reporting channel. This repository is **private**, so
-GitHub's issue tracker and its private vulnerability reporting form are not
-reachable by outside reporters — do not spend time looking for them. If you
-have been given repository access, still report by email rather than by
-opening an issue or a pull request: an issue is a disclosure to everyone who
-holds access.
+**Never report a vulnerability in a public issue, pull request or
+discussion.** This repository is public: anything posted there is readable by
+everyone, including anyone who could exploit the issue before a fix ships.
 
 ### What to expect
 
@@ -223,10 +226,15 @@ claims and only the first is answerable from source code.
   whether Clever credentials are set are per-deployment and per-tenant state,
   not code. If you need the posture of a specific environment, ask us and we
   will check it rather than guess.
-- **This repository is private.** Outside researchers cannot read the source,
-  open an issue on it, or use GitHub's private vulnerability reporting — email
-  is the channel. Source review is therefore not a control you can exercise
-  independently; the CI gates above are.
+- **The source is public, but it is not open source.** This repository is
+  publicly readable on GitHub under a source-available, all-rights-reserved
+  notice ([`LICENSE`](./LICENSE)): you may view and clone it to evaluate,
+  audit or report issues in it, and it grants no other right — no production
+  or commercial use, no copying, modification or redistribution. Source review
+  is therefore a control you can exercise yourself, alongside the CI gates
+  above. Because every commit is world-readable, credentials, customer names
+  and personal data never belong in it; the gitleaks gate below is the
+  mechanical floor.
 - **We do not claim the git history has never held a secret.** gitleaks runs on
   every pull-request diff and over full history on every push to master, and
   fails the build on a high-confidence finding
@@ -236,4 +244,4 @@ claims and only the first is answerable from source code.
 
 ---
 
-*Last reviewed: 2026-09-08*
+*Last reviewed: 2026-10-22*

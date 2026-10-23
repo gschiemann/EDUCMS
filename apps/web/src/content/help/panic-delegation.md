@@ -31,7 +31,7 @@ Only Admins and Super Admins see the switch, and only for people below their own
 
 Each grant and each revoke is audit-logged — who made it, for whom, and when.
 
-A person with the capability sees the Emergency button in their dashboard and can use the `/panic` page, but **does not** gain any other admin ability. They cannot:
+A person with the capability sees the Emergency button in their dashboard, can use the `/panic` page and can send [emergency broadcasts](/help/emergency-broadcast), but **does not** gain any other admin ability. They cannot:
 
 - Invite, change or remove people
 - Edit settings or alert content
