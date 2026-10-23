@@ -72,11 +72,19 @@ though we are a plain app.
 
 ### B. The Seewo / CVTE IFPDOS "OpenSDK" system service — the real t982 control plane
 
-On the t982 (`isT982()`), CloudSign does **not** use broadcasts for the hard stuff; it binds the
-**Seewo OpenSDK** (`com.seewo.sdk.OpenSDK` → `SDKServiceManager` → `ServiceManager.getService("opensdk")`
-→ `ISDKService.Stub.asInterface`, `com/seewo/sdk/OpenSDK.java:136,166`). CloudSign is non-system, so this
-binder is reachable by a normal app on these builds. The helper surface (`com/seewo/sdk/*`) is exactly
-what we need:
+On the t982 (`isT982()`), CloudSign does **not** use broadcasts for the hard stuff; it uses the
+**Seewo / IFPDOS OpenSDK** (`com.seewo.sdk.OpenSDK` + helpers). **How a non-system app reaches it is a
+supported `bindService`, not hidden API** — this is the key accuracy point: `SDKServiceManager`
+(`com/seewo/sdk/internal/utils/SDKServiceManager.java`) checks `isSystemApplication` (uid < 10000); a
+**non-system** caller (uid ≥ 10000, i.e. us and CloudSign on the GVBOX build) takes the
+`mIsUseSDKServiceManager` path, which does `bindService(Intent("com.ifpdos.opensdk.SERVICE_MANAGER")
+.setPackage("com.seewo.mcuservice"), conn, BIND_AUTO_CREATE)` and then routes `getService("opensdk"|
+"opensdk_media_data"|"opensdk_watchdog")` through the bound `ISDKServiceManager.getService(name)`
+(`:41-43,119-132`). Only a *system* app takes the direct `ServiceManager.getService` branch. So the full
+helper surface below is reachable by our ordinary APK by binding one exported vendor service — no platform
+signature, no hidden-API blocklist problem. (The GVBOX CloudSign is signed with the **android test key**
+`c8a2e9bc…`, NOT the platform key — direct proof a non-platform app uses this SDK on t982.) The helper
+surface (`com/seewo/sdk/*`) is exactly what we need:
 
 | Helper.method (`com.seewo.sdk`) | What it does | Relevance to us |
 |---|---|---|
@@ -95,15 +103,15 @@ what we need:
 | `SDKSystemHelper.freezeScreen()` | Freeze last frame | Could hide a reload seam (not needed; native-first solves it) |
 
 **Caveats, stated honestly:**
-- `ServiceManager.getService` is on the Android hidden-API blocklist from API 28+. CloudSign reaches it
-  on these Goodview builds (the SDK may rely on a relaxed-enforcement vendor build, a greylist exemption,
-  or a reflection bypass). **This must be proven on glass before we rely on it** — bind once, confirm the
-  binder is non-null, and fall back silently if it is. The broadcast path (A) needs no hidden API and is
-  the guaranteed-safe fallback for brightness/volume/orientation.
-- The SDK is CVTE/IFPDOS firmware-specific. On a non-Seewo panel `getService("opensdk")` returns null;
-  every call must be guarded and absence treated as "capability unavailable," never a crash (matches our
-  self-heal rule). `getResolutionInfo()`/`getBoardType()` are the cheap probes that tell us which path a
-  given unit supports.
+- The only dependency is that the IFPDOS service package **`com.seewo.mcuservice`** (exported action
+  `com.ifpdos.opensdk.SERVICE_MANAGER`) is present on the panel — it is, on Goodview t982 / CVTE firmware.
+  On a panel without it the bind fails; we fall back to the broadcast path (A) or no-op. **Still prove the
+  bind on glass** (bind once, confirm `getService("opensdk")` non-null) before relying on it, but this is a
+  standard bound-service dependency, not the hidden-API gamble I first suspected.
+- Every call must be guarded and absence treated as "capability unavailable," never a crash (matches our
+  self-heal rule). `getBoardType()`/`getResolutionInfo()` are the cheap probes that tell us which path a
+  given unit supports. We would ship the reverse-engineered AIDL (`ISDKServiceManager` + the `opensdk`
+  interface) or, cleaner, request the Seewo/IFPDOS OpenSDK AAR from the vendor.
 
 ### C. The GvManager AIDL (`GV_API_SERVICE`) — generic fallback, same reachability
 
