@@ -550,6 +550,33 @@ describe('POST /screens/:id/telemetry', () => {
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,applied:{...experiments.applied,prefer60hz:'mode 2 please'}}}}).success).toBe(false);
     expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,requested:{sixtyHertz:true}}}}).success).toBe(false);
   });
+  it('1.1.51 accepts the double-post decision (applied code, guard entries, timing object) and persists it; refuses its malformed shapes', async()=>{
+    // The M43 (1.1.50) shape: requested doublePost, a 60 Hz composition grid under a 30 Hz mode, a 30 fps clip. Until
+    // this the strict schema (and the page's reader) dropped the verdict, so "requested but never applied" was unanswerable.
+    const doublePost = {mode:'fixed-source-always',applied:true,gridHzBefore:60,refreshRateBefore:30,displayModeBefore:'1:3840x2160@30.00',
+      gridHzAfter:30.02,refreshRate:30,displayMode:'1:3840x2160@30.00'};
+    const timing = {decodedFrames:1800,submittedFrames:1800,lateFrames:0,lastLateUs:0,maxLateUs:0,maxSubmitGapMs:34,leadUs:33333,
+      sourceWidth:2160,sourceHeight:3840,doublePost};
+    const experiments = {requested:{vsyncSnap:true,doublePost:true},applied:{webviewInvisible:false,vsyncSnap:true,prefer60hz:'no-60hz-mode',doublePost:'fixed-source-always'},
+      guard:{disabled:{},applied:{vsyncSnap:1,doublePost:1}}};
+    const nativeVideo = {...nativeSample(),timing,experiments};
+    expect(screenTelemetrySchema.safeParse({nativeVideo}).success).toBe(true);
+    await controller.report(SCREEN_ID,makeReq(),{nativeVideo,render:{frames:1800,hash:'pl:test'}});
+    expect(writtenData()?.lastVideoReport).toMatchObject({native:{timing:{doublePost},experiments:{applied:{doublePost:'fixed-source-always'},guard:{applied:{doublePost:1}}}}});
+    // A refusal is a complete record too (no "after" facts), and the guard may name it.
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:{...timing,doublePost:{mode:'grid-not-2x-fps',applied:false,gridHzBefore:30,refreshRateBefore:30}},
+      experiments:{...experiments,applied:{...experiments.applied,doublePost:'grid-not-2x-fps'},guard:{disabled:{doublePost:'output-stalled'},applied:{}}}}}).success).toBe(true);
+    for (const [name,bad] of [
+      ['a free-text mode',{...doublePost,mode:'https://evil.example'}],
+      ['a string applied',{...doublePost,applied:'yes'}],
+      ['an empty display mode (the APK omits an unreadable one)',{...doublePost,displayModeBefore:''}],
+      ['an unknown key',{...doublePost,phase:2}],
+      ['a rate past the bound',{...doublePost,gridHzBefore:5000}],
+    ] as const) {
+      expect({name,ok:screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),timing:{...timing,doublePost:bad}}}).success}).toEqual({name,ok:false});
+    }
+    expect(screenTelemetrySchema.safeParse({nativeVideo:{...nativeSample(),experiments:{...experiments,applied:{...experiments.applied,doublePost:'mode 2 please'}}}}).success).toBe(false);
+  });
   it('1.1.43 accepts the grid-sized release lead and the panel firmware facts, and refuses their malformed shapes', async()=>{
     // As the APK writes them: `releaseLeadUs` beside the snap figures (live block and ledger entry, FaceVideoRenderer /
     // FaceVideoBox.timingEntry), and the sysfs strings already stripped to [A-Za-z0-9:_.*+/@-] and cut (SysDisplayFacts).

@@ -5,6 +5,7 @@ import {
   nativeVideoExperimentsFor,
   NATIVE_VIDEO_EXPERIMENTS,
   nativeFirstFor,
+  contentStoreFor,
   parseNativeFirstRollout,
   parseNativeVideoExperiments,
   parseNativeVideoRollout,
@@ -340,6 +341,33 @@ describe('field 2026-10-12 — the T982 pair is enrolled and gets a descriptor',
  * `PLAYER_NATIVE_FIRST`, carried per face as `nativeFirst: boolean` on the
  * hashed descriptor OUTSIDE its revision; absent = the APK's class default.
  */
+describe('content store switch (PLAYER_CONTENT_STORE, player 1.1.51)', () => {
+  const env = (v?: string) => ({ ...(v === undefined ? {} : { PLAYER_CONTENT_STORE: v }) });
+
+  it('unset names nobody: no `store` key on the descriptor (the APK store stays dark)', () => {
+    expect(contentStoreFor({ id: front }, env())).toBeNull();
+    expect(contentStoreFor({ id: front }, env(' '))).toBeNull();
+    expect('store' in build({ ...fixture(), env: env() as any })!).toBe(false);
+  });
+
+  it('a uuid or `all` names a screen; an exclusion or off answers false and wins', () => {
+    expect(contentStoreFor({ id: front }, env(front))).toBe(true);
+    expect(contentStoreFor({ id: single }, env('all'))).toBe(true);
+    expect(contentStoreFor({ id: single }, env(front))).toBeNull();
+    expect(contentStoreFor({ id: front }, env(`all,-${front}`))).toBe(false);
+    expect(contentStoreFor({ id: front }, env(`${front},off`))).toBe(false);
+    expect(contentStoreFor({ id: front }, env('typo'))).toBeNull();
+  });
+
+  it('rides the descriptor outside the revision: naming a screen never moves its revision', () => {
+    const f = fixture();
+    const a = build({ ...f, env: env() as any })!;
+    const b = build({ ...f, env: env(a.screenId) as any })!;
+    expect(b.store).toBe(true);
+    expect(b.revision).toBe(a.revision);
+  });
+});
+
 describe('native-first switch (PLAYER_NATIVE_FIRST, §8.1)', () => {
   const env = (v?: string, video?: string) => ({
     ...(v === undefined ? {} : { PLAYER_NATIVE_FIRST: v }),

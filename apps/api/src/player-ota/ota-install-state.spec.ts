@@ -4,7 +4,7 @@
  * downloaded v1.1.29 48 times in 24 h because every check was answered
  * `install` while Android waited for a person to tap Install.
  */
-import { FAILED_STATE, isFailureState, pushWaitsForTap } from './ota-install-state';
+import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaitsForTap } from './ota-install-state';
 
 const PUSH = new Date('2026-10-16T10:00:00Z');
 const after = (min: number) => new Date(PUSH.getTime() + min * 60_000);
@@ -45,5 +45,35 @@ describe('FAILED_<CODE>', () => {
     expect(isFailureState('FAILED_ABORTED')).toBe(true);
     expect(isFailureState('NEEDS_TAP')).toBe(false);
     expect(isFailureState('INSTALLING')).toBe(false);
+  });
+});
+
+describe('holdFromOtaReport (player 1.1.51 — a tap-expiry moves a NEEDS_TAP hold to EXPIRED)', () => {
+  const base = { deviceAuthenticated: true, pendingAt: PUSH, currentHold: null as string | null };
+
+  it('an unheld push: NEEDS_TAP holds NEEDS_TAP, FAILED_<CODE> holds FAILED, progress holds nothing', () => {
+    expect(holdFromOtaReport({ ...base, state: 'NEEDS_TAP' })).toBe('NEEDS_TAP');
+    expect(holdFromOtaReport({ ...base, state: 'FAILED_ABORTED' })).toBe('FAILED');
+    for (const state of ['CHECKING', 'DOWNLOADING', 'INSTALLING', 'UP_TO_DATE', 'ERROR']) {
+      expect(holdFromOtaReport({ ...base, state })).toBeNull();
+    }
+  });
+
+  it('THE 1.1.51 CASE: FAILED_TAP_EXPIRED on a push held NEEDS_TAP → EXPIRED (it used to change nothing)', () => {
+    expect(holdFromOtaReport({ ...base, currentHold: 'NEEDS_TAP', state: TAP_EXPIRED })).toBe('EXPIRED');
+    expect(holdFromOtaReport({ ...base, currentHold: null, state: TAP_EXPIRED })).toBe('EXPIRED');
+  });
+
+  it('a tap-expiry never rewrites a STALLED / FAILED / EXPIRED hold, and other reports never touch an existing hold', () => {
+    for (const hold of ['STALLED', 'FAILED', 'EXPIRED']) {
+      expect(holdFromOtaReport({ ...base, currentHold: hold, state: TAP_EXPIRED })).toBeNull();
+    }
+    expect(holdFromOtaReport({ ...base, currentHold: 'NEEDS_TAP', state: 'FAILED_STORAGE' })).toBeNull();
+    expect(holdFromOtaReport({ ...base, currentHold: 'STALLED', state: 'NEEDS_TAP' })).toBeNull();
+  });
+
+  it('anonymous reports and screens with no push hold nothing', () => {
+    expect(holdFromOtaReport({ ...base, deviceAuthenticated: false, currentHold: 'NEEDS_TAP', state: TAP_EXPIRED })).toBeNull();
+    expect(holdFromOtaReport({ ...base, pendingAt: null, state: 'NEEDS_TAP' })).toBeNull();
   });
 });

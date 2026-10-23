@@ -35,6 +35,20 @@ class DoublePostTest {
         assertEquals(DoublePost.NO_RATE, DoublePost.decide(true, 33, false, 60.0, Double.NaN))
     }
 
+    @Test fun theM43FactsApplyAndEveryVerdictIsACodeTheApiAccepts() {
+        // The owner's M43 on 1.1.50 (2026-10-23 ~00:01Z): SDK 33, mode 3840x2160@30, Choreographer period 16,666 µs, a 30 fps clip.
+        val e = VsyncEstimator(VsyncEstimator.periodNsFor(30f))
+        var t = 1_000_000_000L
+        repeat(12) { e.observe(t); t += 16_666_000L }
+        assertTrue(e.ready)
+        assertEquals(DoublePost.APPLY, DoublePost.decide(true, 33, false, DoublePost.gridHz(e, 30.00000190734863f), 30.0))
+        // 1.1.51 — the verdict is never invisible: every code the session can report is a `[a-z0-9-]` token.
+        assertEquals(12, DoublePost.CODES.size)
+        DoublePost.CODES.forEach { assertTrue(it, Regex("[a-z0-9-]{1,64}").matches(it)) }
+        for (c in listOf(DoublePost.PENDING, DoublePost.GUARD_DISABLED, DoublePost.SESSION_ENDED, DoublePost.NO_SURFACE, DoublePost.ALWAYS, DoublePost.REFUSED))
+            assertTrue(c, c in DoublePost.CODES)
+    }
+
     @Test fun theGridIsTheMeasuredPeriodWhenTrustedElseTheNominalRate() {
         val e = VsyncEstimator(VsyncEstimator.periodNsFor(30f))
         // Not ready yet: the nominal rate the display reports.

@@ -33,6 +33,35 @@ class EmergencyPaintPolicyTest {
         assertEquals(listOf("registry-wake", "wake-failed", "draw-alert"), calls)
     }
 
+    @Test fun `a registry wake that BLOCKS does not delay the drawing past its budget`() {
+        val calls = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val release = java.util.concurrent.CountDownLatch(1)
+        var timedOutBudget = -1L
+        val started = System.nanoTime()
+        EmergencyPaintPolicy.bestEffort(
+            wake = { calls.add("registry-wake"); release.await(); calls.add("wake-returned") },
+            draw = { calls.add("draw-alert") },
+            failed = { calls.add("wake-failed") },
+            wakeBudgetMs = 150L,
+            timedOut = { timedOutBudget = it },
+        )
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+        assertTrue("drawing waited ${elapsedMs}ms on a hung wake", elapsedMs < 1_500)
+        assertEquals(150L, timedOutBudget)
+        assertEquals(listOf("registry-wake", "draw-alert"), calls.toList())
+        release.countDown()
+    }
+
+    @Test fun `a null WebView background drawable is opaque, a translucent drawable is not`() {
+        // WebView.setBackgroundColor never sets the View drawable: null is the normal opaque case.
+        assertTrue(EmergencyPaintPolicy.opaqueBackground(hasDrawable = false, drawableAlpha = null, colorAlpha = null))
+        assertTrue(EmergencyPaintPolicy.opaqueBackground(hasDrawable = true, drawableAlpha = 255, colorAlpha = 255))
+        assertTrue(EmergencyPaintPolicy.opaqueBackground(hasDrawable = true, drawableAlpha = 255, colorAlpha = null))
+        assertFalse(EmergencyPaintPolicy.opaqueBackground(hasDrawable = true, drawableAlpha = 128, colorAlpha = 255))
+        assertFalse(EmergencyPaintPolicy.opaqueBackground(hasDrawable = true, drawableAlpha = 255, colorAlpha = 0))
+        assertFalse(EmergencyPaintPolicy.opaqueBackground(hasDrawable = true, drawableAlpha = null, colorAlpha = 255))
+    }
+
     @Test fun `native presenting is retired before a visible overlay can satisfy proof`() {
         val native = SoloVideoLayer(SoloVideoLayer.Mode.DYNAMIC_ABOVE)
         native.request(true, true)

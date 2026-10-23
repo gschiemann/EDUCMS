@@ -82,6 +82,7 @@ import { renewalDecision, mayAttemptRecovery } from './deviceCredential';
 import { createManifestGate } from './manifestGate';
 import { createPairingLoop } from './pairingLoop';
 import { createWsAuthPolicy } from './wsAuthPolicy';
+import { superviseWs, TICK_MS as WS_SUPERVISOR_TICK_MS } from './wsSupervisor';
 // 2026-08-30 deep audit D-1/F1 — serialized chains must bound every await
 // ACROSS THE BODY READ, not just headers: a browser fetch has no timeout,
 // and one hung socket (or a 200-then-stalled-body proxy) would otherwise
@@ -4539,6 +4540,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // (no-ops unless the manifest enabled sync). Cleared with heartbeatRef.
   const syncPingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
+  // 1.1.51 — the realtime SUPERVISOR (wsSupervisor.ts): a tick that re-arms
+  // the push channel from the socket's STATE, not from a browser event. Kept
+  // OUTSIDE clearTimers() on purpose — it is the one timer that must survive
+  // every per-attempt teardown. `wsSeenRef` is what the tick last observed.
+  const wsSupervisorRef = useRef<NodeJS.Timeout | null>(null);
+  const wsSeenRef = useRef<{ ws: WebSocket | null; state: number | null; at: number }>({ ws: null, state: null, at: 0 });
+  const wsAuthOkRef = useRef(false);
+  const wsAbandonsRef = useRef(0);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
   // Sprint 11 Phase B — SSE middle-tier realtime. When WS fails to
   // connect (corporate firewall blocking ws:// upgrade is the common
@@ -4712,6 +4721,21 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // notice is not a blank, but it is contrast taken away from the one
       // thing on that screen that matters.
       applySoftDim(0);
+      // 1.1.51 — tell the schedule runner its OFF was taken down, so the
+      // first tick after the all-clear puts a soft-scheduled-OFF screen back
+      // to OFF (it used to read `steady` until the next morning's boundary).
+      softScheduleRef.current?.alertTookOverlayDown();
+      return;
+    }
+    // The alert ended: re-evaluate the level now rather than at the next
+    // 30 s tick (an OFF deferred by rule 5, or one taken down above).
+    try {
+      const r = softScheduleRef.current?.tick(Date.now());
+      if (r && r.status === 'applied') {
+        console.log(`[display] soft schedule after all-clear → ${r.on ? 'WAKE' : 'BLANK'} (overlay ${r.on ? 'OFF' : 'ON'})`);
+      }
+    } catch (e) {
+      console.warn('[display] soft schedule re-evaluation after all-clear failed:', (e as Error)?.message);
     }
   }, [activeEmergency, pushedEmergencyMessage, polledEmergencyHeld, applySoftBlank, applySoftDim]);
 
@@ -9308,6 +9332,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         console.log('[Player WS] Connecting to', wsUrl, `(attempt ${wsPolicyRef.current.failCount() + 1})`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+        wsAuthOkRef.current = false;
 
         ws.onopen = () => {
           // 2026-08-30 (reliability program W1-5) — a TCP `open` is NOT a
@@ -9405,6 +9430,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // before auth had proven anything).
             if (msg.type === 'AUTH_OK') {
               wsPolicyRef.current.onAuthOk();
+              wsAuthOkRef.current = true;
               setWsDegraded(false);
               if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
               if (sseRef.current) {
@@ -9918,8 +9944,88 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
 
     connect();
 
+    // ── 1.1.51 — THE SUPERVISOR (wsSupervisor.ts; field finding 2026-10-22).
+    // Every re-arm above hangs off `ws.onclose`. A socket that never reaches
+    // it — CONNECTING forever behind an edge that accepted TCP and never
+    // answered the upgrade, CLOSING after our own close(), OPEN but never
+    // AUTH_OK'd — left the fleet with no push channel for 6–18 h and no
+    // retry at all. This tick decides from the socket's state and the clock,
+    // never from an event, and it never gives up.
+    const abandonAndRedial = (reason: string) => {
+      const ws = wsRef.current;
+      if (ws) {
+        // Detach first: a late close/error from the abandoned socket must not
+        // double-count or arm a second reconnect.
+        ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null;
+        try { ws.close(); } catch { /* already dead */ }
+        wsRef.current = null;
+      }
+      clearTimers();
+      wsAuthOkRef.current = false;
+      wsAbandonsRef.current += 1;
+      wsPolicyRef.current.onConnectionFailure();
+      if (wsPolicyRef.current.failCount() >= 2) setWsDegraded(true);
+      const delay = backoffMs(wsPolicyRef.current.failCount(), 1000, 30_000);
+      console.warn(`[Player WS] supervisor: ${reason} — abandoning the socket (failures=${wsPolicyRef.current.failCount()}), redial in ~${Math.round(delay)}ms`);
+      wsReconnectRef.current = setTimeout(connect, delay);
+      if (wsPolicyRef.current.shouldEscalateFallback() && !sseRef.current && !httpFallbackRef.current) {
+        void tryOpenSse();
+      }
+    };
+    const supervise = () => {
+      const ws = wsRef.current;
+      const state = ws ? ws.readyState : null;
+      const now = Date.now();
+      const seen = wsSeenRef.current;
+      if (seen.ws !== ws || seen.state !== state) wsSeenRef.current = { ws, state, at: now };
+      const verdict = superviseWs({
+        readyState: state,
+        authOk: wsAuthOkRef.current,
+        sinceStateChangeMs: now - wsSeenRef.current.at,
+        sinceLastMessageMs: ws ? now - lastWsMessageAtRef.current : Infinity,
+        reconnectArmed: wsReconnectRef.current !== null,
+      });
+      if (verdict.action === 'dial') {
+        console.warn('[Player WS] supervisor: no socket and no reconnect armed — dialling now');
+        connect();
+      } else if (verdict.action === 'abandon') {
+        abandonAndRedial(verdict.reason);
+      }
+    };
+    wsSupervisorRef.current = setInterval(supervise, WS_SUPERVISOR_TICK_MS);
+    // Back online (a kiosk ROM can sit offline for hours): look at once, not
+    // at the next tick, and shorten a long backoff that was armed while down.
+    const onOnlineKick = () => {
+      if (wsReconnectRef.current && (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED)) {
+        clearTimeout(wsReconnectRef.current);
+        wsReconnectRef.current = setTimeout(connect, 500 + Math.random() * 1500);
+        console.log('[Player WS] supervisor: network back — reconnect pulled forward');
+        return;
+      }
+      supervise();
+    };
+    window.addEventListener('online', onOnlineKick);
+    // Support/field observability, like __eduSyncState: what the push channel
+    // is doing right now, and a kick for a drawer button or a console.
+    (window as any).__eduRealtime = {
+      state: () => ({
+        readyState: wsRef.current?.readyState ?? null,
+        authOk: wsAuthOkRef.current,
+        failCount: wsPolicyRef.current.failCount(),
+        reconnectArmed: wsReconnectRef.current !== null,
+        sinceLastMessageMs: Date.now() - lastWsMessageAtRef.current,
+        abandons: wsAbandonsRef.current,
+        sseOpen: !!sseRef.current,
+        httpFallback: !!httpFallbackRef.current,
+      }),
+      kick: () => supervise(),
+    };
+
     return () => {
       clearTimers();
+      if (wsSupervisorRef.current) { clearInterval(wsSupervisorRef.current); wsSupervisorRef.current = null; }
+      window.removeEventListener('online', onOnlineKick);
+      try { delete (window as any).__eduRealtime; } catch { /* non-configurable in an odd ROM */ }
       if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
       if (sseRef.current) {
         try { sseRef.current.close(); } catch {}

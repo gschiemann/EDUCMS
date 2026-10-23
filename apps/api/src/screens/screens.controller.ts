@@ -4,7 +4,7 @@ import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './nat
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
-import { FAILED_STATE, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
+import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
@@ -2129,13 +2129,18 @@ export class ScreensController {
     // it. Device-authenticated only: holding a push stops an operator's
     // update, so an anonymous report may not do it (the state itself is still
     // recorded, as every report is).
-    const holdFromReport: 'NEEDS_TAP' | 'FAILED' | null =
-      !deviceAuthenticated || !push.forceApkUpdatePendingAt || pushHeld ? null
-        : state === 'NEEDS_TAP' ? 'NEEDS_TAP'
-        : FAILED_STATE.test(state) ? 'FAILED'
-        : null;
+    // 1.1.51 — a tap-expiry from the device moves a NEEDS_TAP hold to EXPIRED
+    // (holdFromOtaReport); every other report still only holds an unheld push.
+    const holdFromReport = holdFromOtaReport({
+      deviceAuthenticated,
+      pendingAt: push.forceApkUpdatePendingAt,
+      currentHold: pushHeld ? push.forceApkUpdateHold : null,
+      state,
+    });
     // Same reason vocabulary push-tracking.ts's decidePushGate uses.
-    const reportReason = state === 'NEEDS_TAP' ? 'device-reported-needs-tap' : `device-reported-${state.toLowerCase()}`;
+    const reportReason = state === 'NEEDS_TAP' ? 'device-reported-needs-tap'
+      : state === TAP_EXPIRED ? 'device-reported-tap-expired'
+      : `device-reported-${state.toLowerCase()}`;
 
     // ── OTA-02: the failure signal is STICKY ────────────────────────────
     // `lastOtaState` is last-writer-wins, and the player reports CHECKING
