@@ -89,7 +89,7 @@ export default function DashboardPage() {
   const fleetPulse = useFleetPulse({ enabled: canFleet && commandEligible });
 
   // One data model and content tree for every viewport; only layout adapts.
-  const { data: activity } = useRecentActivity();
+  const { data: activity } = useRecentActivity({ enabled: canFleet });
   const displaySchedules = useAllDisplaySchedules(commandEligible);
   // Fleet Command's activity card reads the SAME audit rows the classic
   // Recent Activity section below renders — one query, two presentations, so
