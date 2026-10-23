@@ -11,8 +11,9 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const REPO = 'gschiemann/EDUCMS';
 const RAILWAY = ['--service', 'api', '--environment', 'production'];
 

@@ -11,12 +11,7 @@ import {
   describeDays, describeScreenConflicts, findScreenConflicts, formatClock, retryPublishPayload,
 } from '@/components/playlists/v1/playlistOps';
 import { ScheduleDialog } from '@/components/playlists/v1/PlaylistDialogs';
-import {
-  canWriteToUsbFolder,
-  downloadBundleAsZip,
-  fetchUsbBundle,
-  writeBundleToUsbFolder,
-} from '@/lib/usb-export';
+import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, DragEndEvent
@@ -3840,122 +3835,31 @@ export default function ClassicPlaylistsPage({
 }
 
 /**
- * Inline Download button — sits on every playlist header. Dropdown
- * gives the admin two verbs:
- *   • Download to Desktop — plain .zip download, user takes it
- *     wherever they want.
- *   • Download to USB — uses the File System Access API to write the
- *     extracted bundle contents straight onto the USB stick the user
- *     picks. Browser prompts for the folder, we stream file-by-file
- *     and show progress.
- *
- * No settings page needed — USB signing is auto-provisioned server-side
- * on first export if the tenant doesn't have a key yet. This was the
- * user ask: "I plug it in, click download, pick USB, you do the rest."
- *
- * Falls back to plain download if the browser doesn't support
- * showDirectoryPicker (Safari / Firefox).
- */
-/**
- * Offline export (zip to disk, or straight onto a USB stick). Exported so the
- * Operations v1 workspace can hoist the SAME control into its header rather
- * than reimplement the bundler protocol — the overflow menu's "Export for
- * offline use" routes to the workspace, and this is what it finds there.
+ * "Download to USB" — one button on every playlist page (2026-10-22, Greg:
+ * "open any existing playlist and Download to USB"). It used to be a dropdown
+ * of "Desktop" vs "USB" with a "extract manually" fallback; the player now
+ * reads the downloaded .zip straight off the stick, so there is one verb.
+ * Chrome / Edge write straight onto the drive the operator picks; other
+ * browsers download the .zip. Same code as the library menu (useUsbExport).
+ * Exported so the Operations v1 workspace hoists it into its header.
  */
 export function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
-  const t = useTranslations();
-  const token = useUIStore((s) => s.token);
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<null | 'desktop' | 'usb'>(null);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  const fsAccess = canWriteToUsbFolder();
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
-
-  // The bundle protocol lives in @/lib/usb-export so the playlists overflow
-  // menu can run the SAME export rather than carry a second copy of it.
-  const downloadDesktop = async () => {
-    setOpen(false); setBusy('desktop'); setErr(null);
-    try {
-      const buf = await fetchUsbBundle({ token, playlistId, playlistName });
-      downloadBundleAsZip(buf, playlistName, new Date());
-    } catch (e: any) { setErr(e?.message || 'Download failed'); }
-    finally { setBusy(null); }
-  };
-
-  const downloadUsb = async () => {
-    setOpen(false);
-    if (!fsAccess) { await downloadDesktop(); return; }
-    setBusy('usb'); setErr(null); setProgress(null);
-    try {
-      const buf = await fetchUsbBundle({ token, playlistId, playlistName });
-      await writeBundleToUsbFolder(buf, (done, total) => setProgress({ done, total }));
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') setErr(e?.message || 'USB write failed');
-    } finally { setBusy(null); setTimeout(() => setProgress(null), 4000); }
-  };
-
+  const t = useTranslations('usbDelivery');
+  const usb = useUsbExport();
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
         type="button"
-        onClick={() => { if (!busy) setOpen((v) => !v); }}
-        disabled={!!busy}
-        /* Greg, 2026-09-16: "there is a weird white square behind the buttons
-           but it should just be the gradient". There was no extra square — this
-           was a short rounded-lg pill sitting beside a taller rounded-full one,
-           and two mismatched white shapes side by side read as a single slab.
-           Same pill, height, text size and border as Pause everywhere now. */
+        onClick={() => { if (!usb.busy) void usb.run({ playlistId, playlistName }); }}
+        disabled={usb.busy}
+        data-testid="playlist-download-usb"
+        /* Greg, 2026-09-16: same pill, height, text size and border as Pause. */
         className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[13px] font-bold rounded-full inline-flex items-center gap-1.5 shadow-sm disabled:opacity-50"
       >
-        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-        {busy === 'desktop' ? 'Building…' : busy === 'usb' ? (progress ? `Writing ${progress.done}/${progress.total}` : 'Building…') : 'Download'}
-        {!busy && <ChevronRight className="w-3 h-3 opacity-50 rotate-90" />}
+        {usb.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
+        {t('button')}
       </button>
-      {open && (
-        <div className="absolute right-0 top-9 w-64 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50">
-          <button
-            type="button"
-            onClick={downloadDesktop}
-            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 text-sm text-left"
-          >
-            <Monitor className="w-4 h-4 text-slate-500" />
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-slate-800">{t('playlistsPage.downloadDesktop')}</div>
-              <div className="text-[10px] text-slate-400">{t('playlistsPage.plainZip')}</div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={downloadUsb}
-            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 text-sm text-left border-t border-slate-100"
-          >
-            <Usb className="w-4 h-4 text-indigo-600" />
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-slate-800">{t('playlistsPage.downloadUsb')}</div>
-              <div className="text-[10px] text-slate-400">
-                {fsAccess ? 'Pick a USB folder, we write straight in' : '.zip fallback — extract manually'}
-              </div>
-            </div>
-          </button>
-        </div>
-      )}
-      {err && (
-        <div className="absolute right-0 top-10 w-72 p-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700 z-50 flex items-start gap-1.5">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {err}
-        </div>
-      )}
-      {progress && !err && progress.done === progress.total && (
-        <div className="absolute right-0 top-10 w-64 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 z-50 flex items-center gap-1.5">
-          <Check className="w-3.5 h-3.5" /> Wrote {progress.total} files to USB ✓
-        </div>
-      )}
-    </div>
+      <UsbExportToast status={usb.status} onDismiss={usb.clear} />
+    </>
   );
 }

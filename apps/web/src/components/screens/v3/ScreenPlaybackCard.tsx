@@ -146,11 +146,21 @@ function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: Sc
   );
 }
 
-export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; enabled: boolean }) {
+/**
+ * Which half to draw (2026-10-22). The drawer's Overview shows the verdict
+ * and any demotion — one line an operator can act on — and puts the per-file
+ * measurements under Technical details. Both halves read the same query, so
+ * React Query fetches it once. `all` is the card as it always was.
+ */
+export type PlaybackCardPart = 'all' | 'summary' | 'files';
+
+export function ScreenPlaybackCard({ screenId, enabled, part = 'all' }: { screenId: string; enabled: boolean; part?: PlaybackCardPart }) {
   const t = useTranslations('screens.playback');
   const q = useScreenPlaybackCapability(screenId, enabled);
   if (!enabled) return null;
   if (q.isError) {
+    // The verdict half stays silent on a failed read; the technical half says so.
+    if (part === 'summary') return null;
     return (
       <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-playback-card" data-state="error">
         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t('title')}</p>
@@ -160,6 +170,12 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
   }
   const data = q.data;
   if (!data) return null;
+  const demotions = data.demotions ?? [];
+  // Nothing measured and nothing moved: the Overview has nothing to say.
+  if (part === 'summary' && data.summary === 'unknown' && demotions.length === 0) return null;
+  if (part === 'files' && data.files.length === 0) return null;
+  const showSummary = part !== 'files';
+  const showFiles = part !== 'summary';
   const cap = data.capability;
   const summary = SUMMARY[data.summary];
   const capKey = capabilityKey(cap);
@@ -172,8 +188,9 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
         : t('concurrencyMany', { count: cap.maxUnitConcurrentVideos });
 
   return (
-    <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-playback-card" data-summary={data.summary}>
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t('title')}</p>
+    <div className="rounded-xl border border-slate-200 p-3.5" data-testid={part === 'files' ? 'screen-playback-files-card' : 'screen-playback-card'} data-summary={data.summary} data-part={part}>
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t(part === 'files' ? 'filesTitle' : 'title')}</p>
+      {showSummary && (
       <div className={`mt-2 rounded-lg border px-2.5 py-2 ${TONE[summary.tone].wrap}`}>
         <p className={`text-[12px] font-bold leading-snug ${TONE[summary.tone].ink}`} data-testid="screen-playback-summary">
           {t(summary.key)}
@@ -189,10 +206,11 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
         )}
         {cap.stale && <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('stale')}</p>}
       </div>
-      {(data.demotions ?? []).map((d) => (
+      )}
+      {showSummary && demotions.map((d) => (
         <DemotionNotice key={d.id} screenId={screenId} demotion={d} />
       ))}
-      {data.files.length > 0 && (
+      {showFiles && data.files.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1.5" data-testid="screen-playback-files">
           {data.files.map((f) => {
             const v = FILE_VERDICT[f.verdict];
@@ -226,7 +244,7 @@ export function ScreenPlaybackCard({ screenId, enabled }: { screenId: string; en
           })}
         </ul>
       )}
-      <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">{t('note')}</p>
+      {showFiles && <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">{t('note')}</p>}
     </div>
   );
 }

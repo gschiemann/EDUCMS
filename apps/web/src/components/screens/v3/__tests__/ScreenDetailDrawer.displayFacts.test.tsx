@@ -5,7 +5,7 @@
  * all for one that has none. Every fixture is made up.
  */
 import * as React from 'react';
-import { render, screen as rtl, fireEvent, within } from '@testing-library/react';
+import { act, render, screen as rtl, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ScreenDetailDrawer } from '../ScreenDetailDrawer';
 import { buildScreenOps, type OpsScreen } from '../screenOps';
@@ -88,6 +88,16 @@ function renderDrawer(row: ReturnType<typeof screenRow>) {
   );
 }
 
+
+/** Technical details start closed and render nothing until opened (2026-10-22). */
+function openTechnicalDetails() {
+  const d = rtl.getByTestId('screen-technical-details') as HTMLDetailsElement;
+  act(() => {
+    d.open = true;
+    d.dispatchEvent(new Event('toggle'));
+  });
+}
+
 beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
 });
@@ -95,6 +105,9 @@ beforeEach(() => {
 describe('ScreenDetailDrawer → Panel and playback pacing', () => {
   it('shows the section on the Overview tab for a screen with a native report', () => {
     renderDrawer(screenRow({ lastVideoReport: { url: 'https://example.test/a.mp4', native: NATIVE } }));
+    // Not on the Overview's face: one tap away, under Technical details.
+    expect(rtl.queryByTestId('display-facts-section')).not.toBeInTheDocument();
+    openTechnicalDetails();
     const overview = rtl.getByRole('tabpanel');
     const section = within(overview).getByTestId('display-facts-section');
     expect(within(section).getByRole('heading', { name: 'Panel and playback pacing' })).toBeInTheDocument();
@@ -105,6 +118,7 @@ describe('ScreenDetailDrawer → Panel and playback pacing', () => {
 
   it('sits between the video playback card and the Device card', () => {
     renderDrawer(screenRow({ lastVideoReport: { native: NATIVE } }));
+    openTechnicalDetails();
     const section = rtl.getByTestId('display-facts-section');
     const content = rtl.getByTestId('screen-content-card');
     const device = rtl.getByTestId('screen-device-card');
@@ -118,6 +132,7 @@ describe('ScreenDetailDrawer → Panel and playback pacing', () => {
     ['an empty native block', { lastVideoReport: { native: {} } }],
   ])('shows no box at all for %s', (_name, over) => {
     renderDrawer(screenRow(over as Partial<OpsScreen>));
+    openTechnicalDetails();
     expect(rtl.queryByTestId('display-facts-section')).not.toBeInTheDocument();
     expect(rtl.queryByText('Panel and playback pacing')).not.toBeInTheDocument();
     // The rest of the Overview is untouched.

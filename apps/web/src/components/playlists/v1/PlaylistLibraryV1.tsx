@@ -81,13 +81,6 @@ export interface PlaylistLibraryV1Props {
   onNew: () => void;
   onDuplicate: (id: string) => void;
   onExport: (id: string) => void;
-  /**
-   * DEV-024 (Muse beta 2026-10-07): when the organization's USB export is
-   * off, the menu item is shown DISABLED with this reason, instead of
-   * looking available and failing with a 403 afterwards. `onOpenSettings`
-   * (admins only) adds a way to the setting.
-   */
-  usbExportBlocked?: { reason: string; settingsLabel?: string; onOpenSettings?: () => void } | null;
   onRemove: (row: PlaylistSummaryRow) => void;
   /**
    * Remove several playlists at once (Greg, 2026-09-28: "the ability to check
@@ -1176,17 +1169,11 @@ function OverflowMenu({
     }
     items.push({ label: 'Duplicate', icon: Copy, run: () => p.onDuplicate(row.id) });
   }
-  // Named for what it produces: a signed bundle an Android player reads off a
-  // USB stick. "Export for offline use" said neither USB nor player.
-  const usbBlocked = p.usbExportBlocked ?? null;
-  items.push({
-    label: 'Export to USB',
-    icon: Usb,
-    run: () => { if (!usbBlocked) p.onExport(row.id); },
-    ...(usbBlocked ? { disabled: true, hint: usbBlocked.reason } : {}),
-  });
-  if (usbBlocked?.onOpenSettings && usbBlocked.settingsLabel) {
-    items.push({ label: usbBlocked.settingsLabel, icon: SlidersHorizontal, run: usbBlocked.onOpenSettings });
+  // Named for what it produces: a package a player reads off a USB stick.
+  // No setting gates it any more (2026-10-22). A USB stick is a publish, so it
+  // is an admin's action like the API says — not a viewer's or an editor's.
+  if (!p.isViewer && !p.isContributor) {
+    items.push({ label: 'Export to USB', icon: Usb, run: () => p.onExport(row.id) });
   }
   if (p.isHQ && p.onPublishToLocations && !p.isViewer && row.sourceOwnership === 'own') {
     // Carries the row's playlist so the sheet opens on it — it used to open
