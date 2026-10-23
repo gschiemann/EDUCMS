@@ -19,7 +19,7 @@ export interface PosterZone {
 
 /** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
  *  Date-based; append a letter for multiple regens in one day (…24b). */
-export const POSTER_VERSION = '20261013a';
+export const POSTER_VERSION = '20261023corporate';
 
 /**
  * For a board preview (a single EXTERNAL_HTML zone), the path to its
@@ -46,7 +46,7 @@ export function templatePosterUrl(zones: PosterZone[] | null | undefined, opts?:
   // whose alternative is a blank grey box — a table row, say. There the poster
   // is the honest answer to "which board is this", and the caller is
   // responsible for not implying it reflects the operator's overrides.
-  if (!opts?.allowCustomized && cfg && (cfg.brand || cfg.textOverrides || cfg.imageOverrides || cfg.videoOverrides || cfg.mediaStyles || cfg._styles)) return null;
+  if (!opts?.allowCustomized && cfg && (cfg.contentChanged || cfg.brand || cfg.textOverrides || cfg.imageOverrides || cfg.videoOverrides || cfg.mediaStyles || cfg._styles)) return null;
   const url: unknown = cfg?.url;
   if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
   const clean = url.split('?')[0].split('#')[0];

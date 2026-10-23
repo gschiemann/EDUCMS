@@ -47,6 +47,12 @@ describe('templatePosterUrl', () => {
       expect(templatePosterUrl(customized)).toBeNull();
     });
 
+    it('shows edited structured directory and touch content instead of the fictional default poster', () => {
+      for (const key of ['directoryDocument', 'touchDocument']) {
+        expect(templatePosterUrl(board('/templates/signage/corporate/example.html', { [key]: {}, contentChanged: true }))).toBeNull();
+      }
+    });
+
     it('renders media fit/rotation and video replacements live instead of hiding them behind the default poster', () => {
       expect(templatePosterUrl(board('/templates/hs/a.html', { mediaStyles: { hero: { rotation: 90, fit: 'contain' } } }))).toBeNull();
       expect(templatePosterUrl(board('/templates/hs/a.html', { videoOverrides: { hero: '/clip.mp4' } }))).toBeNull();
