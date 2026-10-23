@@ -10,7 +10,12 @@
  * Vercel plan's Active CPU (2026-09-28). The probe already failed and Zod
  * already fell back to its interpreted path, so turning the JIT off changes
  * nothing except that the probe — and its report — never happen.
+ *
+ * Import `config` by name, never the `z` namespace (2026-10-23): this file
+ * runs on every page, and the namespace object pulled the whole of Zod into
+ * the root chunk every page loads. The named export tree-shakes to Zod's
+ * global config, the same object every schema reads.
  */
-import { z } from 'zod';
+import { config } from 'zod';
 
-z.config({ jitless: true });
+config({ jitless: true });
