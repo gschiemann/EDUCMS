@@ -52,6 +52,7 @@ export class NotificationsController {
   @Get('alert-emails')
   async getAlertEmails(@Request() req: any) {
     requireTenantIdStrict(req);
+    // ten-ok: the caller's OWN row (id = the authenticated principal), never a client-supplied id
     const user = await this.prisma.client.user.findFirst({
       where: { id: String(req.user?.id ?? ''), deletedAt: null },
       select: { role: true, alertEmailsEnabled: true, alertEmailLocale: true },
@@ -84,6 +85,7 @@ export class NotificationsController {
     if (Object.keys(data).length === 0) {
       throw new HttpException({ code: 'ALERT_EMAILS_INVALID', message: 'Nothing to change' }, HttpStatus.BAD_REQUEST);
     }
+    // ten-ok: the caller's OWN row (id = the authenticated principal), never a client-supplied id
     const res = await this.prisma.client.user.updateMany({
       where: { id: String(req.user?.id ?? ''), deletedAt: null },
       data,

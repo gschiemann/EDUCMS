@@ -1206,20 +1206,20 @@ export class CustomerAlertEmailsService {
 
   private async markEmailed(i: IncidentRow, mode: AlertMode, nowMs: number): Promise<void> {
     await this.prisma.client.screenAlertIncident.update({
-      where: { id: i.id },
+      where: { id: i.id, tenantId: i.tenantId },
       data: { state: 'EMAILED', emailedMode: mode, lastEmailedAt: new Date(nowMs) },
     });
   }
 
   private async closeIncident(i: IncidentRow, state: 'CLOSED' | 'RECOVERY_HELD'): Promise<void> {
     await this.prisma.client.screenAlertIncident.update({
-      where: { id: i.id },
+      where: { id: i.id, tenantId: i.tenantId },
       data: { open: false, state, closedAt: new Date(this.now()), recoveringSince: null },
     });
   }
 
   private async setRecovering(i: IncidentRow, at: Date | null): Promise<void> {
-    await this.prisma.client.screenAlertIncident.update({ where: { id: i.id }, data: { recoveringSince: at } });
+    await this.prisma.client.screenAlertIncident.update({ where: { id: i.id, tenantId: i.tenantId }, data: { recoveringSince: at } });
   }
 
   private async sentLastHour(orgId: string, now: number): Promise<number> {
