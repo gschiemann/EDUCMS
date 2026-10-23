@@ -260,4 +260,18 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2528709,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39911176814',
   },
+  // Signed CI 39991127985, source 1a27ed3f (PR #145 head, merged as
+  // 10274650): GUQ true standby — vendor-backlight BLANK/WAKE through the
+  // panel's own control service, so the backlight goes dark while the player
+  // and the native alert watch keep running and every alert lights it first.
+  // Production certificate e45adf50…3d1897, non-debuggable universal APK
+  // verified. Hardware qualification and controlled emergency drills remain
+  // pending.
+  '1.1.52-field.1': {
+    versionName: '1.1.52-field.1',
+    versionCode: 10152,
+    sha256: '2a5be82054f3ae46301818674c26e2a72b5a4c8f3d311a658934e730406702c3', // gitleaks:allow -- verified public APK integrity digest
+    size: 2545173,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39991127985',
+  },
 };
