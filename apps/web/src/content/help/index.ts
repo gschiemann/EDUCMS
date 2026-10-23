@@ -48,6 +48,7 @@ const SLUG_ORDER = [
   'playlists-and-schedules',
   'kiosk-hardening',
   'emergency-system',
+  'emergency-broadcast',
   'panic-delegation',
   'sports-getting-started',
   'sports-run-the-game',
@@ -60,6 +61,7 @@ const SLUG_ORDER = [
   'clever',
   'billing',
   'it-security-overview',
+  'signing-in',
   'network-requirements',
 ];
 

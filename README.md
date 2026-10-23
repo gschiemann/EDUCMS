@@ -130,7 +130,7 @@ Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallbac
 
 ## A few non-negotiables
 
-- **Never commit `.env*`, API keys, or PII** — secrets live in env vars only. `gschiemann/EDUCMS` is **private** today (`gh repo view gschiemann/EDUCMS --json visibility`), but git history is permanent and outlives any visibility flip, so treat every commit as if it will be published.
+- **Never commit `.env*`, API keys, or PII** — secrets live in env vars only. `gschiemann/EDUCMS` is **public** (source-available, all rights reserved — `LICENSE`; verify with `gh repo view gschiemann/EDUCMS --json visibility`), so every commit is world-readable, and git history outlives any visibility flip.
 - **Never weaken emergency safeguards** (the `@AllowPanicBypass` decorator, the immutable audit log, signed WS messages) without explicit review.
 - **Cross-browser is mandatory.** Every customer-facing surface must work in Safari/WebKit; player surfaces must also survive Chromium 83–87 (Taurus LED). Never use the CSS `inset` shorthand or Tailwind `inset-*` in widget/player styles.
 - **Migrations are additive-only** while a live pilot tenant is in production.
