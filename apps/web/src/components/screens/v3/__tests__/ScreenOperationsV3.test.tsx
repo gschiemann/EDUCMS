@@ -219,9 +219,11 @@ describe('grouped table (§8)', () => {
     renderPage();
     const table = rtl.getByTestId('screens-desktop');
     expect(within(table).getByText('Content behind · 18m')).toBeInTheDocument();
-    expect(within(table).getByText('Push delayed · 42m')).toBeInTheDocument();
+    // A silent live channel is not a row status (2026-10-22): M43's own
+    // check-ins still deliver, so it reads like any healthy screen.
+    expect(within(table).queryByText(/Push delayed/)).not.toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'Resync' })).toBeInTheDocument();
-    expect(within(table).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('the row action fires only that action — it does not also open the drawer', () => {
@@ -261,7 +263,7 @@ describe('filter chips (§7)', () => {
     renderPage();
     fireEvent.click(rtl.getByRole('button', { name: /Needs attention/ }));
     expect(rtl.queryByText('Mobile A-Frame')).not.toBeInTheDocument();
-    expect(rtl.getByText(/Showing 3 of 6 screens/)).toBeInTheDocument();
+    expect(rtl.getByText(/Showing 2 of 6 screens/)).toBeInTheDocument();
     fireEvent.click(rtl.getByRole('button', { name: /^All/ }));
     expect(rtl.getAllByText('Mobile A-Frame').length).toBeGreaterThan(0);
   });
@@ -282,11 +284,20 @@ describe('filter chips (§7)', () => {
   it('search composes with the selected chip', () => {
     renderPage();
     fireEvent.click(rtl.getByRole('button', { name: /Needs attention/ }));
-    fireEvent.change(rtl.getByLabelText(/Search screens/i), { target: { value: 'M43' } });
-    expect(rtl.getAllByText('M43').length).toBeGreaterThan(0);
+    fireEvent.change(rtl.getByLabelText(/Search screens/i), { target: { value: 'Back' } });
+    expect(rtl.getAllByText('Back Office').length).toBeGreaterThan(0);
     expect(rtl.queryByText('G43')).not.toBeInTheDocument();
   });
 });
+
+/** Technical details start closed and render nothing until opened (2026-10-22). */
+function openTechnicalDetails() {
+  const d = rtl.getByTestId('screen-technical-details') as HTMLDetailsElement;
+  act(() => {
+    d.open = true;
+    d.dispatchEvent(new Event('toggle'));
+  });
+}
 
 describe('detail drawer (§10 / §14)', () => {
   const open = (name = 'G43') => {
@@ -323,6 +334,7 @@ describe('detail drawer (§10 / §14)', () => {
 
   it('a Device card built only from facts the screen reported (2026-09-24)', () => {
     const dialog = open();
+    openTechnicalDetails();
     const card = within(dialog).getByTestId('screen-device-card');
     expect(within(card).getByText('Device')).toBeInTheDocument();
     // The fixture reports a hardware model, a live push channel and a ping —
@@ -359,6 +371,7 @@ describe('detail drawer (§10 / §14)', () => {
       ),
     });
     fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
+    openTechnicalDetails();
     const card = within(rtl.getByRole('dialog')).getByTestId('screen-device-card');
     expect(within(card).getByText('3840 × 2160 · portrait')).toBeInTheDocument();
     expect(within(card).getByText('Goodview EP6N · Android 11')).toBeInTheDocument();

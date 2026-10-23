@@ -55,7 +55,9 @@ import { contentBehindCause, PUSH_CONFIRM_GRACE_MS } from '@/components/dashboar
 import { isWindowOpen } from '@/app/player/scheduleWindow';
 import { templatePosterUrl } from '@/lib/template-poster';
 import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
-import { HARDWARE_CATALOG, gradePlaybackSample, resolveHardwareModel } from '@cms/api-types';
+import {
+  HARDWARE_CATALOG, PLAYBACK_HITCHING_PCT, PLAYBACK_STALL_HITCHING_MS, gradePlaybackSample, resolveHardwareModel,
+} from '@cms/api-types';
 
 // ═══════════════════════════════════════════════════════════════════
 // Inputs — the subset of `GET /screens` this surface reads
@@ -222,7 +224,6 @@ export const STATUS_ORDER = [
   'revoked', // access removed — cannot be told anything
   'repair-required', // repair credentials before asking for delivery proof
   'content-behind', // an update was SENT and the screen has not confirmed it
-  'push-delayed', // live push degraded, polling backstop carrying it
   'syncing', // an update was sent moments ago; inside the normal confirmation window
   'app-updating', // newer web build available; activation waits for idle/operator
   'pending', // paired but has never checked in
@@ -613,21 +614,16 @@ export function deriveScreenStatus({
     };
   }
 
-  // 5 ── delivery is degraded but not absent.
-  if (screen.pushChannel === 'stale') {
-    const pushMs = msOf(screen.lastPushConnectedAt);
-    return {
-      key: 'push-delayed',
-      tone: 'warn',
-      label: 'Push delayed',
-      age: compactAge(pushMs, now),
-      evidence: 'Polling backstop active',
-      action: 'Retry',
-      needsAttention: true,
-      detail:
-        'The instant connection to this screen is down, so updates arrive on its own check-in instead — roughly every ten seconds. Content still lands, just slower.',
-    };
-  }
+  // 5 ── (2026-10-22) a silent live channel is NOT a status any more. It used
+  // to be "Push delayed · 14h", amber, in Needs attention — on every screen of
+  // a location whose WebSocket was down while the screens' own check-ins kept
+  // delivering every change. Greg, from his phone: "the overview screen has so
+  // much shit in it again". Delivery is what an operator cares about, and it
+  // is already graded above: an update the screen has not taken is
+  // 'content-behind', which outranks everything here. So the row shows the
+  // screen's real content state, and the channel itself is a fact under the
+  // drawer's Technical details (`deriveDeviceFacts` → Network) and the
+  // "Push delayed" filter chip, which still finds these screens.
 
   // 7 ── the calm tier. None of these is an alarm.
   if (grade === 'checking') {
@@ -1283,11 +1279,12 @@ export function deriveReportedContent(
     return withBackground({
       state: 'playing',
       line: 'Playing a playlist',
-      detail: dated(
-        scheduled
-          ? `Can’t confirm it is ${scheduled} yet. It updates on its own.`
-          : 'Nothing is scheduled for this screen, yet a playlist is playing.',
-      ),
+      // 2026-10-22 — no second line when something IS scheduled. It used to
+      // add "Can’t confirm it is <name> yet. It updates on its own. Confirmed
+      // 16 seconds ago." under the name — one sentence saying both "can't
+      // confirm" and "confirmed" (Greg). "Playing a playlist" under the
+      // scheduled name already stops short of claiming the match.
+      ...(scheduled ? {} : { detail: dated('Nothing is scheduled for this screen, yet a playlist is playing.') }),
       app,
     });
   }
@@ -1510,6 +1507,10 @@ export interface VideoPlayback {
   droppedFrames: number;
   /** Compact age of the sample, e.g. "2m". */
   age?: string;
+  /** When the player took the sample (ms), when it said. */
+  atMs?: number | null;
+  /** Total time spent paused to buffer, when it paused. */
+  stalledMs?: number | null;
 }
 
 /**
@@ -1599,7 +1600,7 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
       size, age ? `${age} ago` : null,
     ].filter(Boolean).join(' · ');
     return { grade: 'native', name: s.sha256 && s.sha256 === native.sha256 ? videoSampleName(s.url) : 'Native video',
-      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age };
+      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age, atMs: nativeAt };
   }
   const total = typeof s.totalFrames === 'number' && Number.isFinite(s.totalFrames) ? Math.max(0, Math.floor(s.totalFrames)) : 0;
   if (total <= 0) return null;
@@ -1626,7 +1627,34 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
   // The one shared grade (@cms/api-types): pauses grade the sample whatever
   // its dropped-frame share, and lift "too short to judge" as well.
   const grade: VideoPlaybackGrade = gradePlaybackSample({ totalFrames: total, droppedFrames: dropped, stalls, stalledMs });
-  return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age };
+  return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age,
+    atMs: Number.isFinite(atMs as number) ? (atMs as number) : null, stalledMs };
+}
+
+/** A web video sample older than this is history, not news (2026-10-22). */
+export const VIDEO_SAMPLE_NEWS_MS = 60 * 60_000;
+
+/**
+ * Does the last web video sample belong on the Overview, in colour? Only when
+ * it is RECENT and the problem is one a viewer could SEE (2026-10-22).
+ *
+ * Greg's L55VEC drawer said "Stuttered on this screen" in red for 5 of 1,032
+ * frames (0.5 %) and three pauses totalling 0.1 s — two days earlier — right
+ * beside a green "Plays video smoothly" built from twenty hours of minutes.
+ * The shared grade calls three pauses a stutter whatever they last; that is
+ * right for the per-file record, and wrong as a headline. So: a sample is
+ * news when it is under an hour old AND it dropped at least the hitching
+ * share of frames or froze for at least the hitching pause. Everything else
+ * stays under Technical details, untinted.
+ */
+export function videoSampleIsNews(video: VideoPlayback | null | undefined, now: number): boolean {
+  if (!video || (video.grade !== 'hitching' && video.grade !== 'stuttering')) return false;
+  if (video.atMs == null || !Number.isFinite(video.atMs)) return false;
+  const age = now - video.atMs;
+  if (age < 0 || age > VIDEO_SAMPLE_NEWS_MS) return false;
+  const visibleDrops = (video.droppedPct ?? 0) >= PLAYBACK_HITCHING_PCT;
+  const visibleFreeze = (video.stalledMs ?? 0) >= PLAYBACK_STALL_HITCHING_MS;
+  return visibleDrops || visibleFreeze;
 }
 
 export interface OpsGroup {
@@ -1789,7 +1817,7 @@ export function buildScreenOps(input: {
     { key: 'all', label: 'All', count: total },
     { key: 'attention', label: 'Needs attention', count: attention },
     { key: 'content-behind', label: 'Content behind', count: behind },
-    { key: 'push-delayed', label: 'Push delayed', count: rows.filter((r) => r.status.key === 'push-delayed').length },
+    { key: 'push-delayed', label: 'Push delayed', count: rows.filter((r) => r.screen.pushChannel === 'stale').length },
     { key: 'offline', label: 'Offline', count: rows.filter((r) => r.status.key === 'offline').length },
   ];
 
@@ -1814,7 +1842,8 @@ export function matchesFilter(row: OpsRow, filter: FilterKey): boolean {
       // It is reachable through "All", and it is not an exception.
       return row.status.key === 'content-behind';
     case 'push-delayed':
-      return row.status.key === 'push-delayed';
+      // The channel, not a status (2026-10-22): see step 5 of the grade.
+      return row.screen.pushChannel === 'stale';
     case 'offline':
       return row.status.key === 'offline';
     default:

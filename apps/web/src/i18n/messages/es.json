@@ -2205,7 +2205,14 @@
       "syncLocked": "Sincronizada con su grupo (±{ms} ms).",
       "syncDiverged": "Esta pantalla reproduce contenido distinto al de su grupo, así que no puede mantenerse sincronizada.",
       "syncLocking": "Sincronizándose con su grupo; tarda unos segundos.",
-      "trustRequestedAnnounce": "Restablecimiento solicitado."
+      "trustRequestedAnnounce": "Restablecimiento solicitado.",
+      "technicalDetails": "Detalles técnicos",
+      "technicalDetailsHint": "Para soporte: datos del dispositivo, mediciones de video y conexión.",
+      "lastVideoSample": "Última muestra de video web",
+      "nativePlayback": "Reproducción nativa",
+      "videoSampleOpenMedia": "Abra este archivo en la Biblioteca de medios: su tarjeta “Reproducción en pantallas” indica si el archivo es la causa.",
+      "liveLinkDown": "Conexión en vivo: caída desde hace {ago}. Los cambios siguen llegando cuando la pantalla consulta, cada pocos segundos.",
+      "liveLinkDownNoAge": "Conexión en vivo: caída. Los cambios siguen llegando cuando la pantalla consulta, cada pocos segundos."
     },
     "ops": {
       "noGroupAddress": "Sin dirección de grupo",
@@ -2645,7 +2652,8 @@
       "excludedHandoff": "el video acababa de empezar en la pantalla",
       "excludedPlayerUpdate": "la aplicación del reproductor acababa de actualizarse",
       "excludedFallbackEngine": "el reproductor de respaldo sustituía al motor de video integrado de la pantalla",
-      "excludedGeneric": "la pantalla se estaba preparando"
+      "excludedGeneric": "la pantalla se estaba preparando",
+      "filesTitle": "Mediciones de video"
     },
     "interruptions": {
       "title": "Interrupciones, últimas {hours} h",
