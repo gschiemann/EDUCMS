@@ -6,8 +6,9 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, Megaphone } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
+import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -248,6 +249,15 @@ export function Sidebar() {
           href: hrefFor('/menu'),
           icon: isRetailPricing ? Tag : UtensilsCrossed,
         }]
+      : []),
+    // Emergency → Broadcast (2026-10-22). The page existed only behind the
+    // dashboard's "Emergency Console" button; nothing in the navigation
+    // reached it. Gated on the same capability the API honours for
+    // POST /emergency/broadcast (@RequireRoles admins + @AllowPanicBypass
+    // canTriggerPanic) — `hasPanicAuthority`, the one shared answer. Mounted-
+    // gated like the admin set below (user lives in localStorage).
+    ...(mounted && hasPanicAuthority(user)
+      ? [{ name: t('nav.broadcast'), href: hrefFor('/emergency/broadcast'), icon: Megaphone }]
       : []),
     { name: t('nav.settings'), href: hrefFor('/settings'), icon: Settings },
   ];

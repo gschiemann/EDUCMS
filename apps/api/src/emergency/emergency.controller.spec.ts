@@ -439,9 +439,14 @@ describe('EmergencyController', () => {
 
     expect(res.success).toBe(true);
     // Tenant-scoped clear (TEN-001 burn-down): the where MUST carry the
-    // verified owning tenant, not just the bare message id.
+    // verified owning tenant, not just the bare message id. Since 2026-10-22
+    // both are id SETS (the row named + every fan-out copy in the owning
+    // subtree); for a leaf tenant that is exactly the one row, one tenant.
     expect(prismaService.client.emergencyMessage.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'msg_1', tenantId: 't1' }, data: expect.objectContaining({ clearedByUserId: 'admin1' }) }),
+      expect.objectContaining({
+        where: { id: { in: ['msg_1'] }, tenantId: { in: ['t1'] } },
+        data: expect.objectContaining({ clearedByUserId: 'admin1' }),
+      }),
     );
     expect(prismaService.client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'CLEAR_EMERGENCY_MESSAGE' }) }),
@@ -745,11 +750,15 @@ describe('EmergencyController', () => {
       expect(where.tenantId).toBe('t1');
       expect(where.clearedAt).toBeNull();
       // The per-scope OR must include exactly: this tenant, this device,
-      // and this screen's group — and nothing else.
+      // and this screen's group — and nothing else. The tenant clause carries
+      // no scopeId since 2026-10-22: `where.tenantId` already pins the row to
+      // this screen's tenant, and a copy fanned out from an ANCESTOR tenant
+      // (district broadcast) has the district as its scopeId — the ancestor
+      // check runs after the read (message-visibility.ts).
       const scopeOr = where.AND[0].OR;
       expect(scopeOr).toEqual(
         expect.arrayContaining([
-          { scopeType: 'tenant', scopeId: 't1' },
+          { scopeType: 'tenant' },
           { scopeType: 'device', scopeId: 'scr1' },
           { scopeType: 'group', scopeId: 'grp9' },
         ]),
@@ -766,7 +775,7 @@ describe('EmergencyController', () => {
 
       const scopeOr = prismaService.client.emergencyMessage.findMany.mock.calls[0][0].where.AND[0].OR;
       expect(scopeOr).toEqual([
-        { scopeType: 'tenant', scopeId: 't1' },
+        { scopeType: 'tenant' },
         { scopeType: 'device', scopeId: 'scr1' },
       ]);
     });

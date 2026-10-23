@@ -18,6 +18,7 @@ import { API_URL } from '@/lib/api-url';
 // connection can't hang the operator mid-incident (status poll, send, clear).
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
+import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
 import * as Sentry from '@sentry/nextjs';
 import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
 
@@ -81,8 +82,15 @@ export default function BroadcastPage() {
   // broadcasting from desktop now hears hold-start → sending → result.
   const { announce, region: liveRegion } = useEmergencyAnnouncer();
 
-  const role = user?.role;
-  const canClear = role === 'DISTRICT_ADMIN' || role === 'SUPER_ADMIN';
+  // 2026-10-22 — mirror the API exactly. POST /emergency/broadcast,
+  // /media-alert and /messages/:id/all-clear all carry
+  // @RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN) + @AllowPanicBypass,
+  // and RbacGuard refuses the bypass to RESTRICTED_VIEWER. "Clear" used to be
+  // offered to DISTRICT_ADMIN / SUPER_ADMIN only, so a SCHOOL_ADMIN or a
+  // delegated `canTriggerPanic` staffer could send a broadcast but not end
+  // it from this page — the server would have honoured the clear all along.
+  const canSend = hasPanicAuthority(user) && !isViewer;
+  const canClear = canSendAllClear(user) && !isViewer;
 
   const severityLabel = (s: string) =>
     SEVERITY_KEY[s] ? t(`emergency.broadcast.${SEVERITY_KEY[s]}`) : s;
@@ -270,7 +278,7 @@ export default function BroadcastPage() {
 
         <div className="grid md:grid-cols-5 gap-8">
           {/* Composer */}
-          {!isViewer && (<section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
+          {canSend && (<section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
             <div>
               <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.severity')}</label>
               <div className="flex gap-2">
@@ -396,7 +404,7 @@ export default function BroadcastPage() {
               </span>
             </button>
           </section>)}
-          <section className={`${isViewer ? 'md:col-span-5' : 'md:col-span-2'} bg-slate-900 border border-slate-800 rounded-xl p-6`}>
+          <section className={`${canSend ? 'md:col-span-2' : 'md:col-span-5'} bg-slate-900 border border-slate-800 rounded-xl p-6`}>
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">{t('emergency.broadcast.activeTitle')}</h2>
             {active.length === 0 ? (
               <p className="text-sm text-slate-500 italic">{t('emergency.broadcast.noneActive')}</p>

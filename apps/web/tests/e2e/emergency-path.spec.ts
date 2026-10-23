@@ -953,6 +953,37 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     await expect(page.getByText('School closing at 1pm today')).toBeVisible();
   });
 
+  // 2026-10-22 — the REAL signed shape. The API signs the DB row id as
+  // `messageId` and the broadcast body as `text` (emergency.controller.ts);
+  // test 6 above uses the harness's `id` / `textBlob` aliases. The WS branch
+  // used to read `p.id || msg.eventId`, so a real push carried the random
+  // eventId and the 12 s reconcile cleared it ~24 s later. The id equality is
+  // pinned by the unit test on `pushedEmergencyFromPayload`; this case proves
+  // the real wire shape still paints end-to-end over WebSocket.
+  test('6b. TEXT_BROADCAST in the REAL signed shape (messageId + text) renders over WS', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+
+    await pushWs(page, {
+      type: 'TEXT_BROADCAST',
+      timestamp: Date.now(),
+      eventId: 'tb-evt-real-1',
+      signature: 'fake-sig',
+      payload: {
+        messageId: 'bcast_00000000-0000-4000-8000-000000000001_school-a',
+        severity: 'CRITICAL',
+        text: 'Shelter in place until further notice',
+        expiresAt: Math.floor(Date.now() / 1000) + 300,
+      },
+    });
+
+    await expect(
+      page.getByText('Broadcast'),
+      'TEXT_BROADCAST in the real signed shape did not render over WS.',
+    ).toBeVisible({ timeout: 2_000 });
+    await expect(page.getByText('Shelter in place until further notice')).toBeVisible();
+  });
+
   test('7. MEDIA_ALERT WS message renders "Emergency Alert" (P0-3)', async ({ page }) => {
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);
