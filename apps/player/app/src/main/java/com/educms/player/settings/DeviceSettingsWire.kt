@@ -28,6 +28,17 @@ import org.json.JSONObject
  * ```
  * `obs` is what Android READS BACK right now; a value it will not give is
  * omitted, never guessed.
+ *
+ * 2026-10-23 (Wi-Fi on every class) — two additive fields. The Wi-Fi item may
+ * carry `"permanent": true` (the operator asked for Android's save dialog;
+ * an older unit ignores the key), and the report carries a top-level `wifi`
+ * block of FACTS the dashboard words its "what will happen" line from:
+ * ```json
+ * "wifi": { "via": "legacy", "radio": true, "dialog": false, "wpa3": false, "joined": true }
+ * ```
+ * `via` = `legacy` (Android 9 and older: saved and joined silently) or
+ * `suggestion`; `dialog` = Android's save-network dialog opens here; `joined`
+ * only where Android lets an app see it (legacy). An older API drops the block.
  */
 object DeviceSettingsWire {
 
@@ -91,7 +102,8 @@ object DeviceSettingsWire {
         if (ssid.length > 64 || security.length > 8) return null
         val hidden = o.opt("hidden") as? Boolean ?: false
         val passphrase = (o.opt("passphrase") as? String)?.takeIf { it.isNotEmpty() && it.length <= 64 }
-        return DesiredValue.WifiValue(ssid, security, hidden, passphrase)
+        val permanent = o.opt("permanent") as? Boolean ?: false
+        return DesiredValue.WifiValue(ssid, security, hidden, passphrase, permanent)
     }
 
     /** JSON numbers arrive as Integer, Long or Double; only an exact int in range is an int. */
@@ -116,6 +128,7 @@ object DeviceSettingsWire {
                     .put("ssid", value.ssid)
                     .put("security", value.security)
                     .put("hidden", value.hidden)
+                    .apply { if (value.permanent) put("permanent", true) }
                 // ⚠️ no passphrase — ever. A Wi-Fi item that has not landed asks for it again.
                 DesiredValue.Invalid -> JSONObject.NULL
             }
@@ -156,8 +169,21 @@ object DeviceSettingsWire {
 
     // ── the report ────────────────────────────────────────────────────────
 
-    /** The observed Wi-Fi state: our suggestion's SSID (null = none / unreadable) and its approval. */
+    /** The observed Wi-Fi state: VenueOS's network's SSID (null = none / unreadable) and its approval. */
     data class WifiObserved(val ssid: String?, val approval: String)
+
+    /**
+     * How Wi-Fi works on THIS unit — facts, never a setting (2026-10-23).
+     * [via] `legacy` | `suggestion`; [joined] is null wherever Android does not
+     * let an app see which network it is on.
+     */
+    data class WifiFacts(
+        val via: String,
+        val radio: Boolean?,
+        val dialog: Boolean,
+        val wpa3: Boolean,
+        val joined: Boolean? = null,
+    )
 
     data class Report(
         val rev: Int,
@@ -169,7 +195,47 @@ object DeviceSettingsWire {
         val acks: Map<DeviceSettingKey, DeviceSettingsPolicy.Ack>,
         /** Heat and load facts ([DeviceLoad]); read-only, never acted on. */
         val load: DeviceLoadMath.Load? = null,
+        /** How Wi-Fi works here; null when the unit has no Wi-Fi to speak of. */
+        val wifi: WifiFacts? = null,
+        /** The connection right now ([NetworkStatus]); null when unreadable. */
+        val net: NetStatus? = null,
     )
+
+    /**
+     * The connection as Android reports it (2026-10-23) — `t` = `wifi` |
+     * `ethernet` | `other` | `none`; [ssid] only where Android lets an app
+     * read it; [auto] true = an automatic (DHCP) address, false = a fixed
+     * one, null = Android does not say (below Android 11).
+     */
+    data class NetStatus(
+        val transport: String,
+        val validated: Boolean? = null,
+        val ssid: String? = null,
+        val rssi: Int? = null,
+        val bars: Int? = null,
+        val ip: String? = null,
+        val auto: Boolean? = null,
+        val ethernetLink: Boolean? = null,
+    )
+
+    fun encodeNet(n: NetStatus): JSONObject {
+        val o = JSONObject().put("t", n.transport)
+        n.validated?.let { o.put("ok", it) }
+        n.ssid?.let { o.put("ssid", it) }
+        n.rssi?.let { o.put("rssi", it) }
+        n.bars?.let { o.put("bars", it) }
+        n.ip?.let { o.put("ip", it) }
+        n.auto?.let { o.put("auto", it) }
+        n.ethernetLink?.let { o.put("eth", it) }
+        return o
+    }
+
+    fun encodeWifiFacts(f: WifiFacts): JSONObject {
+        val o = JSONObject().put("via", f.via).put("dialog", f.dialog).put("wpa3", f.wpa3)
+        f.radio?.let { o.put("radio", it) }
+        f.joined?.let { o.put("joined", it) }
+        return o
+    }
 
     fun encodeLoad(l: DeviceLoadMath.Load): JSONObject {
         val o = JSONObject()
@@ -216,14 +282,23 @@ object DeviceSettingsWire {
             .put("obs", obs)
             .put("ack", ack)
         r.load?.let { out.put("load", encodeLoad(it)) }
+        r.wifi?.let { out.put("wifi", encodeWifiFacts(it)) }
+        r.net?.let { out.put("net", encodeNet(it)) }
         val text = asciiJson(out.toString())
         // Bounded by construction (one entry per key — the worst case over every
-        // key is pinned by DeviceSettingsWireTest — a 253-char host, a 32-byte SSID);
-        // the observed block is the one part that could ever grow, so it is
-        // what gives way rather than the whole report.
+        // key is pinned by DeviceSettingsWireTest — a 253-char host, a 32-byte SSID).
+        // What gives way, in order, is what matters least to "where does each
+        // stored setting stand": the connection line, heat and load, the
+        // Wi-Fi facts, and only then the read-back values — never the whole
+        // report (an older API refuses anything longer).
         if (text.length <= MAX_REPORT_CHARS) return text
+        for (drop in listOf("net", "load", "wifi")) {
+            if (!out.has(drop)) continue
+            out.remove(drop)
+            val trimmed = asciiJson(out.toString())
+            if (trimmed.length <= MAX_REPORT_CHARS) return trimmed
+        }
         out.put("obs", JSONObject())
-        out.remove("load")
         return asciiJson(out.toString())
     }
 

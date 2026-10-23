@@ -10,6 +10,7 @@ import {
   readStoredSettings,
   reportSignature,
   viewDesired,
+  wifiGaveUp,
   wifiSecretNeeded,
   type StoredSettings,
 } from './device-settings';
@@ -81,6 +82,33 @@ describe('applyPatch — identity per changed value, nothing else moves', () => 
     );
     // A passphrase that is sent is always a change (the old one is never opened to compare).
     expect(applyPatch(set.next, { wifi: { ssid: 'Lobby', security: 'wpa2', passphrase: 'correct horse' } }, ctx(2, true)).changed).toEqual(['wifi']);
+  });
+
+  it('"save it permanently" is part of the value, stored only when asked for (2026-10-23)', () => {
+    const plain = applyPatch({}, { wifi: { ssid: 'Lobby', security: 'wpa2', passphrase: 'correct horse' } }, ctx(1));
+    expect(plain.next.wifi!.v).toEqual({ ssid: 'Lobby', security: 'wpa2', hidden: false });
+    const permanent = applyPatch(plain.next, { wifi: { ssid: 'Lobby', security: 'wpa2', permanent: true } }, ctx(2, true));
+    expect(permanent.changed).toEqual(['wifi']);
+    expect(permanent.wifiSecret).toEqual({ kind: 'keep' });
+    expect(permanent.next.wifi!.v).toEqual({ ssid: 'Lobby', security: 'wpa2', hidden: false, permanent: true });
+    expect(viewDesired(permanent.next, true).wifi!.value).toMatchObject({ permanent: true, passphraseSaved: true });
+    const reply = fullReply(2, permanent.next, null) as { items: Record<string, { v: unknown }> };
+    expect(reply.items.wifi.v).toEqual({ ssid: 'Lobby', security: 'wpa2', hidden: false, permanent: true });
+    // The same again is no change…
+    expect(applyPatch(permanent.next, { wifi: { ssid: 'Lobby', security: 'wpa2', permanent: true } }, ctx(3, true)).changed).toEqual([]);
+  });
+
+  it('saving the same network again after the screen gave up on it tries again', () => {
+    const set = applyPatch({}, { wifi: { ssid: 'Lobby', security: 'wpa2', passphrase: 'correct horse' } }, ctx(1)).next;
+    const failed: DeviceSettingsReport = { schema: 1, rev: 1, ack: { wifi: { id: 'r1', st: 'failed', n: 1, why: 'wifi-unreachable' } } };
+    expect(wifiGaveUp(set, failed)).toBe(true);
+    expect(wifiGaveUp(set, { ...failed, ack: { wifi: { id: 'r1', st: 'applied', n: 1 } } })).toBe(false);
+    expect(wifiGaveUp(set, { ...failed, ack: { wifi: { id: 'r0', st: 'failed', n: 3 } } })).toBe(false);
+    expect(wifiGaveUp(set, null)).toBe(false);
+    const again = applyPatch(set, { wifi: { ssid: 'Lobby', security: 'wpa2' } }, { ...ctx(2, true), wifiFailed: true });
+    expect(again.changed).toEqual(['wifi']);
+    expect(again.next.wifi!.id).toBe('r2');
+    expect(again.wifiSecret).toEqual({ kind: 'keep' });
   });
 
   it('an open network drops any saved secret; stopping Wi-Fi clears it', () => {

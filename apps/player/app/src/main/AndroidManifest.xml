@@ -106,14 +106,27 @@
       survives app updates, and is revoked by an uninstall. Without the grant
       those four settings report `no-secure-settings` and are never attempted.
 
-      CHANGE_WIFI_STATE: normal, auto-granted. Wi-Fi network SUGGESTIONS
-      (WifiManager.addNetworkSuggestions); Android asks for one approval on
-      the glass the first time.
+      CHANGE_WIFI_STATE: normal, auto-granted. Wi-Fi on every Android class
+      (2026-10-23, settings/WifiSetup): saved networks below Android 10
+      (addNetwork / enableNetwork / saveConfiguration — they still work there
+      for any target SDK), network SUGGESTIONS from Android 10 (Android asks
+      for one approval on the glass the first time).
+
+      ACCESS_FINE_LOCATION + ACCESS_COARSE_LOCATION (2026-10-23): RUNTIME
+      permissions, granted only by a person on the glass, asked for only from
+      VenueOS's on-screen Network screen. Android lists nearby Wi-Fi networks
+      (WifiManager.getScanResults) and names the connected one only to an
+      app holding location, with Location switched on — on every Android
+      version this fleet runs (the API-34 docs for getScanResults name FINE
+      location; NEARBY_WIFI_DEVICES does not unlock the scan list, so it is
+      not declared). The player never reads a location.
     -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
@@ -284,6 +297,20 @@
         <intent>
             <action android:name="android.settings.SETTINGS" />
         </intent>
+        <!--
+          2026-10-23 (settings/WifiSetup) — Android 11+'s own "save this Wi-Fi
+          network" dialog. Resolved through SettingsPagePolicy before it is
+          ever offered: a system Settings page only, never a browser.
+        -->
+        <intent>
+            <action android:name="android.settings.WIFI_ADD_NETWORKS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.WIFI_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.LOCATION_SOURCE_SETTINGS" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
@@ -298,6 +325,11 @@
     <!-- USB OTG sneakernet ingest (Sprint 7B) — Android 7+ supports USB host mode -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- The location permissions above imply these; a signage box has neither, and needs neither. -->
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application

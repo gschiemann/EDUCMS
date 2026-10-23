@@ -95,7 +95,9 @@ class FaceBridgeIsolationTest {
             // 30 -> 32 (2026-09-28): Website Tabs added webTabsShow + webTabsHide through the
             // full three-file contract, both kept out of KNOWN_METHODS until the fleet floor
             // includes the APK that implements them.
-            36, // Native media has face-bound closures, not face-selecting public methods.
+            // 36 -> 37 (2026-10-23): openNetworkScreen, the Back menu's Network entry — the
+            // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.53.
+            37, // Native media has face-bound closures, not face-selecting public methods.
             names.size,
         )
         assertFalse("a face-specific bridge method appeared", names.any { it.startsWith("face") })

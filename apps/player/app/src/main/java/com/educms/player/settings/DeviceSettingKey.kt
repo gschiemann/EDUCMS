@@ -31,8 +31,13 @@ package com.educms.player.settings
  *
  * [recheckAfterBoot] — after a reboot an applied setting whose read-back no
  * longer matches is set again (some signage firmware resets brightness,
- * volume or the timeout at boot). Wi-Fi is not: Android keeps a suggestion
- * across reboots, and its passphrase is never stored on this unit.
+ * volume or the timeout at boot). Wi-Fi is not: Android keeps a saved network
+ * and a suggestion across reboots, and its passphrase is never stored on this
+ * unit.
+ *
+ * Wi-Fi is the one setting offered BELOW Android 13 (2026-10-23): every class
+ * from Android 7 up gets the best mechanism its Android gives a normal app —
+ * see [WifiSetupPolicy]. The other settings keep the Android 13 floor.
  */
 enum class DeviceSettingKey(val wire: String, val recheckAfterBoot: Boolean) {
     BRIGHTNESS("brightness", true),
@@ -66,21 +71,28 @@ sealed class DesiredValue {
     data class TextValue(val value: String) : DesiredValue()
 
     /**
-     * A Wi-Fi network suggestion. [passphrase] is present only on the reply
-     * that carries it; it is NEVER persisted on this unit (see
+     * One Wi-Fi network. [passphrase] is present only on the reply that
+     * carries it; it is NEVER persisted on this unit (see
      * [DeviceSettingsStore]) and never logged.
+     *
+     * [permanent] (2026-10-23): the operator wants the network SAVED on the
+     * screen rather than suggested — Android's own "save network" dialog, which
+     * a person at the screen confirms once. Only offered where the unit reports
+     * that dialog; below Android 10 every network is saved anyway.
      */
     data class WifiValue(
         val ssid: String,
         val security: String,
         val hidden: Boolean,
         val passphrase: String?,
+        val permanent: Boolean = false,
     ) : DesiredValue() {
         /** Same network, same security — the passphrase is deliberately left out. */
         fun withoutSecret(): WifiValue = copy(passphrase = null)
 
         override fun toString(): String =
-            "WifiValue(ssid=$ssid, security=$security, hidden=$hidden, passphrase=${if (passphrase == null) "none" else "***"})"
+            "WifiValue(ssid=$ssid, security=$security, hidden=$hidden, permanent=$permanent, " +
+                "passphrase=${if (passphrase == null) "none" else "***"})"
     }
 }
 
@@ -102,7 +114,7 @@ object DeviceSettingCodes {
     const val OK = "ok"
 
     // ── Why a setting cannot be set on this unit right now ─────────────
-    /** Needs Android 13 (API 33) or newer — the qualified floor for this feature. */
+    /** Needs Android 13 (API 33) or newer — the qualified floor for every setting but Wi-Fi. */
     const val API_LEVEL = "api-level"
     /** The WRITE_SETTINGS app-op ("Modify system settings") is not allowed. */
     const val NO_WRITE_SETTINGS = "no-write-settings"
@@ -153,8 +165,48 @@ object DeviceSettingCodes {
     const val WIFI_RESTRICTED = "wifi-restricted"
     const val WIFI_ERROR = "wifi-error"
 
-    /** An attempt that failed with one of these is never retried, not even after a reboot. */
-    val NEVER_RETRIED = setOf(INVALID_VALUE, WIFI_INVALID, WIFI_REJECTED)
+    // ── Wi-Fi: what actually happened (2026-10-23, every Android class) ──
+    /** On this network now. On Android 9 and older VenueOS reached its own server over it before keeping it. */
+    const val WIFI_JOINED = "wifi-joined"
+    /** Saved on the screen: Android keeps it and joins it when it is the network to use. */
+    const val WIFI_SAVED = "wifi-saved"
+    /** Offered to Android; Android 10 and 11 never tell an app whether someone allowed its networks. */
+    const val WIFI_SUGGESTED = "wifi-suggested"
+    /** Waiting for the one-time "allow" Android itself asks for on the screen. */
+    const val WIFI_APPROVAL = "wifi-approval"
+    /** Waiting for a person at the screen to confirm Android's save-network dialog. */
+    const val WIFI_DIALOG = "wifi-dialog"
+    /** Joining it now; it is kept only once VenueOS reaches its server over it. */
+    const val WIFI_SWITCHING = "wifi-switching"
+    /** Wi-Fi is turned off on the screen. VenueOS never turns it on. */
+    const val WIFI_OFF = "wifi-off"
+    /** Someone at the screen pressed Not now, Cancel or Back. */
+    const val WIFI_DECLINED = "wifi-declined"
+    /** Nobody confirmed it on the screen in time. */
+    const val WIFI_NO_ANSWER = "wifi-no-answer"
+    /** This screen has no usable save-network dialog, or Android would not open it. */
+    const val WIFI_NO_DIALOG = "wifi-no-dialog"
+    /** It joined, but VenueOS could not reach its server over it: switched back. */
+    const val WIFI_UNREACHABLE = "wifi-unreachable"
+    /** It could not join in time (password, range): switched back. */
+    const val WIFI_NO_CONNECT = "wifi-no-connect"
+    /** A network with this name is already saved on the screen by someone else; VenueOS never changes it. */
+    const val WIFI_EXISTS = "wifi-exists"
+    /** This screen's Android cannot join this kind of network (WPA3 needs Android 10). */
+    const val WIFI_SECURITY = "wifi-security"
+
+    /**
+     * An attempt that failed with one of these is never retried, not even
+     * after a reboot. For Wi-Fi that is the never-strand rule's other half: a
+     * switch that could not be proved is never tried again on its own (each
+     * try costs the screen its connection for up to a minute), and a person's
+     * "no" is never asked again. Saving the network again in the dashboard is
+     * a new identity, and tries again.
+     */
+    val NEVER_RETRIED = setOf(
+        INVALID_VALUE, WIFI_INVALID, WIFI_REJECTED, WIFI_DECLINED, WIFI_NO_ANSWER, WIFI_NO_DIALOG,
+        WIFI_UNREACHABLE, WIFI_NO_CONNECT, WIFI_EXISTS, WIFI_SECURITY,
+    )
 }
 
 /**

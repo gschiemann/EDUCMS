@@ -195,6 +195,12 @@ class WebAppBridge(
      */
     private val onOpenSetupChecklist: () -> Unit = {},
     /**
+     * 2026-10-23 — the Back menu's "Network" entry: VenueOS's own on-screen
+     * Network screen (network.NetworkScreen). Touches nothing by itself; the
+     * Activity decides whether it may open (never over an alert).
+     */
+    private val onOpenNetworkScreen: () -> Unit = {},
+    /**
      * 2026-09-02 (P0-2) — FACT 1: the web bundle's client JS is running.
      *
      * Fired from the same mount effect that stamps `data-edu-booted="1"`.
@@ -503,6 +509,25 @@ class WebAppBridge(
             onOpenSetupChecklist()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "openSetupChecklist failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * 2026-10-23 — open VenueOS's on-screen Network screen from the player's
+     * Back menu ("Screen options" → Network). Fire-and-forget like
+     * [openSetupChecklist]: it grants nothing and changes nothing by itself —
+     * every network change still goes through the one Wi-Fi engine and a
+     * person's press on the screen. THREE-FILE ATOMIC CHANGE: the channel's
+     * METHODS + dispatch arm, the web's NATIVE_VOID_METHODS (excluded from
+     * KNOWN_METHODS until the fleet floor includes this APK), and the
+     * drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun openNetworkScreen() {
+        try {
+            onOpenNetworkScreen()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "openNetworkScreen failed: ${ex.message}")
         }
     }
 

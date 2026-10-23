@@ -222,6 +222,9 @@ class LegacyBridgeExposureTest {
             "registerAttempt",
             "registerResult",
             "openSetupChecklist",
+            // 2026-10-23 — the Back menu's way to VenueOS's Network screen: a
+            // panel whose Wi-Fi is wrong must be fixable from the glass.
+            "openNetworkScreen",
             // ⚠️ LIFE SAFETY. Gating this is how an alert fails to reach a panel.
             "displayEmergencyHold",
             "displayApply",
@@ -388,11 +391,14 @@ class LegacyBridgeExposureTest {
         // 30 → 32 on 2026-09-28: Website Tabs added `webTabsShow` / `webTabsHide`
         // through the full three-file contract (web tables + canary in the same
         // commit; see WebTabsWiringTest for the wiring half).
+        // 36 → 37 on 2026-10-23: `openNetworkScreen` (the Back menu's Network
+        // entry), web tables + canary in the same commit, kept out of the web's
+        // KNOWN_METHODS until the fleet floor includes this APK.
         assertEquals(
             "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
                 "if this is a deliberate new method, update the web tables and the canary " +
                 "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
-            36, // Four optional native media names; see nativeBridge.ts >=1.1.25 floors.
+            37, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen.
             names.size,
         )
     }

@@ -76,6 +76,18 @@ class MainActivity : ComponentActivity() {
     private lateinit var binding: ActivityMainBinding
 
     /**
+     * 2026-10-23 — Android's "save this Wi-Fi network" dialog returns a
+     * result, so it is started through the Activity Result API, registered
+     * here (before STARTED, as the API requires) so a result that arrives
+     * after a process death is still delivered. This Activity only HOSTS it:
+     * what to save, and when, is `settings.WifiSavePrompt`'s — raised only
+     * by a person's press.
+     */
+    private val wifiSaveLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { r -> com.educms.player.settings.WifiSavePrompt.onResult(applicationContext, r.resultCode, r.data) }
+
+    /**
      * P1-3 (2026-10-03 review) — THE native CTS serial bridge, one per
      * Activity.
      *
@@ -514,6 +526,25 @@ class MainActivity : ComponentActivity() {
      * worse than one that lands one screen away. NEW_TASK because we may
      * be launching from a card, not from a normal Activity transition.
      */
+    /**
+     * 2026-10-23 — VenueOS's own on-screen Network screen (Wi-Fi + Ethernet).
+     * False when it may not open (an alert is held, a pinned task); the
+     * caller then keeps its own fallback. Main thread.
+     */
+    private fun openNetworkScreen(source: String): Boolean = runCatching {
+        if (isFinishing || isDestroyed) return@runCatching false
+        sharedVideoHost?.yieldToUi()
+        com.educms.player.network.NetworkScreen.open(
+            activity = this,
+            decorate = ::applyRemoteFocus,
+            onAndroidSettings = { openNetworkSettings() },
+            source = source,
+        )
+    }.getOrElse {
+        PlayerLogger.w("NetworkScreen", "open ($source) threw: ${it.message}")
+        false
+    }
+
     private fun openNetworkSettings() {
         val candidates = listOf(
             Settings.ACTION_WIFI_SETTINGS,
@@ -550,6 +581,9 @@ class MainActivity : ComponentActivity() {
      * the decision itself is the pure [bootDiagnosticSuppression].
      */
     private fun bootDiagnosticSuppressionNow(): String? =
+        // 2026-10-23 — a person is fixing the network on VenueOS's Network
+        // screen: the card must not raise itself over what they are typing.
+        if (com.educms.player.network.NetworkScreen.isShowing()) "the network screen is open" else
         com.educms.player.boot.bootDiagnosticSuppression(
             emergencyHeld = runCatching {
                 DisplayEmergency.isHeld(applicationContext)
@@ -949,6 +983,10 @@ class MainActivity : ComponentActivity() {
         super.onUserInteraction()
         lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
         lastInputAtElapsedMs = lastLocalInputAtMs
+        // 2026-10-23 — a person is at the panel: a Wi-Fi network the dashboard
+        // asked to SAVE (Android's dialog needs one tap) may offer its card
+        // now, never before (settings.WifiSavePrompt; never over an alert).
+        runCatching { com.educms.player.settings.WifiSavePrompt.personPresent(this) }
     }
 
     // ─── 2026-08-03: kiosk lock task mode ───────────────────────────
@@ -1809,12 +1847,19 @@ class MainActivity : ComponentActivity() {
                 runCatching { webView.stopLoading() }
                 lifecycleScope.launch { loadPlayer(resolveDeviceToken()) }
             },
-            onNetworkSettings = { openNetworkSettings() },
+            // 2026-10-23 — VenueOS's own Network screen first; Android's
+            // settings stay one button away on it (and are the fallback when
+            // it may not open).
+            onNetworkSettings = { if (!openNetworkScreen("boot diagnostic")) openNetworkSettings() },
             onExit = { exitToDeviceHomeNow("boot diagnostic: operator chose Exit") },
         )
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 2026-10-23 — the Network screen owns Back while it is up
+                // (one step back; its own key handler normally consumes the
+                // key — this is the belt for focus that escaped behind it).
+                if (runCatching { com.educms.player.network.NetworkScreen.back() }.getOrDefault(false)) return
                 // 2026-10-05 (1.1.23, the X80 setup freeze): Back reaches HERE
                 // with the setup card on glass only when focus had escaped to
                 // a WebView behind the card — the card's own key handler
@@ -3159,6 +3204,7 @@ class MainActivity : ComponentActivity() {
                 // (emergency hold, lock task, manager gate) is decided and
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
+                onOpenNetworkScreen = { runOnUiThread { openNetworkScreen("back menu") } },
                 // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────
                 // The three facts an HTTP 200 + onPageFinished cannot give
                 // us. Bridge callbacks arrive on the bridge worker thread;
@@ -4391,6 +4437,25 @@ class MainActivity : ComponentActivity() {
         sharedVideoHost?.refreshReadiness()
         // 1.1.23 — whoever left the setup card for a system screen is back.
         runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }
+        // 2026-10-23 — host the "Save Wi-Fi network" card and Android's save
+        // dialog (settings.WifiSavePrompt). Hosting only: nothing goes on the
+        // glass until a person uses the screen, and never over an alert.
+        runCatching {
+            com.educms.player.settings.WifiSavePrompt.attach(
+                activity = this,
+                launcher = wifiSaveLauncher,
+                decorate = ::applyRemoteFocus,
+                foreground = { isInForeground },
+                otherCardShowing = {
+                    com.educms.player.ota.UpdateReadyCard.isShowing() ||
+                        com.educms.player.setup.SetupCeremony.isShowing() ||
+                        com.educms.player.boot.BootDiagnostics.isShowing() ||
+                        com.educms.player.network.NetworkScreen.isShowing() ||
+                        managerGateShown || installPromptOutstanding
+                },
+                lastPausedAt = { lastPausedAtElapsedMs },
+            )
+        }
         // USER STANDBY — resumed with the panel lit means whatever turned it
         // back on (a person, an alert, the schedule) has ended the standby;
         // this catches a SCREEN_ON broadcast that never reached us.
@@ -4614,6 +4679,9 @@ class MainActivity : ComponentActivity() {
         // when nothing is up, or when the live checklist belongs to a
         // newer Activity instance.
         runCatching { com.educms.player.setup.SetupCeremony.detach(this) }
+        // 2026-10-23 — the Wi-Fi card and the Network screen go with their host.
+        runCatching { com.educms.player.settings.WifiSavePrompt.detach(this) }
+        runCatching { com.educms.player.network.NetworkScreen.close("host destroyed") }
         // Same reasoning for the boot diagnostic: drop the card and the
         // host callbacks so a destroyed Activity is never retained, and
         // stop its ticker (the staleness watchdog's is stopped below).
@@ -5334,7 +5402,10 @@ class MainActivity : ComponentActivity() {
     private fun nativeCardOwnsRemote(): Boolean =
         com.educms.player.ota.UpdateReadyCard.isShowing() ||
         runCatching { com.educms.player.setup.SetupCeremony.isShowing() }.getOrDefault(false) ||
-            runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false)
+            runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false) ||
+            // 2026-10-23 — VenueOS's Network screen and the Wi-Fi save card.
+            com.educms.player.settings.WifiSavePrompt.isShowing() ||
+            com.educms.player.network.NetworkScreen.isShowing()
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Website Tabs (2026-09-28): a remote key while a site is up is

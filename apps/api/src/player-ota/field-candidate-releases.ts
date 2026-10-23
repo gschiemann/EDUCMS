@@ -274,4 +274,18 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2545173,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39991127985',
   },
+  // Signed CI 40039696321, source 9ede51ec (PR #148, Wi-Fi on every Android
+  // class): on-screen Network screen (Wi-Fi list + VenueOS D-pad keyboard,
+  // Ethernet status), legacy saved-network path with proof + rollback below
+  // Android 10, suggestions + save dialog from 10, `openNetworkScreen` bridge
+  // (floor 1.1.53). Production certificate e45adf50…3d1897, non-debuggable
+  // universal APK verified. Hardware qualification and controlled emergency
+  // drills remain pending.
+  '1.1.53-field.1': {
+    versionName: '1.1.53-field.1',
+    versionCode: 10153,
+    sha256: 'e07f47b155f6e7a7d9b61db36b58539f99800579bb4ee0f1e2b87b640ddc3b34', // gitleaks:allow -- verified public APK integrity digest
+    size: 2664475,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40039696321',
+  },
 };

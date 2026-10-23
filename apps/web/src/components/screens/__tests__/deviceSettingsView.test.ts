@@ -6,6 +6,7 @@ import {
   selectValue,
   thermalLevel,
   timeoutParts,
+  wifiPlan,
 } from '../deviceSettingsView';
 import { deviceSettingsInFlight } from '@/hooks/use-device-settings';
 
@@ -63,6 +64,44 @@ describe('buildSection — the honesty rules', () => {
     );
     if (m.kind !== 'ready') throw new Error(m.kind);
     expect(m.rows.find((r) => r.key === 'volume')!.state).toEqual({ kind: 'sending' });
+  });
+});
+
+describe('Wi-Fi on every Android class (2026-10-23)', () => {
+  const oldCaps = Object.fromEntries(
+    ['brightness', 'volume', 'screenOffTimeoutMs', 'attentiveTimeoutMs', 'rotationLock', 'autoTime', 'autoTimeZone', 'ntpServer'].map((k) => [k, 'api-level']),
+  );
+
+  it('an older Android with Wi-Fi keeps only the Wi-Fi row (and anything stored), plus one note', () => {
+    const m = buildSection(
+      base({
+        desired: { volume: { value: 30, id: 'r2', changedAt: 'x' } },
+        report: { schema: 1, rev: 2, sdk: 28, cap: { ...oldCaps, wifi: 'ok' } },
+      }),
+    );
+    if (m.kind !== 'ready') throw new Error(m.kind);
+    expect(m.rows.map((r) => r.key)).toEqual(['volume', 'wifi']);
+    expect(m.olderAndroidSdk).toBe(28);
+    // An older APK on an older Android still collapses to one sentence.
+    expect(buildSection(base({ report: { schema: 1, rev: 0, sdk: 28, cap: { ...oldCaps, wifi: 'api-level' } } })).kind).toBe('old-android');
+  });
+
+  it('says what will happen per screen, from the unit’s own facts', () => {
+    const r = (over: Partial<DeviceSettingsView['report'] & object>) =>
+      ({ schema: 1, rev: 1, cap: { wifi: 'ok' }, ...over }) as NonNullable<DeviceSettingsView['report']>;
+    expect(wifiPlan(r({ sdk: 25, wifi: { via: 'legacy', radio: true, dialog: false, wpa3: false } }))).toEqual({
+      kind: 'silent', dialog: false, wpa3: false, radioOff: false,
+    });
+    expect(wifiPlan(r({ sdk: 28, wifi: { via: 'legacy', radio: false } }))?.radioOff).toBe(true);
+    expect(wifiPlan(r({ sdk: 30, wifi: { via: 'suggestion', dialog: true }, obs: { wifi: { ssid: null, approval: 'unknown' } } }))?.kind).toBe('approval-unknown');
+    expect(wifiPlan(r({ sdk: 33, wifi: { via: 'suggestion', dialog: true }, obs: { wifi: { ssid: null, approval: 'pending' } } }))?.kind).toBe('approval');
+    expect(wifiPlan(r({ sdk: 34, wifi: { via: 'suggestion' }, obs: { wifi: { ssid: 'Lobby', approval: 'approved' } } }))?.kind).toBe('allowed');
+    expect(wifiPlan(r({ sdk: 31, wifi: { via: 'suggestion', dialog: true }, obs: { wifi: { ssid: null, approval: 'rejected' } } }))?.kind).toBe('dialog-fallback');
+    expect(wifiPlan(r({ sdk: 31, wifi: { via: 'suggestion', dialog: false }, obs: { wifi: { ssid: null, approval: 'rejected' } } }))?.kind).toBe('unavailable');
+    expect(wifiPlan(r({ cap: { wifi: 'no-wifi' }, wifi: { via: 'suggestion' } }))?.kind).toBe('unavailable');
+    // An older unit reports no facts: the generic wording stays.
+    expect(wifiPlan(r({ sdk: 33 }))).toBeNull();
+    expect(wifiPlan(null)).toBeNull();
   });
 });
 

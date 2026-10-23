@@ -250,7 +250,10 @@ internal class BootDiagnosticsView(
         // Rebuilding drops focus. Park it on a control the remote can
         // actually press — never on this root, which is focusable only so
         // it can CONTAIN keys (see [parkFocus]).
-        if (!isFocusParked()) parkFocus()
+        // 2026-10-23 — never pull the remote away from VenueOS's Network
+        // screen, which opens ON TOP of this card from its own button; the
+        // focus comes back here when that screen closes.
+        if (!isFocusParked() && !com.educms.player.network.NetworkScreen.isShowing()) parkFocus()
     }
 
     /**

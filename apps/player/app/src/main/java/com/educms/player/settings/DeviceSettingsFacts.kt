@@ -11,7 +11,11 @@ import kotlin.math.abs
  */
 object DeviceSettingsFacts {
 
-    /** Android 13. The feature is qualified on 13+ only; older units report `api-level`. */
+    /**
+     * Android 13. Every setting but Wi-Fi is qualified on 13+ only; older units
+     * report `api-level` for them. Wi-Fi has its own per-Android mechanism on
+     * every class (2026-10-23, [WifiSetupPolicy]).
+     */
     const val MIN_SDK = 33
 
     /** The brightness mechanisms whose level this unit can READ BACK. */
@@ -34,10 +38,17 @@ object DeviceSettingsFacts {
         val canChangeWifi: Boolean,
         /** `approved` | `pending` | `rejected` | `unknown`. */
         val wifiApproval: String,
+        /** Android's save-network dialog opens here (Android 11+, a system Settings page answers it). */
+        val wifiDialog: Boolean = false,
     )
 
     fun capabilities(f: Capability): Map<DeviceSettingKey, String> {
-        if (f.sdk < MIN_SDK) return DeviceSettingKey.values().associateWith { DeviceSettingCodes.API_LEVEL }
+        val wifi = wifi(f)
+        if (f.sdk < MIN_SDK) {
+            return DeviceSettingKey.values().associateWith {
+                if (it == DeviceSettingKey.WIFI) wifi else DeviceSettingCodes.API_LEVEL
+            }
+        }
         val writeSettings = if (f.canWriteSettings) DeviceSettingCodes.OK else DeviceSettingCodes.NO_WRITE_SETTINGS
         val secure = if (f.hasSecureSettings) DeviceSettingCodes.OK else DeviceSettingCodes.NO_SECURE_SETTINGS
         return linkedMapOf(
@@ -53,13 +64,20 @@ object DeviceSettingsFacts {
             DeviceSettingKey.AUTO_TIME to secure,
             DeviceSettingKey.AUTO_TIME_ZONE to secure,
             DeviceSettingKey.NTP_SERVER to secure,
-            DeviceSettingKey.WIFI to when {
-                !f.hasWifi -> DeviceSettingCodes.NO_WIFI
-                !f.canChangeWifi -> DeviceSettingCodes.UNSUPPORTED
-                f.wifiApproval == WIFI_REJECTED -> DeviceSettingCodes.WIFI_DISALLOWED
-                else -> DeviceSettingCodes.OK
-            },
+            DeviceSettingKey.WIFI to wifi,
         )
+    }
+
+    /**
+     * Wi-Fi, on every Android this player installs on. A declined suggestion
+     * closes only the suggestion path: where Android's save dialog opens, a
+     * person at the screen can still save the network.
+     */
+    private fun wifi(f: Capability): String = when {
+        !f.hasWifi -> DeviceSettingCodes.NO_WIFI
+        !f.canChangeWifi -> DeviceSettingCodes.UNSUPPORTED
+        f.wifiApproval == WIFI_REJECTED && !f.wifiDialog -> DeviceSettingCodes.WIFI_DISALLOWED
+        else -> DeviceSettingCodes.OK
     }
 
     /**

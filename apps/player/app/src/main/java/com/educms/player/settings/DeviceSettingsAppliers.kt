@@ -2,7 +2,6 @@ package com.educms.player.settings
 
 import android.content.Context
 import android.hardware.display.DisplayManager
-import android.os.Build
 import android.provider.Settings
 import android.view.Display
 import com.educms.player.display.ActionResult
@@ -69,12 +68,9 @@ object DeviceSettingsAppliers {
                     // "" removes the override: Android's own time server again.
                     wrote(Settings.Global.putString(app.contentResolver, DeviceSettingsProbe.NTP_SERVER_KEY, host.ifEmpty { null }))
                 }
-                DeviceSettingKey.WIFI ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        Api33WifiSuggestions.replace(app, item.value as DesiredValue.WifiValue)
-                    } else {
-                        DeviceSettingsPolicy.Outcome.Error(DeviceSettingCodes.API_LEVEL)
-                    }
+                // Every Android this player installs on (2026-10-23): the ONE
+                // Wi-Fi engine, which picks the mechanism by Android version.
+                DeviceSettingKey.WIFI -> WifiSetup.connect(app, item.id, item.value as DesiredValue.WifiValue)
             }
         } catch (e: SecurityException) {
             DeviceSettingsPolicy.Outcome.Error(DeviceSettingCodes.WRITE_REFUSED)
