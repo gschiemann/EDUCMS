@@ -168,6 +168,11 @@ class FaceHostController(
 
     fun hostFor(faceIndex: Int): FacePlayerHost? = hosts[faceIndex]
 
+    /** A DOM event for every hosted face's page (e.g. a USB import). Never throws. */
+    fun dispatchPageEvent(name: String) {
+        for (h in hosts.values) runCatching { h.dispatchPageEvent(name) }
+    }
+
     // ─── the decision ────────────────────────────────────────────────
 
     /**

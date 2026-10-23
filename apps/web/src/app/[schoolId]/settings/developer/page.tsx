@@ -195,11 +195,6 @@ export default function DeveloperSettingsPage() {
             blurb="PDF / Canva / Slides → template (or playlist)."
             href={`/${schoolId}/templates/imports`}
           />
-          <IntegrationCard
-            name="USB ingest"
-            blurb="Sneakernet content updates for offline kiosks."
-            href={`/${schoolId}/settings/usb`}
-          />
         </div>
       </EditorSection>
 
@@ -229,12 +224,6 @@ export default function DeveloperSettingsPage() {
             blurb="Liveness probe — also returns the current build commit + DB/Redis status."
             icon={<Plug className="w-4 h-4" />}
             external
-          />
-          <DocLink
-            href={`/${schoolId}/settings/usb`}
-            title="USB ingest manifest format"
-            blurb="HMAC-signed manifest layout for sneakernet content updates on offline kiosks."
-            icon={<BookOpen className="w-4 h-4" />}
           />
           <DocLink
             href="/help/api-and-webhooks"
