@@ -31,26 +31,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
 import { normalizeVertical } from '@cms/api-types';
 import {
   useCreatePlaylist, useDeletePlaylist, useDeletePlaylistsBatch, useFleet, usePlaylists, usePlaylistSummary,
   useReorderPlaylistItems, useSchedules, useScreenGroups, useScreens, useSetPlaylistActive,
-  useTemplates, useTenant,
+  useTemplates,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
-import {
-  canWriteToUsbFolder,
-  downloadBundleAsZip,
-  fetchUsbBundle,
-  writeBundleToUsbFolder,
-} from '@/lib/usb-export';
+import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
@@ -64,25 +57,11 @@ export default function PlaylistsPage() {
   const router = useRouter();
   const schoolId = params?.schoolId || '';
   const currentUser = useUIStore((s) => s.user);
-  const token = useUIStore((s) => s.token);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
   const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
-  // DEV-024 (Muse beta): Export to USB is refused (403 USB_INGEST_DISABLED)
-  // while the organization has USB export off. Say so ON the menu item; an
-  // admin also gets the way to the setting. Unknown (still loading) never
-  // disables — only a server that says `false` does.
-  const tUsb = useTranslations('playlistsPage');
-  const { data: tenantForUsb } = useTenant();
-  const isUsbAdmin = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'].includes(currentUser?.role ?? '');
-  const usbExportBlocked = (tenantForUsb as { usbIngestEnabled?: boolean } | undefined)?.usbIngestEnabled === false
-    ? {
-        reason: isUsbAdmin ? tUsb('usbExportOffAdmin') : tUsb('usbExportOff'),
-        ...(isUsbAdmin
-          ? { settingsLabel: tUsb('usbExportOpenSettings'), onOpenSettings: () => router.push(`/${schoolId}/settings/player/offline`) }
-          : {}),
-      }
-    : null;
+  // USB has no on/off setting any more (2026-10-22): "Export to USB" always
+  // works for anyone who can open the menu; the API signs the package itself.
 
   // ── §5: the ?newPlaylist=1 contract ──────────────────────────────
   // The dashboard and the Assets page both link here with it (Assets also
@@ -90,11 +69,8 @@ export default function PlaylistsPage() {
   // stripped, so a refresh does not re-open the wizard.
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingAssetIds, setPendingAssetIds] = useState<string[] | undefined>(undefined);
-  // Export to USB reports itself here — there is no imperative toast in this
-  // app, and a bundle can take a while to build and write.
-  const [usbExport, setUsbExport] = useState<
-    { state: 'busy' | 'done' | 'error'; label: string; done?: number; total?: number } | null
-  >(null);
+  // Export to USB reports itself through the shared status line.
+  const usb = useUsbExport();
   const [publishToLocationsOpen, setPublishToLocationsOpen] = useState(false);
   // Which row opened the sheet — it used to open with no playlist chosen.
   const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
@@ -217,32 +193,11 @@ export default function PlaylistsPage() {
     });
   }, [playlists, schedules, screens, groups, summaryQuery.data]);
 
-  /**
-   * Export to USB. This used to be `openWorkspace(id)` under the label
-   * "Export for offline use" — it opened a page and exported nothing. It now
-   * builds the signed, player-readable bundle and writes it where the operator
-   * points, falling back to a .zip on browsers with no directory picker.
-   */
+  /** Export to USB — the shared implementation (folder on Chrome/Edge, else .zip). */
   const runUsbExport = useCallback(async (id: string) => {
     const name = rows.find((r) => r.id === id)?.name ?? 'Playlist';
-    setUsbExport({ state: 'busy', label: `Building ${name}…` });
-    try {
-      const buf = await fetchUsbBundle({ token, playlistId: id, playlistName: name });
-      if (!canWriteToUsbFolder()) {
-        downloadBundleAsZip(buf, name, new Date());
-        setUsbExport({ state: 'done', label: `${name} downloaded — extract it onto the USB stick` });
-        return;
-      }
-      const written = await writeBundleToUsbFolder(buf, (done, total) =>
-        setUsbExport({ state: 'busy', label: `Writing ${name} to USB`, done, total }),
-      );
-      setUsbExport({ state: 'done', label: `Wrote ${written} files to the USB stick` });
-    } catch (e) {
-      // Dismissing the folder picker is a change of mind, not a failure.
-      if ((e as { name?: string } | null)?.name === 'AbortError') { setUsbExport(null); return; }
-      setUsbExport({ state: 'error', label: (e as Error)?.message || 'Export failed' });
-    }
-  }, [rows, token]);
+    await usb.run({ playlistId: id, playlistName: name });
+  }, [rows, usb]);
 
   const rawById = useMemo(
     () => new Map<string, unknown>(playlists.map((p) => [p.id, p])),
@@ -471,7 +426,6 @@ export default function PlaylistsPage() {
         onNew={() => setWizardOpen(true)}
         onDuplicate={handleDuplicate}
         onExport={(id) => { void runUsbExport(id); }}
-        usbExportBlocked={usbExportBlocked}
         onRemove={handleRemove}
         onRemoveMany={handleRemoveMany}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
@@ -511,34 +465,7 @@ export default function PlaylistsPage() {
           mounted between opens and its `useState(initialPlaylistId ?? '')`
           would only ever take the FIRST row's id. Remounting per playlist is
           what makes the preselection hold on the second open. */}
-      {usbExport && (
-        <div
-          role="status"
-          className={`fixed bottom-4 right-4 z-[120] flex items-center gap-3 rounded-xl border px-4 py-3 text-xs font-semibold shadow-lg ${
-            usbExport.state === 'error'
-              ? 'bg-red-50 border-red-200 text-red-700'
-              : usbExport.state === 'done'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-white border-slate-200 text-slate-700'
-          }`}
-        >
-          {usbExport.state === 'busy' && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />}
-          <span>
-            {usbExport.label}
-            {usbExport.total ? ` — ${usbExport.done}/${usbExport.total}` : ''}
-          </span>
-          {usbExport.state !== 'busy' && (
-            <button
-              type="button"
-              onClick={() => setUsbExport(null)}
-              aria-label="Dismiss export status"
-              className="opacity-60 hover:opacity-100"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      )}
+      <UsbExportToast status={usb.status} onDismiss={usb.clear} />
 
       <PublishToLocationsModal
         key={publishToLocationsId ?? 'none'}

@@ -63,6 +63,7 @@ function makeHarness(opts: {
   tenant?: Record<string, unknown>;
   screen?: Record<string, unknown> | null;
   playlists: Record<string, any>;
+  schedules?: any[];
 }) {
   const tenant = {
     id: 'tenant-1',
@@ -79,11 +80,17 @@ function makeHarness(opts: {
     return ids.map((id) => opts.playlists[id]).filter(Boolean);
   });
 
+  const tenantUpdateMany = jest.fn(async ({ data }: any) => {
+    if (data?.usbIngestKey) (tenant as any).usbIngestKey = data.usbIngestKey;
+    return { count: 1 };
+  });
   const client = {
     tenant: {
-      findUnique: jest.fn().mockResolvedValue(tenant),
+      findUnique: jest.fn(async () => tenant),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: tenantUpdateMany,
     },
+    schedule: { findMany: jest.fn(async () => opts.schedules ?? []) },
     screen: {
       findUnique: jest.fn().mockResolvedValue(opts.screen ?? null),
     },
@@ -94,7 +101,7 @@ function makeHarness(opts: {
 
   const prisma = { client } as any;
   const controller = new UsbExportController(prisma);
-  return { controller, client, assetUpdate, playlistFindMany };
+  return { controller, client, assetUpdate, playlistFindMany, tenantUpdateMany, tenant };
 }
 
 /** Fake express Response that captures the buffer passed to res.end(). */

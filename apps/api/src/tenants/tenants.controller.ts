@@ -1921,9 +1921,8 @@ export class TenantsController {
     if (!screen?.tenantId || !screen.tenant) {
       throw new HttpException({ code: 'TENANT_USB_INGEST_SCREEN_UNKNOWN', message: 'Unknown or unpaired screen' }, HttpStatus.NOT_FOUND);
     }
-    if (!screen.tenant.usbIngestEnabled) {
-      throw new HttpException({ code: 'TENANT_USB_INGEST_DISABLED', message: 'USB ingest is disabled for this tenant' }, HttpStatus.FORBIDDEN);
-    }
+    // No USB on/off setting any more (2026-10-22) — every paired screen may
+    // report what its stick did.
     // DT-07, operator leg: a roled user may only write into their OWN
     // tenant's ingest trail. SUPER_ADMIN reaches another tenant only under a
     // support grant (2026-10-11).

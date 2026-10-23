@@ -5,6 +5,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!--
+      USB playlist sticks (2026-10-22): the player reads its package straight
+      off a mounted stick, with no picker. Android <= 10 needs READ_EXTERNAL_
+      STORAGE for that; Android 11+ needs "all files access", granted ONCE per
+      box on a settings screen UsbAutoImport opens the first time a stick is
+      unreadable (never over an emergency hold). Sideloaded kiosk app: the Play
+      policy on MANAGE_EXTERNAL_STORAGE does not apply.
+    -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -281,6 +293,7 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
+        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
@@ -477,27 +490,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- USB sneakernet receiver (Sprint 7B) — fires when a stick is plugged
-             into the Android device; UsbIngester scans for /edu-cms-content/. -->
-        <receiver
-            android:name=".usb.UsbAttachReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-            </intent-filter>
-            <meta-data
-                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/usb_device_filter" />
-        </receiver>
-
-        <!-- Operator-facing USB ingest activity (PIN prompt + SAF folder picker) -->
-        <activity
-            android:name=".usb.UsbIngestActivity"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:screenOrientation="fullSensor"
-            android:theme="@style/Theme.EduCmsPlayer" />
+        <!-- USB sticks (2026-10-22): no manifest receiver and no picker
+             activity any more. UsbAutoImport (started by PlayerApp) listens
+             for mounts at runtime and scans removable volumes itself. -->
 
         <!-- Foreground heartbeat service. Pings /screens/status every 30s
              so the dashboard sees ONLINE; foregroundServiceType=dataSync

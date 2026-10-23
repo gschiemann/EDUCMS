@@ -27,10 +27,12 @@ object UsbCacheIndex {
     )
 
     private val current = AtomicReference<Snapshot?>(null)
+    @Volatile private var root: File? = null
 
     /** Re-scan filesDir/usb-cache/. Cheap; safe to call from any thread. */
     fun reload(context: Context) {
         val root = File(context.filesDir, "usb-cache")
+        this.root = root
         if (!root.exists()) {
             current.set(null); return
         }
@@ -84,6 +86,9 @@ object UsbCacheIndex {
         )
         Log.i("UsbCacheIndex", "Reloaded — ${urlMap.size} URL mappings (${shaMap.size} sha mappings)")
     }
+
+    /** The verified package manifest the page reads (usb-cache/manifest.json), or null. */
+    fun packageManifest(): File? = root?.let { File(it, "manifest.json") }?.takeIf { it.isFile && current.get() != null }
 
     /** Returns the local File for an asset URL, or null if not USB-cached. */
     fun lookup(url: String): File? = current.get()?.urlToFile?.get(url)
