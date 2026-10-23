@@ -80,6 +80,36 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
+    fun `1_1_51 - the double-post verdict is recorded on every path and reported in experiments-applied, for v4 and protocol 2 alike`() {
+        val b = code(box)
+        val ready = body(b, "fun surfaceReady(")
+        val schedule = ready.substring(ready.indexOf("if (d.experiments.doublePost)"), ready.indexOf("val r = FaceVideoRenderer("))
+        assertFalse("a native-first (v4) session reaches the decision like any protocol-2 solo", Regex("s\\.protocol|s\\.v4").containsMatchIn(schedule))
+        assertTrue("scheduling records PENDING", schedule.contains("s.doublePostResult = DoublePost.PENDING"))
+        assertTrue("a guard refusal is recorded, not skipped", schedule.contains("s.doublePostResult = DoublePost.GUARD_DISABLED"))
+        val apply = body(b, "private fun applyDoublePost(")
+        assertTrue("the CURRENT host is resolved at run time, never the captured one", apply.contains("host = s.host"))
+        assertFalse("no captured host parameter", apply.startsWith("private fun applyDoublePost(host:"))
+        assertTrue("an ended session is recorded", apply.contains("s.doublePostResult = DoublePost.SESSION_ENDED"))
+        assertTrue("a missing surface is recorded", apply.contains("s.doublePostResult = DoublePost.NO_SURFACE"))
+        assertTrue("the vote goes on the session's CURRENT surface", apply.contains("val current = s.surface"))
+        assertTrue("the decision's result is recorded", apply.contains("s.doublePostResult = result"))
+        // Every early `return` inside the decision block is preceded by a recorded verdict.
+        val decision = apply.substring(0, apply.indexOf("if (!applied) return"))
+        val returns = Regex("\\breturn\\b").findAll(decision).count()
+        val recorded = Regex("s\\.doublePostResult = ").findAll(decision).count()
+        assertTrue("every return in the decision ($returns) records a verdict ($recorded)", recorded >= returns)
+        val session = body(b, "private fun sessionJson(")
+        assertTrue("the report carries the verdict", session.contains(".put(NativeVideoExperiments.DOUBLE_POST, s.doublePostResult ?: JSONObject.NULL)"))
+        // The readers on the other side name the same key.
+        val web = runCatching { File(moduleRoot!!.parentFile.parentFile.parentFile, "web/src/app/player/nativeSharedVideo.ts").readText() }.getOrNull()
+        if (web != null) {
+            assertTrue("the page reader copies applied.doublePost", web.contains("applied.doublePost = v.applied.doublePost"))
+            assertTrue("the page reader copies timing.doublePost", web.contains("readDoublePost(value.doublePost)"))
+        }
+    }
+
+    @Test
     fun `the pair engine refuses with composition-unavailable before any network, surface or decoder`() {
         val prepare = body(code(host), "fun prepare(host: SharedVideoHost,json: String)")
         assertTrue(prepare.contains("SoloVideoLayer.REASON_COMPOSITION_UNAVAILABLE"))
