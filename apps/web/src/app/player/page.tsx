@@ -41,6 +41,7 @@ import { useEmergencyFaceStage, readEmergencyFaceStage } from '@/components/play
 import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
+import { decideEmergencySurface } from './emergencySurface';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
@@ -4581,6 +4582,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const pushedEmergencyMessageRef = useRef<EmergencyMessageView | null>(null);
   const [polledEmergencyHeld, setPolledEmergencyHeld] = useState(false);
   const polledEmergencyHeldRef = useRef(false);
+  // 2026-10-23 (B3) — is the poll-only message a FULL-SCREEN one (SOS /
+  // media / CRITICAL text) rather than a banner? Only a full-screen message
+  // takes the content down; see `emergencySurface.ts`.
+  const [polledEmergencyTakeover, setPolledEmergencyTakeover] = useState(false);
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
@@ -4880,7 +4885,23 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // is guaranteed to be in the active set — the grace period prevents a
     // just-pushed alert from being reconciled away in a persist/poll race.
     const h = setInterval(reconcile, 12_000);
-    return () => { stopped = true; clearInterval(h); };
+    // 2026-10-23 (launch QA B3b) — EXPIRY. The server stops listing a message
+    // at its `expiresAt`; the 12 s cadence then needed up to two more polls
+    // (~24 s) to confirm, and the screen kept the ended alert that long. Two
+    // extra reconciles right after the expiry (1 s and 4 s past it, device
+    // clock) make the confirm land within ~5 s. Both are the same two-miss
+    // rule — a device clock running early simply finds the id still active
+    // (streak reset), one running late is covered by the interval; nothing
+    // here clears on the clock alone.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const expiresAtMs = typeof pushedEmergencyMessage.expiresAt === 'number' ? pushedEmergencyMessage.expiresAt * 1000 : null;
+    if (expiresAtMs !== null) {
+      const untilExpiry = Math.max(0, expiresAtMs - Date.now());
+      if (untilExpiry < 24 * 60 * 60 * 1000) {
+        timers.push(setTimeout(reconcile, untilExpiry + 1_000), setTimeout(reconcile, untilExpiry + 4_000));
+      }
+    }
+    return () => { stopped = true; clearInterval(h); timers.forEach(clearTimeout); };
   }, [pushedEmergencyMessage]);
 
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
@@ -7745,6 +7766,23 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             );
           }
         }
+        // 2026-10-23 (launch QA B3b) — a LIVE 304 re-confirms the applied
+        // manifest, so re-evaluate the display hold exactly as the 200 path
+        // does: the manifest's own alert is unchanged (activeEmergencyRef —
+        // this never clears an override, F8 / rule 11), and the pushed /
+        // polled / pending-override inputs are live. When none of them holds,
+        // release — otherwise a pushed broadcast that ended left the red
+        // transition surface up until the next unrelated 200 (~70 s in QA).
+        // Still server-driven (a 304 is the server speaking), never from a
+        // cached read: `emergencyHold.ts` rule 1 holds.
+        {
+          const holdNow =
+            !!activeEmergencyRef.current ||
+            !!pushedEmergencyMessageRef.current ||
+            polledEmergencyHeldRef.current ||
+            !!pendingOverrideConfirmRef.current;
+          signalDisplayEmergencyHold(holdNow, holdNow);
+        }
         return;
       }
 
@@ -8048,7 +8086,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // at the mount site re-created the prop every render, and the overlay's
   // poll effect (which lists it as a dep) tore down + re-armed its
   // interval each time — poll churn on every parent render.
-  const onPolledEmergencyActiveChange = useCallback((active: boolean) => {
+  const onPolledEmergencyActiveChange = useCallback((active: boolean, takeover = true) => {
+    // 2026-10-23 (B3): `takeover` says whether the polled message is a
+    // full-screen one; it may flip (banner → CRITICAL) while `active` stays.
+    setPolledEmergencyTakeover(active && takeover);
     if (polledEmergencyHeldRef.current === active) return;
     polledEmergencyHeldRef.current = active;
     if (active) signalDisplayEmergencyHold(true);
@@ -8057,6 +8098,25 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // authenticated manifest to confirm clear through its existing lane.
     if (!active) preemptReconcile();
   }, [preemptReconcile]);
+
+  // 2026-10-23 (launch QA B3b) — the same confirm-through-the-manifest for a
+  // PUSHED message that ends (ALL_CLEAR_MESSAGE, the stranded-message
+  // reconcile, expiry). The hold it raised is released on exactly one path —
+  // the manifest handler (`emergencyHold.ts`, rule 1) — and nothing used to
+  // ask for a manifest when the message went away, so the red transition
+  // surface outlived the alert as a bare "EMERGENCY" until the next unrelated
+  // manifest fetch (~70 s in QA). Asking the server now ends it in one
+  // round trip; a 304 re-evaluates the hold too (see the 304 branch).
+  const pushedEmergencyWasShownRef = useRef(false);
+  useEffect(() => {
+    if (pushedEmergencyMessage) {
+      pushedEmergencyWasShownRef.current = true;
+      return;
+    }
+    if (!pushedEmergencyWasShownRef.current) return;
+    pushedEmergencyWasShownRef.current = false;
+    preemptReconcile();
+  }, [pushedEmergencyMessage, preemptReconcile]);
 
   const onTenantEmergencyHint = useCallback(() => {
     if (activeEmergencyRef.current) return; // already on glass
@@ -12177,7 +12237,27 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // A hold selects the web engine so the ALERT can draw. Until its playlist
   // commits, the old regular playlist must not mount a web video (or its
   // autoplay icon) in the gap left by the removed native surface.
-  if ((emergencyRenderHold || !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld) && !playlist?.isEmergency) {
+  //
+  // 2026-10-23 (launch QA B3) — only a TAKEOVER alert takes this path: a
+  // manifest override, a full-screen pushed / polled message (SOS, media,
+  // CRITICAL text), a pending signed OVERRIDE, or the hold raised with no
+  // identified reason. A routine INFO / WARN text broadcast is a BANNER that
+  // overlays the running content (`emergencyMessageOverlay` is also mounted on
+  // the normal branch), so it must not blank the glass red under its banner.
+  // The decision is the pure `decideEmergencySurface` (unit-tested per shape);
+  // the guard below keeps the same inputs the surface always honoured —
+  // emergencyRenderHold, activeEmergency, pushedEmergencyMessage,
+  // polledEmergencyHeld — and `!playlist?.isEmergency`.
+  const emergencySurface = decideEmergencySurface({
+    activeEmergency: !!activeEmergency,
+    pushed: pushedEmergencyMessage,
+    polledActive: polledEmergencyHeld,
+    polledTakeover: polledEmergencyTakeover,
+    renderHold: emergencyRenderHold,
+    pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
+    playlistIsEmergency: playlist?.isEmergency === true,
+  });
+  if (emergencySurface === 'takeover' && !playlist?.isEmergency) {
     return (
       <div data-edu-emergency-transition="true" style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: '#b91c1c', color: '#fff' }}>
         {emergencyFallback || (!pushedEmergencyMessage && (

@@ -145,8 +145,23 @@ describe('player render exits all draw the cross-branch overlays', () => {
   it('only the guarded emergency transition omits normal overlays', () => {
     expect(emergencyExits).toHaveLength(1);
     const exit = emergencyExits[0];
-    expect(exit.guard).toContain('emergencyRenderHold');
+    // 2026-10-23 (B3): the guard is the pure surface decision — only a
+    // TAKEOVER alert omits the normal overlays; a banner broadcast renders
+    // through the normal branch WITH them. The decision is still fed every
+    // input the guard used to name (pinned on the page source below).
+    expect(exit.guard).toContain("emergencySurface === 'takeover'");
     expect(exit.guard).toContain('!playlist?.isEmergency');
+    const src = fs.readFileSync(PAGE, 'utf8');
+    const decision = src.slice(src.indexOf('const emergencySurface = decideEmergencySurface({'));
+    for (const input of [
+      'activeEmergency: !!activeEmergency',
+      'pushed: pushedEmergencyMessage',
+      'polledActive: polledEmergencyHeld',
+      'renderHold: emergencyRenderHold',
+      'pendingOverrideConfirm: !!pendingOverrideConfirmRef.current',
+    ]) {
+      expect(decision.slice(0, 600)).toContain(input);
+    }
     expect(exit.text).toContain('{emergencyMessageOverlay}');
     expect(exit.text).toContain('{emergencyFallback');
     for (const overlay of [...REQUIRED, ...PINNED_KNOWN_GAP, 'updatePromptNode']) {
