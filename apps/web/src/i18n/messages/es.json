@@ -1409,7 +1409,8 @@
         "ssoDomainRecordNotFound": "Aún no se encontró el registro TXT. Los cambios de DNS pueden tardar en aparecer; inténtalo más tarde.",
         "ssoDomainTakenElsewhere": "Este dominio de correo ya está verificado por otra organización. Contacta con el soporte de VenueOS si te pertenece.",
         "actionsFor": "Acciones para {email}",
-        "accessNoScreensYet": "Aún sin pantallas: {locations}"
+        "accessNoScreensYet": "Aún sin pantallas: {locations}",
+        "ssoLoadFailed": "No se pudo cargar la configuración de SSO"
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",
@@ -6307,5 +6308,17 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "Esa pantalla no está en esta ventana.",
       "SUPPORT_ACCESS_REQUIRED": "El soporte de VenueOS no tiene acceso a una de estas organizaciones."
     }
+  },
+  "connectDone": {
+    "unknownProvider": "tu cuenta",
+    "connected": "{provider} conectado",
+    "failed": "No se pudo conectar {provider}",
+    "posSyncing": "Tu catálogo se está sincronizando. Los menús mostrarán los productos en vivo cuando termine la primera consulta (normalmente en menos de un minuto).",
+    "socialSyncing": "Tus publicaciones más recientes se están cargando. Te llevamos de vuelta a donde estabas…",
+    "reason": "Motivo:",
+    "posRetry": "Inténtalo de nuevo desde Configuración → Sincronización del catálogo POS.",
+    "socialRetry": "Inténtalo de nuevo desde la configuración de la app en tu plantilla.",
+    "backToPos": "Volver a la configuración POS",
+    "backToVenueOS": "Volver a VenueOS"
   }
 }

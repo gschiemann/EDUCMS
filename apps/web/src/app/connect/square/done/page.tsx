@@ -15,13 +15,13 @@
  * Square's OAuth app. Embedding it inside [schoolId] coupling would
  * require Square to know the schoolId — which it doesn't, and won't.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CheckCircle2, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { API_URL } from '@/lib/api-url';
+import { useUIStore } from '@/store/ui-store';
 
-interface MeResponse { tenant?: { id?: string; slug?: string } | null }
 
 // 2026-05-26 — Next 16 requires `useSearchParams()` to be inside a
 // Suspense boundary; otherwise `next build` fails on static
@@ -46,33 +46,21 @@ function SquareConnectDoneInner() {
   const reason = params?.get('reason') || '';
   const ok = status === 'ok';
   const router = useRouter();
-  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  // The workspace comes from the signed-in session this tab already holds.
+  // This page used to ask GET /me (a route that does not exist — 404) with a
+  // localStorage token nothing writes any more, so after a SUCCESSFUL OAuth
+  // the operator was stranded on "HTTP 404" with no way back (QA 2026-10-23).
+  const t = useTranslations();
+  const tenantSlug = useUIStore((s) => s.activeTenant);
+  const err = tenantSlug ? null : 'signed-out';
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-        const res = await fetch(`${API_URL}/me`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: MeResponse = await res.json();
-        if (cancelled) return;
-        const slug = data.tenant?.slug || data.tenant?.id || null;
-        setTenantSlug(slug);
-        if (slug && ok) {
-          // Auto-bounce after a beat so the operator sees confirmation.
-          setTimeout(() => router.replace(`/${slug}/settings/pos?connected=square`), 1500);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [ok, router]);
+    if (!tenantSlug || !ok) return;
+    const slug = tenantSlug;
+    // Auto-bounce after a beat so the operator sees confirmation.
+    const timer = setTimeout(() => router.replace(`/${slug}/settings/pos?connected=square`), 1500);
+    return () => clearTimeout(timer);
+  }, [ok, router, tenantSlug]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -103,7 +91,15 @@ function SquareConnectDoneInner() {
             Back to POS settings <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         ) : err ? (
-          <p className="text-xs text-rose-600">{err}</p>
+          // Signed out in this tab (or a different browser finished the
+          // OAuth hop): the connection is saved server-side either way —
+          // signing in lands on the dashboard.
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold"
+          >
+            {t('auth.signIn')} <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         ) : (
           <Loader2 className="w-4 h-4 animate-spin mx-auto text-slate-400" />
         )}

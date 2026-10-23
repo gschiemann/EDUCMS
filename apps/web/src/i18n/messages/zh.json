@@ -1409,7 +1409,8 @@
         "ssoDomainRecordNotFound": "尚未找到该 TXT 记录。DNS 更改可能需要一段时间才能生效，请稍后再试。",
         "ssoDomainTakenElsewhere": "此邮箱域名已被其他组织验证。如果它属于您，请联系 VenueOS 支持。",
         "actionsFor": "{email} 的操作",
-        "accessNoScreensYet": "尚无屏幕：{locations}"
+        "accessNoScreensYet": "尚无屏幕：{locations}",
+        "ssoLoadFailed": "无法加载 SSO 配置"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",
@@ -6307,5 +6308,17 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
+  },
+  "connectDone": {
+    "unknownProvider": "你的账户",
+    "connected": "{provider} 已连接",
+    "failed": "无法连接 {provider}",
+    "posSyncing": "你的商品目录正在同步。首次同步完成后（通常不到一分钟），菜单屏幕会显示实时商品。",
+    "socialSyncing": "正在载入你的最新帖子。正在带你返回刚才的页面…",
+    "reason": "原因：",
+    "posRetry": "请在“设置 → POS 目录同步”中重试。",
+    "socialRetry": "请在模板中该应用的设置里重试。",
+    "backToPos": "返回 POS 设置",
+    "backToVenueOS": "返回 VenueOS"
   }
 }

@@ -1,34 +1,39 @@
 'use client';
 
 /**
- * /connect/[provider]/done — generic POS OAuth landing page.
+ * /connect/[provider]/done — the OAuth landing page for every provider that
+ * hands the browser back to us: the POS providers (Clover, Lightspeed,
+ * Shopify — Square keeps its own static /connect/square/done) AND the social
+ * apps (Instagram, Facebook Page — `social-oauth.controller.ts` redirects
+ * here too).
  *
- * The API's /api/v1/pos/oauth/{provider}/callback redirects here with a
- * ?status=ok|error query param after the OAuth handshake completes. Mirrors
- * /connect/square/done (which stays as a dedicated static route — Next.js
- * matches the static segment before this dynamic one, so Square is
- * unchanged) for every other DIRECT OAuth provider: Clover, Lightspeed,
- * Shopify.
- *
- * We don't have the tenant's schoolId in the URL — the operator's session
- * has it — so we read /me, find the tenant slug, and bounce them back to
- * /settings/pos with a flag the page surfaces in a toast.
+ * The URL carries no workspace; the signed-in session in this tab does
+ * (`useUIStore().activeTenant`). QA 2026-10-23: this page used to ask
+ * GET /me — a route that does not exist — with a localStorage token nothing
+ * writes any more, so every successful connection stranded the operator on
+ * "HTTP 404". It also told an Instagram operator their "POS" catalog was
+ * syncing and sent them to POS settings, away from the board they were
+ * building. A social connection now returns to the page that started it
+ * (`connect-return.ts`), a POS connection to POS settings as before.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useSearchParams, useRouter, useParams } from 'next/navigation';
 import { CheckCircle2, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { API_URL } from '@/lib/api-url';
+import { useUIStore } from '@/store/ui-store';
+import { readConnectReturn, clearConnectReturn } from '@/lib/connect-return';
 
-interface MeResponse { tenant?: { id?: string; slug?: string } | null }
-
-/** Map a POS provider id → a human label for the confirmation copy. */
+/** Provider id → the name the operator knows it by. */
 const PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
   clover: 'Clover',
   'lightspeed-retail': 'Lightspeed',
   'shopify-pos': 'Shopify',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
 };
+const SOCIAL = new Set(['instagram', 'facebook']);
 
 export default function ConnectDonePage() {
   return (
@@ -43,40 +48,32 @@ export default function ConnectDonePage() {
 }
 
 function ConnectDoneInner() {
+  const t = useTranslations('connectDone');
+  const tAuth = useTranslations('auth');
   const params = useSearchParams();
   const routeParams = useParams();
+  const router = useRouter();
   const providerId = String((routeParams?.provider as string) || '').toLowerCase();
-  const providerName = PROVIDER_LABELS[providerId] || 'your POS';
+  const social = SOCIAL.has(providerId);
+  const providerName = PROVIDER_LABELS[providerId] || t('unknownProvider');
   const status = params?.get('status') || 'ok';
   const reason = params?.get('reason') || '';
   const ok = status === 'ok';
-  const router = useRouter();
-  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const tenantSlug = useUIStore((s) => s.activeTenant);
+
+  // Reading the stored return path is pure; it is cleared when we leave.
+  const target = useMemo(() => {
+    if (!tenantSlug) return null;
+    if (social) return readConnectReturn(tenantSlug) || `/${tenantSlug}/templates`;
+    return `/${tenantSlug}/settings/pos?connected=${ok ? providerId : 'failed'}`;
+  }, [tenantSlug, social, ok, providerId]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-        const res = await fetch(`${API_URL}/me`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: MeResponse = await res.json();
-        if (cancelled) return;
-        const slug = data.tenant?.slug || data.tenant?.id || null;
-        setTenantSlug(slug);
-        if (slug && ok) {
-          setTimeout(() => router.replace(`/${slug}/settings/pos?connected=${providerId}`), 1500);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [ok, router, providerId]);
+    if (!target || !ok) return;
+    // Auto-bounce after a beat so the operator sees confirmation.
+    const timer = setTimeout(() => { clearConnectReturn(); router.replace(target); }, 1500);
+    return () => clearTimeout(timer);
+  }, [ok, router, target]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -86,30 +83,35 @@ function ConnectDoneInner() {
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-600" />
             </div>
-            <h1 className="text-xl font-extrabold text-slate-800">{providerName} connected</h1>
-            <p className="text-sm text-slate-600">Your catalog is syncing now. Menu boards will pick up the live items once the first poll finishes (usually under a minute).</p>
+            <h1 className="text-xl font-extrabold text-slate-800">{t('connected', { provider: providerName })}</h1>
+            <p className="text-sm text-slate-600">{social ? t('socialSyncing') : t('posSyncing')}</p>
           </>
         ) : (
           <>
             <div className="mx-auto w-14 h-14 rounded-full bg-rose-100 flex items-center justify-center">
               <AlertCircle className="w-8 h-8 text-rose-600" />
             </div>
-            <h1 className="text-xl font-extrabold text-slate-800">Could not connect {providerName}</h1>
-            <p className="text-sm text-slate-600">Reason: <code className="text-xs">{reason || 'unknown'}</code>.</p>
-            <p className="text-xs text-slate-500">Try again from Settings → POS catalog sync.</p>
+            <h1 className="text-xl font-extrabold text-slate-800">{t('failed', { provider: providerName })}</h1>
+            <p className="text-sm text-slate-600">{t('reason')} <code className="text-xs">{reason || 'unknown'}</code></p>
+            <p className="text-xs text-slate-500">{social ? t('socialRetry') : t('posRetry')}</p>
           </>
         )}
-        {tenantSlug ? (
+        {target ? (
           <Link
-            href={`/${tenantSlug}/settings/pos?connected=${ok ? providerId : 'failed'}`}
+            href={target}
             className="inline-flex items-center gap-1.5 mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold"
           >
-            Back to POS settings <ArrowRight className="w-3.5 h-3.5" />
+            {social ? t('backToVenueOS') : t('backToPos')} <ArrowRight className="w-3.5 h-3.5" />
           </Link>
-        ) : err ? (
-          <p className="text-xs text-rose-600">{err}</p>
         ) : (
-          <Loader2 className="w-4 h-4 animate-spin mx-auto text-slate-400" />
+          // Signed out in this tab (or another browser finished the OAuth
+          // hop): the connection is saved server-side either way.
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold"
+          >
+            {tAuth('signIn')} <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         )}
       </div>
     </div>

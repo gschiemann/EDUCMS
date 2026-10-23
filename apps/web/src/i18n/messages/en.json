@@ -1409,7 +1409,8 @@
         "ssoDomainRecordNotFound": "The TXT record was not found yet. DNS changes can take a while to appear; try again later.",
         "ssoDomainTakenElsewhere": "This email domain is already verified by another organization. Contact VenueOS support if it belongs to you.",
         "actionsFor": "Actions for {email}",
-        "accessNoScreensYet": "No screens yet: {locations}"
+        "accessNoScreensYet": "No screens yet: {locations}",
+        "ssoLoadFailed": "Could not load the SSO configuration"
       },
       "overview": {
         "readinessTitle": "Configuration readiness",
@@ -6307,5 +6308,17 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "That screen isn't in this window.",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS support doesn't have access to one of these organizations."
     }
+  },
+  "connectDone": {
+    "unknownProvider": "your account",
+    "connected": "{provider} connected",
+    "failed": "Could not connect {provider}",
+    "posSyncing": "Your catalog is syncing now. Menu boards will pick up the live items once the first poll finishes (usually under a minute).",
+    "socialSyncing": "Your latest posts are loading now. Taking you back to where you were…",
+    "reason": "Reason:",
+    "posRetry": "Try again from Settings → POS catalog sync.",
+    "socialRetry": "Try again from the app's settings in your template.",
+    "backToPos": "Back to POS settings",
+    "backToVenueOS": "Back to VenueOS"
   }
 }

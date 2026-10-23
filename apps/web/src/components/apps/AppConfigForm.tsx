@@ -65,6 +65,7 @@ import {
   WIDGET_TYPE_DEFAULT_SIZE,
 } from './app-zone';
 import { AppIcon } from './ConciergeAppSuggestions';
+import { rememberConnectReturn } from '@/lib/connect-return';
 import { isUsableWebUrl } from './url-transforms';
 import {
   fetchGoogleReviewsStatus,
@@ -701,6 +702,7 @@ function SocialConnectionField({
     setConnectError(null);
     try {
       const r = await apiFetch<{ url: string }>(`/integrations/social/oauth/${provider}/authorize`);
+      rememberConnectReturn(window.location.pathname + window.location.search);
       window.location.href = r.url;
     } catch (e) {
       setConnectError(e instanceof Error ? e.message : String(e));
