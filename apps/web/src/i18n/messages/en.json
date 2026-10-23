@@ -444,7 +444,18 @@
     "roleSchoolAdmin": "School Admin",
     "roleContributor": "Contributor",
     "roleViewer": "Viewer",
-    "roleUnknown": "Unknown"
+    "roleUnknown": "Unknown",
+    "alertEmails": {
+      "title": "Alert emails",
+      "sub": "Email me when a screen goes offline, stops showing content, or an emergency alert is sent.",
+      "on": "On",
+      "off": "Off",
+      "toggle": "Alert emails on or off",
+      "language": "Language for alert emails",
+      "languageDefault": "Same as my organization",
+      "saved": "Saved",
+      "saveFailed": "Couldn’t save. Try again."
+    }
   },
   "settings": {
     "common": {

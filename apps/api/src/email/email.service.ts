@@ -623,6 +623,17 @@ export class EmailService {
   }
 
   /**
+   * 2026-10-23 — a customer alert email (screen offline / not showing content
+   * / back, emergency record copy). The caller writes subject + body in the
+   * recipient's language (notifications/customer-alerts/customer-alert-copy.ts);
+   * this keeps the durable email_logs row + Resend dispatch in one place —
+   * dev logs, production sends. Returns how the dispatch ended.
+   */
+  async sendCustomerAlert(params: { to: string; subject: string; body: string; kind: string }): Promise<EmailDispatchStatus> {
+    return this.#enqueue(params);
+  }
+
+  /**
    * Dispatch an email via Resend. Swap-in target for the old stub.
    *
    * Config (all optional — unset = dev-mode logging only):

@@ -444,7 +444,18 @@
     "roleSchoolAdmin": "Administrador del centro",
     "roleContributor": "Colaborador",
     "roleViewer": "Visualizador",
-    "roleUnknown": "Desconocido"
+    "roleUnknown": "Desconocido",
+    "alertEmails": {
+      "title": "Correos de alerta",
+      "sub": "Avisarme por correo cuando una pantalla se desconecte, deje de mostrar contenido o se envíe una alerta de emergencia.",
+      "on": "Activados",
+      "off": "Desactivados",
+      "toggle": "Activar o desactivar los correos de alerta",
+      "language": "Idioma de los correos de alerta",
+      "languageDefault": "El mismo que mi organización",
+      "saved": "Guardado",
+      "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
+    }
   },
   "settings": {
     "common": {

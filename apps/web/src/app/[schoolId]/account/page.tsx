@@ -30,6 +30,7 @@ import { useAppStore } from '@/lib/store';
 import { useTenantStatus } from '@/hooks/use-api';
 import { fullName as userFullName, firstName as userFirstName } from '@/lib/user-display';
 import { ProfileEditModal } from '@/components/layout/ProfileEditModal';
+import { AlertEmailSettings } from '@/components/notifications/AlertEmailSettings';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { cn } from '@/lib/utils';
 
@@ -129,6 +130,10 @@ export default function AccountPage() {
           sub={t('account.notificationSettingsSub')}
           href={`/${schoolId}/settings`}
         />
+        {/* 2026-10-23 — alert emails (screen offline / not showing content /
+            emergency record copies). Admins only; renders nothing otherwise.
+            Every alert email links here as #alert-emails. */}
+        <AlertEmailSettings />
       </Section>
 
       {/* Sign out */}

@@ -65,6 +65,23 @@ export interface OfflineScanResult {
   recovered: number;
   /** True when this scan only seeded the baseline (cold start) and notified nothing. */
   seeded: boolean;
+  /**
+   * 2026-10-23 — the rows THIS scan read (screens silent past the threshold),
+   * handed to the customer alert emails so they judge "offline ≥ 15 min" from
+   * the same detector instead of running a second one. No extra query.
+   */
+  offline?: OfflineSnapshotScreen[];
+  /** The read hit OFFLINE_SCAN_MAX_CANDIDATES — recovery is not knowable this tick. */
+  truncated?: boolean;
+  /** Tenants the cohort pass classified as a site-wide drop on this tick. */
+  infraEventTenantIds?: string[];
+}
+
+export interface OfflineSnapshotScreen {
+  id: string;
+  name: string;
+  tenantId: string | null;
+  lastPingAt: Date | null;
 }
 
 @Injectable()
@@ -332,6 +349,9 @@ export class NotificationsService {
         crossings: 0,
         recovered: 0,
         seeded: true,
+        offline: offlineScreens,
+        truncated,
+        infraEventTenantIds: [],
       };
     }
 
@@ -516,6 +536,9 @@ export class NotificationsService {
       crossings: crossed.length,
       recovered: recovered.length,
       seeded: false,
+      offline: offlineScreens,
+      truncated,
+      infraEventTenantIds: Array.from(infraEventTenants),
     };
   }
 

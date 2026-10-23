@@ -616,6 +616,14 @@ model User {
   // false: every existing row is untouched.
   emailVerificationPending Boolean          @default(false) @map("email_verification_pending")
   canTriggerPanic      Boolean              @default(false) @map("can_trigger_panic")
+  // 2026-10-23 — CUSTOMER ALERT EMAILS (apps/api/src/notifications/customer-alerts).
+  // An admin gets an email when a screen of theirs goes offline, stops showing
+  // content, or an emergency alert / all-clear is sent. ON by default; this is
+  // the person's own off switch (Account → Notifications). `alertEmailLocale`
+  // (en | es | zh) is the language those emails are written in; null = the
+  // organisation's billing-notice language, else English.
+  alertEmailsEnabled   Boolean              @default(true) @map("alert_emails_enabled")
+  alertEmailLocale     String?              @map("alert_email_locale")
   status               String               @default("ACTIVE")
   createdAt            DateTime             @default(now()) @map("created_at")
   assets               Asset[]
@@ -4879,4 +4887,55 @@ model PlatformCost {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("platform_costs")
+}
+
+// 2026-10-23 — CUSTOMER ALERT EMAILS (apps/api/src/notifications/customer-alerts).
+// One row per (screen, kind): the problem we are tracking for that screen and
+// whether its admins were emailed about it. The row OUTLIVES the incident
+// (open=false) so `lastEmailedAt` can enforce "at most one offline email per
+// screen per 6 h" across flaps and restarts. No FK: a deleted screen's row is
+// closed quietly by the worker and pruned after 14 days.
+//   kind:  OFFLINE | NO_CONTENT
+//   state: EMAILED | HELD (waiting for the org's digest) | SILENT (never
+//          emailed on purpose — flap, platform incident) | RECOVERY_HELD
+//          (recovery note waiting for the digest) | CLOSED
+model ScreenAlertIncident {
+  id              String    @id @default(uuid())
+  screenId        String    @map("screen_id")
+  tenantId        String    @map("tenant_id")
+  kind            String
+  open            Boolean   @default(true)
+  state           String
+  reason          String?
+  // The mode the problem email went out in (shadow | on): a recovery note
+  // reaches a customer only when the problem email did.
+  emailedMode     String?   @map("emailed_mode")
+  screenName      String    @map("screen_name")
+  startedAt       DateTime  @map("started_at")
+  openedAt        DateTime  @default(now()) @map("opened_at")
+  recoveringSince DateTime? @map("recovering_since")
+  closedAt        DateTime? @map("closed_at")
+  lastEmailedAt   DateTime? @map("last_emailed_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([screenId, kind])
+  @@index([open])
+  @@index([tenantId])
+  @@map("screen_alert_incidents")
+}
+
+// 2026-10-23 — one row per customer alert email SEND (one send can reach
+// several admins). Counts only — no address, no body. Read for the per-
+// organisation rate limit (6 per rolling hour, then one digest) and for ops.
+model CustomerAlertSend {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  kind           String
+  mode           String
+  itemCount      Int      @map("item_count")
+  recipientCount Int      @map("recipient_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([orgId, createdAt])
+  @@map("customer_alert_sends")
 }
