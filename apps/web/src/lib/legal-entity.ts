@@ -40,6 +40,9 @@ export const LEGAL_ENTITY = {
 export const GOVERNING_STATE = 'Alabama';
 
 export const LEGAL_CONTACTS = {
+  // TODO(owner): legal@ was not among the forwarded aliases confirmed on
+  // 2026-10-10. Add it in Forward Email (or point this at a forwarded alias)
+  // before launch — /terms names it as the address for legal notices.
   legal: 'legal@venue-os.app',
   privacy: 'privacy@venue-os.app',
   security: 'security@venue-os.app',
@@ -48,7 +51,7 @@ export const LEGAL_CONTACTS = {
 } as const;
 
 /** Shown as "Last updated" on /terms, /privacy, /dpa, /ferpa, /coppa and /terms/eula. */
-export const LEGAL_LAST_UPDATED = 'October 11, 2026';
+export const LEGAL_LAST_UPDATED = 'October 22, 2026';
 
 export interface Subprocessor {
   name: string;
@@ -61,7 +64,10 @@ export interface Subprocessor {
 
 /**
  * The providers that process Customer Data on our behalf. Each entry was
- * checked against the code / env names on 2026-10-11 (see
+ * checked against the code / env names on 2026-10-11, and re-checked on
+ * 2026-10-22 (Census geocoder fallback in `apps/api/src/geocoding`; Open-Meteo
+ * and ipapi.co are called by weather widgets on the screen itself, see
+ * `components/widgets/lib/useLiveTemplateData.ts`) (see
  * docs/research/2026-10-11-greg-decisions/02-legal-api-docs.md for the
  * evidence). Add a provider here BEFORE it receives customer data.
  */
@@ -125,6 +131,26 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     purpose: 'Fallback address lookup',
     location: 'European Union / United Kingdom',
     when: 'Only when the primary address lookup is unavailable',
+  },
+  {
+    name: 'U.S. Census Bureau Geocoder',
+    purpose: 'Fallback address lookup (the address being looked up only)',
+    location: 'United States',
+    when: 'Only when the primary address lookup cannot find an address',
+  },
+  {
+    name: 'Open-Meteo',
+    purpose:
+      'Weather forecasts for weather widgets, requested by the screen itself (the screen\'s network address and the widget\'s location)',
+    location: 'Europe',
+    when: 'Only on screens that show a weather widget',
+  },
+  {
+    name: 'ipapi.co (Kloudend)',
+    purpose:
+      'Approximate city from a screen\'s network address, so a weather widget with no location set can show local weather',
+    location: 'United States',
+    when: 'Only when a weather widget has no location set',
   },
   {
     name: 'Pexels',

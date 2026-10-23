@@ -576,83 +576,6 @@
       "title": "安全",
       "subtitle": "保护你的账户。两步验证会为登录增加第二道验证 —"
     },
-    "usb": {
-      "title": "USB 内容导出",
-      "subtitle": "插入 U 盘，选择播放列表，我们会签名并将内容包直接写入。",
-      "securityHeading": "USB 导入安全",
-      "ingestEnabled": "USB 导入已启用",
-      "ingestDisabled": "USB 导入已停用",
-      "ingestToggleHint": "关闭后，屏幕会拒绝 U 盘内容（即使已签名）。你的密钥会保留。",
-      "generateNewKey": "生成新密钥",
-      "generateSigningKey": "生成签名密钥",
-      "keySetHint": "签名密钥已设置{rotated}。点击可生成新密钥 — 应用内导出功能不受影响。",
-      "rotatedAt": "（{date} 已轮换）",
-      "noKeyHint": "尚未生成签名密钥。导出前请先生成。",
-      "saveKeyNow": "如果你打算使用独立命令行工具，请立即保存此密钥。",
-      "saveKeyNowDetail": "应用内 USB 导出无需此密钥 — 服务器会自动为每个内容包签名。你可以随时生成新密钥。",
-      "hide": "隐藏",
-      "buildHeading": "创建并下载内容包",
-      "fsSupported": "Chrome / Edge：我们会请你选择 U 盘，然后将所有文件直接写入。",
-      "fsUnsupported": "你的浏览器不支持直接写入 U 盘。我们将下载一个 .zip 文件，你可解压到 U 盘中。",
-      "bundleLabel": "内容包标签（可选）",
-      "bundleLabelPlaceholder": "例如：“大厅 A — 4 月 21 日当周”",
-      "targetScreen": "目标屏幕（可选）",
-      "anyPairedPlayer": "任意已配对播放器（不限定屏幕）",
-      "screenScopeHint": "如果 U 盘是给其他屏幕用的，屏幕会发出提示。",
-      "playlistsSelected": "播放列表（已选 {count} 个）",
-      "itemCount": "{count} 个项目",
-      "noPlaylists": "尚无播放列表。",
-      "includeEmergency": "同时包含紧急播放列表（推荐 — 断网时播放器仍保留封锁警报内容）",
-      "pickAndDownload": "选择 U 盘并下载",
-      "downloadSigned": "下载已签名内容包",
-      "enableFirst": "请先在上方启用 USB 导入。",
-      "generateKeyFirst": "请先在上方生成签名密钥。",
-      "buildingBundle": "正在服务器上生成已签名的内容包…",
-      "exportFailedStatus": "导出失败（{status}）",
-      "writingAssets": "正在向 U 盘写入 {count} 个素材（{size} MB）…",
-      "writingProgress": "正在写入 {done} / {total}：{filename}",
-      "wroteComplete": "✓ 已向 U 盘写入 {count} 个素材（{size} MB）。将 U 盘插入已配对的播放器即可导入。",
-      "wroteTruncated": "已向 U 盘写入 {count} 个素材（{size} MB）。⚠ 内容包已达大小上限，部分素材未包含。",
-      "downloadedBundle": "已下载内容包（{count} 个素材，{size} MB）。请原样解压到 U 盘根目录。",
-      "useChromeEdge": "使用 Chrome/Edge 可直接写入 U 盘。",
-      "exportFailed": "导出失败",
-      "newKeyConfirmTitle": "生成新的 USB 密钥？",
-      "newKeyConfirmMessage": "使用当前密钥签名的 U 盘内容将立即失效。",
-      "newKeyConfirmLabel": "生成新密钥"
-    },
-    "usbCard": {
-      "title": "U 盘离线导入",
-      "subtitle": "通过 U 盘向已配对的 Android 播放器导入内容 — 适用于无 WiFi 的场所、隔离网络或断网期间的内容更新。",
-      "stateEnabled": "USB 导入已启用",
-      "stateDisabled": "USB 导入已停用",
-      "stateEnabledHint": "在下次配对时获得 USB 密钥的播放器将接受已签名的内容包。",
-      "stateDisabledHint": "启用后将开始向已配对的播放器下发 USB 密钥。",
-      "hmacKeyTitle": "HMAC 签名密钥",
-      "keyActive": "已启用 — 上次轮换于 {date}",
-      "unknownDate": "未知",
-      "noKeyYet": "尚未生成密钥 — 请轮换以创建一个。",
-      "rotateKey": "轮换密钥",
-      "generateKey": "生成密钥",
-      "rotateWarning": "轮换后，使用旧密钥签名的所有内容都将失效。",
-      "recentEvents": "近期导入记录（{count}）",
-      "noVersion": "（无版本）",
-      "assetCount": "{count} 个素材",
-      "emergencyTag": "紧急",
-      "howToBuild": "如何创建 U 盘内容包 →",
-      "newKeyTitle": "新的 HMAC 密钥",
-      "shownOnce": "此密钥仅显示一次。请立即复制 — 控制台不会再次显示。",
-      "copyToClipboard": "复制到剪贴板",
-      "clipboardBlocked": "浏览器阻止了剪贴板访问 — 请选中上方密钥手动复制。",
-      "savedIt": "我已保存",
-      "storeHint": "请将其保存在密码管理器或构建环境中，命名为 <code>EDU_USB_KEY</code>。任何持有此密钥的人都能签名你的播放器会信任的内容包。",
-      "enableConfirmTitle": "启用 U 盘内容？",
-      "enableConfirmMessage": "这会创建一个签名密钥，使屏幕可以接受 U 盘中的内容。",
-      "enableConfirmLabel": "启用 USB 导入",
-      "disableConfirmTitle": "停用 U 盘内容？",
-      "disableConfirmMessage": "屏幕将立即拒绝新的 U 盘内容。已有内容会继续播放。",
-      "rotateConfirmTitle": "更换 U 盘签名密钥？",
-      "rotateConfirmMessage": "使用旧密钥签名的内容将失效。新密钥仅显示一次。"
-    },
     "vertical": {
       "industryLabel": "行业：",
       "switchIndustry": "切换行业",
@@ -1667,10 +1590,6 @@
         "auditedChange": "此更改会写入审计日志。",
         "promoteToFull": "提升至 100%",
         "pausedNote": "设为 0% 时，没有屏幕会获得最新版本。内容会继续播放。",
-        "offlineTitle": "离线连续性与设备密钥",
-        "offlineDescription": "面向网络不稳定站点的签名 USB 导入，以及屏幕用来校验内容包的签名密钥。",
-        "openOffline": "打开离线导入",
-        "keyRotationNote": "轮换签名密钥会使用旧密钥签名的所有内容包全部失效。请在离线页面轮换。",
         "readOnlyNote": "您可以查看播放器分发状态。更改这些策略需要组织管理员权限。",
         "errSummaryTitle": "无法保存播放器策略",
         "errWindowIncomplete": "请同时填写开始、结束和时区，或将三项全部清空。",
@@ -1694,9 +1613,6 @@
         "searchWindow": "维护时间窗口",
         "searchCanary": "灰度发布",
         "searchRollout": "发布状态",
-        "searchUsb": "USB 导入",
-        "searchOffline": "离线内容包导出",
-        "searchDeviceKey": "设备签名密钥",
         "railDistribution": "设备版本分布",
         "railScreenCount": "屏幕数：{count}",
         "railNoScreens": "此组织尚未配对任何屏幕。",
@@ -1719,11 +1635,6 @@
         "railAffectedBody": "本组织的全部已配对屏幕。",
         "railOpenScreens": "打开屏幕列表",
         "railOfflineState": "离线导入",
-        "railKeySetUndated": "已设置签名密钥（轮换日期未知）",
-        "railNoKey": "尚未生成签名密钥",
-        "railBrowserSupport": "当前浏览器",
-        "railDirectToUsb": "直接写入 USB 文件夹",
-        "railZipFallback": "下载签名 ZIP 文件",
         "autoReady": {
           "title": "哪些屏幕可以自行更新",
           "description": "自动更新只会在非营业时段的窗口内，发送给能够无提示安装的屏幕。其他屏幕在你推送更新时，需要有人在现场点按“安装”。",
@@ -2294,7 +2205,14 @@
       "syncLocked": "已与其分组同步（±{ms} 毫秒）。",
       "syncDiverged": "此屏幕播放的内容与其分组不同，因此无法保持同步。",
       "syncLocking": "正在与其分组同步，需要几秒钟。",
-      "trustRequestedAnnounce": "已请求恢复。"
+      "trustRequestedAnnounce": "已请求恢复。",
+      "technicalDetails": "技术详情",
+      "technicalDetailsHint": "供技术支持参考：设备信息、视频测量和连接状态。",
+      "lastVideoSample": "最近一次网页视频采样",
+      "nativePlayback": "原生播放",
+      "videoSampleOpenMedia": "在媒体库中打开此文件——其“屏幕播放”卡片会说明问题是否出在文件本身。",
+      "liveLinkDown": "实时连接：已断开 {ago}。屏幕每隔几秒自行签到时，更改仍会送达。",
+      "liveLinkDownNoAge": "实时连接：已断开。屏幕每隔几秒自行签到时，更改仍会送达。"
     },
     "ops": {
       "noGroupAddress": "无分组地址",
@@ -2734,7 +2652,8 @@
       "excludedHandoff": "视频刚开始在屏幕上播放",
       "excludedPlayerUpdate": "播放器应用刚刚更新",
       "excludedFallbackEngine": "备用播放器正在代替屏幕内置的视频引擎",
-      "excludedGeneric": "屏幕刚刚在准备中"
+      "excludedGeneric": "屏幕刚刚在准备中",
+      "filesTitle": "视频测量"
     },
     "interruptions": {
       "title": "最近 {hours} 小时的中断",
@@ -3264,9 +3183,6 @@
     "templateLayoutHelp": "此播放列表使用模板布局。请在“排期”标签页中将其投放到屏幕。",
     "pauseScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}暂停此排期",
     "resumeScheduleOn": "{count, plural, =0 {} other {在 # 块屏幕上}}恢复此排期",
-    "usbExportOff": "此组织已关闭 USB 导出。请联系管理员开启。",
-    "usbExportOffAdmin": "此组织已关闭 USB 导出。",
-    "usbExportOpenSettings": "在设置中开启 USB 导出",
     "durationClamped": "时长范围为 {min} 到 {max} 秒，已设为 {seconds}。"
   },
   "brandingCard": {
@@ -6296,5 +6212,136 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
+  },
+  "publicSite": {
+    "footer": {
+      "tagline": "一个平台搞定数字标牌、自助终端、实时记分牌和紧急警报 —— 覆盖您运营的每个场所。",
+      "product": "产品",
+      "overview": "概览",
+      "industries": "行业",
+      "templates": "模板",
+      "pricing": "价格",
+      "resources": "资源",
+      "helpCenter": "帮助中心",
+      "gettingStarted": "快速入门",
+      "emergencySystem": "紧急系统",
+      "ssoSetup": "SSO 设置",
+      "apiWebhooks": "API 与 Webhook",
+      "systemStatus": "系统状态",
+      "trust": "安全",
+      "itSecurity": "安全概览",
+      "networkRequirements": "网络要求",
+      "reportVulnerability": "报告漏洞",
+      "legal": "法律",
+      "privacy": "隐私政策",
+      "terms": "服务条款",
+      "dpa": "数据处理附录",
+      "subprocessors": "次级处理方",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS —— 一个平台，服务每个场所。",
+      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报"
+    },
+    "help": {
+      "back": "返回帮助中心",
+      "updated": "更新于 {date}",
+      "moreIn": "更多{category}文章",
+      "categories": {
+        "gettingStarted": {
+          "name": "快速入门",
+          "description": "设置工作区，点亮第一块屏幕。"
+        },
+        "templates": {
+          "name": "模板",
+          "description": "设计版式、导入现有设计，并统一品牌。"
+        },
+        "aiStudio": {
+          "name": "AI 工作室",
+          "description": "一句话生成画面，用日常语言修改。"
+        },
+        "screens": {
+          "name": "屏幕",
+          "description": "配对、分组和管理实体显示屏。"
+        },
+        "emergency": {
+          "name": "紧急系统",
+          "description": "封锁、天气和疏散警报 —— 以及各项保障。"
+        },
+        "sports": {
+          "name": "体育",
+          "description": "记分牌、环形广告屏、提示以及比赛日的现场运营。"
+        },
+        "integrations": {
+          "name": "集成",
+          "description": "收银系统菜单、实时价格和已连接的服务。"
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "连接 Google、Microsoft 或任何 OIDC 身份提供商。"
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "从学生信息系统自动同步员工和课表。"
+        },
+        "billing": {
+          "name": "账单",
+          "description": "发票、采购订单、升级和取消。"
+        },
+        "itSecurity": {
+          "name": "IT 与安全",
+          "description": "网络要求、登录、数据保护和安全审查。"
+        }
+      }
+    },
+    "status": {
+      "title": "系统状态",
+      "subtitle": "VenueOS 平台的实时健康状况，直接从您的浏览器检查。每分钟自动刷新。",
+      "toneOk": "正常",
+      "toneDegraded": "降级",
+      "toneDown": "中断",
+      "toneUnknown": "检查中…",
+      "overallOk": "所有系统运行正常",
+      "overallDegraded": "部分降级 —— 服务仍在运行",
+      "overallDown": "服务中断",
+      "overallUnknown": "正在检查系统…",
+      "web": "网页管理后台",
+      "api": "API",
+      "database": "数据库",
+      "realtime": "实时推送",
+      "emergencyPath": "紧急警报链路",
+      "storage": "文件上传与存储",
+      "webOk": "您正在查看的就是它",
+      "checking": "检查中…",
+      "unknownApi": "未知 —— 无法连接 API",
+      "apiDown": "无法连接",
+      "apiOk": "正常处理请求",
+      "dbOk": "查询正常",
+      "dbDown": "查询无响应",
+      "realtimeOk": "即时推送已启用",
+      "realtimeDegraded": "轮询备用 —— 屏幕约每 10 秒检查一次变更",
+      "emergencyOk": "触发链路已验证",
+      "emergencyDown": "触发链路检查失败",
+      "storageOk": "上传正常",
+      "storageBackup": "通过备用通道运行",
+      "storageDown": "上传失败",
+      "lastChecked": "最后检查 {time}",
+      "apiBuild": "API 版本 {version}",
+      "firstCheck": "正在进行首次检查…",
+      "offlineNote": "屏幕断网时会继续播放已保存的内容，正在显示的紧急警报会一直保留到解除警报 —— 详见<help>紧急系统概览</help>。"
+    }
+  },
+  "usbDelivery": {
+    "button": "下载到 USB",
+    "building": "正在为 USB 准备 {name}…",
+    "writing": "正在写入 USB 驱动器… {done}/{total}",
+    "doneFolder": "{name} 已写入 USB 驱动器。插入任意已配对的屏幕即可自动播放。",
+    "doneZip": "{name} 已下载。将该文件复制到 USB 驱动器，然后插入任意已配对的屏幕即可，无需解压。",
+    "failed": "无法准备 USB 副本：{message}",
+    "dismiss": "关闭",
+    "destinationTitle": "USB 驱动器",
+    "destinationBody": "同时将此播放列表下载到 USB 驱动器，供没有网络的屏幕使用。将驱动器插入已配对的屏幕，它会自动播放。",
+    "destinationOnlyHint": "未选择屏幕：播放列表已保存，仅下载用于 USB。",
+    "settingsMoved": "USB 已无需任何设置。打开播放列表并选择\"下载到 USB\"。",
+    "createForUsb": "创建并下载到 USB"
   }
 }

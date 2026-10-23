@@ -1,3 +1,4 @@
+import { emergencyLayoutIsPortrait, emergencyLayoutOrientation } from './emergency-layout';
 import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
@@ -9,6 +10,7 @@ import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '.
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
+import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { registeredResolution } from './registered-resolution';
@@ -5710,6 +5712,31 @@ export class ScreensController {
   // UNCHANGED. Any change re-verifies the credential at the normal 5 s
   // freshness before a single byte is disclosed, so the cheap path can never
   // become the cheap path for a credential we have stopped trusting.
+  /**
+   * GET /screens/:id/usb-key — the tenant's USB package key, for this paired
+   * screen only (2026-10-22, USB made simple). The Android player verifies a
+   * stick's package with it before importing anything. It used to ride only
+   * the `/devices/pair` answer, and only for tenants that had opted in — the
+   * web page pairs screens, so no APK ever stored it and no stick ever
+   * imported. Minted on first use; the player re-reads it while online.
+   */
+  @Get(':id/usb-key')
+  async getUsbKey(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: false });
+    if (!auth.ok || !auth.tenantId) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+        message: `Device auth required (${auth.ok ? 'unpaired' : auth.reason})`,
+      });
+    }
+    const key = await ensureUsbSigningKey(this.prisma as any, auth.tenantId);
+    if (!key) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ code: 'SCREEN_USB_KEY_UNAVAILABLE', message: 'USB key unavailable' });
+    }
+    return res.status(200).json({ tenantId: auth.tenantId, key });
+  }
+
   @Get(':id/emergency-rev')
   async getEmergencyRev(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     // Same non-storable posture as the manifest (2026-07-31 stuck-lockdown
@@ -6282,19 +6309,7 @@ export class ScreensController {
         // strictly greater than width. If resolution is null or
         // unparseable we default to landscape (safe: the original
         // emergencyPlaylistId is what every tenant already has wired up).
-        const isPortrait = (() => {
-          // Prefer the operator's explicit LED canvas dims: a 960×1080 poster
-          // reports DEVICE resolution 1920×1080 (landscape) but is physically
-          // portrait — same precedence the scoreboard manifest + board page use.
-          // Fall back to stored resolution when no canvas is configured.
-          const cw = Number((screen as any).canvasW);
-          const ch = Number((screen as any).canvasH);
-          if (Number.isFinite(cw) && Number.isFinite(ch) && cw > 0 && ch > 0) return ch > cw;
-          const r = (screen.resolution || '').trim();
-          const m = r.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
-          if (!m) return false;
-          return parseInt(m[2], 10) > parseInt(m[1], 10);
-        })();
+        const isPortrait = emergencyLayoutIsPortrait(screen);
 
         // Sprint 8b — per-screen emergency content config takes
         // priority over the tenant defaults. FOUR tiers, in order:
@@ -6682,7 +6697,10 @@ export class ScreensController {
           emergencyExpiresAt: activeScreenOverride?.expiresAt
             ? Math.floor(new Date(activeScreenOverride.expiresAt).getTime() / 1000)
             : null,
-          orientation: isPortrait ? 'portrait' : 'landscape',
+          // A Presentation has no native rotation: its page consumes uppercase
+          // orientation, including when it boots straight into an alert.
+          // Preserve the established primary/single-sided wire value.
+          orientation: emergencyLayoutOrientation(screen),
           // 2026-06-25 — carry the LED canvas dims + tile-repeat on the
           // EMERGENCY manifest too (scoreboard + normal playlist branches
           // already do). Without these the player's TemplateScaler renders the

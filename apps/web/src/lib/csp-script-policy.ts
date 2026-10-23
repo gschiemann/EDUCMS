@@ -70,6 +70,7 @@ export const CSP_UNNONCEABLE_PREFIXES = [
   '/dpa',
   '/panic',
   '/status',
+  '/security',
   '/launch',
   '/demo',
 ] as const;

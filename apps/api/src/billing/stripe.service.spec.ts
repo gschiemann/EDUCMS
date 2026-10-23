@@ -654,3 +654,164 @@ describe('BILL-01 — a failed webhook must not be silently swallowed', () => {
     expect(fake.inspect.clientMocks.processedStripeEvent.delete).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Billing go-live (2026-10-22) — two bugs found by driving signed events through the real
+ * webhook route against a scratch Postgres (docs/research/2026-10-22-billing-golive/01-report.md).
+ */
+describe('StripeService webhook — billing go-live fixes (2026-10-22)', () => {
+  let svc: StripeService;
+  let fake: ReturnType<typeof makeFakePrisma>;
+  const retrieve = jest.fn();
+
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
+    fake = makeFakePrisma();
+    svc = new StripeService(fake.prismaService);
+    retrieve.mockReset();
+    (svc as any).client = { subscriptions: { retrieve } };
+  });
+  afterEach(() => {
+    delete process.env.STRIPE_SECRET_KEY;
+  });
+
+  const seed = (over: Record<string, unknown> = {}) =>
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A',
+      tenantId: 'tenant_A',
+      status: 'ACTIVE',
+      tier: 'MONTHLY',
+      stripeCustomerId: 'cus_test_1',
+      stripeSubscriptionId: 'sub_new',
+      stripeLastEventCreatedAt: null,
+      ...over,
+    } as any);
+
+  it("a late invoice.payment_failed of an EARLIER subscription never touches the customer's new plan", async () => {
+    seed();
+    retrieve.mockResolvedValue({ id: 'sub_old', status: 'canceled' });
+    const r = await svc.handleWebhookEvent({
+      id: 'evt_old_invoice',
+      type: 'invoice.payment_failed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_old', customer: 'cus_test_1', parent: { subscription_details: { subscription: 'sub_old' } } } },
+    });
+    expect(r).toEqual({ ignored: true });
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('ACTIVE');
+    expect(fake.inspect.auditLogs).toHaveLength(0);
+  });
+
+  it('an invoice of the CURRENT subscription still applies (live status re-fetched)', async () => {
+    seed();
+    retrieve.mockResolvedValue({ id: 'sub_new', status: 'past_due' });
+    await svc.handleWebhookEvent({
+      id: 'evt_cur_invoice',
+      type: 'invoice.payment_failed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_cur', customer: 'cus_test_1', parent: { subscription_details: { subscription: 'sub_new' } } } },
+    });
+    expect(retrieve).toHaveBeenCalledWith('sub_new');
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE');
+  });
+
+  it('an invoice with no subscription id keeps the old path (event-implied status)', async () => {
+    seed();
+    await svc.handleWebhookEvent({
+      id: 'evt_nosub_invoice',
+      type: 'invoice.payment_failed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_x', customer: 'cus_test_1' } },
+    });
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE');
+  });
+
+  it('a subscription with no trial CLEARS an old trial end (no phantom "trial_card" / trial AI)', async () => {
+    seed({ trialEndsAt: new Date(Date.now() + 9 * 86_400_000), stripeSubscriptionId: 'sub_old', status: 'CANCELLED' });
+    await svc.handleWebhookEvent(
+      buildEvent({
+        id: 'evt_restart',
+        type: 'customer.subscription.created',
+        data: {
+          object: {
+            id: 'sub_new',
+            customer: 'cus_test_1',
+            status: 'active',
+            trial_end: null,
+            metadata: { tenantId: 'tenant_A' },
+            items: { data: [{ id: 'si_new', quantity: 2, price: { id: 'price_m', unit_amount: 2000, recurring: { interval: 'month' } } }] },
+          },
+        },
+      }),
+    );
+    const lic = fake.inspect.licenses.get('tenant_A') as any;
+    expect(lic.status).toBe('ACTIVE');
+    expect(lic.stripeSubscriptionId).toBe('sub_new');
+    expect(lic.trialEndsAt).toBeNull();
+  });
+
+  it('a trialing subscription still mirrors its trial end', async () => {
+    seed({ stripeSubscriptionId: null, tier: 'FREE_TRIAL' });
+    const end = Math.floor(Date.now() / 1000) + 5 * 86_400;
+    await svc.handleWebhookEvent(
+      buildEvent({
+        id: 'evt_trialing',
+        type: 'customer.subscription.created',
+        data: {
+          object: {
+            id: 'sub_new',
+            customer: 'cus_test_1',
+            status: 'trialing',
+            trial_end: end,
+            metadata: { tenantId: 'tenant_A' },
+            items: { data: [{ id: 'si_new', quantity: 3, price: { id: 'price_m', unit_amount: 2000, recurring: { interval: 'month' } } }] },
+          },
+        },
+      }),
+    );
+    expect((fake.inspect.licenses.get('tenant_A') as any).trialEndsAt).toEqual(new Date(end * 1000));
+  });
+});
+
+describe('StripeService.verifyPriceConfig', () => {
+  const ENV = ['STRIPE_SECRET_KEY', 'STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL', 'STRIPE_PRICE_MONTHLY_AI', 'STRIPE_PRICE_ANNUAL_AI'];
+  afterEach(() => ENV.forEach((k) => delete process.env[k]));
+
+  it('null when Stripe is not configured', async () => {
+    const svc = new StripeService(makeFakePrisma().prismaService);
+    expect(await svc.verifyPriceConfig()).toBeNull();
+  });
+
+  it('retrieves each configured price and reports a wrong one by slot; never echoes the key', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_live_unitsecretvalue';
+    process.env.STRIPE_PRICE_MONTHLY = 'price_m';
+    process.env.STRIPE_PRICE_ANNUAL = 'price_y';
+    const svc = new StripeService(makeFakePrisma().prismaService);
+    const prices: Record<string, any> = {
+      price_m: { active: true, livemode: true, currency: 'usd', type: 'recurring', billing_scheme: 'per_unit', unit_amount: 2000, recurring: { interval: 'month', interval_count: 1, usage_type: 'licensed' } },
+      price_y: { active: true, livemode: true, currency: 'usd', type: 'recurring', billing_scheme: 'per_unit', unit_amount: 24000, recurring: { interval: 'year', interval_count: 1, usage_type: 'licensed' } },
+    };
+    (svc as any).client = { prices: { retrieve: jest.fn(async (id: string) => prices[id]) } };
+    const r = (await svc.verifyPriceConfig())!;
+    expect(r.keyMode).toBe('live');
+    expect(r.ok).toBe(false);
+    expect(r.slots.find((s) => s.slot === 'STRIPE_PRICE_MONTHLY')?.state).toBe('ok');
+    expect(r.slots.find((s) => s.slot === 'STRIPE_PRICE_ANNUAL')?.problems.join(' ')).toMatch(/\$240\.00.*\$200\.00/);
+    expect(r.aiPlanOffered).toBe(false);
+    expect(JSON.stringify(r)).not.toContain('unitsecretvalue');
+  });
+
+  it("an unreadable price is reported without Stripe's masked key fragment", async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_live_unitsecretvalue';
+    process.env.STRIPE_PRICE_MONTHLY = 'price_m';
+    const svc = new StripeService(makeFakePrisma().prismaService);
+    (svc as any).client = {
+      prices: { retrieve: jest.fn(async () => { throw new Error('Invalid API Key provided: sk_live_**********alue'); }) },
+    };
+    const r = (await svc.verifyPriceConfig())!;
+    const m = r.slots.find((s) => s.slot === 'STRIPE_PRICE_MONTHLY')!;
+    expect(m.state).toBe('unreadable');
+    expect(m.problems[0]).toContain('Invalid API Key provided: [key]');
+    expect(JSON.stringify(r)).not.toMatch(/sk_live/);
+  });
+});

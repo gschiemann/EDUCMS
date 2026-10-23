@@ -1,46 +1,43 @@
 /**
- * USB export — the bundle protocol, extracted so more than one surface can
- * trigger it.
+ * Download a playlist for a USB drive — the ONE implementation every surface
+ * uses (playlists menu "Export to USB", the playlist page's "Download to USB",
+ * the create wizard's "USB drive" destination).
  *
- * Greg, 2026-09-16: "export for offline use does what? is that export to USB?
- * does that then make it ready for our player and include the info about the
- * playlist? thats what it should do and the name should be export to USB".
+ * Greg, 2026-10-22: "make the USB process super simple … just allow people to
+ * download the playlist to a USB by default … our app auto senses when someone
+ * puts the USB stick in and reads our playlist and retains all the settings".
+ * So there is no setting, key or PIN anywhere on this path: the API signs the
+ * package itself (`POST /api/v1/usb-export/bundle`), and the player accepts
+ * the downloaded .zip exactly as it is — nobody has to unzip anything.
  *
- * It is the USB export, and the bundle IS player-ready — but until now the
- * playlists overflow menu never called it. That entry ran `openWorkspace(id)`,
- * the same function as "Open", so it opened a page instead of exporting
- * anything. These helpers are what make the menu entry real; the playlist
- * detail header's own download control uses them too, so there is one
- * implementation of the protocol rather than two.
- *
- * What the server builds (`POST /api/v1/usb-export/bundle`):
- *   manifest.json   ← schema 'edu-cms-usb-bundle/v1', the playlists with their
- *                     items/templates, plus a flat `assets[]` of
- *                     { url, sha256, localPath, mimeType, sizeBytes }
- *   manifest.sig    ← HMAC-SHA256 over manifest.json, tenant USB ingest key
- *   assets/<sha>.*  ← the media itself
- *
- * The Android player reads exactly that: `UsbIngester.kt` gates on `schema`
- * and verifies each { sha256, localPath }; `UsbCacheIndex.kt` maps url →
- * on-disk copy so the WebView serves local bytes. Emergency playlists ride
- * along so a lockdown still renders on a screen with no network.
+ * On a browser that can write into a folder (Chrome / Edge) the operator picks
+ * the USB drive and we write the package straight onto it. The folder is
+ * picked FIRST, while the click still counts as a user gesture — building a
+ * large package can take longer than the browser keeps that gesture alive.
+ * Everywhere else (Safari, Firefox, or a flow with no click to spend, like the
+ * wizard's Create) it is an ordinary .zip download.
  */
 
 import { API_URL } from '@/lib/api-url';
+
+/** When the package plays (the wizard passes the window it just set). */
+export interface UsbSchedule {
+  daysOfWeek?: string | null;
+  timeStart?: string | null;
+  timeEnd?: string | null;
+}
 
 /** True when this browser can write straight into a USB folder. */
 export function canWriteToUsbFolder(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
-/**
- * Ask the API for the signed bundle. `includeEmergency` stays on: a screen
- * running off a stick is exactly the one that cannot fetch an alert later.
- */
+/** Ask the API for the signed package. */
 export async function fetchUsbBundle(args: {
   token: string | null | undefined;
   playlistId: string;
   playlistName: string;
+  schedule?: UsbSchedule | null;
 }): Promise<ArrayBuffer> {
   const base = API_URL.replace(/\/+$/, '');
   const res = await fetch(`${base}/usb-export/bundle`, {
@@ -51,58 +48,61 @@ export async function fetchUsbBundle(args: {
     },
     body: JSON.stringify({
       playlistIds: [args.playlistId],
+      // A screen running off a stick is exactly the one that cannot fetch an
+      // alert board later.
       includeEmergency: true,
       bundleLabel: args.playlistName,
+      ...(args.schedule ? { schedule: args.schedule } : {}),
     }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}) as { message?: string });
-    throw new Error(body.message || `Bundle failed (${res.status})`);
+    throw new Error(body.message || `HTTP ${res.status}`);
   }
   return res.arrayBuffer();
 }
 
-/** Filename-safe playlist name + a timestamp, so two exports never collide. */
+/** `VenueOS-USB-<playlist>-<time>.zip` — recognisable on a stick, never colliding. */
 export function bundleFileName(playlistName: string, now: Date): string {
   const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  return `${playlistName.replace(/[^\w.-]+/g, '_')}-${stamp}.zip`;
+  const safe = playlistName.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'Playlist';
+  return `VenueOS-USB-${safe}-${stamp}.zip`;
 }
 
-/** Hand the bundle to the browser as a plain .zip. */
+/** Hand the package to the browser as a plain .zip. */
 export function downloadBundleAsZip(buf: ArrayBuffer, playlistName: string, now: Date): void {
   const url = URL.createObjectURL(new Blob([buf], { type: 'application/zip' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = bundleFileName(playlistName, now);
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoked later: some browsers start reading the blob after click() returns.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-/**
- * Unpack the bundle directly into a directory the operator picks — the USB
- * stick itself. Written file-by-file (not as a .zip) because the player reads
- * a directory tree, so this is the difference between "a stick that works" and
- * "a stick with an archive on it nothing extracts".
- *
- * Returns the number of files written. Throws `AbortError` if the operator
- * dismisses the picker, which callers treat as "changed their mind", not a
- * failure.
- */
-export async function writeBundleToUsbFolder(
+type DirHandle = FileSystemDirectoryHandle;
+
+async function pickUsbFolder(): Promise<DirHandle> {
+  return (window as unknown as {
+    showDirectoryPicker: (o: object) => Promise<DirHandle>;
+  }).showDirectoryPicker({ mode: 'readwrite', id: 'venueos-usb', startIn: 'desktop' });
+}
+
+/** Unpack the package into a folder (the USB drive). Returns files written. */
+export async function writeBundleToFolder(
+  dir: DirHandle,
   buf: ArrayBuffer,
   onProgress?: (done: number, total: number) => void,
 ): Promise<number> {
-  const dir = await (window as unknown as {
-    showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle>;
-  }).showDirectoryPicker({ mode: 'readwrite', id: 'edu-cms-usb', startIn: 'desktop' });
-
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(buf);
   const entries = Object.entries(zip.files).filter(([, f]) => !f.dir);
   let done = 0;
   for (const [path, file] of entries) {
     const segs = path.split('/').filter(Boolean);
-    let d: FileSystemDirectoryHandle = dir;
+    let d: DirHandle = dir;
     for (let i = 0; i < segs.length - 1; i++) {
       d = await d.getDirectoryHandle(segs[i], { create: true });
     }
@@ -116,4 +116,47 @@ export async function writeBundleToUsbFolder(
     onProgress?.(done, entries.length);
   }
   return done;
+}
+
+export type UsbExportProgress =
+  | { phase: 'building' }
+  | { phase: 'writing'; done: number; total: number };
+
+export type UsbExportOutcome =
+  | { kind: 'folder'; files: number }
+  | { kind: 'zip'; fileName: string }
+  | { kind: 'cancelled' };
+
+/**
+ * The whole "Download to USB" action. `allowFolder: false` forces the .zip
+ * (for flows where the click was already spent, e.g. after creating a
+ * playlist). A dismissed folder picker is `cancelled`, never an error.
+ */
+export async function exportPlaylistToUsb(args: {
+  token: string | null | undefined;
+  playlistId: string;
+  playlistName: string;
+  schedule?: UsbSchedule | null;
+  allowFolder?: boolean;
+  onProgress?: (p: UsbExportProgress) => void;
+  now?: () => Date;
+}): Promise<UsbExportOutcome> {
+  let dir: DirHandle | null = null;
+  if (args.allowFolder !== false && canWriteToUsbFolder()) {
+    try {
+      dir = await pickUsbFolder();
+    } catch (e) {
+      if ((e as { name?: string } | null)?.name === 'AbortError') return { kind: 'cancelled' };
+      dir = null; // a picker that cannot open falls back to the download
+    }
+  }
+  args.onProgress?.({ phase: 'building' });
+  const buf = await fetchUsbBundle(args);
+  if (dir) {
+    const files = await writeBundleToFolder(dir, buf, (done, total) => args.onProgress?.({ phase: 'writing', done, total }));
+    return { kind: 'folder', files };
+  }
+  const now = (args.now ?? (() => new Date()))();
+  downloadBundleAsZip(buf, args.playlistName, now);
+  return { kind: 'zip', fileName: bundleFileName(args.playlistName, now) };
 }

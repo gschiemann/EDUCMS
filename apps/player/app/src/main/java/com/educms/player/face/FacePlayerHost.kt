@@ -581,6 +581,19 @@ class FacePlayerHost(
         }
     }
 
+    /**
+     * Fire a plain DOM event on this face's page (2026-10-22: a USB stick was
+     * imported, so the page re-reads its package). The name is a fixed
+     * identifier from the caller, never page or network data.
+     */
+    fun dispatchPageEvent(name: String) {
+        if (destroyed || !name.matches(Regex("^[a-z0-9-]{1,48}$"))) return
+        activity.runOnUiThread {
+            val wv = webView ?: return@runOnUiThread
+            runCatching { wv.evaluateJavascript("window.dispatchEvent(new Event('$name'))", null) }
+        }
+    }
+
     // ─── this face's staleness ladder ────────────────────────────────
 
     private fun tickWatchdog() {

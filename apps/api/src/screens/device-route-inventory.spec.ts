@@ -147,6 +147,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
   },
   {
     file: 'screens/screens.controller.ts',
+    fn: 'getUsbKey',
+    routes: ['GET /api/v1/screens/:id/usb-key'],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'Hands out the tenant USB package key. An unproven credential holding it could sign a stick that plays on every screen of the tenant.',
+  },
+  {
+    file: 'screens/screens.controller.ts',
     fn: 'reportCacheStatus',
     routes: ['POST /api/v1/screens/:id/cache-status'],
     unpaired: 'allowed',

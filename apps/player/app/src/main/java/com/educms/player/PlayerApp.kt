@@ -78,6 +78,10 @@ class PlayerApp : Application() {
         )
         ensureNotificationChannels()
         UsbCacheIndex.reload(this)
+        // 2026-10-22 — plug in a USB stick, its playlist plays. Background
+        // thread only; never touches the display or the emergency path.
+        runCatching { com.educms.player.usb.UsbAutoImport.start(this) }
+            .onFailure { PlayerLogger.w("PlayerApp", "usb auto-import start failed: ${it.message}") }
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
         // 2026-10-03 (1.1.21) — USER STANDBY. Listens for the panel going off
