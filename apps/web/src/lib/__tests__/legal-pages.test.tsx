@@ -65,7 +65,7 @@ describe('public legal pages', () => {
   it('the DPA renders every sub-processor', () => {
     const t = text(DpaPage);
     for (const s of SUBPROCESSORS) expect(t).toContain(s.name);
-    for (const name of ['Supabase', 'Railway', 'Vercel', 'Resend', 'Stripe', 'Sentry', 'OpenAI', 'Anthropic', 'Google Maps']) {
+    for (const name of ['Supabase', 'Railway', 'Vercel', 'Resend', 'Forward Email', 'Stripe', 'Sentry', 'OpenAI', 'Anthropic', 'Google Maps']) {
       expect(SUBPROCESSORS.some((s) => s.name.includes(name))).toBe(true);
     }
   });

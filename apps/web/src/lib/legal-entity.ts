@@ -101,6 +101,13 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     when: 'Always',
   },
   {
+    name: 'Forward Email',
+    purpose:
+      'Inbound email forwarding for support@venue-os.app and security@venue-os.app, including the content of messages sent to those addresses',
+    location: 'United States / European Union',
+    when: 'When someone emails a VenueOS support or security address',
+  },
+  {
     name: 'Sentry',
     purpose: 'Error monitoring, with sensitive values removed before sending',
     location: 'United States',
