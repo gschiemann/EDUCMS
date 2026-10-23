@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
-import { ResetShell, RESET_INPUT_CLS, RESET_BUTTON_CLS } from '../ResetShell';
+import { ResetShell, RESET_INPUT_CLS, RESET_BUTTON_CLS } from '@/components/auth/AuthCardShell';
 
 export default function ResetPasswordCompletePage({
   params,

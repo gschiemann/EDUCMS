@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * The frame both password-reset pages share — the same light card, hex mark,
- * footer links and language switcher as /login (QA 2026-10-23).
+ * The frame the sign-in family's satellite pages share (password reset
+ * request + completion, accept-invite) — the same light card, hex mark,
+ * back link and language switcher as /login (QA 2026-10-23).
  *
  * Before this the two reset pages were the only sign-in-family surfaces still
  * on the pre-rebrand dark theme with the old monitor icon, and English-only:

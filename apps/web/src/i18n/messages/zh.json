@@ -6566,5 +6566,22 @@
       "oldest": "最早"
     },
     "showMore": "再显示 {count} 个"
+  },
+  "acceptInvite": {
+    "title": "接受邀请",
+    "workspace": "工作区",
+    "email": "邮箱",
+    "role": "角色",
+    "password": "密码",
+    "passwordHint": "至少 8 个字符。",
+    "confirmPassword": "确认密码",
+    "join": "加入工作区",
+    "joining": "正在加入…",
+    "loading": "正在加载邀请",
+    "invalid": "该邀请链接无效。",
+    "unreachable": "暂时无法连接 VenueOS。请检查网络后重试。",
+    "tooShort": "密码至少需要 8 个字符。",
+    "mismatch": "两次输入的密码不一致。",
+    "acceptFailed": "无法接受邀请。"
   }
 }

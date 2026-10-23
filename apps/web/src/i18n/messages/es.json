@@ -6566,5 +6566,22 @@
       "oldest": "Más antiguas"
     },
     "showMore": "Mostrar {count} más"
+  },
+  "acceptInvite": {
+    "title": "Acepta tu invitación",
+    "workspace": "Espacio de trabajo",
+    "email": "Correo",
+    "role": "Rol",
+    "password": "Contraseña",
+    "passwordHint": "Al menos 8 caracteres.",
+    "confirmPassword": "Confirma la contraseña",
+    "join": "Unirme al espacio",
+    "joining": "Uniéndote…",
+    "loading": "Cargando tu invitación",
+    "invalid": "Este enlace de invitación no es válido.",
+    "unreachable": "No se puede conectar con VenueOS ahora mismo. Revisa tu conexión e inténtalo de nuevo.",
+    "tooShort": "La contraseña debe tener al menos 8 caracteres.",
+    "mismatch": "Las contraseñas no coinciden.",
+    "acceptFailed": "No se pudo aceptar la invitación."
   }
 }

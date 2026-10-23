@@ -6566,5 +6566,22 @@
       "oldest": "Oldest"
     },
     "showMore": "Show {count} more"
+  },
+  "acceptInvite": {
+    "title": "Accept your invitation",
+    "workspace": "Workspace",
+    "email": "Email",
+    "role": "Role",
+    "password": "Password",
+    "passwordHint": "At least 8 characters.",
+    "confirmPassword": "Confirm password",
+    "join": "Join workspace",
+    "joining": "Joining…",
+    "loading": "Loading your invitation",
+    "invalid": "This invite link is not valid.",
+    "unreachable": "Can't reach VenueOS right now. Check your connection and try again.",
+    "tooShort": "Password must be at least 8 characters.",
+    "mismatch": "Passwords do not match.",
+    "acceptFailed": "Could not accept the invitation."
   }
 }
