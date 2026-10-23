@@ -59,7 +59,7 @@ Not dismissed, per instruction. Rationale for whoever triages them:
 
 ## CI on the PR head
 
-pending — see final section of the hand-back
+At hand-back (2026-10-22, budget stop requested by the lead): PR #139 head 1139e9d0 — 12 checks passed (Mobile Perf, Poster Freshness, Capability Registry, tenant-isolation, Vercel preview, …), 22 still pending (Deploy Reliability, CI & Security incl. CodeQL analyze, cross-browser, e2e, docker), 0 failed. The previous head a2c6f48a (identical code, report commit excluded) had passed Poster Freshness, Capability Registry, Signing Secrets, Integration Truth, Field Scripts, Mobile Perf and OTA Wiring before the report push superseded it. The pre-push preflight (api + web production builds) passed locally on both pushes. Whoever merges: watch 'gh pr checks 139' to green first, then confirm the fixed rows close on the next master CodeQL scan.
 
 ## Every alert
 
