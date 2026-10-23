@@ -266,11 +266,11 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
       {/* ── Header (§7.2) — an honest summary, two actions, nothing else. ── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
-          <h1 className={`text-[28px] leading-tight font-extrabold tracking-tight ${INK}`}>Playlists</h1>
+          <h1 className={`text-[28px] leading-tight font-extrabold tracking-tight ${INK}`}>{t('playlistsPage.libTitle')}</h1>
           <p className={`text-[13px] mt-0.5 ${INK_2}`} data-testid="library-summary">
             {loading && rows.length === 0
-              ? 'Loading…'
-              : `${counts.all} ${counts.all === 1 ? 'playlist' : 'playlists'} · ${counts.active} active`}
+              ? t('playlistsPage.libLoading')
+              : t('playlistsPage.libSummary', { count: counts.all, active: counts.active })}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -341,11 +341,11 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
         className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-0.5"
       >
         {([
-          ['all', 'All', counts.all],
-          ['active', 'Active', counts.active],
-          ['scheduled', 'Scheduled', counts.scheduled],
-          ['unassigned', 'Unassigned', counts.unassigned],
-          ['attention', 'Needs attention', counts.attention],
+          ['all', t('playlistsPage.tabAll'), counts.all],
+          ['active', t('playlistsPage.tabActive'), counts.active],
+          ['scheduled', t('playlistsPage.tabScheduled'), counts.scheduled],
+          ['unassigned', t('playlistsPage.tabUnassigned'), counts.unassigned],
+          ['attention', t('playlistsPage.tabAttention'), counts.attention],
         ] as Array<[StatusTab, string, number]>).map(([key, label, n]) => {
           const on = tab === key;
           const flag = key === 'attention' && n > 0;
@@ -379,8 +379,8 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search playlists..."
-            aria-label="Search playlists"
+            placeholder={t('playlistsPage.libSearchPlaceholder')}
+            aria-label={t('playlistsPage.libSearchAria')}
             className={`w-full h-11 pl-9 pr-3 rounded-[10px] text-[13px] ${SURFACE} ${INK} placeholder:${INK_3} outline-none focus:ring-2`}
             style={{ ['--tw-ring-color' as string]: 'var(--brand-soft, #CFC4FF)' }}
           />
@@ -395,7 +395,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           screenOptions={props.screenOptions}
           groupOptions={props.groupOptions}
         />
-        <label className="sr-only" htmlFor="playlist-sort">Sort playlists</label>
+        <label className="sr-only" htmlFor="playlist-sort">{t('playlistsPage.libSortLabel')}</label>
         <select
           id="playlist-sort"
           value={sort}
@@ -403,11 +403,11 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
           className={`h-11 px-3 rounded-[10px] text-[13px] font-semibold ${SURFACE} ${INK} outline-none`}
         >
           {(Object.keys(SORT_LABELS) as LibrarySort[]).map((k) => (
-            <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            <option key={k} value={k}>{t(`playlistsPage.libSort.${k}`)}</option>
           ))}
         </select>
-        <div role="group" aria-label="View mode" className={`hidden sm:flex items-center h-11 rounded-[10px] ${SURFACE} p-1`}>
-          {([['grid', Grid2X2, 'Grid view'], ['list', ListIcon, 'List view']] as const).map(([k, Icon, label]) => (
+        <div role="group" aria-label={t('playlistsPage.libViewMode')} className={`hidden sm:flex items-center h-11 rounded-[10px] ${SURFACE} p-1`}>
+          {([['grid', Grid2X2, t('playlistsPage.libGridView')], ['list', ListIcon, t('playlistsPage.libListView')]] as const).map(([k, Icon, label]) => (
             <button
               key={k}
               type="button"
@@ -436,7 +436,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             onClick={clearAll}
             className={`text-[12px] font-semibold underline ${INK_2} hover:${INK}`}
           >
-            Clear all
+            {t('playlistsPage.libClearAll')}
           </button>
         </div>
       )}
@@ -464,12 +464,12 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
               className="hidden sm:block shrink-0 text-[13px] font-bold hover:underline"
               style={{ color: 'var(--brand-primary, #3515E8)' }}
             >
-              Review delivery
+              {t('playlistsPage.libReviewDelivery')}
             </button>
             <button
               type="button"
               onClick={() => setBannerDismissed(true)}
-              aria-label="Dismiss for this visit"
+              aria-label={t('playlistsPage.libDismiss')}
               className="shrink-0 p-1 rounded text-amber-700/70 hover:text-amber-900 hover:bg-amber-100"
             >
               <X className="w-4 h-4" aria-hidden />
@@ -480,7 +480,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             onClick={() => props.onReviewDelivery(banner.playlistId)}
             className="sm:hidden mt-2.5 w-full h-11 rounded-[10px] border border-amber-300 bg-white text-[13px] font-bold text-amber-800"
           >
-            Review delivery
+            {t('playlistsPage.libReviewDelivery')}
           </button>
         </div>
       )}
@@ -522,16 +522,16 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
       {!error && visible.length > 0 && (
         <div className={`flex items-center justify-between gap-3 flex-wrap text-[12px] ${INK_3}`}>
           <span>
-            Showing {clampedPage * PAGE_SIZE + 1}–{Math.min(visible.length, (clampedPage + 1) * PAGE_SIZE)} of {visible.length} playlists
-            {props.deliveryDerived && ' · Delivery is each screen’s own last report'}
+            {t('playlistsPage.libShowing', { from: clampedPage * PAGE_SIZE + 1, to: Math.min(visible.length, (clampedPage + 1) * PAGE_SIZE), count: visible.length })}
+            {props.deliveryDerived && ` · ${t('playlistsPage.libDeliveryDerived')}`}
           </span>
           {pageCount > 1 && (
-            <div className="flex items-center gap-1" role="group" aria-label="Pagination">
+            <div className="flex items-center gap-1" role="group" aria-label={t('playlistsPage.libPagination')}>
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={clampedPage === 0}
-                aria-label="Previous page"
+                aria-label={t('playlistsPage.libPrevPage')}
                 className={`w-8 h-8 rounded-[8px] ${SURFACE} flex items-center justify-center disabled:opacity-40`}
               >
                 <ChevronLeft className="w-4 h-4" aria-hidden />
@@ -554,7 +554,7 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
                 type="button"
                 onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                 disabled={clampedPage >= pageCount - 1}
-                aria-label="Next page"
+                aria-label={t('playlistsPage.libNextPage')}
                 className={`w-8 h-8 rounded-[8px] ${SURFACE} flex items-center justify-center disabled:opacity-40`}
               >
                 <ChevronRight className="w-4 h-4" aria-hidden />
@@ -703,12 +703,12 @@ function ListView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                           testId="select-page"
                         />
                       </span>
-                      {h}
+                      {t(`playlistsPage.libCol.${h}`)}
                     </span>
-                  ) : h}
+                  ) : t(`playlistsPage.libCol.${h}`)}
                 </th>
               ))}
-              <th scope="col" className="px-4 py-3 sticky right-0 bg-white"><span className="sr-only">Actions</span></th>
+              <th scope="col" className="px-4 py-3 sticky right-0 bg-white"><span className="sr-only">{t('playlistsPage.libColActions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -833,7 +833,7 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
             }`}
             style={attention ? undefined : { color: 'var(--brand-primary, #3515E8)' }}
           >
-            {attention ? 'Review' : 'Open'}
+            {attention ? t('playlistsPage.libReview') : t('playlistsPage.libMenuOpen')}
           </button>
           <OverflowMenu row={row} {...p} />
         </div>
@@ -843,7 +843,10 @@ function Row({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
 }
 
 function StatusPill({ row, attention }: { row: PlaylistSummaryRow; attention: boolean }) {
+  const t = useTranslations();
   const label = attention ? 'NEEDS ATTENTION' : row.statusLabel;
+  // The tone keys stay the English data values; only the words are translated.
+  const shown = STATUS_TONE[label] ? t(`playlistsPage.libStatus.${label.replace(' ', '_')}`) : label;
   return (
     <span
       className={`inline-block px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${
@@ -851,7 +854,7 @@ function StatusPill({ row, attention }: { row: PlaylistSummaryRow; attention: bo
       }`}
       data-testid="status-pill"
     >
-      {label}
+      {shown}
     </span>
   );
 }
@@ -978,7 +981,7 @@ function CompactCard({ row, ...p }: { row: PlaylistSummaryRow } & RowContext) {
           }`}
           style={attention ? undefined : { color: 'var(--brand-primary, #3515E8)' }}
         >
-          {attention ? 'Review' : 'Open'}
+          {attention ? t('playlistsPage.libReview') : t('playlistsPage.libMenuOpen')}
         </button>
         <OverflowMenu row={row} sheetOnMobile {...p} />
       </div>
@@ -1060,7 +1063,7 @@ function GridView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
                     }`}
                     style={attention ? undefined : { color: 'var(--brand-primary, #3515E8)' }}
                   >
-                    {attention ? 'Review' : 'Open'}
+                    {attention ? t('playlistsPage.libReview') : t('playlistsPage.libMenuOpen')}
                   </button>
                   <OverflowMenu row={row} {...p} />
                 </div>
@@ -1081,6 +1084,7 @@ function GridView({ rows, ...p }: { rows: PlaylistSummaryRow[] } & RowContext) {
 function OverflowMenu({
   row, sheetOnMobile, ...p
 }: { row: PlaylistSummaryRow; sheetOnMobile?: boolean } & RowContext) {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const menuId = useId();
@@ -1161,19 +1165,19 @@ function OverflowMenu({
   // once. A contributor still gets their review hand-off, which is a genuinely
   // different action.
   const items: Array<{ label: string; icon: typeof Eye; run: () => void; danger?: boolean; divider?: boolean; disabled?: boolean; hint?: string }> = [
-    { label: 'Open', icon: Eye, run: () => p.onOpen(row.id) },
+    { label: t('playlistsPage.libMenuOpen'), icon: Eye, run: () => p.onOpen(row.id) },
   ];
   if (!p.isViewer) {
     if (p.isContributor && p.onSubmitForReview) {
-      items.push({ label: 'Send for review', icon: Upload, run: () => p.onSubmitForReview!(row.id) });
+      items.push({ label: t('playlistsPage.libMenuSendForReview'), icon: Upload, run: () => p.onSubmitForReview!(row.id) });
     }
-    items.push({ label: 'Duplicate', icon: Copy, run: () => p.onDuplicate(row.id) });
+    items.push({ label: t('playlistsPage.libMenuDuplicate'), icon: Copy, run: () => p.onDuplicate(row.id) });
   }
   // Named for what it produces: a package a player reads off a USB stick.
   // No setting gates it any more (2026-10-22). A USB stick is a publish, so it
   // is an admin's action like the API says — not a viewer's or an editor's.
   if (!p.isViewer && !p.isContributor) {
-    items.push({ label: 'Export to USB', icon: Usb, run: () => p.onExport(row.id) });
+    items.push({ label: t('playlistsPage.libMenuExportUsb'), icon: Usb, run: () => p.onExport(row.id) });
   }
   if (p.isHQ && p.onPublishToLocations && !p.isViewer && row.sourceOwnership === 'own') {
     // Carries the row's playlist so the sheet opens on it — it used to open
@@ -1182,10 +1186,10 @@ function OverflowMenu({
     // to be added". The vertical noun bought nothing here — the sheet it opens
     // already names the locations — and it meant every new vertical needed a
     // word before this menu read correctly.
-    items.push({ label: 'Publish', icon: Upload, run: () => p.onPublishToLocations!(row.id) });
+    items.push({ label: t('playlistsPage.libMenuPublish'), icon: Upload, run: () => p.onPublishToLocations!(row.id) });
   }
   if (!p.isViewer) {
-    items.push({ label: 'Remove playlist', icon: Trash2, run: () => p.onRemove(row), danger: true, divider: true });
+    items.push({ label: t('playlistsPage.libMenuRemove'), icon: Trash2, run: () => p.onRemove(row), danger: true, divider: true });
   }
 
   return (
@@ -1196,7 +1200,7 @@ function OverflowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        aria-label={`More actions for ${row.name}`}
+        aria-label={t('playlistsPage.libMoreActions', { name: row.name })}
         onClick={(e) => { e.stopPropagation(); setPos(null); setOpen((v) => !v); }}
         className={`w-9 h-9 rounded-[9px] flex items-center justify-center ${INK_3} hover:bg-slate-100 transition-colors`}
       >
@@ -1207,7 +1211,7 @@ function OverflowMenu({
           ref={menuRef}
           id={menuId}
           role="menu"
-          aria-label={`Actions for ${row.name}`}
+          aria-label={t('playlistsPage.libActionsFor', { name: row.name })}
           className={`fixed z-50 w-56 rounded-[12px] py-1 shadow-lg ${SURFACE}`}
           style={{
             top: pos ? pos.top : -9999,
@@ -1264,6 +1268,7 @@ function FiltersControl({
   screenOptions: Array<{ id: string; name: string }>;
   groupOptions: Array<{ id: string; name: string }>;
 }) {
+  const t = useTranslations();
   const panelId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1299,7 +1304,7 @@ function FiltersControl({
         className={`inline-flex items-center gap-2 h-11 px-3.5 rounded-[10px] text-[13px] font-semibold ${SURFACE} ${INK}`}
       >
         <SlidersHorizontal className="w-4 h-4" aria-hidden />
-        Filters
+        {t('playlistsPage.libFilters')}
         {count > 0 && (
           <span
             className="ml-0.5 min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold text-white inline-flex items-center justify-center"
@@ -1314,44 +1319,44 @@ function FiltersControl({
           id={panelId}
           className={`absolute right-0 z-30 mt-1 w-[300px] rounded-[12px] p-3 shadow-lg space-y-3 ${SURFACE}`}
         >
-          {field('Content type', (
+          {field(t('playlistsPage.libFilterContent'), (
             <select className={selectCls} value={filters.contentType} onChange={(e) => set('contentType', e.target.value as LibraryFilters['contentType'])}>
-              <option value="all">Any</option>
-              <option value="media">Media</option>
-              <option value="template">Template</option>
+              <option value="all">{t('playlistsPage.libFilterAny')}</option>
+              <option value="media">{t('playlistsPage.libFilterMedia')}</option>
+              <option value="template">{t('playlistsPage.libFilterTemplate')}</option>
             </select>
           ))}
-          {field('Delivery', (
+          {field(t('playlistsPage.libFilterDelivery'), (
             <select className={selectCls} value={filters.deliveryHealth} onChange={(e) => set('deliveryHealth', e.target.value as LibraryFilters['deliveryHealth'])}>
-              <option value="all">Any</option>
-              <option value="ok">No problems reported</option>
-              <option value="attention">Needs attention</option>
-              <option value="not-published">Not published</option>
+              <option value="all">{t('playlistsPage.libFilterAny')}</option>
+              <option value="ok">{t('playlistsPage.libFilterOk')}</option>
+              <option value="attention">{t('playlistsPage.tabAttention')}</option>
+              <option value="not-published">{t('playlistsPage.libFilterNotPublished')}</option>
             </select>
           ))}
-          {creatorOptions.length > 0 && field('Created by', (
+          {creatorOptions.length > 0 && field(t('playlistsPage.libFilterCreatedBy'), (
             <select className={selectCls} value={filters.creatorId} onChange={(e) => set('creatorId', e.target.value)}>
-              <option value="all">Anyone</option>
+              <option value="all">{t('playlistsPage.libFilterAnyone')}</option>
               {creatorOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           ))}
-          {groupOptions.length > 0 && field('Screen group', (
+          {groupOptions.length > 0 && field(t('playlistsPage.libFilterGroup'), (
             <select className={selectCls} value={filters.groupId} onChange={(e) => set('groupId', e.target.value)}>
-              <option value="all">Any group</option>
+              <option value="all">{t('playlistsPage.libFilterAnyGroup')}</option>
               {groupOptions.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           ))}
-          {screenOptions.length > 0 && field('Screen', (
+          {screenOptions.length > 0 && field(t('playlistsPage.libFilterScreen'), (
             <select className={selectCls} value={filters.screenId} onChange={(e) => set('screenId', e.target.value)}>
-              <option value="all">Any screen</option>
+              <option value="all">{t('playlistsPage.libFilterAnyScreen')}</option>
               {screenOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           ))}
-          {field('Source', (
+          {field(t('playlistsPage.libFilterSource'), (
             <select className={selectCls} value={filters.ownership} onChange={(e) => set('ownership', e.target.value as LibraryFilters['ownership'])}>
-              <option value="all">Any</option>
-              <option value="own">Created here</option>
-              <option value="hq">Managed by HQ</option>
+              <option value="all">{t('playlistsPage.libFilterAny')}</option>
+              <option value="own">{t('playlistsPage.libFilterOwn')}</option>
+              <option value="hq">{t('playlistsPage.libFilterHq')}</option>
             </select>
           ))}
           <button
@@ -1359,7 +1364,7 @@ function FiltersControl({
             onClick={() => setFilters(EMPTY_FILTERS)}
             className={`w-full h-9 rounded-[8px] border ${HAIRLINE} text-[13px] font-semibold ${INK_2} hover:bg-slate-50`}
           >
-            Clear all
+            {t('playlistsPage.libClearAll')}
           </button>
         </div>
       )}
@@ -1373,9 +1378,10 @@ function FiltersControl({
 // ─────────────────────────────────────────────────────────────────────
 
 function LoadingRows() {
+  const t = useTranslations();
   return (
     <div className={`rounded-[14px] overflow-hidden ${SURFACE}`} aria-busy="true" aria-live="polite">
-      <span className="sr-only">Loading playlists…</span>
+      <span className="sr-only">{t('playlistsPage.libLoadingRows')}</span>
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i} className={`flex items-center gap-3 px-4 py-3 border-b last:border-b-0 ${HAIRLINE}`}>
           <div className="w-[96px] h-[54px] rounded-md bg-slate-100 animate-pulse shrink-0" />
