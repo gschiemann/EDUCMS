@@ -45,6 +45,7 @@ on:
       - Player Kotlin Check
       - Poster Freshness
       - Prod Smoke
+      - Security Watch
       - Signing Secrets
       - Taurus Safety
       - Tenant Isolation

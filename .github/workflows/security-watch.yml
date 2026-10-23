@@ -1,0 +1,55 @@
+# Hourly security early warning (2026-10-23).
+#
+# Four HIGH/CRITICAL advisories reached production in one day and each was
+# found only when an unrelated push happened to run CI: zod and body-parser
+# (prod audit), multer (prod audit), and CVE-2026-111497 — a Node.js Brotli
+# RCE the API image carried for two days after the fix shipped, which no
+# package audit can see. This runs the same production advisory gate hourly
+# and checks the Node runtime pinned in the Docker images against Node.js's
+# own security releases.
+#
+# A failure is routed by scheduled-failure-issue.yml: an issue is opened (or
+# updated) and the on-call routine starts a session on it within seconds.
+# A nodejs.org outage only warns, so a transient blip never pages anyone.
+name: Security Watch
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: Advisories + Node runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Dependencies (needed for prod-graph enumeration)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Production dependency advisories (fail on HIGH/CRITICAL)
+        run: node scripts/npm-advisory-audit.cjs
+
+      - name: Node.js runtime security releases vs the pinned images
+        if: always()
+        run: node scripts/check-node-security.cjs
