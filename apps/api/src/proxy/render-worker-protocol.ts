@@ -246,7 +246,8 @@ export type WorkerMessage =
  *
  * Nothing here is a credential, an endpoint, or a signing key. In particular
  * `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `JWT_SECRET`, `SESSION_SECRET`,
- * `DEVICE_SECRET_KEY`, `DEVICE_JWT_SECRET`, `SUPABASE_*`, `PROXY_RENDER_SECRET`
+ * `DEVICE_SECRET_KEY`, `DEVICE_JWT_SECRET` (and their `_PREVIOUS` rotation
+ * companions, security/key-ring.ts), `SUPABASE_*`, `PROXY_RENDER_SECRET`
  * and every provider API key are absent BY CONSTRUCTION — see the allowlist
  * test in `render-worker-protocol.spec.ts`, which asserts it against a fake
  * environment holding all of them.

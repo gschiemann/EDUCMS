@@ -59,10 +59,9 @@
  * string for 60 s, so a screen polling every 5 s pays it about once a minute.
  */
 
-import * as jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 import type { ExecutionContext } from '@nestjs/common';
-import { requireSecret } from './required-secret';
+import { verifyDeviceJwt } from './device-jwt';
 
 /**
  * Per-device, per-route ceiling, per 60 s.
@@ -225,12 +224,10 @@ export function verifiedDeviceSubject(req: Record<string, any> | undefined): str
 
   let sub: string | null = null;
   try {
-    const secret = requireSecret('DEVICE_JWT_SECRET', {
-      devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
-    });
     // Same explicit allowlist device-auth.ts uses (DT-12): jsonwebtoken's
-    // default is a library default, not our guarantee.
-    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as any;
+    // default is a library default, not our guarantee. Verified against the
+    // DEVICE_JWT_SECRET ring (primary, then previous) — security/device-jwt.ts.
+    const decoded = verifyDeviceJwt<any>(token, { algorithms: ['HS256'] });
     if (decoded?.kind === 'device' && plausibleScreenId(decoded?.sub)) sub = decoded.sub;
   } catch {
     // Expired, forged, wrong kind, wrong secret — all the same answer: this

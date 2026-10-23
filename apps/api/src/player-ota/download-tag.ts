@@ -34,6 +34,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { deviceSecretKeyCandidatesFromEnv } from '../security/key-ring';
 
 /** Query parameter carrying the tag. Optional on every route that reads it. */
 export const DOWNLOAD_TAG_PARAM = 'dl';
@@ -46,11 +47,16 @@ function secret(env: NodeJS.ProcessEnv): string {
   return (env.DEVICE_SECRET_KEY || '').trim();
 }
 
-function mac(screenId: string, versionCode: number, env: NodeJS.ProcessEnv): string {
-  return createHmac('sha256', secret(env))
+function macWith(key: string, screenId: string, versionCode: number): string {
+  return createHmac('sha256', key)
     .update(`apk-download-tag:v1:${screenId}:${versionCode}`)
     .digest('hex')
     .slice(0, HMAC_HEX_LENGTH);
+}
+
+/** Sign-side: the PRIMARY of the DEVICE_SECRET_KEY ring (security/key-ring.ts). */
+function mac(screenId: string, versionCode: number, env: NodeJS.ProcessEnv): string {
+  return macWith(secret(env), screenId, versionCode);
 }
 
 /**
@@ -88,9 +94,16 @@ export function verifyDownloadTag(
   const given = rawTag.slice(dot + 1);
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return '';
   if (!/^[0-9a-f]{16}$/.test(given)) return '';
-  const expected = mac(id, versionCode, env);
+  // Verify-side: primary, then previous during a rotation window (each
+  // compared in constant time; the hex lengths are fixed above).
   try {
-    if (!timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(given, 'utf8'))) return '';
+    const matched = deviceSecretKeyCandidatesFromEnv(env).some((key) =>
+      timingSafeEqual(
+        Buffer.from(macWith(key, id, versionCode), 'utf8'),
+        Buffer.from(given, 'utf8'),
+      ),
+    );
+    if (!matched) return '';
   } catch {
     return '';
   }

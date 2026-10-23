@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 
 /**
  * Stateless, game-scoped feed token for EXTERNAL score ingestion.
@@ -52,7 +52,7 @@ import { requireSecret } from '../security/required-secret';
 let warnedNoDedicatedSecret = false;
 let warnedShortDedicatedSecret = false;
 
-function feedSecret(): string {
+function feedSecrets(): string[] {
   // A dedicated SPORTS_FEED_SECRET wins if set. Otherwise fall back to
   // DEVICE_SECRET_KEY via requireSecret, which THROWS in production when it
   // is missing/empty (boot-validated anyway) and only yields a loud DEV-only
@@ -69,7 +69,7 @@ function feedSecret(): string {
           'Generate a full-strength value: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
       );
     }
-    return dedicated;
+    return [dedicated];
   }
   // 2026-07-13 (audit W0-01.3): sharing DEVICE_SECRET_KEY couples the sports
   // feed to the key that also signs WS/Redis control traffic and wraps
@@ -87,9 +87,10 @@ function feedSecret(): string {
         'Set a dedicated 64-hex SPORTS_FEED_SECRET in the API environment — see the W0-01 rotation runbook.',
     );
   }
-  return requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_feed_secret_CHANGE_ME',
-  });
+  // The DEVICE_SECRET_KEY ring `[primary, previous?]` (security/key-ring.ts):
+  // mint on index 0, verify against any, so a rotation of the shared key does
+  // not kill in-flight feed tokens.
+  return deviceSecretKeyCandidates('dev_only_feed_secret_CHANGE_ME');
 }
 
 const MAC_HEX_LEN = 32; // 128-bit truncation — matches the original token width.
@@ -102,18 +103,24 @@ function normVersion(version: unknown): number {
 }
 
 /** Bare legacy/v0 MAC — `HMAC("feed:<id>")`. Unchanged from the original. */
-function bareMac(gameId: string): string {
+function bareMac(gameId: string, secret: string = feedSecrets()[0]): string {
   return crypto
-    .createHmac('sha256', feedSecret())
+    .createHmac('sha256', secret)
     .update(`feed:${gameId}`)
     .digest('hex')
     .slice(0, MAC_HEX_LEN);
 }
 
 /** Structured MAC over (gameId, version, iat, ttl) — distinct "feedv:" prefix. */
-function structuredMac(gameId: string, ver: number, iatSec: number, ttlSec: number): string {
+function structuredMac(
+  gameId: string,
+  ver: number,
+  iatSec: number,
+  ttlSec: number,
+  secret: string = feedSecrets()[0],
+): string {
   return crypto
-    .createHmac('sha256', feedSecret())
+    .createHmac('sha256', secret)
     .update(`feedv:${gameId}:${ver}:${iatSec}:${ttlSec}`)
     .digest('hex')
     .slice(0, MAC_HEX_LEN);
@@ -211,7 +218,9 @@ export function verifyFeedToken(
       if (nowSec > iatSec + ttlSec) return false;
     }
 
-    return safeEqHex(structuredMac(gameId, tokVer, iatSec, ttlSec), mac);
+    return feedSecrets().some((secret) =>
+      safeEqHex(structuredMac(gameId, tokVer, iatSec, ttlSec, secret), mac),
+    );
   }
 
   // ── Bare legacy/v0 token: 32 hex, non-expiring ──
@@ -220,7 +229,7 @@ export function verifyFeedToken(
   // freshly-minted (structured) token.
   if (token.length !== MAC_HEX_LEN) return false;
   if (ver !== 0) return false;
-  return safeEqHex(bareMac(gameId), token);
+  return feedSecrets().some((secret) => safeEqHex(bareMac(gameId, secret), token));
 }
 
 /**
