@@ -437,7 +437,7 @@
     "sectionNotifications": "通知",
     "notificationSettings": "通知设置",
     "notificationSettingsSub": "推送、邮件、应用内偏好",
-    "appInfo": "Venue OS 控制台",
+    "appInfo": "VenueOS 控制台",
     "roleSuperAdmin": "超级管理员",
     "roleDistrictAdmin": "区域管理员",
     "roleSchoolAdmin": "机构管理员",
@@ -3267,7 +3267,18 @@
     "usbExportOff": "此组织已关闭 USB 导出。请联系管理员开启。",
     "usbExportOffAdmin": "此组织已关闭 USB 导出。",
     "usbExportOpenSettings": "在设置中开启 USB 导出",
-    "durationClamped": "时长范围为 {min} 到 {max} 秒，已设为 {seconds}。"
+    "durationClamped": "时长范围为 {min} 到 {max} 秒，已设为 {seconds}。",
+    "libraryNew": "新建播放列表",
+    "libraryEmptyTitle": "创建你的第一个播放列表",
+    "libraryEmptyBody": "组合媒体或从模板开始，然后选择在哪里、何时播放。",
+    "libraryEmptyAction": "创建播放列表",
+    "libraryLoadErrorTitle": "无法加载播放列表",
+    "libraryLoadErrorBody": "你的内容仍然安全。请检查网络连接后重试。",
+    "libraryTryAgain": "重试",
+    "libraryNoMatchTitle": "没有符合这些筛选条件的播放列表",
+    "libraryNoMatchBody": "清除筛选条件或换个搜索词。",
+    "libraryClearFilters": "清除筛选",
+    "libraryReadOnly": "只读 — 查看者角色"
   },
   "brandingCard": {
     "loading": "加载中…",

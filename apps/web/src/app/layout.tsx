@@ -67,7 +67,7 @@ export const metadata: Metadata = {
   // lobbies were all in the roadmap); "Venue OS" frames it as an
   // operating system for any venue's screens + safety surfaces
   // rather than a school-only signage tool.
-  title: 'Venue OS',
+  title: 'VenueOS',
   description: 'Operating system for venues — content, screens, and emergency response on every display.',
   // 2026-05-14 — PWA wiring (Phase 1 of MOBILE_APP_ROADMAP.md). The
   // manifest opts the dashboard into Add-to-Home-Screen on iOS / Android,
@@ -109,7 +109,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Venue OS',
+    title: 'VenueOS',
   },
 };
 

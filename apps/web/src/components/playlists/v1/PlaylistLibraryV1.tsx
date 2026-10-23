@@ -331,12 +331,12 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
             type="button"
             onClick={props.onNew}
             disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
+            title={isViewer ? t('playlistsPage.libraryReadOnly') : undefined}
             className="inline-flex items-center gap-2 px-4 h-10 rounded-[10px] text-[13px] font-bold text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-primary, #3515E8)' }}
           >
             <Plus className="w-4 h-4" aria-hidden />
-            New playlist
+            {t('playlistsPage.libraryNew')}
           </button>}
         </div>
       </div>
@@ -495,25 +495,28 @@ export function PlaylistLibraryV1(props: PlaylistLibraryV1Props) {
       {/* ── Body ── */}
       {error ? (
         <EmptyState
-          title="Playlists couldn’t be loaded"
-          body="Your content is still safe. Check your connection and try again."
-          actionLabel="Try again"
+          title={t('playlistsPage.libraryLoadErrorTitle')}
+          body={t('playlistsPage.libraryLoadErrorBody')}
+          actionLabel={t('playlistsPage.libraryTryAgain')}
           onAction={props.onRetry}
         />
       ) : loading && rows.length === 0 ? (
         <LoadingRows />
       ) : rows.length === 0 ? (
         <EmptyState
-          title="Create your first playlist"
-          body="Combine media or start from a template, then choose where and when it should play."
-          actionLabel={isViewer ? undefined : 'New playlist'}
+          title={t('playlistsPage.libraryEmptyTitle')}
+          body={t('playlistsPage.libraryEmptyBody')}
+          // A label of its own, never a second "New playlist": two controls
+          // with one name beside each other read as a duplicate to a screen
+          // reader and made the phone e2e click ambiguous (QA 2026-10-23).
+          actionLabel={isViewer ? undefined : t('playlistsPage.libraryEmptyAction')}
           onAction={isViewer ? undefined : props.onNew}
         />
       ) : visible.length === 0 ? (
         <EmptyState
-          title="No playlists match these filters"
-          body="Clear filters or try another search."
-          actionLabel="Clear filters"
+          title={t('playlistsPage.libraryNoMatchTitle')}
+          body={t('playlistsPage.libraryNoMatchBody')}
+          actionLabel={t('playlistsPage.libraryClearFilters')}
           onAction={clearAll}
         />
       ) : view === 'grid' ? (

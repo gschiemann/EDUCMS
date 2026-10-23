@@ -437,7 +437,7 @@
     "sectionNotifications": "Notificaciones",
     "notificationSettings": "Ajustes de notificaciones",
     "notificationSettingsSub": "Preferencias push, correo y en la app",
-    "appInfo": "Panel de Venue OS",
+    "appInfo": "Panel de VenueOS",
     "roleSuperAdmin": "Superadministrador",
     "roleDistrictAdmin": "Administrador de distrito",
     "roleSchoolAdmin": "Administrador del centro",
@@ -3267,7 +3267,18 @@
     "usbExportOff": "La exportación por USB está desactivada para esta organización. Pida a un administrador que la active.",
     "usbExportOffAdmin": "La exportación por USB está desactivada para esta organización.",
     "usbExportOpenSettings": "Activar la exportación por USB en Configuración",
-    "durationClamped": "La duración va de {min} a {max} segundos; se ajustó a {seconds}."
+    "durationClamped": "La duración va de {min} a {max} segundos; se ajustó a {seconds}.",
+    "libraryNew": "Nueva lista",
+    "libraryEmptyTitle": "Crea tu primera lista",
+    "libraryEmptyBody": "Combina archivos o parte de una plantilla y luego elige dónde y cuándo se reproduce.",
+    "libraryEmptyAction": "Crear una lista",
+    "libraryLoadErrorTitle": "No se pudieron cargar las listas",
+    "libraryLoadErrorBody": "Tu contenido sigue a salvo. Revisa tu conexión e inténtalo de nuevo.",
+    "libraryTryAgain": "Reintentar",
+    "libraryNoMatchTitle": "Ninguna lista coincide con estos filtros",
+    "libraryNoMatchBody": "Borra los filtros o prueba otra búsqueda.",
+    "libraryClearFilters": "Borrar filtros",
+    "libraryReadOnly": "Solo lectura — rol de lector"
   },
   "brandingCard": {
     "loading": "Cargando…",

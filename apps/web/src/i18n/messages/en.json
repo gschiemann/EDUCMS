@@ -437,7 +437,7 @@
     "sectionNotifications": "Notifications",
     "notificationSettings": "Notification settings",
     "notificationSettingsSub": "Push, email, in-app preferences",
-    "appInfo": "Venue OS dashboard",
+    "appInfo": "VenueOS dashboard",
     "roleSuperAdmin": "Super Admin",
     "roleDistrictAdmin": "District Admin",
     "roleSchoolAdmin": "School Admin",
@@ -3267,7 +3267,18 @@
     "usbExportOff": "USB export is turned off for this organization. Ask an admin to turn it on.",
     "usbExportOffAdmin": "USB export is turned off for this organization.",
     "usbExportOpenSettings": "Turn on USB export in Settings",
-    "durationClamped": "Durations run from {min} to {max} seconds — set to {seconds}."
+    "durationClamped": "Durations run from {min} to {max} seconds — set to {seconds}.",
+    "libraryNew": "New playlist",
+    "libraryEmptyTitle": "Create your first playlist",
+    "libraryEmptyBody": "Combine media or start from a template, then choose where and when it should play.",
+    "libraryEmptyAction": "Create a playlist",
+    "libraryLoadErrorTitle": "Playlists couldn’t be loaded",
+    "libraryLoadErrorBody": "Your content is still safe. Check your connection and try again.",
+    "libraryTryAgain": "Try again",
+    "libraryNoMatchTitle": "No playlists match these filters",
+    "libraryNoMatchBody": "Clear filters or try another search.",
+    "libraryClearFilters": "Clear filters",
+    "libraryReadOnly": "Read-only — viewer role"
   },
   "brandingCard": {
     "loading": "Loading…",
