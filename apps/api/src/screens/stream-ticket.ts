@@ -45,19 +45,25 @@
  */
 
 import * as crypto from 'crypto';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 
 /** Ticket validity. Long enough to survive a slow kiosk, short enough to be worthless in a log. */
 export const STREAM_TICKET_TTL_MS = 60_000;
 
 const TICKET_VERSION = 'st1';
 
-function ticketSecret(): string {
-  return requireSecret('DEVICE_SECRET_KEY', { devFallback: 'dev_only_device_secret_CHANGE_ME' });
+/** `[primary, previous?]` of the DEVICE_SECRET_KEY ring (security/key-ring.ts). */
+function ticketSecrets(): string[] {
+  return deviceSecretKeyCandidates('dev_only_device_secret_CHANGE_ME');
 }
 
+function signWith(secret: string, payload: string): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+/** Mint-side: always the PRIMARY. */
 function sign(payload: string): string {
-  return crypto.createHmac('sha256', ticketSecret()).update(payload).digest('base64url');
+  return signWith(ticketSecrets()[0], payload);
 }
 
 /**
@@ -94,10 +100,14 @@ export function verifyStreamTicket(ticket: unknown, now = Date.now()): StreamTic
   if (version !== TICKET_VERSION) return { ok: false, reason: 'ticket_version' };
 
   const body = `${version}.${screenId}.${epochStr}.${expStr}.${nonce}`;
-  const expected = sign(body);
-  const a = Buffer.from(expected);
+  // Verify-side: primary, then previous during a rotation window; each in
+  // constant time.
   const b = Buffer.from(sig);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  const signatureOk = ticketSecrets().some((secret) => {
+    const a = Buffer.from(signWith(secret, body));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+  if (!signatureOk) {
     return { ok: false, reason: 'ticket_signature' };
   }
 

@@ -13,6 +13,7 @@ import { Request } from 'express';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
+import { deviceJwtSecretRing } from '../security/key-ring';
 import { clientIpFromRequest } from '../security/client-ip';
 import {
   classifyRevocationPurpose,
@@ -328,8 +329,14 @@ export class JwtAuthGuard implements CanActivate {
       }
 
       const isDeviceToken = unverifiedKind === 'device';
-      const secret = isDeviceToken
-        ? requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' })
+      // Device tokens verify against the DEVICE_JWT_SECRET key RING
+      // (security/key-ring.ts): primary first, then — during a rotation
+      // window only — the previous value, so a screen still holding a token
+      // minted on the retiring key is not 401'd before it renews. User
+      // tokens are unchanged (JWT_SECRET, one key).
+      const deviceRing = isDeviceToken ? deviceJwtSecretRing() : null;
+      const secret = deviceRing
+        ? deviceRing.primary
         : requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' });
 
       // SEC-010 follow-on (2026-09-05) — PIN THE ALGORITHM.
@@ -344,10 +351,22 @@ export class JwtAuthGuard implements CanActivate {
       // allowlist is also what survives a future refactor that swaps the
       // secret for a key object, which is where the real confusion attack
       // lives.
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret,
-        algorithms: USER_JWT_ALGORITHMS,
-      });
+      const payload = await this.jwtService
+        .verifyAsync(token, { secret, algorithms: USER_JWT_ALGORITHMS })
+        .catch(async (primaryError: unknown) => {
+          // Previous key, device tokens only, and only when a window is open.
+          // The PRIMARY's error is the one surfaced when both refuse, so the
+          // 401 reads exactly as it did with a single key.
+          if (!deviceRing?.previous) throw primaryError;
+          try {
+            return await this.jwtService.verifyAsync(token, {
+              secret: deviceRing.previous,
+              algorithms: USER_JWT_ALGORITHMS,
+            });
+          } catch {
+            throw primaryError;
+          }
+        });
 
       // AUTH-01 (2026-08-04) — REJECT PARTIAL-FLOW TOKENS AS SESSIONS.
       //

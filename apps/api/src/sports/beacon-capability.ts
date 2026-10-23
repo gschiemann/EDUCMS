@@ -45,7 +45,7 @@
  */
 
 import * as crypto from 'crypto';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 
 export type BeaconScope = 'impression' | 'cue';
 
@@ -64,9 +64,13 @@ const VERSION = 'bc1';
 
 let warnedNoDedicatedSecret = false;
 
-function beaconSecret(): string {
+/**
+ * `[dedicated]`, or the DEVICE_SECRET_KEY ring `[primary, previous?]` when no
+ * dedicated secret is set (security/key-ring.ts). Mint = index 0; verify = any.
+ */
+function beaconSecrets(): string[] {
   const dedicated = process.env.SPORTS_BEACON_SECRET || process.env.SPORTS_FEED_SECRET;
-  if (dedicated && dedicated.trim().length >= 16) return dedicated;
+  if (dedicated && dedicated.trim().length >= 16) return [dedicated];
   if (process.env.NODE_ENV === 'production' && !warnedNoDedicatedSecret) {
     warnedNoDedicatedSecret = true;
     console.error(
@@ -75,9 +79,7 @@ function beaconSecret(): string {
         'blast radius with WS/Redis control traffic and BYOK/MFA wrapping).',
     );
   }
-  return requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_beacon_secret_CHANGE_ME',
-  });
+  return deviceSecretKeyCandidates('dev_only_beacon_secret_CHANGE_ME');
 }
 
 /** Everything the signature covers. Field names are short: this rides a header. */
@@ -109,8 +111,18 @@ export interface BeaconCapabilityClaims {
   x: number;
 }
 
+function signWith(secret: string, payload: string): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+/** Mint-side: always the primary (index 0). */
 function sign(payload: string): string {
-  return crypto.createHmac('sha256', beaconSecret()).update(payload).digest('base64url');
+  return signWith(beaconSecrets()[0], payload);
+}
+
+/** Verify-side: any key in the ring reproduces the MAC (constant-time each). */
+function signatureMatches(payload: string, actual: string): boolean {
+  return beaconSecrets().some((secret) => safeEq(signWith(secret, payload), actual));
 }
 
 function safeEq(expected: string, actual: string): boolean {
@@ -200,7 +212,7 @@ export function verifyBeaconCapability(
   if (parts.length !== 3) return { ok: false, reason: 'malformed' };
   const [version, payload, mac] = parts;
   if (version !== VERSION) return { ok: false, reason: 'bad_version' };
-  if (!safeEq(sign(payload), mac)) return { ok: false, reason: 'bad_signature' };
+  if (!signatureMatches(payload, mac)) return { ok: false, reason: 'bad_signature' };
 
   let claims: BeaconCapabilityClaims;
   try {

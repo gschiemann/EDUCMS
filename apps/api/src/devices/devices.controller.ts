@@ -2,7 +2,7 @@ import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/commo
 import { Throttle } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
-import { requireSecret } from '../security/required-secret';
+import { deviceJwtSecretRing } from '../security/key-ring';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 
 /**
@@ -108,7 +108,8 @@ export class DevicesController {
     const token = jwt.sign(
       { sub: target.id, tenantId: target.tenantId, kind: 'device', fp },
       // sec-fix(wave1) #2: fail at boot in prod rather than sign with a default.
-      requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
+      // Always the ring PRIMARY (security/key-ring.ts): mint on the new key.
+      deviceJwtSecretRing().primary,
       { expiresIn: '365d' }, // 1-year — kiosks shouldn't re-pair often
     );
 

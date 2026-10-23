@@ -89,6 +89,21 @@ export function wsHmacHex(canonical: string, secret: string): string {
 export type WsVerifyResult = { ok: true } | { ok: false; reason: string };
 
 /**
+ * A verifier accepts ONE secret or a KEY RING — `[primary, previous?]` from
+ * `security/key-ring.ts` (2026-10-22 rotation window). A single string behaves
+ * exactly as before. With a ring, a signature is accepted when ANY listed key
+ * reproduces it (each compared in constant time), and `bindWsSignatureToChannel`
+ * always RE-SIGNS with the FIRST entry, the primary — so during a rotation
+ * every replica still accepts a lockdown signed by a replica on the old key,
+ * and every envelope leaving this process carries the new one.
+ */
+export type WsSecret = string | readonly string[];
+
+function secretCandidates(secret: WsSecret): readonly string[] {
+  return typeof secret === 'string' ? [secret] : secret;
+}
+
+/**
  * Stateless HMAC verify: recompute, constant-time compare, freshness window.
  *
  * Deliberately has NO single-use replay nonce — this runs on EVERY API
@@ -117,7 +132,7 @@ export function verifyWsHmac(
     payload?: unknown;
     signature?: unknown;
   } | null | undefined,
-  secret: string,
+  secret: WsSecret,
   maxAgeMs = WS_SIG_MAX_AGE_MS,
   channel?: string,
   /**
@@ -182,13 +197,16 @@ export function verifyWsHmac(
  */
 function sigMatches(
   canonical: string,
-  secret: string,
+  secret: WsSecret,
   actual: string,
 ): boolean {
-  const expBuf = Buffer.from(wsHmacHex(canonical, secret), 'utf8');
   const actBuf = Buffer.from(actual, 'utf8');
-  if (expBuf.length !== actBuf.length) return false;
-  return crypto.timingSafeEqual(expBuf, actBuf);
+  for (const key of secretCandidates(secret)) {
+    const expBuf = Buffer.from(wsHmacHex(canonical, key), 'utf8');
+    if (expBuf.length !== actBuf.length) continue;
+    if (crypto.timingSafeEqual(expBuf, actBuf)) return true;
+  }
+  return false;
 }
 
 /**
@@ -212,7 +230,7 @@ function sigMatches(
 export function bindWsSignatureToChannel<T>(
   message: T,
   channel: string,
-  secret: string,
+  secret: WsSecret,
   maxAgeMs = WS_SIG_MAX_AGE_MS,
 ): T {
   if (!message || typeof message !== 'object') return message;
@@ -237,7 +255,9 @@ export function bindWsSignatureToChannel<T>(
       payload: env.payload,
       channel,
     }),
-    secret,
+    // Always the PRIMARY: a re-signed envelope leaves on the current key even
+    // when it arrived (from an older replica) under the previous one.
+    secretCandidates(secret)[0],
   );
   return { ...(message as object), signature } as T;
 }

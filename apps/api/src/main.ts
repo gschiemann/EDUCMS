@@ -21,6 +21,7 @@ import {
   warnRetiredEnvVars,
   warnIneffectiveDbTlsSettings,
 } from './security/required-secret';
+import { assertKeyRingsAtBoot } from './security/key-ring';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { RedisService } from './realtime/redis.service';
 import {
@@ -53,6 +54,19 @@ async function bootstrap() {
   // (before the healthcheck passes) instead of 500'ing every device/WS call
   // later. In dev/test each missing secret just warns.
   assertRequiredSecretsAtBoot();
+
+  // 2026-10-22 — rotation windows (security/key-ring.ts). A `<NAME>_PREVIOUS`
+  // that is set must be long enough and must DIFFER from the primary, or the
+  // boot refuses: an identical pair means the leaked value is still the live
+  // one. Unset = no window = nothing to check.
+  for (const name of assertKeyRingsAtBoot()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[security] ${name}_PREVIOUS is set — a rotation window is OPEN for ${name}. ` +
+        `Verification accepts both values; everything new uses ${name}. ` +
+        `Delete ${name}_PREVIOUS once the window has run (docs/SECRET-ROTATION.md).`,
+    );
+  }
 
   // Retired env vars (PLAYER_APK_LATEST_VERSION_CODE / _NAME /
   // PLAYER_APK_SHA256, removed 2026-05-15). Nothing reads them any more, so a

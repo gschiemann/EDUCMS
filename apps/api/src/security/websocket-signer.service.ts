@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
-import { requireSecret } from './required-secret';
+import { deviceSecretKeyRing } from './key-ring';
 import { wsCanonicalString, wsHmacHex } from './ws-signature';
 
 export interface WsMessagePayload {
@@ -56,9 +56,10 @@ export interface WsMessagePayload {
  */
 @Injectable()
 export class WebsocketSignerService {
-  private readonly deviceSecret = requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_device_secret_CHANGE_ME',
-  });
+  // Always the PRIMARY of the DEVICE_SECRET_KEY ring (security/key-ring.ts):
+  // a rotation window never changes what this process SIGNS with, only what
+  // the fan-out gate (redis.service.ts) ACCEPTS.
+  private readonly deviceSecret = deviceSecretKeyRing().primary;
 
   /**
    * @param channel OPTIONAL Redis delivery channel (`tenant:<id>` |

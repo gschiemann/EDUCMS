@@ -81,7 +81,8 @@ import {
   stampRepairRequired,
   type RepairStampPrisma,
 } from '../security/repair-required-stamp';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
+import { verifyDeviceJwt } from '../security/device-jwt';
 import { invalidateManifestPreamble } from './manifest-hot-cache';
 
 /** Device JWTs are HMAC-signed. Never accept an asymmetric or `none` alg. */
@@ -682,13 +683,12 @@ export function decodeDeviceBearer(
   }
   const token = auth.slice(7).trim();
   try {
-    const secret = requireSecret('DEVICE_JWT_SECRET', {
-      devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
-    });
     // DT-12: explicit algorithm allowlist. jsonwebtoken currently refuses
     // `alg:none` and pins HS* for string secrets by default, but that is a
     // library default, not our guarantee. Say it out loud.
-    const decoded = jwt.verify(token, secret, { algorithms: DEVICE_JWT_ALGORITHMS }) as any;
+    // Verified against the DEVICE_JWT_SECRET ring (primary, then previous
+    // during a rotation window) — security/device-jwt.ts.
+    const decoded = verifyDeviceJwt<any>(token, { algorithms: DEVICE_JWT_ALGORITHMS });
     if (decoded?.kind !== 'device') return { ok: false, reason: 'wrong_token_kind' };
     if (decoded?.sub !== screenId) return { ok: false, reason: 'subject_mismatch' };
     return { ok: true, token, decoded };
@@ -717,15 +717,16 @@ function verifyDeviceHmacHeader(
   const ts = Number(tsStr);
   if (!Number.isFinite(ts)) return { ok: false, reason: 'hmac_ts_bad' };
   if (Math.abs(Date.now() - ts) > 2 * 60 * 1000) return { ok: false, reason: 'hmac_expired' };
-  const secret = requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_device_secret_CHANGE_ME',
-  });
-  const expected = crypto.createHmac('sha256', secret).update(`${screenId}:${ts}`).digest('hex');
-  const a = Buffer.from(expected);
+  // Primary, then previous during a DEVICE_SECRET_KEY rotation window
+  // (security/key-ring.ts); each compared in constant time.
   const b = Buffer.from(sig);
-  if (a.length !== b.length) return { ok: false, reason: 'hmac_sig_bad' };
-  if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'hmac_sig_bad' };
-  return { ok: true };
+  for (const secret of deviceSecretKeyCandidates()) {
+    const expected = crypto.createHmac('sha256', secret).update(`${screenId}:${ts}`).digest('hex');
+    const a = Buffer.from(expected);
+    if (a.length !== b.length) continue;
+    if (crypto.timingSafeEqual(a, b)) return { ok: true };
+  }
+  return { ok: false, reason: 'hmac_sig_bad' };
 }
 
 /**
@@ -880,12 +881,10 @@ export async function admitDeviceCredential(
 
   let decoded: any;
   try {
-    const secret = requireSecret('DEVICE_JWT_SECRET', {
-      devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
-    });
     // DT-12: explicit algorithm allowlist, not a library default. The SSE leg
     // was verifying with no `algorithms` option at all until SEC-001-realtime.
-    decoded = jwt.verify(token, secret, { algorithms: DEVICE_JWT_ALGORITHMS }) as any;
+    // Ring-aware (primary, then previous) — security/device-jwt.ts.
+    decoded = verifyDeviceJwt<any>(token, { algorithms: DEVICE_JWT_ALGORITHMS });
   } catch (e) {
     return { ok: false, reason: `jwt_invalid:${(e as Error).message}` };
   }
