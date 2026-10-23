@@ -27,6 +27,11 @@ been walked when this revision was written.
 | `886cd9db` | **POS / Instagram / Facebook OAuth landing pages stranded the operator** on "HTTP 404" after a *successful* connection (`GET /me` does not exist + dead token). Instagram/Facebook (which land on the same page) were also told their "POS catalog" was syncing and bounced to POS settings, away from the builder. Now: workspace from the session, social returns to the page that started the connect (same-workspace paths only), signed-out → Sign in link; en/es/zh. | `src/app/connect/__tests__/connect-done.test.tsx` (5 tests incl. open-redirect guard). |
 | `886cd9db` | `apiFetch` logged every **aborted** request as `clog.error` → a red Next "1 Issue" on every dashboard navigation in dev, and noise in every bug report's console capture. | `api-client-abort-quiet.test.ts`; SSO screenshot after shows no Issue badge. |
 
+| `75302d50` | **iPhone More sheet covered** by the "Install VenueOS" banner and the bug-report button (which also sat on the banner's "Don't show again"). Store flags `moreSheetOpen` / `installBannerShown`. | Unit test; `screens/iphone-more-sheet-AFTER.png`, `iphone-install-banner-AFTER.png`. |
+| `6e793f2e` | **Editor dashboards 403'd** on the admin-only `/audit/recent` every load and every 60 s poll. | Hook test; Editor crawl clean. |
+| `9f12db29` | **Password-reset pages** (request + the page the reset email opens) were the only sign-in surfaces still on the pre-rebrand dark theme with the old monitor icon, and English-only. Now the /login card + hex mark + language switcher, every string en/es/zh. | 4 unit tests; `screens/reset-complete-BEFORE.png` vs `reset-complete-AFTER-es.png`. |
+| `36879369` | **Signup industry picker** collapsed to Safari's native 20 px control next to 42 px inputs. `appearance-none` + chevron. | `screens/webkit-public_signup.png` (before) vs `webkit-signup-AFTER.png`. |
+
 ## Per-flow status
 
 | # | Flow | Chromium | WebKit | Status | Notes |
@@ -66,7 +71,7 @@ been walked when this revision was written.
 
 | # | Sev | Where | Gap |
 |---|---|---|---|
-| U1 | Medium | `/signup` (WebKit/Safari) | The "What are you running?" `<select>` renders as Safari's native 20px control next to 42px rounded inputs (`screens/webkit-public_signup.png` vs `chromium-public_signup.png`). 146 `<select>`s in `apps/web/src` and none set `appearance-none`, so every dashboard select looks this way in Safari (People: "All roles / All statuses" next to a 42px search). Needs a design decision (global `appearance:none` + chevron) — not changed here. |
+| U1 | Medium (signup FIXED in `36879369`; rest open) | Dashboard `<select>`s (WebKit/Safari) | The signup picker is fixed. Elsewhere the `<select>` still renders as Safari's native 20px control next to 42px rounded inputs (`screens/webkit-public_signup.png` vs `chromium-public_signup.png`). 146 `<select>`s in `apps/web/src` and none set `appearance-none`, so every dashboard select looks this way in Safari (People: "All roles / All statuses" next to a 42px search). Needs a design decision (global `appearance:none` + chevron) — not changed here. |
 | U2 | Medium | `/signup` | Whole page is English-only (no `useTranslations`) while `/login` offers en/es/zh. |
 | U3 | Medium | Playlists library (`PlaylistLibraryV1.tsx`) | ~60 strings still hard-coded English (status tabs, filters, table headers, row menu). Only header/empty/error copy moved to i18n on this branch. |
 | U4 | Low | Builder text toolbar | Font size shows unrounded values ("26.879"). |
@@ -74,7 +79,7 @@ been walked when this revision was written.
 | U6 | Low | Signup value prop | "170+ templates" — the catalogue is 493 presets / 286 boards. |
 | U8 | Low | Phone dashboard | The bug-report button sits on the "View all" link of the Sites card at rest; "LOCAL TIME" label is offset under the clock. |
 | U9 | Low | Phone header | "Return to Springfield School District fleet" chip runs to the screen edge (text touches/clips at 390 px). |
-| U11 | Low | Password reset | After a successful reset the operator lands on a blank /login (no "Password updated — sign in" note, email not prefilled); an expired/used link still shows the full form and only says so after submit. |
+| U11 | Low | Password reset | (Look + language FIXED in `9f12db29`.) Still open: /login after a reset is not prefilled with the email, and an expired/used link shows the full form and only says so after submit. |
 | U12 | Low | Screens → New group | Duplicate group names are accepted silently (three "Front Lobby" groups in the picker after three runs); the floor-map field is Safari's raw "Choose File / no file selected" control. |
 | U13 | Low | Settings → Integrations | Every card prints "Status source: GET /ai/key" (raw API paths, also in es/zh) — developer text on an operator page. |
 | U10 | Low (a11y) | Dashboard shell | Two nested `<main>` landmarks: the root `app/layout.tsx:149` wraps every page in `<main>` and `DashboardLayout.tsx:183` adds `<main id="main-content">` inside it, so screen readers announce two main regions. Fix needs care: public pages may rely on the root one. |
