@@ -746,7 +746,9 @@ describe('states (§13)', () => {
   it('an empty fleet invites the first pairing', () => {
     renderPage({ screens: [] });
     expect(rtl.getByText('Connect your first screen')).toBeInTheDocument();
-    fireEvent.click(rtl.getAllByRole('button', { name: /Pair screen/ })[1]);
+    // One "Pair screen" (the header) — the empty state has a name of its own.
+    expect(rtl.getAllByRole('button', { name: 'Pair screen' })).toHaveLength(1);
+    fireEvent.click(rtl.getByRole('button', { name: 'Pair your first screen' }));
     expect(onPairScreen).toHaveBeenCalled();
   });
 
@@ -880,7 +882,7 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates the empty-fleet Pair screen button', () => {
       renderPage({ canControl, screens: [] });
-      check(rtl.getAllByRole('button', { name: /Pair screen/ })[1]);
+      check(rtl.getByRole('button', { name: 'Pair your first screen' }));
     });
 
     it('gates the row Resync (POST /screens/:id/refresh-web)', () => {

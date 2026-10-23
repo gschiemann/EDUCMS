@@ -329,7 +329,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       resetNewGroup();
       onChanged();
     } catch (err) {
-      setNewGroupError(err instanceof Error ? err.message : 'Could not create the group.');
+      setNewGroupError(err instanceof Error ? err.message : t('screensOps.createGroupFailed'));
     } finally {
       setNewGroupBusy(false);
     }
@@ -533,15 +533,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const removeGroup = async (g: { id: string; name: string; rows?: unknown[] }) => {
     const n = g.rows?.length ?? 0;
     const ok = await appConfirm({
-      title: `Delete “${g.name}”?`,
+      title: t('screensOps.deleteGroupTitle', { name: g.name }),
       message: n === 0
-        ? 'This group has no screens yet.'
-        : `The ${n} screen${n === 1 ? '' : 's'} in this group stay paired — they simply move out of the group.`,
-      confirmLabel: 'Delete group',
+        ? t('screensOps.deleteGroupEmpty')
+        : t('screensOps.deleteGroupBody', { count: n }),
+      confirmLabel: t('screensOps.deleteGroup'),
       tone: 'danger',
     });
     if (!ok) return;
-    deleteGroup.mutate(g.id, { onSuccess: () => { setToast('Group deleted.'); onChanged(); } });
+    deleteGroup.mutate(g.id, { onSuccess: () => { setToast(t('screensOps.groupDeleted')); onChanged(); } });
   };
 
   const brand = { background: 'var(--brand-primary, #4f46e5)' };
@@ -632,16 +632,16 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       {/* ─── Header (§5) ─────────────────────────────────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl leading-8 font-bold tracking-tight text-slate-900">Screens</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Every screen, correct content, one place</p>
+          <h1 className="text-2xl leading-8 font-bold tracking-tight text-slate-900">{t('screensOps.title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t('screensOps.subtitle')}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="Screen views" className="flex w-full sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+          <div role="tablist" aria-label={t('screensOps.viewsAria')} className="flex w-full sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             {([
-              ['list', 'List', ListIcon],
-              ['map', 'Map', MapIcon],
-              ['floor', 'Floor plans', MapPin],
+              ['list', t('screensOps.viewList'), ListIcon],
+              ['map', t('screensOps.viewMap'), MapIcon],
+              ['floor', t('screensOps.viewFloor'), MapPin],
             ] as const).filter(([key]) => key !== 'floor' || floorSlot).map(([key, label, Icon]) => {
               const active = viewMode === key;
               return (
@@ -668,29 +668,29 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             type="button"
             onClick={() => { setNewGroupOpen(true); setNewGroupError(null); }}
             disabled={!canControl}
-            title={!canControl ? controlDisabledReason ?? 'Your role can’t create groups' : undefined}
+            title={!canControl ? controlDisabledReason ?? t('screensOps.roleNoGroups') : undefined}
             className="px-4 py-2.5 sm:py-2 bg-white text-slate-700 text-sm font-bold rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus className="w-4 h-4" aria-hidden /> New group
+            <Plus className="w-4 h-4" aria-hidden /> {t('screensOps.newGroup')}
           </button>
 
           <button
             type="button"
             onClick={() => onPairScreen()}
             disabled={!canControl}
-            title={!canControl ? controlDisabledReason ?? 'Your role can’t pair screens' : undefined}
+            title={!canControl ? controlDisabledReason ?? t('screensOps.roleNoPair') : undefined}
             className="px-4 py-2.5 sm:py-2 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={brand}
           >
-            <Wifi className="w-4 h-4" aria-hidden /> Pair screen
+            <Wifi className="w-4 h-4" aria-hidden /> {t('screensOps.pairScreen')}
           </button>
 
           {connectSlot && (
             <button
               type="button"
               onClick={() => setHowToOpen(true)}
-              aria-label="How to connect a screen"
-              title="How to connect a screen"
+              aria-label={t('screensOps.howToConnect')}
+              title={t('screensOps.howToConnect')}
               className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
             >
               <Info className="w-4 h-4" aria-hidden />
@@ -707,41 +707,41 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
       {newGroupOpen && (
         <form
           className="bg-white rounded-2xl border border-slate-200 p-4 grid gap-3"
-          aria-label="New group"
+          aria-label={t('screensOps.newGroup')}
           onSubmit={(e) => { e.preventDefault(); void submitNewGroup(); }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Group name</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t('screensOps.groupName')}</span>
               <input
                 autoFocus
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') resetNewGroup(); }}
-                placeholder="e.g. Lobby, Cardio floor"
-                aria-label="New group name"
+                placeholder={t('screensOps.groupNamePlaceholder')}
+                aria-label={t('screensOps.groupNameAria')}
                 className="h-11 px-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300"
               />
             </label>
             <label htmlFor="new-group-address" className="grid gap-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Address <span className="normal-case tracking-normal font-semibold text-slate-400">(optional — puts the group on the map)</span></span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t('screensOps.address')} <span className="normal-case tracking-normal font-semibold text-slate-400">{t('screensOps.addressHint')}</span></span>
               <AddressAutocomplete
                 id="new-group-address"
                 value={newGroupAddress}
                 onChange={(v) => { setNewGroupAddress(v); setNewGroupGeo(null); }}
                 onPick={(pick) => { setNewGroupAddress(pick.displayName); setNewGroupGeo({ lat: pick.latitude, lng: pick.longitude }); }}
-                placeholder="Street address"
-                ariaLabel="New group address"
+                placeholder={t('screensOps.addressPlaceholder')}
+                ariaLabel={t('screensOps.addressAria')}
                 className="h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300 w-full"
               />
             </label>
           </div>
           <label className="grid gap-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Floor map <span className="normal-case tracking-normal font-semibold text-slate-400">(optional — a PNG or JPG of the floor plan; screens can be placed on it later)</span></span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t('screensOps.floorMap')} <span className="normal-case tracking-normal font-semibold text-slate-400">{t('screensOps.floorMapHint')}</span></span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
-              aria-label="New group floor map"
+              aria-label={t('screensOps.floorMapAria')}
               onChange={(e) => setNewGroupFloor(e.target.files?.[0] ?? null)}
               className="block text-sm text-slate-600 file:mr-3 file:h-9 file:px-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:text-sm file:font-bold file:text-slate-700 hover:file:bg-slate-50"
             />
@@ -756,10 +756,10 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               className="h-11 px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2"
               style={brand}
             >
-              {newGroupBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Creating" /> : 'Create group'}
+              {newGroupBusy ? <Loader2 className="w-4 h-4 animate-spin" aria-label={t('screensOps.creating')} /> : t('screensOps.createGroup')}
             </button>
             <button type="button" onClick={resetNewGroup} className="h-11 px-3 text-sm font-bold text-slate-500 hover:text-slate-700">
-              Cancel
+              {t('screensOps.cancel')}
             </button>
           </div>
         </form>
@@ -787,15 +787,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               onKeyDown={(e) => {
                 if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); }
               }}
-              placeholder="Search screens, locations, groups, or models…"
-              aria-label="Search screens, locations, groups, or models"
+              placeholder={t('screensOps.searchPlaceholder')}
+              aria-label={t('screensOps.searchAria')}
               className="w-full h-12 pl-10 pr-12 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => { setQuery(''); searchRef.current?.focus(); }}
-                aria-label="Clear search"
+                aria-label={t('screensOps.clearSearch')}
                 className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-slate-400 hover:text-slate-600"
               >
                 <X className="w-4 h-4" aria-hidden />
@@ -804,7 +804,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           </div>
 
           {/* ─── Filter chips (§7 — single-select, "All" always there) ── */}
-          <div role="group" aria-label="Filter screens" className="flex flex-wrap gap-2">
+          <div role="group" aria-label={t('screensOps.filterAria')} className="flex flex-wrap gap-2">
             {/* A problem chip with nothing behind it is a dead button (2026-09-14,
                 Greg: "make sure these filters are legit and useful"): All and
                 Needs attention always show; Content behind / Push delayed /
@@ -870,7 +870,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
             {isLoading ? (
               // §13 — skeleton rows preserve the table geometry; never a
               // centred spinner that throws the layout away.
-              <div className="divide-y divide-slate-100" aria-busy="true" aria-label="Loading screens">
+              <div className="divide-y divide-slate-100" aria-busy="true" aria-label={t('screensOps.loading')}>
                 {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="h-[76px] px-5 flex items-center gap-4">
                     <div className="w-9 h-9 rounded-lg bg-slate-100 animate-pulse" />
@@ -884,7 +884,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               <div className="py-16 text-center px-6">
                 <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" aria-hidden />
                 <p className="text-sm font-semibold text-slate-600">
-                  Couldn’t load your screens. Check your connection and try again.
+                  {t('screensOps.loadError')}
                 </p>
                 <button
                   type="button"
@@ -892,15 +892,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   className="mt-4 px-4 py-2 rounded-lg text-white text-sm font-bold inline-flex items-center gap-1.5"
                   style={brand}
                 >
-                  <RefreshCw className="w-4 h-4" aria-hidden /> Retry
+                  <RefreshCw className="w-4 h-4" aria-hidden /> {t('screensOps.retry')}
                 </button>
               </div>
             ) : ops.rows.length === 0 ? (
               <div className="py-16 text-center px-6">
                 <Monitor className="w-9 h-9 text-slate-300 mx-auto mb-3" aria-hidden />
-                <h2 className="text-base font-bold text-slate-800">Connect your first screen</h2>
+                <h2 className="text-base font-bold text-slate-800">{t('screensOps.emptyTitle')}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Pair a player to start publishing and monitoring content.
+                  {t('screensOps.emptyBody')}
                 </p>
                 <button
                   type="button"
@@ -909,14 +909,16 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                   className="mt-4 px-4 py-2.5 rounded-xl text-white text-sm font-bold inline-flex items-center gap-2 disabled:opacity-50"
                   style={brand}
                 >
-                  <Wifi className="w-4 h-4" aria-hidden /> Pair screen
+                  {/* Its own name, never a second "Pair screen" beside the
+                      header's (QA 2026-10-23, same rule as Playlists). */}
+                  <Wifi className="w-4 h-4" aria-hidden /> {t('screensOps.emptyAction')}
                 </button>
               </div>
             ) : visibleCount === 0 ? (
               <div className="py-16 text-center px-6">
                 <Search className="w-8 h-8 text-slate-300 mx-auto mb-3" aria-hidden />
-                <h2 className="text-base font-bold text-slate-800">No screens match</h2>
-                <p className="mt-1 text-sm text-slate-500">Try another name or clear the current filter.</p>
+                <h2 className="text-base font-bold text-slate-800">{t('screensOps.noMatchTitle')}</h2>
+                <p className="mt-1 text-sm text-slate-500">{t('screensOps.noMatchBody')}</p>
                 <button
                   type="button"
                   onClick={() => { setQuery(''); setFilter('all'); }}
@@ -953,7 +955,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                                 {expanded
                                   ? <ChevronDown className="w-4 h-4" aria-hidden />
                                   : <ChevronRight className="w-4 h-4" aria-hidden />}
-                                <span className="sr-only">{expanded ? 'Collapse' : 'Expand'} {g.name}</span>
+                                <span className="sr-only">{t(expanded ? 'screensOps.collapseGroup' : 'screensOps.expandGroup', { name: g.name })}</span>
                               </button>
                               {editingGroup === g.id ? (
                                 <input
@@ -1019,16 +1021,16 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         {expanded && g.rows.length > 0 && (
                           <table className="w-full border-collapse">
                             <caption className="sr-only">
-                              {g.name}: {g.rows.length} screen{g.rows.length === 1 ? '' : 's'}, worst first.
+                              {t('screensOps.groupCaption', { name: g.name, count: g.rows.length })}
                             </caption>
                             <thead>
                               <tr className="border-t border-slate-100">
                                 {selectable && <th scope="col" className="w-10 pl-5 pt-2.5 pb-1.5"><span className="sr-only">{t('screens.bulk.barLabel')}</span></th>}
-                                <th scope="col" className={`text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 ${selectable ? 'px-3' : 'px-5'} pt-2.5 pb-1.5 w-[26%]`}>Screen</th>
-                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[24%] hidden xl:table-cell">Content</th>
-                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[22%]">Status</th>
-                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[15%]">Last contact</th>
-                                <th scope="col" className="text-right text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-5 pt-2.5 pb-1.5 w-[13%]">Action</th>
+                                <th scope="col" className={`text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 ${selectable ? 'px-3' : 'px-5'} pt-2.5 pb-1.5 w-[26%]`}>{t('screensOps.colScreen')}</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[24%] hidden xl:table-cell">{t('screensOps.colContent')}</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[22%]">{t('screensOps.colStatus')}</th>
+                                <th scope="col" className="text-left text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2.5 pb-1.5 w-[15%]">{t('screensOps.colLastContact')}</th>
+                                <th scope="col" className="text-right text-[10.5px] font-bold uppercase tracking-wider text-slate-400 px-5 pt-2.5 pb-1.5 w-[13%]">{t('screensOps.colAction')}</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1182,7 +1184,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           <h3 id={`screen-group-${g.id}-name`} className="text-[13.5px] font-bold text-slate-800 truncate">{g.name}</h3>
                           <GroupAddress address={groups.find(group => group.id === g.id)?.address} />
                         </div>
-                        <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">No screens yet</span>
+                        <span className="text-[12.5px] font-semibold text-slate-400 shrink-0">{t('screensOps.noScreensYet')}</span>
                           {/* 2026-09-14 (Greg): "just hide pair and add screen under the dots". */}
                           <div className="inline-flex items-center gap-1">
                             <div className="relative inline-block">
@@ -1287,7 +1289,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                     <li key={g.id} style={GROUP_ROW_STYLE} className={`${GROUP_CARD_CLASS} px-4 py-3 flex items-center gap-2`} data-testid="empty-group">
                       <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
                       <span className="flex-1 min-w-0"><span className="block text-[13.5px] font-bold text-slate-800 truncate">{g.name}</span><GroupAddress address={groups.find(group => group.id === g.id)?.address} /></span>
-                      <span className="text-[11.5px] font-semibold text-slate-400">No screens yet</span>
+                      <span className="text-[11.5px] font-semibold text-slate-400">{t('screensOps.noScreensYet')}</span>
                       <div className="relative inline-block">
                         <button
                           type="button"
@@ -1315,8 +1317,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           {viewMode === 'list' && !isLoading && !isError && ops.rows.length > 0 && (
             <p className="text-[12px] font-semibold text-slate-400 px-1">
               {filtering
-                ? `Showing ${visibleCount} of ${ops.totals.screens} screen${ops.totals.screens === 1 ? '' : 's'}`
-                : `${ops.totals.screens} screen${ops.totals.screens === 1 ? '' : 's'} across ${ops.groups.length} group${ops.groups.length === 1 ? '' : 's'}`}
+                ? t('screensOps.showingOf', { shown: visibleCount, count: ops.totals.screens })
+                : t('screensOps.totalAcross', { count: ops.totals.screens, groups: ops.groups.length })}
             </p>
           )}
         </>
