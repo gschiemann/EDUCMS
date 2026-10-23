@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
 import {
   RevocationIndeterminateError,
@@ -87,9 +87,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // consumed off the Redis fan-out is verified before it reaches any player,
   // so a forged message published onto a scope channel is dropped here and
   // never renders. Stateless verify (no single-use nonce) → multi-replica safe.
-  private readonly deviceSecret = requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_device_secret_CHANGE_ME',
-  });
+  //
+  // 2026-10-22 — a KEY RING, `[primary, previous?]` (security/key-ring.ts). During
+  // a DEVICE_SECRET_KEY rotation window a replica still on the old key may be
+  // the one that signed a lockdown; this gate must accept it on EVERY replica,
+  // so verify tries the primary then the previous (each constant-time). Publish
+  // still re-signs with the primary only. With no previous configured this is
+  // a one-element list — the exact pre-ring behaviour.
+  private readonly deviceSecret: readonly string[] = deviceSecretKeyCandidates();
 
   // @Optional so test contexts that `new RedisService()` directly (and
   // module setups without PrismaModule) still construct fine. In the

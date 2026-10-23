@@ -128,6 +128,11 @@ const VENDOR_SECRET =
  * `DEVICE_SECRET_KEY`, `GATEWAY_SHARED_SECRET`) and most opaque bearer
  * tokens land here even when nothing about the key name says so.
  *
+ * The rotation companions `DEVICE_SECRET_KEY_PREVIOUS` /
+ * `DEVICE_JWT_SECRET_PREVIOUS` (security/key-ring.ts) are covered twice over,
+ * exactly like their primaries: by KEY NAME (`SENSITIVE_KEY` matches
+ * `secret`) and by VALUE SHAPE (a 64-char hex blob). Pinned in the spec.
+ *
  * The base64 rule additionally requires mixed case AND a digit, which is what
  * separates a real token from a long lowercase slug like
  * `springfield-elementary-north-hallway-display-01`. A single UUID (36 chars)

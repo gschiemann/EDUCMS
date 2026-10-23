@@ -29,6 +29,9 @@ const SECRET_ENV: NodeJS.ProcessEnv = {
   SESSION_SECRET: 'b'.repeat(64),
   DEVICE_SECRET_KEY: 'c'.repeat(64),
   DEVICE_JWT_SECRET: 'd'.repeat(64),
+  // 2026-10-22 rotation companions (security/key-ring.ts) — stripped like the primaries.
+  DEVICE_SECRET_KEY_PREVIOUS: 'e'.repeat(64),
+  DEVICE_JWT_SECRET_PREVIOUS: 'f'.repeat(64),
   SUPABASE_URL: 'https://xyz.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiJ9.service-role',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiJ9.anon',
