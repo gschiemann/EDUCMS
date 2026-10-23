@@ -40,6 +40,7 @@ import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player
 import { useEmergencyFaceStage, readEmergencyFaceStage } from '@/components/player/useEmergencyFaceStage';
 import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
+import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
 import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
@@ -9267,26 +9268,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // the SSE `handle()` wrapper hands us the inner signed payload.
       const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
         signalDisplayEmergencyHold(true, true);
-        const payload = p || {};
-        setPushedEmergencyMessage({
-          // The DB row id arrives as `messageId` in the signed payload;
-          // the WS path falls back to `id`. Accept either.
-          id: payload.messageId || payload.id || `msg-${Date.now()}`,
-          type,
-          severity: (payload.severity as 'INFO' | 'WARN' | 'CRITICAL') || 'CRITICAL',
-          // TEXT_BROADCAST signs the field as `text`; SOS/MEDIA_ALERT
-          // sign it as `textBlob`. Read both so broadcasts aren't blank.
-          textBlob:
-            typeof payload.textBlob === 'string'
-              ? payload.textBlob
-              : typeof payload.text === 'string'
-                ? payload.text
-                : null,
-          mediaUrls: Array.isArray(payload.mediaUrls) ? payload.mediaUrls : [],
-          audioUrl: typeof payload.audioUrl === 'string' ? payload.audioUrl : null,
-          expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : null,
-          createdAt: payload.createdAt || new Date().toISOString(),
-        });
+        // The DB row id arrives as `messageId` in the signed payload (a
+        // literal `id` is accepted too). Shared with the WS branch since
+        // 2026-10-22 — see `pushedEmergencyMessage.ts`. The SSE `handle()`
+        // wrapper hands us only the inner payload, so there is no eventId.
+        setPushedEmergencyMessage(pushedEmergencyFromPayload(type, p, undefined));
       };
       handle('SOS', onEmergencyMessage('SOS'));
       handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
@@ -9632,27 +9618,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // Interlock: a pushed alert takes the glass exactly like a
               // tenant override, so the display hold goes up with it.
               signalDisplayEmergencyHold(true, true);
-              const p = msg.payload || {};
-              setPushedEmergencyMessage({
-                id: p.id || msg.eventId || `msg-${Date.now()}`,
-                type: msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
-                severity: (p.severity as 'INFO' | 'WARN' | 'CRITICAL') || 'CRITICAL',
-                // The signer names the broadcast body `text`, not `textBlob`
-                // (see emergency.controller.ts). The SSE path reads both; the
-                // WS path historically read only `textBlob`, so a TEXT_BROADCAST
-                // over WebSocket rendered BLANK. Read both. (P0-2 adjacent fix,
-                // 2026-05-28 audit.)
-                textBlob:
-                  typeof p.textBlob === 'string'
-                    ? p.textBlob
-                    : typeof p.text === 'string'
-                      ? p.text
-                      : null,
-                mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [],
-                audioUrl: typeof p.audioUrl === 'string' ? p.audioUrl : null,
-                expiresAt: typeof p.expiresAt === 'number' ? p.expiresAt : null,
-                createdAt: p.createdAt || new Date().toISOString(),
-              });
+              // 2026-10-22 — the shared mapper (`pushedEmergencyMessage.ts`).
+              // This branch used to read `p.id || msg.eventId`, but the API
+              // signs the DB row id as `messageId`, so a WS-pushed overlay
+              // carried the envelope's random eventId; the 12 s life-safety
+              // reconcile below could never find that id in the poll and
+              // cleared the alert ~24 s after it was pushed. The SSE branch
+              // already read `messageId`; both now share one function. The
+              // `text` / `textBlob` alias (P0-2 adjacent fix, 2026-05-28) is
+              // preserved inside it.
+              setPushedEmergencyMessage(
+                pushedEmergencyFromPayload(
+                  msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
+                  msg.payload,
+                  msg.eventId,
+                ),
+              );
             } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
               setPushedEmergencyMessage(null);
             }
