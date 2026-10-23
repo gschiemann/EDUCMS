@@ -984,6 +984,94 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     await expect(page.getByText('Shelter in place until further notice')).toBeVisible();
   });
 
+  // 2026-10-23 — launch QA B3. A routine WARN text broadcast is a BANNER over
+  // the running content: it must not swap the player for the red takeover
+  // surface (`data-edu-emergency-transition`, the lockdown path), and when it
+  // expires the banner goes and NO red residue — no transition surface, no
+  // "EMERGENCY" pending text — may stay behind. The device poll answers the
+  // message while it is live and nothing after expiry, exactly as the API
+  // does; the player's own reconcile (two confirmed misses, pulled forward to
+  // the expiry) and the manifest re-check release everything.
+  test('6c. WARN broadcast overlays playing content and disappears at expiry with no red residue', async ({ page }) => {
+    test.setTimeout(90_000);
+    const PNG_1PX = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page.route('**/assets/slide-0.png', (route) =>
+      route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG_1PX }),
+    );
+    manifestRef.value = baselineManifest({
+      playlists: [
+        {
+          id: 'pl-content',
+          name: 'Lobby slideshow',
+          schedule: { daysOfWeek: null, timeStart: null, timeEnd: null, mutedOverride: null },
+          items: [
+            {
+              item_id: 'item-0', asset_id: 'asset-0', url: 'http://api.invalid/assets/slide-0.png',
+              duration_ms: 60_000, sequence: 0, mime_type: 'image/png', transition_type: 'NONE', muted: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    const messageId = 'bcast_00000000-0000-4000-8000-00000000006c_school-a';
+    const expiresAt = Math.floor(Date.now() / 1000) + 10; // live for ~10 s
+    // The device poll: the row is active until it expires, then gone.
+    await page.route('**/api/v1/emergency/messages*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({
+          tenantId: FAKE_TENANT_ID, tenantStatus: 'INACTIVE', tenantPlaylistId: null,
+          active: Date.now() < expiresAt * 1000
+            ? [{ id: messageId, type: 'TEXT_BROADCAST', severity: 'WARN', textBlob: 'Buses are running 20 minutes late', mediaUrls: [], audioUrl: null, scopeType: 'tenant', scopeId: FAKE_TENANT_ID, expiresAt, createdAt: new Date().toISOString(), triggeredByUserId: 'u1' }]
+            : [],
+        }),
+      }),
+    );
+
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    const content = page.locator('img[data-slide-id]');
+    await expect(content, 'the regular image slide must be on glass before the broadcast').toBeAttached({ timeout: 20_000 });
+
+    await pushWs(page, {
+      type: 'TEXT_BROADCAST',
+      timestamp: Date.now(),
+      eventId: 'tb-evt-6c',
+      signature: 'fake-sig',
+      payload: { messageId, severity: 'WARN', text: 'Buses are running 20 minutes late', expiresAt },
+    });
+
+    // Banner over the content: the slide stays, the takeover surface never mounts.
+    const banner = page.locator('[data-edu-emergency-root="banner"]');
+    await expect(banner).toBeVisible({ timeout: 5_000 });
+    await expect(banner).toContainText('Buses are running 20 minutes late');
+    await expect(page.locator('[data-edu-emergency-transition]'), 'a WARN banner must not take the content down').toHaveCount(0);
+    await expect(page.locator('[data-edu-emergency-pending]')).toHaveCount(0);
+    await expect(content).toBeAttached();
+    // It holds for the whole life of the message (the 12 s reconcile sees it active).
+    await page.waitForTimeout(3_000);
+    await expect(banner).toBeVisible();
+    await expect(page.locator('[data-edu-emergency-transition]')).toHaveCount(0);
+
+    // Expiry: the banner leaves within a few seconds of the server dropping
+    // the row, and nothing red stays behind.
+    await expect(banner).toHaveCount(0, { timeout: 25_000 });
+    await expect(page.locator('[data-edu-emergency-transition]')).toHaveCount(0);
+    await expect(page.locator('[data-edu-emergency-pending]')).toHaveCount(0);
+    await expect(page.getByText('EMERGENCY', { exact: true })).toHaveCount(0);
+    await expect(content).toBeAttached();
+    // …and stays that way (the old residue appeared after the clear, not with it).
+    await page.waitForTimeout(4_000);
+    await expect(page.locator('[data-edu-emergency-transition], [data-edu-emergency-pending], [data-edu-emergency-root]')).toHaveCount(0);
+    await expect(content).toBeAttached();
+  });
+
   test('7. MEDIA_ALERT WS message renders "Emergency Alert" (P0-3)', async ({ page }) => {
     await page.goto('/player?fp=' + FAKE_FINGERPRINT);
     await waitForPlayerReady(page);
