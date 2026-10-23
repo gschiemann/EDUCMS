@@ -124,6 +124,8 @@ import {
   type FaceAwareScreenRef,
 } from '@/lib/screen-faces';
 import { useUIStore } from '@/store/ui-store';
+import { exportPlaylistToUsb } from '@/lib/usb-export';
+import { Usb } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
@@ -518,6 +520,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const [screenSearch, setScreenSearch] = useState('');
   const [localScreensOnly, setLocalScreensOnly] = useState(false);
   const [screenLocations, setScreenLocations] = useState<string[]>([]);
+  // USB drive as a destination (2026-10-22, Greg: "wherever you choose where a
+  // playlist goes … add USB drive"). On Create the playlist package downloads
+  // as a .zip the operator copies onto a stick — no key, PIN or setting.
+  const [usbDestination, setUsbDestination] = useState(false);
 
   // Step 4 — publish
   const [activateImmediately, setActivateImmediately] = useState<boolean>(true);
@@ -585,6 +591,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // directly — picking screens routes the final step to Submit-for-Review
   // instead of going live. Admins publish immediately.
   const isContributor = user?.role === 'CONTRIBUTOR';
+  const tUsb = useTranslations('usbDelivery');
+  const authToken = useUIStore((s) => s.token);
+  // A USB stick is a publish an admin makes; an editor's publishes go through
+  // review, so the destination is not offered to them (the API is admin-only).
+  const canUsb = !isContributor && user?.role !== 'RESTRICTED_VIEWER';
   const willSubmitForReview = isContributor && selectedScreenIds.size > 0;
 
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -618,6 +629,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setScreenSearch('');
     setLocalScreensOnly(false);
     setScreenLocations([]);
+    setUsbDestination(false);
     setActivateImmediately(true);
     setSchedStartDate('');
     setSchedEndDate('');
@@ -1314,6 +1326,26 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       qc.refetchQueries({ queryKey: ['playlists'] });
       qc.invalidateQueries({ queryKey: ['playlists', playlistId] });
 
+      // 4b. USB drive destination: build the signed package and download it.
+      //     The .zip goes onto the stick as-is (the player reads it without
+      //     unzipping). A failure here never undoes the playlist — it is saved,
+      //     and "Download to USB" on its page retries.
+      if (usbDestination && canUsb) {
+        const usbName = created.name || name.trim();
+        try {
+          await exportPlaylistToUsb({
+            token: authToken,
+            playlistId,
+            playlistName: usbName,
+            allowFolder: false,
+            schedule: activateImmediately ? null : { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd },
+          });
+          await appAlert({ title: tUsb('destinationTitle'), message: tUsb('doneZip', { name: usbName }), tone: 'info' });
+        } catch (usbErr) {
+          await appAlert({ title: tUsb('destinationTitle'), message: tUsb('failed', { message: (usbErr as Error)?.message || '' }), tone: 'danger' });
+        }
+      }
+
       // 5. Hand the operator back to the dashboard with the new playlist
       //    selected — INCLUDING the items just saved. The parent's
       //    handleSelect uses `pl.items` to seed its localItems state;
@@ -1625,6 +1657,37 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               </button>
             </div>
           )}
+          {step === 3 && canUsb && (
+            <div className="mt-4 rounded-xl border border-slate-200 p-3.5 flex items-start justify-between gap-4" data-testid="wizard-usb-destination">
+              <div className="min-w-0 flex items-start gap-3">
+                <Usb className="w-5 h-5 mt-0.5 text-indigo-600 flex-shrink-0" aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-800">{tUsb('destinationTitle')}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 leading-snug">{tUsb('destinationBody')}</p>
+                  {usbDestination && selectedScreenIds.size + selectedGroupIds.size === 0 && (
+                    <p className="text-xs text-indigo-700 mt-1 leading-snug">{tUsb('destinationOnlyHint')}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={usbDestination}
+                aria-label={tUsb('destinationTitle')}
+                onClick={() => setUsbDestination((v) => !v)}
+                className={`shrink-0 relative h-7 w-12 rounded-full transition-colors ${
+                  usbDestination ? 'bg-emerald-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-[left] ${
+                    usbDestination ? 'left-6' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
           {step === 4 && (
             <Step4Publish
               activate={effectiveActivate}
@@ -1756,7 +1819,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                     {fleetPublish ? 'Create & Publish' : willSubmitForReview
                       ? 'Create & Send for Review'
                       : blastRadius.screenCount === 0
-                        ? "Create (won't display yet)"
+                        ? (usbDestination && canUsb ? tUsb('createForUsb') : "Create (won't display yet)")
                         : 'Create Playlist'}
                   </>
                 )}

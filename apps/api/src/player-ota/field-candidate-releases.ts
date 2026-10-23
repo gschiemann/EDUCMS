@@ -247,4 +247,17 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2496253,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39699920908',
   },
+  // Signed CI 39911176814, source 33653fd8 (PR #136 + USB #128): push
+  // reconnect supervisor, alert paint-proof + bounded vendor wake, back-face
+  // alert watch, offline native start, NEEDS_TAP truth, OFF-after-alert,
+  // double-post reporting, USB auto-import, content store (dark). Production
+  // certificate e45adf50…3d1897, non-debuggable universal APK verified.
+  // Hardware qualification and controlled emergency drills remain pending.
+  '1.1.51-field.1': {
+    versionName: '1.1.51-field.1',
+    versionCode: 10151,
+    sha256: '47e5f81ea38eb1520fc5f502947e64224cb240b59030fe8df32dc558ffefe4e2', // gitleaks:allow -- verified public APK integrity digest
+    size: 2528709,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/39911176814',
+  },
 };

@@ -78,6 +78,10 @@ class PlayerApp : Application() {
         )
         ensureNotificationChannels()
         UsbCacheIndex.reload(this)
+        // 2026-10-22 — plug in a USB stick, its playlist plays. Background
+        // thread only; never touches the display or the emergency path.
+        runCatching { com.educms.player.usb.UsbAutoImport.start(this) }
+            .onFailure { PlayerLogger.w("PlayerApp", "usb auto-import start failed: ${it.message}") }
         HeartbeatService.ensureRunning(this)
         Watchdog.arm(this)
         // 2026-10-03 (1.1.21) — USER STANDBY. Listens for the panel going off
@@ -98,6 +102,19 @@ class PlayerApp : Application() {
         scheduleOtaWorker()
         startManagerHeartbeat()
         installCrashHandler()
+        // 1.1.51 — THE ONE CONTENT STORE, wired (design §5). The playback session
+        // reads it through ContentStorePort (lookup first, own download second).
+        // It ships DARK: the store adopts and downloads only once a face's own
+        // authenticated manifest names it (`nativeVideo.store === true`, the
+        // API's PLAYER_CONTENT_STORE), on a class that runs solo native video.
+        // Never throws: a store that cannot start leaves the Noop in place.
+        runCatching {
+            com.educms.player.media.ContentStorePort.store = com.educms.player.store.AndroidContentStore.start(
+                this,
+                classAllows = { runCatching { com.educms.player.media.DeviceClassPolicy.current(this).nativeSolo }.getOrDefault(false) },
+                enrolledBy = com.educms.player.store.StoreEnrolment::named,
+            )
+        }.onFailure { PlayerLogger.w("PlayerApp", "content store start failed — the Noop store stays: ${it.message}") }
         maybeEnableKioskHomeAlias()
         // v1.0.23 — Manager bootstrap now fires from MainActivity.onCreate
         // (foregrounded) instead of here. Reason: Android 11+ Background

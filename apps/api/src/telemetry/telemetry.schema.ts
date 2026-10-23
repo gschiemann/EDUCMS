@@ -248,6 +248,18 @@ const nativeTimingMeasurement = {
   parityRescues: safeCount().optional(),
   preferredModeApplied: z.number().int().min(0).max(1_000_000).optional(),
   keepScreenOn: z.boolean().optional(),
+  // 1.1.51: the double-post decision (DoublePost.kt) — it used to be dropped by the page's reader and this
+  // schema alike, so the M43's "requested but never applied" was a report that never carried the answer.
+  doublePost: z.strictObject({
+    mode: code(),
+    applied: z.boolean(),
+    gridHzBefore: z.number().finite().min(0).max(1000).optional(),
+    refreshRateBefore: z.number().finite().min(0).max(1000).optional(),
+    displayModeBefore: displayMode().optional(),
+    gridHzAfter: z.number().finite().min(0).max(1000).optional(),
+    refreshRate: z.number().finite().min(0).max(1000).optional(),
+    displayMode: displayMode().optional(),
+  }).optional(),
 };
 /** 1.1.43: what the panel FIRMWARE lists (sysfs, read-only, bounded, stripped to a safe set by the APK). */
 const sysDisplayMode = () => z.string().regex(/^[A-Za-z0-9:_.*+/@-]{1,48}$/);
@@ -320,9 +332,11 @@ const experimentFlags = z.strictObject({
 });
 const guardCodes = () => z.strictObject({
   webviewInvisible: code().optional(), surfaceFrameRate: code().optional(), vsyncSnap: code().optional(), prefer60hz: code().optional(),
+  doublePost: code().optional(),
 });
 const guardCounts = () => z.strictObject({
   webviewInvisible: safeCount().optional(), surfaceFrameRate: safeCount().optional(), vsyncSnap: safeCount().optional(), prefer60hz: safeCount().optional(),
+  doublePost: safeCount().optional(),
 });
 /** The native experiments on this session (1.1.41 / 1.1.42): requested, applied, and the process-wide fault guard. */
 const nativeExperimentsSchema = z.strictObject({
@@ -330,6 +344,8 @@ const nativeExperimentsSchema = z.strictObject({
   applied: z.strictObject({
     webviewInvisible: z.boolean(), surfaceFrameRate: code().optional(),
     vsyncSnap: z.boolean().optional(), prefer60hz: code().optional(),
+    // 1.1.51: the double-post verdict code (DoublePost.kt), present whenever the token was requested.
+    doublePost: code().optional(),
   }),
   guard: z.strictObject({ disabled: guardCodes(), applied: guardCounts() }),
 });

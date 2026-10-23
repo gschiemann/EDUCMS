@@ -1408,7 +1408,17 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 if (isDestroyed || isFinishing || !::webView.isInitialized) return@runOnUiThread
                 if (face != DisplayEmergency.PRIMARY_FACE) {
-                    PlayerLogger.w("MainActivity", "native alert watch asked to reload face $face — only the primary is reloaded here")
+                    // 1.1.51 — a back face has its own page host: reload THAT
+                    // pane (the same mark-stop-load sequence, inside
+                    // FacePlayerHost.reload). A face no host serves is logged,
+                    // never guessed at.
+                    val host = faceHosts?.hostFor(face)
+                    if (host == null) {
+                        PlayerLogger.w("MainActivity", "native alert watch asked to reload face $face, which no face host serves")
+                    } else {
+                        PlayerLogger.e("MainActivity", "reloading face $face's player page for the native alert watch — $why")
+                        host.reload("native alert watch: $why")
+                    }
                     return@runOnUiThread
                 }
                 if (managerGateShown) {
@@ -1426,7 +1436,8 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun pageLoadStartedAtMs(face: Int): Long =
-            if (face == DisplayEmergency.PRIMARY_FACE) lastLoadStartedAtMs else 0L
+            if (face == DisplayEmergency.PRIMARY_FACE) lastLoadStartedAtMs
+            else runCatching { faceHosts?.hostFor(face)?.loadStartedAtMs() }.getOrNull() ?: 0L
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -3395,6 +3406,47 @@ class MainActivity : ComponentActivity() {
         )
         playerWebViewClient = client
         wv.webViewClient = client
+        installUsbHooks()
+    }
+
+    /**
+     * USB sticks (2026-10-22). Idempotent — runs on every (re)configured
+     * WebView. The page learns of a fresh import through a DOM event (no new
+     * bridge method); the service worker's media fetches are answered from the
+     * import; the one-time file-access screen is never opened over an alert.
+     */
+    private fun installUsbHooks() {
+        val ref = java.lang.ref.WeakReference(this)
+        com.educms.player.usb.UsbAutoImport.onImported = { ref.get()?.notifyPageUsbImported() }
+        com.educms.player.usb.UsbAutoImport.onNeedsFileAccess = { ref.get()?.requestUsbFileAccess() }
+        com.educms.player.usb.UsbServiceWorkerHook.install()
+    }
+
+    private fun notifyPageUsbImported() {
+        // Every face: a double-sided unit's second panel serves the same
+        // import and must switch with the first, not at its next reload.
+        runCatching { faceHosts?.dispatchPageEvent("venueos-usb-imported") }
+        if (!::webView.isInitialized) return
+        runCatching {
+            webView.evaluateJavascript("window.dispatchEvent(new Event('venueos-usb-imported'))", null)
+        }
+    }
+
+    private fun requestUsbFileAccess() {
+        if (DisplayEmergency.isHeld(this)) return
+        if (Build.VERSION.SDK_INT >= 30) {
+            if (android.os.Environment.isExternalStorageManager()) return
+            runCatching {
+                startActivity(
+                    Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                        .setData(Uri.parse("package:$packageName")),
+                )
+            }.onFailure { PlayerLogger.w("MainActivity", "usb: all-files access screen unavailable: ${it.message}") }
+        } else if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching { requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 4711) }
+        }
     }
 
     /**
@@ -4270,6 +4322,9 @@ class MainActivity : ComponentActivity() {
             // done above and owns the box's USB sneakernet keys.
             runCatching { com.educms.player.face.FaceTokenStore.clearEveryFace(applicationContext) }
                 .onFailure { PlayerLogger.w("MainActivity", "unpair: face token clear failed: ${it.message}") }
+            // The USB key and any imported stick belonged to this identity.
+            runCatching { com.educms.player.usb.UsbAutoImport.forget(applicationContext) }
+                .onFailure { PlayerLogger.w("MainActivity", "unpair: usb clear failed: ${it.message}") }
             PlayerLogger.i("MainActivity", "Unpair: both native token stores cleared (legacy first)")
             runOnUiThread {
                 webView.loadUrl("about:blank")
@@ -4330,6 +4385,9 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
+        // Back from the one-time file-access screen (or any system screen):
+        // look at a stick that may already be in.
+        com.educms.player.usb.UsbAutoImport.scanSoon(1_000)
         sharedVideoHost?.refreshReadiness()
         // 1.1.23 — whoever left the setup card for a system screen is back.
         runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }

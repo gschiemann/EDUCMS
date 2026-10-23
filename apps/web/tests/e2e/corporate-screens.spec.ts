@@ -102,6 +102,8 @@ test('corporate sees local and company group cards, details and location map wit
   await expect(page.getByRole('button', { name: 'Pair screen', exact: true })).toBeDisabled();
   await desktop.getByRole('button', { name: 'Austin office screen', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: /Austin office screen/ });
+  // Device facts live under Technical details since 2026-10-22.
+  await drawer.getByTestId('screen-technical-details').getByText('Technical details').click();
   await expect(drawer.getByText('Test LCD · Test OS', { exact: true })).toBeVisible();
   await expect(drawer.getByText('192.0.2.10', { exact: true })).toBeVisible();
   await expect(drawer.getByRole('link', { name: 'Open live preview' })).toHaveCount(0);

@@ -132,7 +132,28 @@ export interface NativeVideoTiming {
   preferredModeResult?: string;
   /** 1.1.42 — whether the face's window held FLAG_KEEP_SCREEN_ON at the last watch tick. */
   keepScreenOn?: boolean;
+  /** 1.1.49/1.1.51 — the double-post experiment's decision on this session, when the token was on. */
+  doublePost?: NativeDoublePost;
   history?: { entries: NativeTimingHistoryEntry[]; overflow: number; capacity?: number };
+}
+
+/**
+ * 1.1.51 — what the APK decided about `doublePost` (DoublePost.kt): `mode` is a
+ * code (`fixed-source-always`, `refused`, `grid-not-2x-fps`, `pending`,
+ * `guard-disabled`, …), the grid / refresh / mode before the vote and, when
+ * it was cast, what the display reported afterwards. It used to live only in
+ * the APK's timing block, which this reader dropped — the M43's "requested but
+ * never applied" was a report that never carried the answer.
+ */
+export interface NativeDoublePost {
+  mode: string;
+  applied: boolean;
+  gridHzBefore?: number;
+  refreshRateBefore?: number;
+  displayModeBefore?: string;
+  gridHzAfter?: number;
+  refreshRate?: number;
+  displayMode?: string;
 }
 
 /** One completed (or recovered) session's summary from the APK's persisted ledger. */
@@ -219,10 +240,11 @@ export interface NativeExperimentFlags {
   doublePost?: true;
 }
 
-type GuardedExperiment = "webviewInvisible" | "surfaceFrameRate" | "vsyncSnap" | "prefer60hz";
+type GuardedExperiment = "webviewInvisible" | "surfaceFrameRate" | "vsyncSnap" | "prefer60hz" | "doublePost";
 export interface NativeSessionExperiments {
   requested: NativeExperimentFlags;
-  applied: { webviewInvisible: boolean; surfaceFrameRate?: string; vsyncSnap?: boolean; prefer60hz?: string };
+  /** 1.1.51: `doublePost` is the verdict code (DoublePost.kt), present whenever the token was requested. */
+  applied: { webviewInvisible: boolean; surfaceFrameRate?: string; vsyncSnap?: boolean; prefer60hz?: string; doublePost?: string };
   guard: { disabled: Partial<Record<GuardedExperiment, string>>; applied: Partial<Record<GuardedExperiment, number>> };
 }
 
@@ -243,6 +265,8 @@ const NATIVE_TIMING_COUNT_KEYS = ["droppedFrames", "intervalUnitNs", "intervalCo
 export const NATIVE_TIMING_EXTRA_KEYS: readonly string[] = [
   ...NATIVE_TIMING_COUNT_KEYS, "sourceFps", "refreshRate", "displayMode", "intervalBuckets", "history",
   "clockSlewUs", "supportedModes", "preferredModeResult", "keepScreenOn", "parityLocked",
+  // 1.1.51
+  "doublePost",
 ];
 const signedCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER;
 export const NATIVE_MAX_SUPPORTED_MODES = 16;
@@ -280,6 +304,20 @@ function readTimingExtras(value: Record<string, unknown>, out: Record<string, un
   if (typeof value.preferredModeResult === "string" && CODE_RE.test(value.preferredModeResult)) out.preferredModeResult = value.preferredModeResult;
   if (typeof value.keepScreenOn === "boolean") out.keepScreenOn = value.keepScreenOn;
   if (typeof value.parityLocked === "boolean") out.parityLocked = value.parityLocked;
+  const dp = readDoublePost(value.doublePost);
+  if (dp) out.doublePost = dp;
+}
+
+/** 1.1.51: the double-post decision, bounded field by field; anything else is dropped. */
+export function readDoublePost(v: unknown): NativeDoublePost | null {
+  if (!record(v) || typeof v.mode !== "string" || !CODE_RE.test(v.mode) || typeof v.applied !== "boolean") return null;
+  const out: NativeDoublePost = { mode: v.mode, applied: v.applied };
+  for (const k of ["gridHzBefore", "refreshRateBefore", "gridHzAfter", "refreshRate"] as const) if (rate(v[k])) out[k] = v[k] as number;
+  for (const k of ["displayModeBefore", "displayMode"] as const) {
+    const m = v[k];
+    if (typeof m === "string" && DISPLAY_MODE_RE.test(m)) out[k] = m;
+  }
+  return out;
 }
 
 function readHistoryEntry(v: unknown): NativeTimingHistoryEntry | null {
@@ -376,7 +414,7 @@ const SYS_DISPLAY_MODE_RE = /^[A-Za-z0-9:_.*+/@-]{1,48}$/;
 const SYS_DISPLAY_CAP_RE = /^[A-Za-z0-9:_.*+/@-]{1,32}$/;
 
 const EXPERIMENT_NAMES = ["webviewInvisible", "surfaceFrameRate", "decoderRotation", "vsyncSnap", "prefer60hz", "doublePost"] as const;
-const GUARDED = ["webviewInvisible", "surfaceFrameRate", "vsyncSnap", "prefer60hz"] as const;
+const GUARDED = ["webviewInvisible", "surfaceFrameRate", "vsyncSnap", "prefer60hz", "doublePost"] as const;
 
 /** Only `true` flags, by their known names; nothing else is an experiment. */
 export function readNativeExperimentFlags(v: unknown): NativeExperimentFlags | null {
@@ -393,6 +431,7 @@ export function readNativeSessionExperiments(v: unknown): NativeSessionExperimen
   if (typeof v.applied.surfaceFrameRate === "string" && CODE_RE.test(v.applied.surfaceFrameRate)) applied.surfaceFrameRate = v.applied.surfaceFrameRate;
   if (typeof v.applied.vsyncSnap === "boolean") applied.vsyncSnap = v.applied.vsyncSnap;
   if (typeof v.applied.prefer60hz === "string" && CODE_RE.test(v.applied.prefer60hz)) applied.prefer60hz = v.applied.prefer60hz;
+  if (typeof v.applied.doublePost === "string" && CODE_RE.test(v.applied.doublePost)) applied.doublePost = v.applied.doublePost;
   const guard: NativeSessionExperiments["guard"] = { disabled: {}, applied: {} };
   if (record(v.guard.disabled)) for (const k of GUARDED) {
     const r = v.guard.disabled[k];

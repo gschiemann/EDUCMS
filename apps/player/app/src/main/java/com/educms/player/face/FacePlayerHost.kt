@@ -538,6 +538,13 @@ class FacePlayerHost(
         Pair(0, 0)
     }
 
+    /**
+     * `elapsedRealtime` of this face's last navigation start, 0 before the
+     * first (1.1.51 — the native alert watch's per-face reload grace reads it,
+     * as MainActivity's `lastLoadStartedAtMs` serves the primary).
+     */
+    fun loadStartedAtMs(): Long = lastLoadStartedAtMs
+
     /** Navigate this face. Safe to call from any thread. */
     fun load(reason: String) {
         if (destroyed) return
@@ -571,6 +578,19 @@ class FacePlayerHost(
                 wv.stopLoading()
             }
             load(reason)
+        }
+    }
+
+    /**
+     * Fire a plain DOM event on this face's page (2026-10-22: a USB stick was
+     * imported, so the page re-reads its package). The name is a fixed
+     * identifier from the caller, never page or network data.
+     */
+    fun dispatchPageEvent(name: String) {
+        if (destroyed || !name.matches(Regex("^[a-z0-9-]{1,48}$"))) return
+        activity.runOnUiThread {
+            val wv = webView ?: return@runOnUiThread
+            runCatching { wv.evaluateJavascript("window.dispatchEvent(new Event('$name'))", null) }
         }
     }
 

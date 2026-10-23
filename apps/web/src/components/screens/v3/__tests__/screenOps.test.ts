@@ -19,6 +19,7 @@ import {
   deriveReportedContent,
   deriveScreenStatus,
   deriveVideoPlayback,
+  videoSampleIsNews,
   videoSampleName,
   matchesFilter,
   matchesQuery,
@@ -213,16 +214,17 @@ describe('deriveScreenStatus — §9 taxonomy', () => {
     expect(s.evidence).toBe('Reported: update not confirmed');
   });
 
-  it('push degraded → Push delayed · 42m (amber, Retry, polling backstop)', () => {
+  it('a silent live channel is not a status: the content state stands (2026-10-22)', () => {
+    // The screen's own check-ins carry every change while the channel is
+    // down; "Push delayed · 14h" in amber on every screen was noise.
     const s = status({
       pushChannel: 'stale',
       lastPushConnectedAt: new Date(NOW - 42 * MIN).toISOString(),
     });
-    expect(s.key).toBe('push-delayed');
-    expect(s.tone).toBe('warn');
-    expect(s.age).toBe('42m');
-    expect(s.action).toBe('Retry');
-    expect(s.evidence).toBe('Polling backstop active');
+    expect(s.key).not.toBe('push-delayed');
+    expect(s.needsAttention).toBe(false);
+    expect(s.tone).not.toBe('warn');
+    expect(s.action).not.toBe('Retry');
   });
 
   it('heartbeat stale → Offline · 18m (red, Troubleshoot)', () => {
@@ -655,7 +657,8 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     const r = deriveReportedContent(scr({ lastRenderedHash: 'pl:0|10000|item-old' }), SHA, NOW, undefined, expected());
     expect(r.state).toBe('playing');
     expect(r.line).toBe('Playing a playlist');
-    expect(r.detail).toMatch(/Can’t confirm it is Pro Series Video 1 yet/);
+    // One line, never "Can’t confirm … Confirmed 16 seconds ago" (2026-10-22).
+    expect(r.detail).toBeUndefined();
   });
 
   it('the waiting screen while something is scheduled → behind; with nothing scheduled → idle', () => {
@@ -737,6 +740,43 @@ describe('deriveRecovery — states come from events, never from a timer', () =>
 // §6 / §7 / §8 — the strip, the chips, the grouping
 // ═══════════════════════════════════════════════════════════════════
 
+describe('videoSampleIsNews — what earns the Overview (2026-10-22)', () => {
+  const sample = (over: Record<string, unknown>) =>
+    deriveVideoPlayback(scr({ lastVideoReport: { url: 'https://example.test/a.mp4', ...over } as never }), NOW);
+
+  it('L55VEC: 0.5 % dropped and three pauses worth 0.1 s, two days old → not news', () => {
+    const v = sample({ totalFrames: 1032, droppedFrames: 5, stalls: 3, stalledMs: 100, at: new Date(NOW - 49 * 60 * MIN).toISOString() });
+    expect(v?.grade).toBe('stuttering');
+    expect(videoSampleIsNews(v, NOW)).toBe(false);
+  });
+
+  it('the same blip ten minutes ago is still invisible → not news', () => {
+    const v = sample({ totalFrames: 1032, droppedFrames: 5, stalls: 3, stalledMs: 100, at: new Date(NOW - 10 * MIN).toISOString() });
+    expect(videoSampleIsNews(v, NOW)).toBe(false);
+  });
+
+  it('8 % dropped ten minutes ago → news', () => {
+    const v = sample({ totalFrames: 1000, droppedFrames: 80, at: new Date(NOW - 10 * MIN).toISOString() });
+    expect(videoSampleIsNews(v, NOW)).toBe(true);
+  });
+
+  it('a 2 s freeze ten minutes ago → news, whatever the dropped share', () => {
+    const v = sample({ totalFrames: 1000, droppedFrames: 0, stalls: 1, stalledMs: 2000, at: new Date(NOW - 10 * MIN).toISOString() });
+    expect(videoSampleIsNews(v, NOW)).toBe(true);
+  });
+
+  it('a visible stutter over an hour old → history, not news', () => {
+    const v = sample({ totalFrames: 1000, droppedFrames: 80, at: new Date(NOW - 61 * MIN).toISOString() });
+    expect(videoSampleIsNews(v, NOW)).toBe(false);
+  });
+
+  it('smooth, undated and missing samples are never news', () => {
+    expect(videoSampleIsNews(sample({ totalFrames: 1000, droppedFrames: 0, at: new Date(NOW - MIN).toISOString() }), NOW)).toBe(false);
+    expect(videoSampleIsNews(sample({ totalFrames: 1000, droppedFrames: 80 }), NOW)).toBe(false);
+    expect(videoSampleIsNews(null, NOW)).toBe(false);
+  });
+});
+
 describe('buildScreenOps', () => {
   const fleet = (): OpsScreen[] => [
     scr({ id: 'g43', name: 'G43', screenGroupId: 'sac', screenGroup: { id: 'sac', name: 'RIOT Sacramento' }, pendingRefreshAt: new Date(NOW - 18 * MIN).toISOString() }),
@@ -754,7 +794,7 @@ describe('buildScreenOps', () => {
 
   it('sorts worst-first across the whole fleet', () => {
     expect(build().rows.map((r) => r.status.key)).toEqual([
-      'offline', 'content-behind', 'push-delayed', 'current', 'current', 'current',
+      'offline', 'content-behind', 'current', 'current', 'current', 'current',
     ]);
   });
 
@@ -818,11 +858,13 @@ describe('buildScreenOps', () => {
   });
 
   it('counts Need action as unique screens, not the sum of problem types', () => {
-    // g43 is behind AND on a healthy push; m43 is push-delayed; loose is
-    // offline. Three screens, three problems, one count each.
+    // g43 is behind; loose is offline. m43's live channel is silent, which
+    // is not a problem its operator acts on (2026-10-22). One count each.
     const ops = build();
-    expect(ops.totals.attention).toBe(3);
-    expect(ops.chips.find((c) => c.key === 'attention')!.count).toBe(3);
+    expect(ops.totals.attention).toBe(2);
+    expect(ops.chips.find((c) => c.key === 'attention')!.count).toBe(2);
+    // The Push delayed chip still finds it, by its channel.
+    expect(ops.chips.find((c) => c.key === 'push-delayed')!.count).toBe(1);
   });
 
   it('emits an All chip so there is always a path back to the full fleet', () => {

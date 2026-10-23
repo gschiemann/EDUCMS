@@ -141,6 +141,32 @@ describe("optional native output handoff", () => {
     expect(nativeOrientationRequest("PORTRAIT", readNativeVideoDescriptor({ ...v2, experiments: { webviewInvisible: true } }))).toBe("PORTRAIT");
     expect(nativeOrientationRequest("PORTRAIT", null)).toBe("PORTRAIT");
   });
+  it("1.1.51: the double-post DECISION rides the state — applied code, guard entries and the timing object — bounded; it used to be dropped", () => {
+    const nine = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
+      maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };
+    // The M43 (1.1.50): requested doublePost, a 60 Hz grid under a 30 Hz mode, a 30 fps clip.
+    const dp = { mode: "fixed-source-always", applied: true, gridHzBefore: 60, refreshRateBefore: 30, displayModeBefore: "1:3840x2160@30.00",
+      gridHzAfter: 30.02, refreshRate: 30, displayMode: "1:3840x2160@30.00" };
+    const t = readNativeVideoTiming({ ...nine, doublePost: { ...dp, bogus: 1 } })!;
+    expect(t.doublePost).toEqual(dp);
+    // A refusal still rides (the point: never invisible), with no "after" facts.
+    expect(readNativeVideoTiming({ ...nine, doublePost: { mode: "grid-not-2x-fps", applied: false, gridHzBefore: 30, refreshRateBefore: 30 } })!.doublePost)
+      .toEqual({ mode: "grid-not-2x-fps", applied: false, gridHzBefore: 30, refreshRateBefore: 30 });
+    // Malformed: a free-text mode, a string applied, an unreadable display mode (omitted by the APK, dropped here), a silly rate.
+    expect(readNativeVideoTiming({ ...nine, doublePost: { mode: "http://x", applied: true } })).toEqual(nine);
+    expect(readNativeVideoTiming({ ...nine, doublePost: { mode: "pending", applied: "no" } })).toEqual(nine);
+    expect(readNativeVideoTiming({ ...nine, doublePost: { mode: "pending", applied: false, displayModeBefore: "", gridHzBefore: 5000 } })!.doublePost)
+      .toEqual({ mode: "pending", applied: false });
+    // experiments.applied.doublePost and the guard carry the verdict by name.
+    const experiments = { requested: { vsyncSnap: true, doublePost: true }, applied: { webviewInvisible: false, vsyncSnap: true, prefer60hz: "no-60hz-mode", doublePost: "fixed-source-always" },
+      guard: { disabled: {}, applied: { vsyncSnap: 1, doublePost: 1 } } };
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments })?.experiments)
+      .toEqual({ requested: { vsyncSnap: true, doublePost: true }, applied: { webviewInvisible: false, vsyncSnap: true, prefer60hz: "no-60hz-mode", doublePost: "fixed-source-always" }, guard: { disabled: {}, applied: { vsyncSnap: 1, doublePost: 1 } } });
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments: { ...experiments, applied: { ...experiments.applied, doublePost: "mode 2 please" }, guard: { disabled: { doublePost: "output-stalled" }, applied: {} } } })?.experiments)
+      .toMatchObject({ applied: { webviewInvisible: false, vsyncSnap: true }, guard: { disabled: { doublePost: "output-stalled" } } });
+    expect(readNativeSharedVideoState({ ...state("presenting", 10), experiments: { ...experiments, applied: { ...experiments.applied, doublePost: "mode 2 please" } } })?.experiments?.applied).not.toHaveProperty("doublePost");
+  });
+
   it("1.1.42: the pacing measurement, the panel's modes, the window flag and the two new experiments ride bounded, and nothing unknown gets through", () => {
     const nine = { decodedFrames: 90, submittedFrames: 88, lateFrames: 2, lastLateUs: 0,
       maxLateUs: 120000, maxSubmitGapMs: 150, leadUs: 33333, sourceWidth: 2160, sourceHeight: 3338 };

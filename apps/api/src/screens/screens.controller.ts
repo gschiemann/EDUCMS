@@ -4,12 +4,13 @@ import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './nat
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
 import { buildAutoUpdateReport, modeToOverride, type AutoUpdateOverride } from '../player-ota/auto-update-report';
-import { FAILED_STATE, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
+import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaitsForTap } from '../player-ota/ota-install-state';
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
+import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 import { pdfPageBytes, pdfPageManifestItems, pdfScreenShape } from './pdf-page-items';
 import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibility } from './video-rendition';
 import { registeredResolution } from './registered-resolution';
@@ -2128,13 +2129,18 @@ export class ScreensController {
     // it. Device-authenticated only: holding a push stops an operator's
     // update, so an anonymous report may not do it (the state itself is still
     // recorded, as every report is).
-    const holdFromReport: 'NEEDS_TAP' | 'FAILED' | null =
-      !deviceAuthenticated || !push.forceApkUpdatePendingAt || pushHeld ? null
-        : state === 'NEEDS_TAP' ? 'NEEDS_TAP'
-        : FAILED_STATE.test(state) ? 'FAILED'
-        : null;
+    // 1.1.51 — a tap-expiry from the device moves a NEEDS_TAP hold to EXPIRED
+    // (holdFromOtaReport); every other report still only holds an unheld push.
+    const holdFromReport = holdFromOtaReport({
+      deviceAuthenticated,
+      pendingAt: push.forceApkUpdatePendingAt,
+      currentHold: pushHeld ? push.forceApkUpdateHold : null,
+      state,
+    });
     // Same reason vocabulary push-tracking.ts's decidePushGate uses.
-    const reportReason = state === 'NEEDS_TAP' ? 'device-reported-needs-tap' : `device-reported-${state.toLowerCase()}`;
+    const reportReason = state === 'NEEDS_TAP' ? 'device-reported-needs-tap'
+      : state === TAP_EXPIRED ? 'device-reported-tap-expired'
+      : `device-reported-${state.toLowerCase()}`;
 
     // ── OTA-02: the failure signal is STICKY ────────────────────────────
     // `lastOtaState` is last-writer-wins, and the player reports CHECKING
@@ -5706,6 +5712,31 @@ export class ScreensController {
   // UNCHANGED. Any change re-verifies the credential at the normal 5 s
   // freshness before a single byte is disclosed, so the cheap path can never
   // become the cheap path for a credential we have stopped trusting.
+  /**
+   * GET /screens/:id/usb-key — the tenant's USB package key, for this paired
+   * screen only (2026-10-22, USB made simple). The Android player verifies a
+   * stick's package with it before importing anything. It used to ride only
+   * the `/devices/pair` answer, and only for tenants that had opted in — the
+   * web page pairs screens, so no APK ever stored it and no stick ever
+   * imported. Minted on first use; the player re-reads it while online.
+   */
+  @Get(':id/usb-key')
+  async getUsbKey(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: false });
+    if (!auth.ok || !auth.tenantId) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        code: 'SCREEN_DEVICE_AUTH_REQUIRED',
+        message: `Device auth required (${auth.ok ? 'unpaired' : auth.reason})`,
+      });
+    }
+    const key = await ensureUsbSigningKey(this.prisma as any, auth.tenantId);
+    if (!key) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ code: 'SCREEN_USB_KEY_UNAVAILABLE', message: 'USB key unavailable' });
+    }
+    return res.status(200).json({ tenantId: auth.tenantId, key });
+  }
+
   @Get(':id/emergency-rev')
   async getEmergencyRev(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     // Same non-storable posture as the manifest (2026-07-31 stuck-lockdown

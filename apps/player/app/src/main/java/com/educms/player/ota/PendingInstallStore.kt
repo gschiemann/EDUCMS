@@ -83,7 +83,23 @@ object PendingInstallStore {
         cached = r
         loaded = true
         PlayerLogger.i(TAG, "install confirmation launched — session=$sessionId v$versionName push=${pushKey ?: "-"}; recovery held off")
+        scheduleExpiryCheck(ctx)
     }
+
+    /** 1.1.51 — the bounded wait: one check just past the window runs the EXPIRE branch (PendingInstallConfirmation). */
+    private fun scheduleExpiryCheck(ctx: Context) {
+        runCatching {
+            val req = androidx.work.OneTimeWorkRequestBuilder<OtaUpdateWorker>()
+                .setInitialDelay(PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build()
+            androidx.work.WorkManager.getInstance(ctx.applicationContext).enqueueUniqueWork(
+                EXPIRY_WORK, androidx.work.ExistingWorkPolicy.REPLACE, req,
+            )
+            PlayerLogger.i(TAG, "expiry check scheduled in ${PendingInstallConfirmation.EXPIRY_CHECK_DELAY_MS / 1000}s")
+        }.onFailure { PlayerLogger.w(TAG, "expiry check could not be scheduled: ${it.message}") }
+    }
+
+    private const val EXPIRY_WORK = "edu-ota-confirm-expiry"
 
     private const val PREFS = "edu_player_ota_confirm"
     private const val K_COMMITTED = "committed_session"

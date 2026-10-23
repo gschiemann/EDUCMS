@@ -72,6 +72,26 @@ internal fun nativeFirstEnrolled(manifest: JSONObject): Boolean =
     FaceVideoDescriptor.nativeFirstOf(manifest.optJSONObject("nativeVideo")) == true
 
 /**
+ * THE STORE'S OWN ENROLMENT, now that it is wired (1.1.51; `PlayerApp` passes
+ * [named] as `StoreEnv.enrolledBy`). Native-first alone used to be the design's
+ * enrolment, and it is TRUE across the launch fleet today — wiring the store on
+ * that switch would have turned adoption and downloads on fleet-wide, unqualified
+ * on glass, a week before launch. So the store's own switch is a SECOND key on the
+ * same per-face descriptor: `nativeVideo.store === true`, which the API carries
+ * only for screens `PLAYER_CONTENT_STORE` names. Both must be JSON `true`.
+ *
+ * Residual (item 4's pattern, `FaceVideoPolicy.switchReadOf`): an emergency
+ * manifest carries no `nativeVideo` block at all, so a store refresh that lands
+ * during a drill reads "not named" for that face. `ContentStore` only re-reads
+ * its sources on a changed ETag and keeps its files on disk either way; the
+ * face re-enrols on the first post-all-clear read. Tracked in the 1.1.51 report.
+ */
+internal object StoreEnrolment {
+    fun named(manifest: JSONObject): Boolean =
+        nativeFirstEnrolled(manifest) && manifest.optJSONObject("nativeVideo")?.opt("store") == true
+}
+
+/**
  * Streamed SHA-256 of the bytes ON DISK, 64 KiB at a time, never a whole-file
  * buffer, rate-limited so a verify never starves playback reads. [keepGoing]
  * is polled per block (an emergency pre-empts a content verify).

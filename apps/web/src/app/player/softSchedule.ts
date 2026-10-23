@@ -457,6 +457,18 @@ export class SoftScheduleRunner {
     return true;
   }
 
+  /**
+   * The page tore the blank overlay down for an alert, BEHIND this runner's
+   * back (rule 5's "second guarantee" in `page.tsx`). Forget the OFF we
+   * applied, so the first tick after the all-clear re-applies it instead of
+   * reading `steady` until the next boundary — the 2026-10-20 drill left a
+   * soft-scheduled-OFF screen ON until the next morning (player 1.1.51).
+   * An ON we applied is left alone: nothing was taken down.
+   */
+  alertTookOverlayDown(): void {
+    if (this.lastApplied === false) this.lastApplied = null;
+  }
+
   /** Evaluate the level at `nowMs` and apply it only if it moved. */
   tick(nowMs: number): SoftScheduleTick {
     if (this.windows.length === 0) return { status: 'idle' };

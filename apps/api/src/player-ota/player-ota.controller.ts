@@ -1003,8 +1003,23 @@ export class PlayerOtaController {
     // holds this selected screen on its current build; other screens are unchanged.
     if (fieldTarget) {
       const release = configuredFieldRelease();
-      if (!deviceAuthenticated || !lookupScreenId || !lookupTenantId ||
-          forcedPendingScreenId !== lookupScreenId || !release) return {uptoDate:true};
+      // 1.1.51 (Fix 10) — a refused field offer is LOGGED with its reason. These
+      // used to be a bare `{uptoDate:true}`: the Player then reported
+      // "UP_TO_DATE … no newer release offered", the push sat at 0 offers, and
+      // nothing anywhere said why (the sideloaded Android 9 units, 2026-10-20).
+      const fieldRefusal =
+        !deviceAuthenticated ? 'device-not-authenticated' // no / stale device token on the check (an anonymous check is never offered private bytes)
+        : !lookupScreenId || !lookupTenantId ? 'no-screen-row'
+        : forcedPendingScreenId !== lookupScreenId ? 'no-push-admitted-for-this-screen' // gated above: window / canary / not pushed — see the [ota] line before this one
+        : !release ? 'no-configured-field-release'
+        : null;
+      if (fieldRefusal || !release || !lookupScreenId || !lookupTenantId) {
+        this.logger.warn(
+          `[ota] decision=uptoDate-field caller=${callerVn} screen=${lookupScreenId || '-'} tenant=${lookupTenantId || '-'} ` +
+          `fp=${fpShort} reason=${fieldRefusal ?? 'unavailable'} allow=${allowReason} deviceAuth=${deviceAuthenticated}`,
+        );
+        return {uptoDate:true};
+      }
       if (callerVc >= release.versionCode) {
         // Already on (or past) the candidate: the push has nothing to offer.
         await this.clearPushAlreadyCurrent(lookupScreenId, lookupTenantId, forcedPendingAt,
@@ -1013,11 +1028,17 @@ export class PlayerOtaController {
       }
       if (blockedBySigningCutover(callerVn,release.versionName)) return {uptoDate:true,needsManualReinstall:true};
       const origin=apiOriginFromRequest(req);
-      if (!origin || !origin.startsWith('https://')) return {uptoDate:true};
+      if (!origin || !origin.startsWith('https://')) {
+        this.logger.warn(`[ota] decision=uptoDate-field screen=${lookupScreenId} reason=non-https-origin origin=${origin ?? '-'}`);
+        return {uptoDate:true};
+      }
       try {
         await verifiedFieldBytes(release);
         const ticket=mintFieldTicket(release,lookupScreenId,lookupTenantId);
-        if(!ticket) return {uptoDate:true};
+        if(!ticket) {
+          this.logger.warn(`[ota] decision=uptoDate-field screen=${lookupScreenId} reason=ticket-not-minted`);
+          return {uptoDate:true};
+        }
         // Mandatory audit before advertising any private test bytes — one row
         // per (screen, digest, push), not one per update check while the push
         // is pending (review P2, 2026-10-10). A failed lookup or write still

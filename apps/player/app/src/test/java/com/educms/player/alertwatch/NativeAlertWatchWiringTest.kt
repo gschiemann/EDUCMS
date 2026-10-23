@@ -208,6 +208,20 @@ class NativeAlertWatchWiringTest {
     }
 
     @Test
+    fun `1_1_51 — every face that holds a token is a watch target, read-only, and a back face reloads its own pane`() {
+        val plan = body(watch, "override fun plan(")
+        assertTrue("the primary target is still first", plan.indexOf("DisplayEmergency.PRIMARY_FACE") < plan.indexOf("FaceDisplayMap.MAX_FACES"))
+        assertTrue("every further face is enumerated from the per-face token store", plan.contains("for (face in 1 until com.educms.player.face.FaceDisplayMap.MAX_FACES)"))
+        assertTrue(plan.contains("FaceTokenStore.read(app, face)"))
+        assertFalse("the token store is READ ONLY here (player rule 3)", plan.contains("FaceTokenStore.write"))
+        val reload = body(main, "override fun reloadPage(")
+        assertTrue("a back face is routed to its own page host", reload.contains("faceHosts?.hostFor(face)"))
+        assertTrue(reload.contains("host.reload("))
+        val started = body(main, "override fun pageLoadStartedAtMs(")
+        assertTrue(started.contains("faceHosts?.hostFor(face)?.loadStartedAtMs()"))
+    }
+
+    @Test
     fun `MainActivity lends the watch its reload path and nothing else`() {
         assertTrue(body(main, "override fun onCreate(").contains("NativeAlertWatch.setPageHost(alertWatchHost)"))
         assertTrue(body(main, "override fun onDestroy(").contains("NativeAlertWatch.clearPageHost(alertWatchHost)"))

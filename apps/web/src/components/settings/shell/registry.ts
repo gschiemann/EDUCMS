@@ -172,7 +172,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: MonitorUp,
     path: 'player',
     matches: ['player', 'usb'],
-    keywords: ['apk', 'update window', 'maintenance window', 'canary', 'rollout', 'auto update', 'ota', 'usb', 'offline', 'sneakernet', 'device key', 'version'],
+    // No 'usb' here: USB has no settings (2026-10-22) — it is "Download to USB" on a playlist.
+    keywords: ['apk', 'update window', 'maintenance window', 'canary', 'rollout', 'auto update', 'ota', 'offline', 'version'],
     scopes: ['organization', 'location'],
     roles: ALL_ROLES,
   },

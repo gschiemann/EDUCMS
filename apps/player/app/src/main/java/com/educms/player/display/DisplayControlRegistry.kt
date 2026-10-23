@@ -172,6 +172,8 @@ object DisplayControlRegistry {
                 // stays on after the all-clear (last command wins). The
                 // alert's own wake runs inside UserStandby.duringOwnWake and
                 // does not count.
+                // (1.1.51 — the same call also notes a wake COMMAND during a
+                // hold for the pre-hold blank restore, RestoreBlankAfterAlertPolicy.)
                 UserStandby.noteDeliberateWake(app)
             }
             DisplayAction.Blank -> UserStandby.noteOwnBlank()
