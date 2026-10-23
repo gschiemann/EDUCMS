@@ -184,6 +184,9 @@ export function mechanismKind(
     case 'accessibility-lock':
       return lockHeldBack ? 'lock-held-back' : 'accessibility';
     case 'vendor-recipe':
+    // Player 1.1.52 — the vendor's own backlight command (Goodview GUQ): the
+    // backlight is really off, Android stays awake. A real sleep for the glass.
+    case 'vendor-backlight':
       return 'vendor';
     case 'screen-timeout':
       return screensaverSeen ? 'screensaver' : 'screen-timeout';

@@ -90,6 +90,12 @@ class PlayerApp : Application() {
         // gone while a person has the panel off. Never throws.
         runCatching { com.educms.player.standby.UserStandby.install(this) }
             .onFailure { PlayerLogger.w("PlayerApp", "user standby install failed: ${it.message}") }
+        // 1.1.52 — TRUE STANDBY through the panel vendor's backlight service
+        // (Goodview GUQ / IFPDOS). Restores the dark record and probes the
+        // service on its own worker; a box without the service resolves its
+        // display chain exactly as before. Never throws, never blocks boot.
+        runCatching { com.educms.player.display.VendorBacklightProvider.start(this) }
+            .onFailure { PlayerLogger.w("PlayerApp", "vendor backlight start failed: ${it.message}") }
         // 2026-10-11 — PLAYER_PROCESS_START (pid, uptime, boot count) and, when
         // the last wake never reached onResume, PLAYER_WAKE_PROCESS_RESTART:
         // the one fact the 2026-10-11 L55VEC drill could not show.

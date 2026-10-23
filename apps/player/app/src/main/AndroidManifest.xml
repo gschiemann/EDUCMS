@@ -219,6 +219,18 @@
         <package android:name="com.android.packageinstaller" />
         <package android:name="com.google.android.packageinstaller" />
         <!--
+          1.1.52 — the panel vendor's backlight service on a Goodview GUQ
+          (IFPDOS OpenSDK, display/VendorBacklightProvider). On API 30+ an
+          app cannot see, let alone bind, a package it has not declared here:
+          without these two lines the probe reads "absent" on every GUQ and
+          the chain never reaches the mechanism. Declaring them grants nothing
+          on a box that does not ship the service.
+        -->
+        <package android:name="com.seewo.mcuservice" />
+        <intent>
+            <action android:name="com.ifpdos.opensdk.SERVICE_MANAGER" />
+        </intent>
+        <!--
           1.1.23 (the X80 setup freeze) — the setup checklist now ASKS which
           app answers each Settings intent before it opens one, and opens
           that component explicitly: a VisionCore X80 (Goodview firmware)

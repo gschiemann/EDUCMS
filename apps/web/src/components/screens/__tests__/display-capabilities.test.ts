@@ -453,11 +453,16 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
     }
   });
 
-  it('POWER_OFF renders ONLY on the proven mechanism', () => {
+  it('POWER_OFF renders ONLY on the proven mechanisms', () => {
     expect(
       resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'vendor-recipe' })).power.off
         .available,
     ).toBe(true);
+    // 1.1.52 — the vendor's backlight service: the same proven class, and its note ships as an i18n key.
+    const vb = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'vendor-backlight' })).power.off;
+    expect(vb.available).toBe(true);
+    expect(vb.noteKey).toBe('screens.display.note.powerOffVendorBacklight');
+    expect(vb.noteText).toBeNull();
     for (const screenBlank of [
       'device-admin',
       'device-owner',

@@ -290,6 +290,10 @@ object DisplayControlApi {
             val app = ctx.applicationContext
             val config = DisplayConfigStore.save(app, json)
             DisplayControlRegistry.invalidate()
+            // 1.1.52 — a kill switch that lands while the vendor backlight is off
+            // by our hand lights it and hands the blank to the next mechanism.
+            runCatching { VendorBacklightProvider.onConfigChanged(app) }
+                .onFailure { PlayerLogger.w(TAG, "vendor backlight config check failed: ${it.message}") }
             DisplayScheduler.armAndApply(app)
             JSONObject()
                 .put("ok", true)
