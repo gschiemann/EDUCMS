@@ -421,6 +421,39 @@ describe('false-positive rails', () => {
     expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
   });
 
+  it('PLATFORM INCIDENT is seen by the FIRST screen to become due (the others are offline but not due yet)', async () => {
+    const { svc, email, mailer } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    goOffline(w, 'lobby', w.clock.now);
+    for (const [id, t] of [['acme-tv', 'acme'], ['globex-tv', 'globex']]) {
+      screen(w, id, t);
+      goOffline(w, id, w.clock.now + 3 * MIN);
+    }
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    const res = await scan(w, svc); // lobby confirmed; acme/globex only 13 min down
+    expect(res.platformIncident).toBe(true);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('an on/off schedule that switches 3 organisations off at the same minute is NOT a platform incident (and nobody is emailed)', async () => {
+    const { svc, email, mailer } = build(w);
+    w.displaySchedules.push({ id: 'ds', screenId: null, screenGroupId: null, daysOfWeek: [1, 2, 3, 4, 5], onTime: '07:00', offTime: '09:00', timezone: 'America/Chicago', isActive: true });
+    for (const [id, t] of [['lobby', 'lincoln'], ['acme-tv', 'acme'], ['globex-tv', 'globex']]) {
+      screen(w, id, t);
+      goOffline(w, id, w.clock.now);
+    }
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    const res = await scan(w, svc);
+    expect(res.platformIncident).toBe(false);
+    expect(res.deferred).toEqual({ 'display-schedule-off': 3 });
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    expect(w.incidents).toHaveLength(0);
+  });
+
   it('remote power-off: deferred, never emailed while it stands', async () => {
     const { svc, email } = build(w);
     w.auditLogs.push({ targetId: 'lobby', action: 'SCREEN_DISPLAY_CONTROL', details: JSON.stringify({ requested: 'POWER_OFF' }), createdAt: new Date(w.clock.now) });

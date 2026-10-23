@@ -343,67 +343,36 @@ export class CustomerAlertEmailsService {
     ]);
     const tenants = await this.loadTenants(tenantIds);
 
-    // ── Platform incident: many organisations at once is OUR problem ──
-    const newProblems: NewProblem[] = [];
-    if (offlineActionable.size > 0 || noContentActionable.length > 0) {
-      const events: ProblemEvent[] = [
-        ...snapshot
-          .filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS)
-          .map((s) => ({ screenId: s.id, orgId: this.rootOf(s.tenantId, tenants), startedAtMs: s.lastPingAt.getTime() })),
-        ...noContentDueNow.map((c) => ({
-          screenId: c.row.id,
-          orgId: this.rootOf(c.row.tenantId as string, tenants),
-          startedAtMs: problemStartOf(c),
-        })),
-      ];
-      const fleet = await this.recentlyActiveFleet(now);
-      const candidates: NewProblem[] = [
-        ...[...offlineActionable.values()].map((s) => ({
-          screenId: s.id,
-          tenantId: s.tenantId,
-          screenName: s.name,
-          kind: 'OFFLINE' as const,
-          startedAtMs: s.lastPingAt.getTime(),
-        })),
-        ...noContentActionable.map((c) => ({
-          screenId: c.row.id,
-          tenantId: c.row.tenantId as string,
-          screenName: c.row.name,
-          kind: 'NO_CONTENT' as const,
-          startedAtMs: problemStartOf(c),
-          contentUnavailable: c.verdict.blank && c.verdict.signal === 'content-unavailable',
-        })),
-      ];
-      const clusters = candidates.map((c) => ({ c, cl: platformClusterAround(c.startedAtMs, events, fleet) }));
-      const inIncident = clusters.filter((x) => x.cl.incident);
-      if (inIncident.length > 0) {
-        result.platformIncident = true;
-        this.platformQuietUntil = now + ALERT_RULES.PLATFORM_QUIET_MS;
-        // The incident's own problems are never emailed (and so never get a
-        // recovery note); everything else waits out the quiet window.
-        for (const { c } of inIncident) {
-          await this.upsertIncident(c, { state: 'SILENT', reason: 'platform-incident', emailed: false, mode });
-          result.silenced++;
-        }
-        await this.alertPlatformIncident(inIncident.map((x) => x.c), events, fleet, tenants, now);
-        this.offlineDue.reset();
-        this.noContentDue.reset();
-        result.gate = 'platform-incident';
-        return result;
-      }
-      newProblems.push(...candidates);
-    }
+    // ── The candidates this scan may act on ──
+    const candidates: NewProblem[] = [
+      ...[...offlineActionable.values()].map((s) => ({
+        screenId: s.id,
+        tenantId: s.tenantId,
+        screenName: s.name,
+        kind: 'OFFLINE' as const,
+        startedAtMs: s.lastPingAt.getTime(),
+      })),
+      ...noContentActionable.map((c) => ({
+        screenId: c.row.id,
+        tenantId: c.row.tenantId as string,
+        screenName: c.row.name,
+        kind: 'NO_CONTENT' as const,
+        startedAtMs: problemStartOf(c),
+        contentUnavailable: c.verdict.blank && c.verdict.signal === 'content-unavailable',
+      })),
+    ];
 
-    // ── Intended downtime / maintenance / content facts → defer ──
-    const facts = newProblems.length ? await this.loadFacts(newProblems, tenants, now) : new Map<string, LoadedFacts>();
+    // ── 1. Intended downtime / maintenance / content facts → defer ──
+    // FIRST, so a problem nobody should hear about (an on/off schedule that
+    // switches many organisations' screens off at 22:00, a nightly update
+    // window) can never be counted toward a "platform incident" below.
+    const facts = candidates.length ? await this.loadFacts(candidates, tenants, now) : new Map<string, LoadedFacts>();
     const contentState = await this.contentAssignment(
-      newProblems.filter((p) => p.kind === 'NO_CONTENT').map((p) => facts.get(p.screenId)?.row).filter(Boolean) as FactRow[],
+      candidates.filter((p) => p.kind === 'NO_CONTENT').map((p) => facts.get(p.screenId)?.row).filter(Boolean) as FactRow[],
       now,
     );
-    const priorById = new Map(incidents.map((i) => [`${i.screenId}:${i.kind}`, i]));
-    const extraPrior = newProblems.length ? await this.loadClosedIncidents(newProblems) : new Map<string, IncidentRow>();
-    const toSend: NewProblem[] = [];
-    for (const p of newProblems) {
+    const real: NewProblem[] = [];
+    for (const p of candidates) {
       const f = facts.get(p.screenId);
       if (!f) {
         defer('screen-gone');
@@ -433,6 +402,71 @@ export class CustomerAlertEmailsService {
           continue;
         }
       }
+      real.push(p);
+    }
+
+    // ── 2. Platform incident: many organisations at once is OUR problem ──
+    // The cluster is read from EVERY screen currently in trouble — offline
+    // past the scanner's threshold, not only the confirmed ones, so the first
+    // screen of a fleet-wide drop to become due already sees the rest — minus
+    // any whose own downtime is intended.
+    if (real.length > 0) {
+      const W = ALERT_RULES.PLATFORM_CLUSTER_MS;
+      const near = (t: number) => real.some((p) => Math.abs(p.startedAtMs - t) <= W);
+      const nearby: NewProblem[] = [
+        ...snapshot
+          .filter((s) => ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && near(s.lastPingAt.getTime()))
+          .map((s) => ({
+            screenId: s.id,
+            tenantId: s.tenantId,
+            screenName: s.name,
+            kind: 'OFFLINE' as const,
+            startedAtMs: s.lastPingAt.getTime(),
+          })),
+        ...noContent
+          .filter((c) => near(problemStartOf(c)))
+          .map((c) => ({
+            screenId: c.row.id,
+            tenantId: c.row.tenantId as string,
+            screenName: c.row.name,
+            kind: 'NO_CONTENT' as const,
+            startedAtMs: problemStartOf(c),
+          })),
+      ];
+      const unknownTenants = nearby.map((p) => p.tenantId).filter((t) => !tenants.has(t));
+      if (unknownTenants.length) for (const [k, v] of await this.loadTenants(unknownTenants)) tenants.set(k, v);
+      const missing = nearby.filter((p) => !facts.has(p.screenId));
+      if (missing.length) for (const [k, v] of await this.loadFacts(missing, tenants, now)) facts.set(k, v);
+      const events: ProblemEvent[] = nearby
+        .filter((p) => {
+          const f = facts.get(p.screenId);
+          return !!f && !intendedDowntime(f.facts, p.kind, p.startedAtMs, now);
+        })
+        .map((p) => ({ screenId: p.screenId, orgId: this.rootOf(p.tenantId, tenants), startedAtMs: p.startedAtMs }));
+      const fleet = await this.recentlyActiveFleet(now);
+      const inIncident = real.filter((p) => platformClusterAround(p.startedAtMs, events, fleet).incident);
+      if (inIncident.length > 0) {
+        result.platformIncident = true;
+        this.platformQuietUntil = now + ALERT_RULES.PLATFORM_QUIET_MS;
+        // The incident's own problems are never emailed (and so never get a
+        // recovery note); everything else waits out the quiet window.
+        for (const p of inIncident) {
+          await this.upsertIncident(p, { state: 'SILENT', reason: 'platform-incident', emailed: false, mode });
+          result.silenced++;
+        }
+        await this.alertPlatformIncident(inIncident, events, fleet, tenants, now);
+        this.offlineDue.reset();
+        this.noContentDue.reset();
+        result.gate = 'platform-incident';
+        return result;
+      }
+    }
+
+    // ── 3. Flap: one problem email per screen per 6 h ──
+    const priorById = new Map(incidents.map((i) => [`${i.screenId}:${i.kind}`, i]));
+    const extraPrior = real.length ? await this.loadClosedIncidents(real) : new Map<string, IncidentRow>();
+    const toSend: NewProblem[] = [];
+    for (const p of real) {
       const prior = priorById.get(`${p.screenId}:${p.kind}`) ?? extraPrior.get(`${p.screenId}:${p.kind}`);
       if (isFlapping(prior?.lastEmailedAt, now)) {
         await this.upsertIncident(p, { state: 'SILENT', reason: 'flap', emailed: false, mode });
