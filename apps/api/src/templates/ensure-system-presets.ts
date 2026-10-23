@@ -1,3 +1,4 @@
+import { DIRECTORY_TEMPLATE_PRESETS } from './directory-presets';
 import { Logger } from '@nestjs/common';
 import { QUARANTINED_BOARD_URLS, VERTICALS } from '@cms/api-types';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -118,6 +119,7 @@ export const QUARANTINED_URLS_WITHOUT_PRESET: ReadonlyArray<string> = [
 ].filter((url) => !ALL_PRESETS.some((p: any) => presetBoardUrl(p) === url));
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
+DIRECTORY_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'CORPORATE'));
 // 2026-05-02 — VenueOS launch verticals are K12 / GYM / RETAIL /
 // CORPORATE / QSR / FASHION (per packages/api-types/src/verticals.ts).
 // The earlier sprint-plan name 'FITNESS' is unified to 'GYM' so the

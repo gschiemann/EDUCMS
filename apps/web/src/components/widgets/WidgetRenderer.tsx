@@ -4349,6 +4349,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       // Drop empty / blank values so the template defaults show through.
       const clean: Record<string, unknown> = {};
       for (const k of Object.keys(raw)) {
+        // Directory documents can contain hundreds of rows and inline media.
+        // Send them through the frame bridge, never an oversized iframe URL.
+        if (name === 'text' && (k === 'directory.payload' || k === 'cre.payload')) continue;
         const v = (raw as Record<string, unknown>)[k];
         if (v == null) continue;
         // An EMPTY string is meaningful for `text`: the operator deleted
@@ -4538,7 +4541,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   // Declared BEFORE the menu effect on purpose: its 'load' listener must be
   // registered first, so on a frame load the menu + bindings arrive after it.
   const postDesignerOverrides = useCallback(() => {
-    if (!inlineHtml) return;
+    if (!inlineHtml && !config?.directoryDocument && !config?.touchDocument) return;
     const win = frameRef.current?.contentWindow;
     if (!win) return;
     // Same translation as the URL path — see the comment there (M0-3).
@@ -4547,7 +4550,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (config?.brand) payload.brand = config.brand;
     // Never a `{{pos.item:…}}` token — see the URL path.
     const text = stripBindingTokens(config?.textOverrides);
-    if (text) payload.text = text;
+    if (config?.directoryDocument) payload.text = { ...(text || {}), 'directory.payload': JSON.stringify(config.directoryDocument) };
+    else if (config?.touchDocument) payload.text = { ...(text || {}), 'cre.payload': JSON.stringify(config.touchDocument) };
+    else if (text) payload.text = text;
     if (styles) payload.textStyles = styles;
     if (config?.imageOverrides) payload.img = config.imageOverrides;
     if (config?.videoOverrides) payload.video = config.videoOverrides;
@@ -4556,7 +4561,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (config?.repeatCounts) payload.repeat = config.repeatCounts;
     try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
     postResolvedBindings(win, resolvedBindingsRef.current);
-  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.mediaStyles, config?.actionOverrides, config?.repeatCounts, postResolvedBindings]);
+  }, [inlineHtml, config?.directoryDocument, config?.touchDocument, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.mediaStyles, config?.actionOverrides, config?.repeatCounts, postResolvedBindings]);
   useEffect(() => {
     postDesignerOverrides();
     const el = frameRef.current;

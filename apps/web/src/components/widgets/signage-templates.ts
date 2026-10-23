@@ -16,7 +16,30 @@ export interface SignageTemplate {
   url: string;
 }
 
-export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+export const SIGNAGE_TEMPLATES: SignageTemplate[
+] = [
+  // ARC RIOT DIRECTORY COLLECTION
+  {"id": "preset-corporate-directory-pacific-editorial-landscape", "name": "Corporate · Directory · Pacific Editorial", "url": "/templates/signage/corporate/directory/pacific-editorial-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-pacific-editorial-portrait", "name": "Corporate · Directory · Pacific Editorial — Portrait", "url": "/templates/signage/corporate/directory/pacific-editorial-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-elevator-stack-landscape", "name": "Corporate · Directory · Elevator Stack", "url": "/templates/signage/corporate/directory/elevator-stack-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-elevator-stack-portrait", "name": "Corporate · Directory · Elevator Stack — Portrait", "url": "/templates/signage/corporate/directory/elevator-stack-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-departures-board-landscape", "name": "Corporate · Directory · Departures Board", "url": "/templates/signage/corporate/directory/departures-board-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-departures-board-portrait", "name": "Corporate · Directory · Departures Board — Portrait", "url": "/templates/signage/corporate/directory/departures-board-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-luxury-concierge-landscape", "name": "Corporate · Directory · Luxury Concierge", "url": "/templates/signage/corporate/directory/luxury-concierge-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-luxury-concierge-portrait", "name": "Corporate · Directory · Luxury Concierge — Portrait", "url": "/templates/signage/corporate/directory/luxury-concierge-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-swiss-wayfinding-landscape", "name": "Corporate · Directory · Swiss Wayfinding", "url": "/templates/signage/corporate/directory/swiss-wayfinding-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-swiss-wayfinding-portrait", "name": "Corporate · Directory · Swiss Wayfinding — Portrait", "url": "/templates/signage/corporate/directory/swiss-wayfinding-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-tropical-modernist-landscape", "name": "Corporate · Directory · Tropical Modernist", "url": "/templates/signage/corporate/directory/tropical-modernist-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-tropical-modernist-portrait", "name": "Corporate · Directory · Tropical Modernist — Portrait", "url": "/templates/signage/corporate/directory/tropical-modernist-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-glass-facade-landscape", "name": "Corporate · Directory · Glass Facade", "url": "/templates/signage/corporate/directory/glass-facade-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-glass-facade-portrait", "name": "Corporate · Directory · Glass Facade — Portrait", "url": "/templates/signage/corporate/directory/glass-facade-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-brutalist-poster-landscape", "name": "Corporate · Directory · Brutalist Poster", "url": "/templates/signage/corporate/directory/brutalist-poster-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-brutalist-poster-portrait", "name": "Corporate · Directory · Brutalist Poster — Portrait", "url": "/templates/signage/corporate/directory/brutalist-poster-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-care-atlas-landscape", "name": "Corporate · Directory · Care Atlas", "url": "/templates/signage/corporate/directory/care-atlas-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-care-atlas-portrait", "name": "Corporate · Directory · Care Atlas — Portrait", "url": "/templates/signage/corporate/directory/care-atlas-portrait.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-maison-residence-landscape", "name": "Corporate · Directory · Maison Residence", "url": "/templates/signage/corporate/directory/maison-residence-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-maison-residence-portrait", "name": "Corporate · Directory · Maison Residence — Portrait", "url": "/templates/signage/corporate/directory/maison-residence-portrait.html", "group": "Corporate"},
+
   { id: 'preset-sig-corporate-20', name: 'Service Update · Temporary Closure', group: 'Shared · Service Updates', url: '/templates/signage/corporate/20-service-update.html' },
   { id: 'preset-sig-corporate-20-portrait', name: 'Service Update · Temporary Closure — Portrait', group: 'Shared · Service Updates', url: '/templates/signage/corporate/20-service-update.html?o=portrait' },
   { id: 'preset-sig-clinic-02', name: 'Care Services · Services & Booking Guide', group: 'Clinic', url: '/templates/signage/clinic/02-services-booking-guide.html' },
