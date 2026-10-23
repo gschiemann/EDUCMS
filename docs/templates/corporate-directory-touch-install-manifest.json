@@ -8536,7 +8536,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "598f9bc327ed28242a88ddfb4baaef587bcca0235724f458d0ff16cdc1f2c6a2"
@@ -8645,7 +8646,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "52fab2482fafc40aee87c7655b8acc3891d29c1c749da516b09ddadebb4481c4"
@@ -8754,7 +8756,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "b0d4114056759c67dc32f02712f9005334ad9e049623820fb816d797e473d9db"
@@ -8863,7 +8866,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "f10283aa268d2fc8c4c3c179be6047dabe6718f637797bbe108ebbdcbcc20e6d"
@@ -8972,7 +8976,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "721b3b1949d96cf89412e11ff8d725c38913f6c67c30fd0ab9f012337ffd9d10"
@@ -9081,7 +9086,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "b0017dec0b65ac4938966887748cadd5176f5cc057e92b532937f976dc8aa28f"
@@ -9190,7 +9196,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "c40b28c858d3b8a578ac8eb7451213aa3c25108670d8783a1129d3eb9a532710"
@@ -9299,7 +9306,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "676c68cb271fe9c3cb15818075949a4c1104db17534c834d8f34c95d1a6333b0"
@@ -9408,7 +9416,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "73631a7694e001433c75498ca2607bf7763884fdc4527d4b938451f4de1d03ac"
@@ -9517,7 +9526,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "7c8fd737a133e2716941085eb158ae936da492b4e70077d86ee5c23c0fe15ecd"
@@ -9626,7 +9636,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "3234f3f6fd70e5c1b763172bb1adc96f8c892b3e6dcc10090e2c4cfacbac4c5e"
@@ -9735,7 +9746,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "3aaf1aec0373fbf757e2e2cac845ba41a18745b3e7bf9ba00b32b8b044566eab"
@@ -9844,7 +9856,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "3fc25972fddd480c20cf7c9538098f05194f935b7241da5de3f29bae0c3c48ac"
@@ -9953,7 +9966,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "c0804e6463f5b1d4893b12ce53b75ec6c84e180c858608ad28afd1d4b2b51253"
@@ -10062,7 +10076,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "c4d478628a6471f30b1c7960596fb001b14704eafda5dc07962db8b709adc9af"
@@ -10171,7 +10186,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "e12f7a3d1b04baeb96e7badd5e84bf28b9877adc77cd5ee2a7e7ade1356c7e90"
@@ -10280,7 +10296,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "249264714d97373b349792d6d0c3dc5988c7b825f1bd9d29e07037b524d11cbc"
@@ -10389,7 +10406,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "b7cab4003a66f9d5a177d045824c5a92175360197b39ca2db61e16f1f5b8a00b"
@@ -10498,7 +10516,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "02d389c913e6f18193aca6a4f2450bebce5cad7ad0d1bf61555996ad1d193515"
@@ -10607,7 +10626,8 @@
             "paused": false
           },
           "theme": {}
-        }
+        },
+        "contentChanged": true
       },
       "status": "DRAFT",
       "sha256": "2a0f0ac34cd25c8c0d0ca354b01ceee83fe94138146599ff200fbe04de0b7cbd"
@@ -10652,7 +10672,7 @@
     },
     {
       "url": "/templates/signage/corporate/directory/_editor/shared/export-runtime.js",
-      "sha256": "4cf0d0c77e967e549b9989eb587839c9663709e3a9739d512d0f3fccd157bdb3"
+      "sha256": "c12ed06431073c97246a35553fdb678f081253ab7e68fdcd4c57a18772964dd4"
     },
     {
       "url": "/templates/signage/corporate/directory/brutalist-poster-landscape.html",
@@ -10848,7 +10868,7 @@
     },
     {
       "url": "/templates/signage/corporate/commercial-touch/shared/touch.css",
-      "sha256": "d95fd0fe08291b9624b84ab62097251fdea2611a01ddab63aa020a1317a26073"
+      "sha256": "6ba195ba653d9df50550e5a6c2f3b31c2d66b45800c67622b068d381ec634c1e"
     },
     {
       "url": "/templates/signage/corporate/commercial-touch/the-arrival-club-landscape.html",

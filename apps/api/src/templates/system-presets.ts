@@ -40,6 +40,7 @@ export interface SystemPreset {
   // touch mode already on and the player treats it as interactive. Optional;
   // every other preset is passive signage and leaves it unset.
   isTouchEnabled?: boolean;
+  idleResetMs?: number;
   zones: Array<{
     name: string;
     widgetType: string;
