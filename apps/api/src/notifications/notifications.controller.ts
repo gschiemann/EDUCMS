@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Optional, Param, Post, Query, Req, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Optional, Param, Post, Put, Query, Req, Request, UseGuards } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { verifyDeviceForScreen } from '../screens/device-auth';
 import { RedisService } from '../realtime/redis.service';
@@ -7,6 +7,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { requireTenantIdStrict } from '../auth/require-tenant';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+const ALERT_EMAIL_ROLES: ReadonlySet<string> = new Set(['DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
+const ALERT_EMAIL_LOCALES: ReadonlySet<string> = new Set(['en', 'es', 'zh']);
 
 @Controller('api/v1/notifications')
 @UseGuards(JwtAuthGuard)
@@ -39,6 +42,54 @@ export class NotificationsController {
   @Post('read-all')
   async markAll(@Request() req: any) {
     return this.service.markAllRead(requireTenantIdStrict(req), req.user.id);
+  }
+
+  // ── Alert emails (2026-10-23) — the person's own switch + language ───────
+  // Customer alert emails (screen offline / not showing content / emergency
+  // record copies) go to admins; ON by default. These two routes read and set
+  // the signed-in person's own preference — nobody else's.
+
+  @Get('alert-emails')
+  async getAlertEmails(@Request() req: any) {
+    requireTenantIdStrict(req);
+    const user = await this.prisma.client.user.findFirst({
+      where: { id: String(req.user?.id ?? ''), deletedAt: null },
+      select: { role: true, alertEmailsEnabled: true, alertEmailLocale: true },
+    });
+    if (!user) throw new HttpException({ code: 'ALERT_EMAILS_USER_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    return {
+      enabled: user.alertEmailsEnabled,
+      locale: user.alertEmailLocale ?? null,
+      // Only admins receive alert emails; the dashboard shows the switch to them.
+      eligible: ALERT_EMAIL_ROLES.has(user.role),
+    };
+  }
+
+  @Put('alert-emails')
+  async setAlertEmails(@Request() req: any, @Body() body: { enabled?: unknown; locale?: unknown }) {
+    requireTenantIdStrict(req);
+    const data: { alertEmailsEnabled?: boolean; alertEmailLocale?: string | null } = {};
+    if (body?.enabled !== undefined) {
+      if (typeof body.enabled !== 'boolean') {
+        throw new HttpException({ code: 'ALERT_EMAILS_INVALID', message: 'enabled must be true or false' }, HttpStatus.BAD_REQUEST);
+      }
+      data.alertEmailsEnabled = body.enabled;
+    }
+    if (body?.locale !== undefined) {
+      if (body.locale !== null && !ALERT_EMAIL_LOCALES.has(String(body.locale))) {
+        throw new HttpException({ code: 'ALERT_EMAILS_INVALID', message: 'locale must be en, es or zh' }, HttpStatus.BAD_REQUEST);
+      }
+      data.alertEmailLocale = body.locale === null ? null : String(body.locale);
+    }
+    if (Object.keys(data).length === 0) {
+      throw new HttpException({ code: 'ALERT_EMAILS_INVALID', message: 'Nothing to change' }, HttpStatus.BAD_REQUEST);
+    }
+    const res = await this.prisma.client.user.updateMany({
+      where: { id: String(req.user?.id ?? ''), deletedAt: null },
+      data,
+    });
+    if (res.count !== 1) throw new HttpException({ code: 'ALERT_EMAILS_USER_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    return this.getAlertEmails(req);
   }
 
 }

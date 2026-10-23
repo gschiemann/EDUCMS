@@ -109,6 +109,10 @@ import { assertSupportReach } from '../support-access/support-access.context';
 // row per screen an alert reached, written AFTER the alert's own writes, audit
 // rows and dispatch, never awaited (screens/events/screen-events.ts).
 import { LEDGER_BULK_MAX_ROWS, ScreenEventsService } from '../screens/events/screen-events.service';
+// 2026-10-23 — customer alert emails: a record copy of every trigger / all-clear
+// to the organisation's admins, queued AFTER the action committed and never
+// awaited (notifications/customer-alerts/customer-alert-emails.service.ts).
+import { CustomerAlertEmailsService } from '../notifications/customer-alerts/customer-alert-emails.service';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -130,7 +134,31 @@ export class EmergencyController {
     // 2026-10-18 — interruption ledger. Optional: every spec that builds this
     // controller by hand records nothing, and nothing here depends on it.
     @Optional() private readonly ledger?: ScreenEventsService,
+    // 2026-10-23 — customer alert emails. Optional for the same reason.
+    @Optional() private readonly alertEmails?: CustomerAlertEmailsService,
   ) {}
+
+  /**
+   * Customer alert emails (2026-10-23): queue the record copy of this trigger
+   * / all-clear for the organisation's admins. Called AFTER the action's own
+   * writes, audit rows and dispatch. `recordEmergency` is synchronous, returns
+   * void and starts its work on a later event-loop turn; the try/catch here
+   * is the second guarantee that nothing it does can reach this request.
+   */
+  private queueAlertEmail(input: {
+    event: 'TRIGGERED' | 'CLEARED';
+    overrideId: string;
+    alertType?: string | null;
+    isDrill: boolean;
+    tenantIds: string[];
+    screenCount?: number;
+  }): void {
+    try {
+      this.alertEmails?.recordEmergency(input);
+    } catch {
+      /* a record copy must never touch the emergency path */
+    }
+  }
 
   /**
    * Interruption ledger (2026-10-18): one row per screen this alert reached —
@@ -1541,6 +1569,16 @@ export class EmergencyController {
       ...(scopeType === 'tenant' ? { tenantIds: affectedTenantIds } : { screens: ledgerScreens ?? [] }),
     });
 
+    // Customer alert emails — record copy; not awaited, never throws.
+    this.queueAlertEmail({
+      event: 'TRIGGERED',
+      overrideId,
+      alertType: this.emergencyTypeKey(overridePayload.type),
+      isDrill,
+      tenantIds: scopeType === 'tenant' ? affectedTenantIds : [ownedTenantId],
+      ...(affectedScreenCount !== undefined ? { screenCount: affectedScreenCount } : {}),
+    });
+
     // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
     // Fire-and-forget; the response below is never blocked. Only fires
     // for tenant-scoped triggers (per-screen / per-group emergencies
@@ -1953,6 +1991,14 @@ export class EmergencyController {
       ...(scopeType === 'tenant'
         ? { tenantIds: affectedTenantIds }
         : { screens: changedScreenIds.map((sid) => ({ id: sid, tenantId: ownedTenantId })) }),
+    });
+
+    // Customer alert emails — record copy; not awaited, never throws.
+    this.queueAlertEmail({
+      event: 'CLEARED',
+      overrideId,
+      isDrill: clearingDrill,
+      tenantIds: scopeType === 'tenant' ? affectedTenantIds : [ownedTenantId],
     });
 
     return {

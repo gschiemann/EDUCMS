@@ -45,6 +45,7 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 import { withTimeout } from './with-timeout';
+import { reportPlatformComponent } from './platform-degradation';
 
 type MonitorStatus = 'ok' | 'degraded' | 'critical';
 
@@ -195,6 +196,8 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
     try {
       const result = await this.probe();
       const now = Date.now();
+      // Customer alert emails stand down while DB / Redis / the WS signer are unhealthy (platform-degradation.ts).
+      reportPlatformComponent('platform', result.status, now);
 
       const enteredUnhealthy = result.status !== 'ok' && this.lastStatus === 'ok';
       const worsened = SEVERITY_RANK[result.status] > SEVERITY_RANK[this.lastStatus] && this.lastStatus !== 'ok';

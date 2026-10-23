@@ -28,6 +28,7 @@ import * as Sentry from '@sentry/nestjs';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 import { SupabaseStorageService } from './supabase-storage.service';
 import { storageTransportState } from './storage-transport';
+import { reportPlatformComponent } from '../health/platform-degradation';
 
 type WatchdogStatus = 'ok' | 'degraded' | 'down';
 
@@ -76,6 +77,8 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
       const probe = await this.storage.storageHealthProbe();
       const status: WatchdogStatus = !probe.ok ? 'down' : probe.transport === 'fallback' ? 'degraded' : 'ok';
       const now = Date.now();
+      // Customer alert emails stand down while storage is unhealthy (platform-degradation.ts).
+      reportPlatformComponent('storage', status, now);
 
       const enteredUnhealthy = status !== 'ok' && this.lastStatus === 'ok';
       const stillUnhealthy = status !== 'ok' && this.lastStatus !== 'ok' && now - this.lastAlertAt > REALERT_MS;

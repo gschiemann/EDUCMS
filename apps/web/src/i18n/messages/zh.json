@@ -444,7 +444,18 @@
     "roleSchoolAdmin": "机构管理员",
     "roleContributor": "内容编辑",
     "roleViewer": "查看者",
-    "roleUnknown": "未知"
+    "roleUnknown": "未知",
+    "alertEmails": {
+      "title": "提醒邮件",
+      "sub": "当屏幕离线、停止显示内容或发出紧急警报时，给我发邮件。",
+      "on": "开启",
+      "off": "关闭",
+      "toggle": "开启或关闭提醒邮件",
+      "language": "提醒邮件的语言",
+      "languageDefault": "与我的组织相同",
+      "saved": "已保存",
+      "saveFailed": "无法保存，请重试。"
+    }
   },
   "settings": {
     "common": {

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
+import { CustomerAlertEmailsService } from './customer-alerts/customer-alert-emails.service';
 
 /**
  * HIGH-9 audit fix: NotificationsService.scanOfflineScreens existed with
@@ -30,6 +31,9 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly notifications: NotificationsService,
     @Optional() private readonly lease?: LeaderLeaseService,
+    // 2026-10-23 — customer alert emails ride this tick (and so this lease):
+    // they judge "offline ≥ 15 min" from the rows the scan just read.
+    @Optional() private readonly alertEmails?: CustomerAlertEmailsService,
   ) {}
 
   onModuleInit() {
@@ -80,6 +84,14 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
           `recovered=${result.recovered} notified=${result.notified} ` +
           `infraEvents=${result.infraEvents}`,
         );
+      }
+      // Customer alert emails — after the in-app scan, never able to fail it.
+      if (this.alertEmails) {
+        try {
+          await this.alertEmails.onOfflineScan(result);
+        } catch (e: any) {
+          this.logger.warn(`Customer alert emails tick failed: ${e?.message ?? e}`);
+        }
       }
     } catch (e: any) {
       this.logger.warn(`Offline scan failed: ${e?.message ?? e}`);

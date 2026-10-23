@@ -3868,6 +3868,33 @@ export function useMarkAllNotificationsRead() {
   });
 }
 
+// ─── Alert emails (2026-10-23) — the person's own switch + language ───────
+export interface AlertEmailPrefs {
+  enabled: boolean;
+  locale: 'en' | 'es' | 'zh' | null;
+  /** Only administrators receive alert emails. */
+  eligible: boolean;
+}
+
+export function useAlertEmailPrefs() {
+  return useQuery<AlertEmailPrefs>({
+    queryKey: ['alert-email-prefs'],
+    queryFn: () => apiFetch('/notifications/alert-emails'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSetAlertEmailPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The card shows its own "Couldn't save" line; no global toast on top of it.
+    meta: { suppressGlobalError: true },
+    mutationFn: (body: { enabled?: boolean; locale?: AlertEmailPrefs['locale'] }) =>
+      apiFetch('/notifications/alert-emails', { method: 'PUT', body: JSON.stringify(body) }) as Promise<AlertEmailPrefs>,
+    onSuccess: (data) => qc.setQueryData(['alert-email-prefs'], data),
+  });
+}
+
 // ─── Audit Log ────────────────────────────────────────────────
 export function useAuditLog(params: {
   from?: string; to?: string; actorId?: string; action?: string; limit?: number; offset?: number;
