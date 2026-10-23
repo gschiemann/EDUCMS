@@ -140,6 +140,23 @@ class VendorBacklightWiringTest {
     fun `the blank keeps Android awake — it never drops KEEP_SCREEN_ON`() {
         val apply = body(provider, "override fun apply(")
         assertFalse(apply.contains("setKeepScreenOn(false)"))
+        assertFalse(body(provider, "private fun deferredApply(").contains("setKeepScreenOn(false)"))
+    }
+
+    @Test
+    fun `a main-thread call before the service is connected is deferred, never waited for, and re-checks the hold`() {
+        val apply = body(provider, "override fun apply(")
+        assertTrue(apply.contains("onMainThread()"))
+        assertTrue(apply.contains("submitQuietly(\"deferred"))
+        val deferred = body(provider, "private fun deferredApply(")
+        // The emergency gate is re-checked on the worker before a deferred blank lands…
+        assertTrue(deferred.indexOf("DisplayEmergency.isHeld(a)") < deferred.indexOf("e.blank()"))
+        // …and a deferred blank that fails never comes back to this provider or to a latch-prone lock.
+        assertTrue(deferred.contains("next != id"))
+        assertTrue(deferred.contains("RestoreBlankPolicy.allows("))
+        // The bounded wait is for a command only — never for a bind on the main looper.
+        val wait = body(provider, "private fun <T> onWorker(")
+        assertFalse(wait.contains("Looper"))
     }
 
     @Test

@@ -111,7 +111,7 @@ ETag moves. Default: unset.
 
 ## Tests
 
-* Kotlin (JVM): `VendorBacklightPolicyTest` 14, `VendorBacklightEngineTest` 25, `VendorBacklightWiringTest` 12
+* Kotlin (JVM): `VendorBacklightPolicyTest` 14, `VendorBacklightEngineTest` 25, `VendorBacklightWiringTest` 13
   — detection/fallback, timeouts, reconnect-once, fault latch, emergency ordering (ON queued before any
   binder call; a hanging/throwing ON never reaches the caller), restore policy, kill-switch parse, wiring.
   Full gate `./gradlew testDebugUnitTest lintDebug`: 1 325 tests across 123 classes, 0 failures;

@@ -144,9 +144,34 @@ object VendorBacklightProvider : DisplayControlProvider {
     override fun apply(ctx: Context, action: DisplayAction): ActionResult {
         val e = engine ?: return ActionResult.Unsupported("vendor backlight not started")
         val a = ctx.applicationContext
+        // ── THE MAIN THREAD BEFORE THE SERVICE IS CONNECTED ──
+        // A bind's callback needs the main looper, so a main-thread caller
+        // (the AlarmManager scheduler, `onWindowAttached`'s re-apply at process
+        // start) cannot wait for one. Such a call is DEFERRED to the worker
+        // instead of failed through: at process start the panel is already
+        // dark by the MCU's hand and the persisted blank re-applies itself the
+        // moment the service answers — handing it to the screen-off timeout
+        // would turn a vendor-dark panel with a live page into an Android-asleep
+        // one. A deferred BLANK that then fails hands itself to the rest of the
+        // chain (never a latch-prone lock); a deferred WAKE reports Failed so
+        // the chain's wake runs meanwhile, and the vendor ON still follows.
+        if (onMainThread() && ports?.connected() != true &&
+            (action == DisplayAction.Blank || action == DisplayAction.Wake)
+        ) {
+            if (action == DisplayAction.Blank && Capability.BLANK !in supports(a)) {
+                return ActionResult.Unsupported("vendor backlight is not available for blank on this box")
+            }
+            PlayerLogger.w(TAG, "${action.describe()} asked on the main thread before the control service is connected — deferred to the worker")
+            submitQuietly("deferred ${action.describe()}") { deferredApply(a, e, action) }
+            return if (action == DisplayAction.Blank) {
+                ActionResult.Ok(id, "deferred — applying when the vendor service connects")
+            } else {
+                ActionResult.Failed("the vendor service is not connected yet — the ON follows when it is", id)
+            }
+        }
         return when (action) {
             DisplayAction.Blank -> {
-                if (supports(a).isEmpty() || Capability.BLANK !in supports(a)) {
+                if (Capability.BLANK !in supports(a)) {
                     return ActionResult.Unsupported("vendor backlight is not available for blank on this box")
                 }
                 when (val step = onWorker("blank") { e.blank() }) {
@@ -181,18 +206,59 @@ object VendorBacklightProvider : DisplayControlProvider {
         }
     }
 
+    private fun onMainThread(): Boolean =
+        runCatching { Looper.myLooper() == Looper.getMainLooper() }.getOrDefault(false)
+
     /**
-     * Run [work] on the worker and wait for it, bounded. On the MAIN thread a
-     * bind cannot complete while we wait (its callback needs this looper), so
-     * the wait is skipped unless the service is already connected.
+     * A main-thread BLANK / WAKE that arrived before the service was connected,
+     * now on the worker (see [apply]). The emergency gate is re-checked: a
+     * deferred blank must not land under a hold that engaged in the meantime.
+     */
+    private fun deferredApply(a: Context, e: VendorBacklightEngine, action: DisplayAction) {
+        when (action) {
+            DisplayAction.Blank -> {
+                if (DisplayEmergency.isHeld(a) || !DisplayPrefs.blanked(a)) {
+                    PlayerLogger.i(TAG, "deferred blank dropped — ${if (DisplayEmergency.isHeld(a)) "an emergency hold is engaged" else "the screen is no longer meant to be blank"}")
+                    return
+                }
+                val step = e.blank()
+                if (step is VendorBacklightEngine.Step.Ok) {
+                    val outcome = VendorBacklightPolicy.blankOutcome(step.backlightOff)
+                    lastBlankOutcome = outcome
+                    runCatching { prefs(a).edit().putString(KEY_LAST_OUTCOME, outcome).apply() }
+                    runCatching { SleepProof.expect(a, id) }
+                    DisplayWindowBridge.withHooks { it.setBlackout(true) }
+                    return
+                }
+                // Hand the blank to the rest of the chain — never back to this
+                // provider, and never a latch-prone lock (rule 6).
+                PlayerLogger.w(TAG, "deferred blank did not take ($step) — handing it to the next mechanism")
+                runCatching {
+                    DisplayControlRegistry.apply(a, DisplayAction.Blank, revertAfterMs = null, allowProvider = { next ->
+                        next != id && com.educms.player.standby.RestoreBlankPolicy.allows(
+                            next, android.os.Build.VERSION.SDK_INT, android.os.Build.MODEL,
+                        )
+                    })
+                }
+            }
+            DisplayAction.Wake -> {
+                if (e.wake() is VendorBacklightEngine.Step.Ok) {
+                    DisplayWindowBridge.withHooks { h ->
+                        h.setBlackout(false)
+                        h.setKeepScreenOn(true)
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    /**
+     * Run [work] on the worker and wait for it, bounded. Never reached from the
+     * main thread while the service is unconnected ([apply] defers that case),
+     * so the wait can only ever be for a command, never for a bind callback.
      */
     private fun <T> onWorker(what: String, work: () -> T): T? {
-        val p = ports ?: return null
-        val onMain = runCatching { Looper.myLooper() == Looper.getMainLooper() }.getOrDefault(false)
-        if (onMain && !p.connected()) {
-            PlayerLogger.w(TAG, "$what asked on the main thread before the control service is connected — not waiting; the chain falls through")
-            return null
-        }
         val future: Future<T> = try {
             synchronized(lock) { worker.submit(work) }
         } catch (t: Throwable) {
