@@ -6296,5 +6296,122 @@
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
+  },
+  "publicSite": {
+    "footer": {
+      "tagline": "一个平台搞定数字标牌、自助终端、实时记分牌和紧急警报 —— 覆盖您运营的每个场所。",
+      "product": "产品",
+      "overview": "概览",
+      "industries": "行业",
+      "templates": "模板",
+      "pricing": "价格",
+      "resources": "资源",
+      "helpCenter": "帮助中心",
+      "gettingStarted": "快速入门",
+      "emergencySystem": "紧急系统",
+      "ssoSetup": "SSO 设置",
+      "apiWebhooks": "API 与 Webhook",
+      "systemStatus": "系统状态",
+      "trust": "安全",
+      "itSecurity": "安全概览",
+      "networkRequirements": "网络要求",
+      "reportVulnerability": "报告漏洞",
+      "legal": "法律",
+      "privacy": "隐私政策",
+      "terms": "服务条款",
+      "dpa": "数据处理附录",
+      "subprocessors": "次级处理方",
+      "ferpa": "FERPA",
+      "coppa": "COPPA",
+      "copyright": "© {year} VenueOS —— 一个平台，服务每个场所。",
+      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报"
+    },
+    "help": {
+      "back": "返回帮助中心",
+      "updated": "更新于 {date}",
+      "moreIn": "更多{category}文章",
+      "categories": {
+        "gettingStarted": {
+          "name": "快速入门",
+          "description": "设置工作区，点亮第一块屏幕。"
+        },
+        "templates": {
+          "name": "模板",
+          "description": "设计版式、导入现有设计，并统一品牌。"
+        },
+        "aiStudio": {
+          "name": "AI 工作室",
+          "description": "一句话生成画面，用日常语言修改。"
+        },
+        "screens": {
+          "name": "屏幕",
+          "description": "配对、分组和管理实体显示屏。"
+        },
+        "emergency": {
+          "name": "紧急系统",
+          "description": "封锁、天气和疏散警报 —— 以及各项保障。"
+        },
+        "sports": {
+          "name": "体育",
+          "description": "记分牌、环形广告屏、提示以及比赛日的现场运营。"
+        },
+        "integrations": {
+          "name": "集成",
+          "description": "收银系统菜单、实时价格和已连接的服务。"
+        },
+        "sso": {
+          "name": "SSO",
+          "description": "连接 Google、Microsoft 或任何 OIDC 身份提供商。"
+        },
+        "clever": {
+          "name": "Clever",
+          "description": "从学生信息系统自动同步员工和课表。"
+        },
+        "billing": {
+          "name": "账单",
+          "description": "发票、采购订单、升级和取消。"
+        },
+        "itSecurity": {
+          "name": "IT 与安全",
+          "description": "网络要求、登录、数据保护和安全审查。"
+        }
+      }
+    },
+    "status": {
+      "title": "系统状态",
+      "subtitle": "VenueOS 平台的实时健康状况，直接从您的浏览器检查。每分钟自动刷新。",
+      "toneOk": "正常",
+      "toneDegraded": "降级",
+      "toneDown": "中断",
+      "toneUnknown": "检查中…",
+      "overallOk": "所有系统运行正常",
+      "overallDegraded": "部分降级 —— 服务仍在运行",
+      "overallDown": "服务中断",
+      "overallUnknown": "正在检查系统…",
+      "web": "网页管理后台",
+      "api": "API",
+      "database": "数据库",
+      "realtime": "实时推送",
+      "emergencyPath": "紧急警报链路",
+      "storage": "文件上传与存储",
+      "webOk": "您正在查看的就是它",
+      "checking": "检查中…",
+      "unknownApi": "未知 —— 无法连接 API",
+      "apiDown": "无法连接",
+      "apiOk": "正常处理请求",
+      "dbOk": "查询正常",
+      "dbDown": "查询无响应",
+      "realtimeOk": "即时推送已启用",
+      "realtimeDegraded": "轮询备用 —— 屏幕约每 10 秒检查一次变更",
+      "emergencyOk": "触发链路已验证",
+      "emergencyDown": "触发链路检查失败",
+      "storageOk": "上传正常",
+      "storageBackup": "通过备用通道运行",
+      "storageDown": "上传失败",
+      "lastChecked": "最后检查 {time}",
+      "apiBuild": "API 版本 {version}",
+      "firstCheck": "正在进行首次检查…",
+      "offlineNote": "屏幕断网时会继续播放已保存的内容，正在显示的紧急警报会一直保留到解除警报 —— 详见<help>紧急系统概览</help>。"
+    }
   }
 }

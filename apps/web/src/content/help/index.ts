@@ -4,9 +4,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { HelpArticle, HelpCategory } from './types';
+import type { HelpArticle, HelpArticleTranslation, HelpCategory, HelpTranslationLocale } from './types';
 
-export type { HelpArticle, HelpCategory } from './types';
+export type { HelpArticle, HelpCategory, HelpArticleTranslation, HelpTranslationLocale } from './types';
 export { HELP_CATEGORIES } from './types';
 
 function parse(slug: string, raw: string): HelpArticle {
@@ -59,7 +59,11 @@ const SLUG_ORDER = [
   'sso',
   'clever',
   'billing',
+  'it-security-overview',
+  'network-requirements',
 ];
+
+const TRANSLATION_LOCALES: readonly HelpTranslationLocale[] = ['es', 'zh'];
 
 let cached: HelpArticle[] | null = null;
 
@@ -68,7 +72,16 @@ export function getAllArticles(): HelpArticle[] {
   const dir = path.join(process.cwd(), 'src', 'content', 'help');
   const articles = SLUG_ORDER.map((slug) => {
     const raw = fs.readFileSync(path.join(dir, `${slug}.md`), 'utf8');
-    return parse(slug, raw);
+    const article = parse(slug, raw);
+    const translations: Partial<Record<HelpTranslationLocale, HelpArticleTranslation>> = {};
+    for (const locale of TRANSLATION_LOCALES) {
+      const file = path.join(dir, `${slug}.${locale}.md`);
+      if (!fs.existsSync(file)) continue;
+      const t = parse(slug, fs.readFileSync(file, 'utf8'));
+      translations[locale] = { title: t.title, excerpt: t.excerpt, body: t.body };
+    }
+    if (Object.keys(translations).length) article.translations = translations;
+    return article;
   });
   cached = articles;
   return articles;

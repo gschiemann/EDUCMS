@@ -18,7 +18,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
+import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
+
+/** The API accepts only https:// emergency media (media-url-guard.ts); refuse
+ *  anything else here too, so a pushed message can never inject a script URL. */
+export function safeEmergencyMediaUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * P0 (2026-06-27, Greg live-tested on the 960×1080 LED) — the full-screen
@@ -37,8 +50,10 @@ function FitToViewport({ children, padding = 40 }: { children: React.ReactNode; 
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const faceStage = useEmergencyFaceStage();
 
   useEffect(() => {
+    if (faceStage) return;
     const measure = () => {
       const outer = outerRef.current;
       const inner = innerRef.current;
@@ -67,7 +82,12 @@ function FitToViewport({ children, padding = 40 }: { children: React.ReactNode; 
       ro?.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [children, padding]);
+  }, [children, padding, faceStage]);
+
+  if (faceStage) return <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+    boxSizing: 'border-box', padding, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ width: '100%', margin: 'auto 0', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>{children}</div>
+  </div>;
 
   return (
     <div
@@ -254,6 +274,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   // is re-read the instant an alert fires (the value is set by the manifest
   // after this overlay first mounts).
   const canvas = useLedCanvas(message?.id ?? polled?.id ?? null);
+  const faceStage = useEmergencyFaceStage();
 
   useEffect(() => {
     if (message || !apiUrl) return;
@@ -388,11 +409,12 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           // canonical canvas (--led-w/--led-h, published by player/layout.tsx
           // on every boot) is the width; the operator's LED canvas override
           // still wins when set.
-          width: canvas.w ? `${canvas.w}px` : 'var(--led-w, 100vw)',
-          maxHeight: canvas.h
+          width: faceStage?.width ?? (canvas.w ? `${canvas.w}px` : 'var(--led-w, 100vw)'),
+          maxHeight: faceStage ? faceStage.height * 0.4 : canvas.h
             ? `${Math.round(canvas.h * 0.4)}px`
             : 'calc(var(--led-h, 100vh) * 0.4)',
           backgroundColor: style.solidBg,
+          ...(faceStage ? { overflowY: 'auto' as const } : {}),
         }}
       >
         <Icon className="w-8 h-8 flex-shrink-0" />
@@ -436,8 +458,8 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         // the media branch and the splash use); only two sides are set so
         // this object can never serialize to the four-side shorthand
         // (CLAUDE.md rule #10, third variant).
-        width: 'var(--led-w, 100vw)',
-        height: 'var(--led-h, 100vh)',
+        width: faceStage?.width ?? 'var(--led-w, 100vw)',
+        height: faceStage?.height ?? 'var(--led-h, 100vh)',
         backgroundColor: style.solidBg,
       }}
     >
@@ -452,8 +474,8 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           position: 'absolute',
           top: 0,
           left: 0,
-          width: canvas.w ? `${canvas.w}px` : '100%',
-          height: canvas.h ? `${canvas.h}px` : '100%',
+          width: faceStage ? '100%' : canvas.w ? `${canvas.w}px` : '100%',
+          height: faceStage ? '100%' : canvas.h ? `${canvas.h}px` : '100%',
         }}
       >
       {active.severity === 'CRITICAL' && (
@@ -465,7 +487,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           max-w-6xl keeps long copy wrapping; FitToViewport shrinks the whole
           block to the largest size that fully fits. */}
       <FitToViewport padding={40}>
-      <div className="relative max-w-6xl text-center">
+      <div className="relative max-w-6xl text-center" style={faceStage ? { width: '100%', minWidth: 0 } : undefined}>
         <Icon className="w-32 h-32 mx-auto mb-6" />
         <div className="text-sm uppercase tracking-[0.4em] font-bold opacity-80 mb-2">
           {active.type === 'SOS' ? 'Staff SOS' : active.type === 'MEDIA_ALERT' ? 'Emergency Alert' : 'Broadcast'}
@@ -482,16 +504,16 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           // max-h uses a fixed pixel cap rather than `vh` so the
           // 90°-rotated preview-mode body doesn't size against the
           // wrong axis on Taurus.
-          <div className="grid grid-cols-1 md:grid-cols-2 mt-6 -m-2" style={{ maxHeight: '432px' }}>
-            {active.mediaUrls.slice(0, 4).map((url) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 mt-6 -m-2" style={{ maxHeight: '432px', ...(faceStage ? { gridTemplateColumns: faceStage.orientation === 'portrait' ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))' } : {}) }}>
+            {active.mediaUrls.slice(0, 4).map(safeEmergencyMediaUrl).filter((url): url is string => !!url).map((url) => {
               const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(url);
               return (
                 <div key={url} className="p-2">
                   {isVideo ? (
-                    <video src={url} autoPlay muted loop playsInline className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
+                    <video src={url} autoPlay muted loop playsInline className="w-full h-full object-cover rounded-lg border-2 border-white/40" style={faceStage ? { objectFit: 'contain' } : undefined} />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={url} alt="Emergency media" className="w-full h-full object-cover rounded-lg border-2 border-white/40" />
+                    <img src={url} alt="Emergency media" className="w-full h-full object-cover rounded-lg border-2 border-white/40" style={faceStage ? { objectFit: 'contain' } : undefined} />
                   )}
                 </div>
               );

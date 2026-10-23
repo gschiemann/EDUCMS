@@ -65,8 +65,9 @@ export default function DpaPage() {
       <p>
         We maintain appropriate technical and organizational measures to protect Customer Data,
         including: encryption in transit and at rest; role-based access control enforced on every
-        request; separation of each Customer&apos;s data; multi-factor authentication for administrators
-        and for users permitted to send emergency alerts; salted Argon2 password hashing; signed
+        request; separation of each Customer&apos;s data; multi-factor authentication available to every
+        user, which the Customer can require for its administrators and for users permitted to send
+        emergency alerts; salted Argon2 password hashing; signed
         emergency alert messages; immutable audit records of privileged actions; nightly encrypted
         backups; and processes for reviewing changes and handling vulnerabilities. We may update these
         measures provided the overall level of protection is not reduced.
@@ -108,7 +109,8 @@ export default function DpaPage() {
 
       <h2>8. Return and deletion</h2>
       <p>
-        During the subscription the Customer can export and delete its data through the Service. After
+        During the subscription, administrators can download uploaded files (one at a time or as a ZIP), export the audit log and proof-of-play reports as CSV, and remove content, playlists, screens and users in the Service. A complete export of Customer Data in a machine-readable format is provided on written request to{' '}
+        <a href={`mailto:${LEGAL_CONTACTS.privacy}`}>{LEGAL_CONTACTS.privacy}</a>. After
         the Agreement ends, the Customer may export its data for at least 90 days; after that, or
         sooner on written request, we delete Customer Data, except where the law requires us to keep
         it. Encrypted backup copies expire within 30 days. Audit records may be kept longer where

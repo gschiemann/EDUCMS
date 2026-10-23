@@ -92,7 +92,7 @@ const FAQ = [
   },
   {
     q: 'Can we try it before we pay?',
-    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens, use every feature, and try the AI (10 board designs and 10 images). Add billing when you’re ready to go live.',
+    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens, use every feature, and try the AI (2 board designs and 2 images). Add billing when you’re ready to go live.',
   },
   {
     q: 'Is annual billing cheaper?',
