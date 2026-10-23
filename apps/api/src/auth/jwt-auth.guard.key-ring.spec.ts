@@ -2,10 +2,13 @@
  * JwtAuthGuard's DEVICE leg during a DEVICE_JWT_SECRET rotation window
  * (2026-10-22, security/key-ring.ts).
  *
- * Screens hold 1-hour device tokens and renew every ~10 min. Between "deploy
- * with the new primary" and "every screen has renewed", a request carrying a
- * token minted on the OLD key must still pass the guard — or the whole fleet
- * 401s until re-pair. User tokens (JWT_SECRET) are untouched by the ring.
+ * Paired screens hold 180-day device tokens and re-register only when their
+ * page loads (corrected 2026-10-23 — this said "1-hour tokens, renew every
+ * ~10 min", the assumption that closed a window on screens that had not
+ * renewed). Between "deploy with the new primary" and "every screen has
+ * re-registered", a request carrying a token minted on the OLD key must still
+ * pass the guard — or the whole fleet 401s. User tokens (JWT_SECRET) are
+ * untouched by the ring.
  */
 import { JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from './jwt-auth.guard';

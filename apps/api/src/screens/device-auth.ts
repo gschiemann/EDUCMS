@@ -533,6 +533,58 @@ export function decodeDeviceTokenUnsafe(authHeader: string): any {
   }
 }
 
+/**
+ * Is `token` a device credential for `screenId` that NO key we hold can
+ * verify? (2026-10-23, the retired-signing-key incident.)
+ *
+ * `POST /screens/register` used to sort every verification failure that was
+ * not `TokenExpiredError` into "wrong screen or tampered" → hard 401. A token
+ * signed by a `DEVICE_JWT_SECRET` that has since been rotated out is neither:
+ * it is a screen's own credential that the server can no longer check. Those
+ * screens re-registered once a minute, were refused every time, and never
+ * reached the 1-hour + `requiresRePair` answer that keeps content and alerts
+ * flowing (see `verifyPriorToken` in screens.controller.ts).
+ *
+ * TRUE ONLY when ALL of these hold:
+ *   • `verifyError` is exactly jsonwebtoken's `invalid signature` — the token
+ *     parsed, carried an algorithm we accept, and no key in the ring matched.
+ *     Every other failure (malformed, `alg` not HS256, missing signature,
+ *     `nbf`) stays a hard refusal;
+ *   • the header names an algorithm we mint (`DEVICE_JWT_ALGORITHMS`);
+ *   • the UNVERIFIED claims say `kind: 'device'` and name this screen, with
+ *     `sub` and `deviceId` agreeing — the same binding check the expired
+ *     branch has always made.
+ *
+ * WHAT IT IS NOT. Not proof of possession, and never treated as one: the
+ * register path grades it exactly like an ABSENT prior — a 1-hour bootstrap
+ * credential (`unproven` + bootstrap audience, no tenant claim), no epoch
+ * rotation, `requiresRePair`. Knowing the fingerprint already buys that same
+ * answer by sending no prior at all, so this widens nothing; DEVAUTH-01 and
+ * DT-04 are untouched. The retired key is never consulted — we cannot tell a
+ * retired key from one we never held, and we do not need to.
+ */
+export function isUnverifiableDeviceTokenForScreen(
+  token: unknown,
+  verifyError: unknown,
+  screenId: string,
+): boolean {
+  if (typeof token !== 'string' || !screenId) return false;
+  const err = verifyError as { name?: unknown; message?: unknown } | null | undefined;
+  if (err?.name !== 'JsonWebTokenError' || err?.message !== 'invalid signature') return false;
+  let complete: jwt.Jwt | null;
+  try {
+    complete = jwt.decode(token, { complete: true });
+  } catch {
+    return false;
+  }
+  if (!complete || !complete.payload || typeof complete.payload !== 'object') return false;
+  if (!DEVICE_JWT_ALGORITHMS.includes(complete.header?.alg as jwt.Algorithm)) return false;
+  const claims = complete.payload as { kind?: unknown; sub?: unknown; deviceId?: unknown };
+  if (claims.kind !== 'device' || claims.sub !== screenId) return false;
+  if (claims.deviceId !== undefined && claims.deviceId !== screenId) return false;
+  return true;
+}
+
 async function loadCredentialState(
   prisma: DeviceAuthPrisma,
   screenId: string,

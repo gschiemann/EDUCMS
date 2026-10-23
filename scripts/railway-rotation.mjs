@@ -4,13 +4,24 @@
 // deploy master. Prints names and checks only, never a secret value.
 //
 //   node scripts/railway-rotation.mjs start    # new device secrets, old ones kept as *_PREVIOUS, deploy
-//   node scripts/railway-rotation.mjs finish   # after >= 2 h: remove *_PREVIOUS, deploy
+//   node scripts/railway-rotation.mjs finish   # remove *_PREVIOUS, deploy — but only once every screen
+//                                              # alive in the last 24 h holds a token on the NEW key
+//   node scripts/railway-rotation.mjs finish --override-unrenewed "<why>"
+//                                              # close the window anyway; recorded in audit_logs first
+//
+// 2026-10-23: `finish` used to remove the window unconditionally. Paired screens hold 180-day
+// tokens and only re-register when their page loads, so every screen that had not reloaded
+// since `start` was signed out the moment the window closed. The guard
+// (scripts/rotation-renewal-guard.cjs) reads the production database with the Railway
+// DATABASE_URL — read-only, except the override record.
 //
 // Needs the Railway CLI logged in (`railway whoami`). docs/SECRET-ROTATION.md has the why.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
+import pg from 'pg';
+import guard from './rotation-renewal-guard.cjs';
 
 const SERVICE_ID = '5220b230-9824-4c95-862e-74bb657b2312'; // api
 const ENV_ID = 'dac3f973-c916-49ab-8ba7-ec76ddaa1d95'; // production
@@ -66,11 +77,40 @@ async function start() {
     }
   }
   await deployMaster();
-  console.log('Done. Screens move to the new keys by themselves. Run "finish" in 2 hours or more.');
+  console.log(`New DEVICE_JWT_SECRET key id: ${guard.keyIdOf(after.DEVICE_JWT_SECRET)} (not secret; "finish" looks for it).`);
+  console.log([
+    'Done. A screen moves to the new key only when it next registers — its page loading, or a',
+    'Resync from the dashboard. Paired screens do NOT renew on a timer (180-day tokens). Once the',
+    'deploy is live, Resync the fleet, then run "finish": it refuses while any screen alive in the',
+    'last 24 h is still on the old key, and lists them.',
+  ].join('\n'));
 }
 
-async function finish() {
+const operatorName = () => {
+  try { return userInfo().username || null; } catch { return null; }
+};
+
+async function finish(args) {
+  const parsed = guard.parseFinishArgs(args);
+  if (parsed.errors.length) throw new Error(`${parsed.errors.join('; ')}. Usage: finish [--override-unrenewed "<why>"]`);
   const v = vars();
+  // The DEVICE_JWT_SECRET guard (2026-10-23). Refuses — nothing removed — while
+  // a live screen still holds an old-key token; an override is recorded first.
+  const mayClose = await guard.runFinishGuard({
+    vars: v,
+    overrideReason: parsed.overrideReason,
+    connect: async (connectionString) => {
+      const client = new pg.Client({ connectionString });
+      await client.connect();
+      return client;
+    },
+    newId: randomUUID,
+    operator: operatorName(),
+  });
+  if (!mayClose) {
+    process.exitCode = 2;
+    return;
+  }
   for (const name of PAIRS) {
     if (!v[`${name}_PREVIOUS`]) { console.log(`${name}_PREVIOUS: not set, nothing to remove`); continue; }
     railway(['variable', 'delete', `${name}_PREVIOUS`, ...TARGET]);
@@ -80,7 +120,12 @@ async function finish() {
   console.log('Done. The old device secrets no longer work anywhere.');
 }
 
-const cmd = process.argv[2];
-if (cmd === 'start') await start();
-else if (cmd === 'finish') await finish();
-else { console.log('usage: node scripts/railway-rotation.mjs start|finish'); process.exit(1); }
+const [cmd, ...rest] = process.argv.slice(2);
+try {
+  if (cmd === 'start') await start();
+  else if (cmd === 'finish') await finish(rest);
+  else { console.log('usage: node scripts/railway-rotation.mjs start | finish [--override-unrenewed "<why>"]'); process.exitCode = 1; }
+} catch (e) {
+  console.error(`railway-rotation: ${e.message}. Nothing past this point was changed.`);
+  process.exitCode = 1;
+}

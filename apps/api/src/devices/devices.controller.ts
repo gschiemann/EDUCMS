@@ -2,7 +2,7 @@ import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/commo
 import { Throttle } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
-import { deviceJwtSecretRing } from '../security/key-ring';
+import { deviceJwtSecretRing, keyIdOf } from '../security/key-ring';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 
 /**
@@ -72,6 +72,10 @@ export class DevicesController {
       throw new HttpException({ code: 'DEVICE_PAIR_SCREEN_UNCLAIMED', message: 'This screen has not been claimed by an admin yet' }, HttpStatus.PRECONDITION_REQUIRED);
     }
 
+    // Always the ring PRIMARY (security/key-ring.ts): mint on the new key. Read
+    // once, so the audit row names exactly the key that signs the token below.
+    const mintSecret = deviceJwtSecretRing().primary;
+
     // Bind / refresh device-side metadata. Idempotent — re-pairs are fine.
     // Lane-1 P1: wrap the update + immutable AuditLog row in one transaction.
     // Pairing mints a 365-day device JWT; that's a privileged action and
@@ -100,6 +104,9 @@ export class DevicesController {
             model: body.model || null,
             os: body.os || null,
             appVersion: body.appVersion || null,
+            // Non-secret id of the key that signs this token (keyIdOf) — the
+            // rotation `finish` guard counts it as "on the new key".
+            mintKeyId: keyIdOf(mintSecret),
           }),
         },
       });
@@ -108,8 +115,7 @@ export class DevicesController {
     const token = jwt.sign(
       { sub: target.id, tenantId: target.tenantId, kind: 'device', fp },
       // sec-fix(wave1) #2: fail at boot in prod rather than sign with a default.
-      // Always the ring PRIMARY (security/key-ring.ts): mint on the new key.
-      deviceJwtSecretRing().primary,
+      mintSecret,
       { expiresIn: '365d' }, // 1-year — kiosks shouldn't re-pair often
     );
 

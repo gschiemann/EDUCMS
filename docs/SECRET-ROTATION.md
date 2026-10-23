@@ -74,25 +74,78 @@ fan out. Never type a secret value into a chat, a ticket or a shell history — 
 
 ### A. `DEVICE_JWT_SECRET`
 
-1. Mint the new value: `openssl rand -hex 32`.
+> ⚠️ **Paired screens do NOT renew on a timer (corrected 2026-10-23).** This step used to say
+> "screens hold 1-hour device tokens and proactively renew every ~10 minutes — wait 2 hours". A
+> PAIRED screen holds a **180-day** token (`DEVICE_TOKEN_TTL_PAIRED`) and re-registers only when its
+> page loads, or when fewer than 14 days remain (`renewalDecision` in
+> `apps/web/src/app/player/deviceCredential.ts`; the 10-minute timer only *checks*). Only 1-hour
+> tokens — a screen already on "re-pair required" — renew by the clock. On 2026-10-23 the window was
+> closed after ~4.7 h on that assumption, and every screen that had not reloaded inside it lost its
+> sign-in at once. A screen moves to the new key only when it next re-registers, so **make the fleet
+> re-register** (step 4), and let `finish` prove it (step 5).
+
+1. Mint the new value: `openssl rand -hex 32`. (`node scripts/railway-rotation.mjs start` does
+   steps 1–3 for both device secrets and prints the new key's non-secret **key id**.)
 2. Railway → API service → Variables: set `DEVICE_JWT_SECRET_PREVIOUS` = the **current** value,
    then `DEVICE_JWT_SECRET` = the **new** value. Save both in one change so one deploy carries both.
 3. Deploy. Boot log shows `[security] DEVICE_JWT_SECRET_PREVIOUS is set — a rotation window is OPEN`.
    `GET /api/v1/super/key-rotation` (SUPER_ADMIN) answers `open: true` for `DEVICE_JWT_SECRET`.
-4. **Wait at least 2 hours.** Screens hold 1-hour device tokens and proactively renew every ~10
-   minutes (`apps/web/src/app/player/deviceCredential.ts`); a renewal presents the old-key token as
-   `priorDeviceToken`, which the ring accepts, and receives a token minted on the new key. Two hours
-   covers a token's full lifetime plus a screen that was asleep for a renewal cycle. Proof: the
-   fleet page shows no new `re-pair required` / `requiresRePair` since the deploy, and
-   `SELECT count(*) FROM "Screen" WHERE "lastPingAt" > now() - interval '15 minutes'` is unchanged
-   from before the deploy.
-   A screen that was POWERED OFF for the whole window comes back with an old-key token after the
-   window closes: it gets one controlled 401 → re-register with a fingerprint → a 1-hour `unproven`
-   token and `requiresRePair` (the normal expired-credential path). That is the only cost of closing
-   the window early, so extend step 4 over any planned outage.
-5. Delete `DEVICE_JWT_SECRET_PREVIOUS`. Deploy. The boot log no longer mentions a window.
-6. Update local `.env` (if it carries the value) and write the rotation down in
+   **Wait until this deploy is live** before step 4: until then the OLD container is still minting
+   on the old key.
+4. **Make every screen re-register while the window is open.** A re-register presents the old-key
+   token as `priorDeviceToken`, the ring accepts it as proof, and the screen is issued a 180-day token
+   on the new key. Use **Resync content** on each screen (Screens → open the screen) — it reloads the
+   player at once, even over playing content. Screens that are switched off must be powered on and
+   re-registered too; extend the window over any planned outage.
+5. **`node scripts/railway-rotation.mjs finish`** — the guard (2026-10-23,
+   `scripts/rotation-renewal-guard.cjs`). Before it removes anything it reads the production
+   database (with the Railway `DATABASE_URL`, TLS verified against the pinned CA, read-only) and
+   **refuses** while any paired, non-revoked screen that was alive in the last 24 hours — newest of
+   `last_ping_at`, `player_version_at`, `manager_version_at`, so a screen whose player is dark but
+   whose Manager still checks in counts — has **no token issued on the new key**. "Issued on the new
+   key" is a fact, not a guess from timestamps: every token issue's audit row
+   (`SCREEN_TOKEN_RENEWED` / `SCREEN_TOKEN_DOWNGRADED` from `/screens/register`, `DEVICE_PAIRED` from
+   `/devices/pair`) carries `mintKeyId`, a non-secret 16-hex id of the signing key (`keyIdOf` in
+   `apps/api/src/security/key-ring.ts`), and the script computes the same id from the variable. It
+   lists each screen (id, name, last seen, player version): Resync it, then run `finish` again. Exit
+   code 2 = refused, nothing removed.
+   - **Override (explicit, logged):** `finish --override-unrenewed "<why>"` closes the window anyway.
+     It FIRST writes an immutable `KEY_ROTATION_FINISH_OVERRIDE` row to `audit_logs` (system tenant
+     `00000000-0000-0000-0000-000000000000`: reason, new key id, the screens still on the old key,
+     operator); if that row cannot be written nothing is removed. Every listed screen then follows
+     the recovery below. If the database cannot be reached at all the script refuses too — removing
+     the variable by hand in the Railway dashboard is then a deliberate act; write it down (step 7).
+6. On a pass (or a recorded override) `finish` deletes `DEVICE_JWT_SECRET_PREVIOUS` (and
+   `DEVICE_SECRET_KEY_PREVIOUS`) and deploys. The boot log no longer mentions a window.
+7. Update local `.env` (if it carries the value) and write the rotation down in
    `docs/research/ops/<date>-rotation.md`.
+
+#### A screen that still had an old-key token when the window closed
+
+What it does by itself (fixed 2026-10-23): its manifest 401s and the gateway answers `AUTH_FAIL`, so
+the player runs its one controlled re-register a minute (`attemptCredentialRecovery`), presenting the
+old-key token. The API cannot verify that token any more, grades it `unverifiable`, and answers
+exactly as for a screen that sent no token: a **1-hour bootstrap credential + `requiresRePair`**,
+signed by the new key, no epoch rotation, a `SCREEN_TOKEN_DOWNGRADED` audit row with
+`priorTokenStatus: "unverifiable"`, `Screen.authState = REPAIR_REQUIRED`, and one
+`[register] … no current key verifies …` line in the API log. Content and alerts keep flowing over
+the manifest poll (the emergency backstop); the realtime socket stays refused for a bootstrap
+credential by design (SEC-001). **Until 2026-10-23 that register was a hard
+`401 SCREEN_TOKEN_MISMATCH`** — retried once a minute forever, invisible in the API logs (a 401 writes
+no audit row, `RequestLogInterceptor` logs only successful mutations, `AllExceptionsFilter` only 5xx)
+— and the screen stayed dark.
+
+What the operator does: the dashboard shows the screen as **re-pair required**. Open it and press
+**Restore trust**; its next re-register (within about a minute — every refused socket triggers one)
+is issued a proven 180-day token on the new key (`unproven-restorable`). No pairing code, no visit
+to the screen. Find them all with:
+
+```sql
+SELECT s.id, s.name, s.auth_state, s.last_ping_at
+  FROM screens s
+ WHERE s.auth_state = 'REPAIR_REQUIRED' AND s.tenant_id IS NOT NULL AND s.status <> 'REVOKED'
+ ORDER BY s.last_ping_at DESC NULLS LAST;
+```
 
 ### B. `DEVICE_SECRET_KEY`
 
@@ -125,7 +178,14 @@ fan out. Never type a secret value into a chat, a ticket or a shell history — 
 ### Both at once (the 2026-10-21 Railway leak)
 
 Do A and B in the SAME variable change and deploy once: four variables set, one deploy, one
-boot. Then run B-4, wait out A-4 and B-5 (the longer wins), delete both `_PREVIOUS` values in one
-change, deploy once more. Tests pinning every consumer: `apps/api/src/security/key-ring*.spec.ts`,
+boot (`node scripts/railway-rotation.mjs start`). Then run B-4, do A-4 (Resync the fleet) and wait
+out B-5, and close both windows with `node scripts/railway-rotation.mjs finish` — it removes both
+`_PREVIOUS` values in one change and deploys once more, but only after the A-5 guard passes (or an
+override is recorded). The guard covers `DEVICE_JWT_SECRET` only; `DEVICE_SECRET_KEY`'s proof is
+B-4's `rewrapped: 0, unreadable: 0`, which you still check yourself before `finish`. Tests pinning
+every consumer: `apps/api/src/security/key-ring*.spec.ts`,
 `realtime/redis.service.key-ring.spec.ts`, `auth/jwt-auth.guard.key-ring.spec.ts`, the three
-`*-cipher.key-ring.spec.ts`, `security/key-rotation-rewrap.service.spec.ts`.
+`*-cipher.key-ring.spec.ts`, `security/key-rotation-rewrap.service.spec.ts`; the window closing on
+a screen that never renewed: `screens/screens.register-retired-key.spec.ts` and
+`apps/web/tests/e2e/credential-lifecycle.spec.ts` test 5; the `finish` guard:
+`scripts/__tests__/rotation-renewal-guard.test.cjs`.

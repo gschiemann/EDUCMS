@@ -5,8 +5,10 @@
  * `DEVICE_SECRET_KEY` had to be rotated WITHOUT taking the screen fleet
  * offline. A straight swap of either one is an outage:
  *
- *   • `DEVICE_JWT_SECRET` signs every screen's 1-hour device JWT. Swap it and
- *     every screen 401s on its next request until it is physically re-paired.
+ *   • `DEVICE_JWT_SECRET` signs every screen's device JWT — 180 days for a
+ *     paired screen. Swap it and every screen 401s on its next request; since
+ *     2026-10-23 its re-register lands on a 1-hour credential + "re-pair
+ *     required" (it used to be a hard 401, i.e. dark until physically re-paired).
  *   • `DEVICE_SECRET_KEY` is the HMAC key for the realtime fan-out gate (the
  *     emergency path), stream tickets, sports/beacon/render capabilities, OTA
  *     tags and the legacy `X-Device-Auth` header — AND the master key that
@@ -21,9 +23,13 @@
  *   VERIFY / DECRYPT       → the primary first, then the previous.
  *
  * So: set the new value as `<NAME>` and the old one as `<NAME>_PREVIOUS`,
- * deploy, let screens renew onto the primary (≤ 1 h) and run the re-wrap job
- * for stored ciphertext, then delete `<NAME>_PREVIOUS` and deploy again. The
- * runbook is `docs/SECRET-ROTATION.md`.
+ * deploy, make every screen re-register onto the primary and run the re-wrap
+ * job for stored ciphertext, then delete `<NAME>_PREVIOUS` and deploy again.
+ * ⚠️ Paired screens do NOT renew on a timer: a 180-day token re-registers only
+ * on a page load or inside its last 14 days, so "wait an hour" moves nobody —
+ * the 2026-10-23 incident. `scripts/railway-rotation.mjs finish` refuses to
+ * close a DEVICE_JWT_SECRET window while a live screen has no token issued on
+ * the new key (`keyIdOf` below). The runbook is `docs/SECRET-ROTATION.md`.
  *
  * INVARIANT — with `<NAME>_PREVIOUS` unset, every consumer behaves byte for
  * byte as it did before this module existed: one key, same bytes, same errors.
@@ -34,6 +40,7 @@
  * the primary means the rotation never happened and the leaked value is still
  * live, so the boot refuses with a message that says exactly that.
  */
+import { createHash } from 'crypto';
 import { requireSecret } from './required-secret';
 
 export interface KeyRing {
@@ -84,6 +91,32 @@ export function secretKeyRing(
 /** `[primary, previous?]` — the verify order. Always at least one entry. */
 export function keyRingCandidates(ring: KeyRing): string[] {
   return ring.previous === undefined ? [ring.primary] : [ring.primary, ring.previous];
+}
+
+/**
+ * A short, NON-SECRET name for a key (2026-10-23): 16 hex chars of a
+ * domain-separated SHA-256. It identifies which key minted something without
+ * revealing anything about the key — it cannot be inverted, and confirming a
+ * guess still needs the full 256-bit secret.
+ *
+ * WHY. Every device token issued by `POST /screens/register` and
+ * `POST /devices/pair` stamps `mintKeyId` on its audit row, so "has this
+ * screen been issued a token on the CURRENT `DEVICE_JWT_SECRET`?" is a fact
+ * in the audit log rather than an inference from timestamps. That is what
+ * `scripts/railway-rotation.mjs finish` asks before it closes a rotation
+ * window (`scripts/rotation-renewal-guard.cjs` computes the same id from the
+ * Railway variable). A time boundary could not answer it: until the deploy
+ * carrying the new primary is live — and during the rolling overlap after it —
+ * the OLD container keeps minting on the old key and writing the same audit
+ * rows. The 2026-10-23 incident closed a window while screens still held
+ * old-key tokens.
+ *
+ * Keep the domain string and length identical in both places; a pinned test
+ * vector on each side catches drift.
+ */
+export const KEY_ID_DOMAIN = 'venueos:key-id:v1\n';
+export function keyIdOf(secret: string): string {
+  return createHash('sha256').update(KEY_ID_DOMAIN).update(secret).digest('hex').slice(0, 16);
 }
 
 // ── The two device secrets ────────────────────────────────────────────────────

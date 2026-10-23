@@ -225,10 +225,28 @@ async function installWsStub(page: Page) {
         if (typeof prop === 'function') prop.call(inst, ev);
         for (const fn of listeners[type] || []) fn(ev);
       };
+      // Test 5 drives these two: every stub socket is reachable (to model an
+      // API redeploy dropping the fleet's sockets), and `__credWsMode = 'fail'`
+      // answers the HELLO the way the real gateway answers a token it refuses
+      // — AUTH_FAIL, then close(4001). Unset = AUTH_OK, as tests 1–4 expect.
+      ((window as any).__credSockets ||= []).push(inst);
       setTimeout(() => {
         inst.readyState = RealWS.OPEN;
         emit('open', {});
         setTimeout(() => {
+          if ((window as any).__credWsMode === 'fail') {
+            if (inst.readyState !== RealWS.OPEN) return;
+            emit('message', {
+              data: JSON.stringify({
+                type: 'AUTH_FAIL',
+                payload: { code: 401, reason: 'INVALID_TOKEN' },
+                idempotencyKey: 'auth-fail-cred',
+                timestamp: Date.now(),
+              }),
+            });
+            inst.close(4001, 'Unauthorized');
+            return;
+          }
           emit('message', {
             data: JSON.stringify({
               type: 'AUTH_OK',
@@ -427,5 +445,116 @@ test.describe('credential lifecycle — the G43 stories, pinned live', () => {
     // The operator rule: once content is live, it STAYS live.
     await expect(contentImg(page), 'content survived the auth outage').toBeVisible();
     await expect(page.getByText('CRED42')).toHaveCount(0); // never regressed to pairing splash
+  });
+
+  // ── 2026-10-23: THE RETIRED-SIGNING-KEY INCIDENT ─────────────────────────
+  // A DEVICE_JWT_SECRET rotation window closed while this screen still held a
+  // token minted on the old key. From then on every server surface refuses
+  // that token: the manifest 401s, the gateway answers AUTH_FAIL. The player's
+  // side of the contract is what this test pins — it DOES re-register,
+  // presenting that token as its prior, and keeps doing so while the server
+  // refuses it (the API's logs showed none of these calls: a 401'd register
+  // writes no audit row and no request-log line). Once the server grades the
+  // token 'unverifiable' and answers 1 h + requiresRePair (the fix, pinned
+  // server-side by screens.register-retired-key.spec.ts), the very next
+  // controlled recovery adopts the new credential and manifests flow on it —
+  // no reload, no new bundle, nothing on the device has to change.
+  test('5. retired signing key: the player keeps presenting its token; the 1 h + requiresRePair answer brings it back', async ({ page }) => {
+    test.setTimeout(240_000);
+    const state = freshState();
+    let windowClosed = false;   // BOOT_TOKEN no longer verifies anywhere
+    let serverFixed = false;    // register grades it 'unverifiable' → 1 h + requiresRePair
+    let refusedRegisters = 0;
+    let manifestOkOnRenewed = 0;
+
+    await installWsStub(page);
+    await seedIdentity(page, { token: BOOT_TOKEN });
+    await installMocks(page, state);
+
+    // Token-aware server: what a request may do depends on WHICH credential it
+    // presents, exactly like the real guard.
+    await page.unroute('**/api/v1/screens/register');
+    await page.route('**/api/v1/screens/register', (route) => {
+      state.counters.registerCalls += 1;
+      let body: Record<string, unknown> = {};
+      try { body = route.request().postDataJSON() as Record<string, unknown>; } catch { /* keep {} */ }
+      state.registerBodies.push(body);
+      const json = (status: number, payload: unknown) => route.fulfill({
+        status,
+        contentType: 'application/json',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify(payload),
+      });
+      if (windowClosed && body.priorDeviceToken === BOOT_TOKEN) {
+        if (!serverFixed) {
+          refusedRegisters += 1;
+          return json(401, { code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' });
+        }
+        return json(200, { paired: true, screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen', deviceToken: RENEWED_TOKEN, requiresRePair: true });
+      }
+      if (body.priorDeviceToken === RENEWED_TOKEN) {
+        // The unproven credential never upgrades itself (DEVAUTH-01): another hour, still re-pair.
+        return json(200, { paired: true, screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen', deviceToken: RENEWED_TOKEN, requiresRePair: true });
+      }
+      return json(200, { paired: true, screenId: FAKE_SCREEN_ID, name: 'Cred Test Screen', deviceToken: BOOT_TOKEN });
+    });
+    await page.unroute(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`);
+    await page.route(`**/api/v1/screens/${FAKE_SCREEN_ID}/manifest*`, (route) => {
+      state.counters.manifestCalls += 1;
+      const auth = route.request().headers()['authorization'] || '';
+      if (windowClosed && auth === `Bearer ${BOOT_TOKEN}`) {
+        state.counters.manifest401s += 1;
+        return route.fulfill({ status: 401, contentType: 'application/json', body: '{"message":"Invalid or expired authentication token"}' });
+      }
+      if (auth === `Bearer ${RENEWED_TOKEN}`) manifestOkOnRenewed += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify(playingManifest()),
+      });
+    });
+
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await expect(contentImg(page), 'baseline: the playlist image reaches the glass').toBeVisible({ timeout: 45_000 });
+
+    // The window closes and the API redeploys: every socket drops, the next
+    // HELLO is refused (a 1-hour bootstrap credential is refused by the
+    // gateway too — SEC-001 — so it stays refused after the fix as well).
+    windowClosed = true;
+    await page.evaluate(() => {
+      (window as any).__credWsMode = 'fail';
+      for (const s of (window as any).__credSockets || []) {
+        if (s.readyState === 1) s.close(1012, 'service restart');
+      }
+    });
+
+    // The player TRIES — with the retired-key token as its prior — and the
+    // pre-fix server refuses it. Content stays on the glass.
+    await expect
+      .poll(() => refusedRegisters, { timeout: 45_000, message: 'the player never re-registered after the window closed' })
+      .toBeGreaterThanOrEqual(1);
+    expect(state.registerBodies[state.registerBodies.length - 1]?.priorDeviceToken).toBe(BOOT_TOKEN);
+    expect(await page.evaluate(() => localStorage.getItem('edu_device_token')), 'a refused register adopts nothing').toBe(BOOT_TOKEN);
+    await expect(contentImg(page), 'content stays on glass while the server refuses').toBeVisible();
+
+    // The server fix deploys. The next controlled recovery (one per minute,
+    // RECOVERY_ATTEMPT_COOLDOWN_MS) gets the 1-hour credential + requiresRePair.
+    serverFixed = true;
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('edu_device_token')), {
+        timeout: 100_000,
+        message: 'the 1 h + requiresRePair answer was never adopted',
+      })
+      .toBe(RENEWED_TOKEN);
+    await expect
+      .poll(() => manifestOkOnRenewed, { timeout: 45_000, message: 'manifests never flowed on the new credential' })
+      .toBeGreaterThanOrEqual(1);
+    await expect(contentImg(page), 'content on the new credential').toBeVisible();
+
+    // And the truth is told on the operator surface, never over the content.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('edu-show-stop-overlay')));
+    await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Re-pair required').first()).toBeVisible({ timeout: 20_000 });
   });
 });
