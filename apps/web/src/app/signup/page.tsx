@@ -17,7 +17,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, AlertCircle, ArrowRight, Shield, Calendar, Palette, MonitorPlay } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowRight, Shield, Calendar, Palette, MonitorPlay, ChevronDown } from 'lucide-react';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
 import { VERTICALS, isVertical, type Vertical } from '@cms/api-types';
@@ -283,11 +283,15 @@ export default function SignupPage() {
 
             <form onSubmit={handleSubmit} className="mt-7 space-y-4">
               <Field label="What are you running?">
+                {/* appearance-none + our own chevron: Safari otherwise draws its
+                    native 20px menulist here, beside 42px rounded inputs — the
+                    first control a new customer touches (QA 2026-10-23). */}
+                <div className="relative">
                 <select
                   required
                   value={vertical}
                   onChange={(e) => setVertical(e.target.value as Vertical | '')}
-                  className={`${INPUT_CLS} cursor-pointer`}
+                  className={`${INPUT_CLS} cursor-pointer appearance-none pr-10`}
                 >
                   <option value="" disabled>Choose your industry…</option>
                   {/* Hide the full-service RESTAURANT — it's merged into the
@@ -297,6 +301,8 @@ export default function SignupPage() {
                     <option key={vk} value={vk}>{SIGNUP_VERTICALS[vk].picker}</option>
                   ))}
                 </select>
+                <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                </div>
               </Field>
 
               <Field label={v.nameLabel}>
