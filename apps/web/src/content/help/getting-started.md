@@ -44,6 +44,7 @@ Review and create it. Your screens pick up the change within seconds over their 
 ## 5. Next steps
 
 - Invite colleagues under **Settings → People & access**
+- Add a passkey so signing in takes one tap — see [Signing in, passkeys and two-step sign-in](/help/signing-in)
 - Enable SSO with Google or Microsoft — see [the SSO guide](/help/sso)
 - Read the [emergency system overview](/help/emergency-system) before giving anyone panic-trigger access
 

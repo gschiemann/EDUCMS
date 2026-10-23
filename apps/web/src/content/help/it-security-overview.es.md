@@ -25,7 +25,7 @@ Todos los proveedores que procesan datos de clientes, y cuándo lo hacen, están
 ## Inicio de sesión e identidad
 
 - **Contraseñas**: de al menos 8 caracteres, guardadas solo como hashes Argon2 con sal. Los intentos de inicio de sesión tienen límite de frecuencia.
-- **Verificación en dos pasos**: llaves de acceso (Face ID, Touch ID, Windows Hello o una llave de seguridad física), apps de autenticación con códigos de respaldo de un solo uso, y un código por correo como alternativa. El código por correo no se acepta durante 7 días después de restablecer la contraseña.
+- **Verificación en dos pasos**: llaves de acceso (Face ID, Touch ID, Windows Hello o una llave de seguridad física), apps de autenticación con códigos de respaldo de un solo uso, y un código por correo como alternativa. El código por correo no se acepta durante 7 días después de restablecer la contraseña. Lo que ve el personal, paso a paso, está en [Iniciar sesión, claves de acceso y verificación en dos pasos](/help/signing-in).
 - **Quién debe usarla**: su organización puede exigir la verificación en dos pasos a todos los administradores y a todas las personas autorizadas a enviar alertas de emergencia, y un administrador puede exigirla a cualquier persona.
 - **Primer inicio de sesión**: cada persona nueva define su propia contraseña y su correo la primera vez que inicia sesión.
 - **Inicio de sesión único**: cualquier proveedor de identidad OpenID Connect (OIDC) — por ejemplo Google Workspace, Microsoft Entra ID u Okta — limitado a los dominios de correo que usted elija. Vea [Configurar el inicio de sesión único](/help/sso).
@@ -66,7 +66,7 @@ Lo que su red debe permitir está en [Requisitos de red y de firewall](/help/net
 
 ## Alertas de emergencia
 
-Solo las personas con el permiso de alertas pueden enviarlas, con una pulsación sostenida deliberada o una confirmación escrita, y cada alerta y fin de alerta queda en el registro de auditoría. Los mensajes de alerta se firman criptográficamente antes de enviarse, llegan a las pantallas por la conexión en tiempo real y, si esa conexión no está disponible, por consultas periódicas normales. El [resumen del sistema de emergencia](/help/emergency-system) tiene los detalles, incluido lo que el sistema no cubre.
+Solo las personas con el permiso de alertas pueden enviarlas, con una pulsación sostenida deliberada o una confirmación escrita, y cada alerta y fin de alerta queda en el registro de auditoría. Los mensajes de alerta se firman criptográficamente antes de enviarse, llegan a las pantallas por la conexión en tiempo real y, si esa conexión no está disponible, por consultas periódicas normales. El [resumen del sistema de emergencia](/help/emergency-system) tiene los detalles, incluido lo que el sistema no cubre; los mensajes de texto y multimedia que se muestran sobre el contenido normal se explican en [Transmisiones de emergencia y SOS del personal](/help/emergency-broadcast).
 
 ## Cómo lo construimos y operamos
 

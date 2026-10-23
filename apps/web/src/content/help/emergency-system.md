@@ -1,7 +1,7 @@
 ---
 title: Emergency system overview
 category: Emergency System
-updated: 2026-10-11
+updated: 2026-10-22
 excerpt: How lockdown, weather, and evacuation alerts work, how to run a practice drill, and the safeguards that keep them reliable.
 ---
 
@@ -27,6 +27,8 @@ When you trigger an alert, the **Send to** line chooses where it goes:
 - **All screens** (the default)
 - **A screen group** (for example, everything except one wing)
 - **A single screen**
+
+To put a message on top of what screens are already showing — "All staff report to the main office" — without replacing it with an alert, send an [emergency broadcast](/help/emergency-broadcast) instead.
 
 ## How it's triggered
 

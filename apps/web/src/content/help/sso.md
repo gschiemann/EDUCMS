@@ -27,7 +27,7 @@ VenueOS connects to any **OpenID Connect (OIDC)** identity provider. That covers
 
 ## How staff sign in
 
-On the login page, staff type their work email. When it belongs to a domain your SSO is limited to, the page offers **Continue with single sign-on** and sends them to your IdP's familiar sign-in screen. They can also choose **Continue with SSO** and enter your organization's short name.
+On the login page, staff type their work email. When it belongs to a domain your SSO is limited to, the page offers **Continue with single sign-on** and sends them to your IdP's familiar sign-in screen. They can also choose **Continue with SSO** and enter your organization's short name. Passkeys, two-step sign-in and getting back in after a lockout are covered in [Signing in, passkeys and two-step sign-in](/help/signing-in).
 
 ## Roles and provisioning
 
