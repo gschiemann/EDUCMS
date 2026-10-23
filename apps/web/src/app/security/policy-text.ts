@@ -5,7 +5,7 @@
  * page renders every language on the server and `LocaleVariant` shows the
  * reader's, so none of this text is in a JavaScript chunk (the English
  * catalog is inlined into the client bundle, which is under a ratcheted
- * budget). Tags: <mail>, <overview>, <network>, <dpa> become links.
+ * budget). Tags: <mail>, <github>, <overview>, <network>, <dpa> become links.
  * Keep the three languages key-for-key identical (security-text.test.ts).
  */
 export const SECURITY_POLICY_TEXT = {
@@ -14,7 +14,7 @@ export const SECURITY_POLICY_TEXT = {
     "lead": "VenueOS runs life-safety software: the same screens that show a lunch menu can show a lockdown alert. We treat every security report as a priority, and we will not take legal action against good-faith research that follows this policy.",
     "updated": "Last updated: {date}",
     "howTitle": "How to report",
-    "howBody": "Email <mail>security@venue-os.app</mail>. Email is the only reporting channel.",
+    "howBody": "Email <mail>security@venue-os.app</mail>, or use <github>GitHub private vulnerability reporting</github>. Never report a vulnerability in a public GitHub issue, pull request or discussion.",
     "includeTitle": "What to include",
     "include1": "What the issue is, and the impact you believe it has.",
     "include2": "Steps to reproduce — a proof of concept, a request and response, or a short video all work.",
@@ -71,7 +71,7 @@ export const SECURITY_POLICY_TEXT = {
     "lead": "VenueOS es software de seguridad de vidas: las mismas pantallas que muestran el menú del almuerzo pueden mostrar una alerta de confinamiento. Tratamos cada reporte de seguridad como prioridad y no emprenderemos acciones legales contra investigaciones de buena fe que sigan esta política.",
     "updated": "Última actualización: {date}",
     "howTitle": "Cómo reportar",
-    "howBody": "Escriba a <mail>security@venue-os.app</mail>. El correo es el único canal para reportes.",
+    "howBody": "Escriba a <mail>security@venue-os.app</mail> o use el <github>reporte privado de vulnerabilidades de GitHub</github>. Nunca reporte una vulnerabilidad en un issue, una solicitud de cambios (pull request) ni una discusión pública de GitHub.",
     "includeTitle": "Qué incluir",
     "include1": "Cuál es el problema y qué impacto cree que tiene.",
     "include2": "Pasos para reproducirlo: una prueba de concepto, una solicitud y su respuesta, o un video corto sirven.",
@@ -128,7 +128,7 @@ export const SECURITY_POLICY_TEXT = {
     "lead": "VenueOS 是关乎生命安全的软件：显示午餐菜单的同一块屏幕也会显示封锁警报。我们优先处理每一份安全报告，对遵守本政策的善意研究不会采取法律行动。",
     "updated": "最后更新：{date}",
     "howTitle": "如何报告",
-    "howBody": "请发送邮件至 <mail>security@venue-os.app</mail>。邮件是唯一的报告渠道。",
+    "howBody": "请发送邮件至 <mail>security@venue-os.app</mail>，或使用 <github>GitHub 私密漏洞报告</github>。切勿在 GitHub 的公开 issue、拉取请求或讨论中报告漏洞。",
     "includeTitle": "请包含以下内容",
     "include1": "问题是什么，以及您认为它的影响。",
     "include2": "复现步骤 —— 概念验证、请求与响应或一段短视频均可。",
