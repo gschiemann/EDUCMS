@@ -408,30 +408,27 @@ describe('roles + overflow (§8.4, §22.7)', () => {
     expect(labels).not.toContain('Export for offline use');
   });
 
-  // Muse beta DEV-024: USB export off → the item is visibly disabled with
-  // its reason, and an admin gets the way to the setting.
-  it('with USB export off, Export to USB is disabled with the reason and does nothing', () => {
-    const onOpenSettings = jest.fn();
-    const { props } = mount({
-      usbExportBlocked: { reason: 'USB export is turned off for this organization.', settingsLabel: 'Turn on USB export in Settings', onOpenSettings },
-    });
+  // 2026-10-22: no USB setting any more — the item always works for an admin,
+  // and is not offered to a viewer or an editor (the API is admin-only).
+  it('Export to USB is always enabled for an admin and runs the export', () => {
+    const { props } = mount();
     fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
     const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
     const exportItem = within(menu).getByRole('menuitem', { name: /Export to USB/ });
-    expect(exportItem).toBeDisabled();
-    expect(exportItem).toHaveAccessibleDescription('USB export is turned off for this organization.');
+    expect(exportItem).not.toBeDisabled();
     fireEvent.click(exportItem);
-    expect(props.onExport).not.toHaveBeenCalled();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Turn on USB export in Settings' }));
-    expect(onOpenSettings).toHaveBeenCalled();
+    expect(props.onExport).toHaveBeenCalled();
+    expect(within(menu).queryByRole('menuitem', { name: /Settings/ })).toBeNull();
   });
 
-  it('a non-admin sees the reason but no settings link', () => {
-    mount({ usbExportBlocked: { reason: 'Ask an admin to turn it on.' } });
-    fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
-    const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
-    expect(within(menu).getByRole('menuitem', { name: /Export to USB/ })).toBeDisabled();
-    expect(within(menu).queryByRole('menuitem', { name: /Settings/ })).toBeNull();
+  it('a viewer or an editor is not offered Export to USB', () => {
+    for (const role of [{ isViewer: true }, { isContributor: true }]) {
+      const { unmount } = mount(role);
+      fireEvent.click(within(rowNamed('Member Promotions')).getByRole('button', { name: /More actions for Member Promotions/ }));
+      const menu = screen.getByRole('menu', { name: /Actions for Member Promotions/ });
+      expect(within(menu).queryByRole('menuitem', { name: /Export to USB/ })).toBeNull();
+      unmount();
+    }
   });
 
   it('publishing to locations carries the playlist the row is for', () => {

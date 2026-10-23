@@ -416,6 +416,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.includes('/api/v1/')) return;
+  // USB stick package (2026-10-22): answered by the Android app itself, so it
+  // must reach the page's WebView client untouched and never be cached here.
+  if (url.origin === self.location.origin && url.pathname.indexOf('/__venueos/') === 0) return;
 
   event.respondWith((async () => {
     // MED-3 audit fix: try the request URL as-is first, then fall back to

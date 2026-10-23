@@ -51,7 +51,7 @@ In **Assets**, click **Generate with AI**, describe the image, and choose square
 - Locations in the same organization draw from **one shared pool**. The dialog shows **how many you have left this month** and when they reset.
 - If you run out, add your own AI key (below), buy more boards, or contact us for more.
 
-**Free trial.** Every 14-day trial includes AI so you can try it: **10 board designs and 10 images** for the whole trial.
+**Free trial.** Every 14-day trial includes AI so you can try it: **2 board designs and 2 images** for the whole trial.
 
 **Without the AI plan**, AI buttons offer **Add AI** (Settings → Billing — one click, prorated) or your own key. You can turn AI on or off on the Billing page at any time.
 

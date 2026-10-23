@@ -20,6 +20,7 @@ import {
   priceIdForPlan,
   switchedPriceId,
 } from './ai-plan';
+import { LICENSE_TIERS } from '@cms/api-types';
 
 const ENV = {
   STRIPE_PRICE_MONTHLY: 'price_m',
@@ -139,6 +140,12 @@ describe('the gate matrix — who may spend OUR AI keys', () => {
 describe('limits', () => {
   it('defaults: 10 boards + 20 images per AI screen; trial 2 + 2', () => {
     expect(aiPlanLimits({} as any)).toEqual({ boardsPerScreen: 10, imagesPerScreen: 20, trialBoards: 2, trialImages: 2 });
+  });
+
+  it('the public trial claim (catalog) states the enforced trial allowance (2026-10-22: it said 10 + 10)', () => {
+    const { trialBoards, trialImages } = aiPlanLimits({} as any);
+    const trial = LICENSE_TIERS.find((t) => t.id === 'FREE_TRIAL');
+    expect(trial?.features).toContain(`AI included (${trialBoards} board designs + ${trialImages} images)`);
   });
 
   it('are env-tunable, and a bad value falls back to the default', () => {

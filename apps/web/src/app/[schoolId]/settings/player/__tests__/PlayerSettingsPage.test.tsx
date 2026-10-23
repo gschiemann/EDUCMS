@@ -246,17 +246,15 @@ it('a contributor gets the read-only surface and no save contract', async () => 
   expect(screen.getByLabelText('Start')).toBeDisabled();
 });
 
-describe('offline ingest renders under both URLs', () => {
+describe('the old USB settings URLs send you to Playlists (no USB settings any more)', () => {
   it('at /settings/player/offline', async () => {
-    serve();
     renderPage(OfflinePage);
-    expect(await screen.findByText('USB ingest security')).toBeInTheDocument();
-    expect(screen.getByLabelText('Target screen (optional)')).toBeInTheDocument();
+    expect(await screen.findByText(/USB has no settings any more/)).toBeInTheDocument();
+    expect(screen.queryByText('USB ingest security')).not.toBeInTheDocument();
   });
 
   it('and at the preserved /settings/usb', async () => {
-    serve();
     renderPage(UsbLegacyPage);
-    expect(await screen.findByText('USB ingest security')).toBeInTheDocument();
+    expect(await screen.findByText(/USB has no settings any more/)).toBeInTheDocument();
   });
 });

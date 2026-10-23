@@ -9,7 +9,7 @@ import {
   type ConsoleAction,
   type ConsoleScope,
 } from '@cms/api-types';
-import { requireSecret } from '../security/required-secret';
+import { deviceSecretKeyCandidates } from '../security/key-ring';
 
 // The scope table itself lives in @cms/api-types (sports-console-scopes.ts) so
 // the API that enforces it and the pad / share sheet that render it read ONE
@@ -115,14 +115,14 @@ export function consoleScopeOffered(
 // One-shot advisory flag — same log-spam guard as sports-feed-token.ts.
 let warnedNoDedicatedSecret = false;
 
-function consoleSecret(): string {
+function consoleSecrets(): string[] {
   // A dedicated SPORTS_CONSOLE_SECRET wins if set; otherwise the same
   // requireSecret(DEVICE_SECRET_KEY) fallback chain as the feed token. The
   // distinct "console:" MAC purpose keeps the two token families
   // non-interchangeable even when both derive from DEVICE_SECRET_KEY.
   const dedicated = process.env.SPORTS_CONSOLE_SECRET;
   if (dedicated && dedicated.trim().length >= 16) {
-    return dedicated;
+    return [dedicated];
   }
   if (process.env.NODE_ENV === 'production' && !warnedNoDedicatedSecret) {
     warnedNoDedicatedSecret = true;
@@ -132,9 +132,8 @@ function consoleSecret(): string {
         'Set a dedicated 64-hex SPORTS_CONSOLE_SECRET in the API environment.',
     );
   }
-  return requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev_only_feed_secret_CHANGE_ME',
-  });
+  // The DEVICE_SECRET_KEY ring `[primary, previous?]` (security/key-ring.ts).
+  return deviceSecretKeyCandidates('dev_only_feed_secret_CHANGE_ME');
 }
 
 const MAC_HEX_LEN = 32; // 128-bit truncation — matches the feed token width.
@@ -163,12 +162,13 @@ function consoleMac(
   iatSec: number,
   ttlSec: number,
   scope: ConsoleScope = 'full',
+  secret: string = consoleSecrets()[0],
 ): string {
   // `full` keeps the pre-scope MAC input, so links minted before scopes
   // existed still verify (as full). Every other scope is bound into the MAC.
   const input = `console:${gameId}:${ver}:${iatSec}:${ttlSec}`;
   return crypto
-    .createHmac('sha256', consoleSecret())
+    .createHmac('sha256', secret)
     .update(scope === 'full' ? input : `${input}:${scope}`)
     .digest('hex')
     .slice(0, MAC_HEX_LEN);
@@ -311,7 +311,9 @@ export function verifyConsoleTokenScope(
   let matched: ConsoleScope | null = null;
   for (const scope of CONSOLE_SCOPES) {
     if (
-      safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec, scope), mac) &&
+      consoleSecrets().some((secret) =>
+        safeEqHex(consoleMac(tokGameId, tokVer, iatSec, ttlSec, scope, secret), mac),
+      ) &&
       matched === null
     ) {
       matched = scope;

@@ -1571,6 +1571,16 @@ export function ScreenSettingsSections({
                 ? <Loader2 className="w-4 h-4 text-indigo-500 shrink-0 animate-spin" />
                 : <RefreshCw className={`w-4 h-4 shrink-0 ${upToDate === false ? 'text-amber-500' : 'text-indigo-500'}`} />;
 
+            // 2026-10-22 — "Already on vX ✓" is a TERMINAL answer to the
+            // push. It used to sit beside a disabled "Updating…" button (this
+            // session's stopwatch, `stillWaiting`, never heard it) and above
+            // "Sent 1 minute ago · not offered yet" (the server's record of a
+            // push it had nothing to offer for) — Greg's L55VEC, pushed while
+            // no newer build was allowed for it. Once the screen says it is
+            // current, the card says that and nothing else: no button, no
+            // spinner, no push footer.
+            const answeredCurrent = effectiveStage === 'uptodate';
+            const busy = (pending || stillWaiting) && !answeredCurrent;
             const shownFailedCode = failedCode ?? (heldKind === 'failed' ? trackedPush?.failedCode ?? null : null);
             const pendingSecs = Math.floor(pushedMsAgo / 1000);
             const pendingElapsed = pendingSecs < 60
@@ -1673,23 +1683,23 @@ export function ScreenSettingsSections({
                   <span className={`block ${stageColor}`}>{stageLabel}</span>
                   {subline && <span className="block text-[10px] font-normal text-slate-500 mt-0.5">{subline}</span>}
                 </span>
-                {(upToDate !== true || managerStale) && (
+                {(upToDate !== true || managerStale) && !answeredCurrent && (
                   <button
                     type="button"
                     data-testid="apk-push"
                     aria-label={stageLabel}
                     onClick={onPushApk}
-                    disabled={displayReadOnly || pending || stillWaiting}
+                    disabled={displayReadOnly || busy}
                     className="shrink-0 min-h-11 px-4 py-2 rounded-lg border border-indigo-700 bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={managerStale && upToDate === true ? t('screens.apkUpdateManagerTitle') : t('screens.apkUpdateTitle')}
                   >
-                    {pending || stillWaiting ? t('screens.apkUpdating') : ['error', 'timeout', 'failed', 'stalled', 'expired'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
+                    {busy ? t('screens.apkUpdating') : ['error', 'timeout', 'failed', 'stalled', 'expired'].includes(effectiveStage) ? t('screens.apkRetryUpdate') : t('screens.apkPushUpdate')}
                   </button>
                 )}
               </div>
               {/* The server's push: sent when, handed over how often, which
                   build — and Cancel (2026-10-18). Gone once the build lands. */}
-              {trackedPush && effectiveStage !== 'installed' && (
+              {trackedPush && effectiveStage !== 'installed' && !answeredCurrent && (
                 <TrackedPushFooter
                   screenId={screen.id}
                   screenName={screen.name ?? null}

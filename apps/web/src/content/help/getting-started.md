@@ -1,7 +1,7 @@
 ---
 title: Getting started with VenueOS
 category: Getting Started
-updated: 2026-10-11
+updated: 2026-10-22
 excerpt: A 10-minute walkthrough from creating your workspace to showing content on your first screen.
 ---
 
@@ -32,15 +32,14 @@ VenueOS ships with a large library of ready-made templates, and **each industry 
 
 Open **Templates** in the sidebar, click any template to preview it, then click **Customize**. This creates a copy you can rename, recolor, and rearrange — the ready-made original stays untouched.
 
-## 4. Schedule it
+## 4. Put it on a screen
 
-Go to **Schedules → New schedule**, pick your template (or a playlist), and choose:
+Open **Playlists** in the sidebar and click **New Playlist**. Add your template or media, then:
 
-- **Where**: a single screen or a screen group
-- **When**: date range, days of week, time range
-- **Priority**: higher priority overrides lower on the same screen
+- **Pick screens**: one screen, several, or a whole screen group
+- **Publishing**: **Activate immediately**, or **Schedule a window** for certain days, times and dates
 
-Hit **Save**. Your screens will pick up the schedule within seconds via our real-time WebSocket channel — no need to reboot displays.
+Review and create it. Your screens pick up the change within seconds over their live connection — no need to restart a display. See [Playlists, schedules, and what plays where](/help/playlists-and-schedules) for the details.
 
 ## 5. Next steps
 

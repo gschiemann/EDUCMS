@@ -15,6 +15,7 @@
  */
 
 import { LICENSE_TIERS, getLicenseTier } from './billing';
+import { CAPABILITY_REGISTRY } from './capability-registry';
 
 describe('license pricing catalog — product truth (W0-07, repriced 2026-10-12)', () => {
   it('Monthly is $20 / screen / month, $25 with AI', () => {
@@ -48,5 +49,21 @@ describe('license pricing catalog — product truth (W0-07, repriced 2026-10-12)
       if (t.id === 'MONTHLY') expect(t.monthlyPriceCents).not.toBe(2500);
       expect(t.blurb).not.toMatch(/\$240/);
     }
+  });
+});
+
+describe('pricing claims elsewhere in the catalog (billing go-live, 2026-10-22)', () => {
+  it('the pricing capability claim states the current prices, not the retired $25/$240', () => {
+    const cap = CAPABILITY_REGISTRY.find((c) => c.id === 'pricing-plan-truth');
+    expect(cap?.publicClaim).toMatch(/\$20 per screen \/ month/);
+    expect(cap?.publicClaim).toMatch(/\$200/);
+    expect(cap?.publicClaim).toMatch(/\$25 /);
+    expect(cap?.publicClaim).toMatch(/\$250/);
+    expect(cap?.publicClaim).not.toMatch(/\$240/);
+  });
+
+  it('the free trial advertises the trial AI allowance the API enforces (AI_TRIAL_BOARDS / _IMAGES default 2 / 2)', () => {
+    const trial = getLicenseTier('FREE_TRIAL');
+    expect(trial?.features).toContain('AI included (2 board designs + 2 images)');
   });
 });

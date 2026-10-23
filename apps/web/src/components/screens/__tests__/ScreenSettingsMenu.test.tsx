@@ -257,6 +257,28 @@ describe('player app row', () => {
     expect(rtl.getByTestId('apk-push')).toHaveTextContent('Push update');
   });
 
+  it('a push answered "already on the latest" settles on "Already on" — no Updating…, no push footer (2026-10-22)', () => {
+    // L55VEC: pushed while no newer build was allowed for it. The screen
+    // answered UP_TO_DATE; the server still holds a push it never offered.
+    latestVersionPayload = { versionName: null };
+    const pushedAt = new Date(Date.now() - 60_000).toISOString();
+    render(
+      <ScreenSettingsSections
+        {...contentProps({
+          playerVersion: '1.1.47-field.1',
+          forceApkUpdatePendingAt: pushedAt, forceApkUpdateOfferCount: 0,
+          lastOtaState: 'UP_TO_DATE', lastOtaAt: new Date(Date.now() - 1_000).toISOString(),
+        })}
+        pushState={{ at: Date.now() - 60_000, priorVersion: '1.1.47-field.1' }}
+      />,
+    );
+    const row = rtl.getByTestId('apk-update-status');
+    expect(within(row).getByText('Already on v1.1.47-field.1 ✓')).toBeInTheDocument();
+    expect(within(row).queryByText(/Updating/)).not.toBeInTheDocument();
+    expect(rtl.queryByTestId('apk-push')).not.toBeInTheDocument();
+    expect(within(row).queryByText(/not offered yet/)).not.toBeInTheDocument();
+  });
+
   it('FAILED_<CODE> after the push → the install failed, named, with Retry', () => {
     latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
     renderPopover({

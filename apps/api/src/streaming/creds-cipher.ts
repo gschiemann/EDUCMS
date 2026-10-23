@@ -23,26 +23,24 @@
  * signing key for device tokens. Reusing it avoids forcing operators
  * to manage another secret. If we ever need true KMS rotation we'll
  * rewrite this file, not the call sites.
+ *
+ * 2026-10-22 — ROTATION WINDOW (`security/key-ring.ts`). The master key is
+ * now a ring: `sealCredentials` always wraps with the PRIMARY; `openCredentials`
+ * unwraps with the primary and, only when `DEVICE_SECRET_KEY_PREVIOUS` is set,
+ * falls back to the previous key on an auth-tag failure. The stored FORMAT is
+ * unchanged (no key id is embedded — try-then-fallback is the mechanism).
+ * `rewrapDataKeyToPrimary` is the one-shot migration step: it re-wraps ONLY the
+ * 60-byte data-key envelope, never touching `encryptedCreds`, so the job that
+ * runs it never sees a plaintext credential.
  */
 import * as crypto from 'crypto';
+import { masterKeyCandidates, masterKeysFor } from '../security/key-ring';
 
 const KEY_LEN = 32;            // AES-256
 const IV_LEN = 12;             // GCM standard
 const TAG_LEN = 16;
 
-function getMasterKey(): Buffer {
-  const hex = process.env.DEVICE_SECRET_KEY || '';
-  if (!hex || hex.length < 64) {
-    // 64 hex chars = 32 bytes = AES-256. Anything shorter = unsafe.
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('DEVICE_SECRET_KEY missing or too short for streaming credential encryption (need 64 hex chars).');
-    }
-    // Dev fallback — pad with zeros so unit tests don't crash. Never
-    // reach this in any prod path.
-    return Buffer.from((hex + '0'.repeat(64)).slice(0, 64), 'hex');
-  }
-  return Buffer.from(hex.slice(0, 64), 'hex');
-}
+const MASTER_KEY_PURPOSE = 'streaming credential encryption';
 
 function encryptWithKey(key: Buffer, plaintext: Buffer): Buffer {
   const iv = crypto.randomBytes(IV_LEN);
@@ -63,13 +61,31 @@ function decryptWithKey(key: Buffer, blob: Buffer): Buffer {
   return Buffer.concat([decipher.update(ct), decipher.final()]);
 }
 
+/**
+ * Unwrap a per-row data key with the ring: primary first, then previous.
+ * The PRIMARY's error is rethrown when every key fails, so with no previous
+ * configured the behaviour (and the error) is exactly the single-key one.
+ */
+function unwrapDataKey(wrappedDataKey: Buffer): { dataKey: Buffer; keyIndex: number } {
+  const keys = masterKeyCandidates(masterKeysFor(MASTER_KEY_PURPOSE));
+  let primaryError: unknown;
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      return { dataKey: decryptWithKey(keys[i], wrappedDataKey), keyIndex: i };
+    } catch (e) {
+      if (i === 0) primaryError = e;
+    }
+  }
+  throw primaryError;
+}
+
 export interface SealedCredentials {
   encryptedCreds: string;    // base64
   encryptedDataKey: string;  // base64
 }
 
 export function sealCredentials(plain: Record<string, unknown>): SealedCredentials {
-  const master = getMasterKey();
+  const master = masterKeysFor(MASTER_KEY_PURPOSE).primary;
   const dataKey = crypto.randomBytes(KEY_LEN);
   const wrappedDataKey = encryptWithKey(master, dataKey);
   const json = Buffer.from(JSON.stringify(plain), 'utf8');
@@ -81,9 +97,8 @@ export function sealCredentials(plain: Record<string, unknown>): SealedCredentia
 }
 
 export function openCredentials(sealed: SealedCredentials): Record<string, unknown> {
-  const master = getMasterKey();
   const wrappedDataKey = Buffer.from(sealed.encryptedDataKey, 'base64');
-  const dataKey = decryptWithKey(master, wrappedDataKey);
+  const { dataKey } = unwrapDataKey(wrappedDataKey);
   const wrappedCreds = Buffer.from(sealed.encryptedCreds, 'base64');
   const json = decryptWithKey(dataKey, wrappedCreds);
   try {
@@ -91,4 +106,35 @@ export function openCredentials(sealed: SealedCredentials): Record<string, unkno
   } catch {
     return {};
   }
+}
+
+export type RewrapResult =
+  /** Already wrapped with the primary — nothing to write. */
+  | { status: 'current' }
+  /** Was wrapped with the PREVIOUS key; here is the same data key wrapped with the primary. */
+  | { status: 'rewrapped'; encryptedDataKey: string }
+  /** Neither key opens it (corrupt, or wrapped under a key that is not in the ring). Left alone. */
+  | { status: 'unreadable' };
+
+/**
+ * Move one row's data-key envelope onto the PRIMARY master key.
+ *
+ * Touches only `encryptedDataKey`: the data key is unwrapped (with whichever
+ * ring key opens it) and re-wrapped with the primary under a fresh IV.
+ * `encryptedCreds` — and therefore the credential plaintext — is never read.
+ * Idempotent: a row already on the primary answers `current`.
+ */
+export function rewrapDataKeyToPrimary(encryptedDataKey: string): RewrapResult {
+  const keys = masterKeysFor(MASTER_KEY_PURPOSE);
+  let unwrapped: { dataKey: Buffer; keyIndex: number };
+  try {
+    unwrapped = unwrapDataKey(Buffer.from(encryptedDataKey, 'base64'));
+  } catch {
+    return { status: 'unreadable' };
+  }
+  if (unwrapped.keyIndex === 0) return { status: 'current' };
+  return {
+    status: 'rewrapped',
+    encryptedDataKey: encryptWithKey(keys.primary, unwrapped.dataKey).toString('base64'),
+  };
 }

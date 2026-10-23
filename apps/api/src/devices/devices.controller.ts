@@ -2,7 +2,8 @@ import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/commo
 import { Throttle } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
-import { requireSecret } from '../security/required-secret';
+import { deviceJwtSecretRing } from '../security/key-ring';
+import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
 
 /**
  * Device-side endpoints — called by the Android player APK without admin
@@ -107,16 +108,16 @@ export class DevicesController {
     const token = jwt.sign(
       { sub: target.id, tenantId: target.tenantId, kind: 'device', fp },
       // sec-fix(wave1) #2: fail at boot in prod rather than sign with a default.
-      requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' }),
+      // Always the ring PRIMARY (security/key-ring.ts): mint on the new key.
+      deviceJwtSecretRing().primary,
       { expiresIn: '365d' }, // 1-year — kiosks shouldn't re-pair often
     );
 
-    const usb = target.tenant.usbIngestEnabled
-      ? {
-          usbIngestEnabled: true,
-          usbIngestKey: target.tenant.usbIngestKey || null,
-        }
-      : { usbIngestEnabled: false };
+    // USB is always on (2026-10-22): the key is minted on first use.
+    const usb = {
+      usbIngestEnabled: true,
+      usbIngestKey: await ensureUsbSigningKey(this.prisma as any, target.tenantId).catch(() => null),
+    };
 
     return {
       token,

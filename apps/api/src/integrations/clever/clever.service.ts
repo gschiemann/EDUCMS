@@ -4,7 +4,7 @@ import type { CleverHttpClient, CleverUser } from './clever-http.client';
 import { RealCleverHttpClient } from './clever-http.client';
 import { decryptToken, encryptToken } from './clever-crypto';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { requireSecret } from '../../security/required-secret';
+import { deviceSecretKeyCandidates } from '../../security/key-ring';
 import { CLEVER_STATE_TTL_MS, CleverOAuthStateStore } from './clever-oauth-state';
 import { RedisService } from '../../realtime/redis.service';
 import { isRoleDowngrade } from '../../auth/role-assignment';
@@ -21,19 +21,30 @@ import { SSO_PROVISIONED_NO_PASSWORD_HASH } from '../../auth/sso-provisioned-acc
 // (`clever-oauth-state.ts`) AND mirrored into a browser cookie by the
 // controller. See `consumeState` below.
 const STATE_TTL_MS = CLEVER_STATE_TTL_MS; // 15 min — OAuth round-trips finish in seconds
-function stateSecret(): string {
+function stateSecrets(): string[] {
   // 2026-05-29 (Audit 34-supplychain P3): route through requireSecret so the
   // dev fallback is THROWN in production (consistent with every other secret
   // call-site) instead of being a NODE_ENV-ungated public literal that's dead
   // in prod only by boot-gate transitivity.
-  return requireSecret('DEVICE_SECRET_KEY', {
-    devFallback: 'dev-only-clever-state-fallback-do-not-use-in-production-1234567890',
-  });
+  // 2026-10-22: the DEVICE_SECRET_KEY ring `[primary, previous?]`
+  // (security/key-ring.ts) — sign with index 0, verify against any.
+  return deviceSecretKeyCandidates(
+    'dev-only-clever-state-fallback-do-not-use-in-production-1234567890',
+  );
 }
-function signStatePayload(tenantId: string, nonce: string, ts: number): string {
-  return createHmac('sha256', stateSecret())
+function signStatePayloadWith(secret: string, tenantId: string, nonce: string, ts: number): string {
+  return createHmac('sha256', secret)
     .update(`${tenantId}|${nonce}|${ts}`)
     .digest('base64url');
+}
+function signStatePayload(tenantId: string, nonce: string, ts: number): string {
+  return signStatePayloadWith(stateSecrets()[0], tenantId, nonce, ts);
+}
+/** Verify-side: any key in the ring reproduces the signature (constant-time each). */
+function stateSignatureMatches(sig: string, tenantId: string, nonce: string, ts: number): boolean {
+  return stateSecrets().some((secret) =>
+    constantTimeEquals(sig, signStatePayloadWith(secret, tenantId, nonce, ts)),
+  );
 }
 
 /** Length-safe constant-time string compare (never leaks the position of a mismatch). */
@@ -209,8 +220,7 @@ export class CleverService {
     if (Math.abs(Date.now() - ts) > STATE_TTL_MS) {
       throw new Error('Invalid OAuth state (expired)');
     }
-    const expected = signStatePayload(tenantId, nonce, ts);
-    if (!constantTimeEquals(sig, expected)) {
+    if (!stateSignatureMatches(sig, tenantId, nonce, ts)) {
       throw new Error('Invalid OAuth state (signature mismatch)');
     }
     return { tenantId, nonce };

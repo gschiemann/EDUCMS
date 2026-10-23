@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
-  AlertTriangle, Clock, Download, KeyRound, Loader2, MonitorPlay, RefreshCw, Usb,
+  AlertTriangle, Clock, Download, Loader2, MonitorPlay, RefreshCw,
 } from 'lucide-react';
 import {
   useAutoUpdatePlayerConfig,
@@ -43,7 +43,6 @@ import {
   useToggleAutoUpdatePlayer,
   useUpdateCanaryRollout,
   useUpdateOtaWindow,
-  useUsbIngestConfig,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appConfirm } from '@/components/ui/app-dialog';
@@ -112,7 +111,6 @@ export default function PlayerSettingsPage() {
   const updateWindow = useUpdateOtaWindow();
   const canaryQ = useCanaryRollout();
   const updateCanary = useUpdateCanaryRollout();
-  const usbQ = useUsbIngestConfig();
 
   // ── Local edit state (§13.1: live edits stay local until Save) ──────
   const [start, setStart] = useState('');
@@ -355,9 +353,6 @@ export default function PlayerSettingsPage() {
         { label: t('settings.cc.player.searchWindow'), anchor: 'player-window', keywords: ['maintenance window', 'update window', 'install window', 'timezone'] },
         { label: t('settings.cc.player.searchCanary'), anchor: 'player-canary', keywords: ['canary', 'rollout', 'staged', 'cohort', 'soak'] },
         { label: t('settings.cc.player.searchRollout'), anchor: 'player-version', keywords: ['rollout', 'deployed', 'fleet versions'] },
-        { label: t('settings.cc.player.searchUsb'), href: `/${schoolId}/settings/player/offline`, keywords: ['usb', 'sneakernet', 'signed bundle'] },
-        { label: t('settings.cc.player.searchOffline'), href: `/${schoolId}/settings/player/offline`, keywords: ['offline', 'export'] },
-        { label: t('settings.cc.player.searchDeviceKey'), href: `/${schoolId}/settings/player/offline`, keywords: ['device key', 'rotate', 'hmac', 'signing key'] },
     ],
     // `t` is deliberately not a dependency: next-intl returns a fresh function
     // every render, and these props feed a registration EFFECT — including it
@@ -691,34 +686,8 @@ export default function PlayerSettingsPage() {
         )}
       </EditorSection>
 
-      {/* ── Offline continuity + device key ───────────────────────────── */}
-      <EditorSection
-        id="player-offline"
-        title={t('settings.cc.player.offlineTitle')}
-        description={t('settings.cc.player.offlineDescription')}
-        action={
-          <SectionAction href={`/${schoolId}/settings/player/offline`}>
-            <Usb className="w-3.5 h-3.5" aria-hidden />
-            {t('settings.cc.player.openOffline')}
-          </SectionAction>
-        }
-      >
-        <div className="flex flex-wrap items-center gap-3 text-[13px]">
-          <StatusPill
-            kind={usbQ.data?.enabled ? 'connected' : 'notConfigured'}
-            label={usbQ.data?.enabled ? t('settings.usb.ingestEnabled') : t('settings.usb.ingestDisabled')}
-          />
-          <span className="inline-flex items-center gap-1.5 text-slate-600">
-            <KeyRound className="w-3.5 h-3.5" aria-hidden />
-            {usbQ.data?.hasKey
-              ? usbQ.data.keyRotatedAt
-                ? t('settings.usb.rotatedAt', { date: new Date(usbQ.data.keyRotatedAt).toLocaleString() })
-                : t('settings.cc.player.railKeySetUndated')
-              : t('settings.cc.player.railNoKey')}
-          </span>
-        </div>
-        <p className="mt-2.5 text-[12px] text-slate-500">{t('settings.cc.player.keyRotationNote')}</p>
-      </EditorSection>
+      {/* USB has no settings any more (2026-10-22): "Download to USB" on any
+          playlist; the API signs the package and screens fetch the key. */}
 
       {!canManage && (
         <p className="mt-4 text-[12px] text-slate-500">{t('settings.cc.player.readOnlyNote')}</p>

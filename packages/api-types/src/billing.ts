@@ -82,7 +82,7 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
       '14-day trial',
       'Full template library',
       'All integrations',
-      'AI included (10 board designs + 10 images)',
+      'AI included (2 board designs + 2 images)',
       'Email support',
     ],
     selfServe: true,

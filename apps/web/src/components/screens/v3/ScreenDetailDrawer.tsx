@@ -29,7 +29,7 @@ import dynamic from 'next/dynamic';
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
-  AlertTriangle, ArrowRight, ChevronRight,
+  AlertTriangle, ArrowRight, ChevronDown, ChevronRight,
   ExternalLink, Loader2, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -42,8 +42,8 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTranslations } from 'next-intl';
 import {
-  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, wordyAge,
-  type OpsRow, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
+  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, videoSampleIsNews, wordyAge,
+  type OpsRow, type VideoPlayback, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
@@ -117,6 +117,35 @@ const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
   loading: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   unknown: { wrap: 'border-slate-200', ink: 'text-slate-500' },
 };
+
+/**
+ * The player's last web video sample. On the Overview only while it is news
+ * (`videoSampleIsNews`), in its grade's colour; under Technical details
+ * otherwise, untinted — an old or invisible blip is history, never an alarm.
+ */
+function VideoSampleBlock({ video, tinted }: { video: VideoPlayback; tinted: boolean }) {
+  const t = useTranslations();
+  const tone = tinted ? VIDEO_TONE[video.grade] : { wrap: 'border-slate-200 bg-slate-50', ink: 'text-slate-700' };
+  return (
+    <div
+      className={`rounded-lg border px-2.5 py-2 ${tone.wrap}`}
+      data-testid="screen-video-playback"
+      data-video-grade={video.grade}
+      data-video-news={tinted ? 'true' : 'false'}
+    >
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+        {t(video.grade === 'native' ? 'screens.drawer.nativePlayback' : 'screens.drawer.lastVideoSample')}
+      </p>
+      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${tone.ink}`}>{video.headline}</p>
+      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
+        {video.name} — {video.detail}
+      </p>
+      {tinted && video.grade === 'stuttering' && (
+        <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('screens.drawer.videoSampleOpenMedia')}</p>
+      )}
+    </div>
+  );
+}
 
 function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
@@ -237,6 +266,12 @@ export function ScreenDetailDrawer({
   const [orient, setOrient] = useState((screen.orientation ?? 'LANDSCAPE').toUpperCase());
   const [announcement, setAnnouncement] = useState('');
   /**
+   * Technical details (2026-10-22) start closed and fetch nothing until
+   * opened: the interruption ledger and the per-file video record are support
+   * material, and a closed disclosure must not cost two requests.
+   */
+  const [techOpen, setTechOpen] = useState(false);
+  /**
    * Restore-trust outcome. Deliberately NOT auto-cleared on a timer the way
    * "Request sent ✓" is: the operator has to keep reading the "still waiting
    * on the device" line, because the badge outside will not clear for up to
@@ -256,6 +291,7 @@ export function ScreenDetailDrawer({
 
   useEffect(() => {
     setTab(initialTab);
+    setTechOpen(false);
   }, [initialTab, screen.id]);
   useEffect(() => {
     setNameDraft(screen.name ?? '');
@@ -328,6 +364,7 @@ export function ScreenDetailDrawer({
   };
 
   const online = screen.status === 'ONLINE';
+  const videoNews = videoSampleIsNews(video, now);
   const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
@@ -529,8 +566,7 @@ export function ScreenDetailDrawer({
                 {status.age ? ` · ${wordyAge(
                   status.key === 'offline' ? msOf(screen.lastPingAt)
                     : status.key === 'content-behind' ? msOf(screen.pendingRefreshAt)
-                      : status.key === 'push-delayed' ? msOf(screen.lastPushConnectedAt)
-                        : msOf(screen.lastRenderedAt),
+                      : msOf(screen.lastRenderedAt),
                   now,
                 ) ?? status.age}` : ''}
               </p>
@@ -667,28 +703,12 @@ export function ScreenDetailDrawer({
                   </p>
                 )}
                 {/* Last video (2026-09-24): the player's own dropped-frame
-                    count for the clip it last played. Read beside the file's
-                    grade in the Media Library: a clean file that stutters
-                    here is the player or the box; a red file that stutters
-                    is the file. */}
-                {video && (
-                  <div
-                    className={`mt-2 rounded-lg border px-2.5 py-2 ${VIDEO_TONE[video.grade].wrap}`}
-                    data-testid="screen-video-playback"
-                    data-video-grade={video.grade}
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{video.grade === 'native' ? 'Native playback' : 'Last web video sample'}</p>
-                    <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${VIDEO_TONE[video.grade].ink}`}>
-                      {video.headline}
-                    </p>
-                    <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
-                      {video.name} — {video.detail}
-                    </p>
-                    {video.grade === 'stuttering' && (
-                      <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">
-                        Open this file in the Media Library — its &ldquo;Playback on screens&rdquo; card says whether the file itself is the reason.
-                      </p>
-                    )}
+                    count for the clip it last played. On the Overview only
+                    while it is news — recent and visible (2026-10-22) —
+                    otherwise under Technical details. */}
+                {videoNews && video && (
+                  <div className="mt-2">
+                    <VideoSampleBlock video={video} tinted />
                   </div>
                 )}
                 <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">
@@ -696,48 +716,81 @@ export function ScreenDetailDrawer({
                 </p>
               </div>
 
-              {/* Video playback (2026-10-11, video guarantee step 4): per file
-                  this screen played, smooth / hitches / stutters, from minutes
-                  of the player's own counts — read-only, enforces nothing. */}
-              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} />
-              <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview'} />
+              {/* Video playback (2026-10-11, video guarantee step 4): the
+                  verdict and any demotion here; the per-file measurements
+                  under Technical details (2026-10-22). */}
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" />
 
-              <ScreenDisplayFactsSection screen={screen} now={now} />
-
-              {/* Device — the facts the screen reported about itself
-                  (2026-09-24, Greg: "give info about the screen itself right?
-                  resolution, os version, etc"). Only rows with a value: a fact
-                  the player never sent has no row, and nothing is inferred. */}
-              {deviceFacts.length > 0 && (
-                <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-device-card">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Device</p>
-                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
-                    {deviceFacts.map((f) => (
-                      <Fragment key={f.key}>
-                        <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{f.label}</dt>
-                        <dd className="min-w-0" data-device-fact={f.key}>
-                          <p
-                            className={`text-[12px] font-semibold leading-snug break-words ${
-                              f.tone === 'warn' ? 'text-amber-800' : 'text-slate-700'
-                            }`}
-                          >
-                            {f.value}
-                          </p>
-                          {f.hint && (
-                            <p
-                              className={`text-[10.5px] font-semibold leading-snug ${
-                                f.tone === 'warn' ? 'text-amber-700' : 'text-slate-400'
-                              }`}
-                            >
-                              {f.hint}
-                            </p>
-                          )}
-                        </dd>
-                      </Fragment>
-                    ))}
-                  </dl>
-                </div>
-              )}
+              {/* ── Technical details (2026-10-22) ─────────────────────
+                  Greg, on this tab: "the overview screen has so much shit in
+                  it again, make sure we only show useful items here to an
+                  end user". Everything below is true and useful to support,
+                  and none of it is something an operator acts on — so it is
+                  one tap away, closed by default, instead of gone. */}
+              <details
+                className="group rounded-xl border border-slate-200"
+                data-testid="screen-technical-details"
+                open={techOpen}
+                onToggle={(e) => setTechOpen((e.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="flex items-center gap-2 px-3.5 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-indigo-300">
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[12.5px] font-bold text-slate-700">{t('screens.drawer.technicalDetails')}</span>
+                    <span className="block text-[11px] font-semibold text-slate-400 leading-snug">{t('screens.drawer.technicalDetailsHint')}</span>
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 transition-transform group-open:rotate-180" aria-hidden />
+                </summary>
+                {techOpen && (
+                  <div className="px-3.5 pb-3.5 space-y-4">
+                    {screen.pushChannel === 'stale' && (
+                      <p className="text-[11.5px] font-semibold text-slate-600 leading-snug" data-testid="screen-live-link">
+                        {(() => {
+                          const ago = compactAge(msOf(screen.lastPushConnectedAt), now);
+                          return ago ? t('screens.drawer.liveLinkDown', { ago }) : t('screens.drawer.liveLinkDownNoAge');
+                        })()}
+                      </p>
+                    )}
+                    {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" />
+                    <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
+                    <ScreenDisplayFactsSection screen={screen} now={now} />
+                    {/* Device — the facts the screen reported about itself
+                        (2026-09-24, Greg: "give info about the screen itself right?
+                        resolution, os version, etc"). Only rows with a value: a fact
+                        the player never sent has no row, and nothing is inferred. */}
+                    {deviceFacts.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-device-card">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Device</p>
+                        <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+                          {deviceFacts.map((f) => (
+                            <Fragment key={f.key}>
+                              <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{f.label}</dt>
+                              <dd className="min-w-0" data-device-fact={f.key}>
+                                <p
+                                  className={`text-[12px] font-semibold leading-snug break-words ${
+                                    f.tone === 'warn' ? 'text-amber-800' : 'text-slate-700'
+                                  }`}
+                                >
+                                  {f.value}
+                                </p>
+                                {f.hint && (
+                                  <p
+                                    className={`text-[10.5px] font-semibold leading-snug ${
+                                      f.tone === 'warn' ? 'text-amber-700' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {f.hint}
+                                  </p>
+                                )}
+                              </dd>
+                            </Fragment>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </details>
 
             </div>
           )}

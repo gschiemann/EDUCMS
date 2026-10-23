@@ -143,6 +143,8 @@ async function openDrawerFor(page: Page, screenId: string, firstName: string) {
   await expect(drawer.getByText(firstName).first()).toBeVisible();
   await drawer.getByRole('tab', { name: 'Overview', exact: true }).click();
   await expect(drawer.getByRole('tabpanel')).toHaveAttribute('id', 'screen-panel-overview');
+  // Support material, one tap away (2026-10-22): Technical details.
+  await drawer.getByTestId('screen-technical-details').getByText('Technical details').click();
   return drawer;
 }
 

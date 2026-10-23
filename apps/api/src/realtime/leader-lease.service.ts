@@ -127,6 +127,12 @@ export const LEASE = {
   // screen; screens/events/screen-events-retention.cron.ts). Leased because it
   // is a DELETE: two replicas would race the same rows for nothing.
   SCREEN_EVENTS_RETENTION: 'screens:events-retention',
+  // 2026-10-22 — one-shot re-wrap of every stored credential envelope onto the
+  // primary DEVICE_SECRET_KEY during a rotation window
+  // (security/key-rotation-rewrap.service.ts). Every write is guarded on the
+  // exact old ciphertext, so a second replica would be safe but would scan
+  // every sealed row for nothing; the lease keeps it to one pass.
+  KEY_ROTATION_REWRAP: 'security:key-rotation-rewrap',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];
