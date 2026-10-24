@@ -3236,6 +3236,7 @@ function LoginContent() {
           <Link href="/help" className="hover:text-slate-800 transition">{t('help')}</Link>
           <Link href="/privacy" className="hover:text-slate-800 transition">{t('privacy')}</Link>
           <Link href="/terms" className="hover:text-slate-800 transition">{t('terms')}</Link>
+          <Link href="/security" className="hover:text-slate-800 transition">{t('security')}</Link>
         </nav>
 
         {/* Language switcher — pre-auth operators need a way in before they

@@ -423,7 +423,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {开启面容 ID 或触控 ID} ipad {开启面容 ID 或触控 ID} android {开启指纹登录} other {开启通行密钥登录}}",
     "phoneSetupSignedInTitle": "你已登录",
     "phoneSetupLater": "你可以稍后在“设置 → 我的安全”中为这台设备添加通行密钥。",
-    "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。"
+    "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
+    "security": "安全"
   },
   "account": {
     "title": "账户",
@@ -6390,7 +6391,6 @@
       "trust": "安全",
       "itSecurity": "安全概览",
       "networkRequirements": "网络要求",
-      "reportVulnerability": "报告漏洞",
       "legal": "法律",
       "privacy": "隐私政策",
       "terms": "服务条款",
@@ -6399,7 +6399,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS —— 一个平台，服务每个场所。",
-      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报"
+      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报",
+      "reportSecurityIssue": "报告安全问题"
     },
     "help": {
       "back": "返回帮助中心",
@@ -6487,6 +6488,14 @@
       "apiBuild": "API 版本 {version}",
       "firstCheck": "正在进行首次检查…",
       "offlineNote": "屏幕断网时会继续播放已保存的内容，正在显示的紧急警报会一直保留到解除警报 —— 详见<help>紧急系统概览</help>。"
+    },
+    "header": {
+      "industries": "行业",
+      "templates": "模板",
+      "pricing": "价格",
+      "help": "帮助",
+      "signIn": "登录",
+      "startTrial": "免费试用"
     }
   },
   "usbDelivery": {

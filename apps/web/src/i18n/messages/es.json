@@ -423,7 +423,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {Activar Face ID o Touch ID} ipad {Activar Face ID o Touch ID} android {Activar el inicio con huella} other {Activar el inicio con clave de acceso}}",
     "phoneSetupSignedInTitle": "Ya iniciaste sesión",
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Ajustes → Mi seguridad.",
-    "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos."
+    "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
+    "security": "Seguridad"
   },
   "account": {
     "title": "Cuenta",
@@ -6390,7 +6391,6 @@
       "trust": "Seguridad",
       "itSecurity": "Resumen de seguridad",
       "networkRequirements": "Requisitos de red",
-      "reportVulnerability": "Reportar una vulnerabilidad",
       "legal": "Legal",
       "privacy": "Política de privacidad",
       "terms": "Términos del servicio",
@@ -6399,7 +6399,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS — una sola plataforma para cada lugar.",
-      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia"
+      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia",
+      "reportSecurityIssue": "Reportar un problema de seguridad"
     },
     "help": {
       "back": "Volver al centro de ayuda",
@@ -6487,6 +6488,14 @@
       "apiBuild": "Versión de la API {version}",
       "firstCheck": "Haciendo la primera comprobación…",
       "offlineNote": "Si una pantalla pierde la conexión, sigue reproduciendo su contenido guardado, y una alerta de emergencia que ya está en pantalla se mantiene hasta el fin de alerta — vea el <help>resumen del sistema de emergencia</help>."
+    },
+    "header": {
+      "industries": "Industrias",
+      "templates": "Plantillas",
+      "pricing": "Precios",
+      "help": "Ayuda",
+      "signIn": "Iniciar sesión",
+      "startTrial": "Prueba gratis"
     }
   },
   "usbDelivery": {

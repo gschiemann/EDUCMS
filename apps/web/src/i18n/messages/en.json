@@ -423,7 +423,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {Turn on Face ID or Touch ID} ipad {Turn on Face ID or Touch ID} android {Turn on fingerprint sign-in} other {Turn on passkey sign-in}}",
     "phoneSetupSignedInTitle": "You're signed in",
     "phoneSetupLater": "You can add a passkey for this device later in Settings → My security.",
-    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password."
+    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
+    "security": "Security"
   },
   "account": {
     "title": "Account",
@@ -6390,7 +6391,6 @@
       "trust": "Security",
       "itSecurity": "Security overview",
       "networkRequirements": "Network requirements",
-      "reportVulnerability": "Report a vulnerability",
       "legal": "Legal",
       "privacy": "Privacy policy",
       "terms": "Terms of service",
@@ -6399,7 +6399,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS — one platform for every venue.",
-      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts"
+      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts",
+      "reportSecurityIssue": "Report a security issue"
     },
     "help": {
       "back": "Back to help center",
@@ -6487,6 +6488,14 @@
       "apiBuild": "API build {version}",
       "firstCheck": "Running first check…",
       "offlineNote": "If a screen loses its connection it keeps playing its stored content, and an emergency alert already on screen stays up until an all-clear — see the <help>emergency system overview</help>."
+    },
+    "header": {
+      "industries": "Industries",
+      "templates": "Templates",
+      "pricing": "Pricing",
+      "help": "Help",
+      "signIn": "Sign in",
+      "startTrial": "Start free trial"
     }
   },
   "usbDelivery": {
