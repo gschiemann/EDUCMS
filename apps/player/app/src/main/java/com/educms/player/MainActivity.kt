@@ -534,15 +534,45 @@ class MainActivity : ComponentActivity() {
     private fun openNetworkScreen(source: String): Boolean = runCatching {
         if (isFinishing || isDestroyed) return@runCatching false
         sharedVideoHost?.yieldToUi()
+        // Which page load the Back menu belongs to: a reload while the screen is up resets it.
+        val pageLoadAtOpen = runCatching { com.educms.player.boot.BootDiagnostics.tracker.facts().loadStartedAtMs }.getOrDefault(-1L)
         com.educms.player.network.NetworkScreen.open(
             activity = this,
-            decorate = ::applyRemoteFocus,
             onAndroidSettings = { openNetworkSettings() },
             source = source,
+            onConnected = { returnAfterNetworkJoin(source, pageLoadAtOpen) },
         )
     }.getOrElse {
         PlayerLogger.w("NetworkScreen", "open ($source) threw: ${it.message}")
         false
+    }
+
+    /**
+     * 2026-10-24 — the Network screen joined a network and returned by
+     * itself: take the person back to content (or the pairing code), not
+     * to the surface they opened it from. From the boot card that is a
+     * Retry now (the card only re-tries on its own deadline); from the Back
+     * menu it is the menu's own Back (the page's `edu-show-stop-overlay`
+     * toggle closes the Screen options menu it is showing). The toggle is
+     * sent only to the SAME page load the menu was opened on: a page that
+     * reloaded meanwhile has no menu up, and the toggle would open one and
+     * pause content. Never during an alert — the page ignores it then anyway.
+     */
+    private fun returnAfterNetworkJoin(source: String, pageLoadAtOpen: Long) {
+        if (isFinishing || isDestroyed) return
+        if (runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(true)) return
+        when (source) {
+            "boot diagnostic" -> com.educms.player.boot.BootDiagnostics.retryNow("the Network screen connected")
+            "back menu" -> runCatching {
+                val pageLoadNow = com.educms.player.boot.BootDiagnostics.tracker.facts().loadStartedAtMs
+                if (pageLoadNow != pageLoadAtOpen) {
+                    PlayerLogger.i("NetworkScreen", "page reloaded while the Network screen was up — no menu to close")
+                    return@runCatching
+                }
+                if (!nativeCardOwnsRemote()) webView.requestFocus()
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('edu-show-stop-overlay'))", null)
+            }.onFailure { PlayerLogger.w("NetworkScreen", "could not close the Screen options menu: ${it.message}") }
+        }
     }
 
     private fun openNetworkSettings() {

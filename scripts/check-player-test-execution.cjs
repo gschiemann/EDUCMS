@@ -185,6 +185,10 @@ const REQUIRED = [
   { cls: 'com.educms.player.settings.WifiSetupPolicyTest', min: 10 },
   { cls: 'com.educms.player.settings.NetworkPolicyTest', min: 5 },
   { cls: 'com.educms.player.network.NetworkScreenModelTest', min: 4 },
+  // 2026-10-24 — the redesigned Network screen's flows: where the remote lands,
+  // the keyboard, what each result offers next, the alert resume (never the
+  // password), the opaque overlay, and the debug-only demo.
+  { cls: 'com.educms.player.network.NetworkScreenFlowTest', min: 15 },
   // Native-first, one verified store (design NATIVE-FIRST-ONE-STORE §5–§7). EmergencyPinTest is
   // the §7 E3 ship-gate evidence: one case per emergency-set guarantee.
   { cls: 'com.educms.player.store.ContentStorePolicyTest', min: 10 },
