@@ -22,6 +22,7 @@ import {
   warnIneffectiveDbTlsSettings,
 } from './security/required-secret';
 import { assertKeyRingsAtBoot } from './security/key-ring';
+import { rejectBrotliRequestBody } from './security/reject-brotli-body';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { RedisService } from './realtime/redis.service';
 import {
@@ -122,6 +123,11 @@ async function bootstrap() {
   //
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const expressBody = require('express');
+
+  // CVE-2026-111497 (Node2Shell): refuse Brotli request bodies before ANY
+  // parser below can hand them to the decoder. Second layer behind the
+  // patched Node runtime; see security/reject-brotli-body.ts.
+  app.use(rejectBrotliRequestBody);
 
   // Stripe webhook MUST verify the signature against the EXACT raw bytes.
   // The `{ rawBody: true }` flag on NestFactory.create populates
