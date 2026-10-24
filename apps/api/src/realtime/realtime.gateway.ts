@@ -18,6 +18,7 @@ import {
   isRetiredDeviceCredentialReason,
   DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
 } from '../screens/device-auth';
+import { noteWsDeviceCredentialRefusal } from '../notifications/fleet-alarms/device-credential-refusals';
 
 interface ClientContext {
   connectionId: string;
@@ -636,7 +637,14 @@ export class RealtimeGateway
             credentialMaxAgeMs: DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
           },
         );
-        if (!admitted.ok) throw new Error(`device credential refused: ${admitted.reason}`);
+        if (!admitted.ok) {
+          // 2026-10-23 — counted for the owner's device-credential refusal
+          // alarm (notifications/fleet-alarms/). Synchronous, fire-and-forget,
+          // never throws; it stores the screen id the token CLAIMS, never the
+          // token, and only for a credential this API could have issued.
+          noteWsDeviceCredentialRefusal(this.redisService, admitted.reason, token);
+          throw new Error(`device credential refused: ${admitted.reason}`);
+        }
 
         // Tenant rebind since the JWT was minted → force re-auth rather than
         // silently re-scoping a live socket. Pre-existing behaviour, kept.

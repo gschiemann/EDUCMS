@@ -490,6 +490,84 @@ describe('false-positive rails', () => {
   });
 });
 
+describe('the restart quiet holds CUSTOMER emails only — never the owner’s platform-incident alert (2026-10-23)', () => {
+  const threeOrgs: Array<[string, string]> = [['lobby', 'lincoln'], ['acme-tv', 'acme'], ['globex-tv', 'globex']];
+  const subjectsTo = (mailer: any) => mailer.sendAlert.mock.calls.map((c: any[]) => c[0]);
+
+  it('an outage that begins AT a restart: the owner hears once the screens are due; no customer email', async () => {
+    const { svc, email, mailer } = build(w);
+    const bootAt = w.clock.now;
+    svc.uptimeMs = () => w.clock.now - bootAt;
+    for (const [id, t] of threeOrgs) {
+      screen(w, id, t);
+      goOffline(w, id, bootAt + MIN);
+    }
+    for (let i = 0; i < 20; i++) await scan(w, svc);
+    expect(subjectsTo(mailer)).toEqual([expect.stringMatching(/Possible platform incident — 3 screens in 3 organisations/)]);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(w.incidents.map((i) => i.state)).toEqual(['SILENT', 'SILENT', 'SILENT']);
+  });
+
+  it('a SECOND restart inside the quiet (a fix deploy, a crash) no longer mutes it', async () => {
+    const a = build(w);
+    const firstBoot = w.clock.now;
+    a.svc.uptimeMs = () => w.clock.now - firstBoot;
+    for (const [id, t] of threeOrgs) {
+      screen(w, id, t);
+      goOffline(w, id, firstBoot + MIN);
+    }
+    for (let i = 0; i < 9; i++) await scan(w, a.svc);
+    // Ten minutes in, the API restarts again: a fresh process, a fresh quiet.
+    const b = build(w);
+    const secondBoot = w.clock.now + MIN;
+    b.svc.uptimeMs = () => w.clock.now - secondBoot;
+    const results = [];
+    for (let i = 0; i < 10; i++) results.push(await scan(w, b.svc));
+    // Every one of those scans was inside the second process's quiet…
+    expect(results.map((r) => r.gate).every((g) => g === 'api-restart' || g === 'platform-incident')).toBe(true);
+    // …and the owner still heard, 16 minutes after the screens went dark.
+    expect(subjectsTo(b.mailer)).toEqual([expect.stringMatching(/Possible platform incident — 3 screens in 3 organisations/)]);
+    expect(results.find((r) => r.platformIncident)).toMatchObject({ gate: 'platform-incident' });
+    expect(a.email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(b.email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('after the quiet, a customer email still needs two scans of its own (unchanged)', async () => {
+    const { svc, email, mailer } = build(w);
+    let uptime = 5 * MIN;
+    svc.uptimeMs = () => uptime;
+    screen(w, 'lobby', 'lincoln');
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    await scan(w, svc);
+    await scan(w, svc); // due and "confirmed" inside the quiet — one organisation, so no incident
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    uptime = 16 * MIN;
+    expect((await scan(w, svc)).sends).toBe(0); // first open scan: confirmation starts over
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    await scan(w, svc);
+    expect(sentTo(email)).toEqual(['principal@example.org', 'superintendent@example.org']);
+  });
+
+  it('a degraded platform inside the restart quiet still holds everything', async () => {
+    const { svc, mailer } = build(w);
+    svc.uptimeMs = () => 5 * MIN;
+    reportPlatformComponent('platform', 'critical', w.clock.now + 15 * MIN);
+    for (const [id, t] of threeOrgs) {
+      screen(w, id, t);
+      goOffline(w, id, w.clock.now);
+    }
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    const res = await scan(w, svc);
+    expect(res.gate).toBe('api-restart');
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    expect(w.incidents).toHaveLength(0);
+  });
+});
+
 describe('online but not showing content', () => {
   function blank(id: string, over: Row = {}) {
     screen(w, id, 'lincoln', { lastRenderedAt: new Date(w.clock.now - 21 * MIN), ...over });

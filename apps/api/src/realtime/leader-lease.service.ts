@@ -133,6 +133,13 @@ export const LEASE = {
   // exact old ciphertext, so a second replica would be safe but would scan
   // every sealed row for nothing; the lease keeps it to one pass.
   KEY_ROTATION_REWRAP: 'security:key-rotation-rewrap',
+  // 2026-10-23 — the owner's fleet alarms (notifications/fleet-alarms/). Both
+  // SEND EMAIL, so a second replica would double the alert. The post-restart
+  // check is per boot (each replica snapshots its own boot; whichever leads at
+  // +10 / +20 min checks it) and dedupes per deployment in Redis besides; the
+  // refusal evaluator reads refusals every replica writes to shared Redis sets.
+  POST_RESTART_FLEET_CHECK: 'alarms:post-restart-fleet-check',
+  DEVICE_CREDENTIAL_REFUSAL_ALARM: 'alarms:device-credential-refusals',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];
