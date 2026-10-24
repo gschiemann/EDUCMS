@@ -288,4 +288,17 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2664475,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40039696321',
   },
+  // Signed CI 40074911097, source 2f2e4be2 (PR #151): the redesigned
+  // Network screen (status card, Wi-Fi/Ethernet cards, remote-first password
+  // keyboard, live connecting stages, fix-it failures, opaque overlay).
+  // Presentation only over the 1.1.53 engine. Production certificate
+  // e45adf50…3d1897, non-debuggable universal APK verified. Hardware
+  // qualification and controlled emergency drills remain pending.
+  '1.1.54-field.1': {
+    versionName: '1.1.54-field.1',
+    versionCode: 10154,
+    sha256: '6a23495ad3e45df8b145751c90281fcc4548712a9577cc6f659179b6c0e17d45', // gitleaks:allow -- verified public APK integrity digest
+    size: 2685205,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40074911097',
+  },
 };
