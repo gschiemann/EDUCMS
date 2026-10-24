@@ -8,4 +8,6 @@
     <!-- Marks a view whose type/padding LedCanvasHost.fitNarrow already
          scaled, so a re-render can never compound the factor. -->
     <item name="led_narrow_fit_tag" type="id" />
+    <!-- The Network screen's keyboard: a key's (row, col) for the D-pad grid (KeyboardNav). -->
+    <item name="net_key_pos" type="id" />
 </resources>

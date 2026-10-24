@@ -266,6 +266,19 @@ object BootDiagnostics {
         return view
     }
 
+    /**
+     * 2026-10-24 — VenueOS's Network screen (opened from this card) just put
+     * the screen on a working network: retry now, exactly as the card's own
+     * Retry button does, instead of waiting for the next deadline. A no-op
+     * when the card is no longer up (registration may have succeeded by itself).
+     */
+    fun retryNow(why: String) {
+        if (!isShowing()) return
+        tracker.onManualRetry(android.os.SystemClock.elapsedRealtime())
+        dismiss(why)
+        onRetry?.invoke()
+    }
+
     fun dismiss(why: String) {
         val view = viewRef?.get() ?: return
         viewRef = null

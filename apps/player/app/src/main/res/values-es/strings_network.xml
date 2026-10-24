@@ -1,80 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Inicio -->
     <string name="net_title">Red</string>
+    <string name="net_subtitle">Wi-Fi y Ethernet de esta pantalla</string>
     <string name="net_hint">Use el control remoto: flechas para moverse, OK para elegir, Atrás para volver.</string>
+    <string name="net_close">Cerrar</string>
+    <string name="net_resumed">La alerta terminó: continúe donde lo dejó.</string>
 
-    <string name="net_status_wifi">Conectada a la Wi-Fi “%1$s” · señal %2$s</string>
-    <string name="net_status_wifi_unnamed">Conectada a Wi-Fi · señal %1$s</string>
-    <string name="net_status_ethernet">Conectada por cable (Ethernet)</string>
-    <string name="net_status_other">Conectada</string>
-    <string name="net_status_offline">Sin conexión a una red</string>
+    <!-- Estado -->
+    <string name="net_via_wifi">Conectada por Wi-Fi</string>
+    <string name="net_via_ethernet">Conectada por cable</string>
+    <string name="net_via_other">Conectada</string>
+    <string name="net_via_none">Sin conexión</string>
+    <string name="net_hero_wifi_unnamed">Red Wi-Fi</string>
+    <string name="net_caption_status">Estado</string>
+    <string name="net_hero_offline_tip">Elija una red Wi-Fi o conecte un cable de red.</string>
+    <string name="net_health_ok">Conectada a VenueOS</string>
+    <string name="net_health_no_venueos">Conectada, pero no se puede llegar a VenueOS</string>
+    <string name="net_health_checking">Comprobando VenueOS…</string>
     <string name="net_status_unvalidated">Android no ha confirmado acceso a internet en esta red.</string>
-    <string name="net_status_address">Dirección %1$s</string>
+    <string name="net_fact_signal">Señal</string>
+    <string name="net_fact_ip">Dirección IP</string>
+    <string name="net_fact_address">Dirección</string>
+    <string name="net_signal_excellent">Excelente</string>
+    <string name="net_signal_good">Buena</string>
+    <string name="net_signal_fair">Regular</string>
+    <string name="net_signal_weak">Débil</string>
+    <string name="net_signal_none">Muy débil</string>
 
+    <!-- Wi-Fi -->
     <string name="net_wifi_section">Wi-Fi</string>
-    <string name="net_scan_again">Buscar de nuevo</string>
     <string name="net_scanning">Buscando redes…</string>
-    <string name="net_none_found">No se encontraron redes Wi-Fi cerca.</string>
+    <string name="net_scan_again">Buscar de nuevo</string>
     <string name="net_add_hidden">Agregar una red oculta</string>
-    <string name="net_mark_connected">conectada</string>
-    <string name="net_mark_saved">guardada</string>
-    <string name="net_mark_cannot_join">requiere un inicio de sesión que VenueOS no puede escribir</string>
+    <string name="net_none_found">No se encontraron redes Wi-Fi cerca.</string>
+    <string name="net_none_found_tip">Acerque la pantalla al router o agregue una red oculta.</string>
+    <string name="net_row_secured">Protegida</string>
+    <string name="net_row_open">Abierta</string>
+    <string name="net_row_unsupported">No se puede usar desde esta pantalla</string>
+    <string name="net_chip_connected">Conectada</string>
+    <string name="net_chip_saved">Guardada</string>
     <string name="net_access_permission">Para ver las redes cercanas, Android necesita que VenueOS tenga acceso a la ubicación. VenueOS nunca lee dónde está esta pantalla.</string>
-    <string name="net_allow">Permitir</string>
     <string name="net_access_denied">Se rechazó el acceso a la ubicación. Para ver las redes, permita Ubicación para VenueOS Player en los ajustes de Android.</string>
     <string name="net_access_location_off">La ubicación está desactivada en esta pantalla. Android solo muestra redes cercanas con la ubicación activada.</string>
-    <string name="net_location_settings">Ajustes de ubicación de Android</string>
-    <string name="net_app_settings">VenueOS Player en los ajustes de Android</string>
-    <string name="net_access_wifi_off">La Wi-Fi está desactivada en esta pantalla. VenueOS no la activa: use los ajustes de red de Android.</string>
+    <string name="net_access_wifi_off">La Wi-Fi está desactivada en esta pantalla. Actívela en los ajustes de Wi-Fi de Android y vuelva aquí.</string>
     <string name="net_access_no_wifi">Esta pantalla no tiene Wi-Fi.</string>
+    <string name="net_access_no_wifi_tip">Conecte un cable de red para conectarla.</string>
     <string name="net_access_alert">Hay una alerta en esta pantalla.</string>
+    <string name="net_allow">Permitir</string>
+    <string name="net_fix_app_settings">Abrir ajustes de la app</string>
+    <string name="net_fix_location">Activar la ubicación</string>
+    <string name="net_fix_wifi">Activar la Wi-Fi</string>
 
+    <!-- Ethernet -->
     <string name="net_ethernet_section">Ethernet</string>
     <string name="net_ethernet_cable_yes">Cable conectado</string>
-    <string name="net_ethernet_cable_no">Ningún cable conectado</string>
-    <string name="net_ethernet_address">Dirección IP: %1$s</string>
-    <string name="net_ethernet_auto">Dirección: automática (DHCP)</string>
-    <string name="net_ethernet_fixed">Dirección: fija</string>
-    <string name="net_ethernet_mode_unknown">Android no indica si esta dirección es automática o fija.</string>
+    <string name="net_ethernet_cable_no">Sin cable</string>
+    <string name="net_ethernet_idle">Conecte un cable de red para usar Ethernet.</string>
+    <string name="net_ethernet_standby">Hay un cable conectado. La pantalla está usando otra red en este momento.</string>
+    <string name="net_mode_auto">Automática (DHCP)</string>
+    <string name="net_mode_fixed">Fija</string>
+    <string name="net_mode_unknown">Android no lo indica</string>
     <string name="net_ethernet_fixed_note">Una dirección fija, el DNS o el proxy se configuran en los ajustes de red de Android.</string>
     <string name="net_android_settings">Avanzado: ajustes de red de Android</string>
-    <string name="net_close">Cerrar</string>
 
-    <string name="net_password_for">Contraseña de “%1$s”</string>
-    <string name="net_password_hint">De 8 a 63 caracteres</string>
+    <!-- Contraseña y red oculta -->
+    <string name="net_back_networks">Redes Wi-Fi</string>
+    <string name="net_back">Atrás</string>
+    <string name="net_password_caption">Contraseña de</string>
+    <string name="net_password_placeholder">Escriba la contraseña de la Wi-Fi</string>
+    <string name="net_show">Mostrar</string>
+    <string name="net_hide">Ocultar</string>
     <string name="net_show_password">Mostrar contraseña</string>
     <string name="net_hide_password">Ocultar contraseña</string>
-    <string name="net_connect">Conectar</string>
-    <string name="net_cancel">Cancelar</string>
+    <string name="net_count">Caracteres: %1$d</string>
+    <string name="net_count_short">Caracteres: %1$d · al menos 8</string>
     <string name="net_password_short">La contraseña necesita al menos 8 caracteres.</string>
+    <string name="net_password_wrong">Esa contraseña no funcionó. Corríjala y pulse Conectar, o Vaciar para empezar de nuevo.</string>
+    <string name="net_password_wrong_banner">Android no aceptó la contraseña de “%1$s”.</string>
+    <string name="net_hint_cursor">◀ ▶ mueven el cursor</string>
+    <string name="net_hint_shift">Mayús: una vez para una mayúscula, dos veces para bloquearlas</string>
     <string name="net_hidden_name">Nombre de la red oculta</string>
-    <string name="net_next">Siguiente</string>
+    <string name="net_hidden_placeholder">Escriba el nombre exacto de la red</string>
+    <string name="net_hidden_name_needed">Primero escriba el nombre de la red.</string>
     <string name="net_choose_security">¿Cómo está protegida “%1$s”?</string>
-    <string name="net_security_open">Abierta (sin contraseña)</string>
-    <string name="net_security_wpa2">WPA2 (contraseña)</string>
-    <string name="net_security_wpa3">WPA3 (contraseña)</string>
+    <string name="net_sec_wpa2_title">Contraseña</string>
+    <string name="net_sec_wpa2_sub">WPA2 · la mayoría de las redes</string>
+    <string name="net_sec_wpa3_title">Contraseña (routers más nuevos)</string>
+    <string name="net_sec_wpa3_sub">WPA3</string>
+    <string name="net_sec_open_title">Sin contraseña</string>
+    <string name="net_sec_open_sub">Red abierta</string>
 
+    <!-- Teclado -->
     <string name="net_key_shift">Mayús</string>
     <string name="net_key_symbols">#+=</string>
+    <string name="net_key_letters">abc</string>
     <string name="net_key_space">Espacio</string>
     <string name="net_key_delete">Borrar</string>
     <string name="net_key_clear">Vaciar</string>
+    <string name="net_connect">Conectar</string>
+    <string name="net_next">Siguiente</string>
 
-    <string name="net_result_connected">Conectada a “%1$s”.</string>
-    <string name="net_result_saved">“%1$s” guardada. La pantalla se conecta cuando es la red que debe usar.</string>
-    <string name="net_result_suggested">“%1$s” se ofreció a Android. Android puede pedir una vez, en esta pantalla, que se permitan las redes de VenueOS.</string>
+    <!-- Conectando -->
+    <string name="net_connecting_title">Conectando a “%1$s”</string>
+    <string name="net_stage_join">Uniéndose a “%1$s”</string>
+    <string name="net_stage_address">Obteniendo una dirección</string>
+    <string name="net_stage_check">Comprobando VenueOS</string>
+    <string name="net_wait_android">Android decide cuándo cambiar a ella; puede tardar unos segundos.</string>
+    <string name="net_wait_dialog">Android pide guardar “%1$s”. Elija Guardar en su pantalla.</string>
     <string name="net_result_waiting_approval">Esperando la confirmación de Android: permita las redes Wi-Fi de VenueOS cuando Android lo pida en esta pantalla.</string>
-    <string name="net_result_waiting_dialog">Esperando a que elija Guardar en el diálogo de Android.</string>
-    <string name="net_result_joining">Conectándose a “%1$s”… VenueOS la conserva solo cuando llega al servidor de VenueOS a través de ella.</string>
-    <string name="net_result_wrong_password">Android no aceptó la contraseña de “%1$s”.</string>
-    <string name="net_result_could_not_join">No se pudo conectar a “%1$s” (revise la contraseña y que esté al alcance). Sigue en %2$s.</string>
-    <string name="net_result_no_server">Se conectó a “%1$s” pero no pudo llegar al servidor de VenueOS a través de ella. Se volvió atrás: sigue en %2$s.</string>
-    <string name="net_result_declined">No se guardó: se eligió Cancelar en el diálogo de Android.</string>
-    <string name="net_result_alert">Ahora no: hay una alerta en esta pantalla.</string>
-    <string name="net_result_wifi_off">La Wi-Fi está desactivada en esta pantalla.</string>
-    <string name="net_result_name_taken">“%1$s” ya está guardada en esta pantalla por otra persona. VenueOS la deja como está.</string>
-    <string name="net_result_not_supported">Esta pantalla no puede conectarse a “%1$s” de esta forma.</string>
-    <string name="net_result_failed">No se pudo conectar a “%1$s”.</string>
+    <string name="net_wait_proof">VenueOS la conserva solo cuando su servidor responde a través de ella; si no, la pantalla vuelve a %1$s.</string>
+    <string name="net_stop_waiting">Dejar de esperar</string>
+    <string name="net_banner_pending">Terminando “%1$s” en segundo plano.</string>
+
+    <!-- Resultados -->
+    <string name="net_success_title">Conectada a “%1$s”</string>
+    <string name="net_success_body">Esta pantalla puede llegar a VenueOS.</string>
+    <string name="net_returning">Volviendo en %1$d s</string>
+    <string name="net_done">Listo</string>
+    <string name="net_saved_title">“%1$s” guardada</string>
+    <string name="net_saved_body">Android cambiará a ella cuando sea la mejor red aquí.</string>
+    <string name="net_result_suggested">“%1$s” se ofreció a Android. Android puede pedir una vez, en esta pantalla, que se permitan las redes de VenueOS.</string>
+    <string name="net_still_on">Sigue en %1$s.</string>
+    <string name="net_still_offline">La pantalla sigue sin conexión.</string>
+    <string name="net_fail_join_title">No se pudo unir a “%1$s”</string>
+    <string name="net_fail_join_body">Revise la contraseña y que la pantalla esté al alcance.</string>
+    <string name="net_fail_join_body_open">Compruebe que la pantalla esté al alcance de la red.</string>
+    <string name="net_fail_server_title">“%1$s” no llega a VenueOS</string>
+    <string name="net_fail_server_body">La pantalla se unió, pero no pudo llegar al servidor de VenueOS a través de ella, así que volvió atrás.</string>
+    <string name="net_fail_declined_title">No se guardó</string>
+    <string name="net_fail_declined_body">Se eligió Cancelar en el diálogo de Android. Inténtelo de nuevo y elija Guardar.</string>
+    <string name="net_fail_wifi_off_title">La Wi-Fi está desactivada</string>
+    <string name="net_fail_wifi_off_body">Active la Wi-Fi en los ajustes de Android y vuelva a intentarlo.</string>
+    <string name="net_fail_taken_title">“%1$s” la guardó otra persona</string>
+    <string name="net_fail_taken_body">VenueOS no toca las redes que no agregó. Únase desde los ajustes de Wi-Fi de Android.</string>
+    <string name="net_fail_unsupported_title">Esta pantalla no puede unirse a “%1$s” aquí</string>
+    <string name="net_fail_unsupported_body">Requiere un inicio de sesión que VenueOS no puede escribir. Únase desde los ajustes de Wi-Fi de Android.</string>
+    <string name="net_fail_alert_title">Ahora no</string>
+    <string name="net_result_alert">Hay una alerta en esta pantalla.</string>
+    <string name="net_fail_title">No se pudo conectar a “%1$s”</string>
+    <string name="net_fail_body">Inténtelo de nuevo o elija otra red.</string>
+    <string name="net_fix_try_again">Intentar de nuevo</string>
+    <string name="net_fix_edit_password">Corregir la contraseña</string>
+    <string name="net_fix_choose">Elegir otra red</string>
+    <string name="net_fix_android">Abrir ajustes de Wi-Fi de Android</string>
     <string name="net_previous_network">la red anterior</string>
     <string name="net_previous_ethernet">el cable (Ethernet)</string>
 

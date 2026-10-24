@@ -61,7 +61,8 @@ class DeviceSettingsWiringTest {
         "WifiScan.kt", "NetworkStatus.kt", "NetworkPolicy.kt",
     )
     private val all get() = settingsFiles.associateWith { code(read("$pkg/settings/$it")) }
-    private val networkFiles get() = listOf("NetworkScreen.kt", "NetworkScreenModel.kt")
+    // 2026-10-24 — the redesign's toolkit and debug-demo mechanism join the scan.
+    private val networkFiles get() = listOf("NetworkScreen.kt", "NetworkScreenModel.kt", "NetworkUi.kt", "NetworkDemo.kt")
         .associateWith { code(read("$pkg/network/$it")) }
 
     @Test fun theHeartbeatIsTheOnlyCallerAndCarriesItsOwnHeader() {

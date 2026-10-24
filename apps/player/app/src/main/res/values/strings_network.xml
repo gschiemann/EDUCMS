@@ -1,90 +1,162 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   VenueOS's on-screen Network screen and the "Save Wi-Fi network" card
-  (2026-10-23). Read by a person standing at a wall-mounted screen with a
-  remote in their hand: plain words, no jargon, nothing the screen cannot
-  prove (player rule 10). Translated in values-es and values-zh — every string
-  here must exist in all three (lint MissingTranslation stays on for this file).
+  (2026-10-23; redesigned 2026-10-24). Read by a person standing at a
+  wall-mounted screen with a remote in their hand: plain words first, no
+  jargon (no SSID / PSK), one sentence that says what to do next, nothing the
+  screen cannot prove (player rule 10). Translated in values-es and
+  values-zh — every string here must exist in all three (lint
+  MissingTranslation stays on for this file).
 -->
 <resources>
+    <!-- Home -->
     <string name="net_title">Network</string>
+    <string name="net_subtitle">Wi-Fi and Ethernet for this screen</string>
     <string name="net_hint">Use the remote: arrows to move, OK to choose, Back to go back.</string>
+    <string name="net_close">Close</string>
+    <string name="net_resumed">The alert is over — carry on where you left off.</string>
 
-    <string name="net_status_wifi">Connected to Wi-Fi “%1$s” · signal %2$s</string>
-    <string name="net_status_wifi_unnamed">Connected to Wi-Fi · signal %1$s</string>
-    <string name="net_status_ethernet">Connected by cable (Ethernet)</string>
-    <string name="net_status_other">Connected</string>
-    <string name="net_status_offline">Not connected to a network</string>
+    <!-- The status hero -->
+    <string name="net_via_wifi">Connected by Wi-Fi</string>
+    <string name="net_via_ethernet">Connected by cable</string>
+    <string name="net_via_other">Connected</string>
+    <string name="net_via_none">Not connected</string>
+    <string name="net_hero_wifi_unnamed">Wi-Fi network</string>
+    <string name="net_caption_status">Status</string>
+    <string name="net_hero_offline_tip">Choose a Wi-Fi network, or plug in a network cable.</string>
+    <string name="net_health_ok">Connected to VenueOS</string>
+    <string name="net_health_no_venueos">Connected, but VenueOS can’t be reached</string>
+    <string name="net_health_checking">Checking VenueOS…</string>
     <string name="net_status_unvalidated">Android has not confirmed internet access on this network.</string>
-    <string name="net_status_address">Address %1$s</string>
+    <string name="net_fact_signal">Signal</string>
+    <string name="net_fact_ip">IP address</string>
+    <string name="net_fact_address">Address</string>
+    <string name="net_signal_excellent">Excellent</string>
+    <string name="net_signal_good">Good</string>
+    <string name="net_signal_fair">Fair</string>
+    <string name="net_signal_weak">Weak</string>
+    <string name="net_signal_none">Very weak</string>
 
+    <!-- The Wi-Fi card -->
     <string name="net_wifi_section">Wi-Fi</string>
-    <string name="net_scan_again">Scan again</string>
     <string name="net_scanning">Looking for networks…</string>
-    <string name="net_none_found">No Wi-Fi networks found nearby.</string>
+    <string name="net_scan_again">Scan again</string>
     <string name="net_add_hidden">Add a hidden network</string>
-    <string name="net_mark_connected">connected</string>
-    <string name="net_mark_saved">saved</string>
-    <string name="net_mark_cannot_join">needs a sign-in VenueOS cannot type</string>
+    <string name="net_none_found">No Wi-Fi networks found nearby.</string>
+    <string name="net_none_found_tip">Move the screen closer to the router, or add a hidden network.</string>
+    <string name="net_row_secured">Secured</string>
+    <string name="net_row_open">Open</string>
+    <string name="net_row_unsupported">Can’t be joined from this screen</string>
+    <string name="net_chip_connected">Connected</string>
+    <string name="net_chip_saved">Saved</string>
     <string name="net_access_permission">To list nearby networks, Android needs VenueOS to have location access. VenueOS never reads where this screen is.</string>
-    <string name="net_allow">Allow</string>
     <string name="net_access_denied">Location access was declined. To list networks, allow Location for VenueOS Player in Android’s settings.</string>
     <string name="net_access_location_off">Location is turned off on this screen. Android lists nearby networks only while Location is on.</string>
-    <string name="net_location_settings">Android location settings</string>
-    <string name="net_app_settings">VenueOS Player in Android settings</string>
-    <string name="net_access_wifi_off">Wi-Fi is turned off on this screen. VenueOS does not turn it on — use Android’s network settings.</string>
+    <string name="net_access_wifi_off">Wi-Fi is turned off on this screen. Turn it on in Android’s Wi-Fi settings, then come back here.</string>
     <string name="net_access_no_wifi">This screen has no Wi-Fi.</string>
+    <string name="net_access_no_wifi_tip">Plug in a network cable to connect it.</string>
     <string name="net_access_alert">An alert is on this screen.</string>
+    <string name="net_allow">Allow</string>
+    <string name="net_fix_app_settings">Open app settings</string>
+    <string name="net_fix_location">Turn on Location</string>
+    <string name="net_fix_wifi">Turn on Wi-Fi</string>
 
+    <!-- The Ethernet card -->
     <string name="net_ethernet_section">Ethernet</string>
     <string name="net_ethernet_cable_yes">Cable connected</string>
-    <string name="net_ethernet_cable_no">No cable connected</string>
-    <string name="net_ethernet_address">IP address: %1$s</string>
-    <string name="net_ethernet_auto">Address: automatic (DHCP)</string>
-    <string name="net_ethernet_fixed">Address: fixed</string>
-    <string name="net_ethernet_mode_unknown">Android does not say whether this address is automatic or fixed.</string>
+    <string name="net_ethernet_cable_no">No cable</string>
+    <string name="net_ethernet_idle">Plug in a network cable to use Ethernet.</string>
+    <string name="net_ethernet_standby">A cable is connected. The screen is using another network right now.</string>
+    <string name="net_mode_auto">Automatic (DHCP)</string>
+    <string name="net_mode_fixed">Fixed</string>
+    <string name="net_mode_unknown">Not reported by Android</string>
     <string name="net_ethernet_fixed_note">A fixed address, DNS or proxy is set in Android’s own network settings.</string>
     <string name="net_android_settings">Advanced: Android network settings</string>
-    <string name="net_close">Close</string>
 
-    <string name="net_password_for">Password for “%1$s”</string>
-    <string name="net_password_hint">8–63 characters</string>
+    <!-- Password and hidden network -->
+    <string name="net_back_networks">Wi-Fi networks</string>
+    <string name="net_back">Back</string>
+    <string name="net_password_caption">Password for</string>
+    <string name="net_password_placeholder">Type the Wi-Fi password</string>
+    <string name="net_show">Show</string>
+    <string name="net_hide">Hide</string>
     <string name="net_show_password">Show password</string>
     <string name="net_hide_password">Hide password</string>
-    <string name="net_connect">Connect</string>
-    <string name="net_cancel">Cancel</string>
+    <string name="net_count">Characters: %1$d</string>
+    <string name="net_count_short">Characters: %1$d · at least 8</string>
     <string name="net_password_short">The password needs at least 8 characters.</string>
+    <string name="net_password_wrong">That password didn’t work. Fix it and press Connect — or Clear to start over.</string>
+    <string name="net_password_wrong_banner">Android didn’t accept the password for “%1$s”.</string>
+    <string name="net_hint_cursor">◀ ▶ move the cursor</string>
+    <string name="net_hint_shift">Shift: once for one capital, twice for caps lock</string>
     <string name="net_hidden_name">Name of the hidden network</string>
-    <string name="net_next">Next</string>
+    <string name="net_hidden_placeholder">Type the network’s name exactly</string>
+    <string name="net_hidden_name_needed">Type the network’s name first.</string>
     <string name="net_choose_security">How is “%1$s” secured?</string>
-    <string name="net_security_open">Open (no password)</string>
-    <string name="net_security_wpa2">WPA2 (password)</string>
-    <string name="net_security_wpa3">WPA3 (password)</string>
+    <string name="net_sec_wpa2_title">Password</string>
+    <string name="net_sec_wpa2_sub">WPA2 · most networks</string>
+    <string name="net_sec_wpa3_title">Password (newer routers)</string>
+    <string name="net_sec_wpa3_sub">WPA3</string>
+    <string name="net_sec_open_title">No password</string>
+    <string name="net_sec_open_sub">Open network</string>
 
+    <!-- The keyboard -->
     <string name="net_key_shift">Shift</string>
     <string name="net_key_symbols">#+=</string>
+    <string name="net_key_letters">abc</string>
     <string name="net_key_space">Space</string>
     <string name="net_key_delete">Delete</string>
     <string name="net_key_clear">Clear</string>
+    <string name="net_connect">Connect</string>
+    <string name="net_next">Next</string>
 
-    <string name="net_result_connected">Connected to “%1$s”.</string>
-    <string name="net_result_saved">Saved “%1$s”. The screen joins it when it is the network to use.</string>
-    <string name="net_result_suggested">“%1$s” was offered to Android. Android may ask once, on this screen, to allow VenueOS’s networks.</string>
+    <!-- Connecting -->
+    <string name="net_connecting_title">Connecting to “%1$s”</string>
+    <string name="net_stage_join">Joining “%1$s”</string>
+    <string name="net_stage_address">Getting an address</string>
+    <string name="net_stage_check">Checking VenueOS</string>
+    <string name="net_wait_android">Android decides when to move onto it — this can take a few seconds.</string>
+    <string name="net_wait_dialog">Android is asking to save “%1$s”. Choose Save on its screen.</string>
     <string name="net_result_waiting_approval">Waiting for Android’s confirmation: allow VenueOS’s Wi-Fi networks when Android asks on this screen.</string>
-    <string name="net_result_waiting_dialog">Waiting for you to choose Save in Android’s dialog.</string>
-    <string name="net_result_joining">Joining “%1$s”… VenueOS keeps it only once it reaches the VenueOS server over it.</string>
-    <string name="net_result_wrong_password">Android did not accept the password for “%1$s”.</string>
-    <string name="net_result_could_not_join">Could not join “%1$s” (check the password and that it is in range). Still on %2$s.</string>
-    <string name="net_result_no_server">Joined “%1$s” but could not reach the VenueOS server over it. Switched back — still on %2$s.</string>
-    <string name="net_result_declined">Not saved — Cancel was chosen in Android’s dialog.</string>
-    <string name="net_result_alert">Not now — an alert is on this screen.</string>
-    <string name="net_result_wifi_off">Wi-Fi is turned off on this screen.</string>
-    <string name="net_result_name_taken">“%1$s” is already saved on this screen by someone else. VenueOS leaves it as it is.</string>
-    <string name="net_result_not_supported">This screen can’t join “%1$s” this way.</string>
-    <string name="net_result_failed">Could not connect to “%1$s”.</string>
+    <string name="net_wait_proof">VenueOS keeps it only once its server answers over it — otherwise the screen goes back to %1$s.</string>
+    <string name="net_stop_waiting">Stop waiting</string>
+    <string name="net_banner_pending">Still finishing “%1$s” in the background.</string>
+
+    <!-- Results -->
+    <string name="net_success_title">Connected to “%1$s”</string>
+    <string name="net_success_body">This screen can reach VenueOS.</string>
+    <string name="net_returning">Going back in %1$d s</string>
+    <string name="net_done">Done</string>
+    <string name="net_saved_title">Saved “%1$s”</string>
+    <string name="net_saved_body">Android will move onto it when it is the best network here.</string>
+    <string name="net_result_suggested">“%1$s” was offered to Android. Android may ask once, on this screen, to allow VenueOS’s networks.</string>
+    <string name="net_still_on">Still on %1$s.</string>
+    <string name="net_still_offline">The screen is still not connected.</string>
+    <string name="net_fail_join_title">Couldn’t join “%1$s”</string>
+    <string name="net_fail_join_body">Check the password and that the screen is in range.</string>
+    <string name="net_fail_join_body_open">Check that the screen is in range of the network.</string>
+    <string name="net_fail_server_title">“%1$s” can’t reach VenueOS</string>
+    <string name="net_fail_server_body">The screen joined it but couldn’t reach the VenueOS server over it, so it switched back.</string>
+    <string name="net_fail_declined_title">Not saved</string>
+    <string name="net_fail_declined_body">Cancel was chosen in Android’s dialog. Try again and choose Save.</string>
+    <string name="net_fail_wifi_off_title">Wi-Fi is off</string>
+    <string name="net_fail_wifi_off_body">Turn on Wi-Fi in Android’s settings, then try again.</string>
+    <string name="net_fail_taken_title">“%1$s” is saved by someone else</string>
+    <string name="net_fail_taken_body">VenueOS leaves networks it did not add alone. Join it from Android’s Wi-Fi settings.</string>
+    <string name="net_fail_unsupported_title">This screen can’t join “%1$s” here</string>
+    <string name="net_fail_unsupported_body">It needs a kind of sign-in VenueOS can’t type. Join it from Android’s Wi-Fi settings.</string>
+    <string name="net_fail_alert_title">Not now</string>
+    <string name="net_result_alert">An alert is on this screen.</string>
+    <string name="net_fail_title">Couldn’t connect to “%1$s”</string>
+    <string name="net_fail_body">Try again, or choose another network.</string>
+    <string name="net_fix_try_again">Try again</string>
+    <string name="net_fix_edit_password">Fix the password</string>
+    <string name="net_fix_choose">Choose another network</string>
+    <string name="net_fix_android">Open Android Wi-Fi settings</string>
     <string name="net_previous_network">the previous network</string>
     <string name="net_previous_ethernet">the cable (Ethernet)</string>
 
+    <!-- The "Save Wi-Fi network" card (settings.WifiSavePrompt) -->
     <string name="wifi_card_title">Save Wi-Fi network</string>
     <string name="wifi_card_body">Your VenueOS dashboard asked this screen to save “%1$s”. Press OK on the remote (or tap Save network), then choose Save.</string>
     <string name="wifi_card_save">Save network</string>
