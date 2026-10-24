@@ -22,6 +22,7 @@ import {
   isEpochAcceptable,
   epochFromClaim,
   isUnprovenDeviceClaim,
+  isUnverifiableDeviceTokenForScreen,
   CREDENTIAL_EPOCH_GRACE_MS,
   DEVICE_TOKEN_TTL_PAIRED,
   DEVICE_TOKEN_AUD_BOOTSTRAP,
@@ -316,5 +317,59 @@ describe('token lifetime (DT-02)', () => {
     // Sized deliberately: a ~100-day summer shutdown must NOT strand a
     // fleet needing hand re-pairing in September.
     expect(DEVICE_TOKEN_TTL_PAIRED).toBe('180d');
+  });
+});
+
+describe('isUnverifiableDeviceTokenForScreen (2026-10-23, retired signing key)', () => {
+  const RETIRED = 'a_key_this_server_no_longer_holds_0123456789abcdef';
+  const verifyErr = (t: string): unknown => {
+    try {
+      jwt.verify(t, DEVICE_SECRET, { algorithms: ['HS256'] });
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+  const signed = (key: string, claims: Record<string, unknown> = {}, opts: jwt.SignOptions = {}) =>
+    jwt.sign({ sub: SCREEN_ID, deviceId: SCREEN_ID, kind: 'device', ep: 2, ...claims }, key, {
+      algorithm: 'HS256',
+      expiresIn: '180d',
+      ...opts,
+    });
+
+  it("true for this screen's device token signed by a key we do not hold (fresh or expired)", () => {
+    const fresh = signed(RETIRED);
+    const expired = signed(RETIRED, {}, { expiresIn: -10 });
+    expect(isUnverifiableDeviceTokenForScreen(fresh, verifyErr(fresh), SCREEN_ID)).toBe(true);
+    expect(isUnverifiableDeviceTokenForScreen(expired, verifyErr(expired), SCREEN_ID)).toBe(true);
+  });
+
+  it('false when the token names another screen, is not a device token, or its subjects disagree', () => {
+    for (const claims of [
+      { sub: 'screen-other', deviceId: 'screen-other' },
+      { kind: 'user' },
+      { kind: undefined },
+      { deviceId: 'screen-other' },
+    ]) {
+      const t = signed(RETIRED, claims);
+      expect(isUnverifiableDeviceTokenForScreen(t, verifyErr(t), SCREEN_ID)).toBe(false);
+    }
+  });
+
+  it('false for every failure that is not "invalid signature" — those stay a hard refusal', () => {
+    const hs512 = signed(RETIRED, {}, { algorithm: 'HS512' });
+    const expiredOwn = signed(DEVICE_SECRET, {}, { expiresIn: -10 }); // TokenExpiredError
+    const stripped = `${signed(RETIRED).split('.').slice(0, 2).join('.')}.`;
+    for (const t of [hs512, expiredOwn, stripped, 'not.a.jwt', 'garbage']) {
+      expect(isUnverifiableDeviceTokenForScreen(t, verifyErr(t), SCREEN_ID)).toBe(false);
+    }
+  });
+
+  it('false when there was no verification error, no token, or no screen', () => {
+    const ok = signed(DEVICE_SECRET);
+    const sig = new jwt.JsonWebTokenError('invalid signature');
+    expect(isUnverifiableDeviceTokenForScreen(ok, verifyErr(ok), SCREEN_ID)).toBe(false);
+    expect(isUnverifiableDeviceTokenForScreen(undefined, sig, SCREEN_ID)).toBe(false);
+    expect(isUnverifiableDeviceTokenForScreen(signed(RETIRED), sig, '')).toBe(false);
   });
 });

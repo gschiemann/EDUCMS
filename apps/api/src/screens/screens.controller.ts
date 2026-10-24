@@ -77,7 +77,7 @@ import { StripeService } from '../billing/stripe.service';
 // Menu-mgmt-at-scale (2026-05-29) — device-authed GET /screens/:id/menu
 // resolves the screen's location → per-location menu via MenuService.
 import { MenuService } from '../pos/menu.service';
-import { deviceJwtSecretRing } from '../security/key-ring';
+import { deviceJwtSecretRing, keyIdOf } from '../security/key-ring';
 import { verifyDeviceJwt } from '../security/device-jwt';
 import { clientIpFromRequest } from '../security/client-ip';
 import {
@@ -180,6 +180,7 @@ import {
   epochFromClaim,
   decodeDeviceTokenUnsafe,
   isUnprovenDeviceClaim,
+  isUnverifiableDeviceTokenForScreen,
   DEVICE_JWT_ALGORITHMS,
   DEVICE_TOKEN_TTL_PAIRED,
   DEVICE_TOKEN_TTL_UNPAIRED,
@@ -437,6 +438,31 @@ export const _registerFpCooldown = new Map<string, number>(); // fingerprint →
 // "first-time bring-up gate". Aligned with how rate-limits should
 // actually work for legitimate kiosks.
 export const REGISTER_FP_COOLDOWN_MS = 5 * 1000; // 5 seconds (was 60 s, was 15 min)
+
+/**
+ * A register that REFUSES or DOWNGRADES a presented prior token is written to
+ * stdout (2026-10-23). Until then such a register left no trace at all: the
+ * 401 is thrown before any audit row, `RequestLogInterceptor` only logs a
+ * mutation that SUCCEEDED, and `AllExceptionsFilter` only logs 5xx. During the
+ * retired-key incident every dark screen re-registered once a minute and the
+ * API logs showed "no /screens/register calls from these devices" — which sent
+ * the diagnosis looking for a client that never tried.
+ *
+ * One line per screen per verdict per 10 minutes, per replica; the map is
+ * bounded so a fingerprint-scanning caller cannot grow it. Ids and verdicts
+ * only — never a token, never a fingerprint.
+ */
+const REGISTER_PRIOR_LOG_DEDUPE_MS = 10 * 60 * 1000;
+const _registerPriorLogSeen = new Map<string, number>();
+function logRegisterPriorVerdict(screenId: string, verdict: string, line: string): void {
+  const key = `${screenId}:${verdict}`;
+  const now = Date.now();
+  const last = _registerPriorLogSeen.get(key);
+  if (last !== undefined && now - last < REGISTER_PRIOR_LOG_DEDUPE_MS) return;
+  if (_registerPriorLogSeen.size >= 5_000) _registerPriorLogSeen.clear();
+  _registerPriorLogSeen.set(key, now);
+  console.warn(line);
+}
 
 // Sprint 13 — per-screen rate floor for CTS game-state POSTs. Map
 // of screenId → last accepted POST timestamp (ms). Read + written
@@ -741,9 +767,15 @@ export class ScreensController {
     //     reject would let whoever rotates first deliberately black out a
     //     real screen.
     //   - Caller has fingerprint only → 1-hour token + requiresRePair.
-    //   - Prior token INVALID (wrong screenId) → hard 401.
+    //   - Prior token INVALID (wrong screenId, wrong algorithm, malformed)
+    //     → hard 401.
     //   - Prior token EXPIRED → downgrade to 1-hour fallback (don't reject,
     //     legitimate kiosk may have had its token expire mid-day).
+    //   - Prior token UNVERIFIABLE — this screen's own device token, signed
+    //     by a key we no longer hold (a DEVICE_JWT_SECRET rotated out after
+    //     its window closed) → the same 1-hour fallback as no token at all.
+    //     It was a hard 401 until 2026-10-23, which left every screen that
+    //     had not renewed inside a rotation window dark with no way back.
     //
     // 2026-08-03 (DT-04) — the `STRICT_REPAIR_AUTH=false` legacy branch is
     // GONE. It was a fleet-migration ramp for kiosks ≤ v1.0.33 that could
@@ -761,6 +793,10 @@ export class ScreensController {
     // MINT with the PRIMARY of the DEVICE_JWT_SECRET ring, always — a rotation
     // window only widens what verifiers ACCEPT (security/key-ring.ts).
     const deviceJwtSecret = deviceJwtSecretRing().primary;
+    // Non-secret name of that key, stamped on the issue's audit row so a
+    // rotation can prove which screens hold a token on the NEW key before the
+    // window closes (`keyIdOf`, scripts/rotation-renewal-guard.cjs).
+    const deviceJwtKeyId = keyIdOf(deviceJwtSecret);
 
     // CYCLE-3 emergency-011: include `deviceId` and `tenantId` in the payload.
     // The realtime gateway (apps/api/src/realtime/realtime.gateway.ts:125-127)
@@ -873,7 +909,14 @@ export class ScreensController {
      *               deliberately black out a real screen, and a dark screen
      *               is the failure mode this product exists to prevent.
      *   'expired' — bound to the right screen but past its exp
-     *   'invalid' — wrong screenId or tampered (hard 401)
+     *   'unverifiable' — shaped like THIS screen's device token, but no key
+     *               we hold verifies its signature (in practice: minted on a
+     *               DEVICE_JWT_SECRET that was rotated out after its window
+     *               closed). Treated like 'absent': a 1-hour bootstrap
+     *               credential + requiresRePair, never proof. See
+     *               `isUnverifiableDeviceTokenForScreen`.
+     *   'invalid' — wrong screenId, wrong algorithm, malformed or otherwise
+     *               tampered (hard 401)
      *   'absent'  — no priorDeviceToken sent
      *
      * 2026-08-03 (DT-02): the epoch check is the piece that stops a stolen
@@ -884,7 +927,7 @@ export class ScreensController {
     let verifiedPriorClaims: { epoch: number; unproven: boolean } | null = null;
     const verifyPriorToken = (
       screen: { id: string; status?: string | null; tenantId?: string | null; authState?: string | null; credentialEpoch?: number | null; credentialEpochRotatedAt?: Date | null },
-    ): 'valid' | 'valid-grace' | 'unproven-restorable' | 'stale' | 'expired' | 'invalid' | 'absent' => {
+    ): 'valid' | 'valid-grace' | 'unproven-restorable' | 'stale' | 'expired' | 'unverifiable' | 'invalid' | 'absent' => {
       if (!body.priorDeviceToken) return 'absent';
       const epochState = {
         credentialEpoch: Number(screen.credentialEpoch ?? 0) || 0,
@@ -964,6 +1007,16 @@ export class ScreensController {
           if (decoded?.sub !== screen.id) return 'invalid';
           return 'expired';
         }
+        // 2026-10-23 — THE RETIRED-KEY INCIDENT. A DEVICE_JWT_SECRET rotation
+        // window closed while paired screens still held 180-day tokens from
+        // the old key (they renew only on reload or < 14 days before expiry).
+        // Their re-register landed HERE and was 401'd as "tampered" once a
+        // minute, forever: no new token, no requiresRePair, a dark screen.
+        // Such a token is this screen's own credential that we can no longer
+        // check, so it gets exactly what an ABSENT prior gets — never more.
+        if (isUnverifiableDeviceTokenForScreen(body.priorDeviceToken, e, screen.id)) {
+          return 'unverifiable';
+        }
         return 'invalid';
       }
     };
@@ -1018,10 +1071,25 @@ export class ScreensController {
           const priorStatus = verifyPriorToken(existing as any);
 
           if (priorStatus === 'invalid') {
-            // Caller supplied a token but it binds to a different screen →
-            // hard reject. Fingerprint alone is not enough to prove identity
-            // when a token was actively presented.
+            // Caller supplied a token that binds to a different screen, or
+            // is not a token we could have minted (wrong algorithm, malformed,
+            // signature stripped) → hard reject. Fingerprint alone is not
+            // enough to prove identity when a token was actively presented.
+            // A token that is merely signed by a key we no longer hold is
+            // NOT here — see 'unverifiable'.
+            logRegisterPriorVerdict(
+              existing.id,
+              'invalid',
+              `[register] screen=${existing.id} presented a prior device token it cannot use (wrong screen, algorithm or shape) — 401 SCREEN_TOKEN_MISMATCH`,
+            );
             throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
+          }
+          if (priorStatus === 'unverifiable') {
+            logRegisterPriorVerdict(
+              existing.id,
+              'unverifiable',
+              `[register] screen=${existing.id} presented a device token no current key verifies (a rotated-out DEVICE_JWT_SECRET?) — downgraded to a 1-hour credential + requiresRePair`,
+            );
           }
 
           // Determine issued TTL (DT-02/DT-04):
@@ -1029,6 +1097,8 @@ export class ScreensController {
           //   stale prior token → 1h + requiresRePair (superseded/revoked
           //                       credential — a fork; audited, not 401'd)
           //   expired prior token → 1h + requiresRePair
+          //   unverifiable prior token → 1h + requiresRePair (signed by a
+          //                       key we no longer hold; graded like absent)
           //   absent prior token → 1h + requiresRePair (was 365d by default
           //                       before DT-04 removed the legacy branch)
           let issuedTtl: string;
@@ -1182,6 +1252,10 @@ export class ScreensController {
                 presentedCredentialUnproven: verifiedPriorClaims?.unproven ?? null,
                 requiresRePair,
                 ...(rotationSkipped ? { rotationSkipped: 'rotated-within-window' } : {}),
+                // Which DEVICE_JWT_SECRET signed the token issued here (a
+                // non-secret id, never the key). The rotation `finish` guard
+                // reads it.
+                mintKeyId: deviceJwtKeyId,
                 ip: clientIpFromRequest(req),
                 fingerprint: body.deviceFingerprint.slice(0, 24),
               }),

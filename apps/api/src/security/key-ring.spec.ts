@@ -10,6 +10,7 @@ import {
   deviceSecretKeyCandidates,
   deviceSecretKeyCandidatesFromEnv,
   deviceSecretKeyRing,
+  keyIdOf,
   keyRingCandidates,
   masterKeyCandidates,
   masterKeysFor,
@@ -180,6 +181,21 @@ describe('security/key-ring', () => {
       process.env.DEVICE_SECRET_KEY = NEW_HEX + '1111';
       process.env.DEVICE_SECRET_KEY_PREVIOUS = NEW_HEX + '2222';
       expect(masterKeysFor('test').previous).toBeUndefined();
+    });
+  });
+
+  describe('keyIdOf — the non-secret key name stamped on token-issue audit rows', () => {
+    it('matches the vector scripts/__tests__/rotation-renewal-guard.test.cjs pins (the two must never drift)', () => {
+      expect(keyIdOf('example-device-jwt-secret-0123456789abcdef')).toBe('d094971bcaf317f5');
+      expect(keyIdOf('another-example-secret-fedcba9876543210')).toBe('efbe3125fcfffd72');
+    });
+
+    it('is 16 hex chars, stable, distinct per key, and contains no part of the key', () => {
+      const id = keyIdOf(NEW_HEX);
+      expect(id).toMatch(/^[0-9a-f]{16}$/);
+      expect(keyIdOf(NEW_HEX)).toBe(id);
+      expect(keyIdOf(OLD_HEX)).not.toBe(id);
+      expect(NEW_HEX.includes(id)).toBe(false);
     });
   });
 });
