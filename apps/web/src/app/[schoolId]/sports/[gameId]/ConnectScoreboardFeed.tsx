@@ -30,6 +30,8 @@ import { Check, Copy, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { computeFeedStatus, type FeedStatus } from '@/lib/cts-merge';
 import { serverClock } from '@/lib/server-clock';
+import { useLocaleSwitch } from '@/i18n/I18nProvider';
+import { LOCALE_HTML_LANG } from '@/i18n/config';
 
 interface FeedCredentials {
   ingestUrl: string;
@@ -78,39 +80,16 @@ function setRevokeFlag(gameId: string, on: boolean): void {
 
 type VendorKey = 'sportzcast' | 'scorebird' | 'generic';
 
-const VENDORS: { key: VendorKey; label: string }[] = [
+/** Vendor chips. Brand names are not translated; "Anything else" is (`sportsFeed.vendorOther`). */
+const VENDORS: { key: VendorKey; label: string | null }[] = [
   { key: 'sportzcast', label: 'Sportzcast' },
   { key: 'scorebird', label: 'Scorebird' },
-  { key: 'generic', label: 'Anything else' },
+  { key: 'generic', label: null },
 ];
 
-/** Per-vendor recipe steps. Instructions ONLY — same URL, same token, same
- *  JSON for every vendor (see the honesty note in the component). */
-function vendorSteps(vendor: VendorKey): string[] {
-  switch (vendor) {
-    case 'sportzcast':
-      return [
-        'In your Sportzcast cloud portal (ScoreHub / ScoreLink), open the data-output settings for the Scorebot at this venue.',
-        'Add an HTTP push (webhook) output and paste the ingest URL below as the destination.',
-        'Add a request header named x-feed-token with the token below.',
-        'Map the output to the JSON fields listed below (any subset works). If your plan only pushes a fixed format, run their bridge/relay — or any small script — that reposts to this URL; the curl line is a working packet.',
-      ];
-    case 'scorebird':
-      return [
-        'In your Scorebird dashboard (MyScorebird), open the integrations / data-feed settings for this scoreboard’s nest.',
-        'Add an HTTP push (webhook) pointing at the ingest URL below.',
-        'Add a request header named x-feed-token with the token below.',
-        'Map the push to the JSON fields listed below (any subset works). If the portal can’t shape the JSON, a tiny relay script that reposts works — the curl line is a working packet.',
-      ];
-    case 'generic':
-      return [
-        'Anything that can POST JSON works: a console-reader bridge, Node-RED, a stats app, or a 5-line script.',
-        'POST to the ingest URL below with the x-feed-token header set to the token.',
-        'Send any subset of the JSON fields listed below — omitted fields are left unchanged.',
-        'The curl line below is a complete working packet you can adapt.',
-      ];
-  }
-}
+/** Per-vendor recipe steps (`sportsFeed.steps.<vendor>.stepN`). Instructions ONLY — same URL, same
+ *  token, same JSON for every vendor (see the honesty note in the component). */
+const VENDOR_STEPS = ['step1', 'step2', 'step3', 'step4'] as const;
 
 /** The plaintext block the copy button writes — same shape the old
  *  copy-feed-URL button produced, so existing vendor notes stay valid. */
@@ -197,6 +176,8 @@ export function ConnectScoreboardFeed({
   const [confirming, setConfirming] = useState(false);
   const [rotatedNow, setRotatedNow] = useState(false);
   const t = useTranslations('sportsFeed');
+  const { locale } = useLocaleSwitch();
+  const dateLocale = LOCALE_HTML_LANG[locale] ?? undefined;
 
   const mint = useCallback(async () => {
     setState('loading');
@@ -204,7 +185,7 @@ export function ConnectScoreboardFeed({
     setRevokeFlag(gameId, false);
     try {
       const c = await apiFetch<FeedCredentials>(`/sports/games/${gameId}/feed-credentials`);
-      if (!c?.ingestUrl || !c?.token) throw new Error('mint failed');
+      if (!c?.ingestUrl || !c?.token) throw new Error('mint failed'); // internal — never shown
       setCreds(c);
       setState('ready');
     } catch {
@@ -270,7 +251,7 @@ export function ConnectScoreboardFeed({
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     } catch {
-      window.prompt('Copy the score-feed details:', block);
+      window.prompt(t('copyPrompt'), block);
     }
   };
 
@@ -300,7 +281,7 @@ export function ConnectScoreboardFeed({
                 : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
             }`}
           >
-            {v.label}
+            {v.label ?? t('vendorOther')}
           </button>
         ))}
       </div>
@@ -309,41 +290,37 @@ export function ConnectScoreboardFeed({
       </p>
 
       <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-slate-600">
-        {vendorSteps(vendor).map((step, i) => (
-          <li key={i}>{step}</li>
+        {VENDOR_STEPS.map((step) => (
+          <li key={step}>{t(`steps.${vendor}.${step}`)}</li>
         ))}
       </ol>
 
       {state === 'loading' && (
-        <div className="mt-2 text-[12px] font-semibold text-slate-400">Creating credentials…</div>
+        <div className="mt-2 text-[12px] font-semibold text-slate-400">{t('creating')}</div>
       )}
 
       {state === 'error' && (
         <div className="mt-2 flex items-center">
-          <span className="text-[12px] font-semibold text-red-600">
-            Couldn&apos;t load the feed credentials.
-          </span>
+          <span className="text-[12px] font-semibold text-red-600">{t('loadFailed')}</span>
           <button
             type="button"
             onClick={mint}
             className="ml-2 rounded-md bg-slate-100 px-2 py-1 text-[12px] font-bold text-slate-700 hover:bg-slate-200"
           >
-            Retry
+            {t('retry')}
           </button>
         </div>
       )}
 
       {state === 'revoked' && (
         <div className="mt-2 flex items-center">
-          <span className="text-[12px] font-semibold text-emerald-700">
-            All feed credentials for this game are revoked.
-          </span>
+          <span className="text-[12px] font-semibold text-emerald-700">{t('revoked')}</span>
           <button
             type="button"
             onClick={mint}
             className="ml-2 min-h-[36px] rounded-md bg-indigo-50 px-2 py-1 text-[12px] font-bold text-indigo-700 hover:bg-indigo-100"
           >
-            Create new credentials
+            {t('createNew')}
           </button>
         </div>
       )}
@@ -352,36 +329,33 @@ export function ConnectScoreboardFeed({
         <>
           {(rotatedNow || (creds.feedTokenVersion ?? 0) > 0) && (
             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              <span className="font-bold">Rotated</span> — tokens issued before the
-              last regenerate (including the original one) no longer work. Make sure
-              your vendor has the token below.
+              {t.rich('rotated', { b: (chunks) => <span className="font-bold">{chunks}</span> })}
             </div>
           )}
 
           {/* Copy-paste doc block — POS ConnectModal webhook-block pattern. */}
           <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
             <p className="break-all">
-              <span className="font-bold text-slate-700">POST to</span>{' '}
+              <span className="font-bold text-slate-700">{t('postTo')}</span>{' '}
               <code className="font-mono">{creds.ingestUrl}</code>
             </p>
             <p className="break-all">
-              <span className="font-bold text-slate-700">Header</span>{' '}
+              <span className="font-bold text-slate-700">{t('header')}</span>{' '}
               <code className="font-mono">{creds.tokenHeader || 'x-feed-token'}: {creds.token}</code>
             </p>
             <p>
-              <span className="font-bold text-slate-700">Fields</span>{' '}
-              <code className="font-mono">{fields}</code> — any subset
+              <span className="font-bold text-slate-700">{t('fieldsLabel')}</span>{' '}
+              <code className="font-mono">{fields}</code> — {t('anySubset')}
             </p>
             {creds.curlExample && (
               <>
-                <p className="font-bold text-slate-700">Test packet:</p>
+                <p className="font-bold text-slate-700">{t('testPacket')}</p>
                 <pre className="overflow-x-auto rounded-md border border-slate-200 bg-white p-2 text-[10px] leading-relaxed text-slate-700">{creds.curlExample}</pre>
               </>
             )}
             {creds.expiresAt && (
               <p className="text-slate-400">
-                Token expires {new Date(creds.expiresAt).toLocaleString()} — reopen
-                this card any time for a current one.
+                {t('tokenExpires', { date: new Date(creds.expiresAt).toLocaleString(dateLocale) })}
               </p>
             )}
           </div>
@@ -394,11 +368,11 @@ export function ConnectScoreboardFeed({
             >
               {copied ? (
                 <>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied setup details
+                  <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> {t('copied')}
                 </>
               ) : (
                 <>
-                  <Copy className="h-3.5 w-3.5" /> Copy URL + token
+                  <Copy className="h-3.5 w-3.5" aria-hidden /> {t('copy')}
                 </>
               )}
             </button>
@@ -409,43 +383,36 @@ export function ConnectScoreboardFeed({
                   onClick={regenerate}
                   className="ml-2 min-h-[36px] rounded-lg bg-red-600 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-red-700"
                 >
-                  Yes — revoke &amp; replace
+                  {t('confirmRegenerate')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirming(false)}
                   className="ml-1.5 min-h-[36px] rounded-lg px-2 py-1 text-[12px] font-semibold text-slate-500 hover:bg-slate-100"
                 >
-                  Keep
+                  {t('keep')}
                 </button>
               </>
             ) : (
               <button
                 type="button"
                 onClick={() => setConfirming(true)}
-                title="Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued"
+                title={t('regenerateTitle')}
                 className="ml-2 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-bold text-red-600 hover:bg-red-50"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Regenerate…
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden /> {t('regenerate')}
               </button>
             )}
           </div>
           {confirming && (
-            <p className="mt-1 text-[11px] text-red-600">
-              This kills every credential already deployed for this game (including
-              the original token) the moment you confirm — your vendor stops
-              syncing until you paste in the new one.
-            </p>
+            <p className="mt-1 text-[11px] text-red-600">{t('confirmWarning')}</p>
           )}
         </>
       )}
 
       <FeedStatusRow stats={stats} />
 
-      <p className="mt-2 text-[10px] text-slate-400">
-        Credentials are per-game: for the next game, open this card on that
-        game and give your vendor its new URL + token.
-      </p>
+      <p className="mt-2 text-[10px] text-slate-400">{t('perGame')}</p>
     </div>
   );
 }

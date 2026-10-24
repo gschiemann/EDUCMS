@@ -4861,7 +4861,49 @@
     "viaSwim": "el cronometraje de natación",
     "ageSeconds": "hace {seconds} s",
     "ageMinutes": "hace {minutes} min",
-    "developerDesc": "De dónde vienen los marcadores: la consola, un enlace de teléfono o una fuente firmada que envía tu sistema."
+    "developerDesc": "De dónde vienen los marcadores: la consola, un enlace de teléfono o una fuente firmada que envía tu sistema.",
+    "vendorOther": "Otro sistema",
+    "steps": {
+      "sportzcast": {
+        "step1": "En tu portal en la nube de Sportzcast (ScoreHub / ScoreLink), abre la configuración de salida de datos del Scorebot de este recinto.",
+        "step2": "Agrega una salida de envío HTTP (webhook) y pega como destino la URL de ingesta de abajo.",
+        "step3": "Agrega un encabezado de solicitud llamado x-feed-token con el token de abajo.",
+        "step4": "Asigna la salida a los campos JSON indicados abajo (sirve cualquier subconjunto). Si tu plan solo envía un formato fijo, usa su puente o relé —o cualquier script pequeño— que reenvíe a esta URL; la línea curl es un paquete que funciona."
+      },
+      "scorebird": {
+        "step1": "En tu panel de Scorebird (MyScorebird), abre la configuración de integraciones / feed de datos del nest de este marcador.",
+        "step2": "Agrega un envío HTTP (webhook) que apunte a la URL de ingesta de abajo.",
+        "step3": "Agrega un encabezado de solicitud llamado x-feed-token con el token de abajo.",
+        "step4": "Asigna el envío a los campos JSON indicados abajo (sirve cualquier subconjunto). Si el portal no puede dar forma al JSON, sirve un pequeño script de relé que reenvíe los datos; la línea curl es un paquete que funciona."
+      },
+      "generic": {
+        "step1": "Sirve cualquier cosa que pueda enviar JSON por POST: un puente lector de consola, Node-RED, una app de estadísticas o un script de 5 líneas.",
+        "step2": "Envía por POST a la URL de ingesta de abajo, con el encabezado x-feed-token igual al token.",
+        "step3": "Envía cualquier subconjunto de los campos JSON indicados abajo; los campos que omitas no cambian.",
+        "step4": "La línea curl de abajo es un paquete completo que funciona y que puedes adaptar."
+      }
+    },
+    "creating": "Creando credenciales…",
+    "loadFailed": "No se pudieron cargar las credenciales del feed.",
+    "retry": "Reintentar",
+    "revoked": "Se revocaron todas las credenciales del feed de este partido.",
+    "createNew": "Crear credenciales nuevas",
+    "rotated": "<b>Rotado</b>: los tokens emitidos antes de la última regeneración (incluido el original) ya no funcionan. Asegúrate de que tu proveedor tenga el token de abajo.",
+    "postTo": "Enviar (POST) a",
+    "header": "Encabezado",
+    "fieldsLabel": "Campos",
+    "anySubset": "cualquier subconjunto",
+    "testPacket": "Paquete de prueba:",
+    "tokenExpires": "El token vence el {date}; vuelve a abrir esta tarjeta cuando quieras para obtener uno vigente.",
+    "copied": "Datos de configuración copiados",
+    "copy": "Copiar URL y token",
+    "copyPrompt": "Copia los datos del feed de marcador:",
+    "confirmRegenerate": "Sí, revocar y reemplazar",
+    "keep": "Conservar",
+    "regenerate": "Regenerar…",
+    "regenerateTitle": "Revocar y reemplazar: todas las credenciales ya instaladas para este partido dejan de funcionar y se emite un token nuevo",
+    "confirmWarning": "Esto invalida todas las credenciales ya instaladas para este partido (incluido el token original) en cuanto confirmes: tu proveedor deja de sincronizar hasta que pegues el nuevo.",
+    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token."
   },
   "sportsConsoleSetup": {
     "title": "Consola del marcador",
@@ -5660,7 +5702,8 @@
     "limit": {
       "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Configuración → Proveedor de IA para continuar, o contáctanos para obtener más.",
       "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
-      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación."
+      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
+      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Proveedor de IA para seguir, o espera a que se renueve el próximo mes."
     }
   },
   "billingAi": {
@@ -6799,5 +6842,130 @@
         "where": "todo tu ministerio"
       }
     }
+  },
+  "notifications": {
+    "inbox": {
+      "title": "Notificaciones",
+      "checking": "Buscando mensajes nuevos…",
+      "unreadOf": "{unread} sin leer de {total}",
+      "messages": "{count, plural, one {# mensaje} other {# mensajes}}",
+      "markAllRead": "Marcar todo como leído",
+      "categoriesLabel": "Categorías de notificaciones",
+      "unreadCount": "{count} sin leer",
+      "unread": "Sin leer",
+      "stale": "No se pudo actualizar ahora mismo: se muestra la última lista que recibió este dispositivo. Lo más reciente aún no aparece.",
+      "retry": "Reintentar",
+      "emptyFiltered": "No hay nada en esta categoría",
+      "empty": "Aún no hay notificaciones",
+      "emptyAll": "VenueOS escribe aquí cuando una pantalla deja de responder, cuando un trabajo necesita revisión y cuando algo cambia en tu cuenta.",
+      "showAll": "Mostrar todas las notificaciones",
+      "errorTitle": "No se pueden cargar las notificaciones",
+      "errorBody": "VenueOS no pudo conectarse con el servidor, así que esta lista puede estar incompleta o desactualizada.",
+      "tryAgain": "Intentar de nuevo",
+      "footnote": "Llegan mientras VenueOS está abierto. Tu teléfono no te avisará cuando la app esté cerrada; durante una emergencia activa, mira el aviso de alerta en la parte superior de la app."
+    },
+    "bell": {
+      "labelUnread": "Notificaciones ({count} sin leer)",
+      "caughtUp": "Estás al día."
+    },
+    "categories": {
+      "all": "Todas",
+      "exceptions": "Problemas de entrega",
+      "reviews": "Revisiones",
+      "system": "Avisos del sistema"
+    },
+    "categoriesShort": {
+      "exceptions": "Entrega",
+      "reviews": "Revisión",
+      "system": "Sistema"
+    },
+    "blurbs": {
+      "exceptions": "Pantallas que dejaron de responder y otros problemas de entrega que detectamos.",
+      "reviews": "Trabajo enviado para aprobación y decisiones sobre lo que enviaste.",
+      "system": "Mensajes de la cuenta, la licencia y la plataforma."
+    },
+    "age": {
+      "justNow": "justo ahora",
+      "minutes": "hace {count} min",
+      "hours": "hace {count} h",
+      "days": "hace {count} d"
+    },
+    "server": {
+      "screenOffline": "Pantalla sin conexión: {screen}",
+      "screenOfflineAt": "{site} · Pantalla sin conexión: {screen}",
+      "infraEvent": "Posible falla de infraestructura: se desconectaron {count} de {total} pantallas",
+      "infraEventAt": "{site} · Posible falla de infraestructura: se desconectaron {count} de {total} pantallas",
+      "pushDeadPolling": "{screen}: canal en tiempo real caído; funciona con consultas periódicas",
+      "pushDeadUnproven": "{screen}: sin tiempo real y sin prueba del contenido; requiere atención ahora",
+      "assetPending": "Nuevo archivo pendiente de revisión",
+      "assetApproved": "Tu archivo fue aprobado",
+      "assetRejected": "Tu archivo fue rechazado",
+      "submissionAwaiting": "Nuevo envío pendiente de tu revisión",
+      "submissionApproved": "Tu envío fue aprobado",
+      "submissionRejected": "Tu envío fue rechazado",
+      "ownerLink": "El soporte de VenueOS creó un enlace de inicio de sesión para un propietario",
+      "supportRequested": "VenueOS solicita acceso de soporte",
+      "supportBreakGlass": "VenueOS usó el acceso de soporte de emergencia",
+      "supportEnded": "Terminó el acceso de soporte de VenueOS",
+      "supportApproved": "{org} aprobó el acceso de soporte",
+      "supportDenied": "{org} rechazó el acceso de soporte",
+      "supportInvited": "{org} dio acceso de soporte a VenueOS",
+      "kioskHelp": "Un visitante necesita ayuda — {screen}",
+      "videoStutter": "El video se entrecorta en {screen}",
+      "noHeartbeat": "Sin señal de actividad desde {time}.",
+      "noHeartbeatUnknown": "Aún no hay registro de señal de actividad.",
+      "noHeartbeatAt": "{site}: sin señal de actividad de \"{screen}\" desde {time}.",
+      "unknownTime": "una hora desconocida",
+      "infraBody": "{count} pantallas se desconectaron en {seconds} s (más del {pct} % de la flota). Probablemente una falla de la red WAN, del proveedor de internet o de la energía local; se omitieron los avisos por pantalla. Afectadas: {names}.",
+      "infraBodyAt": "{site}: {count} pantallas se desconectaron en {seconds} s (más del {pct} % de las pantallas de esa ubicación). Probablemente una falla de la red WAN, del proveedor de internet o de la energía.",
+      "pushDeadPollingBody": "Esta pantalla no puede recibir comandos instantáneos (actualizar, entrega inmediata de emergencias). Su prueba de reproducción está al día, así que sigue reproduciendo y se actualiza con sus consultas periódicas (cada 5–10 s), incluidas las emergencias. Causa habitual: la red del local bloquea las conexiones WebSocket o de streaming.",
+      "pushDeadUnprovenBody": "Esta pantalla no puede recibir comandos instantáneos Y no ha demostrado hace poco que muestra contenido: lo que se ve ahora mismo no está verificado. Se dejó en cola una orden de actualización persistente en su manifiesto; si no se recupera en unos minutos, necesita atención en el lugar o en la red hoy mismo, no un recordatorio diario.",
+      "assetPendingBody": "{email} subió \"{asset}\"; necesita revisión antes de poder programarse.",
+      "assetApprovedBody": "\"{asset}\" ya está publicado y se puede agregar a listas de reproducción.",
+      "assetRejectedBody": "{reviewer} rechazó \"{asset}\".",
+      "assetRejectedReasonBody": "{reviewer} rechazó \"{asset}\": \"{reason}\".",
+      "submissionScheduleBody": "Se envió una programación para aprobación antes de publicarse.",
+      "submissionItemsBody": "{count, plural, one {Se envió # elemento} other {Se enviaron # elementos}} para aprobación.",
+      "submissionLiveBody": "El contenido ya está publicado.",
+      "submissionNoFeedbackBody": "El revisor no dejó comentarios. Edítalo y vuelve a enviarlo cuando esté listo.",
+      "ownerLinkBody": "Se emitió un enlace de inicio de sesión de un solo uso para un nuevo propietario de la organización, con base en el acceso de soporte que aprobaste. Si no lo esperabas, revoca el acceso de soporte en Ajustes.",
+      "supportRequestedBody": "{who} solicitó acceso a {org} durante {duration}: \"{reason}\". Apruébalo o recházalo en Ajustes → Acceso de soporte de VenueOS.",
+      "supportBreakGlassBody": "{who} abrió acceso de emergencia a {org} hasta {until}: \"{reason}\". Puedes terminarlo ahora en Ajustes → Acceso de soporte de VenueOS.",
+      "supportEndedBody": "VenueOS terminó su acceso de soporte a {org}.",
+      "accessUntil": "Acceso hasta {until}.",
+      "venueosSupport": "El soporte de VenueOS",
+      "aCustomer": "Un cliente",
+      "kioskHelpBody": "Un visitante tocó “Pedir ayuda” en el quiosco.",
+      "videoStutterConcurrencyBody": "“{screen}” se entrecorta con “{file}” mientras reproduce más de un video a la vez. Sigue reproduciendo; una copia más liviana no lo solucionaría.",
+      "videoStutterNoCopyBody": "“{screen}” se entrecorta con “{file}” y no hay una copia más liviana a la cual cambiar. Sigue reproduciendo.",
+      "duration": {
+        "days": "{count, plural, one {# día} other {# días}}",
+        "hours": "{count, plural, one {# hora} other {# horas}}",
+        "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+        "unspecified": "un tiempo no especificado"
+      }
+    }
+  },
+  "menuConnect": {
+    "connectPos": "Conecta tu punto de venta (POS)",
+    "pasteMenu": "Pega tu menú",
+    "templateName": "Menú digital",
+    "templateDescription": "Creado a partir del menú que pegaste: toma los precios en vivo de tu POS.",
+    "zoneName": "Menú",
+    "boardTitle": "NUESTRO MENÚ",
+    "nothingTitle": "No hay nada que importar",
+    "nothingBody": "Primero pega algunas líneas del menú: un producto por línea y el precio al final (por ejemplo, “Hamburguesa con queso  $8.99”).",
+    "imported": "{count, plural, one {Se importó # producto.} other {Se importaron # productos.}}",
+    "capturedNote": "Tu menú quedó guardado. Conecta un POS (o el webhook personalizado) para enviarlo en vivo a tus pantallas.",
+    "importFailed": "No se pudo importar",
+    "readyTitle": "Menú listo",
+    "readySeeded": "La plantilla “{name}” ya está en tus Plantillas: ponla en cualquier pantalla.",
+    "modalBody": "Un producto por línea, con el precio al final. Crearemos una plantilla de menú digital y la conectaremos a tus precios en vivo.",
+    "placeholder": "Hamburguesa clásica con queso   $8.99\nPapas fritas con sal de mar   $3.49\nRefresco de máquina   $2.79",
+    "preview": "{count, plural, one {Vista previa — # producto} other {Vista previa — # productos}}",
+    "more": "+ {count} más…",
+    "close": "Cerrar",
+    "cancel": "Cancelar",
+    "create": "Crear mi menú digital"
   }
 }
