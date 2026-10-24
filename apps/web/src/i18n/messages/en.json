@@ -6652,5 +6652,152 @@
     "tooShort": "Password must be at least 8 characters.",
     "mismatch": "Passwords do not match.",
     "acceptFailed": "Could not accept the invitation."
+  },
+  "addressSearch": {
+    "clear": "Clear address",
+    "resultsFrom": "Results from",
+    "noMatchApprox": "No match yet — this address search is approximate. Try adding the city and state, or double-check the street number."
+  },
+  "signup": {
+    "haveWorkspace": "Have a workspace?",
+    "signIn": "Sign in",
+    "trialBadge": "Free 14-day trial — up to 3 screens, no card",
+    "title": "Start your free workspace.",
+    "lead": "Set up VenueOS for your {where} in under three minutes — then schedule every screen, and trigger an emergency alert across all of them in seconds.",
+    "industryLabel": "What are you running?",
+    "industryPlaceholder": "Choose your industry…",
+    "workspaceUrl": "Workspace URL",
+    "workspaceUrlHint": "Letters, numbers, and dashes only.",
+    "firstName": "First name",
+    "firstNamePlaceholder": "Alex",
+    "lastName": "Last name",
+    "lastNamePlaceholder": "Garcia",
+    "adminEmail": "Admin email",
+    "phone": "Phone (optional)",
+    "phoneHint": "Used for two-factor recovery if you ever lose access to your authenticator app. We’ll never text you marketing.",
+    "address": "Address (optional)",
+    "addressPlaceholder": "Start typing — 1000 Vin Scully Ave…",
+    "addressHint": "Start typing to pick from a list. We’ll plot your locations on a fleet map.",
+    "password": "Password",
+    "passwordPlaceholder": "8+ characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Type it again",
+    "creating": "Creating your workspace…",
+    "create": "Create workspace",
+    "agree": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>.",
+    "agreeK12": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>, including our <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa> data commitments.",
+    "footer": {
+      "label": "Legal",
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "security": "Security",
+      "dpa": "DPA"
+    },
+    "errors": {
+      "industry": "Please choose your industry.",
+      "passwordLength": "Password must be at least 8 characters.",
+      "passwordMismatch": "Passwords do not match.",
+      "nameRequired": "Enter your organization’s name.",
+      "slugRequired": "Choose a workspace URL.",
+      "slugTaken": "That workspace URL is already taken — try another one.",
+      "emailInvalid": "Enter a valid admin email address.",
+      "emailTaken": "An account with that email already exists. Sign in instead, or use a different email.",
+      "checkFields": "Some details aren’t valid. Check the form and try again.",
+      "tooMany": "Too many attempts. Wait a minute, then try again.",
+      "generic": "Signup failed. Please try again.",
+      "unreachable": "Can’t reach the server at {url}."
+    },
+    "panel": {
+      "eyebrow": "Why teams choose VenueOS",
+      "title": "Every screen you run, in one place.",
+      "lead": "One dashboard for signage, kiosks, scoreboards, and the life-safety alert that overrides them all.",
+      "alertsTitle": "Emergency alerts in a tap",
+      "alertsDesc": "Lockdown, fire / evacuate, and weather messages flip every screen in seconds.",
+      "scheduleTitle": "Schedule once, everywhere",
+      "scheduleDesc": "Content by day, time block, or one-off event — one screen or ten thousand.",
+      "templatesTitle": "170+ templates, every industry",
+      "templatesDesc": "Fully editable, recolored to your brand, ready to drop on a screen.",
+      "screensTitle": "Runs on any screen",
+      "screensDesc": "Smart TVs, Android players, LED controllers, kiosks — no special hardware."
+    },
+    "defaults": {
+      "nameLabel": "Organization name",
+      "namePlaceholder": "Your venue or organization",
+      "where": "whole venue"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "K-12 school or district",
+        "nameLabel": "District or school name",
+        "namePlaceholder": "Springfield Unified School District",
+        "where": "whole district"
+      },
+      "GYM": {
+        "picker": "Gym, fitness club, or athletic facility",
+        "nameLabel": "Gym or club name",
+        "namePlaceholder": "Iron Peak Fitness",
+        "where": "whole gym"
+      },
+      "RETAIL": {
+        "picker": "Retail store or chain",
+        "nameLabel": "Store or chain name",
+        "namePlaceholder": "Northside Outfitters",
+        "where": "whole store"
+      },
+      "CORPORATE": {
+        "picker": "Corporate office or enterprise",
+        "nameLabel": "Company name",
+        "namePlaceholder": "Acme Corp",
+        "where": "whole office"
+      },
+      "QSR": {
+        "picker": "Restaurant / QSR (quick-service)",
+        "nameLabel": "Restaurant or brand name",
+        "namePlaceholder": "Burger Junction",
+        "where": "whole brand"
+      },
+      "FASHION": {
+        "picker": "Fashion boutique or apparel",
+        "nameLabel": "Boutique or brand name",
+        "namePlaceholder": "Studio 5 Boutique",
+        "where": "whole boutique"
+      },
+      "BAR": {
+        "picker": "Bar, taproom, or nightclub",
+        "nameLabel": "Bar or venue name",
+        "namePlaceholder": "The Tap Room",
+        "where": "whole bar"
+      },
+      "HEALTHCARE": {
+        "picker": "Clinic, practice, or hospital",
+        "nameLabel": "Practice or network name",
+        "namePlaceholder": "Harbor Health",
+        "where": "whole practice"
+      },
+      "HOSPITALITY": {
+        "picker": "Hotel, resort, or property",
+        "nameLabel": "Property or group name",
+        "namePlaceholder": "Summit Hotels",
+        "where": "whole property"
+      },
+      "RESTAURANT": {
+        "picker": "Full-service restaurant",
+        "nameLabel": "Restaurant or group name",
+        "namePlaceholder": "The Copper Table",
+        "where": "whole restaurant"
+      },
+      "SPORTS": {
+        "picker": "Sports venue, stadium, or athletic program",
+        "nameLabel": "Venue, team, or league name",
+        "namePlaceholder": "Riverside Arena",
+        "where": "whole venue"
+      },
+      "WORSHIP": {
+        "picker": "Church, ministry, or house of worship",
+        "nameLabel": "Church or ministry name",
+        "namePlaceholder": "Grace Community Church",
+        "where": "whole ministry"
+      }
+    }
   }
 }

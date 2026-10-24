@@ -6652,5 +6652,152 @@
     "tooShort": "密码至少需要 8 个字符。",
     "mismatch": "两次输入的密码不一致。",
     "acceptFailed": "无法接受邀请。"
+  },
+  "addressSearch": {
+    "clear": "清除地址",
+    "resultsFrom": "结果来自",
+    "noMatchApprox": "暂无匹配结果——当前的地址搜索为近似搜索。请加上城市和州/省，或核对门牌号。"
+  },
+  "signup": {
+    "haveWorkspace": "已有工作区？",
+    "signIn": "登录",
+    "trialBadge": "免费试用 14 天——最多 3 块屏幕，无需信用卡",
+    "title": "创建您的免费工作区。",
+    "lead": "三分钟内为{where}设置好 VenueOS——然后为每块屏幕排期，并在几秒内向所有屏幕发出紧急警报。",
+    "industryLabel": "您经营的是什么？",
+    "industryPlaceholder": "选择您的行业…",
+    "workspaceUrl": "工作区网址",
+    "workspaceUrlHint": "仅限字母、数字和连字符。",
+    "firstName": "名",
+    "firstNamePlaceholder": "小明",
+    "lastName": "姓",
+    "lastNamePlaceholder": "王",
+    "adminEmail": "管理员邮箱",
+    "phone": "电话（可选）",
+    "phoneHint": "仅在您无法使用身份验证器应用时用于找回两步验证。我们绝不会向您发送营销短信。",
+    "address": "地址（可选）",
+    "addressPlaceholder": "开始输入，例如 1000 Vin Scully Ave…",
+    "addressHint": "输入后从列表中选择。我们会把您的地点标注在设备分布地图上。",
+    "password": "密码",
+    "passwordPlaceholder": "至少 8 个字符",
+    "confirmPassword": "确认密码",
+    "confirmPasswordPlaceholder": "再输入一次",
+    "creating": "正在创建您的工作区…",
+    "create": "创建工作区",
+    "agree": "创建工作区即表示您同意我们的<terms>条款</terms>和<privacy>隐私政策</privacy>。",
+    "agreeK12": "创建工作区即表示您同意我们的<terms>条款</terms>和<privacy>隐私政策</privacy>，包括我们的 <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa> 数据承诺。",
+    "footer": {
+      "label": "法律信息",
+      "terms": "条款",
+      "privacy": "隐私",
+      "security": "安全",
+      "dpa": "数据处理附录"
+    },
+    "errors": {
+      "industry": "请选择您的行业。",
+      "passwordLength": "密码至少需要 8 个字符。",
+      "passwordMismatch": "两次输入的密码不一致。",
+      "nameRequired": "请输入组织名称。",
+      "slugRequired": "请设置工作区网址。",
+      "slugTaken": "该工作区网址已被占用，请换一个。",
+      "emailInvalid": "请输入有效的管理员邮箱地址。",
+      "emailTaken": "该邮箱已有账户。请直接登录，或使用其他邮箱。",
+      "checkFields": "部分信息无效，请检查表单后重试。",
+      "tooMany": "尝试次数过多，请稍等一分钟再试。",
+      "generic": "注册失败，请重试。",
+      "unreachable": "无法连接到服务器 {url}。"
+    },
+    "panel": {
+      "eyebrow": "团队为何选择 VenueOS",
+      "title": "您运营的每一块屏幕，尽在一处。",
+      "lead": "一个控制台管理标牌、自助终端、记分牌，以及优先于一切的生命安全警报。",
+      "alertsTitle": "一键发出紧急警报",
+      "alertsDesc": "封锁、火警 / 疏散和天气消息可在几秒内切换所有屏幕。",
+      "scheduleTitle": "一次排期，处处生效",
+      "scheduleDesc": "按天、时段或单次活动安排内容——一块屏幕或一万块都行。",
+      "templatesTitle": "170+ 款模板，覆盖各行各业",
+      "templatesDesc": "完全可编辑，自动套用您的品牌配色，随时投放到屏幕上。",
+      "screensTitle": "任何屏幕都能运行",
+      "screensDesc": "智能电视、Android 播放器、LED 控制器、自助终端——无需专用硬件。"
+    },
+    "defaults": {
+      "nameLabel": "组织名称",
+      "namePlaceholder": "您的场所或组织",
+      "where": "整个场所"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "K-12 学校或学区",
+        "nameLabel": "学区或学校名称",
+        "namePlaceholder": "春田联合学区",
+        "where": "整个学区"
+      },
+      "GYM": {
+        "picker": "健身房、健身俱乐部或运动场馆",
+        "nameLabel": "健身房或俱乐部名称",
+        "namePlaceholder": "铁峰健身",
+        "where": "整个健身房"
+      },
+      "RETAIL": {
+        "picker": "零售门店或连锁店",
+        "nameLabel": "门店或连锁品牌名称",
+        "namePlaceholder": "北区户外用品",
+        "where": "整个门店"
+      },
+      "CORPORATE": {
+        "picker": "企业办公室或集团",
+        "nameLabel": "公司名称",
+        "namePlaceholder": "顶峰科技有限公司",
+        "where": "整个办公室"
+      },
+      "QSR": {
+        "picker": "餐厅 / 快餐（QSR）",
+        "nameLabel": "餐厅或品牌名称",
+        "namePlaceholder": "汉堡驿站",
+        "where": "整个品牌"
+      },
+      "FASHION": {
+        "picker": "时装精品店或服装品牌",
+        "nameLabel": "精品店或品牌名称",
+        "namePlaceholder": "五号工作室精品店",
+        "where": "整个精品店"
+      },
+      "BAR": {
+        "picker": "酒吧、精酿酒馆或夜店",
+        "nameLabel": "酒吧或场所名称",
+        "namePlaceholder": "生啤酒馆",
+        "where": "整个酒吧"
+      },
+      "HEALTHCARE": {
+        "picker": "诊所、医疗机构或医院",
+        "nameLabel": "机构或医疗网络名称",
+        "namePlaceholder": "港湾健康",
+        "where": "整个机构"
+      },
+      "HOSPITALITY": {
+        "picker": "酒店、度假村或物业",
+        "nameLabel": "物业或集团名称",
+        "namePlaceholder": "峰顶酒店",
+        "where": "整个物业"
+      },
+      "RESTAURANT": {
+        "picker": "正餐餐厅",
+        "nameLabel": "餐厅或集团名称",
+        "namePlaceholder": "铜桌餐厅",
+        "where": "整个餐厅"
+      },
+      "SPORTS": {
+        "picker": "体育场馆、体育场或运动项目",
+        "nameLabel": "场馆、球队或联赛名称",
+        "namePlaceholder": "河畔体育馆",
+        "where": "整个场馆"
+      },
+      "WORSHIP": {
+        "picker": "教会、事工或宗教场所",
+        "nameLabel": "教会或事工名称",
+        "namePlaceholder": "恩典社区教会",
+        "where": "整个事工"
+      }
+    }
   }
 }
