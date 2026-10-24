@@ -44,7 +44,7 @@ const paired = () => ({
   userAgent: null,
   name: 'Fixture Screen',
 });
-const makeReq = () => ({ ip: '10.0.0.1', socket: { remoteAddress: '10.0.0.1' }, headers: {} });
+const makeReq = () => ({ ip: '10.0.0.1', socket: { remoteAddress: '10.0.0.1' }, headers: {} }) as any;
 const mint = (sub: string) => jwt.sign({ sub, kind: 'device', ep: 0 }, TEST_JWT_SECRET, { expiresIn: '180d' });
 
 async function recorded(): Promise<string[]> {
@@ -75,7 +75,7 @@ describe('POST /screens/register → device-credential refusal alarm', () => {
     expect(renewed.deviceToken).toBeTruthy();
     _registerFpCooldown.clear();
     const downgraded = await controller.register({ deviceFingerprint: 'fp-refusal-alarm' }, makeReq());
-    expect(downgraded.requiresRePair).toBe(true);
+    expect(downgraded).toMatchObject({ requiresRePair: true });
     expect(await recorded()).toEqual([]);
   });
 });

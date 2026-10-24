@@ -6,7 +6,7 @@
  * organisations whose tokens were signed by a key the server no longer holds.
  */
 import * as jwt from 'jsonwebtoken';
-import { DeviceCredentialRefusalAlarmService } from './device-credential-refusal-alarm.service';
+import { DeviceCredentialRefusalAlarmService, type RefusalAlarmTickResult } from './device-credential-refusal-alarm.service';
 import { CustomerAlertEmailsService } from '../customer-alerts/customer-alert-emails.service';
 import {
   __resetDeviceCredentialRefusalsForTests,
@@ -102,7 +102,7 @@ const dark = Array.from({ length: 14 }, (_, i) => uuid(i + 1));
  * evaluates once a minute, at :30. Returns the evaluation results.
  */
 async function replay(svc: DeviceCredentialRefusalAlarmService, clock: { now: number }, redis: FakeRedis | undefined, ids: string[], fromMin: number, toMin: number) {
-  const results = [];
+  const results: Array<RefusalAlarmTickResult & { minute: number }> = [];
   for (let m = fromMin; m < toMin; m++) {
     for (const s of [5, 35]) {
       const t = BOOT + m * MIN + s * SEC;
@@ -117,7 +117,7 @@ async function replay(svc: DeviceCredentialRefusalAlarmService, clock: { now: nu
 
 /** Minutes [fromMin, toMin) with nobody refused, evaluated each minute. */
 async function quiet(svc: DeviceCredentialRefusalAlarmService, clock: { now: number }, fromMin: number, toMin: number) {
-  const results = [];
+  const results: Array<RefusalAlarmTickResult & { minute: number }> = [];
   for (let m = fromMin; m < toMin; m++) {
     clock.now = BOOT + (m + 1) * MIN + 30 * SEC;
     results.push({ minute: m + 1, ...(await svc.evaluate()) });

@@ -4,7 +4,7 @@
  * restart, rate limit + digest, flap, shadow mode, kill switch, and every
  * platform-level stand-down (restart, degraded, platform incident).
  */
-import { CustomerAlertEmailsService } from './customer-alert-emails.service';
+import { CustomerAlertEmailsService, type CustomerAlertTickResult } from './customer-alert-emails.service';
 import { reportPlatformComponent, resetPlatformDegradationForTests } from '../../health/platform-degradation';
 
 const MIN = 60_000;
@@ -521,7 +521,7 @@ describe('the restart quiet holds CUSTOMER emails only — never the owner’s p
     const b = build(w);
     const secondBoot = w.clock.now + MIN;
     b.svc.uptimeMs = () => w.clock.now - secondBoot;
-    const results = [];
+    const results: CustomerAlertTickResult[] = [];
     for (let i = 0; i < 10; i++) results.push(await scan(w, b.svc));
     // Every one of those scans was inside the second process's quiet…
     expect(results.map((r) => r.gate).every((g) => g === 'api-restart' || g === 'platform-incident')).toBe(true);
