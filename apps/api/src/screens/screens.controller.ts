@@ -80,6 +80,7 @@ import { MenuService } from '../pos/menu.service';
 import { deviceJwtSecretRing, keyIdOf } from '../security/key-ring';
 import { verifyDeviceJwt } from '../security/device-jwt';
 import { clientIpFromRequest } from '../security/client-ip';
+import { noteRegisterDeviceCredentialRefusal } from '../notifications/fleet-alarms/device-credential-refusals';
 import {
   getTenantState,
   setTenantState,
@@ -1082,6 +1083,10 @@ export class ScreensController {
               'invalid',
               `[register] screen=${existing.id} presented a prior device token it cannot use (wrong screen, algorithm or shape) — 401 SCREEN_TOKEN_MISMATCH`,
             );
+            // 2026-10-23 — counted for the owner's device-credential refusal
+            // alarm (notifications/fleet-alarms/): the screen id only.
+            // Synchronous, fire-and-forget, never throws.
+            noteRegisterDeviceCredentialRefusal(this.redisService, existing.id);
             throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
           }
           if (priorStatus === 'unverifiable') {

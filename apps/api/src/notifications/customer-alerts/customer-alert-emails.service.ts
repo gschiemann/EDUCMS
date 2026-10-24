@@ -27,7 +27,9 @@
  *     PLATFORM_ALERT_EMAILS. `CUSTOMER_ALERT_EMAILS_DISABLED=1` = hard off.
  *   - intended downtime, maintenance, unused / unpaired screens → defer;
  *   - API restart (15 min), a degraded platform, a platform-wide incident →
- *     defer (and ONE platform alert to the owner for the incident);
+ *     defer (and ONE platform alert to the owner for the incident — which the
+ *     restart quiet does NOT hold back: inside it, the incident check still
+ *     runs, owner-only);
  *   - flapping → at most one problem email per screen per 6 h;
  *   - per organisation: 6 emails per rolling hour, then one digest.
  *
@@ -80,7 +82,7 @@ const MIN = 60_000;
 const MAINTENANCE_LEDGER_KINDS = ['app-relaunch', 'ota-download', 'ota-install', 'ota-installed', 'ota-needs-tap'];
 const ADMIN_ROLES = [AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] as string[];
 
-interface TenantMeta {
+export interface TenantMeta {
   id: string;
   name: string;
   slug: string;
@@ -160,6 +162,8 @@ export class CustomerAlertEmailsService {
   /** Tenants the cohort pass called a site-wide drop, and when. */
   private readonly infraAt = new Map<string, number>();
   private platformQuietUntil = 0;
+  /** The previous scan ran owner-only inside the restart quiet (its counts must not reach customers). */
+  private countedInRestartQuiet = false;
   private lastPlatformAlertAt = 0;
   private fleetCache: { at: number; n: number } | null = null;
   private lastPruneAt = 0;
@@ -289,6 +293,35 @@ export class CustomerAlertEmailsService {
     const openOffline = open('OFFLINE');
     const openNoContent = open('NO_CONTENT');
 
+    // ── Platform gate: restart / degraded / incident quiet window ──
+    const gateInput = {
+      uptimeMs: this.uptimeMs(),
+      degradedComponents: degradedPlatformComponents(now),
+      platformQuietUntilMs: this.platformQuietUntil,
+      nowMs: now,
+    };
+    const gate = platformGate(gateInput);
+    // OWNER-ONLY INSIDE THE RESTART QUIET (2026-10-23). The 15-minute quiet
+    // after a boot exists for CUSTOMER emails. It also used to hold the
+    // owner's platform-incident alert below, so every restart re-armed a
+    // 15-minute mute on it: an outage that began shortly before a restart, or
+    // one that a second deploy landed on (a fix attempt, a crash), never
+    // reached the owner while restarts kept coming. Now, when the restart is
+    // the ONLY reason the gate is shut, this scan still runs the
+    // platform-incident detection (owner alert + SILENT rows, exactly as on an
+    // open scan) and stops right after it: no customer email, no recovery, no
+    // flap bookkeeping inside the quiet.
+    const ownerOnly =
+      !gate.open && gate.reason === 'api-restart' && platformGate({ ...gateInput, uptimeMs: Number.POSITIVE_INFINITY }).open;
+    // The confirmation counts keep counting through the quiet (the detection
+    // needs two scans), and start over on the first scan after it — which is
+    // what customers always got, when every quiet scan reset them.
+    if (this.countedInRestartQuiet && !ownerOnly) {
+      this.offlineDue.reset();
+      this.noContentDue.reset();
+    }
+    this.countedInRestartQuiet = ownerOnly;
+
     // ── Candidates (observed every scan, so confirmation counts are honest) ──
     const offlineDueNow = snapshot.filter(
       (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && !openOffline.has(s.id),
@@ -304,14 +337,7 @@ export class CustomerAlertEmailsService {
     });
     this.noContentDue.observe(noContentDueNow.map((c) => c.row.id), now);
 
-    // ── Platform gate: restart / degraded / incident quiet window ──
-    const gate = platformGate({
-      uptimeMs: this.uptimeMs(),
-      degradedComponents: degradedPlatformComponents(now),
-      platformQuietUntilMs: this.platformQuietUntil,
-      nowMs: now,
-    });
-    if (!gate.open) {
+    if (!gate.open && !ownerOnly) {
       // Nothing is decided while the platform itself is suspect — not even a
       // recovery. Confirmation starts over once it is healthy again.
       this.offlineDue.reset();
@@ -462,6 +488,12 @@ export class CustomerAlertEmailsService {
       }
     }
 
+    // Inside the restart quiet the owner's incident check is all that runs.
+    if (ownerOnly) {
+      result.gate = 'api-restart';
+      return result;
+    }
+
     // ── 3. Flap: one problem email per screen per 6 h ──
     const priorById = new Map(incidents.map((i) => [`${i.screenId}:${i.kind}`, i]));
     const extraPrior = real.length ? await this.loadClosedIncidents(real) : new Map<string, IncidentRow>();
@@ -540,7 +572,17 @@ export class CustomerAlertEmailsService {
 
   // ─── Facts for the defer rules ──────────────────────────────────────────
 
-  private async loadFacts(problems: NewProblem[], tenants: Map<string, TenantMeta>, now: number): Promise<Map<string, LoadedFacts>> {
+  /**
+   * The intended-downtime facts (`ScreenFacts`) for these screens. Public
+   * (2026-10-23) so the owner's post-restart fleet check judges "meant to be
+   * off" with exactly these reads and `intendedDowntime` — one copy, not two.
+   * A screen missing from the result means a read failed: defer, never send.
+   */
+  async loadFacts(
+    problems: ReadonlyArray<Pick<NewProblem, 'screenId' | 'tenantId'>>,
+    tenants: Map<string, TenantMeta>,
+    now: number,
+  ): Promise<Map<string, LoadedFacts>> {
     const ids = [...new Set(problems.map((p) => p.screenId))];
     const tenantIds = [...new Set(problems.map((p) => p.tenantId))];
     const [rows, schedules, audits, ledger] = await Promise.all([
@@ -1293,7 +1335,7 @@ const FACT_SELECT = {
   lastVideoReportAt: true,
 } as const;
 
-interface FactRow {
+export interface FactRow {
   id: string;
   name: string;
   tenantId: string | null;
@@ -1316,7 +1358,7 @@ interface FactRow {
   lastVideoReportAt: Date | null;
 }
 
-interface LoadedFacts {
+export interface LoadedFacts {
   row: FactRow;
   facts: ScreenFacts;
 }
