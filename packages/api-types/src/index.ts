@@ -1147,3 +1147,9 @@ export * from './device-settings';
 // Generated from the APK table (NativeEndReasons.kt); the player page keeps a
 // dependency-free mirror held identical by a parity test.
 export * from './native-end-reasons';
+
+// Per-screen time zones (2026-10-24) — the one precedence (screen override >
+// location setting > automatic from the address > the device's own zone) and
+// what counts as a valid IANA id, shared by the API (manifest, list, PUT) and
+// the dashboard (the picker and the "device disagrees" note).
+export * from './time-zone';

@@ -46,6 +46,7 @@ import {
 } from '../shell/primitives';
 import { settingsHref } from '../shell/registry';
 import { nextAutoSlug } from '@/lib/location-slug';
+import { describeTimeZone } from '@/lib/time-zone-label';
 
 export function SettingsLocationsPage() {
   const t = useTranslations();
@@ -328,6 +329,15 @@ export function SettingsLocationsPage() {
                       <span className="min-w-0">
                         <strong className="block text-[13px] font-medium text-slate-900 truncate">{row.name}</strong>
                         <span className="block text-[12px] text-slate-500 font-mono truncate">/{row.slug}</span>
+                        {/* 2026-10-24 — the location's time zone: set here, or automatic
+                            from its address. Shown only when the API answered one. */}
+                        {row.timeZone && (
+                          <span className="block text-[12px] text-slate-500 truncate" data-testid="cc-location-timezone">
+                            {row.timeZoneSource === 'location'
+                              ? t('settings.cc.locations.timeZoneSet', { zone: describeTimeZone(row.timeZone, Date.now()) })
+                              : t('settings.cc.locations.timeZoneAuto', { zone: describeTimeZone(row.timeZone, Date.now()) })}
+                          </span>
+                        )}
                       </span>
                       <span className="flex items-center gap-3 text-[12px] text-slate-500 shrink-0">
                         <span className="inline-flex items-center gap-1">

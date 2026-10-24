@@ -34,6 +34,7 @@ import {
   isVertical, normalizeVertical, type Vertical,
 } from '@cms/api-types';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
+import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-label';
 import { LedPosterStandardCard } from '../LedPosterStandardCard';
 import { isCcOrgAdmin, useLastChange, useTenantChildren } from '@/hooks/use-settings-cc';
 import { SettingsPageFrame } from '../shell/SettingsPageFrame';
@@ -48,6 +49,11 @@ interface TenantRow {
   address?: string | null;
   vertical?: string;
   parentId?: string | null;
+  /** 2026-10-24 — the location's time-zone setting (null = automatic) and the resolved view the API answers. */
+  timezone?: string | null;
+  timeZone?: string | null;
+  timeZoneSource?: 'location' | 'auto' | 'device';
+  timeZoneAuto?: string | null;
 }
 
 export function SettingsOrganizationPage() {
@@ -70,6 +76,12 @@ export function SettingsOrganizationPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  // 2026-10-24 — the location's time zone. Draft `null` = untouched; `''` =
+  // automatic (clear the setting); an IANA id = set. The server's stored
+  // setting is `tenant.timezone` (null = automatic); what it RESOLVES to is
+  // `tenant.timeZone` / `timeZoneAuto`, shown beside the picker.
+  const serverTimezone = tenant?.timezone ?? '';
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ message: string; fieldId?: string }[]>([]);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -87,18 +99,21 @@ export function SettingsOrganizationPage() {
 
   const nameValue = name ?? serverName;
   const addressValue = address ?? serverAddress;
+  const timezoneValue = timezone ?? serverTimezone;
   const dirtyFields = useMemo(() => {
     let n = 0;
     if (name !== null && name.trim() !== serverName) n += 1;
     if (address !== null && address.trim() !== (serverAddress ?? '')) n += 1;
+    if (timezone !== null && timezone !== serverTimezone) n += 1;
     return n;
-  }, [name, address, serverName, serverAddress]);
+  }, [name, address, timezone, serverName, serverAddress, serverTimezone]);
 
   const discard = useCallback(() => {
     setName(null);
     setAddress(null);
     setLat(null);
     setLon(null);
+    setTimezone(null);
     setErrors([]);
   }, []);
 
@@ -123,6 +138,8 @@ export function SettingsOrganizationPage() {
         if (lat !== null) body.latitude = lat;
         if (lon !== null) body.longitude = lon;
       }
+      // '' = back to automatic (the server stores null); an id = the setting.
+      if (timezone !== null && timezone !== serverTimezone) body.timezone = timezone || null;
       const saved = await apiFetch<{ urlKept?: 'sso' | null }>('/tenants/me', { method: 'PATCH', body: JSON.stringify(body) });
       // Only a save that carried a name can say whether the URL followed it.
       if (body.name !== undefined) setUrlKept(saved?.urlKept === 'sso' ? 'sso' : null);
@@ -140,7 +157,7 @@ export function SettingsOrganizationPage() {
     } finally {
       setSaving(false);
     }
-  }, [dirtyFields, name, address, lat, lon, serverName, serverAddress, qc, refetch, discard, t]);
+  }, [dirtyFields, name, address, lat, lon, timezone, serverTimezone, serverName, serverAddress, qc, refetch, discard, t]);
 
   /**
    * Extracted from VerticalSwitcherCard (2026-05-25 fixes intact): the
@@ -318,6 +335,41 @@ export function SettingsOrganizationPage() {
                   }}
                 />
                 <p className="mt-1 text-[12px] text-slate-500">{t('settings.cc.organization.addressHelp')}</p>
+              </div>
+              {/* 2026-10-24 — the location's TIME ZONE. Automatic from the
+                  address by default (the API derives it offline from the saved
+                  coordinates — nothing to set); the picker is the override.
+                  Every screen here without its own override follows this. */}
+              <div>
+                <label htmlFor="cc-org-timezone" className="block text-[12px] font-medium text-slate-600 mb-1">
+                  {t('settings.cc.organization.timeZoneLabel')}
+                </label>
+                <select
+                  id="cc-org-timezone"
+                  value={timezoneValue}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-200 bg-white text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-offset-1"
+                >
+                  <option value="">
+                    {tenant?.timeZoneAuto
+                      ? t('settings.cc.organization.timeZoneAutomatic', { zone: tenant.timeZoneAuto })
+                      : t('settings.cc.organization.timeZoneAutomaticNoAddress')}
+                  </option>
+                  {timeZoneOptions().map((zone) => (
+                    <option key={zone} value={zone}>{zone}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[12px] text-slate-500">
+                  {(() => {
+                    const effective = timezoneValue || tenant?.timeZoneAuto || null;
+                    if (!effective) return t('settings.cc.organization.timeZoneHelpNoAddress');
+                    const now = Date.now();
+                    return t('settings.cc.organization.timeZoneHelp', {
+                      zone: describeTimeZone(effective, now),
+                      time: localTimeIn(effective, now) ?? '',
+                    });
+                  })()}
+                </p>
               </div>
             </div>
           </EditorSection>

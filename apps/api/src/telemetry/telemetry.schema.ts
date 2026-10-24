@@ -434,7 +434,9 @@ const updateAppliedSchema = z.strictObject({
   window: z.enum(['display-off', 'idle', 'nightly']),
   boundary: z.enum(['now', 'item']),
   zone: z.string().max(64),
-  zoneSource: z.enum(['schedule', 'device', 'utc']),
+  // `screen` (2026-10-24): the manifest's per-screen zone — the player's
+  // offHoursUpdate.ts resolves schedule → screen → device → utc.
+  zoneSource: z.enum(['schedule', 'screen', 'device', 'utc']),
   capture: z.enum(['live', 'refetch', 'color', 'none']),
   blankMs: z.number().finite().min(0).max(86_400_000).nullable(),
   coverMs: z.number().finite().min(0).max(86_400_000).nullable(),

@@ -26,6 +26,7 @@ import { X as XIcon, Volume2, VolumeX } from 'lucide-react';
 // back in front of registration through the side door. The renderer comes
 // from the shared lazy island instead. See app/player/lazyRenderer.ts.
 import { LazyTouchZoneWidget } from '@/app/player/lazyRenderer';
+import { withDefaultTimeZone } from '@/app/player/screenTimeZone';
 
 type TouchOverlayShape =
   | { kind: 'iframe'; url: string }
@@ -266,6 +267,7 @@ export function TouchNavOverlay({
   template,
   onBack,
   idleReturnMs = 90_000,
+  defaultTimeZone = null,
 }: {
   template: any;
   onBack: () => void;
@@ -273,6 +275,12 @@ export function TouchNavOverlay({
    *  to 90s (matches typical kiosk-attention timeout); the parent
    *  player can override with its template-level idleResetMs. */
   idleReturnMs?: number;
+  /**
+   * 2026-10-24 — the screen's effective time zone (manifest `timeZone`):
+   * the default for this template's clock/date widgets that carry no zone
+   * of their own — the same rule the main template gets (screenTimeZone.ts).
+   */
+  defaultTimeZone?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -458,7 +466,7 @@ export function TouchNavOverlay({
                   <Suspense fallback={null}>
                     <LazyTouchZoneWidget
                       widgetType={z.widgetType}
-                      config={z.defaultConfig || {}}
+                      config={withDefaultTimeZone(z.defaultConfig || {}, defaultTimeZone)}
                       width={z.width}
                       height={z.height}
                     />

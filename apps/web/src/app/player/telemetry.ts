@@ -230,7 +230,7 @@ export interface TelemetryUpdateReport {
   window: 'display-off' | 'idle' | 'nightly';
   boundary: 'now' | 'item';
   zone: string;
-  zoneSource: 'schedule' | 'device' | 'utc';
+  zoneSource: 'schedule' | 'screen' | 'device' | 'utc';
   capture: 'live' | 'refetch' | 'color' | 'none';
   /** Last frame of the old document → the cover painted (the true blank), ms. */
   blankMs: number | null;
@@ -583,7 +583,8 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
 }
 
 const UPDATE_WINDOWS = new Set(['display-off', 'idle', 'nightly']);
-const UPDATE_ZONE_SOURCES = new Set(['schedule', 'device', 'utc']);
+// `screen` (2026-10-24): the manifest's per-screen zone (offHoursUpdate.ts).
+const UPDATE_ZONE_SOURCES = new Set(['schedule', 'screen', 'device', 'utc']);
 const UPDATE_CAPTURES = new Set(['live', 'refetch', 'color', 'none']);
 const UPDATE_MAX_MS = 86_400_000;
 

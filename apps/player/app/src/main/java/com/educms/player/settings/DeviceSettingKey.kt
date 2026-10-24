@@ -29,11 +29,14 @@ package com.educms.player.settings
  *   • what is reported back is the value Android READS BACK, never the one
  *     that was requested.
  *
- * [recheckAfterBoot] — after a reboot an applied setting whose read-back no
- * longer matches is set again (some signage firmware resets brightness,
- * volume or the timeout at boot). Wi-Fi is not: Android keeps a saved network
- * and a suggestion across reboots, and its passphrase is never stored on this
- * unit.
+ * [recheckAfterBoot] — after a reboot an applied setting is READ AGAIN and,
+ * when its read-back no longer matches, RECORDED as `changed-elsewhere` —
+ * never set again (2026-10-24, owner rule: VenueOS never fights the vendor
+ * app; before that date a drift at boot was re-applied, which on a Goodview
+ * panel meant two apps taking turns on the same value). A value is written
+ * exactly once per identity: when the operator changes it in the dashboard.
+ * Wi-Fi is not re-checked: Android keeps a saved network and a suggestion
+ * across reboots, and its passphrase is never stored on this unit.
  *
  * Wi-Fi is the one setting offered BELOW Android 13 (2026-10-23): every class
  * from Android 7 up gets the best mechanism its Android gives a normal app —
@@ -159,6 +162,14 @@ object DeviceSettingCodes {
     const val ALREADY_SET = "already-set"
     /** Applied, but Android offers no way to read it back. */
     const val UNVERIFIED = "unverified"
+    /**
+     * Applied once, and since then something ELSE on the unit changed it —
+     * the vendor's own app (Goodview's CloudSign / GvSettings), a person at
+     * the panel, a firmware reset at boot. Recorded, NEVER re-applied
+     * (2026-10-24, owner rule: VenueOS never fights the vendor app). The
+     * status stays `applied`; the observed value sits beside it in the report.
+     */
+    const val CHANGED_ELSEWHERE = "changed-elsewhere"
     const val WIFI_REJECTED = "wifi-rejected"
     const val WIFI_LIMIT = "wifi-limit"
     const val WIFI_INVALID = "wifi-invalid"

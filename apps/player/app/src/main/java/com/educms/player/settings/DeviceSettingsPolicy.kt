@@ -9,16 +9,24 @@ package com.educms.player.settings
  * ─────────────────────────────────────────────────────────────────────
  *  1. A value this unit does not accept is FAILED (`invalid-value`) and never
  *     retried — it is written into the system, so it is refused, not trusted.
- *  2. An identity already APPLIED or FAILED in this boot is left alone.
+ *  2. An identity already APPLIED or FAILED in this boot is left alone. An
+ *     APPLIED one whose read-back has since DRIFTED is RECORDED as
+ *     `changed-elsewhere` (once — the mark never flips back on its own) and
+ *     still left alone: never re-written.
  *  2w. A Wi-Fi identity that is IN PROGRESS outside this record — a switch
  *     being proved, a save dialog waiting for a person, Android's one-time
  *     approval — is re-described from what [WifiProgress] says now and is
  *     never applied again while that is alive. While a switch is being proved
  *     for one identity, no other identity starts one.
- *  3. After a reboot an APPLIED identity stays applied while Android still
- *     reads it back (or offers no read-back). Only a setting whose read-back
- *     DRIFTED is set again — some signage firmware resets the timeout,
- *     brightness or volume at boot.
+ *  3. After a reboot an APPLIED identity stays applied. Its read-back is
+ *     checked again ([DeviceSettingKey.recheckAfterBoot]) and a DRIFT is
+ *     recorded as `changed-elsewhere` — NEVER set again (2026-10-24, owner
+ *     rule: VenueOS never fights the vendor's app; until then a drift at boot
+ *     was re-applied, so on a Goodview panel two apps took turns on one
+ *     value). A value is written exactly once per identity — when the
+ *     operator changes it in the dashboard — and whatever changes it
+ *     afterwards (Goodview's CloudSign / GvSettings, a person, a firmware
+ *     reset) is respected and reported, not undone.
  *  4. A value Android already reads back is APPLIED without a write
  *     (`already-set`): no needless hardware write, no volume panel.
  *  5. What this unit cannot set right now is UNSUPPORTED, with the reason
@@ -193,9 +201,11 @@ object DeviceSettingsPolicy {
             return Decision.Report(ack(Status.FAILED, DeviceSettingCodes.INVALID_VALUE))
         }
 
-        // 2 — this identity is settled for this boot.
+        // 2 — this identity is settled for this boot. An APPLIED value that
+        // Android no longer reads back was changed by something else on the
+        // unit: say so (once), never write it again.
         if (sameBoot && (prev!!.status == Status.APPLIED || prev.status == Status.FAILED)) {
-            return Decision.Report(prev)
+            return Decision.Report(markDriftIfAny(item, prev, input.observedMatches))
         }
         // A failure nothing can fix is not retried after a reboot either.
         if (prev != null && prev.status == Status.FAILED && prev.why in DeviceSettingCodes.NEVER_RETRIED) {
@@ -207,11 +217,15 @@ object DeviceSettingsPolicy {
             wifiInProgress(item, prev, input)?.let { return Decision.Report(it) }
         }
 
-        // 3 — a new boot re-checks an applied setting; only a drift re-applies.
-        if (prev != null && !sameBoot && prev.status == Status.APPLIED &&
-            (!item.key.recheckAfterBoot || input.observedMatches != false)
-        ) {
-            return Decision.Report(prev.copy(boot = input.boot, attempts = 0, lastAttemptElapsedMs = 0L))
+        // 3 — a new boot re-checks an applied setting: a drift is RECORDED,
+        // never re-applied (owner rule 2026-10-24 — never fight the vendor
+        // app). The budget resets with the boot, which matters only when the
+        // operator sends a NEW identity.
+        if (prev != null && !sameBoot && prev.status == Status.APPLIED) {
+            val carried = prev.copy(boot = input.boot, attempts = 0, lastAttemptElapsedMs = 0L)
+            return Decision.Report(
+                if (item.key.recheckAfterBoot) markDriftIfAny(item, carried, input.observedMatches) else carried,
+            )
         }
 
         // 4 — already in place: nothing to write.
@@ -270,6 +284,23 @@ object DeviceSettingsPolicy {
                 appliedAtWallMs = prev?.appliedAtWallMs,
             ),
         )
+    }
+
+    /**
+     * Rules 2 and 3 — an APPLIED identity whose read-back no longer matches
+     * was changed by something else on the unit. The record keeps `applied`
+     * and gains `changed-elsewhere`, ONCE: a later matching read does not
+     * clear it (a value that flaps between two apps must not flap the report
+     * too), and the mark is never a reason to write. Only a definite mismatch
+     * (`false`) counts — `null` is "cannot tell", never "changed". A Wi-Fi
+     * record is never marked: its read-back is a network name Android may
+     * simply not be on right now.
+     */
+    private fun markDriftIfAny(item: DesiredItem, prev: Ack, observedMatches: Boolean?): Ack {
+        if (prev.status != Status.APPLIED || observedMatches != false) return prev
+        if (item.key == DeviceSettingKey.WIFI) return prev
+        if (prev.why == DeviceSettingCodes.CHANGED_ELSEWHERE) return prev
+        return prev.copy(why = DeviceSettingCodes.CHANGED_ELSEWHERE)
     }
 
     /**

@@ -59,7 +59,15 @@ import {
 } from './softSchedule';
 
 export type UpdateWindowKind = 'display-off' | 'idle' | 'nightly';
-export type UpdateZoneSource = 'schedule' | 'device' | 'utc';
+/**
+ * `screen` (2026-10-24) — the manifest's per-screen effective zone
+ * (`screenTimeZone.ts`: override > location setting > automatic from the
+ * address). It sits between the display-schedule rows and the device's own
+ * zone, which is the "tenant-level zone in the manifest" follow-up the header
+ * above recorded: a box still on its factory zone now applies at the RIGHT
+ * local hour whenever the server knows where the screen is.
+ */
+export type UpdateZoneSource = 'schedule' | 'screen' | 'device' | 'utc';
 export type UpdateBoundary = 'now' | 'item';
 
 /** Nightly window: [03:00, 04:00) local, minutes past midnight. */
@@ -112,13 +120,15 @@ export function parseDisplayWindows(display: unknown): SoftWindow[] | null {
 
 /**
  * The zone the nightly window is evaluated in. Schedule rows first (the
- * screen's own zone), then the device's, then UTC. A zone the runtime cannot
- * resolve is treated as absent (softSchedule rule 3 would read it as UTC —
- * here we would rather fall through to the device's real zone than to UTC).
+ * screen's own zone), then the manifest's per-screen zone (2026-10-24,
+ * `screenTimeZone.ts`), then the device's, then UTC. A zone the runtime
+ * cannot resolve is treated as absent (softSchedule rule 3 would read it as
+ * UTC — here we would rather fall through to the next real zone than to UTC).
  */
 export function resolveUpdateZone(
   windows: readonly SoftWindow[] | null,
   deviceZone: string | null | undefined,
+  screenZone?: string | null,
 ): UpdateZone {
   if (windows) {
     for (const w of windows) {
@@ -126,6 +136,8 @@ export function resolveUpdateZone(
       if (z && resolveZone(z) === z) return { zone: z, source: 'schedule' };
     }
   }
+  const sz = (screenZone || '').trim();
+  if (sz && resolveZone(sz) === sz) return { zone: sz, source: 'screen' };
   const dz = (deviceZone || '').trim();
   if (dz && dz !== 'UTC' && resolveZone(dz) === dz) return { zone: dz, source: 'device' };
   return { zone: 'UTC', source: 'utc' };
