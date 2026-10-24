@@ -22,7 +22,7 @@ overrides:
   '@opentelemetry/core@>=2.0.0 <2.8.0': ^2.8.0
   brace-expansion@>=4.0.0 <5.0.11: ^5.0.11
   undici@>=7.0.0 <7.30.1: 7.30.1
-  undici@<6.28.1: ^6.28.1
+  undici@<6.29.1: ^6.29.1
   hono@<4.13.11: 4.13.13
   '@puppeteer/browsers@>=2.0.0 <3.0.0': ^3.2.6
   '@humanfs/node@<0.16.8': ^0.16.8
@@ -36,7 +36,7 @@ overrides:
   '@babel/core@<=7.29.0': ^7.29.6
   brace-expansion@>=2.0.0 <2.1.6: ^2.1.6
   brace-expansion@<1.1.20: ^1.1.20
-  body-parser@<1.20.6: ^1.20.6
+  body-parser@<1.20.9: ^1.20.9
   nanoid@<3.3.17: ^3.3.17
   pdfjs-dist@>=5.6.83 <6.2.108: ^6.2.108
   sanitize-html@<2.18.1: 2.18.1
@@ -4206,8 +4206,8 @@ packages:
   blake3-wasm@2.1.5:
     resolution: {integrity: sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g==}
 
-  body-parser@1.20.6:
-    resolution: {integrity: sha512-p5tAzS57i5MV9fZFDj9LeIiTZEufbSe2eDozP+ElheSUq1m74CRq1jI4mYNDdVs9vQztXFLuk/Gd6BWTdwRJ5g==}
+  body-parser@1.20.9:
+    resolution: {integrity: sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==}
     engines: {node: '>= 0.8', npm: 1.2.8000 || >= 1.4.16}
 
   body-parser@2.4.0:
@@ -8306,8 +8306,8 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  undici@6.29.0:
-    resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
+  undici@6.29.1:
+    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
     engines: {node: '>=18.17'}
 
   undici@7.30.1:
@@ -12448,7 +12448,7 @@ snapshots:
 
   blake3-wasm@2.1.5: {}
 
-  body-parser@1.20.6:
+  body-parser@1.20.9:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
@@ -12458,7 +12458,7 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.4.24
       on-finished: 2.4.1
-      qs: 6.16.0
+      qs: 6.16.1
       raw-body: 2.5.3
       type-is: 1.6.18
       unpipe: 1.0.0
@@ -13631,7 +13631,7 @@ snapshots:
     dependencies:
       accepts: 1.3.8
       array-flatten: 1.1.1
-      body-parser: 1.20.6
+      body-parser: 1.20.9
       content-disposition: 0.5.4
       content-type: 1.0.5
       cookie: 0.7.2
@@ -15753,7 +15753,7 @@ snapshots:
       exit-hook: 2.2.1
       glob-to-regexp: 0.4.1
       stoppable: 1.1.0
-      undici: 6.29.0
+      undici: 6.29.1
       workerd: 1.20250718.0
       ws: 8.21.3
       youch: 3.3.4
@@ -17651,7 +17651,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici@6.29.0: {}
+  undici@6.29.1: {}
 
   undici@7.30.1: {}
 
