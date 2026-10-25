@@ -1192,8 +1192,17 @@ export class SupabaseStorageService implements OnModuleInit {
    * transport error text so a broken upload path is diagnosable from the
    * health endpoint alone instead of surfacing weeks later as "no logos /
    * no assets / no bug screenshots".
+   *
+   * `path` (2026-10-24): the storage watchdog confirms a failed probe on a
+   * SECOND fixed object (`health/storage-probe-confirm.png`), because every
+   * caller of the default path writes the same storage.objects row — one
+   * upload stuck inside Supabase Storage holds that row and fails every probe
+   * queued behind it (2026-10-24 00:57Z: "still waiting for ShareLock",
+   * then a 544). Must stay under `health/storage-probe` (log suppression).
    */
-  async storageHealthProbe(): Promise<{ ok: boolean; transport: string; upload: string; read: string; ms: number }> {
+  async storageHealthProbe(
+    path: string = 'health/storage-probe.png',
+  ): Promise<{ ok: boolean; transport: string; upload: string; read: string; ms: number }> {
     const started = Date.now();
     // Snapshot fallback counters so we can tell whether THIS probe rode the
     // primary fetch or the node:https fallback — "working but on fallback"
@@ -1202,7 +1211,6 @@ export class SupabaseStorageService implements OnModuleInit {
     // A real 1×1 transparent PNG: the assets bucket's allowedMimeTypes policy
     // rejects text/plain, so the probe must be a type production actually
     // uploads (image/png).
-    const path = 'health/storage-probe.png';
     let upload = 'ok';
     let read = 'skipped';
     try {

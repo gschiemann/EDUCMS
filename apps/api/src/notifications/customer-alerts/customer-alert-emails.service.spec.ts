@@ -641,6 +641,86 @@ describe('online but not showing content', () => {
   });
 });
 
+describe('2026-10-24 production replay — why the first day produced no email, and that one is produced when due', () => {
+  // The facts, read (read-only) from production on 2026-10-24:
+  //   - "Venue-OS Media Player" (VisionCore): last heartbeat 2026-10-23
+  //     05:44:20Z, 12 h 20 min before this feature went live (18:05Z). The
+  //     20:46Z quoted for it is `manager_version_at` — the Manager APK's
+  //     anonymous update check — not a heartbeat. Two more screens went quiet
+  //     in the same minute (05:43–05:44Z).
+  //   - "G24" (Brookfield): silent from 2026-10-24 08:32:59Z = Saturday
+  //     01:32 PDT; its group's on/off schedule is Mon–Fri 07:00–18:00
+  //     America/Los_Angeles. The only screen that went dark long enough
+  //     after go-live (SAR55 was back within 10 min).
+  // Acme stands in for each organisation (one admin).
+  const LIVE = Date.parse('2026-10-23T18:05:00Z');
+  const weekdaySchedule = {
+    id: 'brookfield-weekday',
+    screenId: null,
+    screenGroupId: 'grp-weekday',
+    daysOfWeek: [1, 2, 3, 4, 5],
+    onTime: '07:00',
+    offTime: '18:00',
+    timezone: 'America/Los_Angeles',
+    isActive: true,
+  };
+  beforeEach(() => {
+    delete process.env.CUSTOMER_ALERT_EMAILS_MODE; // shadow, as in production
+  });
+
+  it('silent since 12 h before go-live: counted as the long-dead tail on every scan, never emailed', async () => {
+    const { svc, mailer } = build(w);
+    w.clock.now = LIVE;
+    screen(w, 'media-player', 'acme');
+    goOffline(w, 'media-player', Date.parse('2026-10-23T05:44:20Z'));
+    let res!: CustomerAlertTickResult;
+    for (let i = 0; i < 60; i++) res = await scan(w, svc);
+    expect(res).toMatchObject({ mode: 'shadow', offlineTooOld: 1, offlineDue: 0, offlineCandidates: 0, sends: 0 });
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    expect(w.incidents).toHaveLength(0);
+    expect(w.sends).toHaveLength(0);
+  });
+
+  it('G24: dark at 01:32 on a Saturday, inside its own schedule’s OFF window → due, deferred on every scan, never emailed', async () => {
+    const { svc, mailer } = build(w);
+    w.displaySchedules.push(weekdaySchedule);
+    const dark = Date.parse('2026-10-24T08:32:59Z');
+    w.clock.now = dark - 10 * MIN;
+    screen(w, 'g24', 'acme', { screenGroupId: 'grp-weekday' });
+    goOffline(w, 'g24', dark);
+    w.clock.now = dark + 15 * MIN;
+    await scan(w, svc, 0);
+    const confirmed = await scan(w, svc);
+    expect(confirmed).toMatchObject({ offlineDue: 1, offlineCandidates: 1, deferred: { 'display-schedule-off': 1 }, sends: 0 });
+    for (let i = 0; i < 75; i++) await scan(w, svc, 5); // the next 6 h 15 min
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    expect(w.incidents).toHaveLength(0);
+    const later = await scan(w, svc);
+    expect(later).toMatchObject({ offlineDue: 0, offlineTooOld: 1 });
+  });
+
+  it('control: the same screen dark at 10:32 on a Monday (schedule ON) → the owner gets the shadow email on the second due scan', async () => {
+    const { svc, email, mailer } = build(w);
+    w.displaySchedules.push(weekdaySchedule);
+    const dark = Date.parse('2026-10-26T17:32:59Z');
+    w.clock.now = dark - 10 * MIN;
+    screen(w, 'g24', 'acme', { screenGroupId: 'grp-weekday' });
+    goOffline(w, 'g24', dark);
+    w.clock.now = dark + 15 * MIN;
+    await scan(w, svc, 0);
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    const res = await scan(w, svc);
+    expect(res).toMatchObject({ offlineDue: 1, opened: 1, sends: 1 });
+    expect(res.deferred).toEqual({});
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+    const [subject, , kind] = mailer.sendAlert.mock.calls[0] as unknown as [string, string, string];
+    expect(subject).toBe('[shadow] would have sent to 1 admins at Acme Corp: VenueOS: g24 is offline at Acme Corp');
+    expect(kind).toBe('ALERT_SHADOW_OFFLINE');
+    expect(w.sends).toEqual([expect.objectContaining({ orgId: 'acme', kind: 'OFFLINE', mode: 'shadow', recipientCount: 1 })]);
+  });
+});
+
 describe('emergency record copy', () => {
   it('one email per admin, the location names, no person named', async () => {
     const { svc, email } = build(w);
