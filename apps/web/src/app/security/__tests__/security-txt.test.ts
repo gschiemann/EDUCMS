@@ -3,9 +3,10 @@
  * /security. Scanners and researchers read this file, not the page, so a
  * malformed or EXPIRED file is a real gap, not a cosmetic one.
  *
- * ⚠️ The Expires check is deliberately date-sensitive: on the day the file
- * expires this test turns red on every branch. That is the renewal reminder.
- * Renew by moving `Expires:` to (at most) one year ahead.
+ * ⚠️ The Expires check is deliberately date-sensitive: 30 days BEFORE the file
+ * expires this test turns red on every branch, so it is renewed while the live
+ * file is still valid. That is the renewal reminder. Renew by moving `Expires:`
+ * to (at most) one year ahead.
  */
 import fs from 'fs';
 import path from 'path';
@@ -45,14 +46,14 @@ describe('/.well-known/security.txt (RFC 9116)', () => {
     expect(contacts).toContain(GITHUB_PRIVATE_REPORT_URL);
   });
 
-  it('has exactly one Expires, a full UTC timestamp, in the future and no more than a year out', () => {
+  it('has exactly one Expires, a full UTC timestamp, at least 30 days and at most a year out', () => {
     const expires = all('Expires');
     expect(expires).toHaveLength(1);
     expect(expires[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
     const at = Date.parse(expires[0]);
     const now = Date.now();
-    // Expired → renew it (move Expires up to one year ahead). Do not delete this check.
-    expect(at).toBeGreaterThan(now);
+    // Fewer than 30 days left → renew it (move Expires up to one year ahead). Do not delete this check.
+    expect(at - now).toBeGreaterThan(30 * 24 * 60 * 60 * 1000);
     expect(at - now).toBeLessThanOrEqual(366 * 24 * 60 * 60 * 1000);
   });
 
