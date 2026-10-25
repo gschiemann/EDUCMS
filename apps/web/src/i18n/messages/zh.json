@@ -1834,6 +1834,30 @@
       "fix": "处理",
       "placesAria": "需要处理的地点",
       "morePlaces": "另有 {count} 个——在地图上显示"
+    },
+    "attention": {
+      "lastSeen": "最后在线 {when}",
+      "neverSeen": "从未连接",
+      "notSeen30": "{count} 块屏幕超过 30 天未上线",
+      "neverConnected": "{count} 块从未连接",
+      "testScreens": "{count} 块测试屏幕",
+      "quietHint": "不计入离线。可在“屏幕”页面移除不再使用的屏幕。",
+      "manage": "管理屏幕",
+      "restingTitle": "{count} 块屏幕按计划关闭",
+      "restingHint": "按时间表关闭、从仪表板关闭或正在重启——不计入离线。",
+      "quietSub": "{count} 块不活跃或按计划关闭",
+      "downCheck": "请检查电源和网络",
+      "reason": {
+        "remote-power-off": "已从仪表板关闭",
+        "standby": "待机中",
+        "display-schedule-off": "按开关机时间表关闭",
+        "update-window": "处于更新时段",
+        "maintenance": "正在重启或更新",
+        "not-seen-30-days": "超过 30 天未上线",
+        "never-connected": "从未连接",
+        "test-screen": "手机或电脑浏览器中的测试屏幕"
+      },
+      "downCheckFull": "请检查每块屏幕的电源和网络。"
     }
   },
   "screens": {
@@ -6944,6 +6968,15 @@
         "minutes": "{count} 分钟",
         "unspecified": "未指定的时长"
       }
+    },
+    "health": {
+      "offline": "仍然离线",
+      "back-online": "已恢复在线",
+      "removed": "屏幕已移除",
+      "dormant": "超过 30 天未上线",
+      "resting": "按计划关闭",
+      "siteOffline": "仍有屏幕离线",
+      "siteBackOnline": "已全部恢复在线"
     }
   },
   "menuConnect": {
@@ -6967,5 +7000,364 @@
     "close": "关闭",
     "cancel": "取消",
     "create": "创建我的菜单板"
+  },
+  "activityFeed": {
+    "title": "最近活动",
+    "viewAll": "查看全部活动",
+    "empty": "你和团队所做的更改会显示在这里：播放列表、屏幕、警报和人员。",
+    "actor": {
+      "you": "你",
+      "support": "VenueOS 支持团队",
+      "apiKey": "API 密钥",
+      "system": "VenueOS",
+      "someone": "某位用户"
+    },
+    "quote": "“{name}”",
+    "subj": {
+      "playlist": "播放列表“{name}”",
+      "screen": "屏幕“{name}”",
+      "file": "文件“{name}”",
+      "template": "模板“{name}”",
+      "location": "地点“{name}”",
+      "group": "分组“{name}”",
+      "folder": "文件夹“{name}”",
+      "apiKey": "API 密钥“{name}”",
+      "webhook": "Webhook“{name}”",
+      "sponsor": "赞助商“{name}”",
+      "game": "比赛“{name}”"
+    },
+    "noun": {
+      "playlist": "一个播放列表",
+      "screen": "一块屏幕",
+      "file": "一个文件",
+      "template": "一个模板",
+      "person": "一位团队成员",
+      "location": "一个地点",
+      "group": "一个分组",
+      "folder": "一个文件夹",
+      "apiKey": "一个 API 密钥",
+      "webhook": "一个 Webhook",
+      "sponsor": "一个赞助商",
+      "game": "一场比赛",
+      "passkey": "一个通行密钥",
+      "thing": "一项内容"
+    },
+    "alert": {
+      "lockdown": "封锁",
+      "evacuate": "火警 / 疏散",
+      "weather": "避难",
+      "hold": "原地留守",
+      "secure": "封闭校园",
+      "medical": "医疗急救",
+      "other": "紧急"
+    },
+    "role": {
+      "SUPER_ADMIN": "VenueOS 管理员",
+      "DISTRICT_ADMIN": "组织管理员",
+      "SCHOOL_ADMIN": "地点管理员",
+      "CONTRIBUTOR": "内容编辑",
+      "RESTRICTED_VIEWER": "查看者"
+    },
+    "device": {
+      "iphone": "iPhone",
+      "ipad": "iPad",
+      "android": "安卓手机",
+      "mac": "Mac",
+      "windows": "Windows 电脑",
+      "chromebook": "Chromebook",
+      "linux": "Linux 电脑",
+      "browser": "网页浏览器"
+    },
+    "day": {
+      "today": "今天",
+      "yesterday": "昨天"
+    },
+    "category": {
+      "all": "全部",
+      "content": "内容",
+      "screens": "屏幕",
+      "emergency": "警报",
+      "team": "人员",
+      "security": "登录与安全",
+      "settings": "设置",
+      "integrations": "连接",
+      "billing": "套餐与账单",
+      "sports": "体育",
+      "menus": "菜单"
+    },
+    "a": {
+      "PLAYLIST_CREATED": "{actor}创建了{subject}",
+      "PLAYLIST_UPDATED": "{actor}编辑了{subject}",
+      "PLAYLIST_ITEMS_REPLACED": "{actor}更改了{subject}的播放内容",
+      "PLAYLIST_DELETED": "{actor}删除了{subject}",
+      "PLAYLIST_SCHEDULES_TOGGLED": {
+        "on": "{actor}恢复播放{subject}",
+        "off": "{actor}暂停了{subject}",
+        "changed": "{actor}更改了{subject}的播放状态"
+      },
+      "PLAYLIST_SCREEN_REMOVED": "{actor}将{subject}从{target}移除",
+      "PLAYLIST_SCREEN_TOGGLED": {
+        "on": "{actor}在{target}上重新启用了{subject}",
+        "off": "{actor}在{target}上暂停了{subject}",
+        "changed": "{actor}更改了{target}上的{subject}"
+      },
+      "PLAYLIST_SYNC_PLAYBACK_CHANGED": {
+        "on": "{actor}为{subject}开启了同步播放",
+        "off": "{actor}为{subject}关闭了同步播放",
+        "changed": "{actor}更改了{subject}的同步播放"
+      },
+      "PLAYLIST_PUBLISHED_TO_FLEET": "{actor}将{subject}发布到各个地点",
+      "SCHEDULE_CREATED": {
+        "one": "{actor}将{subject}发布到{target}",
+        "many": "{actor}将{subject}发布到 {count} 块屏幕",
+        "none": "{actor}发布了{subject}",
+        "createdOne": "{actor}创建了{subject}并发布到{target}",
+        "createdMany": "{actor}创建了{subject}并发布到 {count} 块屏幕",
+        "createdNone": "{actor}创建并发布了{subject}"
+      },
+      "SCHEDULE_UPDATED": "{actor}更改了{subject}的播放时间",
+      "SCHEDULE_DELETED": {
+        "one": "{actor}将{subject}从{target}移除",
+        "none": "{actor}停止发布{subject}"
+      },
+      "SCHEDULE_TOGGLED": {
+        "on": "{actor}在{target}上重新启用了{subject}",
+        "off": "{actor}在{target}上暂停了{subject}",
+        "changed": "{actor}更改了{target}上的{subject}"
+      },
+      "ASSET_UPLOADED": {
+        "one": "{actor}上传了{subject}",
+        "many": "{actor}上传了 {count} 个文件"
+      },
+      "ASSET_DELETED": {
+        "one": "{actor}删除了{subject}",
+        "many": "{actor}删除了 {count} 个文件"
+      },
+      "ASSET_APPROVED": {
+        "one": "{actor}批准了{subject}",
+        "many": "{actor}批准了 {count} 个文件"
+      },
+      "ASSET_REJECTED": {
+        "one": "{actor}拒绝了{subject}",
+        "many": "{actor}拒绝了 {count} 个文件"
+      },
+      "ASSET_FOLDER_DELETED": "{actor}删除了{subject}",
+      "AI_IMAGE_GENERATED": "{actor}用 AI 生成了一张图片",
+      "TEMPLATE_CREATED": "{actor}创建了{subject}",
+      "TEMPLATE_UPDATED": "{actor}保存了对{subject}的修改",
+      "TEMPLATE_DELETED": "{actor}删除了{subject}",
+      "TEMPLATE_IMPORTED": "{actor}导入了一个模板",
+      "IMPORT_DESIGN": "{actor}导入了一个设计",
+      "SUBMISSION_CREATED": "{actor}提交了内容待审批",
+      "USB_BUNDLE_EXPORTED": "{actor}将内容复制到 U 盘",
+      "SCREEN_PAIRED": "{actor}配对了{subject}",
+      "SCREEN_RENAMED": {
+        "from": "{actor}将{from}重命名为{subject}",
+        "plain": "{actor}将一块屏幕重命名为{subject}"
+      },
+      "SCREEN_MOVED": {
+        "group": "{actor}将{subject}移到{target}",
+        "ungrouped": "{actor}将{subject}移出了分组"
+      },
+      "SCREEN_DELETED": "{actor}移除了{subject}",
+      "SCREEN_ORIENTATION_CHANGED": {
+        "portrait": "{actor}将{subject}设为竖屏",
+        "landscape": "{actor}将{subject}设为横屏",
+        "auto": "{actor}将{subject}设为自动旋转"
+      },
+      "SCREEN_DISPLAY_CONTROL": {
+        "off": "{actor}关闭了{subject}",
+        "offMany": "{actor}关闭了 {count} 块屏幕",
+        "on": "{actor}开启了{subject}",
+        "onMany": "{actor}开启了 {count} 块屏幕",
+        "blank": "{actor}将{subject}设为黑屏",
+        "blankMany": "{actor}将 {count} 块屏幕设为黑屏",
+        "wake": "{actor}唤醒了{subject}",
+        "wakeMany": "{actor}唤醒了 {count} 块屏幕",
+        "restart": "{actor}重启了{subject}",
+        "restartMany": "{actor}重启了 {count} 块屏幕",
+        "brightness": "{actor}调整了{subject}的亮度",
+        "brightnessMany": "{actor}调整了 {count} 块屏幕的亮度",
+        "volume": "{actor}调整了{subject}的音量",
+        "volumeMany": "{actor}调整了 {count} 块屏幕的音量",
+        "other": "{actor}对{subject}执行了屏幕控制",
+        "otherMany": "{actor}对 {count} 块屏幕执行了屏幕控制"
+      },
+      "SCREEN_DEVICE_SETTINGS_CHANGED": "{actor}更改了{subject}的设备设置",
+      "SCREEN_FACE_ADDED": "{actor}设置了第二面屏幕{subject}",
+      "SCREEN_GROUP_DELETED": "{actor}删除了{subject}",
+      "REFRESH_WEB": {
+        "one": "{actor}重新同步了{subject}",
+        "many": "{actor}重新同步了 {count} 块屏幕"
+      },
+      "DISPLAY_SCHEDULE_CREATED": {
+        "target": "{actor}为{target}设置了开关机时间表",
+        "all": "{actor}为所有屏幕设置了开关机时间表"
+      },
+      "DISPLAY_SCHEDULE_UPDATED": "{actor}更改了开关机时间表",
+      "DISPLAY_SCHEDULE_DELETED": "{actor}删除了开关机时间表",
+      "CREATE_FLOOR_PLAN": "{actor}添加了平面图",
+      "DELETE_FLOOR_PLAN": "{actor}删除了平面图",
+      "REPLACE_FLOOR_PLAN_IMAGE": "{actor}更新了平面图",
+      "TRIGGER_EMERGENCY": {
+        "all": "{actor}向所有屏幕发送了{alert}警报",
+        "target": "{actor}向{target}发送了{alert}警报"
+      },
+      "CLEAR_EMERGENCY": {
+        "all": "{actor}解除了警报",
+        "target": "{actor}解除了{target}的警报"
+      },
+      "TRIGGER_EMERGENCY_DRILL": {
+        "all": "{actor}在所有屏幕上开始了{alert}演练",
+        "target": "{actor}在{target}上开始了{alert}演练"
+      },
+      "CLEAR_EMERGENCY_DRILL": {
+        "all": "{actor}结束了演练",
+        "target": "{actor}结束了{target}上的演练"
+      },
+      "DRILL_ENDED_BY_LIVE_ALERT": "真实警报结束了演练",
+      "TRIGGER_SCREEN_EMERGENCY": "{actor}向{subject}发送了{alert}警报",
+      "CLEAR_SCREEN_EMERGENCY": "{actor}解除了{subject}的警报",
+      "BROADCAST_TEXT": "{actor}向屏幕发送了消息",
+      "MEDIA_ALERT": "{actor}向屏幕发送了警报",
+      "CLEAR_EMERGENCY_MESSAGE": "{actor}清除了屏幕上的消息",
+      "SOS_TRIGGER": "{actor}按下了 SOS",
+      "EMERGENCY_ENABLED_CHANGED": {
+        "on": "{actor}开启了紧急警报",
+        "off": "{actor}关闭了紧急警报",
+        "changed": "{actor}更改了紧急警报设置"
+      },
+      "LOCATION_BASED_EMERGENCY_TOGGLED": {
+        "on": "{actor}开启了按位置发送的警报",
+        "off": "{actor}关闭了按位置发送的警报",
+        "changed": "{actor}更改了按位置发送的警报"
+      },
+      "PANIC_SETTINGS_UPDATED": {
+        "live": "{actor}更新了紧急警报内容",
+        "drill": "{actor}更新了演练内容"
+      },
+      "PANIC_CONTENT_ASSET_ADDED": {
+        "live": "{actor}更新了紧急警报内容",
+        "drill": "{actor}更新了演练内容"
+      },
+      "PANIC_CONTENT_ASSET_REMOVED": {
+        "live": "{actor}更新了紧急警报内容",
+        "drill": "{actor}更新了演练内容"
+      },
+      "UPDATE_SCREEN_EMERGENCY_CONTENT": "{actor}更新了{subject}的警报内容",
+      "UPLOAD_SCREEN_EMERGENCY_ASSET": "{actor}为一块屏幕添加了警报内容",
+      "USER_CAN_TRIGGER_PANIC_CHANGED": "{actor}更改了可发送警报的人员",
+      "USER_INVITED": "{actor}邀请了{subject}",
+      "INVITE_ACCEPTED": "{actor}加入了团队",
+      "USER_CREDENTIAL_SETUP_COMPLETED": "{actor}完成了账户设置",
+      "USER_CREATED": "{actor}将{subject}添加到团队",
+      "USER_CREATED_DIRECT": "{actor}将{subject}添加到团队",
+      "USER_ROLE_CHANGED": {
+        "to": "{actor}将{subject}的角色改为{role}",
+        "plain": "{actor}更改了{subject}的角色"
+      },
+      "USER_DISABLED": "{actor}暂停了{subject}的访问权限",
+      "USER_ENABLED": "{actor}恢复了{subject}的访问权限",
+      "USER_DELETED": "{actor}将{subject}移出团队",
+      "USER_ACCESS_UPDATED": "{actor}更改了{subject}的管理范围",
+      "USER_MFA_REQUIRED_CHANGED": "{actor}更改了{subject}的两步登录设置",
+      "USER_MFA_RESET": "{actor}重置了{subject}的两步登录",
+      "USER_EMAIL_CHANGED": "{actor}更改了一个邮箱地址",
+      "MFA_EMAIL_CODE_SUCCESS": {
+        "device": "新登录：{actor}（{device}）",
+        "plain": "新登录：{actor}"
+      },
+      "PASSKEY_REGISTERED": {
+        "label": "{actor}为{label}添加了通行密钥",
+        "plain": "{actor}添加了通行密钥"
+      },
+      "PASSKEY_REMOVED": "{actor}删除了一个通行密钥",
+      "PASSWORD_CHANGED": "{actor}修改了密码",
+      "PASSWORD_RESET_COMPLETED": "{actor}重置了密码",
+      "mfa": {
+        "enabled": "{actor}开启了两步登录",
+        "disabled": "{actor}关闭了两步登录"
+      },
+      "TENANT_MFA_POLICY_CHANGED": "{actor}更改了团队的两步登录规则",
+      "SUPPORT_ACCESS_INVITED": "{actor}向 VenueOS 支持团队授予了访问权限",
+      "SUPPORT_ACCESS_REQUESTED": "VenueOS 支持团队申请了访问权限",
+      "SUPPORT_ACCESS_APPROVED": "{actor}批准了 VenueOS 支持团队的访问",
+      "SUPPORT_ACCESS_DENIED": "{actor}拒绝了 VenueOS 支持团队的访问",
+      "SUPPORT_ACCESS_REVOKED": {
+        "byPerson": "{actor}结束了 VenueOS 支持团队的访问",
+        "ended": "VenueOS 支持团队的访问已被终止"
+      },
+      "SUPPORT_ACCESS_WITHDRAWN": "VenueOS 支持团队撤回了访问申请",
+      "SUPPORT_ACCESS_EXPIRED": "VenueOS 支持团队的访问已结束",
+      "SUPPORT_ACCESS_BREAK_GLASS": "VenueOS 支持团队开启了紧急访问",
+      "TENANT_SIGNUP": "{actor}创建了账户",
+      "TENANT_UPDATED": "{actor}更新了组织信息",
+      "TENANT_POSTER_STANDARD_CHANGED": "{actor}更改了海报尺寸",
+      "CHILD_TENANT_CREATED": "{actor}添加了{subject}",
+      "CHILD_TENANT_DELETED": "{actor}移除了{subject}",
+      "ADOPT_BRANDING": "{actor}更新了品牌形象",
+      "ADOPT_BRANDING_MANUAL": "{actor}更新了品牌形象",
+      "REVERT_BRANDING": "{actor}恢复了之前的品牌形象",
+      "BRANDING_VOICE_UPDATED": "{actor}更新了品牌语气",
+      "BRANDING_APPLY_TO_TEMPLATES": "{actor}将品牌应用到模板",
+      "BRANDING_APPEARANCE_MODE_CHANGED": "{actor}更改了仪表板外观",
+      "SSO_CONFIG_UPSERT": "{actor}更新了单点登录",
+      "SSO_CONFIG_DELETE": "{actor}关闭了单点登录",
+      "AI_KEY_SET": "{actor}连接了 AI 密钥",
+      "AI_KEY_CLEARED": "{actor}移除了 AI 密钥",
+      "AI_KEY_MODEL_CHANGED": "{actor}更改了 AI 模型",
+      "API_KEY_CREATED": "{actor}创建了{subject}",
+      "API_KEY_REVOKED": "{actor}撤销了一个 API 密钥",
+      "WEBHOOK_CREATED": "{actor}添加了{subject}",
+      "WEBHOOK_DELETED": "{actor}删除了一个 Webhook",
+      "USB_INGEST_TOGGLED": {
+        "on": "{actor}开启了 U 盘更新",
+        "off": "{actor}关闭了 U 盘更新",
+        "changed": "{actor}更改了 U 盘更新设置"
+      },
+      "STUDENT_PRIVACY_SERVES_MINORS_SET": "{actor}更改了学生隐私设置",
+      "POS_CONNECTION_CREATED": "{actor}连接了收银系统",
+      "POS_CONNECTION_DELETED": "{actor}断开了收银系统",
+      "SOCIAL_CONNECTION_CREATED": "{actor}连接了社交账号",
+      "SOCIAL_CONNECTION_REVOKED": "{actor}断开了社交账号",
+      "STREAM_CONNECTION_DELETED": "{actor}删除了一个直播连接",
+      "AD_CONNECTION_DELETED": "{actor}删除了一个广告网络",
+      "CLEVER_DISCONNECTED": "{actor}断开了 Clever",
+      "BILLING_SEATS_CHANGED": "{actor}更改了套餐中的屏幕数量",
+      "BILLING_AI_PLAN_CHANGED": "{actor}更改了 AI 套餐",
+      "BILLING_TRIAL_STARTED": "免费试用已开始",
+      "LICENSE_UPSERT": "套餐已更新",
+      "LICENSE_STATUS_CHANGED": "套餐状态已变更",
+      "AI_BOARD_PACK_PURCHASED": "{actor}购买了 AI 设计包",
+      "SPORTS_GAME_CREATED": "{actor}创建了{subject}",
+      "SPORTS_SCREENS_SHOWN": "{actor}在屏幕上显示了比赛",
+      "SPONSOR_CREATED": "{actor}添加了{subject}",
+      "SPONSOR_UPDATED": "{actor}更新了{subject}",
+      "SPONSOR_DELETED": "{actor}移除了{subject}",
+      "SPORTS_ROSTER_PRIVACY_SET": "{actor}更改了名单中的学生隐私设置",
+      "SPORTS_STUDENT_PRIVACY_FLAGS_SET": "{actor}更改了名单中的学生隐私设置",
+      "MENU_OVERRIDE_SET": "{actor}更改了菜单价格或供应状态",
+      "MENU_OVERRIDE_BULK": "{actor}更改了菜单价格或供应状态",
+      "MENU_OVERRIDE_REVERT": "{actor}撤销了菜单修改",
+      "MENU_IMPORT_OPERATOR": "{actor}导入了菜单"
+    }
+  },
+  "activityPage": {
+    "title": "活动",
+    "subtitle": "你和团队的所有更改：内容、屏幕、警报、人员和设置。",
+    "person": "人员",
+    "everyone": "所有人",
+    "kind": "类型",
+    "empty": "此时间范围内没有活动。",
+    "emptyAll": "你和团队所做的更改将显示在这里。",
+    "ownerToggle": "全部事件（VenueOS 员工）",
+    "ownerNote": "包括客户看不到的系统、设备和更新事件。",
+    "customerView": "客户视图",
+    "loadError": "无法加载活动记录。请检查网络连接后重试。",
+    "retry": "重试",
+    "previous": "上一页",
+    "next": "下一页",
+    "filters": "筛选",
+    "filtersOn": "已筛选"
   }
 }

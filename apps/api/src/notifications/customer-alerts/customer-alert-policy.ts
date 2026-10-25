@@ -146,7 +146,7 @@ export type DeferReason =
  * `Screen.lastOtaState` values (player-ota, upper-case on the wire) that mean
  * "an update is downloading / installing / just landed and the app restarts".
  */
-const INSTALLING_OTA_STATES = new Set(['downloading', 'verifying', 'installing', 'installed', 'restarting']);
+export const INSTALLING_OTA_STATES: ReadonlySet<string> = new Set(['downloading', 'verifying', 'installing', 'installed', 'restarting']);
 
 /** Instants at which "was it supposed to be off?" is asked. */
 function sampleInstants(nowMs: number, problemStartMs: number): number[] {

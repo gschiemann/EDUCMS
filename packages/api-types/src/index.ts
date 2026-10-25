@@ -1147,3 +1147,9 @@ export * from './device-settings';
 // Generated from the APK table (NativeEndReasons.kt); the player page keeps a
 // dependency-free mirror held identical by a parity test.
 export * from './native-end-reasons';
+
+// Customer-facing activity + notifications (2026-10-24) — the ONE allowlist of
+// audit actions a customer sees (dashboard Recent Activity, the Activity page)
+// and the notification kinds their bell never shows. The API filters on it;
+// the dashboard turns each allowed row into a sentence.
+export * from './customer-activity';
