@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { EmailVerificationGate } from '@/components/auth/EmailVerificationGate';
+import { TermsGate } from '@/components/auth/TermsGate';
 
 // 2026-05-26 — every /[schoolId]/* route was returning HTTP 500 from
 // Vercel SSR (browser content still rendered, but uptime monitors,
@@ -107,11 +108,17 @@ export default function SchoolLayout({
   }
 
   return (
-    <DashboardLayout>
-      <TenantUrlCanonicalizer />
-      {/* The fleet's largest panel, for the video grade on every library and
-          playlist surface (2026-09-24). One 60-byte read, cached, no polling. */}
-      <EncodeTargetProvider>{children}</EncodeTargetProvider>
-    </DashboardLayout>
+    <>
+      <DashboardLayout>
+        <TenantUrlCanonicalizer />
+        {/* The fleet's largest panel, for the video grade on every library and
+            playlist surface (2026-09-24). One 60-byte read, cached, no polling. */}
+        <EncodeTargetProvider>{children}</EncodeTargetProvider>
+      </DashboardLayout>
+      {/* The End User License Agreement, accepted on the ACCOUNT (launch QA
+          S2, 2026-10-24) — asked once, after setup, over the dashboard; never
+          while an emergency alert is active. Renders nothing once accepted. */}
+      <TermsGate />
+    </>
   );
 }

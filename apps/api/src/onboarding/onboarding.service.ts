@@ -10,7 +10,7 @@ import { EmailService } from '../email/email.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
 import { StarterBoardService } from './starter-board.service';
 import { AppRole } from '@cms/database';
-import { isReservedTenantSlug, isVertical } from '@cms/api-types';
+import { EULA_VERSION, isReservedTenantSlug, isVertical } from '@cms/api-types';
 import { cardBillingReady, newTrialEndsAt, TRIAL_SCREENS } from '../billing/trial-policy';
 import { assertSupportReach } from '../support-access/support-access.context';
 import { emailOwnershipProofRequired } from '../auth/setup-email-verification';
@@ -737,7 +737,10 @@ export class OnboardingService {
         // existing account is never a legitimate outcome of "create a user" —
         // keeping the column out of the write means a future edit to the guard
         // cannot silently re-open the hijack.
-        const patch: any = { role, status: 'ACTIVE', passwordHash };
+        // Launch QA S1 (2026-10-24): an admin-chosen password is TEMPORARY —
+        // the first sign-in goes through first-login setup, narrowed to the
+        // password (this email is the person's own). See `create` below.
+        const patch: any = { role, status: 'ACTIVE', passwordHash, mustSetupCredentials: true, setupPasswordOnly: true };
         if (firstName != null) patch.firstName = firstName;
         if (lastName != null) patch.lastName = lastName;
         u = await tx.user.update({
@@ -754,6 +757,18 @@ export class OnboardingService {
             status: 'ACTIVE',
             firstName,
             lastName,
+            // Launch QA S1 (2026-10-24) — THE ADMIN KNOWS THIS PASSWORD. It
+            // used to be a live credential for someone else's account forever
+            // ("they can change it after their first sign-in" — nothing made
+            // them), so the admin could sign in as that person indefinitely
+            // and nothing under that user could be attributed with
+            // confidence. Now it is temporary: the first sign-in is held at
+            // the existing first-login setup screen until the person chooses
+            // their own (JwtAuthGuard refuses everything else meanwhile, the
+            // emergency trigger included), and `setupPasswordOnly` keeps the
+            // email the admin typed — it is the person's own address.
+            mustSetupCredentials: true,
+            setupPasswordOnly: true,
           } as any,
         });
       }
@@ -764,7 +779,7 @@ export class OnboardingService {
           action: 'USER_CREATED_DIRECT',
           targetType: 'User',
           targetId: u.id,
-          details: JSON.stringify({ email, role, method: 'admin-set-password' }),
+          details: JSON.stringify({ email, role, method: 'admin-set-password', temporaryPassword: true }),
         },
       });
       return u;
@@ -799,7 +814,7 @@ export class OnboardingService {
     };
   }
 
-  async acceptInvite(input: { token: string; password: string }) {
+  async acceptInvite(input: { token: string; password: string; termsVersion?: string; ip?: string | null; userAgent?: string | null }) {
     validatePassword(input.password);
     if (!input.token) throw new BadRequestException('Invite token is required.');
 
@@ -855,14 +870,27 @@ export class OnboardingService {
 
     const passwordHash = await this.authService.hashPassword(input.password);
 
+    // Launch QA S2 (2026-10-24): the invitee ticks the End User License
+    // Agreement on the accept-invite form, and it is recorded on THEIR account
+    // here, in the same transaction. They used to be signed straight in
+    // without ever seeing it. Only the current version is accepted; an unknown
+    // one records nothing (the dashboard then asks), never a 400 that would
+    // strand someone accepting an invite on an older tab.
+    const termsAccepted = input.termsVersion === EULA_VERSION;
+    const acceptedAt = new Date();
+
     const user = await this.prisma.client.$transaction(async (tx) => {
       const user = await tx.user.update({
         where: { id: invite.userId!, tenantId: invite.tenantId },
-        data: { passwordHash, status: 'ACTIVE' },
+        data: {
+          passwordHash,
+          status: 'ACTIVE',
+          ...(termsAccepted ? { termsAcceptedVersion: EULA_VERSION, termsAcceptedAt: acceptedAt } : {}),
+        } as any,
       });
       await tx.userInvite.update({
         where: { id: invite.id, tenantId: invite.tenantId },
-        data: { acceptedAt: new Date() },
+        data: { acceptedAt },
       });
       await tx.auditLog.create({
         data: {
@@ -873,6 +901,24 @@ export class OnboardingService {
           targetId: user.id,
         },
       });
+      if (termsAccepted) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: invite.tenantId,
+            userId: user.id,
+            action: 'TERMS_ACCEPTED',
+            targetType: 'User',
+            targetId: user.id,
+            details: JSON.stringify({
+              document: 'eula',
+              version: EULA_VERSION,
+              method: 'invite',
+              ip: input.ip ?? null,
+              ua: (input.userAgent || '').slice(0, 256),
+            }),
+          },
+        });
+      }
       return user;
     });
 

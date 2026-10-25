@@ -841,7 +841,11 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             {t('settings.cc.people.accessButton')}
                           </button>
                         )}
-                        {manageable && !isPending && !user.mustSetupCredentials && (
+                        {/* An account awaiting setup normally chooses its own email at
+                            first sign-in — except one whose temporary password an admin
+                            set (launch QA S1): that email is the person's own, so a typo
+                            in it can still be fixed here. */}
+                        {manageable && !isPending && (!user.mustSetupCredentials || !!user.setupPasswordOnly) && (
                           <button
                             type="button"
                             onClick={() => {

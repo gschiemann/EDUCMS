@@ -277,7 +277,10 @@
       "overlaySr": "Emergency drill active. Screens are showing drill content. To end the drill, type CLEAR and authorize the all-clear.",
       "terminate": "End Drill (All Clear)",
       "playerBanner": "DRILL — THIS IS A DRILL",
-      "playerBannerSub": "Practice drill · Not a real emergency"
+      "playerBannerSub": "Practice drill · Not a real emergency",
+      "inProgress": "Drill in progress",
+      "viewDrill": "View drill",
+      "dashboardDesc": "Screens are showing drill content with a DRILL banner. Practice only, not a real emergency."
     }
   },
   "auth": {
@@ -1111,16 +1114,16 @@
         "inviteUser": "Invite user",
         "acceptLinkLabel": "Invitation accept link",
         "copyLink": "Copy link",
-        "modePasswordHelp": "Create the account now with a password you set. Hand it over in person or over chat — they can change it after first login.",
+        "modePasswordHelp": "Create the account now with a temporary password you choose. Hand it over in person or over chat — they choose their own password the first time they sign in.",
         "modeEmailHelp": "We generate an invitation link. The recipient sets their own password from that link — you never see it.",
         "firstName": "First name (optional)",
         "lastName": "Last name (optional)",
         "emailAddress": "Email address",
         "role": "Role",
         "temporaryPassword": "Temporary password",
-        "passwordHelp": "At least 8 characters. They can change it after their first sign-in.",
+        "passwordHelp": "At least 8 characters. It only works for their first sign-in — then they choose their own.",
         "passwordTooShort": "Password must be at least 8 characters.",
-        "createdOk": "Added {email}. They can sign in with the password you set.",
+        "createdOk": "Added {email}. They sign in once with the temporary password, then choose their own.",
         "inviteSent": "Invitation sent to {email}.",
         "inviteEmailNotConfigured": "Invitation created for {email}. Email isn't set up, so copy this link and send it to them yourself:",
         "inviteFailed": "Could not send the invitation.",
@@ -5431,7 +5434,11 @@
     "notYou": "Not your account? Sign out",
     "temporaryEmailLabel": "Temporary email:",
     "codeSentLead": "We sent a 6-digit code to",
-    "codeSentHint": "It can take a minute to arrive."
+    "codeSentHint": "It can take a minute to arrive.",
+    "passwordOnlyTitle": "Choose your own password",
+    "passwordOnlyIntro": "Your administrator gave you a temporary password. Choose your own now — only you will know it, and everything you do is recorded under your name.",
+    "signingInAsLabel": "You sign in as",
+    "passwordOnlyUnchanged": "Choose a new password — this is the temporary password you were given."
   },
   "accountSetupLink": {
     "title": "Set up your account",
@@ -6664,5 +6671,39 @@
     "tooShort": "Password must be at least 8 characters.",
     "mismatch": "Passwords do not match.",
     "acceptFailed": "Could not accept the invitation."
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "Replace on 1 screen?",
+    "replaceTitleMany": "Replace on {count} screens?",
+    "confirmReplace": "Replace",
+    "leadSwitchOn": "Switching “{name}” on",
+    "leadAddOne": "Adding that screen to “{name}”",
+    "leadAddMany": "Adding those screens to “{name}”",
+    "replaceOneScreen": "“{other}” is currently playing on {screens}. {lead} will replace it on that screen only — its other screens stay untouched.",
+    "replaceManyScreens": "“{other}” is currently playing on {screens}. {lead} will replace it on those screens only — its other screens stay untouched.",
+    "replaceMany": "These playlists overlap “{name}” on the listed screens:\n\n{list}\n\n{lead} will replace them on those screens only.",
+    "listItem": "• “{other}” on {screens}",
+    "keepTitleOne": "Keep “{other}” playing the rest of the time?",
+    "keepTitleMany": "Keep the other playlists playing the rest of the time?",
+    "keepOneScreen": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so that screen is never blank.",
+    "keepManyScreens": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so those screens are never blank.",
+    "keepMany": "“{name}” plays only at its scheduled times. The rest of the time, these keep playing, so no screen is left blank:\n\n{list}",
+    "alsoReplaces": "“{other}” on {screens} overlaps those times and will be replaced there.",
+    "hintOneScreen": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, that screen would then have nothing to play.",
+    "hintManyScreens": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, those screens would then have nothing to play.",
+    "hintMany": "Replace everything stops them on those screens instead. Outside the times of “{name}”, those screens would then have nothing to play.",
+    "confirmKeepOne": "Keep both",
+    "confirmKeepMany": "Keep them all",
+    "replaceEverything": "Replace everything",
+    "cancel": "Cancel"
+  },
+  "termsGate": {
+    "title": "Before you continue",
+    "intro": "Please read and accept the {brand} End User License Agreement. It explains what the product does — including how emergency alerts work — and what it cannot promise. You only do this once.",
+    "accept": "Accept and continue",
+    "saving": "Saving…",
+    "failed": "We couldn’t save that. Check your connection and try again.",
+    "version": "Version {version}",
+    "signOut": "Not you? Sign out"
   }
 }

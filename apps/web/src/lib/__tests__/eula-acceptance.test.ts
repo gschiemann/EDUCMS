@@ -5,15 +5,20 @@
  * a change to any of them silently makes every browser "first time" again (or
  * worse, makes a new browser look like it already accepted).
  */
+import { EULA_VERSION as API_EULA_VERSION } from '@cms/api-types';
 import {
+  clearParkedServerTermsAcceptance,
   clearPendingEulaAcceptance,
   commitPendingEulaAcceptance,
   eulaAcceptedOnThisDevice,
   EULA_ACCEPTED_KEY,
   EULA_PENDING_KEY,
   EULA_VERSION,
+  parkedServerTermsAcceptance,
+  parkServerTermsAcceptance,
   recordEulaAcceptance,
   stashPendingEulaAcceptance,
+  TERMS_SERVER_PENDING_KEY,
 } from '../eula-acceptance';
 
 beforeEach(() => {
@@ -98,5 +103,37 @@ describe('storage that throws (Safari private mode, locked-down kiosks)', () => 
       get.mockRestore();
       remove.mockRestore();
     }
+  });
+});
+
+// Launch QA S2 (2026-10-24) — the record that counts is the account's.
+describe('the version the server records against', () => {
+  it('is the SAME version the browser asks for — a drift would record acceptance of terms nobody saw', () => {
+    expect(EULA_VERSION).toBe(API_EULA_VERSION);
+  });
+});
+
+describe('a tick parked for the account (committed by the dashboard)', () => {
+  it('is bound to the account it was given for', () => {
+    parkServerTermsAcceptance('u1', new Date().toISOString());
+    expect(parkedServerTermsAcceptance('u1')).not.toBeNull();
+    expect(parkedServerTermsAcceptance('u2')).toBeNull();
+    expect(sessionStorage.getItem(TERMS_SERVER_PENDING_KEY)).toContain('"userId":"u1"');
+  });
+
+  it('is short-lived — evidence for the sign-in it was given in, not a later one', () => {
+    const now = Date.parse('2026-10-24T12:00:00Z');
+    parkServerTermsAcceptance('u1', new Date(now - 31 * 60_000).toISOString());
+    expect(parkedServerTermsAcceptance('u1', now)).toBeNull();
+    parkServerTermsAcceptance('u1', new Date(now - 5 * 60_000).toISOString());
+    expect(parkedServerTermsAcceptance('u1', now)).not.toBeNull();
+  });
+
+  it('is forgotten once used, and a garbled value is never trusted', () => {
+    parkServerTermsAcceptance('u1');
+    clearParkedServerTermsAcceptance();
+    expect(parkedServerTermsAcceptance('u1')).toBeNull();
+    sessionStorage.setItem(TERMS_SERVER_PENDING_KEY, '{not json');
+    expect(parkedServerTermsAcceptance('u1')).toBeNull();
   });
 });

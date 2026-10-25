@@ -14,6 +14,13 @@
  * coexist; the missing piece was a deterministic precedence.
  *
  * THE RULE (replace-mode rows compete; append rows never compete):
+ *   0. the FALLBACK tier rides last              (2026-10-24, launch QA U15 —
+ *      an always-on rule at a negative priority, see
+ *      schedule-window-overlap.ts FALLBACK_PRIORITY: a time-limited publish
+ *      keeps the always-on playlist it lands on as the fallback outside its
+ *      hours. Without this key a fallback PINNED to the screen would outrank a
+ *      GROUP-wide school-hours rule by key 1 and the new playlist would never
+ *      play there.)
  *   1. screen-pinned beats group-targeted        (the override the operator
  *                                                 just published wins)
  *   2. higher numeric priority beats lower
@@ -36,6 +43,22 @@ export interface OrderableSchedule {
   priority?: number | null;
   mode?: string | null;
   startTime?: Date | string | null;
+  /** The window fields — only read to recognise the fallback tier (key 0). */
+  daysOfWeek?: string | null;
+  timeStart?: string | null;
+  timeEnd?: string | null;
+}
+
+/**
+ * The fallback tier: ALWAYS-ON (no day/time window) at a NEGATIVE priority.
+ * Mirrors `isFallbackRule` in schedules/schedule-window-overlap.ts (kept as a
+ * local copy so this file stays dependency-free, like the web mirror in
+ * screens/v3/screenOps.ts). Nothing wrote a negative priority before the
+ * fallback tier existed, so every pre-existing manifest orders exactly as
+ * before.
+ */
+function isFallbackTier(s: OrderableSchedule): boolean {
+  return (s.priority ?? 0) < 0 && !s.daysOfWeek && !s.timeStart && !s.timeEnd;
 }
 
 /** 'screen' when the row is pinned to this exact screen, else 'group'. */
@@ -61,6 +84,11 @@ export function orderSchedulesForManifest<T extends OrderableSchedule>(schedules
     const aAppend = (a.mode ?? 'replace') === 'append' ? 1 : 0;
     const bAppend = (b.mode ?? 'replace') === 'append' ? 1 : 0;
     if (aAppend !== bAppend) return aAppend - bAppend; // replace rows first
+    if (!aAppend) {
+      const aFallback = isFallbackTier(a) ? 1 : 0;
+      const bFallback = isFallbackTier(b) ? 1 : 0;
+      if (aFallback !== bFallback) return aFallback - bFallback; // fallback tier last
+    }
     if (rank(a) !== rank(b)) return rank(a) - rank(b); // screen-pin first
     const ap = a.priority ?? 0;
     const bp = b.priority ?? 0;

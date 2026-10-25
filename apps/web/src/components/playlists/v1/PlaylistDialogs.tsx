@@ -24,15 +24,17 @@
  */
 
 import { useMemo, useState, type CSSProperties } from 'react';
+import { useTranslations } from 'next-intl';
 import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { Step3Screens, Step4Publish } from '@/components/playlists/PlaylistCreateWizard';
 import { publicationOptimizationNotice } from '@/components/playlists/publish-media-notice';
 import { useCreateSchedule, useUpdateSchedule, useSetScreenFaceMode } from '@/hooks/use-api';
-import { appConfirm } from '@/components/ui/app-dialog';
+import { askScreenConflicts } from './conflictPrompt';
 import {
   describeScreenConflicts,
   findScreenConflicts,
+  isTimeLimited,
   windowsCollide,
   type OpsGroupRef,
   type OpsPlaylistRef,
@@ -197,6 +199,8 @@ export function AddScreensDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const createSchedule = useCreateSchedule();
+  // The "one screen, two playlists" question, in the operator's language.
+  const tConflict = useTranslations('playlistConflict');
   /**
    * The picker renders the double-sided card, so this dialog has to be able to
    * answer "same on both sides / different per side" for real.
@@ -236,13 +240,14 @@ export function AddScreensDialog({
     setBusy(true);
     setError(null);
     try {
-      const base = {
+      const window = inheritedWindow(schedules);
+      const base: Record<string, unknown> = {
         playlistId,
         startTime: new Date().toISOString(),
         priority: 0,
         mode: 'replace' as const,
         isActive: true,
-        ...inheritedWindow(schedules),
+        ...window,
       };
       // A picked group becomes ONE group-scoped rule that keeps fanning out to
       // screens added to that group later; its members must not ALSO get a
@@ -278,7 +283,10 @@ export function AddScreensDialog({
         const conflicts = findScreenConflicts({
           // The window these new rules will carry. Breakfast beside lunch on
           // one screen is a supported setup, not a clash — only an overlap is.
-          windows: [inheritedWindow(schedules)],
+          windows: [window],
+          // Launch QA U15 — a windowed playlist keeps an always-on one there
+          // as the fallback outside its hours (the server's default).
+          limited: isTimeLimited({ ...window, startTime: base.startTime as string }),
           // The screens these rules will actually occupy — a group rule lands
           // on every member, which is what the server will displace against.
           targetScreenIds: [
@@ -295,18 +303,15 @@ export function AddScreensDialog({
           conflicts,
           playlistName || 'this playlist',
           'add-screens',
+          { t: tConflict },
         );
-        if (prompt) {
-          const ok = await appConfirm({
-            title: prompt.title,
-            message: prompt.message,
-            tone: 'warn',
-            confirmLabel: prompt.confirmLabel,
-          });
-          // Refusing leaves the picks intact so the operator can deselect the
-          // screens they did not mean to take, rather than starting over.
-          if (!ok) { setBusy(false); return; }
-        }
+        const answer = await askScreenConflicts(prompt, { cancelLabel: tConflict('cancel') });
+        // Refusing leaves the picks intact so the operator can deselect the
+        // screens they did not mean to take, rather than starting over.
+        if (!answer.proceed) { setBusy(false); return; }
+        // "Replace everything" — switch an always-on playlist there off
+        // instead of keeping it for the other hours (launch QA U15).
+        if (answer.replaceAlwaysOn) for (const rule of rules) (rule as Record<string, unknown>).replaceAlwaysOn = true;
       }
 
       await Promise.all(rules.map((r) => createSchedule.mutateAsync(r as any)));

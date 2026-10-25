@@ -44,8 +44,21 @@ interface PromptRequest extends BaseRequest {
   placeholder?: string;
   resolve: (value: string | null) => void;
 }
+/**
+ * 2026-10-24 (launch QA U15) — a question with THREE answers: the default
+ * (`confirmLabel`), an explicit alternative (`alternateLabel`) and Cancel.
+ * First use: "Keep both" / "Replace everything" / Cancel when a time-limited
+ * playlist lands on screens that run an always-on one.
+ */
+interface ChoiceRequest extends BaseRequest {
+  kind: 'choice';
+  alternateLabel: string;
+  resolve: (choice: AppChoice) => void;
+}
 
-type DialogRequest = ConfirmRequest | AlertRequest | PromptRequest;
+export type AppChoice = 'confirm' | 'alternate' | 'cancel';
+
+type DialogRequest = ConfirmRequest | AlertRequest | PromptRequest | ChoiceRequest;
 
 // ─── Singleton subscriber registry ───────────────────────────────────
 type Listener = (req: DialogRequest | null) => void;
@@ -89,6 +102,32 @@ export function appConfirm(opts: {
       cancelLabel: opts.cancelLabel,
       resolve,
     } as Omit<ConfirmRequest, 'id'>);
+  });
+}
+
+/**
+ * Three answers instead of two: resolves `'confirm'` (the default, focused on
+ * open), `'alternate'` or `'cancel'` (Escape, the close button, the backdrop).
+ */
+export function appChoose(opts: {
+  title?: string;
+  message: string;
+  tone?: DialogTone;
+  confirmLabel: string;
+  alternateLabel: string;
+  cancelLabel?: string;
+}): Promise<AppChoice> {
+  return new Promise(resolve => {
+    push({
+      kind: 'choice',
+      title: opts.title,
+      message: opts.message,
+      tone: opts.tone || 'default',
+      confirmLabel: opts.confirmLabel,
+      alternateLabel: opts.alternateLabel,
+      cancelLabel: opts.cancelLabel,
+      resolve,
+    } as Omit<ChoiceRequest, 'id'>);
   });
 }
 
@@ -174,6 +213,8 @@ export function AppDialogHost() {
   // so the browser's default Tab traversal never gets a chance.
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  /** The middle answer of a three-answer `appChoose`. */
+  const alternateBtnRef = useRef<HTMLButtonElement>(null);
   // Container ref for the Tab focus trap (a11y wave, 2026-08-24) — scopes
   // the "what's focusable right now" query to just this dialog's DOM.
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -232,6 +273,7 @@ export function AppDialogHost() {
       if (e.key === 'Escape') {
         if (current.kind === 'confirm') (current as ConfirmRequest).resolve(false);
         else if (current.kind === 'prompt') (current as PromptRequest).resolve(null);
+        else if (current.kind === 'choice') (current as ChoiceRequest).resolve('cancel');
         else (current as AlertRequest).resolve(true);
         dismiss(current.id);
         return;
@@ -241,7 +283,13 @@ export function AppDialogHost() {
         // back to confirm if focus isn't on a tracked button (e.g.
         // first-render Enter before the user has navigated).
         const focused = document.activeElement;
-        if (focused === cancelBtnRef.current) {
+        if (current.kind === 'choice') {
+          (current as ChoiceRequest).resolve(
+            focused === cancelBtnRef.current ? 'cancel'
+              : focused === alternateBtnRef.current ? 'alternate'
+              : 'confirm',
+          );
+        } else if (focused === cancelBtnRef.current) {
           if (current.kind === 'confirm') (current as ConfirmRequest).resolve(false);
           else (current as AlertRequest).resolve(true);
         } else {
@@ -283,6 +331,22 @@ export function AppDialogHost() {
         } else {
           (idx === -1 || idx === focusable.length - 1 ? first : focusable[idx + 1]).focus();
         }
+        return;
+      }
+      if (current.kind === 'choice') {
+        // Three buttons, in reading order: Cancel · alternate · confirm.
+        const isNext = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+        const isPrev = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+        if (!isNext && !isPrev) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const order = [cancelBtnRef.current, alternateBtnRef.current, confirmBtnRef.current]
+          .filter((b): b is HTMLButtonElement => !!b);
+        const at = order.indexOf(document.activeElement as HTMLButtonElement);
+        const next = at === -1
+          ? order[order.length - 1]
+          : order[(at + (isNext ? 1 : order.length - 1)) % order.length];
+        next?.focus();
         return;
       }
       if (current.kind !== 'confirm') return; // arrow-key D-pad is confirm-only
@@ -344,7 +408,7 @@ export function AppDialogHost() {
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-        onClick={() => current.kind !== 'alert' && close(current.kind === 'prompt' ? null : false)}
+        onClick={() => current.kind !== 'alert' && close(current.kind === 'prompt' ? null : current.kind === 'choice' ? 'cancel' : false)}
       />
 
       {/* Modal card. 2026-05-14 — mobile sizing: pb-safe so iOS home
@@ -355,7 +419,7 @@ export function AppDialogHost() {
         {/* Close x — bigger tap target on mobile (44×44 iOS guideline) */}
         {current.kind !== 'alert' && (
           <button
-            onClick={() => close(current.kind === 'prompt' ? null : false)}
+            onClick={() => close(current.kind === 'prompt' ? null : current.kind === 'choice' ? 'cancel' : false)}
             aria-label="Cancel"
             className="absolute top-2 right-2 md:top-3 md:right-3 w-11 h-11 md:w-8 md:h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
           >
@@ -420,17 +484,29 @@ export function AppDialogHost() {
               ref={cancelBtnRef}
               type="button"
               tabIndex={0}
-              onClick={() => close(current.kind === 'prompt' ? null : false)}
+              onClick={() => close(current.kind === 'prompt' ? null : current.kind === 'choice' ? 'cancel' : false)}
               className={`${DIALOG_BTN} text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 focus:ring-indigo-500`}
             >
               {current.cancelLabel || 'Cancel'}
+            </button>
+          )}
+          {current.kind === 'choice' && (
+            <button
+              ref={alternateBtnRef}
+              type="button"
+              tabIndex={0}
+              data-testid="app-dialog-alternate"
+              onClick={() => close('alternate')}
+              className={`${DIALOG_BTN} text-rose-700 bg-white border border-rose-200 hover:bg-rose-50 active:bg-rose-100 focus:ring-rose-400`}
+            >
+              {(current as ChoiceRequest).alternateLabel}
             </button>
           )}
           <button
             ref={confirmBtnRef}
             type="button"
             tabIndex={0}
-            onClick={() => close(current.kind === 'prompt' ? promptValue : true)}
+            onClick={() => close(current.kind === 'prompt' ? promptValue : current.kind === 'choice' ? 'confirm' : true)}
             className={`${DIALOG_BTN} text-white focus:ring-indigo-300 ${tone.confirmBtn}`}
           >
             {current.confirmLabel || (current.kind === 'alert' ? 'OK' : current.kind === 'prompt' ? 'Submit' : 'Confirm')}

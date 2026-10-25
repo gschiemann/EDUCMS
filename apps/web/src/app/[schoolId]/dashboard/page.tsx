@@ -36,6 +36,7 @@ import {
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
+import { useEmergencyDrillOnly } from '@/hooks/use-emergency-drill';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
@@ -423,6 +424,10 @@ export default function DashboardPage() {
 
   const emergencyActive = !!(tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
   const emergencyMode = tenant?.emergencyStatus as string | undefined;
+  // A practice DRILL is worded as one on this card (launch QA U16): it read
+  // "ACTIVE EMERGENCY · CRITICAL · All screens are displaying the emergency
+  // override" during a drill. Wording only.
+  const emergencyDrill = useEmergencyDrillOnly();
   // Backwards-compat — some downstream sections still reference
   // `isEmpty` for "nothing to do here" empty states. Kept as an alias.
   const isEmpty = (assets?.length || 0) === 0 && fleet.total === 0;
@@ -647,7 +652,31 @@ export default function DashboardPage() {
           leads the page, then the district command center, then the fleet
           map, then the quiet health line. For a single-school tenant nothing
           renders between the two arms, so its dashboard order is unchanged. */}
-      {emergencyActive && (
+      {emergencyActive && emergencyDrill && (
+        <div
+          data-testid="dashboard-drill-card"
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-700 to-indigo-500 text-white shadow-lg shadow-indigo-500/30 border border-indigo-400/50"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
+          <div className="relative p-5 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-white/20 md:backdrop-blur flex items-center justify-center shrink-0 animate-pulse">
+              <Siren className="w-7 h-7" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold tracking-widest uppercase opacity-90">{t('emergency.drill.drill')}</div>
+              <div className="text-xl font-bold mt-0.5">{t('emergency.drill.inProgress')}</div>
+              <div className="text-sm opacity-90 mt-0.5">{t('emergency.drill.dashboardDesc')}</div>
+            </div>
+            <Link
+              href={`${tenantBase}/emergency/broadcast`}
+              className="shrink-0 px-4 py-2.5 rounded-xl bg-white/95 text-indigo-700 text-sm font-bold hover:bg-white shadow-sm transition-colors"
+            >
+              {t('dashboard.emergencyConsole')}
+            </Link>
+          </div>
+        </div>
+      )}
+      {emergencyActive && !emergencyDrill && (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
           <div className="relative p-5 flex items-center gap-4">

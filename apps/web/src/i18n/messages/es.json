@@ -277,7 +277,10 @@
       "overlaySr": "Simulacro de emergencia activo. Las pantallas muestran el contenido del simulacro. Para terminarlo, escriba CLEAR y autorice el fin de la alerta.",
       "terminate": "Terminar simulacro (fin de alerta)",
       "playerBanner": "SIMULACRO — ESTO ES UN SIMULACRO",
-      "playerBannerSub": "Simulacro de práctica · No es una emergencia real"
+      "playerBannerSub": "Simulacro de práctica · No es una emergencia real",
+      "inProgress": "Simulacro en curso",
+      "viewDrill": "Ver simulacro",
+      "dashboardDesc": "Las pantallas muestran el contenido del simulacro con un aviso de SIMULACRO. Es solo una práctica, no una emergencia real."
     }
   },
   "auth": {
@@ -1111,16 +1114,16 @@
         "inviteUser": "Invitar usuario",
         "acceptLinkLabel": "Enlace para aceptar la invitación",
         "copyLink": "Copiar enlace",
-        "modePasswordHelp": "Crea la cuenta ahora con una contraseña que tú defines. Entrégala en persona o por chat: podrán cambiarla tras el primer inicio de sesión.",
+        "modePasswordHelp": "Crea la cuenta ahora con una contraseña temporal que tú eliges. Entrégala en persona o por chat: elegirán su propia contraseña la primera vez que inicien sesión.",
         "modeEmailHelp": "Generamos un enlace de invitación. La persona define su propia contraseña desde ese enlace; tú nunca la ves.",
         "firstName": "Nombre (opcional)",
         "lastName": "Apellido (opcional)",
         "emailAddress": "Correo electrónico",
         "role": "Rol",
         "temporaryPassword": "Contraseña temporal",
-        "passwordHelp": "Al menos 8 caracteres. Podrán cambiarla tras su primer inicio de sesión.",
+        "passwordHelp": "Al menos 8 caracteres. Solo sirve para su primer inicio de sesión; después eligen la suya.",
         "passwordTooShort": "La contraseña debe tener al menos 8 caracteres.",
-        "createdOk": "Se agregó {email}. Puede iniciar sesión con la contraseña que definiste.",
+        "createdOk": "Se agregó {email}. Inicia sesión una vez con la contraseña temporal y luego elige la suya.",
         "inviteSent": "Invitación enviada a {email}.",
         "inviteEmailNotConfigured": "Invitación creada para {email}. El correo no está configurado, así que copia este enlace y envíaselo tú:",
         "inviteFailed": "No se pudo enviar la invitación.",
@@ -5431,7 +5434,11 @@
     "notYou": "¿No es tu cuenta? Cierra sesión",
     "temporaryEmailLabel": "Correo temporal:",
     "codeSentLead": "Enviamos un código de 6 dígitos a",
-    "codeSentHint": "Puede tardar un minuto en llegar."
+    "codeSentHint": "Puede tardar un minuto en llegar.",
+    "passwordOnlyTitle": "Elige tu propia contraseña",
+    "passwordOnlyIntro": "Tu administrador te dio una contraseña temporal. Elige la tuya ahora: solo tú la conocerás y todo lo que hagas queda registrado a tu nombre.",
+    "signingInAsLabel": "Inicias sesión como",
+    "passwordOnlyUnchanged": "Elige una contraseña nueva: esta es la contraseña temporal que te dieron."
   },
   "accountSetupLink": {
     "title": "Configura tu cuenta",
@@ -6664,5 +6671,39 @@
     "tooShort": "La contraseña debe tener al menos 8 caracteres.",
     "mismatch": "Las contraseñas no coinciden.",
     "acceptFailed": "No se pudo aceptar la invitación."
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "¿Reemplazar en 1 pantalla?",
+    "replaceTitleMany": "¿Reemplazar en {count} pantallas?",
+    "confirmReplace": "Reemplazar",
+    "leadSwitchOn": "Activar “{name}”",
+    "leadAddOne": "Agregar esa pantalla a “{name}”",
+    "leadAddMany": "Agregar esas pantallas a “{name}”",
+    "replaceOneScreen": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esa pantalla; sus otras pantallas no cambian.",
+    "replaceManyScreens": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esas pantallas; sus otras pantallas no cambian.",
+    "replaceMany": "Estas listas coinciden con “{name}” en las pantallas indicadas:\n\n{list}\n\n{lead} las reemplazará solo en esas pantallas.",
+    "listItem": "• “{other}” en {screens}",
+    "keepTitleOne": "¿Mantener “{other}” el resto del tiempo?",
+    "keepTitleMany": "¿Mantener las otras listas el resto del tiempo?",
+    "keepOneScreen": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esa pantalla nunca queda en blanco.",
+    "keepManyScreens": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esas pantallas nunca quedan en blanco.",
+    "keepMany": "“{name}” solo se reproduce en su horario. El resto del tiempo, estas siguen reproduciéndose y ninguna pantalla queda en blanco:\n\n{list}",
+    "alsoReplaces": "“{other}” en {screens} coincide con ese horario y se reemplazará allí.",
+    "hintOneScreen": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esa pantalla no tendría nada que reproducir.",
+    "hintManyScreens": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
+    "hintMany": "Reemplazar todo las detiene en esas pantallas. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
+    "confirmKeepOne": "Mantener ambas",
+    "confirmKeepMany": "Mantener todas",
+    "replaceEverything": "Reemplazar todo",
+    "cancel": "Cancelar"
+  },
+  "termsGate": {
+    "title": "Antes de continuar",
+    "intro": "Lee y acepta el Contrato de Licencia de Usuario Final de {brand}. Explica lo que hace el producto, incluido cómo funcionan las alertas de emergencia, y lo que no puede garantizar. Solo lo harás una vez.",
+    "accept": "Aceptar y continuar",
+    "saving": "Guardando…",
+    "failed": "No pudimos guardarlo. Revisa tu conexión e inténtalo de nuevo.",
+    "version": "Versión {version}",
+    "signOut": "¿No eres tú? Cerrar sesión"
   }
 }

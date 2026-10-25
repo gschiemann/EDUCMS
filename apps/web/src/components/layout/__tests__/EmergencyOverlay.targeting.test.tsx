@@ -91,6 +91,32 @@ describe('EmergencyOverlay — DRILL vs LIVE', () => {
     expect(screen.getAllByTestId('emergency-alert-drill-badge')).toHaveLength(1);
   });
 
+  // 2026-10-24 (launch QA U16) — the overlay is the one component that reads
+  // the live alert list; it publishes its DRILL/LIVE answer so the strip, the
+  // pills and the dashboard card say the same thing.
+  it('publishes its DRILL / LIVE answer for the rest of the dashboard, and drops it on unmount', async () => {
+    fetchActiveAlerts.mockResolvedValue([GYM_DRILL]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <QueryClientProvider client={qc}>
+          <EmergencyOverlay />
+        </QueryClientProvider>,
+      );
+    });
+    await waitFor(() => expect(useUIStore.getState().emergencyDrillOnly).toBe(true));
+    view.unmount();
+    expect(useUIStore.getState().emergencyDrillOnly).toBeNull();
+  });
+
+  it('publishes LIVE when a real alert is among the drills', async () => {
+    fetchActiveAlerts.mockResolvedValue([GYM_DRILL, LOBBY]);
+    await renderOverlay();
+    await waitFor(() => expect(screen.getByTestId('emergency-active-alerts')).toHaveTextContent('Medical — Lobby'));
+    expect(useUIStore.getState().emergencyDrillOnly).toBe(false);
+  });
+
   it('the all-clear for a drill goes to exactly that drill, through the same CLEAR gate', async () => {
     fetchActiveAlerts.mockResolvedValueOnce([LOBBY_DRILL]).mockResolvedValue([]);
     allClearEmergency.mockResolvedValue({ success: true });

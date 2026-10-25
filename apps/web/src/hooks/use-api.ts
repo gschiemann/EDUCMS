@@ -1452,6 +1452,10 @@ export function useCreateSchedule() {
       // Used by the "Save" button in the Publish modal so operators can
       // stage a schedule without flipping any screens.
       isActive?: boolean;
+      // 2026-10-24 (launch QA U15) — the operator chose "Replace everything":
+      // switch off an always-on playlist on these screens instead of keeping
+      // it as the fallback outside this rule's hours (the default).
+      replaceAlwaysOn?: boolean;
     }) =>
       apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }).then((res: unknown) => {
         // The video gate (2026-10-12): the publish went through; say which
@@ -2985,6 +2989,12 @@ export type TeamUser = {
   status?: string;
   /** 2026-10-10 — still on its provisioning starter credentials (offer a setup link). Optional: older API. */
   mustSetupCredentials?: boolean;
+  /**
+   * 2026-10-24 (launch QA S1) — an admin set this account's TEMPORARY
+   * password; its owner chooses only a password at first sign-in, so its email
+   * (the person's own) can still be corrected. Optional: older API.
+   */
+  setupPasswordOnly?: boolean;
   /**
    * 2026-10-11 — may fire emergency alerts without an admin role
    * (`User.canTriggerPanic`). Optional: an older API build does not send it;

@@ -33,6 +33,12 @@
  * namespace of the three catalogs (held at key parity by
  * `check-i18n-parity.cjs`). It used to be English-only.
  *
+ * PASSWORD-ONLY (2026-10-24, launch QA S1): an admin who sets someone's
+ * password in People ("Set password now") now creates a TEMPORARY one. That
+ * account carries `setupPasswordOnly` too, and this screen then asks for one
+ * thing only — the person's own password — and shows the email they sign in
+ * with instead of asking for one: the admin typed their real address.
+ *
  * FIRST SIGN-IN ORDER (2026-10-10): this screen now comes BEFORE the required
  * two-step setup. When `/auth/complete-setup` answers with the enrollment
  * envelope (no session yet), the envelope is handed to the sign-in page
@@ -73,6 +79,9 @@ function looksLikeEmail(value: string): boolean {
 
 type FieldErrors = { email?: string; confirmEmail?: string; password?: string; confirm?: string };
 
+/** What this account's setup asks for: the email AND a password, or the password only (S1). */
+type SetupMode = 'full' | 'password' | 'unknown';
+
 export function CredentialSetupGate() {
   const t = useTranslations('credentialSetup');
   const brand = getClientBrand();
@@ -100,12 +109,56 @@ export function CredentialSetupGate() {
   const [twoStepNext, setTwoStepNext] = useState(false);
 
   const emailRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+
+  // Which setup this is (launch QA S1). The sign-in answer says so; a session
+  // cached before it did (or a store set by a 403 SETUP_REQUIRED) asks
+  // GET /users/me — one of the routes a setup-state account may reach.
+  const known = (user as { setupPasswordOnly?: unknown } | null)?.setupPasswordOnly;
+  const [mode, setMode] = useState<SetupMode>(
+    known === true ? 'password' : known === false ? 'full' : 'unknown',
+  );
+  const passwordOnly = mode === 'password';
+  useEffect(() => {
+    if (mode !== 'unknown') return;
+    let cancelled = false;
+    // Bounded across the body read: a stalled answer must not leave this
+    // screen on a spinner — after 8 s it shows the full form, as before.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 8_000);
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/users/me`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${useUIStore.getState().token ?? ''}` },
+          signal: abort.signal,
+        });
+        const me = res.ok ? await res.json().catch(() => null) : null;
+        if (cancelled) return;
+        // Unreadable → the full form, exactly as before; the server keeps an
+        // admin-entered email whatever this screen sends.
+        setMode(me?.setupPasswordOnly === true ? 'password' : 'full');
+      } catch {
+        if (!cancelled) setMode('full');
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [mode]);
+
   useEffect(() => {
     // Focus the first field a keyboard-only operator has to fill in. Done in
-    // an effect rather than `autoFocus` so it runs once, after hydration, and
-    // never fights the browser's own restoration on a back-navigation.
-    emailRef.current?.focus();
-  }, []);
+    // an effect rather than `autoFocus` so it runs once the form is on screen,
+    // after hydration, and never fights the browser's own restoration on a
+    // back-navigation. Password-only setup starts on the password.
+    if (mode === 'unknown') return;
+    (mode === 'password' ? passwordRef : emailRef).current?.focus();
+  }, [mode]);
 
   const placeholderEmail = user?.email ?? '';
 
@@ -114,16 +167,18 @@ export function CredentialSetupGate() {
       (): FieldErrors => {
         const next: FieldErrors = {};
         const trimmed = email.trim();
-        if (!trimmed) next.email = t('emailRequired');
-        else if (!looksLikeEmail(trimmed)) next.email = t('emailInvalid');
-        else if (trimmed.toLowerCase() === placeholderEmail.trim().toLowerCase()) {
-          next.email = t('emailIsPlaceholder');
-        }
-        // Typed twice: this address receives every sign-in code and password
-        // reset from now on, and a typo here strands the account (nothing
-        // verifies the mailbox yet — Greg, 2026-10-05).
-        if (!next.email && confirmEmail.trim().toLowerCase() !== trimmed.toLowerCase()) {
-          next.confirmEmail = t('emailMismatch');
+        if (!passwordOnly) {
+          if (!trimmed) next.email = t('emailRequired');
+          else if (!looksLikeEmail(trimmed)) next.email = t('emailInvalid');
+          else if (trimmed.toLowerCase() === placeholderEmail.trim().toLowerCase()) {
+            next.email = t('emailIsPlaceholder');
+          }
+          // Typed twice: this address receives every sign-in code and password
+          // reset from now on, and a typo here strands the account (nothing
+          // verifies the mailbox yet — Greg, 2026-10-05).
+          if (!next.email && confirmEmail.trim().toLowerCase() !== trimmed.toLowerCase()) {
+            next.confirmEmail = t('emailMismatch');
+          }
         }
         if (password.length < MIN_PASSWORD_LENGTH) {
           next.password = t('passwordTooShort', { min: MIN_PASSWORD_LENGTH });
@@ -131,7 +186,7 @@ export function CredentialSetupGate() {
         if (confirm !== password) next.confirm = t('passwordMismatch');
         return next;
       },
-    [email, confirmEmail, password, confirm, placeholderEmail, t],
+    [email, confirmEmail, password, confirm, placeholderEmail, passwordOnly, t],
   );
 
   // Deliberately raw fetches rather than `apiFetch`: these calls happen while
@@ -193,11 +248,17 @@ export function CredentialSetupGate() {
         method: 'POST',
         credentials: 'include',
         headers: await authHeaders(),
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-          ...(code ? { emailCode: code } : {}),
-        }),
+        // Password-only (S1): the email stays the one the admin entered, so
+        // none is sent — the server keeps it from the account row anyway.
+        body: JSON.stringify(
+          passwordOnly
+            ? { password }
+            : {
+                email: email.trim().toLowerCase(),
+                password,
+                ...(code ? { emailCode: code } : {}),
+              },
+        ),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -244,7 +305,7 @@ export function CredentialSetupGate() {
           break;
         case 'SETUP_PASSWORD_UNCHANGED':
           setCodeStep(false);
-          setFieldErrors({ password: t('passwordUnchanged') });
+          setFieldErrors({ password: passwordOnly ? t('passwordOnlyUnchanged') : t('passwordUnchanged') });
           break;
         case 'SETUP_EMAIL_CODE_REQUIRED':
           // The server now verifies addresses (mail was just switched on):
@@ -306,6 +367,11 @@ export function CredentialSetupGate() {
 
     setSubmitting(true);
     try {
+      if (passwordOnly) {
+        // No address changes, so there is no code to send (S1).
+        await finishSetup();
+        return;
+      }
       const outcome = await requestCode();
       // Verification is off for this deploy: save straight away, as before.
       if (outcome === 'not-required') await finishSetup();
@@ -352,7 +418,7 @@ export function CredentialSetupGate() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            {t('title')}
+            {passwordOnly ? t('passwordOnlyTitle') : t('title')}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             {t('subtitle', { brand: brand.name })}
@@ -366,13 +432,20 @@ export function CredentialSetupGate() {
             </div>
           </div>
 
+          {mode === 'unknown' ? (
+            <div role="status" className="flex items-center justify-center py-8 text-slate-500">
+              <Loader2 className="w-5 h-5 animate-spin" aria-hidden />
+              <span className="sr-only">{t('saving')}</span>
+            </div>
+          ) : (
+          <>
           <p className="text-xs text-slate-600 leading-relaxed mb-5">
-            {t('intro')}
+            {passwordOnly ? t('passwordOnlyIntro') : t('intro')}
           </p>
           {placeholderEmail && (
-            <p className="-mt-3 mb-5 text-xs text-slate-500">
-              {t('temporaryEmailLabel')}{' '}
-              <span className="font-mono text-slate-500 break-all">{placeholderEmail}</span>
+            <p className="-mt-3 mb-5 text-xs text-slate-500" data-testid="setup-signin-email">
+              {passwordOnly ? t('signingInAsLabel') : t('temporaryEmailLabel')}{' '}
+              <span className={`break-all ${passwordOnly ? 'font-semibold text-slate-800' : 'font-mono text-slate-500'}`}>{placeholderEmail}</span>
             </p>
           )}
 
@@ -435,6 +508,8 @@ export function CredentialSetupGate() {
               </div>
             ) : (
               <>
+            {!passwordOnly && (
+            <>
             <div>
               <label htmlFor="setup-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
                 {t('emailLabel')}
@@ -483,6 +558,8 @@ export function CredentialSetupGate() {
                 </p>
               )}
             </div>
+            </>
+            )}
 
             <div>
               <label htmlFor="setup-password" className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -490,6 +567,7 @@ export function CredentialSetupGate() {
               </label>
               <input
                 id="setup-password"
+                ref={passwordRef}
                 name="new-password"
                 type="password"
                 autoComplete="new-password"
@@ -554,6 +632,8 @@ export function CredentialSetupGate() {
               )}
             </button>
           </form>
+          </>
+          )}
         </div>
 
         {/* An operator handed the wrong starter credential must not be trapped

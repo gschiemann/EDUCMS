@@ -259,4 +259,18 @@ describe('POST /auth/complete-setup — with the emailed code required', () => {
     await expect(finish(controller)).resolves.toMatchObject({ success: true });
     expect(userUpdate).toHaveBeenCalled();
   });
+
+  // Launch QA S1 (2026-10-24) — an admin-set temporary password: the email is
+  // the person's own and does not change, so there is nothing to prove.
+  it('a PASSWORD-ONLY setup needs no code — none is sent, and setup finishes on the password alone', async () => {
+    const { controller, userUpdate, emailService } = setup({ dbUser: { setupPasswordOnly: true } as any });
+    await expect(send(controller)).resolves.toEqual({ required: false });
+    expect(emailService.sendSetupEmailCode).not.toHaveBeenCalled();
+    await expect(
+      controller.completeSetup({ password: 'a-real-password-1' } as any, makeReq()),
+    ).resolves.toMatchObject({ success: true });
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ email: DB_USER.email, mustSetupCredentials: false, setupPasswordOnly: false }) }),
+    );
+  });
 });

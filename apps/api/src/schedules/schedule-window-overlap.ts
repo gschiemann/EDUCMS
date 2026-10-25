@@ -105,6 +105,65 @@ export function isFallbackRule(
 }
 
 /**
+ * DOES A RULE COVER ONLY PART OF THE TIME? (2026-10-24, launch QA U15)
+ *
+ * True for a day/time window (Mon–Fri 08:00–15:00), for an end date (the rule
+ * stops by itself) and for a start that is still ahead (it has not begun).
+ * The manifest only carries a rule inside its dates, and the player only plays
+ * it inside its window — so outside those hours a screen whose ONLY rule is
+ * this one shows nothing at all.
+ *
+ * `startTime` gets a minute of slack: a publish that means "now" is stamped by
+ * the browser a few hundred milliseconds before the server reads it, and a
+ * browser clock a little ahead must not read as "starts later".
+ *
+ * The web side keeps a byte-for-byte port (`playlistOps.ts` `isTimeLimited`) —
+ * the conflict prompt must describe exactly what this server will do.
+ */
+export const START_SLACK_MS = 60_000;
+
+export function isTimeLimited(
+  rule: WindowFields & { startTime?: Date | string | null; endTime?: Date | string | null },
+  nowMs: number = Date.now(),
+): boolean {
+  if (!isAlwaysOn(rule)) return true;
+  if (rule.endTime != null && rule.endTime !== '') return true;
+  if (rule.startTime == null || rule.startTime === '') return false;
+  const start = new Date(rule.startTime).getTime();
+  return Number.isFinite(start) && start > nowMs + START_SLACK_MS;
+}
+
+/**
+ * KEEP THE ALWAYS-ON PLAYLIST AS THE FALLBACK (2026-10-24, launch QA U15).
+ *
+ * The owner's rule: publishing a time-limited playlist (school hours, Mon–Fri
+ * 08:00–15:00) onto a screen that runs an always-on one must NOT switch the
+ * always-on one off. It stays, as the fallback outside the new playlist's
+ * hours, so the screen is never blank evenings and weekends. Only an explicit
+ * "Replace everything" removes it.
+ *
+ * Kept = demoted to FALLBACK_PRIORITY, which is exactly the base-playlist tier
+ * this file already defines: displacement exempts it, and the manifest ranks
+ * it after every other replace rule (effective-schedule.ts), so the new
+ * playlist wins inside its window and the old one fills every gap.
+ *
+ * A candidate qualifies only when the incoming rule is time-limited, the
+ * candidate is ALWAYS-ON (no day/time window), replace-mode, and not already
+ * the fallback. The caller excludes the incoming playlist's own rules — a
+ * playlist narrowed to a window must not keep its own old all-day rule.
+ */
+export function keepsAsFallback(
+  candidate: WindowFields & { priority?: number | null; mode?: string | null },
+  incoming: WindowFields & { startTime?: Date | string | null; endTime?: Date | string | null; priority?: number | null },
+  nowMs: number = Date.now(),
+): boolean {
+  if ((candidate.mode ?? 'replace') === 'append') return false;
+  if (isFallbackRule(incoming)) return false;
+  if (!isTimeLimited(incoming, nowMs)) return false;
+  return isAlwaysOn(candidate) && !isFallbackRule(candidate);
+}
+
+/**
  * Should `candidate` (an existing ACTIVE row) be stood down to make room for
  * `incoming`?
  *

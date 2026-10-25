@@ -122,6 +122,7 @@ describe('AuthController.completeSetup', () => {
           email: 'dana@riotcolor.com',
           passwordHash: '$argon2id$new-hash',
           mustSetupCredentials: false,
+          setupPasswordOnly: false,
         },
       });
       expect(res.success).toBe(true);
@@ -190,6 +191,10 @@ describe('AuthController.completeSetup', () => {
         tenantVertical: 'RETAIL',
         canTriggerPanic: false,
         mustSetupCredentials: false,
+        // Launch QA S1 / S2 — the setup screen's mode is over, and the EULA
+        // record rides along so the dashboard asks only when it must.
+        setupPasswordOnly: false,
+        termsAcceptedVersion: null,
       });
     });
 
@@ -288,6 +293,77 @@ describe('AuthController.completeSetup', () => {
     it('rethrows a non-P2002 database error rather than mislabelling it', async () => {
       const { controller } = setup({ updateThrows: new Error('connection reset') });
       await expect(controller.completeSetup(BODY as any, makeReq())).rejects.toThrow('connection reset');
+    });
+  });
+
+  // Launch QA S1 (2026-10-24): a password an ADMIN set for someone else
+  // ("Set password now") is temporary. Such an account carries
+  // `setupPasswordOnly`: its email is the person's own, so setup replaces the
+  // password ONLY — the live row decides, never the request body.
+  describe('password-only setup (an admin-set temporary password)', () => {
+    const OWN_EMAIL = 'pat@school.example';
+    const PASSWORD_ONLY = { email: OWN_EMAIL, setupPasswordOnly: true };
+
+    it('keeps the account email, retires the temporary password, clears BOTH flags in one write', async () => {
+      const { controller, userUpdate } = setup({ dbUser: PASSWORD_ONLY });
+      const res: any = await controller.completeSetup({ password: BODY.password } as any, makeReq());
+      expect(userUpdate).toHaveBeenCalledTimes(1);
+      expect(userUpdate).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: {
+          email: OWN_EMAIL,
+          passwordHash: '$argon2id$new-hash',
+          mustSetupCredentials: false,
+          setupPasswordOnly: false,
+        },
+      });
+      expect(res.success).toBe(true);
+      expect(res.user).toMatchObject({ email: OWN_EMAIL, mustSetupCredentials: false, setupPasswordOnly: false });
+    });
+
+    it('an email in the body cannot change the address — the admin entered it, the row decides', async () => {
+      const { controller, userUpdate } = setup({ dbUser: PASSWORD_ONLY });
+      await controller.completeSetup({ email: 'attacker@evil.example', password: BODY.password } as any, makeReq());
+      expect(userUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email: OWN_EMAIL }) }),
+      );
+    });
+
+    it('still refuses keeping the temporary password, in its own words', async () => {
+      const { controller, userUpdate } = setup({ dbUser: PASSWORD_ONLY, passwordUnchanged: true });
+      await expect(controller.completeSetup({ password: BODY.password } as any, makeReq())).rejects.toMatchObject({
+        response: {
+          code: 'SETUP_PASSWORD_UNCHANGED',
+          message: 'Choose a new password — this is the temporary password you were given.',
+        },
+      });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
+
+    it('revokes every other session — the admin who knew the old password is signed out of it too', async () => {
+      const { controller, markUserTokensInvalid } = setup({ dbUser: PASSWORD_ONLY });
+      await controller.completeSetup({ password: BODY.password } as any, makeReq());
+      expect(markUserTokensInvalid).toHaveBeenCalledWith('u1', expect.any(Number));
+    });
+
+    it('the forensic row says it was a password-only setup', async () => {
+      const { controller, auditCreate } = setup({ dbUser: PASSWORD_ONLY });
+      await controller.completeSetup({ password: BODY.password } as any, makeReq());
+      const row = auditCreate.mock.calls.map((c: any[]) => c[0].data).find((d: any) => d.action === 'USER_CREATED' || d.action === 'USER_CREDENTIAL_SETUP_COMPLETED');
+      expect(JSON.parse(row.details)).toMatchObject({ previousEmail: OWN_EMAIL, newEmail: OWN_EMAIL, passwordOnly: true });
+    });
+
+    it('a FULL setup (a provisioned placeholder) still has to send an email', async () => {
+      const { controller, userUpdate } = setup();
+      await expect(controller.completeSetup({ password: BODY.password } as any, makeReq())).rejects.toMatchObject({
+        response: { code: 'SETUP_EMAIL_REQUIRED' },
+      });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
+
+    it('the schema accepts a password-only body', () => {
+      const pipe = new ZodValidationPipe(CompleteSetupSchema);
+      expect(pipe.transform({ password: '12345678' }, { type: 'body' } as any)).toEqual({ password: '12345678' });
     });
   });
 

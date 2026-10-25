@@ -24,6 +24,7 @@ import {
   conflictScreenCount,
   describeScreenConflicts,
   findScreenConflicts,
+  isTimeLimited,
   type OpsGroupRef,
   type OpsPlaylistRef,
   type OpsScheduleRef,
@@ -319,5 +320,114 @@ describe('describeScreenConflicts — what the operator reads', () => {
       expect(s).not.toMatch(/\bready\b/i);
       expect(s).not.toMatch(/manifest|painting|render/i);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Launch QA U15 (2026-10-24) — a TIME-LIMITED publish onto a screen that runs
+// an ALWAYS-ON playlist KEEPS that one for the other hours (the server's
+// `keepAlwaysOnAsFallback`). The prompt must say exactly that.
+describe('a time-limited publish keeps an always-on playlist (U15)', () => {
+  const findLimited = (targets: string[], schedules: OpsScheduleRef[]) =>
+    findScreenConflicts({
+      targetScreenIds: targets,
+      excludePlaylistId: 'p1',
+      windows: [{ daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' }],
+      limited: true,
+      playlists: PLAYLISTS,
+      schedules,
+      screens: SCREENS,
+      groups: GROUPS,
+    });
+
+  it('an always-on competitor is reported as KEPT (fallbackScheduleIds), not just replaced', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3' })]);
+    expect(out).toHaveLength(1);
+    expect(out[0].scheduleIds).toEqual(['a']);
+    expect(out[0].fallbackScheduleIds).toEqual(['a']);
+    expect(out[0].fallbackScreenNames).toEqual(['Cafeteria']);
+  });
+
+  it('without `limited` nothing is kept — the old prompt, exactly', () => {
+    const out = find(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3' })]);
+    expect(out[0].fallbackScheduleIds).toEqual([]);
+    expect(describeScreenConflicts(out, 'Fall Assembly')!.alternateLabel).toBeUndefined();
+  });
+
+  it('an overlapping WINDOWED competitor is still a plain replacement', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3', timeStart: '11:00', timeEnd: '13:00' })]);
+    expect(out[0].fallbackScheduleIds).toEqual([]);
+    const p = describeScreenConflicts(out, 'School hours', 'add-screens')!;
+    expect(p.title).toBe('Replace on 1 screen?');
+    expect(p.alternateLabel).toBeUndefined();
+  });
+
+  it('an append-mode always-on rule is not kept (the server stands it down)', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3', mode: 'append' })]);
+    expect(out[0].fallbackScheduleIds).toEqual([]);
+  });
+
+  it('the fallback tier itself is never a conflict — the server never stands it down', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3', priority: -1 })]);
+    expect(out).toEqual([]);
+    // ...even for an always-on publish
+    expect(find(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3', priority: -1 })])).toEqual([]);
+  });
+
+  it('the prompt: "Keep both" (default) / "Replace everything", saying what happens outside the hours', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3' })]);
+    const p = describeScreenConflicts(out, 'School hours', 'add-screens')!;
+    expect(p.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+    expect(p.message).toContain('“School hours” plays only at its scheduled times.');
+    expect(p.message).toContain('The rest of the time, “Kings Portrait” keeps playing on Cafeteria, so that screen is never blank.');
+    expect(p.message).toContain('Replace everything stops “Kings Portrait” on Cafeteria instead.');
+    expect(p.message).toContain('that screen would then have nothing to play');
+    expect(p.confirmLabel).toBe('Keep both');
+    expect(p.alternateLabel).toBe('Replace everything');
+    expect(p.screenCount).toBe(1);
+  });
+
+  it('several kept playlists are listed; a windowed one beside them is named as replaced', () => {
+    const out = findLimited(['s3', 's4'], [
+      sched({ id: 'a', playlistId: 'p2', screenId: 's3' }),
+      sched({ id: 'b', playlistId: 'p3', screenId: 's4' }),
+    ]);
+    const p = describeScreenConflicts(out, 'School hours', 'add-screens')!;
+    expect(p.title).toBe('Keep the other playlists playing the rest of the time?');
+    expect(p.message).toContain('• “Kings Portrait” on Cafeteria');
+    expect(p.message).toContain('• “New URL” on The Den');
+    expect(p.confirmLabel).toBe('Keep them all');
+
+    const mixed = findLimited(['s3', 's4'], [
+      sched({ id: 'a', playlistId: 'p2', screenId: 's3' }),
+      sched({ id: 'b', playlistId: 'p3', screenId: 's4', timeStart: '09:00', timeEnd: '10:00' }),
+    ]);
+    const m = describeScreenConflicts(mixed, 'School hours', 'add-screens')!;
+    expect(m.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+    expect(m.message).toContain('“New URL” on The Den overlaps those times and will be replaced there.');
+  });
+
+  it('reads its words through the translator it is handed (en/es/zh catalogs)', () => {
+    const out = findLimited(['s3'], [sched({ id: 'a', playlistId: 'p2', screenId: 's3' })]);
+    const seen: string[] = [];
+    const t = (key: string) => { seen.push(key); return `[${key}]`; };
+    const p = describeScreenConflicts(out, 'School hours', 'add-screens', { t })!;
+    expect(p.title).toBe('[keepTitleOne]');
+    expect(p.confirmLabel).toBe('[confirmKeepOne]');
+    expect(p.alternateLabel).toBe('[replaceEverything]');
+    expect(seen).toEqual(expect.arrayContaining(['keepOneScreen', 'hintOneScreen']));
+  });
+});
+
+describe('isTimeLimited — the web port of the server rule (U15)', () => {
+  const NOW = Date.parse('2026-10-24T12:00:00Z');
+  it('mirrors apps/api schedule-window-overlap.ts case for case', () => {
+    expect(isTimeLimited({ daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' }, NOW)).toBe(true);
+    expect(isTimeLimited({ endTime: '2026-12-31T23:59:59Z' }, NOW)).toBe(true);
+    expect(isTimeLimited({ startTime: new Date(NOW + 120_000).toISOString() }, NOW)).toBe(true);
+    expect(isTimeLimited({ startTime: new Date(NOW + 30_000).toISOString() }, NOW)).toBe(false);
+    expect(isTimeLimited({ startTime: '2026-01-01T00:00:00Z', endTime: null }, NOW)).toBe(false);
+    expect(isTimeLimited({}, NOW)).toBe(false);
+    expect(isTimeLimited({ startTime: 'not a date' }, NOW)).toBe(false);
   });
 });
