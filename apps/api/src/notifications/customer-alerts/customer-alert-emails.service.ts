@@ -128,6 +128,19 @@ interface NewProblem {
 export interface CustomerAlertTickResult {
   mode: AlertMode;
   gate?: string;
+  /**
+   * 2026-10-24 — what this scan SAW before any rule decided anything, so the
+   * offline scanner's 15-minute summary can show the worker judging screens
+   * even when nothing is sent. Until then every skip was silent (the worker
+   * logs only opened / held / silenced / recovered / sent), and a day with no
+   * qualifying screen looked exactly like a dead pipeline.
+   *   offlineDue    — silent 15 min – 6 h, no open incident (due by age;
+   *                   before the two-scan confirmation and the defer rules);
+   *   offlineTooOld — silent longer than OFFLINE_MAX_AGE_MS: the long-dead
+   *                   tail, never emailed by design.
+   */
+  offlineDue: number;
+  offlineTooOld: number;
   offlineCandidates: number;
   noContentCandidates: number;
   deferred: Record<string, number>;
@@ -179,6 +192,15 @@ export class CustomerAlertEmailsService {
     @Optional() private readonly email?: EmailService,
     @Optional() private readonly platformMailer?: PlatformAlertMailer,
   ) {}
+
+  /**
+   * Which optional collaborators resolved (2026-10-24). Both are `@Optional`,
+   * so a provider that failed to resolve would turn every send into a silent
+   * no-op; the offline scanner states this once, on its first scan.
+   */
+  wiring(): { customerMailer: boolean; ownerMailer: boolean } {
+    return { customerMailer: !!this.email, ownerMailer: !!this.platformMailer };
+  }
 
   // ═════════════════════════════════════════════════════════════════════
   // Emergency record copy — FIRE AND FORGET
@@ -263,6 +285,8 @@ export class CustomerAlertEmailsService {
     const now = this.now();
     const result: CustomerAlertTickResult = {
       mode,
+      offlineDue: 0,
+      offlineTooOld: 0,
       offlineCandidates: 0,
       noContentCandidates: 0,
       deferred: {},
@@ -286,6 +310,7 @@ export class CustomerAlertEmailsService {
     );
     const offlineById = new Map(snapshot.map((s) => [s.id, s]));
     const ageOf = (s: { lastPingAt: Date }) => now - s.lastPingAt.getTime();
+    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > ALERT_RULES.OFFLINE_MAX_AGE_MS).length;
 
     const incidents = await this.loadTrackedIncidents();
     const open = (kind: ProblemKind) =>
@@ -326,6 +351,7 @@ export class CustomerAlertEmailsService {
     const offlineDueNow = snapshot.filter(
       (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && !openOffline.has(s.id),
     );
+    result.offlineDue = offlineDueNow.length;
     this.offlineDue.observe(offlineDueNow.map((s) => s.id), now);
 
     const noContent = await this.findNoContentCandidates(now, openNoContent);

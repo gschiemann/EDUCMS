@@ -15,6 +15,10 @@
  *               (primary transport broken → investigate before it worsens)
  *   down      — uploads failing entirely (customer impact NOW)
  *
+ * A non-ok probe is CONFIRMED before it counts (2026-10-24): a second probe
+ * on a separate object 15 s later, and only its verdict is used — one upload
+ * stuck inside Supabase Storage must not page "customer impact" (see tick()).
+ *
  * On any transition into degraded/down: email PLATFORM_ALERT_EMAILS (same
  * routing contract as EfficiencyAlertingService — owner-ops mail, NOT the
  * SUPER_ADMIN sweep unless the env var is unset) + Sentry capture. While
@@ -31,10 +35,18 @@ import { storageTransportState } from './storage-transport';
 import { reportPlatformComponent } from '../health/platform-degradation';
 
 type WatchdogStatus = 'ok' | 'degraded' | 'down';
+type Probe = Awaited<ReturnType<SupabaseStorageService['storageHealthProbe']>>;
 
 const TICK_MS = 5 * 60_000;
 const FIRST_TICK_DELAY_MS = 60_000; // let boot (bucket ensure, pool warm) settle
 const REALERT_MS = 6 * 3600_000;
+/** Pause before the confirmation probe of a failed one. */
+export const STORAGE_CONFIRM_DELAY_MS = 15_000;
+/** A SECOND fixed object for the confirmation (bounded: one object, overwritten). */
+export const STORAGE_CONFIRM_PROBE_PATH = 'health/storage-probe-confirm.png';
+
+const statusOf = (p: Probe): WatchdogStatus => (!p.ok ? 'down' : p.transport === 'fallback' ? 'degraded' : 'ok');
+const probeLine = (p: Probe) => `upload=${p.upload} read=${p.read} transport=${p.transport} (${p.ms}ms)`;
 
 @Injectable()
 export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
@@ -70,12 +82,49 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
     if (this.firstTimer) clearTimeout(this.firstTimer);
   }
 
+  /** Instance method (not a module helper) so tests can stub the confirmation pause. */
+  private pause(ms: number): Promise<void> {
+    return new Promise<void>((r) => {
+      const t = setTimeout(r, ms);
+      (t as any).unref?.();
+    });
+  }
+
   private async tick(): Promise<void> {
     if (this.ticking) return; // never overlap probes
     this.ticking = true;
     try {
-      const probe = await this.storage.storageHealthProbe();
-      const status: WatchdogStatus = !probe.ok ? 'down' : probe.transport === 'fallback' ? 'degraded' : 'ok';
+      const first = await this.storage.storageHealthProbe();
+      let probe = first;
+      let status = statusOf(first);
+      // CONFIRM BEFORE PAGING (2026-10-24). One probe used to be enough to
+      // email "STORAGE UPLOADS FAILING — customer impact". Both pages of
+      // 2026-10-23/24 were ONE 70-byte probe upload hanging 60 s inside
+      // Supabase Storage (storage log "POST | ABORTED RES" → our 504), with no
+      // customer upload attempted, let alone failed: 15:34Z on a process 3 h
+      // past boot, and 00:53Z five minutes after a deploy whose own first
+      // probe had passed — so not the deploy. The second time the next
+      // probe also failed only because it queued behind the stuck upload's
+      // row lock on the SAME object (00:57:51 "still waiting for ShareLock",
+      // 00:58:20 statement timeout → 544). So a failed probe is re-probed
+      // once, on a SEPARATE object, after a short pause, and only the
+      // confirmation's verdict counts: a stall on the shared probe row cannot
+      // page; a real outage fails both and still alerts (≈ 1–2 min later).
+      // Applied to the platform-degradation register too, so a blip no
+      // longer stands the customer alert emails down either.
+      let confirmation: Probe | null = null;
+      if (status !== 'ok') {
+        await this.pause(STORAGE_CONFIRM_DELAY_MS);
+        confirmation = await this.storage.storageHealthProbe(STORAGE_CONFIRM_PROBE_PATH);
+        probe = confirmation;
+        status = statusOf(confirmation);
+        if (status === 'ok') {
+          this.logger.warn(
+            `[storage-watchdog] probe failed but its confirmation passed ${STORAGE_CONFIRM_DELAY_MS / 1000}s later ` +
+              `on a separate object — not alerting (first: ${probeLine(first).slice(0, 300)})`,
+          );
+        }
+      }
       const now = Date.now();
       // Customer alert emails stand down while storage is unhealthy (platform-degradation.ts).
       reportPlatformComponent('storage', status, now);
@@ -96,7 +145,10 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
             ? 'File uploads (assets, branding logos, emergency content, bug screenshots) are FAILING in production.'
             : 'File uploads still WORK, but only via the node:https fallback — the primary fetch transport to Supabase Storage is broken. Customers are unaffected right now; investigate before the fallback is all that stands.',
           '',
-          `Probe: upload=${probe.upload} read=${probe.read} transport=${probe.transport} (${probe.ms}ms)`,
+          `Probe: ${probeLine(first)}`,
+          confirmation
+            ? `Confirmed ${STORAGE_CONFIRM_DELAY_MS / 1000}s later on a separate object: ${probeLine(confirmation)}`
+            : `Confirmation: not run`,
           `Primary failures since boot: ${storageTransportState.totalPrimaryFailures}`,
           `Fallback successes/failures: ${storageTransportState.totalFallbackSuccesses}/${storageTransportState.totalFallbackFailures}`,
           `Last primary failure: ${storageTransportState.lastPrimaryFailureAt ?? 'n/a'}`,
