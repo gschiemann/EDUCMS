@@ -27,7 +27,7 @@ function translator(messages: { activityFeed: unknown }): ActivityTranslate {
     let out = msg.replace(/\{(\w+), plural,((?:[^{}]|\{[^{}]*\})*)\}/g, (_m: string, name: string, body: string) => {
       const n = Number(values[name]);
       const opts: Record<string, string> = {};
-      body.replace(/(one|other|=\d+)\s*\{([^{}]*)\}/g, (_x: string, k: string, v: string) => ((opts[k] = v), ''));
+      for (const [, k, v] of body.matchAll(/(one|other|=\d+)\s*\{([^{}]*)\}/g)) opts[k] = v;
       return (opts[`=${n}`] ?? (n === 1 ? opts.one : undefined) ?? opts.other ?? '').replace(/#/g, String(n));
     });
     out = out.replace(/\{(\w+)\}/g, (m: string, name: string) => (name in values ? String(values[name]) : m));
