@@ -426,7 +426,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {Turn on Face ID or Touch ID} ipad {Turn on Face ID or Touch ID} android {Turn on fingerprint sign-in} other {Turn on passkey sign-in}}",
     "phoneSetupSignedInTitle": "You're signed in",
     "phoneSetupLater": "You can add a passkey for this device later in Settings → My security.",
-    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password."
+    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
+    "security": "Security"
   },
   "account": {
     "title": "Account",
@@ -4884,7 +4885,49 @@
     "viaSwim": "swim timing",
     "ageSeconds": "{seconds} s ago",
     "ageMinutes": "{minutes} min ago",
-    "developerDesc": "Where scores come from: the console, a phone link, or a signed feed your system sends."
+    "developerDesc": "Where scores come from: the console, a phone link, or a signed feed your system sends.",
+    "vendorOther": "Anything else",
+    "steps": {
+      "sportzcast": {
+        "step1": "In your Sportzcast cloud portal (ScoreHub / ScoreLink), open the data-output settings for the Scorebot at this venue.",
+        "step2": "Add an HTTP push (webhook) output and paste the ingest URL below as the destination.",
+        "step3": "Add a request header named x-feed-token with the token below.",
+        "step4": "Map the output to the JSON fields listed below (any subset works). If your plan only pushes a fixed format, run their bridge/relay — or any small script — that reposts to this URL; the curl line is a working packet."
+      },
+      "scorebird": {
+        "step1": "In your Scorebird dashboard (MyScorebird), open the integrations / data-feed settings for this scoreboard’s nest.",
+        "step2": "Add an HTTP push (webhook) pointing at the ingest URL below.",
+        "step3": "Add a request header named x-feed-token with the token below.",
+        "step4": "Map the push to the JSON fields listed below (any subset works). If the portal can’t shape the JSON, a tiny relay script that reposts works — the curl line is a working packet."
+      },
+      "generic": {
+        "step1": "Anything that can POST JSON works: a console-reader bridge, Node-RED, a stats app, or a 5-line script.",
+        "step2": "POST to the ingest URL below with the x-feed-token header set to the token.",
+        "step3": "Send any subset of the JSON fields listed below — omitted fields are left unchanged.",
+        "step4": "The curl line below is a complete working packet you can adapt."
+      }
+    },
+    "creating": "Creating credentials…",
+    "loadFailed": "Couldn’t load the feed credentials.",
+    "retry": "Retry",
+    "revoked": "All feed credentials for this game are revoked.",
+    "createNew": "Create new credentials",
+    "rotated": "<b>Rotated</b> — tokens issued before the last regenerate (including the original one) no longer work. Make sure your vendor has the token below.",
+    "postTo": "POST to",
+    "header": "Header",
+    "fieldsLabel": "Fields",
+    "anySubset": "any subset",
+    "testPacket": "Test packet:",
+    "tokenExpires": "Token expires {date} — reopen this card any time for a current one.",
+    "copied": "Copied setup details",
+    "copy": "Copy URL + token",
+    "copyPrompt": "Copy the score-feed details:",
+    "confirmRegenerate": "Yes — revoke & replace",
+    "keep": "Keep",
+    "regenerate": "Regenerate…",
+    "regenerateTitle": "Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued",
+    "confirmWarning": "This kills every credential already deployed for this game (including the original token) the moment you confirm — your vendor stops syncing until you paste in the new one.",
+    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token."
   },
   "sportsConsoleSetup": {
     "title": "Scoreboard console",
@@ -5687,7 +5730,8 @@
     "limit": {
       "images": "You've used all your AI images this month. Add your own AI key in Settings → AI provider to keep going, or contact us for more.",
       "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
-      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing."
+      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
+      "month": "This month’s included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month."
     }
   },
   "billingAi": {
@@ -6418,7 +6462,6 @@
       "trust": "Security",
       "itSecurity": "Security overview",
       "networkRequirements": "Network requirements",
-      "reportVulnerability": "Report a vulnerability",
       "legal": "Legal",
       "privacy": "Privacy policy",
       "terms": "Terms of service",
@@ -6427,7 +6470,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS — one platform for every venue.",
-      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts"
+      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts",
+      "reportSecurityIssue": "Report a security issue"
     },
     "help": {
       "back": "Back to help center",
@@ -6515,6 +6559,14 @@
       "apiBuild": "API build {version}",
       "firstCheck": "Running first check…",
       "offlineNote": "If a screen loses its connection it keeps playing its stored content, and an emergency alert already on screen stays up until an all-clear — see the <help>emergency system overview</help>."
+    },
+    "header": {
+      "industries": "Industries",
+      "templates": "Templates",
+      "pricing": "Pricing",
+      "help": "Help",
+      "signIn": "Sign in",
+      "startTrial": "Start free trial"
     }
   },
   "usbDelivery": {
@@ -6705,5 +6757,277 @@
     "failed": "We couldn’t save that. Check your connection and try again.",
     "version": "Version {version}",
     "signOut": "Not you? Sign out"
+  },
+  "addressSearch": {
+    "clear": "Clear address",
+    "resultsFrom": "Results from",
+    "noMatchApprox": "No match yet — this address search is approximate. Try adding the city and state, or double-check the street number."
+  },
+  "signup": {
+    "haveWorkspace": "Have a workspace?",
+    "signIn": "Sign in",
+    "trialBadge": "Free 14-day trial — up to 3 screens, no card",
+    "title": "Start your free workspace.",
+    "lead": "Set up VenueOS for your {where} in under three minutes — then schedule every screen, and trigger an emergency alert across all of them in seconds.",
+    "industryLabel": "What are you running?",
+    "industryPlaceholder": "Choose your industry…",
+    "workspaceUrl": "Workspace URL",
+    "workspaceUrlHint": "Letters, numbers, and dashes only.",
+    "firstName": "First name",
+    "firstNamePlaceholder": "Alex",
+    "lastName": "Last name",
+    "lastNamePlaceholder": "Garcia",
+    "adminEmail": "Admin email",
+    "phone": "Phone (optional)",
+    "phoneHint": "Used for two-factor recovery if you ever lose access to your authenticator app. We’ll never text you marketing.",
+    "address": "Address (optional)",
+    "addressPlaceholder": "Start typing — 1000 Vin Scully Ave…",
+    "addressHint": "Start typing to pick from a list. We’ll plot your locations on a fleet map.",
+    "password": "Password",
+    "passwordPlaceholder": "8+ characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Type it again",
+    "creating": "Creating your workspace…",
+    "create": "Create workspace",
+    "agree": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>.",
+    "agreeK12": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>, including our <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa> data commitments.",
+    "footer": {
+      "label": "Legal",
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "security": "Security",
+      "dpa": "DPA"
+    },
+    "errors": {
+      "industry": "Please choose your industry.",
+      "passwordLength": "Password must be at least 8 characters.",
+      "passwordMismatch": "Passwords do not match.",
+      "nameRequired": "Enter your organization’s name.",
+      "slugRequired": "Choose a workspace URL.",
+      "slugTaken": "That workspace URL is already taken — try another one.",
+      "emailInvalid": "Enter a valid admin email address.",
+      "emailTaken": "An account with that email already exists. Sign in instead, or use a different email.",
+      "checkFields": "Some details aren’t valid. Check the form and try again.",
+      "tooMany": "Too many attempts. Wait a minute, then try again.",
+      "generic": "Signup failed. Please try again.",
+      "unreachable": "Can’t reach the server at {url}."
+    },
+    "panel": {
+      "eyebrow": "Why teams choose VenueOS",
+      "title": "Every screen you run, in one place.",
+      "lead": "One dashboard for signage, kiosks, scoreboards, and the life-safety alert that overrides them all.",
+      "alertsTitle": "Emergency alerts in a tap",
+      "alertsDesc": "Lockdown, fire / evacuate, and weather messages flip every screen in seconds.",
+      "scheduleTitle": "Schedule once, everywhere",
+      "scheduleDesc": "Content by day, time block, or one-off event — one screen or ten thousand.",
+      "templatesTitle": "170+ templates, every industry",
+      "templatesDesc": "Fully editable, recolored to your brand, ready to drop on a screen.",
+      "screensTitle": "Runs on any screen",
+      "screensDesc": "Smart TVs, Android players, LED controllers, kiosks — no special hardware."
+    },
+    "defaults": {
+      "nameLabel": "Organization name",
+      "namePlaceholder": "Your venue or organization",
+      "where": "whole venue"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "K-12 school or district",
+        "nameLabel": "District or school name",
+        "namePlaceholder": "Springfield Unified School District",
+        "where": "whole district"
+      },
+      "GYM": {
+        "picker": "Gym, fitness club, or athletic facility",
+        "nameLabel": "Gym or club name",
+        "namePlaceholder": "Iron Peak Fitness",
+        "where": "whole gym"
+      },
+      "RETAIL": {
+        "picker": "Retail store or chain",
+        "nameLabel": "Store or chain name",
+        "namePlaceholder": "Northside Outfitters",
+        "where": "whole store"
+      },
+      "CORPORATE": {
+        "picker": "Corporate office or enterprise",
+        "nameLabel": "Company name",
+        "namePlaceholder": "Acme Corp",
+        "where": "whole office"
+      },
+      "QSR": {
+        "picker": "Restaurant / QSR (quick-service)",
+        "nameLabel": "Restaurant or brand name",
+        "namePlaceholder": "Burger Junction",
+        "where": "whole brand"
+      },
+      "FASHION": {
+        "picker": "Fashion boutique or apparel",
+        "nameLabel": "Boutique or brand name",
+        "namePlaceholder": "Studio 5 Boutique",
+        "where": "whole boutique"
+      },
+      "BAR": {
+        "picker": "Bar, taproom, or nightclub",
+        "nameLabel": "Bar or venue name",
+        "namePlaceholder": "The Tap Room",
+        "where": "whole bar"
+      },
+      "HEALTHCARE": {
+        "picker": "Clinic, practice, or hospital",
+        "nameLabel": "Practice or network name",
+        "namePlaceholder": "Harbor Health",
+        "where": "whole practice"
+      },
+      "HOSPITALITY": {
+        "picker": "Hotel, resort, or property",
+        "nameLabel": "Property or group name",
+        "namePlaceholder": "Summit Hotels",
+        "where": "whole property"
+      },
+      "RESTAURANT": {
+        "picker": "Full-service restaurant",
+        "nameLabel": "Restaurant or group name",
+        "namePlaceholder": "The Copper Table",
+        "where": "whole restaurant"
+      },
+      "SPORTS": {
+        "picker": "Sports venue, stadium, or athletic program",
+        "nameLabel": "Venue, team, or league name",
+        "namePlaceholder": "Riverside Arena",
+        "where": "whole venue"
+      },
+      "WORSHIP": {
+        "picker": "Church, ministry, or house of worship",
+        "nameLabel": "Church or ministry name",
+        "namePlaceholder": "Grace Community Church",
+        "where": "whole ministry"
+      }
+    }
+  },
+  "notifications": {
+    "inbox": {
+      "title": "Notifications",
+      "checking": "Checking for new messages…",
+      "unreadOf": "{unread} unread of {total}",
+      "messages": "{count, plural, one {# message} other {# messages}}",
+      "markAllRead": "Mark all read",
+      "categoriesLabel": "Notification categories",
+      "unreadCount": "{count} unread",
+      "unread": "Unread",
+      "stale": "Couldn’t refresh just now — showing the last list this device received. Anything newer isn’t here yet.",
+      "retry": "Retry",
+      "emptyFiltered": "Nothing in this category",
+      "empty": "No notifications yet",
+      "emptyAll": "VenueOS writes here when a screen stops answering, when work needs a review, and when something changes on your account.",
+      "showAll": "Show all notifications",
+      "errorTitle": "Can’t load notifications",
+      "errorBody": "VenueOS could not reach the server, so this list may be incomplete or out of date.",
+      "tryAgain": "Try again",
+      "footnote": "These arrive while VenueOS is open. Your phone won’t alert you when the app is closed — during an active emergency, watch the alert banner at the top of the app."
+    },
+    "bell": {
+      "labelUnread": "Notifications ({count} unread)",
+      "caughtUp": "You’re all caught up."
+    },
+    "categories": {
+      "all": "All",
+      "exceptions": "Delivery exceptions",
+      "reviews": "Reviews",
+      "system": "System updates"
+    },
+    "categoriesShort": {
+      "exceptions": "Delivery",
+      "reviews": "Review",
+      "system": "System"
+    },
+    "blurbs": {
+      "exceptions": "Screens that stopped answering, and other delivery problems we noticed.",
+      "reviews": "Work submitted for approval, and decisions on work you submitted.",
+      "system": "Account, license and platform messages."
+    },
+    "age": {
+      "justNow": "just now",
+      "minutes": "{count}m ago",
+      "hours": "{count}h ago",
+      "days": "{count}d ago"
+    },
+    "server": {
+      "screenOffline": "Screen offline: {screen}",
+      "screenOfflineAt": "{site} · Screen offline: {screen}",
+      "infraEvent": "Possible infrastructure event — {count}/{total} screens dropped",
+      "infraEventAt": "{site} · Possible infrastructure event — {count}/{total} screens dropped",
+      "pushDeadPolling": "{screen}: realtime channel down — running on polling",
+      "pushDeadUnproven": "{screen}: realtime down AND content unproven — needs attention now",
+      "assetPending": "New asset pending review",
+      "assetApproved": "Your asset was approved",
+      "assetRejected": "Your asset was rejected",
+      "submissionAwaiting": "New submission awaiting your review",
+      "submissionApproved": "Your submission was approved",
+      "submissionRejected": "Your submission was rejected",
+      "ownerLink": "VenueOS support created an owner sign-in link",
+      "supportRequested": "VenueOS is asking for support access",
+      "supportBreakGlass": "VenueOS used emergency support access",
+      "supportEnded": "VenueOS support access has ended",
+      "supportApproved": "{org} approved support access",
+      "supportDenied": "{org} denied support access",
+      "supportInvited": "{org} gave VenueOS support access",
+      "kioskHelp": "Visitor needs assistance — {screen}",
+      "videoStutter": "Video stutters on {screen}",
+      "noHeartbeat": "No heartbeat since {time}.",
+      "noHeartbeatUnknown": "No heartbeat on record yet.",
+      "noHeartbeatAt": "{site}: no heartbeat from \"{screen}\" since {time}.",
+      "unknownTime": "an unknown time",
+      "infraBody": "{count} screens went offline within {seconds} s (>{pct}% of fleet). Likely WAN, ISP, or local power event — per-screen alerts suppressed. Affected: {names}.",
+      "infraBodyAt": "{site}: {count} screens went offline within {seconds} s (>{pct}% of that location's fleet). Likely WAN, ISP, or power.",
+      "pushDeadPollingBody": "This screen cannot receive instant commands (refresh, immediate emergency delivery). Its render proof is current, so it is still playing and updates via its regular polling (5–10s), including emergencies. Usual cause: the venue network blocks WebSocket/streaming connections.",
+      "pushDeadUnprovenBody": "This screen cannot receive instant commands AND has not proven a painted frame recently — what it is showing right now is unverified. A durable refresh command has been queued via its manifest; if it does not recover within minutes, it needs on-site or network attention today, not a daily reminder.",
+      "assetPendingBody": "{email} uploaded \"{asset}\" — review needed before it can be scheduled.",
+      "assetApprovedBody": "\"{asset}\" is now published and can be added to playlists.",
+      "assetRejectedBody": "\"{asset}\" was rejected by {reviewer}.",
+      "assetRejectedReasonBody": "\"{asset}\" was rejected by {reviewer} — \"{reason}\".",
+      "submissionScheduleBody": "A schedule was submitted for approval before it can go live.",
+      "submissionItemsBody": "{count, plural, one {# item} other {# items}} submitted for approval.",
+      "submissionLiveBody": "Content is now live.",
+      "submissionNoFeedbackBody": "Reviewer left no feedback. Edit and resubmit when ready.",
+      "ownerLinkBody": "A one-time sign-in link for a new organization owner was issued under your support access approval. If you did not expect this, revoke support access in Settings.",
+      "supportRequestedBody": "{who} asked for access to {org} for {duration}: \"{reason}\". Approve or deny it in Settings → Support access.",
+      "supportBreakGlassBody": "{who} opened emergency access to {org} until {until}: \"{reason}\". You can end it now in Settings → Support access.",
+      "supportEndedBody": "VenueOS ended its support access to {org}.",
+      "accessUntil": "Access until {until}.",
+      "venueosSupport": "VenueOS support",
+      "aCustomer": "A customer",
+      "kioskHelpBody": "A kiosk visitor tapped “request help.”",
+      "videoStutterConcurrencyBody": "“{screen}” stutters on “{file}” while it plays more than one video at once. It keeps playing; a lighter copy would not fix this.",
+      "videoStutterNoCopyBody": "“{screen}” stutters on “{file}” and there is no lighter copy to switch it to. It keeps playing.",
+      "duration": {
+        "days": "{count, plural, one {# day} other {# days}}",
+        "hours": "{count, plural, one {# hour} other {# hours}}",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "unspecified": "an unspecified time"
+      }
+    }
+  },
+  "menuConnect": {
+    "connectPos": "Connect your POS",
+    "pasteMenu": "Paste your menu",
+    "templateName": "Menu Board",
+    "templateDescription": "Auto-created from your pasted menu — pulls live prices from your POS.",
+    "zoneName": "Menu",
+    "boardTitle": "OUR MENU",
+    "nothingTitle": "Nothing to import",
+    "nothingBody": "Paste a few menu lines first — one item per line, price at the end (e.g. “Cheeseburger  $8.99”).",
+    "imported": "{count, plural, one {Imported # item.} other {Imported # items.}}",
+    "capturedNote": "Your menu is captured. Connect a POS (or the custom webhook) to push these live to your screens.",
+    "importFailed": "Import failed",
+    "readyTitle": "Menu ready",
+    "readySeeded": "A “{name}” template is in your Templates — drop it on any screen.",
+    "modalBody": "One item per line, price at the end. We’ll create a Menu Board template for you and wire it to your live prices.",
+    "placeholder": "Classic Cheeseburger   $8.99\nSea Salt Fries   $3.49\nFountain Soda   $2.79",
+    "preview": "{count, plural, one {Preview — # item} other {Preview — # items}}",
+    "more": "+ {count} more…",
+    "close": "Close",
+    "cancel": "Cancel",
+    "create": "Create my menu board"
   }
 }

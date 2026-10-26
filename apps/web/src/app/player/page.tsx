@@ -140,7 +140,10 @@ import { createMediaStallDetector, setActiveMediaStalled, isActiveMediaStalled }
 // window-edge signature that busts the 304 identity when a window opens or
 // closes (windows are constants inside the ETag'd payload, so without this
 // a verdict LATCHED: blank at boot-outside-window stayed blank all day).
-import { isWindowOpen, windowSignature } from './scheduleWindow';
+// 2026-10-24 — every window is judged on the SCREEN's wall clock (the manifest
+// `timeZone`, screenTimeZone.ts), falling back to the device's clock when no
+// zone is known. `isItemWindowOpen` replaced two inline device-clock copies.
+import { isItemWindowOpen, isWindowOpen, windowSignature } from './scheduleWindow';
 // 2026-09-02 efficiency audit P0-2/P0-3 — the HTTP emergency backstop used to
 // build a FULL manifest every 5-10 s (45.5 % of all production API traffic).
 // It now polls a cheap revision token on the same cadence and reconciles only
@@ -5142,18 +5145,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       : [];
     return collapseCopiesForLoop ? [...collapseIdenticalVideoCopies(ordered)] : ordered;
   }, [playlist, isTemplate, collapseCopiesForLoop]);
-  const isItemValid = useCallback((item: any) => {
-    if (!item || (!item.daysOfWeek && !item.timeStart && !item.timeEnd)) return true;
-    const now = new Date();
-    if (item.daysOfWeek && !item.daysOfWeek.includes(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()])) return false;
-    if (item.timeStart && item.timeEnd) {
-      const [sh, sm] = item.timeStart.split(':').map(Number);
-      const [eh, em] = item.timeEnd.split(':').map(Number);
-      const currentMins = now.getHours() * 60 + now.getMinutes();
-      if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
-    }
-    return true;
-  }, []);
+  // 2026-10-24 — judged on the SCREEN's wall clock (manifest `timeZone`),
+  // not the device's; a ref read, so the callback stays stable. Semantics
+  // unchanged: isItemWindowOpen is the same gate that lived inline here.
+  const isItemValid = useCallback((item: any) => isItemWindowOpen(item, new Date(), screenTimeZoneRef.current), []);
 
   // ── The readiness gate (2026-09-26) ───────────────────────────────────
   // Which items may be mounted right now (mediaReadiness.ts). An emergency
@@ -7407,7 +7402,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // selection is the FIRST time playlist windows have ever been
         // enforced on the glass (manifests never carried per-item window
         // fields, so the old per-item gate always said "playable").
-        const windowOpenNow = (sched: any): boolean => isWindowOpen(sched, new Date());
+        const windowOpenNow = (sched: any): boolean => isWindowOpen(sched, new Date(), screenTimeZoneRef.current);
         const ranked = manifest.playlists.some((pl: any) => pl?.schedule?.mode != null);
         let templateWinner: any = null;
         let mediaSources: any[] = manifest.playlists;
@@ -7747,7 +7742,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // B-P0-1: a crossed window edge invalidates the 304 identity — the
       // payload is unchanged but what should be ON GLASS is not.
       if (lastAppliedManifestRef.current && manifestEtagRef.current) {
-        const nowSig = windowSignature(lastAppliedManifestRef.current.playlists, new Date());
+        const nowSig = windowSignature(lastAppliedManifestRef.current.playlists, new Date(), screenTimeZoneRef.current);
         if (nowSig !== appliedWindowSigRef.current) {
           console.log('[Player] schedule window edge crossed — forcing a full manifest refetch');
           manifestEtagRef.current = null;
@@ -7927,7 +7922,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // B-P0-1: remember what was applied and under which window verdict,
         // so the next polls can detect an edge and bust the 304 identity.
         lastAppliedManifestRef.current = manifest;
-        appliedWindowSigRef.current = windowSignature(manifest?.playlists, new Date());
+        appliedWindowSigRef.current = windowSignature(manifest?.playlists, new Date(), screenTimeZoneRef.current);
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
         // value is either already acked or pointless offline).
         maybeExecuteDurableRefresh(manifest, admitRefreshNow);
@@ -10179,7 +10174,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const applied = lastAppliedManifestRef.current;
       if (!applied) return false;
       try {
-        return windowSignature(applied.playlists, new Date()) !== appliedWindowSigRef.current;
+        return windowSignature(applied.playlists, new Date(), screenTimeZoneRef.current) !== appliedWindowSigRef.current;
       } catch {
         return false;
       }
@@ -10476,23 +10471,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   useEffect(() => {
     if (phase !== 'playing' || !playlist?.items?.length) return;
 
-    const isItemValid = (item: any) => {
-      if (!item.daysOfWeek && !item.timeStart && !item.timeEnd) return true;
-      const now = new Date();
-      if (item.daysOfWeek) {
-        const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        if (!item.daysOfWeek.includes(dayMap[now.getDay()])) return false;
-      }
-      if (item.timeStart && item.timeEnd) {
-        const [sh, sm] = item.timeStart.split(':').map(Number);
-        const [eh, em] = item.timeEnd.split(':').map(Number);
-        const currentMins = now.getHours() * 60 + now.getMinutes();
-        const startMins = sh * 60 + sm;
-        const endMins = eh * 60 + em;
-        if (currentMins < startMins || currentMins > endMins) return false;
-      }
-      return true;
-    };
+    // 2026-10-24 — the SCREEN's wall clock (manifest `timeZone`), same gate as
+    // the one above; the device clock is only the fallback when no zone is known.
+    const isItemValid = (item: any) => isItemWindowOpen(item, new Date(), screenTimeZoneRef.current);
 
     // Heartbeat — fires every 500ms. Self-correcting: any single missed
     // tick is recovered by the next one. Reads sortedItemsRef +

@@ -2,6 +2,10 @@ import Link from 'next/link';
 import { ReactNode } from 'react';
 import { BrandMark } from './BrandMark';
 import { Footer } from './Footer';
+import { PublicT } from './PublicText';
+
+/** Header labels follow the reader's language through the same client leaf the footer uses. */
+const h = (k: string) => <PublicT k={`header.${k}`} />;
 
 /**
  * Public marketing shell — VenueOS landing, pricing, help, legal.
@@ -28,23 +32,23 @@ export function PublicHeader() {
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <BrandMark />
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-500">
-          <Link href="/#industries" className="hover:text-slate-900 transition">Industries</Link>
-          <Link href="/#templates" className="hover:text-slate-900 transition">Templates</Link>
-          <Link href="/pricing" className="hover:text-slate-900 transition">Pricing</Link>
-          <Link href="/help" className="hover:text-slate-900 transition">Help</Link>
+          <Link href="/#industries" className="hover:text-slate-900 transition">{h('industries')}</Link>
+          <Link href="/#templates" className="hover:text-slate-900 transition">{h('templates')}</Link>
+          <Link href="/pricing" className="hover:text-slate-900 transition">{h('pricing')}</Link>
+          <Link href="/help" className="hover:text-slate-900 transition">{h('help')}</Link>
         </nav>
         <div className="flex items-center gap-1.5">
           <Link
             href="/login"
             className="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2"
           >
-            Sign in
+            {h('signIn')}
           </Link>
           <Link
             href="/signup"
             className="text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-colors"
           >
-            Start free trial
+            {h('startTrial')}
           </Link>
         </div>
       </div>

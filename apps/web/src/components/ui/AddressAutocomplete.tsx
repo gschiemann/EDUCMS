@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Loader2, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { geocodeViaApiFull, primeLocationBias } from '@/lib/geocode';
 
 interface PhotonFeature {
@@ -130,6 +131,7 @@ export function AddressAutocomplete({
   id,
   ariaLabel,
 }: AddressAutocompleteProps) {
+  const t = useTranslations('addressSearch');
   const [results, setResults] = useState<Result[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
@@ -285,7 +287,7 @@ export function AddressAutocomplete({
             type="button"
             onClick={() => { onChange(''); setResults([]); setOpen(false); setNoMatch(false); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
-            aria-label="Clear address"
+            aria-label={t('clear')}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -323,7 +325,7 @@ export function AddressAutocomplete({
             </div>
           ))}
           <div className="px-3 py-1.5 text-[10px] text-slate-400 border-t border-slate-100">
-            Results from{' '}
+            {t('resultsFrom')}{' '}
             <a
               href="https://www.openstreetmap.org/copyright"
               target="_blank"
@@ -342,9 +344,7 @@ export function AddressAutocomplete({
           the free Census/OSM fallback still covers most addresses). */}
       {!open && noMatch && googleConfigured === false && value.trim().length >= 3 && !searching && (
         <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
-          No match yet — this deploy is using free approximate address
-          search (no Google Maps key configured). Try adding the city &amp;
-          state, or double-check the street number.
+          {t('noMatchApprox')}
         </p>
       )}
     </div>

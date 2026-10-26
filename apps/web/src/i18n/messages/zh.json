@@ -426,7 +426,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {开启面容 ID 或触控 ID} ipad {开启面容 ID 或触控 ID} android {开启指纹登录} other {开启通行密钥登录}}",
     "phoneSetupSignedInTitle": "你已登录",
     "phoneSetupLater": "你可以稍后在“设置 → 我的安全”中为这台设备添加通行密钥。",
-    "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。"
+    "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
+    "security": "安全"
   },
   "account": {
     "title": "账户",
@@ -4884,7 +4885,49 @@
     "viaSwim": "游泳计时",
     "ageSeconds": "{seconds} 秒前",
     "ageMinutes": "{minutes} 分钟前",
-    "developerDesc": "比分来源：控制台、手机链接，或由你的系统发送的签名数据源。"
+    "developerDesc": "比分来源：控制台、手机链接，或由你的系统发送的签名数据源。",
+    "vendorOther": "其他",
+    "steps": {
+      "sportzcast": {
+        "step1": "在 Sportzcast 云门户（ScoreHub / ScoreLink）中，打开此场馆 Scorebot 的数据输出设置。",
+        "step2": "添加一个 HTTP 推送（Webhook）输出，并将下方的接收网址粘贴为目标地址。",
+        "step3": "添加名为 x-feed-token 的请求头，值为下方的令牌。",
+        "step4": "将输出映射到下方列出的 JSON 字段（任选部分即可）。如果您的套餐只能推送固定格式，请运行其桥接/中继程序——或任何小脚本——将数据转发到此网址；curl 命令行就是一个可用的数据包。"
+      },
+      "scorebird": {
+        "step1": "在 Scorebird 控制台（MyScorebird）中，打开此记分牌 nest 的集成 / 数据源设置。",
+        "step2": "添加一个指向下方接收网址的 HTTP 推送（Webhook）。",
+        "step3": "添加名为 x-feed-token 的请求头，值为下方的令牌。",
+        "step4": "将推送映射到下方列出的 JSON 字段（任选部分即可）。如果门户无法调整 JSON 格式，可用一个简单的中继脚本转发——curl 命令行就是一个可用的数据包。"
+      },
+      "generic": {
+        "step1": "任何能以 POST 方式发送 JSON 的程序都可以：控制台读取桥接、Node-RED、统计应用，或一个 5 行的脚本。",
+        "step2": "向下方的接收网址发送 POST 请求，并将 x-feed-token 请求头设为该令牌。",
+        "step3": "可发送下方列出的任意 JSON 字段——未发送的字段保持不变。",
+        "step4": "下方的 curl 命令行是一个完整可用的数据包，可按需修改。"
+      }
+    },
+    "creating": "正在创建凭据…",
+    "loadFailed": "无法加载数据源凭据。",
+    "retry": "重试",
+    "revoked": "本场比赛的所有数据源凭据均已撤销。",
+    "createNew": "创建新凭据",
+    "rotated": "<b>已轮换</b>——上次重新生成之前签发的令牌（包括最初的令牌）都已失效。请确保您的供应商使用下方的令牌。",
+    "postTo": "POST 至",
+    "header": "请求头",
+    "fieldsLabel": "字段",
+    "anySubset": "可任选其中部分",
+    "testPacket": "测试数据包：",
+    "tokenExpires": "令牌于 {date} 过期——随时重新打开此卡片即可获取有效令牌。",
+    "copied": "已复制设置信息",
+    "copy": "复制网址和令牌",
+    "copyPrompt": "复制比分数据源信息：",
+    "confirmRegenerate": "确定——撤销并替换",
+    "keep": "保留",
+    "regenerate": "重新生成…",
+    "regenerateTitle": "撤销并替换：本场比赛此前部署的所有凭据都将失效，并签发新令牌",
+    "confirmWarning": "确认后，本场比赛已部署的所有凭据（包括最初的令牌）将立即失效——在您粘贴新令牌之前，供应商将停止同步。",
+    "perGame": "凭据按比赛区分：下一场比赛时，请在该比赛中打开此卡片，并将新的网址和令牌提供给供应商。"
   },
   "sportsConsoleSetup": {
     "title": "记分牌控制台",
@@ -5687,7 +5730,8 @@
     "limit": {
       "images": "本月的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥继续使用，或联系我们获取更多额度。",
       "imagesTrial": "免费试用中的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。",
-      "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。"
+      "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。",
+      "month": "本月包含的 AI 额度已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥以继续使用，或等待下月重置。"
     }
   },
   "billingAi": {
@@ -6418,7 +6462,6 @@
       "trust": "安全",
       "itSecurity": "安全概览",
       "networkRequirements": "网络要求",
-      "reportVulnerability": "报告漏洞",
       "legal": "法律",
       "privacy": "隐私政策",
       "terms": "服务条款",
@@ -6427,7 +6470,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS —— 一个平台，服务每个场所。",
-      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报"
+      "strapline": "数字标牌 · 互动自助终端 · 实时记分牌 · 紧急警报",
+      "reportSecurityIssue": "报告安全问题"
     },
     "help": {
       "back": "返回帮助中心",
@@ -6515,6 +6559,14 @@
       "apiBuild": "API 版本 {version}",
       "firstCheck": "正在进行首次检查…",
       "offlineNote": "屏幕断网时会继续播放已保存的内容，正在显示的紧急警报会一直保留到解除警报 —— 详见<help>紧急系统概览</help>。"
+    },
+    "header": {
+      "industries": "行业",
+      "templates": "模板",
+      "pricing": "价格",
+      "help": "帮助",
+      "signIn": "登录",
+      "startTrial": "免费试用"
     }
   },
   "usbDelivery": {
@@ -6705,5 +6757,277 @@
     "failed": "无法保存。请检查网络连接后重试。",
     "version": "版本 {version}",
     "signOut": "不是你？退出登录"
+  },
+  "addressSearch": {
+    "clear": "清除地址",
+    "resultsFrom": "结果来自",
+    "noMatchApprox": "暂无匹配结果——当前的地址搜索为近似搜索。请加上城市和州/省，或核对门牌号。"
+  },
+  "signup": {
+    "haveWorkspace": "已有工作区？",
+    "signIn": "登录",
+    "trialBadge": "免费试用 14 天——最多 3 块屏幕，无需信用卡",
+    "title": "创建您的免费工作区。",
+    "lead": "三分钟内为{where}设置好 VenueOS——然后为每块屏幕排期，并在几秒内向所有屏幕发出紧急警报。",
+    "industryLabel": "您经营的是什么？",
+    "industryPlaceholder": "选择您的行业…",
+    "workspaceUrl": "工作区网址",
+    "workspaceUrlHint": "仅限字母、数字和连字符。",
+    "firstName": "名",
+    "firstNamePlaceholder": "小明",
+    "lastName": "姓",
+    "lastNamePlaceholder": "王",
+    "adminEmail": "管理员邮箱",
+    "phone": "电话（可选）",
+    "phoneHint": "仅在您无法使用身份验证器应用时用于找回两步验证。我们绝不会向您发送营销短信。",
+    "address": "地址（可选）",
+    "addressPlaceholder": "开始输入，例如 1000 Vin Scully Ave…",
+    "addressHint": "输入后从列表中选择。我们会把您的地点标注在设备分布地图上。",
+    "password": "密码",
+    "passwordPlaceholder": "至少 8 个字符",
+    "confirmPassword": "确认密码",
+    "confirmPasswordPlaceholder": "再输入一次",
+    "creating": "正在创建您的工作区…",
+    "create": "创建工作区",
+    "agree": "创建工作区即表示您同意我们的<terms>条款</terms>和<privacy>隐私政策</privacy>。",
+    "agreeK12": "创建工作区即表示您同意我们的<terms>条款</terms>和<privacy>隐私政策</privacy>，包括我们的 <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa> 数据承诺。",
+    "footer": {
+      "label": "法律信息",
+      "terms": "条款",
+      "privacy": "隐私",
+      "security": "安全",
+      "dpa": "数据处理附录"
+    },
+    "errors": {
+      "industry": "请选择您的行业。",
+      "passwordLength": "密码至少需要 8 个字符。",
+      "passwordMismatch": "两次输入的密码不一致。",
+      "nameRequired": "请输入组织名称。",
+      "slugRequired": "请设置工作区网址。",
+      "slugTaken": "该工作区网址已被占用，请换一个。",
+      "emailInvalid": "请输入有效的管理员邮箱地址。",
+      "emailTaken": "该邮箱已有账户。请直接登录，或使用其他邮箱。",
+      "checkFields": "部分信息无效，请检查表单后重试。",
+      "tooMany": "尝试次数过多，请稍等一分钟再试。",
+      "generic": "注册失败，请重试。",
+      "unreachable": "无法连接到服务器 {url}。"
+    },
+    "panel": {
+      "eyebrow": "团队为何选择 VenueOS",
+      "title": "您运营的每一块屏幕，尽在一处。",
+      "lead": "一个控制台管理标牌、自助终端、记分牌，以及优先于一切的生命安全警报。",
+      "alertsTitle": "一键发出紧急警报",
+      "alertsDesc": "封锁、火警 / 疏散和天气消息可在几秒内切换所有屏幕。",
+      "scheduleTitle": "一次排期，处处生效",
+      "scheduleDesc": "按天、时段或单次活动安排内容——一块屏幕或一万块都行。",
+      "templatesTitle": "170+ 款模板，覆盖各行各业",
+      "templatesDesc": "完全可编辑，自动套用您的品牌配色，随时投放到屏幕上。",
+      "screensTitle": "任何屏幕都能运行",
+      "screensDesc": "智能电视、Android 播放器、LED 控制器、自助终端——无需专用硬件。"
+    },
+    "defaults": {
+      "nameLabel": "组织名称",
+      "namePlaceholder": "您的场所或组织",
+      "where": "整个场所"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "K-12 学校或学区",
+        "nameLabel": "学区或学校名称",
+        "namePlaceholder": "春田联合学区",
+        "where": "整个学区"
+      },
+      "GYM": {
+        "picker": "健身房、健身俱乐部或运动场馆",
+        "nameLabel": "健身房或俱乐部名称",
+        "namePlaceholder": "铁峰健身",
+        "where": "整个健身房"
+      },
+      "RETAIL": {
+        "picker": "零售门店或连锁店",
+        "nameLabel": "门店或连锁品牌名称",
+        "namePlaceholder": "北区户外用品",
+        "where": "整个门店"
+      },
+      "CORPORATE": {
+        "picker": "企业办公室或集团",
+        "nameLabel": "公司名称",
+        "namePlaceholder": "顶峰科技有限公司",
+        "where": "整个办公室"
+      },
+      "QSR": {
+        "picker": "餐厅 / 快餐（QSR）",
+        "nameLabel": "餐厅或品牌名称",
+        "namePlaceholder": "汉堡驿站",
+        "where": "整个品牌"
+      },
+      "FASHION": {
+        "picker": "时装精品店或服装品牌",
+        "nameLabel": "精品店或品牌名称",
+        "namePlaceholder": "五号工作室精品店",
+        "where": "整个精品店"
+      },
+      "BAR": {
+        "picker": "酒吧、精酿酒馆或夜店",
+        "nameLabel": "酒吧或场所名称",
+        "namePlaceholder": "生啤酒馆",
+        "where": "整个酒吧"
+      },
+      "HEALTHCARE": {
+        "picker": "诊所、医疗机构或医院",
+        "nameLabel": "机构或医疗网络名称",
+        "namePlaceholder": "港湾健康",
+        "where": "整个机构"
+      },
+      "HOSPITALITY": {
+        "picker": "酒店、度假村或物业",
+        "nameLabel": "物业或集团名称",
+        "namePlaceholder": "峰顶酒店",
+        "where": "整个物业"
+      },
+      "RESTAURANT": {
+        "picker": "正餐餐厅",
+        "nameLabel": "餐厅或集团名称",
+        "namePlaceholder": "铜桌餐厅",
+        "where": "整个餐厅"
+      },
+      "SPORTS": {
+        "picker": "体育场馆、体育场或运动项目",
+        "nameLabel": "场馆、球队或联赛名称",
+        "namePlaceholder": "河畔体育馆",
+        "where": "整个场馆"
+      },
+      "WORSHIP": {
+        "picker": "教会、事工或宗教场所",
+        "nameLabel": "教会或事工名称",
+        "namePlaceholder": "恩典社区教会",
+        "where": "整个事工"
+      }
+    }
+  },
+  "notifications": {
+    "inbox": {
+      "title": "通知",
+      "checking": "正在检查新消息…",
+      "unreadOf": "共 {total} 条，{unread} 条未读",
+      "messages": "{count} 条消息",
+      "markAllRead": "全部标为已读",
+      "categoriesLabel": "通知类别",
+      "unreadCount": "{count} 条未读",
+      "unread": "未读",
+      "stale": "暂时无法刷新——显示的是此设备最后收到的列表，更新的消息尚未显示。",
+      "retry": "重试",
+      "emptyFiltered": "此类别暂无内容",
+      "empty": "暂无通知",
+      "emptyAll": "当屏幕停止响应、有工作需要审核或您的账户发生变化时，VenueOS 会在这里通知您。",
+      "showAll": "显示全部通知",
+      "errorTitle": "无法加载通知",
+      "errorBody": "VenueOS 无法连接服务器，因此此列表可能不完整或已过时。",
+      "tryAgain": "重试",
+      "footnote": "这些通知仅在 VenueOS 打开时送达。应用关闭时手机不会提醒您——发生紧急情况时，请留意应用顶部的警报横幅。"
+    },
+    "bell": {
+      "labelUnread": "通知（{count} 条未读）",
+      "caughtUp": "没有新通知。"
+    },
+    "categories": {
+      "all": "全部",
+      "exceptions": "投放异常",
+      "reviews": "审核",
+      "system": "系统通知"
+    },
+    "categoriesShort": {
+      "exceptions": "投放",
+      "reviews": "审核",
+      "system": "系统"
+    },
+    "blurbs": {
+      "exceptions": "停止响应的屏幕，以及我们发现的其他投放问题。",
+      "reviews": "提交审批的工作，以及您所提交内容的审批结果。",
+      "system": "账户、许可证和平台消息。"
+    },
+    "age": {
+      "justNow": "刚刚",
+      "minutes": "{count} 分钟前",
+      "hours": "{count} 小时前",
+      "days": "{count} 天前"
+    },
+    "server": {
+      "screenOffline": "屏幕离线：{screen}",
+      "screenOfflineAt": "{site} · 屏幕离线：{screen}",
+      "infraEvent": "可能的基础设施故障——{total} 块屏幕中有 {count} 块掉线",
+      "infraEventAt": "{site} · 可能的基础设施故障——{total} 块屏幕中有 {count} 块掉线",
+      "pushDeadPolling": "{screen}：实时通道中断——正以轮询方式运行",
+      "pushDeadUnproven": "{screen}：实时通道中断且内容未经证实——需要立即处理",
+      "assetPending": "新素材待审核",
+      "assetApproved": "您的素材已获批准",
+      "assetRejected": "您的素材被拒绝",
+      "submissionAwaiting": "有新的提交等待您审核",
+      "submissionApproved": "您的提交已获批准",
+      "submissionRejected": "您的提交被拒绝",
+      "ownerLink": "VenueOS 支持团队创建了一个所有者登录链接",
+      "supportRequested": "VenueOS 正在申请支持访问权限",
+      "supportBreakGlass": "VenueOS 使用了紧急支持访问",
+      "supportEnded": "VenueOS 支持访问已结束",
+      "supportApproved": "{org} 已批准支持访问",
+      "supportDenied": "{org} 拒绝了支持访问",
+      "supportInvited": "{org} 已向 VenueOS 授予支持访问",
+      "kioskHelp": "访客需要帮助——{screen}",
+      "videoStutter": "{screen} 上的视频卡顿",
+      "noHeartbeat": "自 {time} 起未收到心跳信号。",
+      "noHeartbeatUnknown": "尚无心跳记录。",
+      "noHeartbeatAt": "{site}：自 {time} 起未收到“{screen}”的心跳信号。",
+      "unknownTime": "未知时间",
+      "infraBody": "{seconds} 秒内有 {count} 块屏幕离线（超过设备总数的 {pct}%）。可能是广域网、网络服务商或本地供电故障——已暂停逐屏提醒。受影响：{names}。",
+      "infraBodyAt": "{site}：{seconds} 秒内有 {count} 块屏幕离线（超过该地点设备总数的 {pct}%）。可能是广域网、网络服务商或供电故障。",
+      "pushDeadPollingBody": "此屏幕无法接收即时指令（刷新、紧急消息即时推送）。它的播放证明是最新的，因此仍在正常播放，并通过定期轮询（每 5–10 秒）获取更新，包括紧急消息。常见原因：场所网络屏蔽了 WebSocket / 流式连接。",
+      "pushDeadUnprovenBody": "此屏幕无法接收即时指令，而且最近没有证明画面已正常显示——当前显示的内容无法核实。已通过其清单排队一条持久刷新指令；如果几分钟内仍未恢复，今天就需要现场或网络排查，而不是每日提醒。",
+      "assetPendingBody": "{email} 上传了“{asset}”——需要审核后才能排期。",
+      "assetApprovedBody": "“{asset}”已发布，可以添加到播放列表。",
+      "assetRejectedBody": "“{asset}”被 {reviewer} 拒绝。",
+      "assetRejectedReasonBody": "“{asset}”被 {reviewer} 拒绝——“{reason}”。",
+      "submissionScheduleBody": "有一个排期已提交审批，通过后才能上线。",
+      "submissionItemsBody": "{count} 项内容已提交审批。",
+      "submissionLiveBody": "内容现已上线。",
+      "submissionNoFeedbackBody": "审核人未留下反馈。准备好后请修改并重新提交。",
+      "ownerLinkBody": "根据您批准的支持访问，已为新的组织所有者签发一次性登录链接。如果这不在您的预期之内，请在“设置”中撤销支持访问。",
+      "supportRequestedBody": "{who} 申请访问 {org}，时长 {duration}：“{reason}”。请在“设置 → VenueOS 支持访问”中批准或拒绝。",
+      "supportBreakGlassBody": "{who} 已开启对 {org} 的紧急访问，有效期至 {until}：“{reason}”。您现在可以在“设置 → VenueOS 支持访问”中结束它。",
+      "supportEndedBody": "VenueOS 已结束对 {org} 的支持访问。",
+      "accessUntil": "访问有效期至 {until}。",
+      "venueosSupport": "VenueOS 支持团队",
+      "aCustomer": "一位客户",
+      "kioskHelpBody": "一位访客在自助终端上点击了“请求帮助”。",
+      "videoStutterConcurrencyBody": "“{screen}”同时播放多个视频时，“{file}”会卡顿。播放不会中断；换用更轻量的副本也无法解决。",
+      "videoStutterNoCopyBody": "“{screen}”播放“{file}”时卡顿，且没有更轻量的副本可切换。播放不会中断。",
+      "duration": {
+        "days": "{count} 天",
+        "hours": "{count} 小时",
+        "minutes": "{count} 分钟",
+        "unspecified": "未指定的时长"
+      }
+    }
+  },
+  "menuConnect": {
+    "connectPos": "连接您的 POS 系统",
+    "pasteMenu": "粘贴您的菜单",
+    "templateName": "菜单板",
+    "templateDescription": "根据您粘贴的菜单自动创建——从您的 POS 实时获取价格。",
+    "zoneName": "菜单",
+    "boardTitle": "我们的菜单",
+    "nothingTitle": "没有可导入的内容",
+    "nothingBody": "请先粘贴几行菜单——每行一个菜品，价格放在末尾（例如“芝士汉堡  $8.99”）。",
+    "imported": "已导入 {count} 个菜品。",
+    "capturedNote": "您的菜单已保存。连接 POS（或自定义 Webhook）即可将其实时推送到屏幕。",
+    "importFailed": "导入失败",
+    "readyTitle": "菜单已就绪",
+    "readySeeded": "“{name}”模板已添加到您的模板中——可投放到任意屏幕。",
+    "modalBody": "每行一个菜品，价格放在末尾。我们会为您创建菜单板模板，并关联实时价格。",
+    "placeholder": "经典芝士汉堡   $8.99\n海盐薯条   $3.49\n现调汽水   $2.79",
+    "preview": "预览——{count} 个菜品",
+    "more": "还有 {count} 个…",
+    "close": "关闭",
+    "cancel": "取消",
+    "create": "创建我的菜单板"
   }
 }

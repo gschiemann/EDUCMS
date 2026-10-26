@@ -3,8 +3,9 @@
 import { Bell, Check, CheckCheck, AlertTriangle, ShieldAlert, WifiOff, Info, UserPlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAppStore } from '@/lib/store';
-import { humanizeTimestamps } from '@/components/notifications/notificationInbox';
+import { useNotificationText } from '@/components/notifications/useNotificationText';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
 import {
   useNotifications,
@@ -20,18 +21,6 @@ function kindIcon(kind: string) {
     case 'INVITE_ACCEPTED': return <UserPlus className="w-4 h-4 text-emerald-600" />;
     default: return <Info className="w-4 h-4 text-slate-500" />;
   }
-}
-
-function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
 }
 
 /**
@@ -52,6 +41,8 @@ const MOBILE_MAX = 768;
 
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
+  const t = useTranslations('notifications');
+  const { text, age } = useNotificationText();
   const router = useRouter();
   const activeTenant = useAppStore((s) => s.activeTenant);
   const { shell, loaded: shellLoaded } = useMobileShell();
@@ -101,7 +92,7 @@ export function NotificationsBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => { if (!goToInbox()) setOpen((v) => !v); }}
-        aria-label={`Notifications${unread ? ` (${unread} unread)` : ''}`}
+        aria-label={unread ? t('bell.labelUnread', { count: unread }) : t('inbox.title')}
         className="relative w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600 transition-all"
       >
         <Bell className="w-4 h-4" />
@@ -128,21 +119,23 @@ export function NotificationsBell() {
           }
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <div className="text-sm font-bold text-slate-800">Notifications</div>
+            <div className="text-sm font-bold text-slate-800">{t('inbox.title')}</div>
             <button
               onClick={() => markAll.mutate()}
               disabled={unread === 0 || markAll.isPending}
               className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 disabled:text-slate-300 flex items-center gap-1"
             >
-              <CheckCheck className="w-3.5 h-3.5" /> Mark all read
+              <CheckCheck className="w-3.5 h-3.5" aria-hidden /> {t('inbox.markAllRead')}
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {items.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-400">You're all caught up.</div>
+              <div className="py-10 text-center text-xs text-slate-400">{t('bell.caughtUp')}</div>
             ) : (
-              items.map((n: any) => (
+              items.map((n: any) => {
+                const shown = text(n);
+                return (
                 <button
                   key={n.id}
                   onClick={() => handleClick(n)}
@@ -154,12 +147,12 @@ export function NotificationsBell() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <p className={`text-xs truncate ${n.isRead ? 'font-medium text-slate-700' : 'font-bold text-slate-900'}`}>
-                        {n.title}
+                        {shown.title}
                       </p>
                       {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 mt-1.5" />}
                     </div>
-                    {n.body && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{humanizeTimestamps(n.body)}</p>}
-                    <p className="text-[10px] text-slate-400 mt-1">{timeAgo(n.createdAt)}</p>
+                    {shown.body && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{shown.body}</p>}
+                    <p className="text-[10px] text-slate-400 mt-1">{age(n.createdAt) ?? ''}</p>
                   </div>
                   {!n.isRead && (
                     <span className="text-slate-300 hover:text-indigo-600 shrink-0">
@@ -167,7 +160,8 @@ export function NotificationsBell() {
                     </span>
                   )}
                 </button>
-              ))
+                );
+              })
             )}
           </div>
         </div>
