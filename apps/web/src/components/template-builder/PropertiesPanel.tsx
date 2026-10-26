@@ -4,6 +4,8 @@ import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import { DirectoryBoardEditor } from './DirectoryBoardEditor';
+import { TouchPropertyEditor } from './TouchPropertyEditor';
 import { ToastItemBindingsPanel } from './ToastItemBindingsPanel';
 import { inlineBoardSlots, PosBoundBoardPanel, PosSlotFieldChip } from './PosBoundBoardPanel';
 import WALL_CLOCK_FIELDS from '@/lib/wall-clock-fields.json';
@@ -3016,7 +3018,33 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           <select
             id="pp-ext-template-picker"
             value={cfg.url || ''}
-            onChange={(e) => setField({ url: e.target.value })}
+            onChange={async (e) => {
+              const url = e.target.value;
+              if (url.startsWith('/templates/signage/corporate/directory/')) {
+                try {
+                  const response = await fetch(url);
+                  if (!response.ok) throw new Error('Directory template could not load');
+                  const source = new DOMParser().parseFromString(await response.text(), 'text/html');
+                  const document = JSON.parse(source.getElementById('arc-directory-document')?.textContent || 'null');
+                  if (document?.format !== 'arc-riot.directory') throw new Error('Directory content is missing');
+                  setField({ url, html: '', directoryDocument: document, touchDocument: null, contentChanged: false });
+                } catch {
+                  // Keep the current choice when its replacement cannot be read.
+                }
+              } else if (url.startsWith('/templates/signage/corporate/commercial-touch/')) {
+                try {
+                  const response = await fetch('/templates/signage/corporate/commercial-touch/data/property.json');
+                  if (!response.ok) throw new Error('Property content could not load');
+                  const document = await response.json();
+                  if (document?.format !== 'arc-riot.touch-property') throw new Error('Property content is missing');
+                  setField({ url, html: '', directoryDocument: null, touchDocument: document, contentChanged: false });
+                } catch {
+                  // Keep the current choice when its replacement cannot be read.
+                }
+              } else {
+                setField({ url, html: '', directoryDocument: null, touchDocument: null, contentChanged: false });
+              }
+            }}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
           >
             <option value="">— pick a template —</option>
@@ -3095,7 +3123,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // preview AND every player at runtime.
       // url boards fetch their HTML; AI Designer boards carry it inline in
       // cfg.html (srcdoc). Either way the editor walks the data-field hooks.
-      if (cfg.url || cfg.html) {
+      if (cfg.touchDocument?.format === 'arc-riot.touch-property') {
+        fields.push(<TouchPropertyEditor key="touch-property-editor" cfg={cfg} setField={setField} />);
+      } else if (cfg.directoryDocument?.format === 'arc-riot.directory') {
+        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} />);
+      } else if (cfg.url || cfg.html) {
         fields.push(SH('ext-text', 'Edit text'));
         fields.push(
           <ExternalHtmlTextEditor

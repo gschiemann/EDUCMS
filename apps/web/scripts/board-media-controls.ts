@@ -114,13 +114,24 @@ function readInitial() {
     }
   } catch { /* Keep the authored design when an override cannot be decoded. */ }
 }
+function safeMediaSource(value: unknown): string | undefined {
+  const raw = typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : '';
+  if (!raw.trim()) return '';
+  try {
+    const url = new URL(raw.trim(), location.href);
+    if (url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'blob:') return url.href;
+    if (url.protocol === 'data:' && /^data:(image|video)\//i.test(url.href)) return url.href;
+    if (url.protocol === 'file:' && location.protocol === 'file:') return url.href;
+  } catch { /* Invalid media cannot replace the authored image. */ }
+  return undefined;
+}
 function paintSources(data: { img?: Record<string, unknown>; video?: Record<string, unknown> }, newNodesOnly = false) {
   slots().forEach(el => {
     if (newNodesOnly && paintedSourceNodes.has(el)) return;
     const posterKey = el.getAttribute('data-posterslot');
     if (posterKey && data.img && posterKey in data.img) {
-      const posterValue = data.img[posterKey];
-      const poster = typeof posterValue === 'string' ? posterValue : Array.isArray(posterValue) && typeof posterValue[0] === 'string' ? posterValue[0] : '';
+      const poster = safeMediaSource(data.img[posterKey]);
+      if (poster === undefined) return;
       if (poster) el.setAttribute('poster', poster); else el.removeAttribute('poster');
       paintedSourceNodes.add(el);
     }
@@ -130,8 +141,8 @@ function paintSources(data: { img?: Record<string, unknown>; video?: Record<stri
     if (!map || !(key in map)) return;
     // The native carousel adapter owns its roots, playlists and timers.
     if (!video && document.documentElement.dataset.nativeCarousels === 'true') return;
-    const value = map[key];
-    const source = typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : '';
+    const source = safeMediaSource(map[key]);
+    if (source === undefined) return;
     const media = video ? (el.matches('video') ? el as HTMLVideoElement : el.querySelector('video')) : el.matches('img') ? el as HTMLImageElement : el.querySelector('img');
     if (media) {
       if (media.getAttribute('src') !== source) { if (source) media.setAttribute('src', source); else media.removeAttribute('src'); if (media instanceof HTMLVideoElement) media.load(); }
