@@ -3271,7 +3271,7 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
     expect(err.getStatus()).toBe(402);
     expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'boards', boardsNeeded: 2, boardsLeft: 1, used: 9, cap: 10 });
     expect(err.getResponse().message).toContain('This batch needs 2 boards; you have 1 left this month');
-    expect(err.getResponse().message).toContain('Settings → AI provider');
+    expect(err.getResponse().message).toContain('Settings → Connections → AI');
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 

@@ -440,7 +440,7 @@ export class AiAltTextService {
           reason: 'ai_key_unreadable',
           code: 'AI_KEY_UNREADABLE',
           message:
-            'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+            'Your saved AI key could not be read — re-enter it in Settings → Connections → AI.',
         },
       });
       return null;
@@ -682,7 +682,7 @@ export class AiAltTextService {
           reason: 'ai_key_unreadable',
           code: 'AI_KEY_UNREADABLE',
           message:
-            'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+            'Your saved AI key could not be read — re-enter it in Settings → Connections → AI.',
         },
       });
       return null;

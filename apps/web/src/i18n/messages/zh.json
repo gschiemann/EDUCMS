@@ -1565,7 +1565,8 @@
         "ssoDomainTakenElsewhere": "此邮箱域名已被其他组织验证。如果它属于您，请联系 VenueOS 支持。",
         "actionsFor": "{email} 的操作",
         "accessNoScreensYet": "尚无屏幕：{locations}",
-        "ssoLoadFailed": "无法加载 SSO 配置"
+        "ssoLoadFailed": "无法加载 SSO 配置",
+        "ssoOidcOption": "OpenID Connect（Google Workspace、Microsoft Entra ID、Okta、Auth0）"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",

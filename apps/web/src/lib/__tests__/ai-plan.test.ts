@@ -52,7 +52,7 @@ describe('the AI plan upsell', () => {
     expect(isAiPlanRequired(e)).toBe(true);
     expect(isAiCapError(e)).toBe(false);
     expect(isAiCapError({ code: 'AI_CAP_REACHED', status: 402 })).toBe(true);
-    expect(aiPaywallText(tPlan, e)).toBe('Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).');
+    expect(aiPaywallText(tPlan, e)).toBe('Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → Connections → AI).');
   });
 
   it('the allowance says when to show it', () => {
@@ -68,7 +68,7 @@ describe('the AI plan upsell', () => {
   it('the boards line becomes the upsell line (with the Add AI flag) without the AI plan', () => {
     const line = boardsLine(tBoards, 'en-US', allowance({ source: 'none', reasonCode: 'AI_PLAN_REQUIRED', boardsLeft: null }));
     expect(line).toMatchObject({ upsell: true, canBuy: false });
-    expect(line!.text).toContain('connect your own AI key for free (Settings → AI)');
+    expect(line!.text).toContain('connect your own AI key for free (Settings → Connections → AI)');
   });
 });
 

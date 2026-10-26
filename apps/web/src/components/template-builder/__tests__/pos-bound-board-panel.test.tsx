@@ -138,7 +138,7 @@ describe('a kept POS-bound AI board — the Live menu section', () => {
     const panel = await screen.findByTestId('pos-bound-board-panel');
     await waitFor(() => expect(within(panel).getByText('Not connected')).toBeInTheDocument());
     expect(within(panel).getByText(/The Toast connection this board was bound to is gone/)).toBeInTheDocument();
-    expect(within(panel).getByRole('link', { name: /Open Settings → POS/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: /Open point of sale settings/ })).toBeInTheDocument();
     // No live-update promise for a board that cannot be live.
     expect(within(panel).queryByText(/reach your screens/)).not.toBeInTheDocument();
   });

@@ -210,7 +210,7 @@ describe('the passkey step is never a dead end', () => {
     expect(screen.queryByRole('button', { name: /Email me a code/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Use a backup code/i })).toBeInTheDocument();
     expect(screen.getByTestId('other-way-device-hint')).toHaveTextContent(
-      'Or sign in on the device that has your passkey, then add this device in Settings → My security.',
+      'Or sign in on the device that has your passkey, then add this device in My account.',
     );
   });
 
@@ -223,7 +223,7 @@ describe('the passkey step is never a dead end', () => {
     await passkeyMisses();
     expect(screen.getByTestId('mfa-other-ways').querySelectorAll('button')).toHaveLength(0);
     expect(screen.getByTestId('other-way-device-hint')).toHaveTextContent(
-      'Sign in on the device that has your passkey. Then add a passkey for this device in Settings → My security.',
+      'Sign in on the device that has your passkey. Then add a passkey for this device in My account.',
     );
   });
 });

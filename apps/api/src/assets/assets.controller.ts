@@ -2086,7 +2086,7 @@ export class AssetsController {
           {
             code: 'AI_ALT_TEXT_UNAVAILABLE',
             message:
-              'Alt-text generation could not run. Make sure your AI provider key is configured in Settings → AI provider.',
+              'Alt-text generation could not run. Make sure your AI provider key is configured in Settings → Connections → AI.',
           },
           HttpStatus.SERVICE_UNAVAILABLE,
         );

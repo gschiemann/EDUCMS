@@ -238,6 +238,6 @@ export function aiLimitMessage(o: { unit: 'boards' | 'images'; plan: AiPlan; res
       : `this month${o.resetAt ? ` (they reset ${new Date(o.resetAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })})` : ''}`;
   return (
     `You've used all your ${what} ${when}. ` +
-    'Add your own AI key in Settings → AI provider to keep going, or contact us for more.'
+    'Add your own AI key in Settings → Connections → AI to keep going, or contact us for more.'
   );
 }

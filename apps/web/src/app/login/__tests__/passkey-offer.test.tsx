@@ -332,7 +332,7 @@ describe('the walk-through after password + authenticator code', () => {
     await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
 
     expect(
-      await screen.findByText('No passkey was set up. You can add one anytime in Settings → My security.'),
+      await screen.findByText('No passkey was set up. You can add one anytime in My account.'),
     ).toBeInTheDocument();
     expect(container.querySelector('.bg-rose-50')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
@@ -352,7 +352,7 @@ describe('the walk-through after password + authenticator code', () => {
     await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Add a passkey for this Mac/i })); });
 
     expect(
-      await screen.findByText("We couldn't set up a passkey this time. You can add one later in Settings → My security."),
+      await screen.findByText("We couldn't set up a passkey this time. You can add one later in My account."),
     ).toBeInTheDocument();
     // Still signed in: a refused SAVE is not a refused SESSION (this page
     // never takes apiFetch's sign-out-on-401 path).

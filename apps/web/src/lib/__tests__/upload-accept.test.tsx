@@ -125,7 +125,7 @@ describe('the words', () => {
     expect(t({ code: 'unsupported' }, f('old.flv'))).toBe(
       "old.flv can't be uploaded. Upload photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS), audio (MP3, OGG, WAV, M4A) or PDF.",
     );
-    expect(t({ code: 'svg' }, f('logo.svg'))).toMatch(/Export it as PNG.*Settings → Branding/);
+    expect(t({ code: 'svg' }, f('logo.svg'))).toMatch(/Export it as PNG.*Settings → Organization → Logo & colors/);
     expect(t({ code: 'wrong-kind', kinds: ['image'] }, f('clip.mov'))).toBe(
       "clip.mov can't be used here — this takes JPG, PNG, WebP, GIF, BMP, ICO, HEIC.",
     );

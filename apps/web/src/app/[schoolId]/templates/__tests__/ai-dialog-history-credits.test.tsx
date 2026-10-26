@@ -509,7 +509,7 @@ describe('The boards left — one line under Generate', () => {
 
   it.each([
     ['their own key', () => ownKeyAllowance(), 'Using your own AI key — no board limit'],
-    ['nobody\'s key', () => noKeyAllowance(), 'AI runs on your own key — add it in Settings → AI provider.'],
+    ['nobody\'s key', () => noKeyAllowance(), 'AI runs on your own key — add it in Settings → Connections → AI.'],
     ['Stripe not set up', () => platformAllowance({ purchase: 'STRIPE_NOT_CONFIGURED' }), "14 of 20 boards left this month · resets Oct 1 Buying more boards isn't set up on this deployment yet."],
   ])('%s: the line says so, and there is nothing to buy', async (_name, allowance, text) => {
     server.allowance = allowance();

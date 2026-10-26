@@ -1565,7 +1565,8 @@
         "ssoDomainTakenElsewhere": "Este dominio de correo ya está verificado por otra organización. Contacta con el soporte de VenueOS si te pertenece.",
         "actionsFor": "Acciones para {email}",
         "accessNoScreensYet": "Aún sin pantallas: {locations}",
-        "ssoLoadFailed": "No se pudo cargar la configuración de SSO"
+        "ssoLoadFailed": "No se pudo cargar la configuración de SSO",
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",

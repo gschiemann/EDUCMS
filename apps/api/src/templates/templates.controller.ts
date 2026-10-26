@@ -2084,7 +2084,7 @@ export class TemplatesController {
       throw new HttpException(
         {
           message:
-            "I couldn't analyze that image. Make sure an AI provider is set in Settings → AI provider, or describe the look instead.",
+            "I couldn't analyze that image. Make sure an AI provider is set in Settings → Connections → AI, or describe the look instead.",
           code: 'CONCIERGE_VISION_UNAVAILABLE',
         },
         HttpStatus.UNPROCESSABLE_ENTITY,

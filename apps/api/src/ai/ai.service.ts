@@ -660,7 +660,7 @@ export class AiService {
       {
         message:
           `This month's included AI is used up (resets ${resetDay}). ` +
-          'Add your own AI provider key in Settings → AI provider to keep going — you pay your provider directly, with no limit here.',
+          'Add your own AI provider key in Settings → Connections → AI to keep going — you pay your provider directly, with no limit here.',
         code: 'AI_CAP_REACHED',
         cap: u.cap,
         used: u.used,
@@ -861,7 +861,7 @@ export class AiService {
     throw new ServiceUnavailableException({
       code: 'AI_KEY_UNREADABLE',
       message:
-        'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+        'Your saved AI key could not be read — re-enter it in Settings → Connections → AI.',
     });
   }
 
@@ -1807,7 +1807,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → AI provider, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
 
@@ -5070,7 +5070,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → AI provider, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
 
@@ -5097,7 +5097,7 @@ export class AiService {
         throw new HttpException(
           {
             code: 'AI_IMAGE_UNAVAILABLE',
-            message: 'Image generation needs an OpenAI or Google API key. Add one in Settings → AI provider.',
+            message: 'Image generation needs an OpenAI or Google API key. Add one in Settings → Connections → AI.',
             provider: resolved.provider,
           },
           HttpStatus.SERVICE_UNAVAILABLE,
@@ -5115,7 +5115,7 @@ export class AiService {
         {
           code: 'AI_IMAGE_UNAVAILABLE',
           message:
-            'Anthropic doesn’t generate images yet. Switch your provider to OpenAI or Google in Settings → AI provider to create images.',
+            'Anthropic doesn’t generate images yet. Switch your provider to OpenAI or Google in Settings → Connections → AI to create images.',
           provider: 'anthropic',
         },
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -5473,7 +5473,7 @@ export class AiService {
     const label = provider === 'openai' ? 'OpenAI' : provider === 'google' ? 'Google' : 'Anthropic';
     if (isKeyRejected(status, body)) {
       throw new ServiceUnavailableException(
-        `Your ${label} API key was rejected (${status}). Re-enter it in Settings → AI provider.`,
+        `Your ${label} API key was rejected (${status}). Re-enter it in Settings → Connections → AI.`,
       );
     }
     if (status === 429) {

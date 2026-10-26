@@ -165,7 +165,7 @@ export function buildPosBindingPlan(args: {
   if (!items.length) {
     throw new PosPlanError(
       'POS_SELECTION_EMPTY',
-      `None of the sections you picked has a priced item in your ${args.providerName} menu. Pick another section, or sync ${args.providerName} in Settings → POS.`,
+      `None of the sections you picked has a priced item in your ${args.providerName} menu. Pick another section, or sync ${args.providerName} in Settings → Connections → Point of sale.`,
       { sections: args.sections },
     );
   }

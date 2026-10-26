@@ -178,7 +178,7 @@ export function buildConciergePosBlock(state: ConciergePosPromptState | null | u
       `- What stays live on this board: ${describeLive(c.providerName, c.live)}`,
     );
     if (c.status !== 'ACTIVE') {
-      lines.push(`- Mention once, briefly, that ${c.providerName} needs attention in Settings → POS (${statusPhrase(c)}), so the board may show the last menu it synced.`);
+      lines.push(`- Mention once, briefly, that ${c.providerName} needs attention in Settings → Connections → Point of sale (${statusPhrase(c)}), so the board may show the last menu it synced.`);
     }
   } else if (kind === 'connected') {
     const conns = state!.context!.connections;
@@ -193,7 +193,7 @@ export function buildConciergePosBlock(state: ConciergePosPromptState | null | u
     lines.push(
       first.itemCount > 0
         ? `- If this board shows a menu or prices, OFFER it in one line: "Want me to use your ${first.providerName} menu? Tick the sections in the card below." Do not ask them to type items unless they decline.`
-        : `- Its menu has not synced yet: if they want a menu board, tell them to open Settings → POS and press Sync (or paste their menu for now).`,
+        : `- Its menu has not synced yet: if they want a menu board, tell them to open Settings → Connections → Point of sale and press Sync (or paste their menu for now).`,
       `- If they accept, what would stay live: ${describeLive(first.providerName, first.live)}`,
     );
   } else if (kind === 'detected') {

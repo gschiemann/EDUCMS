@@ -107,7 +107,7 @@ describe('AiBoardsLeft — one line, the same everywhere', () => {
   it('nobody\'s key: where to add one', async () => {
     server.allowance = noKeyAllowance();
     renderWith(<AiBoardsLeft onBuy={jest.fn()} />);
-    expect(await screen.findByTestId('ai-boards-left')).toHaveTextContent('AI runs on your own key — add it in Settings → AI provider.');
+    expect(await screen.findByTestId('ai-boards-left')).toHaveTextContent('AI runs on your own key — add it in Settings → Connections → AI.');
   });
 
   it('nothing at all until the API answers (it never stands in front of Generate)', async () => {
