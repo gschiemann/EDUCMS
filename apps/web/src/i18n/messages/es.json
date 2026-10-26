@@ -7002,9 +7002,8 @@
     "create": "Crear mi menú digital"
   },
   "activityFeed": {
-    "title": "Actividad reciente",
     "viewAll": "Ver toda la actividad",
-    "empty": "Aquí aparecen los cambios que tú y tu equipo hacen: listas, pantallas, alertas y personas.",
+    "empty": "Aquí aparecen los cambios del equipo: listas, pantallas, alertas y personas.",
     "actor": {
       "you": "Usted",
       "support": "El soporte de VenueOS",

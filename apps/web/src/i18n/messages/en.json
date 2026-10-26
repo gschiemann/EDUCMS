@@ -7002,7 +7002,6 @@
     "create": "Create my menu board"
   },
   "activityFeed": {
-    "title": "Recent activity",
     "viewAll": "View all activity",
     "empty": "Changes you and your team make show up here — playlists, screens, alerts and people.",
     "actor": {

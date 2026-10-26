@@ -12,7 +12,7 @@ import { LOCALE_HTML_LANG } from '@/i18n/config';
 import { ActivityIconChip } from './ActivityIcon';
 
 /**
- * "Recent activity" on Home (2026-10-24) — what people did, in sentences.
+ * "Recent Activity" on Home (2026-10-24) — what people did, in sentences.
  *
  * Owner, from his phone: "These alerts don't seem like user activity … just
  * alerts that make sense to an end user." The card used to title-case raw
@@ -73,6 +73,10 @@ export function RecentActivityCard({
 }: RecentActivityCardProps) {
   const t = useTranslations('activityFeed');
   const tPage = useTranslations('activityPage');
+  // The heading stays the dashboard's own "Recent Activity" (title case, like
+  // "Today's Schedule" and "Quick Actions" beside it); the layout spec
+  // `tests/e2e/local-dashboard-layout.spec.ts` finds the card by it.
+  const tDash = useTranslations('dashboard');
   const time = useActivityTime();
   const lines = useMemo(
     () => activityLines(items, { t: t as unknown as ActivityTranslate, viewerId }).slice(0, limit),
@@ -89,7 +93,7 @@ export function RecentActivityCard({
       <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <History className="w-4 h-4 text-slate-500 shrink-0" aria-hidden />
-          <h2 id="recent-activity-title" className="text-sm font-bold text-slate-800 truncate">{t('title')}</h2>
+          <h2 id="recent-activity-title" className="text-sm font-bold text-slate-800 truncate">{tDash('recentActivity')}</h2>
         </div>
         <Link
           href={viewAllHref}
