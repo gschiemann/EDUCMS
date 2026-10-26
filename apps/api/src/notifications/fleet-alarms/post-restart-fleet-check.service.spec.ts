@@ -263,16 +263,20 @@ describe('a screen that is MEANT to be off is not missing', () => {
   it('switched off by its on/off schedule two minutes after the deploy → excused, no alert', async () => {
     w = makeWorld();
     seed(w, BOOT_LATE);
-    w.displaySchedules.push({
-      id: 'ds',
-      screenId: null,
-      screenGroupId: null,
-      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-      onTime: '07:00',
-      offTime: '22:00',
-      timezone: 'America/Chicago',
-      isActive: true,
-    });
+    // One row per organisation: a schedule governs its own tenant's screens only (2026-10-25).
+    for (const tenantId of ['school-a', 'school-b', 'gym', 'cafe', 'arena', 'office']) {
+      w.displaySchedules.push({
+        id: `ds-${tenantId}`,
+        tenantId,
+        screenId: null,
+        screenGroupId: null,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        onTime: '07:00',
+        offTime: '22:00',
+        timezone: 'America/Chicago',
+        isActive: true,
+      });
+    }
     const off = [uuid(1), uuid(2), uuid(3), uuid(4), uuid(5)];
     const { svc, mailer, clock } = build(w, BOOT_LATE);
     await svc.snapshot();

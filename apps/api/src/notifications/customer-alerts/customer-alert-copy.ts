@@ -23,6 +23,23 @@ export interface ScreenAlertItem {
   minutes?: number;
   /** NO_CONTENT only: the player itself says its files could not be loaded. */
   contentUnavailable?: boolean;
+  /**
+   * OFFLINE only (2026-10-25): it went dark while its on/off schedule had it
+   * off and did not come back on when the schedule switched it on, at this
+   * moment — shown in the schedule's own zone ("7:00 AM").
+   */
+  missedOnTime?: { onAtMs: number; timeZone: string };
+}
+
+/** The switch-on moment as the location's clock shows it, in the reader's language. */
+export function onTimeLabel(locale: AlertLocale, m: { onAtMs: number; timeZone: string }): string {
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', timeZone: m.timeZone };
+  try {
+    if (locale === 'zh') return new Intl.DateTimeFormat('zh-CN', { ...opts, hour12: true }).format(m.onAtMs);
+    return new Intl.DateTimeFormat(locale === 'es' ? 'es' : 'en-US', opts).format(m.onAtMs);
+  } catch {
+    return new Intl.DateTimeFormat(locale === 'es' ? 'es' : 'en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(m.onAtMs) + ' UTC';
+  }
 }
 
 export interface AlertLinks {
@@ -87,6 +104,13 @@ const T = {
     digestIntro: (org: string) =>
       `We held back some alerts so your inbox would not fill up. Here is what happened at ${org}:`,
     digestKind: { OFFLINE: 'Offline', BACK_ONLINE: 'Back online', NO_CONTENT: 'Not showing content', CONTENT_RESTORED: 'Showing content again' },
+    missed: {
+      subj: (one: string | null, n: number, loc: string, time: string) =>
+        one ? `VenueOS: ${one} at ${loc} didn't come back on at ${time}` : `VenueOS: ${n} screens at ${loc} didn't come back on at ${time}`,
+      intro: (loc: string) => `These screens at ${loc} did not come back on when their on/off schedule switched them on:`,
+      line: (time: string) => `didn't come back on at ${time}, its scheduled on time`,
+      digest: (time: string) => `Didn't come back on at ${time}`,
+    },
   },
   es: {
     sign: '— El equipo de VenueOS',
@@ -140,6 +164,15 @@ const T = {
     digestIntro: (org: string) =>
       `Agrupamos algunas alertas para no llenar tu bandeja de entrada. Esto es lo que pasó en ${org}:`,
     digestKind: { OFFLINE: 'Sin conexión', BACK_ONLINE: 'De nuevo en línea', NO_CONTENT: 'Sin mostrar contenido', CONTENT_RESTORED: 'Vuelve a mostrar contenido' },
+    missed: {
+      subj: (one: string | null, n: number, loc: string, time: string) =>
+        one
+          ? `VenueOS: ${one} en ${loc} no volvió a encenderse ${esAt(time)}`
+          : `VenueOS: ${n} pantallas en ${loc} no volvieron a encenderse ${esAt(time)}`,
+      intro: (loc: string) => `Estas pantallas de ${loc} no volvieron a encenderse cuando su horario de encendido las encendió:`,
+      line: (time: string) => `no volvió a encenderse ${esAt(time)}, su hora programada de encendido`,
+      digest: (time: string) => `No volvió a encenderse ${esAt(time)}`,
+    },
   },
   zh: {
     sign: '— VenueOS 团队',
@@ -184,8 +217,20 @@ const T = {
     digestSubj: (n: number, org: string) => `VenueOS：${org} 的 ${n} 条屏幕动态`,
     digestIntro: (org: string) => `为避免邮件过多，我们合并了部分提醒。以下是 ${org} 的情况：`,
     digestKind: { OFFLINE: '离线', BACK_ONLINE: '恢复在线', NO_CONTENT: '未显示内容', CONTENT_RESTORED: '恢复显示内容' },
+    missed: {
+      subj: (one: string | null, n: number, loc: string, time: string) =>
+        one ? `VenueOS：${loc} 的 ${one} 未在 ${time} 按时开机` : `VenueOS：${loc} 有 ${n} 块屏幕未在 ${time} 按时开机`,
+      intro: (loc: string) => `${loc} 的以下屏幕在开关机计划到点开机时没有恢复：`,
+      line: (time: string) => `未在计划开机时间 ${time} 恢复开机`,
+      digest: (time: string) => `未在 ${time} 按时开机`,
+    },
   },
 } as const;
+
+/** "a las 7:00" — but "a la 1:00". */
+function esAt(time: string): string {
+  return /^1[:.]/.test(time) ? `a la ${time}` : `a las ${time}`;
+}
 
 function listLines<I>(items: readonly I[], fmt: (i: I) => string, more: (n: number) => string): string[] {
   const lines = items.slice(0, MAX_LISTED).map((i) => `  • ${fmt(i)}`);
@@ -202,13 +247,23 @@ export function renderScreenAlertEmail(
   const t = T[locale];
   const n = input.items.length;
   const one = n === 1 ? input.items[0].screenName : null;
-  const subject = t.subj[input.kind](one, n, input.locationName);
+  // Every screen missed its scheduled switch-on (2026-10-25): say so in the
+  // subject and intro — at one time, or the generic offline subject.
+  const missed = input.kind === 'OFFLINE' && n > 0 && input.items.every((i) => !!i.missedOnTime);
+  const times = missed ? [...new Set(input.items.map((i) => onTimeLabel(locale, i.missedOnTime!)))] : [];
+  const subject =
+    missed && times.length === 1 ? t.missed.subj(one, n, input.locationName, times[0]) : t.subj[input.kind](one, n, input.locationName);
   const line = (i: ScreenAlertItem): string => {
     const detail =
-      i.kind === 'NO_CONTENT' ? t.line.NO_CONTENT(i.minutes, i.contentUnavailable) : t.line[i.kind](i.minutes);
+      i.kind === 'OFFLINE' && i.missedOnTime
+        ? t.missed.line(onTimeLabel(locale, i.missedOnTime))
+        : i.kind === 'NO_CONTENT'
+          ? t.line.NO_CONTENT(i.minutes, i.contentUnavailable)
+          : t.line[i.kind](i.minutes);
     return `${i.screenName} — ${detail}`;
   };
-  const body: string[] = [t.intro[input.kind](input.locationName), '', ...listLines(input.items, line, t.more), ''];
+  const intro = missed ? t.missed.intro(input.locationName) : t.intro[input.kind](input.locationName);
+  const body: string[] = [intro, '', ...listLines(input.items, line, t.more), ''];
   if (input.kind === 'OFFLINE') body.push(t.outro.OFFLINE(!!input.siteWide), t.later.OFFLINE, '');
   if (input.kind === 'NO_CONTENT') body.push(t.outro.NO_CONTENT(), t.later.NO_CONTENT, '');
   body.push(`${t.open}: ${links.screensUrl}`, '', `${t.manage}: ${links.manageUrl}`, '', t.sign);
@@ -222,7 +277,8 @@ export function renderDigestEmail(
   links: AlertLinks,
 ): RenderedEmail {
   const t = T[locale];
-  const line = (i: ScreenAlertItem) => `${t.digestKind[i.kind]}: ${i.screenName} (${i.locationName})`;
+  const line = (i: ScreenAlertItem) =>
+    `${i.kind === 'OFFLINE' && i.missedOnTime ? t.missed.digest(onTimeLabel(locale, i.missedOnTime)) : t.digestKind[i.kind]}: ${i.screenName} (${i.locationName})`;
   return {
     subject: t.digestSubj(input.items.length, input.orgName),
     body: [
