@@ -17,6 +17,20 @@ export type UsbExportStatus =
   | { state: 'done'; label: string }
   | { state: 'error'; label: string };
 
+/**
+ * The message after a .zip download (2026-10-26, owner: "why not pull up the
+ * explorer and let me save directly into my usb drive"). Only Chrome and Edge
+ * let a page open a folder picker; Safari and Firefox always save into
+ * Downloads unless the person switches on their own "ask where to save"
+ * setting, so those two get the one-line way to do that. iPhone and iPad
+ * Safari keep the plain message: their download setting lives elsewhere.
+ */
+export function zipDoneKey(ua: string): 'doneZip' | 'doneZipSafari' | 'doneZipFirefox' {
+  if (/firefox|fxios/i.test(ua)) return 'doneZipFirefox';
+  if (/safari/i.test(ua) && !/chrome|chromium|crios|edg|android|iphone|ipad|ipod/i.test(ua)) return 'doneZipSafari';
+  return 'doneZip';
+}
+
 export function useUsbExport() {
   const t = useTranslations('usbDelivery');
   const token = useUIStore((s) => s.token);
@@ -38,7 +52,8 @@ export function useUsbExport() {
             }),
         });
         if (out.kind === 'cancelled') { setStatus(null); return out; }
-        setStatus({ state: 'done', label: out.kind === 'folder' ? t('doneFolder', { name }) : t('doneZip', { name }) });
+        const zipKey = zipDoneKey(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+        setStatus({ state: 'done', label: out.kind === 'folder' ? t('doneFolder', { name }) : t(zipKey, { name }) });
         return out;
       } catch (e) {
         setStatus({ state: 'error', label: t('failed', { message: (e as Error)?.message || '' }) });
