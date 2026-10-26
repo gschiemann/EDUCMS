@@ -7778,5 +7778,136 @@
     "next": "Página siguiente",
     "filters": "Filtros",
     "filtersOn": "Filtros activos"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "Prueba la personalización automática",
+      "authed": "Personaliza VenueOS con tu marca"
+    },
+    "intro": "Pega tu sitio web. En unos 10 segundos tomaremos tu logotipo, tus colores y tus fuentes para que VenueOS se vea como tuyo, no como nuestro.",
+    "urlLabel": "La dirección de tu sitio web",
+    "scan": "Escanear",
+    "scanning": "Escaneando…",
+    "tryExample": "Prueba un ejemplo:",
+    "exampleBlocked": "Si un sitio de ejemplo bloquea el escaneo, prueba con otro o pega la dirección de tu propio sitio web.",
+    "errors": {
+      "pasteUrlFirst": "Primero pega la dirección de tu sitio web.",
+      "scanFailed": "No pudimos escanear ese sitio web. Revisa la dirección e inténtalo de nuevo.",
+      "notAnImage": "Elige un archivo de imagen (PNG, JPG, SVG o WebP).",
+      "logoTooLarge": "Ese logotipo es demasiado grande: el límite es de 2 MB.",
+      "readFailed": "No se pudo leer ese archivo: prueba con otro.",
+      "adoptFailed": "No se pudo guardar tu marca. Inténtalo de nuevo."
+    },
+    "confidence": {
+      "title": "Qué tan seguros estamos",
+      "logo": "Logotipo",
+      "palette": "Colores",
+      "fonts": "Fuentes",
+      "displayName": "Nombre"
+    },
+    "logos": {
+      "title": "Logotipos encontrados",
+      "chooseLabel": "Elegir el logotipo {n}",
+      "optionAlt": "Opción de logotipo",
+      "yourLogoAlt": "Tu logotipo",
+      "usingUploaded": "Usando el logotipo que subiste",
+      "usingPasted": "Usando el logotipo del enlace que pegaste",
+      "remove": "Quitar tu logotipo",
+      "upload": "Sube tu logotipo",
+      "pastePlaceholder": "…o pega un enlace a la imagen de tu logotipo",
+      "noneFound": "No pudimos obtener un logotipo de este sitio: algunos sitios (como dominos.com) bloquean los escaneos automáticos. Sube tu logotipo o pega arriba un enlace a la imagen.",
+      "kind": {
+        "svgInline": "Logotipo",
+        "imgLogo": "Logotipo",
+        "imgWordmark": "Logotipo de texto",
+        "icon": "Icono",
+        "appleTouch": "Icono de app",
+        "mask": "Icono de un color",
+        "og": "Imagen para compartir",
+        "twitter": "Imagen para redes sociales"
+      }
+    },
+    "logoBackground": {
+      "title": "Fondo del logotipo",
+      "picked": "Elegimos <b>{label}</b> para este logotipo",
+      "optionLabel": "Fondo del logotipo: {label}",
+      "appliesEverywhere": "Se aplica en todos los lugares donde aparece tu logotipo: la barra lateral, la vista previa y cualquier plantilla que lo use.",
+      "options": {
+        "transparent": "Ninguno",
+        "white": "Blanco",
+        "dark": "Oscuro",
+        "primary": "Marca",
+        "tile": "Suave"
+      },
+      "hints": {
+        "transparent": "Sin fondo: tu logotipo va directamente sobre la página",
+        "white": "Un recuadro blanco detrás de tu logotipo",
+        "dark": "Un recuadro oscuro: ideal para logotipos blancos o claros",
+        "primary": "Un recuadro con el color principal de tu marca",
+        "tile": "Un recuadro redondeado con un tono claro del color de tu marca"
+      }
+    },
+    "palette": {
+      "title": "Paleta",
+      "primary": "Principal",
+      "accent": "Acento",
+      "primaryPickerLabel": "Color principal",
+      "accentPickerLabel": "Color de acento",
+      "discovered": "Colores encontrados: haz clic para aplicarlos",
+      "swatchPrimary": "{hex}: haz clic para usarlo como color principal",
+      "swatchAccent": "{hex}: haz clic para usarlo como color de acento",
+      "swatchFromSite": "El sitio web lo indica como color de marca",
+      "badgePrimary": "P",
+      "badgeAccent": "A"
+    },
+    "contrast": {
+      "textOnPrimary": "Texto sobre el color principal",
+      "textOnAccent": "Texto sobre el color de acento",
+      "gradeAAA": "Muy fácil de leer",
+      "gradeAA": "Fácil de leer",
+      "gradeAALarge": "Solo para texto grande",
+      "gradeFail": "Difícil de leer"
+    },
+    "fonts": {
+      "title": "Tipografía",
+      "heading": "Títulos",
+      "body": "Texto",
+      "noneDetected": "{label}: no se detectó ninguna",
+      "system": "Del sistema",
+      "noGoogleMatch": "No hay ninguna fuente de Google Fonts que coincida: usaremos una fuente estándar."
+    },
+    "identity": {
+      "title": "Nombre y lema",
+      "namePlaceholder": "Nombre visible",
+      "taglinePlaceholder": "Lema (se muestra en la página de inicio de sesión)"
+    },
+    "apply": {
+      "title": "Aplicar la marca a las plantillas",
+      "fillBlanks": "Rellenar vacíos",
+      "fillBlanksHint": "Solo las zonas que aún usan los colores predeterminados",
+      "override": "Sobrescribir",
+      "overrideHint": "Repinta todas las zonas, incluso las que personalizaste",
+      "apply": "Aplicar",
+      "applying": "Aplicando…",
+      "done": "{count, plural, one {Aplicado a # plantilla} other {Aplicado a # plantillas}} · {zones, plural, one {# zona actualizada} other {# zonas actualizadas}}.",
+      "failed": "Error al aplicar: inténtalo de nuevo.",
+      "updatedTitle": "Plantillas actualizadas",
+      "more": "+{count} más"
+    },
+    "actions": {
+      "rescan": "Reescanear",
+      "adopt": "Usar esta marca",
+      "adopting": "Aplicando…",
+      "adoptDemo": "Usar (inicia sesión)",
+      "adoptDemoHint": "Inicia sesión para usar esta marca"
+    },
+    "footer": {
+      "source": "Fuente:",
+      "scannedIn": "Escaneado en {seconds, plural, one {# segundo} other {# segundos}}"
+    },
+    "preview": {
+      "title": "Vista previa en vivo",
+      "subtitle": "— se actualiza mientras ajustas"
+    }
   }
 }

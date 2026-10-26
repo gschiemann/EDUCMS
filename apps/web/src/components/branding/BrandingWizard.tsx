@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import DOMPurify from 'dompurify';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
 import { Button } from '@/components/ui/button';
@@ -29,10 +30,10 @@ import { useAppStore } from '@/lib/store';
 import { useInvalidateTenantBranding, useApplyBrandToTemplates } from '@/hooks/use-api';
 import { BrandingLivePreview } from './BrandingLivePreview';
 import { useLogoTone } from './useLogoTone';
+// Option labels + hints come from the `brandingWizard.logoBackground.*`
+// catalog keys (en/es/zh), not logo-backdrop's English LABELS/HINTS maps.
 import {
   LOGO_BACKGROUNDS,
-  LOGO_BACKGROUND_LABELS,
-  LOGO_BACKGROUND_HINTS,
   logoBackdrop,
   suggestBackgroundForTone,
   isLogoBackground,
@@ -245,6 +246,7 @@ function placeholderForVertical(vertical?: string | null): string {
 }
 
 export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingWizardProps) {
+  const t = useTranslations('brandingWizard');
   const router = useRouter();
   const examples = useMemo(() => examplesForVertical(vertical), [vertical]);
   // Vertical-aware placeholder so the URL input doesn't read "yourschool.org"
@@ -379,7 +381,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
   // ── Scrape handler ──────────────────────────────────────────────
   const runScrape = useCallback(async (targetUrl?: string) => {
     const u = (targetUrl ?? url).trim();
-    if (!u) { setError('Paste a URL first'); return; }
+    if (!u) { setError(t('errors.pasteUrlFirst')); return; }
     // Auto-prepend https:// if missing
     const finalUrl = /^https?:\/\//i.test(u) ? u : `https://${u}`;
     setError(null);
@@ -393,7 +395,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         ? await fetch(`${API_URL}${path}`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })
         : { ok: true, json: () => apiFetch<BrandingPreview>(path, { method: 'POST', body }) };
       const data = mode === 'demo'
-        ? (res as Response).ok ? await (res as Response).json() : await (async () => { throw new Error((await (res as Response).text()) || 'Scrape failed'); })()
+        ? (res as Response).ok ? await (res as Response).json() : await (async () => { throw new Error((await (res as Response).text()) || t('errors.scanFailed')); })()
         : await (res as any).json();
       setPreview(data);
       // 2026-06-26 — NEVER silently clobber an operator-entered name/tagline
@@ -435,12 +437,12 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         // QuotaExceededError, etc. — non-fatal, just lose the cache.
       }
     } catch (e: any) {
-      setError(e?.message || 'Scrape failed');
+      setError(e?.message || t('errors.scanFailed'));
       setPreview(null);
     } finally {
       setScraping(false);
     }
-  }, [url, mode, scanCacheKey]);
+  }, [url, mode, scanCacheKey, t]);
 
   // ── Debounced palette recompute when user tweaks primary/accent ──
   useEffect(() => {
@@ -504,17 +506,17 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-picking the same file
     if (!file) return;
-    if (!/^image\//.test(file.type)) { setError('Please choose an image file (PNG, JPG, SVG, or WebP).'); return; }
-    if (file.size > 2 * 1024 * 1024) { setError('That logo is too large — max 2MB.'); return; }
+    if (!/^image\//.test(file.type)) { setError(t('errors.notAnImage')); return; }
+    if (file.size > 2 * 1024 * 1024) { setError(t('errors.logoTooLarge')); return; }
     const reader = new FileReader();
     reader.onload = () => {
       setError(null);
       setManualLogoUrl('');
       setUploadedLogo(typeof reader.result === 'string' ? reader.result : null);
     };
-    reader.onerror = () => setError('Could not read that file — try another.');
+    reader.onerror = () => setError(t('errors.readFailed'));
     reader.readAsDataURL(file);
-  }, []);
+  }, [t]);
 
   // ── Adopt ──────────────────────────────────────────────────────
   const adopt = useCallback(async () => {
@@ -571,11 +573,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       invalidateBranding();
       onAdopted?.(res.branding);
     } catch (e: any) {
-      setError(e?.message || 'Adopt failed');
+      setError(e?.message || t('errors.adoptFailed'));
     } finally {
       setAdopting(false);
     }
-  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, uploadedLogo, manualLogoUrl, logoBackground, onAdopted, invalidateBranding, user?.tenantId]);
+  }, [preview, derivedPalette, selectedLogoIdx, displayName, tagline, uploadedLogo, manualLogoUrl, logoBackground, onAdopted, invalidateBranding, user?.tenantId, t]);
 
   // 2026-05-26 — Apply-to-templates: repaint every template the tenant
   // owns with the current palette + fonts. Fill-blanks (default) only
@@ -587,12 +589,12 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
     setAppliedTemplates([]);
     try {
       const res: any = await applyBrand.mutateAsync({ mode: applyMode });
-      setApplyDoneMsg(`Applied to ${res.count} template${res.count === 1 ? '' : 's'} · ${res.zonesPatched} zone${res.zonesPatched === 1 ? '' : 's'} updated.`);
+      setApplyDoneMsg(t('apply.done', { count: Number(res?.count) || 0, zones: Number(res?.zonesPatched) || 0 }));
       setAppliedTemplates(Array.isArray(res.templates) ? res.templates : []);
     } catch (e: any) {
-      setApplyErr(e?.message || 'Apply failed — try again.');
+      setApplyErr(e?.message || t('apply.failed'));
     }
-  }, [applyBrand, applyMode]);
+  }, [applyBrand, applyMode, t]);
 
   // Load fonts into this page too for the live preview
   useEffect(() => {
@@ -653,14 +655,15 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 thing, no need to two and just keep the paint brush
                 one." The page header above already shows Paintbrush
                 next to "Branding"; repeating an icon next to "Brand
-                your CMS" is just chrome. */}
-            <h1 className="text-xl font-bold">
-              {mode === 'demo' ? 'Try auto-branding' : 'Brand your CMS'}
-            </h1>
+                your CMS" is just chrome.
+                An h2, not an h1: every host page (settings, onboarding,
+                the public demo) already renders its own h1. */}
+            <h2 className="text-xl font-bold">
+              {mode === 'demo' ? t('title.demo') : t('title.authed')}
+            </h2>
           </div>
           <p className="text-sm text-slate-600">
-            Paste your website. In about 10 seconds we&apos;ll pull your logo,
-            colors, and fonts so the CMS looks like yours — not ours.
+            {t('intro')}
           </p>
 
           <form
@@ -673,20 +676,21 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={urlPlaceholder}
+                aria-label={t('urlLabel')}
                 className="pl-9"
                 disabled={scraping}
                 autoFocus
               />
             </div>
             <Button type="submit" disabled={scraping || !url.trim()} className="min-w-[110px]">
-              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Scanning</> : 'Scan'}
+              {scraping ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t('scanning')}</> : t('scan')}
             </Button>
           </form>
 
           {!preview && !scraping && (
             <div className="text-xs text-slate-500 space-y-1">
               <div>
-                Try an example:{' '}
+                {t('tryExample')}{' '}
                 {examples.map((ex) => (
                   <button
                     key={ex.url}
@@ -702,7 +706,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                   2.63:1 via axe-core; text-slate-500 is ~4.76:1, clearing
                   WCAG AA's 4.5:1 floor for this text size. */}
               <div className="text-[11px] text-slate-500">
-                If a sample is blocked by the site&rsquo;s bot protection, try a different one — or paste your own URL.
+                {t('exampleBlocked')}
               </div>
             </div>
           )}
@@ -732,10 +736,10 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
 
         {preview && (
           <>
-            {/* Confidence + warnings */}
+            {/* Confidence ("How sure we are") + warnings */}
             <Card className="p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Confidence</div>
+                <div className="text-sm font-medium">{t('confidence.title')}</div>
                 <Badge variant={preview.confidence.overall >= 0.75 ? 'default' : 'secondary'}>
                   {Math.round(preview.confidence.overall * 100)}%
                 </Badge>
@@ -743,7 +747,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               <div className="grid grid-cols-4 gap-2 text-xs">
                 {(['logo','palette','fonts','displayName'] as const).map(k => (
                   <div key={k} className="space-y-1">
-                    <div className="text-slate-500 capitalize">{k}</div>
+                    <div className="text-slate-500 capitalize">{t(`confidence.${k}`)}</div>
                     <ConfidenceBar value={(preview.confidence as any)[k]} />
                   </div>
                 ))}
@@ -761,7 +765,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 contrast. Universal fix that also handles dark logos +
                 colorful logos without per-logo logic. */}
             <Card className="p-4 space-y-3">
-              <div className="text-sm font-medium">Logos found <span className="text-slate-500">({preview.logos.length})</span></div>
+              <div className="text-sm font-medium">{t('logos.title')} <span className="text-slate-500">({preview.logos.length})</span></div>
               {preview.logos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {preview.logos.map((l, i) => (
@@ -786,18 +790,18 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={uploadedLogo || manualLogoUrl.trim()}
-                      alt="your logo"
+                      alt={t('logos.yourLogoAlt')}
                       className="max-h-full max-w-full object-contain"
                     />
                   </div>
                   <div className="text-xs font-semibold text-indigo-700 flex-1 min-w-0">
-                    Using your {uploadedLogo ? 'uploaded' : 'pasted'} logo
+                    {uploadedLogo ? t('logos.usingUploaded') : t('logos.usingPasted')}
                   </div>
                   <button
                     type="button"
                     onClick={() => { setUploadedLogo(null); setManualLogoUrl(''); }}
                     className="text-slate-400 hover:text-slate-700"
-                    aria-label="Remove your logo"
+                    aria-label={t('logos.remove')}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -806,7 +810,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
 
               <div className="flex flex-wrap items-center gap-2">
                 <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors">
-                  <Upload className="h-3.5 w-3.5" /> Upload your logo
+                  <Upload className="h-3.5 w-3.5" /> {t('logos.upload')}
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
@@ -819,15 +823,14 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                   <Input
                     value={manualLogoUrl}
                     onChange={(e) => { setManualLogoUrl(e.target.value); if (e.target.value) setUploadedLogo(null); }}
-                    placeholder="…or paste a direct image URL"
+                    placeholder={t('logos.pastePlaceholder')}
                     className="pl-8 h-9 text-xs"
                   />
                 </div>
               </div>
               {preview.logos.length === 0 && !uploadedLogo && !manualLogoUrl.trim() && (
                 <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                  We couldn&rsquo;t pull a logo from this site — some sites (like dominos.com)
-                  block automated access. Upload your logo or paste a direct image link above.
+                  {t('logos.noneFound')}
                 </p>
               )}
             </Card>
@@ -848,14 +851,14 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
 
             {/* Colors */}
             <Card className="p-4 space-y-3">
-              <div className="text-sm font-medium">Palette</div>
+              <div className="text-sm font-medium">{t('palette.title')}</div>
               <div className="space-y-2">
-                <PaletteRow label="Primary" value={primary} onChange={setPrimary} />
-                <PaletteRow label="Accent" value={accent} onChange={setAccent} />
+                <PaletteRow label={t('palette.primary')} colorLabel={t('palette.primaryPickerLabel')} value={primary} onChange={setPrimary} />
+                <PaletteRow label={t('palette.accent')} colorLabel={t('palette.accentPickerLabel')} value={accent} onChange={setAccent} />
               </div>
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-slate-500">Colors discovered — click to apply</div>
+                  <div className="text-xs text-slate-500">{t('palette.discovered')}</div>
                   <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold">
                     <button
                       type="button"
@@ -868,7 +871,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                       )}
                       aria-pressed={swatchTarget === 'primary'}
                     >
-                      Primary
+                      {t('palette.primary')}
                     </button>
                     <button
                       type="button"
@@ -881,7 +884,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                       )}
                       aria-pressed={swatchTarget === 'accent'}
                     >
-                      Accent
+                      {t('palette.accent')}
                     </button>
                   </div>
                 </div>
@@ -889,6 +892,11 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                   {preview.colors.map((c) => {
                     const isPrimary = primary.toLowerCase() === c.hex.toLowerCase();
                     const isAccent = accent.toLowerCase() === c.hex.toLowerCase();
+                    // Plain words for the tooltip: the old one read
+                    // "#hex · score 12.3 · CSS var · click to set primary".
+                    const setAs = swatchTarget === 'primary'
+                      ? t('palette.swatchPrimary', { hex: c.hex })
+                      : t('palette.swatchAccent', { hex: c.hex });
                     return (
                       <button
                         key={c.hex}
@@ -903,8 +911,8 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                           isAccent && !isPrimary && 'ring-2 ring-pink-500 ring-offset-2',
                         )}
                         style={{ background: c.hex }}
-                        title={`${c.hex} · score ${c.score.toFixed(1)}${c.isCustomProp ? ' · CSS var' : ''} · click to set ${swatchTarget}`}
-                        aria-label={`${c.hex} — click to set as ${swatchTarget}`}
+                        title={c.isCustomProp ? `${setAs} · ${t('palette.swatchFromSite')}` : setAs}
+                        aria-label={setAs}
                       >
                         {/* Slot badge — shows which palette slot this swatch
                             currently fills, so the operator can SEE that
@@ -920,7 +928,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                             )}
                             aria-hidden
                           >
-                            {isPrimary ? 'P' : 'A'}
+                            {isPrimary ? t('palette.badgePrimary') : t('palette.badgeAccent')}
                           </span>
                         )}
                         {c.isCustomProp && (
@@ -942,20 +950,20 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
 
             {/* Fonts */}
             <Card className="p-4 space-y-2">
-              <div className="text-sm font-medium">Typography</div>
-              <FontRow label="Heading" font={preview.fonts.heading} />
-              <FontRow label="Body" font={preview.fonts.body} />
+              <div className="text-sm font-medium">{t('fonts.title')}</div>
+              <FontRow label={t('fonts.heading')} font={preview.fonts.heading} />
+              <FontRow label={t('fonts.body')} font={preview.fonts.body} />
               {(!preview.fonts.heading?.googleFont && !preview.fonts.body?.googleFont) && (
-                <div className="text-xs text-slate-500">No Google Font match — falling back to system stack.</div>
+                <div className="text-xs text-slate-500">{t('fonts.noGoogleMatch')}</div>
               )}
             </Card>
 
             {/* Identity */}
             <Card className="p-4 space-y-3">
-              <div className="text-sm font-medium">Name & tagline</div>
+              <div className="text-sm font-medium">{t('identity.title')}</div>
               <div className="space-y-2">
-                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
-                <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Tagline (shown on login page)" />
+                <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t('identity.namePlaceholder')} />
+                <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={t('identity.taglinePlaceholder')} />
               </div>
             </Card>
 
@@ -975,7 +983,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               <div className="bg-slate-50 rounded-md p-3 border border-slate-200 shadow-sm space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Wand2 className="h-4 w-4 text-indigo-500 shrink-0" />
-                  <span className="text-xs font-bold text-slate-700 shrink-0">Apply brand to templates</span>
+                  <span className="text-xs font-bold text-slate-700 shrink-0">{t('apply.title')}</span>
                   <div className="flex-1 min-w-[120px]" />
                   <div className="inline-flex bg-white rounded-md p-0.5 border border-slate-200 shrink-0">
                     <button
@@ -985,9 +993,9 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                         'px-2 py-1 text-[10px] font-bold rounded transition-colors',
                         applyMode === 'fill-blanks' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700',
                       )}
-                      title="Only zones still using stock generic colors"
+                      title={t('apply.fillBlanksHint')}
                     >
-                      Fill blanks
+                      {t('apply.fillBlanks')}
                     </button>
                     <button
                       type="button"
@@ -996,9 +1004,9 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                         'px-2 py-1 text-[10px] font-bold rounded transition-colors',
                         applyMode === 'override' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700',
                       )}
-                      title="Force-repaint every zone"
+                      title={t('apply.overrideHint')}
                     >
-                      Override
+                      {t('apply.override')}
                     </button>
                   </div>
                   <button
@@ -1008,9 +1016,9 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors shrink-0"
                   >
                     {applyBrand.isPending ? (
-                      <><Loader2 className="h-3 w-3 animate-spin" /> Applying…</>
+                      <><Loader2 className="h-3 w-3 animate-spin" /> {t('apply.applying')}</>
                     ) : (
-                      <><Wand2 className="h-3 w-3" /> Apply</>
+                      <><Wand2 className="h-3 w-3" /> {t('apply.apply')}</>
                     )}
                   </button>
                 </div>
@@ -1029,30 +1037,30 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                     {appliedTemplates.length > 0 && (
                       <div className="text-[11px] text-emerald-700 bg-emerald-50/40 border border-emerald-100 rounded-md px-2 py-1.5">
                         <p className="font-bold mb-1 uppercase tracking-wider text-[10px]">
-                          Templates updated
+                          {t('apply.updatedTitle')}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {appliedTemplates.slice(0, 15).map((t) => (
+                          {appliedTemplates.slice(0, 15).map((tpl) => (
                             <a
-                              key={t.id}
-                              href={`/${user?.tenantId ? user.tenantId : ''}/templates/${t.id}`}
+                              key={tpl.id}
+                              href={`/${user?.tenantId ? user.tenantId : ''}/templates/${tpl.id}`}
                               onClick={(e) => {
                                 // Use router so we don't lose React Query cache
                                 // on navigation. SchoolId comes from the user's
                                 // currently active tenant.
                                 e.preventDefault();
                                 if (user?.tenantId) {
-                                  router.push(`/${user.tenantId}/templates/${t.id}`);
+                                  router.push(`/${user.tenantId}/templates/${tpl.id}`);
                                 }
                               }}
                               className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 text-emerald-800 font-semibold transition-colors"
                             >
-                              {t.name}
+                              {tpl.name}
                             </a>
                           ))}
                           {appliedTemplates.length > 15 && (
                             <span className="text-[10px] text-emerald-600 self-center">
-                              +{appliedTemplates.length - 15} more
+                              {t('apply.more', { count: appliedTemplates.length - 15 })}
                             </span>
                           )}
                         </div>
@@ -1080,25 +1088,32 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
             <div className="bg-slate-50 rounded-md p-3 border border-slate-200 shadow-sm flex gap-2 items-center">
               <Button variant="outline" onClick={() => runScrape()} disabled={scraping}>
                 <RefreshCw className={cn('h-4 w-4 mr-1.5', scraping && 'animate-spin')} />
-                Re-scan
+                {t('actions.rescan')}
               </Button>
               <div className="flex-1" />
               {mode === 'demo' ? (
-                <Button disabled title="Sign in to adopt this branding">
-                  Adopt (login required)
+                <Button disabled title={t('actions.adoptDemoHint')}>
+                  {t('actions.adoptDemo')}
                 </Button>
               ) : (
                 <Button onClick={adopt} disabled={adopting} className="min-w-[160px]">
-                  {adopting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Applying</> : <><Check className="h-4 w-4 mr-2" />Adopt branding</>}
+                  {adopting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t('actions.adopting')}</> : <><Check className="h-4 w-4 mr-2" />{t('actions.adopt')}</>}
                 </Button>
               )}
             </div>
 
             <div className="text-xs text-slate-500 px-1">
-              Source: <a href={preview.finalUrl} target="_blank" rel="noopener noreferrer" className="underline">{preview.finalUrl}</a>
+              {t('footer.source')} <a href={preview.finalUrl} target="_blank" rel="noopener noreferrer" className="underline">{preview.finalUrl}</a>
               <ExternalLink className="inline h-3 w-3 ml-0.5" />
-              {' · '}
-              Scanned in {preview.durationMs}ms
+              {/* Seconds, one decimal (was raw "3241ms"). A preview built
+                  from a saved brand was not scanned just now (durationMs 0),
+                  so it says nothing about a scan time. */}
+              {Number.isFinite(preview.durationMs) && preview.durationMs > 0 && (
+                <>
+                  {' · '}
+                  {t('footer.scannedIn', { seconds: Math.round(preview.durationMs / 100) / 10 })}
+                </>
+              )}
             </div>
           </>
         )}
@@ -1110,8 +1125,8 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
           on desktop it stays in the right column and is sticky. */}
       <div className={cn('lg:sticky lg:top-6 h-fit', preview ? 'order-1 lg:order-2' : 'order-2')}>
         <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-700">
-          <Eye className="h-4 w-4" /> Live preview
-          <span className="text-xs text-slate-500">— repaints as you tweak</span>
+          <Eye className="h-4 w-4" /> {t('preview.title')}
+          <span className="text-xs text-slate-500">{t('preview.subtitle')}</span>
         </div>
         <Card className="p-0 overflow-hidden shadow-lg border-slate-300">
           <BrandingLivePreview branding={previewBranding} />
@@ -1138,15 +1153,15 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
           className="lg:hidden fixed right-0 left-0 bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur-md px-4 py-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
         >
           {mode === 'demo' ? (
-            <Button disabled className="w-full" title="Sign in to adopt this branding">
-              Adopt (login required)
+            <Button disabled className="w-full" title={t('actions.adoptDemoHint')}>
+              {t('actions.adoptDemo')}
             </Button>
           ) : (
             <Button onClick={adopt} disabled={adopting} className="w-full">
               {adopting ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" />Applying</>
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t('actions.adopting')}</>
               ) : (
-                <><Check className="h-4 w-4 mr-2" />Adopt branding</>
+                <><Check className="h-4 w-4 mr-2" />{t('actions.adopt')}</>
               )}
             </Button>
           )}
@@ -1166,7 +1181,7 @@ function ConfidenceBar({ value }: { value: number }) {
   );
 }
 
-function PaletteRow({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+function PaletteRow({ label, colorLabel, value, onChange }: { label: string; colorLabel: string; value: string; onChange: (hex: string) => void }) {
   return (
     <div className="flex items-center gap-2">
       <label className="text-xs text-slate-500 w-16">{label}</label>
@@ -1175,7 +1190,7 @@ function PaletteRow({ label, value, onChange }: { label: string; value: string; 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-8 w-12 rounded border border-slate-300 cursor-pointer"
-        aria-label={`${label} color`}
+        aria-label={colorLabel}
       />
       <input
         type="text"
@@ -1191,37 +1206,47 @@ function PaletteRow({ label, value, onChange }: { label: string; value: string; 
 }
 
 function FontRow({ label, font }: { label: string; font: { family: string; googleFont: string | null } | null }) {
-  if (!font) return <div className="text-xs text-slate-500">{label}: none detected</div>;
+  const t = useTranslations('brandingWizard');
+  if (!font) return <div className="text-xs text-slate-500">{t('fonts.noneDetected', { label })}</div>;
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-slate-500 text-xs w-16">{label}</span>
       <span className="font-medium" style={{ fontFamily: `"${font.googleFont || font.family}", sans-serif` }}>
         {font.googleFont || font.family}
       </span>
-      {font.googleFont ? <Badge variant="secondary" className="text-[10px]">Google Fonts</Badge> : <Badge variant="outline" className="text-[10px]">System</Badge>}
+      {/* "Google Fonts" is a product name — the same in every language. */}
+      {font.googleFont ? <Badge variant="secondary" className="text-[10px]">Google Fonts</Badge> : <Badge variant="outline" className="text-[10px]">{t('fonts.system')}</Badge>}
     </div>
   );
 }
 
 function ContrastChecks({ palette }: { palette: any }) {
+  const t = useTranslations('brandingWizard');
   if (!palette) return null;
+  // Plain words, not WCAG jargon (was "primary → primary ink … 4.6:1 AA").
   const pairs = [
-    ['primary → primary ink', palette.primary, palette.primaryInk],
-    ['accent → accent ink', palette.accent, palette.accentInk],
+    ['primary', t('contrast.textOnPrimary'), palette.primary, palette.primaryInk],
+    ['accent', t('contrast.textOnAccent'), palette.accent, palette.accentInk],
   ] as const;
+  const gradeLabels = {
+    AAA: t('contrast.gradeAAA'),
+    AA: t('contrast.gradeAA'),
+    'AA-large': t('contrast.gradeAALarge'),
+    fail: t('contrast.gradeFail'),
+  };
   return (
     <div className="text-xs text-slate-600 space-y-1 pt-2 border-t border-slate-200">
-      {pairs.map(([label, a, b]) => {
+      {pairs.map(([id, label, a, b]) => {
         if (!a || !b) return null;
         const ratio = contrast(a, b);
         const grade = ratio >= 7 ? 'AAA' : ratio >= 4.5 ? 'AA' : ratio >= 3 ? 'AA-large' : 'fail';
         const warn = grade === 'fail' || grade === 'AA-large';
         return (
-          <div key={label} className="flex items-center gap-2">
+          <div key={id} className="flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded border" style={{ background: a }} />
             <span className="inline-block h-3 w-3 rounded border" style={{ background: b }} />
             <span className="flex-1">{label}</span>
-            <span className={cn('font-mono', warn ? 'text-red-600 font-semibold' : 'text-emerald-700')}>{ratio.toFixed(1)}:1 {grade}</span>
+            <span className={cn('font-mono', warn ? 'text-red-600 font-semibold' : 'text-emerald-700')}>{ratio.toFixed(1)}:1 · {gradeLabels[grade]}</span>
           </div>
         );
       })}
@@ -1280,6 +1305,7 @@ export function LogoBackgroundPicker({
   autoFromServer: LogoBackground | null;
   onChange: (bg: LogoBackground) => void;
 }) {
+  const t = useTranslations('brandingWizard');
   const tone = useLogoTone(logoUrl, logoSvg);
   const auto: LogoBackground = isLogoBackground(autoFromServer)
     ? autoFromServer
@@ -1289,23 +1315,27 @@ export function LogoBackgroundPicker({
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Logo background</div>
+        <div className="text-sm font-medium">{t('logoBackground.title')}</div>
         <div className="text-[11px] text-slate-500">
-          We picked <span className="font-semibold">{LOGO_BACKGROUND_LABELS[auto]}</span> for this logo
+          {t.rich('logoBackground.picked', {
+            label: t(`logoBackground.options.${auto}`),
+            b: (chunks) => <span className="font-semibold">{chunks}</span>,
+          })}
         </div>
       </div>
       <div className="grid grid-cols-5 gap-2">
         {LOGO_BACKGROUNDS.map((bg) => {
           const backdrop = logoBackdrop(bg, tone);
           const isActive = active === bg;
+          const label = t(`logoBackground.options.${bg}`);
           return (
             <button
               key={bg}
               type="button"
               onClick={() => onChange(bg)}
-              title={LOGO_BACKGROUND_HINTS[bg]}
+              title={t(`logoBackground.hints.${bg}`)}
               aria-pressed={isActive}
-              aria-label={`Logo background: ${LOGO_BACKGROUND_LABELS[bg]}`}
+              aria-label={t('logoBackground.optionLabel', { label })}
               className={cn(
                 'rounded-md border-2 p-1.5 transition hover:border-indigo-400 flex flex-col items-center gap-1',
                 isActive ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200',
@@ -1349,18 +1379,33 @@ export function LogoBackgroundPicker({
                 )}
               </span>
               <span className="text-[10px] font-semibold text-slate-600 leading-none">
-                {LOGO_BACKGROUND_LABELS[bg]}
+                {label}
               </span>
             </button>
           );
         })}
       </div>
       <div className="text-[11px] text-slate-500">
-        Applies everywhere your logo shows — the sidebar, the preview, and any board that uses your brand mark.
+        {t('logoBackground.appliesEverywhere')}
       </div>
     </Card>
   );
 }
+
+// Where the scanner found each candidate (server `LogoCandidate['kind']`,
+// apps/api/src/branding/branding-scraper.service.ts) → a plain catalog label
+// for the tile chip, instead of raw ids like "svg-inline" / "apple-touch".
+// A kind this map doesn't know is shown as-is.
+const LOGO_KIND_LABEL_KEYS = new Map<string, string>([
+  ['svg-inline', 'svgInline'],
+  ['img-logo', 'imgLogo'],
+  ['img-wordmark', 'imgWordmark'],
+  ['icon', 'icon'],
+  ['apple-touch', 'appleTouch'],
+  ['mask', 'mask'],
+  ['og', 'og'],
+  ['twitter', 'twitter'],
+]);
 
 function LogoGalleryTile({
   logo,
@@ -1379,7 +1424,10 @@ function LogoGalleryTile({
   // checkerboard. Same root cause as the preview, same fix: detect
   // the logo's tone and swap to a DARK checkerboard for light logos
   // so white pixels always sit against a dark surface.
+  const t = useTranslations('brandingWizard');
   const tone = useLogoTone(logo.url || null, logo.svgInline || null);
+  const kindKey = LOGO_KIND_LABEL_KEYS.get(logo.kind);
+  const kindLabel = kindKey ? t(`logos.kind.${kindKey}`) : logo.kind;
   const isLight = tone === 'light' || tone === 'unknown';
   // For SVG logos that use currentColor, the wrapper's text color
   // controls the line-art color. Dark backdrop → white text; light
@@ -1416,7 +1464,7 @@ function LogoGalleryTile({
         backgroundSize: '12px 12px',
         backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
       }}
-      aria-label={`Choose logo ${index + 1}`}
+      aria-label={t('logos.chooseLabel', { n: index + 1 })}
     >
       {logo.svgInline ? (
         // SVG wordmarks using fill="currentColor" inherit from this
@@ -1434,7 +1482,7 @@ function LogoGalleryTile({
       ) : logo.url ? (
         <img
           src={logo.url}
-          alt="logo option"
+          alt={t('logos.optionAlt')}
           className="max-h-full max-w-full object-contain"
           loading="lazy"
         />
@@ -1449,7 +1497,7 @@ function LogoGalleryTile({
           isLight ? 'bg-slate-900/70 text-white' : 'bg-white/85 text-slate-600',
         )}
       >
-        {logo.kind}
+        {kindLabel}
       </div>
     </button>
   );

@@ -7778,5 +7778,136 @@
     "next": "Next page",
     "filters": "Filters",
     "filtersOn": "Filters on"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "Try auto-branding",
+      "authed": "Brand VenueOS"
+    },
+    "intro": "Paste your website. In about 10 seconds we’ll pull your logo, colors, and fonts so VenueOS looks like yours — not ours.",
+    "urlLabel": "Your website address",
+    "scan": "Scan",
+    "scanning": "Scanning…",
+    "tryExample": "Try an example:",
+    "exampleBlocked": "If a sample site blocks our scan, try a different one — or paste your own website address.",
+    "errors": {
+      "pasteUrlFirst": "Paste your website address first.",
+      "scanFailed": "We couldn’t scan that website. Check the address and try again.",
+      "notAnImage": "Please choose an image file (PNG, JPG, SVG, or WebP).",
+      "logoTooLarge": "That logo is too large — the limit is 2 MB.",
+      "readFailed": "Could not read that file — try another.",
+      "adoptFailed": "Couldn’t save your brand. Try again."
+    },
+    "confidence": {
+      "title": "How sure we are",
+      "logo": "Logo",
+      "palette": "Colors",
+      "fonts": "Fonts",
+      "displayName": "Name"
+    },
+    "logos": {
+      "title": "Logos found",
+      "chooseLabel": "Choose logo {n}",
+      "optionAlt": "Logo option",
+      "yourLogoAlt": "Your logo",
+      "usingUploaded": "Using your uploaded logo",
+      "usingPasted": "Using your pasted logo",
+      "remove": "Remove your logo",
+      "upload": "Upload your logo",
+      "pastePlaceholder": "…or paste a link to your logo image",
+      "noneFound": "We couldn’t get a logo from this site — some sites (like dominos.com) block automatic scans. Upload your logo or paste a link to the image above.",
+      "kind": {
+        "svgInline": "Logo",
+        "imgLogo": "Logo",
+        "imgWordmark": "Text logo",
+        "icon": "Icon",
+        "appleTouch": "App icon",
+        "mask": "One-color icon",
+        "og": "Sharing image",
+        "twitter": "Social image"
+      }
+    },
+    "logoBackground": {
+      "title": "Logo background",
+      "picked": "We picked <b>{label}</b> for this logo",
+      "optionLabel": "Logo background: {label}",
+      "appliesEverywhere": "Applies everywhere your logo shows — the sidebar, the preview, and any template that uses your logo.",
+      "options": {
+        "transparent": "None",
+        "white": "White",
+        "dark": "Dark",
+        "primary": "Brand",
+        "tile": "Tile"
+      },
+      "hints": {
+        "transparent": "No background — your logo sits right on the page",
+        "white": "A white box behind your logo",
+        "dark": "A dark box — best for white or light-colored logos",
+        "primary": "A box in your main brand color",
+        "tile": "A soft rounded box in a light shade of your brand color"
+      }
+    },
+    "palette": {
+      "title": "Palette",
+      "primary": "Primary",
+      "accent": "Accent",
+      "primaryPickerLabel": "Primary color",
+      "accentPickerLabel": "Accent color",
+      "discovered": "Colors discovered — click to apply",
+      "swatchPrimary": "{hex} — click to set as primary",
+      "swatchAccent": "{hex} — click to set as accent",
+      "swatchFromSite": "The website lists this as a brand color",
+      "badgePrimary": "P",
+      "badgeAccent": "A"
+    },
+    "contrast": {
+      "textOnPrimary": "Text on the primary color",
+      "textOnAccent": "Text on the accent color",
+      "gradeAAA": "Very easy to read",
+      "gradeAA": "Easy to read",
+      "gradeAALarge": "Large text only",
+      "gradeFail": "Hard to read"
+    },
+    "fonts": {
+      "title": "Typography",
+      "heading": "Heading",
+      "body": "Body",
+      "noneDetected": "{label}: none detected",
+      "system": "System",
+      "noGoogleMatch": "No Google Font match — we’ll use a standard font instead."
+    },
+    "identity": {
+      "title": "Name & tagline",
+      "namePlaceholder": "Display name",
+      "taglinePlaceholder": "Tagline (shown on the sign-in page)"
+    },
+    "apply": {
+      "title": "Apply brand to templates",
+      "fillBlanks": "Fill blanks",
+      "fillBlanksHint": "Only zones still using the default colors",
+      "override": "Override",
+      "overrideHint": "Repaint every zone, even ones you styled yourself",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "done": "{count, plural, one {Applied to # template} other {Applied to # templates}} · {zones, plural, one {# zone updated} other {# zones updated}}.",
+      "failed": "Apply failed — try again.",
+      "updatedTitle": "Templates updated",
+      "more": "+{count} more"
+    },
+    "actions": {
+      "rescan": "Re-scan",
+      "adopt": "Adopt branding",
+      "adopting": "Applying…",
+      "adoptDemo": "Adopt (sign-in required)",
+      "adoptDemoHint": "Sign in to adopt this branding"
+    },
+    "footer": {
+      "source": "Source:",
+      "scannedIn": "Scanned in {seconds, plural, one {# second} other {# seconds}}"
+    },
+    "preview": {
+      "title": "Live preview",
+      "subtitle": "— repaints as you tweak"
+    }
   }
 }

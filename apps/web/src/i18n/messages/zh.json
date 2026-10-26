@@ -7778,5 +7778,136 @@
     "next": "下一页",
     "filters": "筛选",
     "filtersOn": "已筛选"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "试试自动品牌设置",
+      "authed": "为 VenueOS 设置你的品牌"
+    },
+    "intro": "粘贴你的网站地址。大约 10 秒后，我们会获取你的标志、颜色和字体，让 VenueOS 看起来是你的，而不是我们的。",
+    "urlLabel": "你的网站地址",
+    "scan": "扫描",
+    "scanning": "正在扫描…",
+    "tryExample": "试试示例：",
+    "exampleBlocked": "如果某个示例网站阻止了扫描，请换一个试试，或者粘贴你自己的网站地址。",
+    "errors": {
+      "pasteUrlFirst": "请先粘贴你的网站地址。",
+      "scanFailed": "无法扫描该网站。请检查地址后重试。",
+      "notAnImage": "请选择图片文件（PNG、JPG、SVG 或 WebP）。",
+      "logoTooLarge": "该标志文件过大——上限为 2 MB。",
+      "readFailed": "无法读取该文件——请换一个试试。",
+      "adoptFailed": "无法保存你的品牌，请重试。"
+    },
+    "confidence": {
+      "title": "我们有多大把握",
+      "logo": "标志",
+      "palette": "颜色",
+      "fonts": "字体",
+      "displayName": "名称"
+    },
+    "logos": {
+      "title": "找到的标志",
+      "chooseLabel": "选择第 {n} 个标志",
+      "optionAlt": "标志选项",
+      "yourLogoAlt": "你的标志",
+      "usingUploaded": "正在使用你上传的标志",
+      "usingPasted": "正在使用你粘贴的链接中的标志",
+      "remove": "移除你的标志",
+      "upload": "上传你的标志",
+      "pastePlaceholder": "……或粘贴标志图片的链接",
+      "noneFound": "无法从该网站获取标志——有些网站（例如 dominos.com）会阻止自动扫描。请在上方上传你的标志，或粘贴图片链接。",
+      "kind": {
+        "svgInline": "标志",
+        "imgLogo": "标志",
+        "imgWordmark": "文字标志",
+        "icon": "图标",
+        "appleTouch": "应用图标",
+        "mask": "单色图标",
+        "og": "分享图片",
+        "twitter": "社交媒体图片"
+      }
+    },
+    "logoBackground": {
+      "title": "标志背景",
+      "picked": "我们为此标志选择了“<b>{label}</b>”",
+      "optionLabel": "标志背景：{label}",
+      "appliesEverywhere": "适用于你的标志出现的所有位置——侧边栏、预览，以及任何使用你标志的模板。",
+      "options": {
+        "transparent": "无",
+        "white": "白色",
+        "dark": "深色",
+        "primary": "品牌色",
+        "tile": "浅色块"
+      },
+      "hints": {
+        "transparent": "无背景——标志直接显示在页面上",
+        "white": "在标志后面加一个白色方块",
+        "dark": "深色方块——最适合白色或浅色标志",
+        "primary": "使用品牌主色的方块",
+        "tile": "使用品牌色浅色调的圆角方块"
+      }
+    },
+    "palette": {
+      "title": "配色",
+      "primary": "主色",
+      "accent": "强调色",
+      "primaryPickerLabel": "主色",
+      "accentPickerLabel": "强调色",
+      "discovered": "发现的颜色——点击即可应用",
+      "swatchPrimary": "{hex}——点击设为主色",
+      "swatchAccent": "{hex}——点击设为强调色",
+      "swatchFromSite": "该网站将其标注为品牌色",
+      "badgePrimary": "主",
+      "badgeAccent": "强"
+    },
+    "contrast": {
+      "textOnPrimary": "主色上的文字",
+      "textOnAccent": "强调色上的文字",
+      "gradeAAA": "非常易读",
+      "gradeAA": "易读",
+      "gradeAALarge": "仅适合大号文字",
+      "gradeFail": "难以阅读"
+    },
+    "fonts": {
+      "title": "字体",
+      "heading": "标题",
+      "body": "正文",
+      "noneDetected": "{label}：未检测到",
+      "system": "系统字体",
+      "noGoogleMatch": "未匹配到 Google Fonts 字体——将改用标准字体。"
+    },
+    "identity": {
+      "title": "名称和标语",
+      "namePlaceholder": "显示名称",
+      "taglinePlaceholder": "标语（显示在登录页上）"
+    },
+    "apply": {
+      "title": "将品牌应用到模板",
+      "fillBlanks": "填充空白",
+      "fillBlanksHint": "仅限仍使用默认颜色的区域",
+      "override": "覆盖",
+      "overrideHint": "重绘所有区域，包括你自己设置过样式的区域",
+      "apply": "应用",
+      "applying": "正在应用…",
+      "done": "已应用到 {count} 个模板 · 更新了 {zones} 个区域。",
+      "failed": "应用失败——请重试。",
+      "updatedTitle": "已更新的模板",
+      "more": "还有 {count} 个"
+    },
+    "actions": {
+      "rescan": "重新扫描",
+      "adopt": "使用此品牌",
+      "adopting": "正在应用…",
+      "adoptDemo": "使用（需要登录）",
+      "adoptDemoHint": "登录后即可使用此品牌"
+    },
+    "footer": {
+      "source": "来源：",
+      "scannedIn": "扫描用时 {seconds} 秒"
+    },
+    "preview": {
+      "title": "实时预览",
+      "subtitle": "——随你的调整实时更新"
+    }
   }
 }
