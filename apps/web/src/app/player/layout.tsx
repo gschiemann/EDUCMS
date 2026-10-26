@@ -1,6 +1,5 @@
 import { FACE_STORAGE_SHIM } from './faceStorageShim';
 import type { Metadata, Viewport } from 'next';
-import { AppDialogHost } from '@/components/ui/app-dialog';
 import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
 import { UPDATE_COVER_INLINE_JS } from './updateCoverInline';
 import { QUIET_BOOT_INLINE_JS } from './quietBootInline';
@@ -426,11 +425,13 @@ document.body.appendChild(d);
         }}
       >
         {children}
-        {/* Themed confirm/alert dialogs — replaces native window.confirm
-            / alert so the player's settings overlay (Unpair Device,
-            etc) stays inside the EduCMS visual language even on a
-            kiosk where the OS chrome is hidden. */}
-        <AppDialogHost />
+        {/* 2026-10-26 — NO <AppDialogHost /> here any more. The dashboard's
+            confirm/alert dialog is a portal the remote cannot drive, the
+            APK's Back never closed it (it sat over playing content until a
+            restart, Goodview 24" on site), and at z-index 10000 it drew
+            ABOVE the emergency overlay (9999). The player asks its own
+            questions: `RemoteDialog.tsx`, mounted inside the paired card.
+            `__tests__/remoteDialogWiring.test.ts` keeps the host out. */}
       </div>
     </>
   );
