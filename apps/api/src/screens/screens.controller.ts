@@ -119,6 +119,11 @@ import { orderSchedulesForManifest } from './effective-schedule';
 // so they can never disagree about who is frame-locked.
 import { resolveScreenSync, readSyncActiveTargets, isScreenSyncActive } from './screen-sync';
 import { resolvePlaybackConfig } from './playback-config';
+// 2026-10-24 — one effective time zone per screen (override > location setting
+// > automatic from the address > device). The manifest, the list routes and
+// the drawer all read the same resolver, so they cannot disagree.
+import { manifestTimeZone, screenTimeZoneFields } from './screen-time-zone';
+import { isValidIanaTimeZone, normalizeTimeZoneInput } from '@cms/api-types';
 // 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
 // the unified telemetry cadence and lives in ONE place that documents the
 // relationship. It was three inline `35 * 1000` literals sized for a 30 s
@@ -682,6 +687,11 @@ export class ScreensController {
     osInfo?: string;
     browserInfo?: string;
     userAgent?: string;
+    /** 2026-10-24 — the zone the device itself is set to (`Intl…timeZone`).
+     *  Telemetry only (SCREEN_TELEMETRY_ONLY_FIELDS); the dashboard reads it
+     *  to say "the screen itself is set to Asia/Shanghai". Unknown ids are
+     *  dropped, never stored. Absent on older pages. */
+    deviceTimeZone?: string;
     /** sec-fix(P0 #5): Paired re-registration — caller sends its currently
      *  stored device JWT to prove possession of the prior credential.
      *  Present in kiosk builds ≥ v1.0.34. A caller that omits it now always
@@ -1151,6 +1161,8 @@ export class ScreensController {
               osInfo: body.osInfo || existing.osInfo,
               browserInfo: body.browserInfo || existing.browserInfo,
               userAgent: body.userAgent || existing.userAgent,
+              // 2026-10-24 — the device's own zone (telemetry-only column).
+              ...(isValidIanaTimeZone(body.deviceTimeZone) ? { deviceTimeZone: body.deviceTimeZone } : {}),
               ipAddress: clientIpFromRequest(req),
               lastPingAt: new Date(),
               status: 'ONLINE',
@@ -1308,6 +1320,8 @@ export class ScreensController {
           osInfo: body.osInfo || existing.osInfo,
           browserInfo: body.browserInfo || existing.browserInfo,
           userAgent: body.userAgent || existing.userAgent,
+          // 2026-10-24 — the device's own zone (telemetry-only column).
+          ...(isValidIanaTimeZone(body.deviceTimeZone) ? { deviceTimeZone: body.deviceTimeZone } : {}),
           ipAddress: clientIpFromRequest(req),
           lastPingAt: new Date(),
           status: 'PENDING',
@@ -1421,6 +1435,8 @@ export class ScreensController {
         osInfo: body.osInfo || null,
         browserInfo: body.browserInfo || null,
         userAgent: body.userAgent || null,
+        // 2026-10-24 — the device's own zone (telemetry-only column).
+        ...(isValidIanaTimeZone(body.deviceTimeZone) ? { deviceTimeZone: body.deviceTimeZone } : {}),
         ipAddress: clientIpFromRequest(req),
         lastPingAt: new Date(),
         ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
@@ -2581,8 +2597,10 @@ export class ScreensController {
     // keep `latitude/longitude` as the screen-specific coords.
     const tenantGeo = await this.prisma.client.tenant.findUnique({
       where: { id: req.user.tenantId },
-      select: { latitude: true, longitude: true, address: true },
-    });
+      // `timezone` (2026-10-24): the location's time-zone setting, one input
+      // of every row's effective zone (screen-time-zone.ts).
+      select: { latitude: true, longitude: true, address: true, timezone: true } as any,
+    }) as { latitude: number | null; longitude: number | null; address: string | null; timezone?: string | null } | null;
     // 2026-09-16 — which screens are ACTUALLY frame-locked right now. The sync
     // trim control and the calibration wizard used to gate on the group's
     // syncMode; with that toggle retired they gate on this. ONE query for the
@@ -2700,6 +2718,18 @@ export class ScreensController {
         effectiveLongitude,
         effectiveAddress,
         geoSource,
+        // 2026-10-24 — the screen's effective time zone and where it came
+        // from, by the SAME resolver the manifest uses (screen-time-zone.ts),
+        // plus the automatic answer so the drawer can say "Automatic (X)".
+        // `timezone` (the override) and `deviceTimeZone` (telemetry) ride
+        // through `...rest` as plain columns.
+        ...screenTimeZoneFields({
+          screenOverride: (s as any).timezone ?? null,
+          locationSetting: tenantGeo?.timezone ?? null,
+          screen: { latitude: s.latitude, longitude: s.longitude },
+          group: grp ? { latitude: grp.latitude, longitude: grp.longitude } : null,
+          location: tenantGeo ? { latitude: tenantGeo.latitude, longitude: tenantGeo.longitude } : null,
+        }),
         // 2026-09-16 — frame-locked right now, by the SAME rule the manifest
         // answers with (screen-sync.ts). The dashboard shows the trim control
         // and the "Calibrate sync…" entry off this, so a playlist-locked
@@ -2848,20 +2878,23 @@ export class ScreensController {
     // not the whole org. Validated against the caller's readable set —
     // never a free cross-tenant read.
     const rootId = await this.resolveFleetRoot(req.user.tenantId, tenantIdRaw);
-    const sel = { id: true, name: true, slug: true, vertical: true, latitude: true, longitude: true, address: true } as const;
-    const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
+    // `timezone` (2026-10-24): each location's time-zone setting — one input of
+    // every screen's effective zone (screen-time-zone.ts).
+    const sel = { id: true, name: true, slug: true, vertical: true, latitude: true, longitude: true, address: true, timezone: true } as const;
+    const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel as any });
     const children = await this.prisma.client.tenant.findMany({
       // archivedAt: null — an archived child location must NOT count toward the
       // fleet, or a parent with only archived/test children reads as a
       // multi-location "HQ" and the dashboard map appears when it shouldn't
       // (the 2026-07-23 Dodgers incident: two archived test children).
       where: { parentId: rootId, archivedAt: null },
-      select: sel,
+      select: sel as any,
       orderBy: { name: 'asc' },
     });
-    const tenants = [self, ...children].filter(Boolean) as Array<{
+    const tenants = ([self, ...children] as unknown[]).filter(Boolean) as Array<{
       id: string; name: string; slug: string; vertical: string | null;
       latitude: number | null; longitude: number | null; address: string | null;
+      timezone?: string | null;
     }>;
     const tenantIds = tenants.map((t) => t.id);
     // Per-location logos (2026-08-31 — operator: "every school has its own
@@ -2873,7 +2906,7 @@ export class ScreensController {
       select: { tenantId: true, logoUrl: true },
     });
     const logoByTenant = new Map(brandings.map((b) => [b.tenantId, b.logoUrl]));
-    const geoByTenant = new Map(tenants.map((t) => [t.id, { latitude: t.latitude, longitude: t.longitude, address: t.address }]));
+    const geoByTenant = new Map(tenants.map((t) => [t.id, { latitude: t.latitude, longitude: t.longitude, address: t.address, timezone: t.timezone ?? null }]));
     const metaByTenant = new Map(tenants.map((t) => [t.id, { id: t.id, name: t.name, slug: t.slug, vertical: t.vertical ?? null }]));
 
     const rows = await this.prisma.client.screen.findMany({
@@ -3060,6 +3093,20 @@ export class ScreensController {
         effectiveLongitude,
         effectiveAddress,
         geoSource,
+        // 2026-10-24 — the effective time zone, by the manifest's own resolver
+        // (screen-time-zone.ts); the override + the device's reported zone
+        // ride alongside so the drawer can show "set on this screen" and
+        // "the screen itself is set to …". This route builds an explicit
+        // object, so the columns are named here (the list route spreads them).
+        timezone: (s as any).timezone ?? null,
+        deviceTimeZone: (s as any).deviceTimeZone ?? null,
+        ...screenTimeZoneFields({
+          screenOverride: (s as any).timezone ?? null,
+          locationSetting: tg?.timezone ?? null,
+          screen: { latitude: s.latitude, longitude: s.longitude },
+          group: grp ? { latitude: grp.latitude, longitude: grp.longitude } : null,
+          location: tg ? { latitude: tg.latitude, longitude: tg.longitude } : null,
+        }),
         // Which store this screen belongs to — drives the map cluster label
         // + the click→switch deep-link (frontend routes to its slug).
         sourceTenant: metaByTenant.get(s.tenantId as string) ?? null,
@@ -3821,8 +3868,25 @@ export class ScreensController {
       // EP6N wiring + future per-hardware keys. Allow-listed by the
       // merge step below so a stale client can't bloat the row.
       config?: Record<string, unknown> | null;
+      // 2026-10-24 — per-screen time-zone OVERRIDE (IANA). `null` / `''`
+      // clears it (back to the location's setting or the automatic zone);
+      // an unknown zone is a 400 so it can never reach a manifest.
+      timezone?: string | null;
     },
   ) {
+    // 2026-10-24 — validate the zone BEFORE any read: a bad value costs
+    // nothing and never touches the row.
+    let nextTimezone: string | null | undefined = undefined;
+    if (body.timezone !== undefined) {
+      const verdict = normalizeTimeZoneInput(body.timezone);
+      if (!verdict.ok) {
+        throw new HttpException(
+          { code: 'SCREEN_TIMEZONE_INVALID', message: 'timezone must be an IANA zone such as America/Chicago, or empty for automatic' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      nextTimezone = verdict.zone;
+    }
     // Fleet-scoped since 2026-08-31 (dashboard device drawer): an HQ admin
     // fixing a child location's screen from the dashboard edits basics
     // (name etc.) without switching tenants — the same parent→child window
@@ -3928,7 +3992,10 @@ export class ScreensController {
         // in the body — `undefined` preserves the existing column value.
         ...(nextHardwareModel !== undefined ? { hardwareModel: nextHardwareModel } : {}),
         ...(mergedConfig !== undefined ? { config: mergedConfig as any } : {}),
-      },
+        // 2026-10-24 — the time-zone override; Screen is manifest-fed, so the
+        // notifySync below + the Prisma hook carry it to the screen next poll.
+        ...(nextTimezone !== undefined ? { timezone: nextTimezone } : {}),
+      } as any,
       include: { screenGroup: { select: { id: true, name: true } } },
     });
     // A group move changes `screenGroupId`, which the credential snapshot
@@ -6018,6 +6085,13 @@ export class ScreensController {
     name: true,
     posterStandardW: true,
     posterStandardH: true,
+    // 2026-10-24 — the location's time-zone setting and its coordinates feed
+    // the manifest's `timeZone` (screen-time-zone.ts). Stable columns; a
+    // write to any of them busts the preamble + content cache (Tenant is a
+    // manifest-fed model), so a changed address reaches screens next poll.
+    timezone: true,
+    latitude: true,
+    longitude: true,
   } as const;
 
   /**
@@ -6932,6 +7006,9 @@ export class ScreensController {
           canvasW: (screen as any).canvasW ?? null,
           canvasH: (screen as any).canvasH ?? null,
           posterStandard: manifestPosterStandard((screen as any).tenant),
+          // 2026-10-24 — the screen's effective time zone (static columns
+          // only; see the full-manifest copy below for the contract).
+          timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
           repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state (status lamp / horn).
           // Same shape across every manifest branch.
@@ -7245,6 +7322,9 @@ export class ScreensController {
         // 2026-09-01 — the tenant's standard LED poster size; the player's
         // poster-canvas rule reads it (see manifestPosterStandard).
         posterStandard: manifestPosterStandard((screen as any).tenant),
+        // 2026-10-24 — a screen waiting for content still shows a clock on its
+        // splash and still has an update window: same zone as the full body.
+        timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
         repeats: (screen as any).repeats ?? 1,
         hardwareModel: (screen as any).hardwareModel ?? null,
         // 2026-08-30 (reliability W1-11) — durable REFRESH_WEB. A stable
@@ -7689,6 +7769,23 @@ export class ScreensController {
       // repeats). Deterministic per screen + env, so it is safe in the hashed
       // payload; old players ignore the key. See playback-config.ts.
       playback: resolvePlaybackConfig((screen as any).id),
+      // 2026-10-24 — THE SCREEN'S EFFECTIVE TIME ZONE (screen-time-zone.ts):
+      // the screen's override, else the location's setting, else the
+      // automatic zone from the nearest saved coordinates (screen > group >
+      // location), else null = "use the device's own zone". The player
+      // applies it to every clock/date widget without an explicit zone and
+      // to its off-hours update window — a GUQ that ships set to Asia/Shanghai
+      // shows the right time without anyone touching the panel.
+      //
+      // Part of the hashed payload, deliberately: every input is a stable
+      // column (Screen.timezone, Tenant.timezone, the three coordinate pairs)
+      // and every one of those models is manifest-fed, so an address or zone
+      // edit busts the ETag and reaches the screen on its next poll. No clock
+      // value rides here (sync rule 4). The key is ALWAYS present on this
+      // branch: `null` means "no zone from the server"; an ABSENT key (an
+      // emergency manifest, an older API) means "keep the last known zone" —
+      // the player persists it, so a boot straight into an alert still has it.
+      timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
       playlists: dynamicPlaylists
     };
 

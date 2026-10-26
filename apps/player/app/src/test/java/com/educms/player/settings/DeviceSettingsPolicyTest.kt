@@ -199,25 +199,65 @@ class DeviceSettingsPolicyTest {
 
     @Test fun aNewIdentityStartsAFreshBudgetAndAnAppliedIdentityIsLeftAlone() {
         val done = Ack("r3", Status.APPLIED, attempts = 1, lastAttemptElapsedMs = 10L, boot = boot, appliedAtWallMs = 9L)
-        // Same identity, same boot: nothing happens, whatever Android reads.
-        assertEquals(done, reported(DeviceSettingsPolicy.decide(input(previous = done, matches = false))))
+        // Same identity, same boot: nothing is written, whatever Android reads
+        // (a drifted read is RECORDED, never re-applied — its own test below).
+        assertEquals(done, reported(DeviceSettingsPolicy.decide(input(previous = done, matches = true))))
+        assertEquals(done, reported(DeviceSettingsPolicy.decide(input(previous = done, matches = null))))
+        assertEquals(Status.APPLIED, reported(DeviceSettingsPolicy.decide(input(previous = done, matches = false))).status)
         // The operator changed it (r9): applied again from attempt 1.
         val next = attempt(DeviceSettingsPolicy.decide(input(item = brightness80.copy(id = "r9"), previous = done)))
         assertEquals("r9", next.id)
         assertEquals(1, next.attempts)
     }
 
-    @Test fun afterARebootADriftedSettingIsSetAgainAndAnIntactOneIsNot() {
+    // ── never fight the vendor app (owner rule, 2026-10-24) ─────────────
+
+    @Test fun afterARebootADriftedSettingIsRecordedAsChangedElsewhereAndNeverSetAgain() {
         val done = Ack("r3", Status.APPLIED, attempts = 2, lastAttemptElapsedMs = 9_000_000L, boot = boot)
         val intact = reported(DeviceSettingsPolicy.decide(input(previous = done, matches = true, bootCount = boot + 1, now = 50L)))
         assertEquals(Status.APPLIED, intact.status)
+        assertNull(intact.why)
         assertEquals(boot + 1, intact.boot)
         val unreadable = reported(DeviceSettingsPolicy.decide(input(previous = done, matches = null, bootCount = boot + 1)))
         assertEquals(Status.APPLIED, unreadable.status)
+        assertNull("cannot tell is not changed", unreadable.why)
 
-        val again = attempt(DeviceSettingsPolicy.decide(input(previous = done, matches = false, bootCount = boot + 1, now = 50L)))
-        assertEquals("a reboot starts a fresh, still bounded, budget", 1, again.attempts)
-        assertEquals(boot + 1, again.boot)
+        // Goodview's app (or the firmware) reset the brightness at boot: we SAY so and leave it.
+        val drifted = reported(DeviceSettingsPolicy.decide(input(previous = done, matches = false, bootCount = boot + 1, now = 50L)))
+        assertEquals(Status.APPLIED, drifted.status)
+        assertEquals(DeviceSettingCodes.CHANGED_ELSEWHERE, drifted.why)
+        assertEquals("no attempt is ever spent on a drift", 0, drifted.attempts)
+        assertEquals(boot + 1, drifted.boot)
+        // …and never again on later heartbeats of that boot, whatever Android reads.
+        assertEquals(drifted, reported(DeviceSettingsPolicy.decide(input(previous = drifted, matches = false, bootCount = boot + 1, now = 60_000_000L))))
+        // A later matching read does not un-mark it: a value two apps take turns on must not flap the report.
+        assertEquals(drifted, reported(DeviceSettingsPolicy.decide(input(previous = drifted, matches = true, bootCount = boot + 1, now = 60_000_000L))))
+        // Only the operator's NEW value (a new identity) is written — once.
+        val next = attempt(DeviceSettingsPolicy.decide(input(item = brightness80.copy(id = "r9"), previous = drifted, bootCount = boot + 1, now = 70_000_000L)))
+        assertEquals("r9", next.id)
+        assertEquals(1, next.attempts)
+    }
+
+    @Test fun withinABootADriftIsRecordedOnceAndWifiIsNeverMarked() {
+        val done = Ack("r3", Status.APPLIED, attempts = 1, lastAttemptElapsedMs = 10L, boot = boot, appliedAtWallMs = 9L)
+        val marked = reported(DeviceSettingsPolicy.decide(input(previous = done, matches = false)))
+        assertEquals(Status.APPLIED, marked.status)
+        assertEquals(DeviceSettingCodes.CHANGED_ELSEWHERE, marked.why)
+        assertEquals("the applied evidence is kept", 9L, marked.appliedAtWallMs)
+        // An `already-set` record that drifts is marked the same way — it was in place, now it is not.
+        val wasInPlace = Ack("r3", Status.APPLIED, why = DeviceSettingCodes.ALREADY_SET, boot = boot)
+        assertEquals(DeviceSettingCodes.CHANGED_ELSEWHERE, reported(DeviceSettingsPolicy.decide(input(previous = wasInPlace, matches = false))).why)
+        // A FAILED record is reported as it is — nothing to mark.
+        val failed = Ack("r3", Status.FAILED, why = DeviceSettingCodes.NOT_TAKEN, attempts = 3, boot = boot)
+        assertEquals(failed, reported(DeviceSettingsPolicy.decide(input(previous = failed, matches = false))))
+        // Wi-Fi: "not on that network right now" is not "changed elsewhere".
+        val wifiDone = Ack("r5", Status.APPLIED, why = DeviceSettingCodes.WIFI_SAVED, attempts = 1, boot = boot)
+        assertEquals(wifiDone, reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, previous = wifiDone, matches = false))))
+        // After a reboot the record is carried (budget reset) and still not marked.
+        val wifiAfterReboot = reported(DeviceSettingsPolicy.decide(input(item = wifiNoSecret, previous = wifiDone, matches = false, bootCount = boot + 1)))
+        assertEquals(Status.APPLIED, wifiAfterReboot.status)
+        assertEquals(DeviceSettingCodes.WIFI_SAVED, wifiAfterReboot.why)
+        assertEquals(boot + 1, wifiAfterReboot.boot)
     }
 
     @Test fun wifiIsNeverReAppliedAfterARebootAndItsPassphraseIsAskedForNotStored() {

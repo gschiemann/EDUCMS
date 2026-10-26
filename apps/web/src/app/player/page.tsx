@@ -217,6 +217,17 @@ import {
 // inside the Suspense boundary around the zone list;
 // `preloadPlayerRenderer()` warms the chunk once we know it will be needed.
 import { LazyPlayerZoneWidget, preloadPlayerRenderer } from './lazyRenderer';
+// 2026-10-24 — the screen's effective time zone (manifest `timeZone`): the
+// default for every clock/date widget without its own zone and for the
+// off-hours update window. Pure module; see its header for the three answers.
+import {
+  applyManifestTimeZone,
+  deviceTimeZoneOf,
+  readManifestTimeZone,
+  readStoredTimeZone,
+  withDefaultTimeZone,
+  writeStoredTimeZone,
+} from './screenTimeZone';
 import { useTaurusPolyfills } from '@/components/player/TaurusPolyfills';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
 // Pure, zero-runtime-dependency module (its only import is `import type`),
@@ -879,6 +890,11 @@ function registerDeviceCredential(deviceInfo: Record<string, unknown> = {}, time
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       deviceFingerprint: getDeviceFingerprint(),
+      // 2026-10-24 — on every register path, including the bare credential
+      // recoveries that send no other device info: the device's own zone is a
+      // one-string telemetry fact the dashboard reads next to the zone the
+      // screen actually uses. `deviceInfo` (when given) carries the same key.
+      deviceTimeZone: deviceTimeZoneOf(),
       ...deviceInfo,
       ...(prior ? { priorDeviceToken: prior } : {}),
     }),
@@ -2441,6 +2457,10 @@ function getDeviceInfo() {
     osInfo: os,
     browserInfo: `${browser} ${navigator.language}`,
     userAgent: ua,
+    // 2026-10-24 — the zone the DEVICE is set to (telemetry): lets the
+    // dashboard say "the screen itself is set to Asia/Shanghai" beside the
+    // zone it actually uses (manifest `timeZone`, screenTimeZone.ts).
+    deviceTimeZone: deviceTimeZoneOf(),
     chromiumVersion: caps.chromiumMajor || null,
     capabilities: {
       modernChromium: caps.modernChromium,
@@ -3461,6 +3481,15 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // The screen's display windows (both arrays) from the last manifest that
   // carried a `display` block — the zone and the display-OFF test read them.
   const updateWindowsRef = useRef<SoftWindow[] | null>(null);
+  // 2026-10-24 — the screen's EFFECTIVE time zone (manifest `timeZone`;
+  // screenTimeZone.ts). Seeded from storage so a boot straight into an alert
+  // or offline still has it; the ref feeds the update window, the state feeds
+  // every widget's default zone. An emergency manifest never carries the key
+  // and therefore never moves it.
+  const screenTimeZoneRef = useRef<string | null>(
+    typeof window === 'undefined' ? null : readStoredTimeZone(window.localStorage),
+  );
+  const [screenTimeZone, setScreenTimeZone] = useState<string | null>(screenTimeZoneRef.current);
   // The completed apply record from the PREVIOUS document (this one came up
   // under its cover), until the telemetry POST has carried it.
   const updateEvidenceRef = useRef<UpdateEvidenceReport | null>(null);
@@ -6898,6 +6927,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           : null;
       setManifestHardwareModel(hwm);
 
+      // 2026-10-24 — THE SCREEN'S EFFECTIVE TIME ZONE (screenTimeZone.ts).
+      // Three answers, kept apart: a zone, `null` ("the server has none —
+      // use the device's"), or an ABSENT key (an older API, and EVERY
+      // emergency manifest) which keeps the last known zone. Persisted so a
+      // boot straight into an alert, or offline, still formats clocks right.
+      try {
+        const incoming = readManifestTimeZone(manifest);
+        const nextZone = applyManifestTimeZone(screenTimeZoneRef.current, incoming);
+        if (nextZone !== screenTimeZoneRef.current) {
+          console.log(`[Player] time zone ${screenTimeZoneRef.current ?? '(device)'} → ${nextZone ?? '(device)'} (device reports ${deviceTimeZoneOf() ?? 'unknown'})`);
+          screenTimeZoneRef.current = nextZone;
+          writeStoredTimeZone(typeof window === 'undefined' ? null : window.localStorage, nextZone);
+          setScreenTimeZone(nextZone);
+        }
+      } catch { /* a zone is a nicety; the manifest apply is the point */ }
+
       // 2026-05-26 — LED canvas override from manifest. Operator sets
       // canvasW/canvasH on the dashboard /screens UI per-screen; the
       // manifest pushes the values here within ~10s of the change (or
@@ -8663,7 +8708,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           updateApplyingRef.current = false;
           return;
         }
-        const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone());
+        const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
         const frame = await captureCoverFrame(document);
         if (cancelled) { updateApplyingRef.current = false; return; }
         const navigatedAtMs = Date.now();
@@ -8692,7 +8737,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const now = Date.now();
       if (convergenceHoldUntil > now) return;
       const ev = liveEvidence();
-      const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone());
+      const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
       const decision = decideUpdateApply({
         pending: true,
         prepared: p.prepared,
@@ -8796,7 +8841,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           boundaryArmed: !!updateAtBoundaryRef.current,
           convergenceHoldUntil,
           windows: (updateWindowsRef.current ?? []).length,
-          zone: resolveUpdateZone(updateWindowsRef.current, deviceTimeZone()),
+          zone: resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current),
         }),
       };
     } catch { /* diagnostics only */ }
@@ -12839,7 +12884,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   <LazyPlayerZoneWidget
                     zoneId={zone.id}
                     widgetType={zone.widgetType}
-                    config={cfg}
+                    // 2026-10-24 — every widget without its own zone formats in
+                    // the SCREEN's zone (screenTimeZone.ts); an explicit widget
+                    // zone wins. The same object comes back when nothing is added.
+                    config={withDefaultTimeZone(cfg, screenTimeZone)}
                     width={zone.width}
                     height={zone.height}
                   />
@@ -13030,6 +13078,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {touchNavigatedTemplate && (
           <TouchNavOverlay
             template={touchNavigatedTemplate}
+            defaultTimeZone={screenTimeZone}
             onBack={() => setTouchNavigatedTemplate(null)}
           />
         )}
@@ -15126,6 +15175,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       {touchNavigatedTemplate && (
         <TouchNavOverlay
           template={touchNavigatedTemplate}
+          defaultTimeZone={screenTimeZone}
           onBack={() => setTouchNavigatedTemplate(null)}
         />
       )}

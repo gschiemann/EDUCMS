@@ -1153,3 +1153,9 @@ export * from './native-end-reasons';
 // and the notification kinds their bell never shows. The API filters on it;
 // the dashboard turns each allowed row into a sentence.
 export * from './customer-activity';
+
+// Per-screen time zones (2026-10-24) — the one precedence (screen override >
+// location setting > automatic from the address > the device's own zone) and
+// what counts as a valid IANA id, shared by the API (manifest, list, PUT) and
+// the dashboard (the picker and the "device disagrees" note).
+export * from './time-zone';

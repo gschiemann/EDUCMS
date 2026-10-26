@@ -400,6 +400,10 @@ function stateLine(t: T, row: DeviceSettingRow): { text: string; tone: string } 
         text:
           s.why === 'already-set'
             ? t('state.alreadySet')
+            : s.why === 'changed-elsewhere'
+              // 2026-10-24 — applied once, then changed by something else on the
+              // screen (Goodview's app, a person). VenueOS leaves it alone.
+              ? t('state.changedElsewhere')
             : s.why === 'unverified'
               ? t('state.unverified')
               : s.why === 'wifi-joined'

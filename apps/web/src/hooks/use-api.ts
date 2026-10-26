@@ -980,7 +980,9 @@ export function useSetScreenFaceMode() {
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; location?: string; screenGroupId?: string | null }) =>
+    // `timezone` (2026-10-24): the per-screen time-zone override; `null` = back
+    // to automatic. Same PUT, same optimistic merge.
+    mutationFn: ({ id, ...data }: { id: string; name?: string; location?: string; screenGroupId?: string | null; timezone?: string | null }) =>
       apiFetch(`/screens/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     // Optimistic update — rename / move-to-group / location edit
     // commit instantly. Rollback on server error.
@@ -3487,6 +3489,20 @@ export interface FleetScreen {
   effectiveLongitude: number | null;
   effectiveAddress: string | null;
   geoSource: 'screen' | 'group' | 'tenant' | 'none';
+  /**
+   * The screen's effective time zone (2026-10-24; screen-time-zone.ts on the
+   * API): override > location setting > automatic from the address > the
+   * device's own. Optional so a cached payload from before this shipped
+   * still parses — absent means "unknown", never "no zone".
+   */
+  timeZone?: string | null;
+  timeZoneSource?: 'screen' | 'location' | 'auto' | 'device';
+  timeZoneAuto?: string | null;
+  timeZoneAutoFrom?: 'screen' | 'group' | 'location' | null;
+  /** `Screen.timezone` — the override itself (null = inherit). */
+  timezone?: string | null;
+  /** `Screen.deviceTimeZone` — the zone the device reports itself set to. */
+  deviceTimeZone?: string | null;
   sourceTenant: { id: string; name: string; slug: string } | null;
   /** Fleet Command (2026-08-31) — content-current assurance inputs. */
   lastBundleSha?: string | null;
