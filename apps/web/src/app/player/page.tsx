@@ -342,7 +342,7 @@ import {
   reportRegisterFailure,
 } from './bootDiagnostics';
 // 2026-09-01 — LED poster canvas rule (NovaStar TB posters). See posterCanvas.ts.
-import { derivePosterCanvas, isPosterClassUserAgent } from './posterCanvas';
+import { derivePosterCanvas, isPosterClassUserAgent, offersLedResize } from './posterCanvas';
 // Display-capability self-report (2026-08-13). The last mile that makes the
 // fleet self-describing: without it the native probe is reachable only over
 // an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
@@ -15161,23 +15161,32 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                           ? <><AlertTriangle className="w-4 h-4 text-amber-500" /> Sync failed</>
                           : <><RefreshCw className="w-4 h-4 text-slate-400" /> Sync now</>}
                   </button>
-                  <button
-                    // 2026-10-11 — moved here from the deleted "Screen
-                    // information" card (owner decision: the card is gone;
-                    // the Back menu is the one operator surface). Opens the
-                    // on-screen LED canvas editor (canvasW/canvasH override
-                    // for Taurus-class controllers whose frame buffer is
-                    // larger than the LED). Remote-operable: the action-row
-                    // outline is the visible focus; Back inside the editor
-                    // returns here (onShowStop), and so does Cancel.
-                    ref={resizeLedButtonRef}
-                    data-edu-resize-led
-                    onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
-                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
-                    title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
-                  >
-                    <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
-                  </button>
+                  {/* 2026-10-26 (owner: "remove the resize LED button unless its an LED
+                      screen"): LED controllers only, plus any screen that already has an
+                      LED canvas size in force, so a size set by mistake can be undone. */}
+                  {offersLedResize({
+                    hardwareModel: manifestHardwareModel,
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+                    canvasOverrideActive: canvasOverride.w != null || canvasOverride.h != null,
+                  }) && (
+                    <button
+                      // 2026-10-11 — moved here from the deleted "Screen
+                      // information" card (owner decision: the card is gone;
+                      // the Back menu is the one operator surface). Opens the
+                      // on-screen LED canvas editor (canvasW/canvasH override
+                      // for Taurus-class controllers whose frame buffer is
+                      // larger than the LED). Remote-operable: the action-row
+                      // outline is the visible focus; Back inside the editor
+                      // returns here (onShowStop), and so does Cancel.
+                      ref={resizeLedButtonRef}
+                      data-edu-resize-led
+                      onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                      title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
+                    >
+                      <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
+                    </button>
+                  )}
                   {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
                     <button
                       // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen
