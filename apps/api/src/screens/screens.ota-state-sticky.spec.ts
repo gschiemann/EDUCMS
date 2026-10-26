@@ -147,7 +147,11 @@ describe('1.1.51 — a device tap-expiry moves a NEEDS_TAP-held push to EXPIRED'
       forceApkUpdatePendingAt: new Date('2026-10-22T10:00:00Z'), forceApkUpdateHold: 'NEEDS_TAP',
       forceApkUpdateTargetVersion: '1.1.47-field.1', forceApkUpdateTargetVersionCode: 10147,
     });
-    await controller.reportOtaState(FP, { state: 'FAILED_TAP_EXPIRED', message: 'Nobody tapped Install' }, deviceReq());
+    await controller.reportOtaState(FP, {
+      state: 'FAILED_TAP_EXPIRED',
+      // The Player's own words (OtaUpdateWorker, 1.1.46+).
+      message: 'Nobody selected Install for v1.1.47-field.1 within 30 minutes — the request expired. Push the update again to ask again.',
+    }, deviceReq());
     const data = writtenData(prisma);
     expect(data.lastOtaState).toBe('FAILED_TAP_EXPIRED');
     expect(data.forceApkUpdateHold).toBe('EXPIRED');

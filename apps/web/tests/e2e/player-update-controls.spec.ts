@@ -3,6 +3,11 @@ import { bootMockPlayer, ok, playerIds } from './helpers/mock-player';
 
 const TARGET = '1.1.47-field.1';
 const SLIDES = 'img[src*="slide-"]';
+// What the Player itself reports for a staged commit (OtaInstallReceiver.needsTapMessage) — the
+// fixture is cut from the producer, not from memory.
+const NEEDS_TAP_MESSAGE = `v${TARGET} is downloaded and waiting for a person: on the screen press Back, choose Install v${TARGET}, then select Install (OK on the remote, or tap it).`;
+// The panel's own heading and status for it (player/page.tsx) — remote first, no bare "tap".
+const NEEDS_TAP_HEADING = 'Update waiting for someone at this screen';
 
 type NativeMessage = { method: string; args: unknown[] };
 type TestWindow = Window & {
@@ -70,10 +75,10 @@ async function expectQuietPlayback(page: Page) {
 }
 
 for (const scenario of [
-  { state: 'NEEDS_TAP', stable: '1.1.29', title: 'older public stable', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
-  { state: 'NEEDS_TAP', stable: '1.1.29', legacy: true, title: 'legacy APK fallback', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
-  { state: 'NEEDS_TAP', stable: null, title: 'unavailable public stable', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
-  { state: 'NEEDS_TAP', stable: '1.1.29', portrait: true, title: 'portrait display', heading: 'Update needs a tap on this screen', message: `Android needs a tap to install v${TARGET}.` },
+  { state: 'NEEDS_TAP', stable: '1.1.29', title: 'older public stable', heading: NEEDS_TAP_HEADING, message: NEEDS_TAP_MESSAGE },
+  { state: 'NEEDS_TAP', stable: '1.1.29', legacy: true, title: 'legacy APK fallback', heading: NEEDS_TAP_HEADING, message: NEEDS_TAP_MESSAGE },
+  { state: 'NEEDS_TAP', stable: null, title: 'unavailable public stable', heading: NEEDS_TAP_HEADING, message: NEEDS_TAP_MESSAGE },
+  { state: 'NEEDS_TAP', stable: '1.1.29', portrait: true, title: 'portrait display', heading: NEEDS_TAP_HEADING, message: NEEDS_TAP_MESSAGE },
   { state: 'FAILED_ABORTED', stable: '1.1.29', title: 'failed native install', heading: 'Update issue', message: `Install of v${TARGET} was cancelled on this screen.` },
 ]) {
   test(`native-only ${scenario.title} stays quiet until Back, then offers the reported target`, async ({ page }, info) => {
@@ -83,7 +88,7 @@ for (const scenario of [
     await page.keyboard.press('Escape');
     await expect(page.getByText(scenario.heading, { exact: true })).toBeVisible();
     const status = scenario.state === 'NEEDS_TAP'
-      ? `Android needs someone to confirm the update v${TARGET}. Press Install now, then tap Install.`
+      ? `Android needs someone to confirm the update v${TARGET}. Choose Install v${TARGET}, then select Install in Android's dialog (OK on the remote, or tap it).`
       : scenario.message;
     await expect(page.getByText(status, { exact: true })).toBeVisible();
     const install = page.getByRole('button', { name: `Install v${TARGET}`, exact: true });
@@ -117,13 +122,13 @@ test('Back keeps the existing controls without an extra update button', async ({
 });
 
 test('a native-only pending update never covers or restarts playing video', async ({ page }) => {
-  await bootUpdatePlayer(page, { state: 'NEEDS_TAP', message: `Tap to install v${TARGET}.`, stable: '1.1.29', video: true });
+  await bootUpdatePlayer(page, { state: 'NEEDS_TAP', message: NEEDS_TAP_MESSAGE, stable: '1.1.29', video: true });
   const video = page.locator('video');
   await expect.poll(() => video.evaluate(v => (v as HTMLVideoElement).currentTime)).toBeGreaterThan(0.1);
   const before = await video.evaluate(v => (v as HTMLVideoElement).currentTime);
   await expect.poll(() => video.evaluate(v => (v as HTMLVideoElement).currentTime)).toBeGreaterThan(before + 0.2);
   await expect(page.getByRole('button', { name: /^(Install|Check for updates)/ })).toHaveCount(0);
-  await expect(page.getByText('Update needs a tap on this screen', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(NEEDS_TAP_HEADING, { exact: true })).toHaveCount(0);
   expect(await updateCalls(page)).toEqual([]);
   expect(await page.evaluate(() => (window as unknown as TestWindow).__updateDocument)).toBe('content-still-playing');
 });

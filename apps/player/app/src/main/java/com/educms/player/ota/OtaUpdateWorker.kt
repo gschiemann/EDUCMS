@@ -263,7 +263,7 @@ internal class OtaCheck(
                     }
                     reportOtaState(
                         apiRoot, deviceFingerprint, PendingInstallConfirmation.EXPIRED_STATE, null,
-                        "Nobody tapped Install for ${expired?.versionName?.let { "v$it" } ?: "the update"} within 30 minutes — " +
+                        "Nobody selected Install for ${expired?.versionName?.let { "v$it" } ?: "the update"} within 30 minutes — " +
                             "the request expired. Push the update again to ask again.",
                     )
                 }
@@ -650,7 +650,7 @@ internal class OtaCheck(
     /** What the panel and the dashboard say while a build waits for a person. */
     /** Re-reported only while a confirmation WE launched is fresh (KEEP_NEEDS_TAP): the dialog is up. */
     private fun needsTapMessage(target: String): String =
-        "Android's Install dialog for $target is open on the screen — tap Install."
+        "Android's Install dialog for $target is open on the screen — select Install (OK on the remote, or tap it)."
 
     private fun sha256(f: File): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")

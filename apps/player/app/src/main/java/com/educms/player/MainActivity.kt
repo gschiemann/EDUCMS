@@ -4520,7 +4520,7 @@ class MainActivity : ComponentActivity() {
                 awaitingPermissionGrant = false
                 PlayerLogger.i("MainActivity", "Permission granted on return — firing bootstrap now")
                 binding.managerGateStatus.text = "Installing companion service…"
-                binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+                binding.managerGateHint.text = "When you see the system Install dialog, select Install (OK on the remote, or tap it)."
                 ManagerBootstrap.bootstrapIfNeeded(applicationContext)
             } else {
                 // User came back without granting. Surface retry button
@@ -5226,7 +5226,7 @@ class MainActivity : ComponentActivity() {
             !packageManager.canRequestPackageInstalls()
         if (needsPermission) {
             PlayerLogger.i("MainActivity", "Install permission missing — deep-linking to Settings, gating bootstrap")
-            binding.managerGateStatus.text = "Tap Allow on the next screen to grant install permission"
+            binding.managerGateStatus.text = "On the next screen, select Allow (OK on the remote, or tap it) to grant install permission"
             binding.managerGateHint.text = "We'll continue automatically when you return."
             try {
                 val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
@@ -5248,7 +5248,7 @@ class MainActivity : ComponentActivity() {
                 // Fall through to manual instructions on the gate.
                 binding.managerGateStatus.text =
                     "Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow"
-                binding.managerGateHint.text = "Tap Retry install once permission is granted."
+                binding.managerGateHint.text = "Select Retry install (OK on the remote, or tap it) once permission is granted."
                 binding.managerGateRetry.visibility = View.VISIBLE
             }
             return
@@ -5256,7 +5256,7 @@ class MainActivity : ComponentActivity() {
         // Permission already granted — fire bootstrap directly.
         PlayerLogger.i("MainActivity", "Install permission already granted — firing bootstrap from foreground")
         binding.managerGateStatus.text = "Installing companion service…"
-        binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+        binding.managerGateHint.text = "When you see the system Install dialog, select Install (OK on the remote, or tap it)."
         LedSystemPromptBanner.announce(
             this,
             "Install the companion service",
