@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // The only difference between these accounts is their parent relationship.
-// All data is synthetic and every API request is intercepted.
-async function openLocalDashboard(page: Page, child: boolean, width = 1840) {
+// All data is synthetic and every API request is intercepted. `failing` paths
+// answer 500, to prove the page still draws every section without them.
+async function openLocalDashboard(page: Page, child: boolean, width = 1840, failing: readonly string[] = []) {
   const tenant = { id: 'local-layout-test', slug: 'local-layout-test', name: 'Test Office',
     vertical: 'CORPORATE', parentId: child ? 'test-corporate-parent' : null };
   const user = { id: 'layout-test-user', email: 'operator@example.test', role: 'SCHOOL_ADMIN', tenantId: tenant.id };
@@ -27,7 +28,18 @@ async function openLocalDashboard(page: Page, child: boolean, width = 1840) {
       'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     if (['/emergency/readiness/district', '/submissions/pending-counts', '/deployments', '/screens/fleet-pulse'].includes(path)) corporateReads.push(path);
+    if (failing.includes(path)) {
+      return route.fulfill({ status: 500, contentType: 'application/json', headers, body: JSON.stringify({ message: 'synthetic outage' }) });
+    }
     const bodies: Record<string, unknown> = {
+      // What a person did, already worded by the API's customer allowlist.
+      '/audit/recent': [{ id: 'activity-1', action: 'PLAYLIST_CREATED', category: 'content', createdAt: new Date().toISOString(),
+        targetType: 'Playlist', targetId: 'playlist-1', actor: { kind: 'person', userId: 'teammate', name: 'Sam' },
+        subject: 'Lobby loop', target: null, targetKey: null, facts: {} }],
+      // The offline screen is a real outage: not on a schedule, not dormant.
+      '/screens/attention': { generatedAt: new Date().toISOString(), resting: [], dormant: [],
+        down: [{ id: screens[1].id, name: screens[1].name, tenantId: tenant.id, location: null,
+          groupName: groups[1].name, lastSeenAt: screens[1].lastPingAt, reason: null }] },
       '/auth/me': user, '/users/me': user, '/tenants': tenant, '/tenants/me': tenant,
       '/tenants/accessible': { current: tenant.id, tenants: [tenant] },
       '/branding/me': { displayName: tenant.name, primaryColor: '#003b5c' },
@@ -76,6 +88,9 @@ for (const child of [false, true]) {
     await expect(page.getByRole('heading', { name: /Today.s Schedule/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recent Activity', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Quick Actions', exact: true })).toBeVisible();
+    // The feed reads what a person did; the red card lists the real outage.
+    await expect(page.getByTestId('recent-activity')).toContainText('Sam created the playlist “Lobby loop”');
+    await expect(page.getByTestId('screens-down')).toContainText('Meeting rooms display');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(corporateReads).toEqual([]);
     expect(errors).toEqual([]);
@@ -84,4 +99,26 @@ for (const child of [false, true]) {
   });
 }
 
+}
+
+// When the activity feed and the screen verdicts both fail, the page loses
+// their content, never their cards: Recent Activity says it could not load,
+// and the offline screen stays in the red "Screens down" card (a failed
+// verdict falls back to "down", so it can never hide an outage).
+for (const width of [1840, 390]) {
+  test(`the local dashboard draws every section when activity and screen verdicts fail at ${width}px`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await openLocalDashboard(page, false, width, ['/audit/recent', '/screens/attention']);
+    await expect(page.getByRole('heading', { name: 'Getting started', exact: true })).toBeVisible();
+    await expect(page.locator('.dash-kpi-card')).toHaveCount(5);
+    await expect(page.getByRole('heading', { name: /Today.s Schedule/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent Activity', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Quick Actions', exact: true })).toBeVisible();
+    await expect(page.getByTestId('screens-down')).toContainText('Meeting rooms display');
+    await expect(page.getByRole('link', { name: /Fleet health/i })).toContainText('50.0%');
+    // React Query retries a failed read three times (about 7 s) before it gives up.
+    await expect(page.getByTestId('recent-activity')).toContainText('Couldn’t load activity', { timeout: 15_000 });
+    expect(errors).toEqual([]);
+  });
 }

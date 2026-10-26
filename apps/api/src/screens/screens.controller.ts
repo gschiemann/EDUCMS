@@ -4011,7 +4011,50 @@ export class ScreensController {
     // The SCREEN's tenant, not the caller's — a cross-location edit must
     // bust the manifest cache where the screen actually lives.
     this.notifySync(screen.tenantId as string);
+    // 2026-10-24 — renames and group moves are a person's changes and the
+    // dashboard's Recent activity names them; this route wrote no audit row
+    // at all before. Best-effort, after the write: never fails the edit.
+    await this.auditScreenEdit(req, screen, updated);
     return updated;
+  }
+
+  /** `SCREEN_RENAMED` / `SCREEN_MOVED` rows for `PUT /screens/:id` (best-effort). */
+  private async auditScreenEdit(
+    req: any,
+    before: { id: string; name: string; tenantId: string | null; screenGroupId: string | null },
+    after: { name: string; screenGroupId: string | null; screenGroup?: { id: string; name: string } | null },
+  ): Promise<void> {
+    const rows: Array<{ action: string; details: Record<string, unknown> }> = [];
+    if (after.name !== before.name) {
+      rows.push({ action: 'SCREEN_RENAMED', details: { from: before.name, to: after.name } });
+    }
+    if ((after.screenGroupId ?? null) !== (before.screenGroupId ?? null)) {
+      rows.push({
+        action: 'SCREEN_MOVED',
+        details: {
+          name: after.name,
+          fromGroupId: before.screenGroupId ?? null,
+          toGroupId: after.screenGroupId ?? null,
+          toGroupName: after.screenGroup?.name ?? null,
+        },
+      });
+    }
+    for (const row of rows) {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId: before.tenantId as string,
+            userId: req.user?.id ?? null,
+            action: row.action,
+            targetType: 'Screen',
+            targetId: before.id,
+            details: JSON.stringify(row.details),
+          },
+        });
+      } catch (e) {
+        console.warn(`[screens] ${row.action} audit row failed for ${before.id}: ${(e as Error)?.message ?? e}`);
+      }
+    }
   }
 
   // ─── 2026-05-24 — per-screen orientation lock ───
@@ -5641,6 +5684,24 @@ export class ScreensController {
     this.notifySync(req.user.tenantId);
     // Deleting a paired screen frees a seat — re-sync Stripe quantity.
     this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
+    // 2026-10-24 — removing a screen is a privileged change the audit trail
+    // never recorded (CLAUDE.md §16), and the dashboard's Recent activity now
+    // says "Greg removed the screen “Lobby TV”". After the delete committed,
+    // best-effort: an audit failure never turns a finished delete into a 500.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_DELETED',
+          targetType: 'Screen',
+          targetId: id,
+          details: JSON.stringify({ name: screen.name, faces: faceIds.length }),
+        },
+      });
+    } catch (e) {
+      console.warn(`[screens] SCREEN_DELETED audit row failed for ${id}: ${(e as Error)?.message ?? e}`);
+    }
     return { deleted: true };
   }
 

@@ -70,17 +70,17 @@ function SquareConnectDoneInner() {
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-600" />
             </div>
-            <h1 className="text-xl font-extrabold text-slate-800">Square connected</h1>
-            <p className="text-sm text-slate-600">Your catalog is syncing now. Menu boards will pick up the live items once the first poll finishes (usually under a minute).</p>
+            <h1 className="text-xl font-extrabold text-slate-800">{t('connectDone.connected', { provider: 'Square' })}</h1>
+            <p className="text-sm text-slate-600">{t('connectDone.posSyncing')}</p>
           </>
         ) : (
           <>
             <div className="mx-auto w-14 h-14 rounded-full bg-rose-100 flex items-center justify-center">
               <AlertCircle className="w-8 h-8 text-rose-600" />
             </div>
-            <h1 className="text-xl font-extrabold text-slate-800">Could not connect Square</h1>
-            <p className="text-sm text-slate-600">Reason: <code className="text-xs">{reason || 'unknown'}</code>.</p>
-            <p className="text-xs text-slate-500">Try again from Settings → POS catalog sync.</p>
+            <h1 className="text-xl font-extrabold text-slate-800">{t('connectDone.failed', { provider: 'Square' })}</h1>
+            {reason && <p className="text-sm text-slate-600">{t('connectDone.reason')} <code className="text-xs">{reason}</code></p>}
+            <p className="text-xs text-slate-500">{t('connectDone.posRetry')}</p>
           </>
         )}
         {tenantSlug ? (
@@ -88,7 +88,7 @@ function SquareConnectDoneInner() {
             href={`/${tenantSlug}/settings/pos?connected=${ok ? 'square' : 'failed'}`}
             className="inline-flex items-center gap-1.5 mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold"
           >
-            Back to POS settings <ArrowRight className="w-3.5 h-3.5" />
+            {t('connectDone.backToPos')} <ArrowRight className="w-3.5 h-3.5" aria-hidden />
           </Link>
         ) : err ? (
           // Signed out in this tab (or a different browser finished the

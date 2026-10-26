@@ -156,6 +156,43 @@ export function desiredOnAt(windows: readonly OnWindow[], atMs: number): boolean
   return windows.some((w) => covers(w, atMs));
 }
 
+/** A moment the on/off schedule switched the screen ON. */
+export interface OnTransition {
+  atMs: number;
+  /** The zone of the window that opened (its own, resolved like `covers`). */
+  timeZone: string;
+}
+
+const SWITCH_PROBE_MS = 60_000;
+
+/**
+ * The newest moment at or before `atMs` that the schedule switched the screen
+ * ON (2026-10-25): a window's start — its `onTime`, on one of its days, in
+ * its own zone — at which the SAME `desiredOnAt` says off one minute before
+ * and on at the start. A window that opens while another already covers the
+ * screen is not a switch-on. Null when there is none in `lookbackDays`.
+ */
+export function lastOnTransitionAtOrBefore(
+  windows: readonly OnWindow[],
+  atMs: number,
+  lookbackDays = 15,
+): OnTransition | null {
+  let best: OnTransition | null = null;
+  for (const w of windows) {
+    const zone = resolveZone(w.timezone);
+    for (let dayOffset = 0; dayOffset >= -lookbackDays; dayOffset--) {
+      const start = instantOnDay(zone, atMs, dayOffset, w.onMinute);
+      if (start === null || start > atMs) continue;
+      if (best && start <= best.atMs) break; // earlier days only get earlier
+      if (!w.daysOfWeek.has(localPartsOf(zone, start).dow)) continue;
+      if (desiredOnAt(windows, start - SWITCH_PROBE_MS) !== false || desiredOnAt(windows, start) !== true) continue;
+      best = { atMs: start, timeZone: zone };
+      break;
+    }
+  }
+  return best;
+}
+
 export interface DisplayScheduleRowLike {
   id?: string;
   screenId?: string | null;

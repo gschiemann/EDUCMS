@@ -235,7 +235,7 @@ export class OfflineScreenScanner implements OnModuleInit, OnModuleDestroy {
       const mode = a?.mode ?? resolveAlertMode();
       const minutes = Math.round((now - w.startedAt) / 60_000);
       const last = a
-        ? `offline=${w.lastFound ?? 0} due=${a.offlineDue ?? 0} tooOld=${a.offlineTooOld ?? 0} ` +
+        ? `offline=${w.lastFound ?? 0} due=${a.offlineDue ?? 0} missedOnTime=${a.offlineMissedOnTime ?? 0} tooOld=${a.offlineTooOld ?? 0} ` +
           `confirmed=${a.offlineCandidates} noContent=${a.noContentCandidates} gate=${a.gate ?? 'open'} ` +
           `deferred=${JSON.stringify(a.deferred ?? {})}`
         : `offline=${w.lastFound ?? 'n/a'} (${this.alertEmails ? 'alert worker did not run' : 'alert emails not wired'})`;

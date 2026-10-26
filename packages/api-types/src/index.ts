@@ -1153,6 +1153,12 @@ export * from './device-settings';
 // dependency-free mirror held identical by a parity test.
 export * from './native-end-reasons';
 
+// Customer-facing activity + notifications (2026-10-24) — the ONE allowlist of
+// audit actions a customer sees (dashboard Recent Activity, the Activity page)
+// and the notification kinds their bell never shows. The API filters on it;
+// the dashboard turns each allowed row into a sentence.
+export * from './customer-activity';
+
 // Per-screen time zones (2026-10-24) — the one precedence (screen override >
 // location setting > automatic from the address > the device's own zone) and
 // what counts as a valid IANA id, shared by the API (manifest, list, PUT) and

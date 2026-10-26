@@ -82,6 +82,9 @@ export interface OfflineSnapshotScreen {
   name: string;
   tenantId: string | null;
   lastPingAt: Date | null;
+  /** 2026-10-25 — which on/off schedule governs it (the alert emails' switch-on clock). */
+  screenGroupId?: string | null;
+  faceOfScreenId?: string | null;
 }
 
 @Injectable()
@@ -321,7 +324,7 @@ export class NotificationsService {
         lastPingAt: { lt: offlineCutoff },
         tenant: { is: { archivedAt: null } },
       },
-      select: { id: true, name: true, tenantId: true, lastPingAt: true },
+      select: { id: true, name: true, tenantId: true, lastPingAt: true, screenGroupId: true, faceOfScreenId: true },
       orderBy: { lastPingAt: 'desc' },
       take: SCAN_LIMIT,
     });

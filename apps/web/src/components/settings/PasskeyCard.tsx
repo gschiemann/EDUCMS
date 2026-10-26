@@ -39,7 +39,7 @@ import { clog } from '@/lib/client-logger';
 
 /**
  * PasskeyCard — enroll / rename / remove WebAuthn passkeys for the signed-in
- * user. Mounted ABOVE <MfaCard /> in /[schoolId]/settings/security.
+ * user. Mounted ABOVE <MfaCard /> in /[schoolId]/account (My account).
  *
  * Operator (2026-09-21): "im sick of the damn auth app". A passkey is the
  * answer to that sentence, so it gets the top of the page and MfaCard keeps

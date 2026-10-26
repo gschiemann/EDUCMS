@@ -25,12 +25,8 @@ export function isAiPlanRequired(e: unknown): boolean {
   return x?.code === 'AI_PLAN_REQUIRED' || x?.body?.code === 'AI_PLAN_REQUIRED';
 }
 
-/**
- * English fallback for the surfaces whose copy is still English-only (inline rewrite, translate,
- * chat-to-edit) — the localized upsell is `AiPlanUpsell`.
- */
-export const AI_PLAN_REQUIRED_EN =
-  'Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).';
+// The refusal sentences (plan required / included AI used up) are localized by
+// `components/ai/useAiBillingMessages.ts`; the full upsell card is `AiPlanUpsell`.
 
 /** "$5" — whole dollars show no cents. */
 export function formatCents(cents: number, locale = 'en-US'): string {

@@ -51,9 +51,11 @@ import type { OfflineScanResult, OfflineSnapshotScreen } from '../notifications.
 import {
   ALERT_RULES,
   ConsecutiveScans,
+  effectivePowerCommand,
   intendedDowntime,
   isFlapping,
   lastPowerCommandOf,
+  missedOnTime,
   noContentVerdict,
   orgHourlyLimit,
   platformClusterAround,
@@ -123,6 +125,32 @@ interface NewProblem {
   kind: ProblemKind;
   startedAtMs: number;
   contentUnavailable?: boolean;
+  /** OFFLINE that began at its on/off schedule's switch-on (`missedOnTime`): `startedAtMs` is that moment. */
+  missedOnTime?: { onAtMs: number; timeZone: string };
+}
+
+/** The on/off schedule columns every rule reads (the tenant too: a row governs its own tenant's screens only). */
+const SCHEDULE_SELECT = {
+  id: true,
+  tenantId: true,
+  screenId: true,
+  screenGroupId: true,
+  daysOfWeek: true,
+  onTime: true,
+  offTime: true,
+  timezone: true,
+  isActive: true,
+} as const;
+type ScheduleRow = DisplayScheduleRowLike & { tenantId: string };
+
+/** The rows that govern one screen, from a batch spanning several tenants. */
+function schedulesForScreen(
+  rows: readonly ScheduleRow[],
+  screen: { id: string; tenantId: string | null; faceOfScreenId?: string | null },
+): ScheduleRow[] {
+  return rows.filter(
+    (s) => s.tenantId === screen.tenantId && (!s.screenId || s.screenId === screen.id || s.screenId === screen.faceOfScreenId),
+  );
 }
 
 export interface CustomerAlertTickResult {
@@ -141,6 +169,12 @@ export interface CustomerAlertTickResult {
    */
   offlineDue: number;
   offlineTooOld: number;
+  /**
+   * 2026-10-25 — of `offlineDue`, the screens whose problem started when
+   * their on/off schedule switched them on and they did not check in
+   * ("didn't come back on at 7:00").
+   */
+  offlineMissedOnTime: number;
   offlineCandidates: number;
   noContentCandidates: number;
   deferred: Record<string, number>;
@@ -287,6 +321,7 @@ export class CustomerAlertEmailsService {
       mode,
       offlineDue: 0,
       offlineTooOld: 0,
+      offlineMissedOnTime: 0,
       offlineCandidates: 0,
       noContentCandidates: 0,
       deferred: {},
@@ -309,14 +344,39 @@ export class CustomerAlertEmailsService {
       (s): s is OfflineSnapshotScreen & { tenantId: string; lastPingAt: Date } => !!s.tenantId && !!s.lastPingAt,
     );
     const offlineById = new Map(snapshot.map((s) => [s.id, s]));
-    const ageOf = (s: { lastPingAt: Date }) => now - s.lastPingAt.getTime();
-    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > ALERT_RULES.OFFLINE_MAX_AGE_MS).length;
 
     const incidents = await this.loadTrackedIncidents();
     const open = (kind: ProblemKind) =>
       new Map(incidents.filter((i) => i.open && i.kind === kind).map((i) => [i.screenId, i]));
     const openOffline = open('OFFLINE');
     const openNoContent = open('NO_CONTENT');
+
+    // ── When each offline screen's problem STARTED (2026-10-25) ──
+    // Its last check-in — unless it went dark while its on/off schedule had it
+    // off and has not checked in since the schedule switched it on again
+    // (`missedOnTime`): then the switch-on moment. Without this, a screen that
+    // died at 1 AM on a Saturday was "meant to be off" all weekend and too
+    // old to email by Monday's switch-on. Everything below (15 min due, the
+    // 6-hour cap, two scans, stragglers, the platform cluster) reads this
+    // start instead of the last check-in; nothing else changes.
+    const silentLongEnough = (s: { id: string; lastPingAt: Date }) =>
+      now - s.lastPingAt.getTime() >= ALERT_RULES.OFFLINE_DUE_MS && !openOffline.has(s.id);
+    const onOff = await this.onOffSchedulesFor(snapshot.filter(silentLongEnough).map((s) => s.tenantId));
+    const missedById = new Map<string, NonNullable<NewProblem['missedOnTime']>>();
+    if (onOff && onOff.length > 0) {
+      for (const s of snapshot) {
+        if (!silentLongEnough(s)) continue;
+        const windows = windowsForScreen(
+          { id: s.faceOfScreenId ?? s.id, screenGroupId: s.screenGroupId ?? null },
+          schedulesForScreen(onOff, s),
+        );
+        const missed = missedOnTime(windows, s.lastPingAt.getTime(), now);
+        if (missed) missedById.set(s.id, { onAtMs: missed.onAtMs, timeZone: missed.timeZone });
+      }
+    }
+    const startOf = (s: { id: string; lastPingAt: Date }) => missedById.get(s.id)?.onAtMs ?? s.lastPingAt.getTime();
+    const ageOf = (s: { id: string; lastPingAt: Date }) => now - startOf(s);
+    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > ALERT_RULES.OFFLINE_MAX_AGE_MS).length;
 
     // ── Platform gate: restart / degraded / incident quiet window ──
     const gateInput = {
@@ -352,6 +412,7 @@ export class CustomerAlertEmailsService {
       (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && !openOffline.has(s.id),
     );
     result.offlineDue = offlineDueNow.length;
+    result.offlineMissedOnTime = offlineDueNow.filter((s) => missedById.has(s.id)).length;
     this.offlineDue.observe(offlineDueNow.map((s) => s.id), now);
 
     const noContent = await this.findNoContentCandidates(now, openNoContent);
@@ -402,7 +463,8 @@ export class CustomerAlertEmailsService {
         tenantId: s.tenantId,
         screenName: s.name,
         kind: 'OFFLINE' as const,
-        startedAtMs: s.lastPingAt.getTime(),
+        startedAtMs: startOf(s),
+        missedOnTime: missedById.get(s.id),
       })),
       ...noContentActionable.map((c) => ({
         screenId: c.row.id,
@@ -430,7 +492,7 @@ export class CustomerAlertEmailsService {
         defer('screen-gone');
         continue;
       }
-      const reason = intendedDowntime(f.facts, p.kind, p.startedAtMs, now);
+      const reason = intendedDowntime(f.facts, p.kind, p.startedAtMs, now, p.missedOnTime ? 'missed-on-time' : undefined);
       if (reason) {
         defer(reason);
         continue;
@@ -467,13 +529,14 @@ export class CustomerAlertEmailsService {
       const near = (t: number) => real.some((p) => Math.abs(p.startedAtMs - t) <= W);
       const nearby: NewProblem[] = [
         ...snapshot
-          .filter((s) => ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && near(s.lastPingAt.getTime()))
+          .filter((s) => ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && near(startOf(s)))
           .map((s) => ({
             screenId: s.id,
             tenantId: s.tenantId,
             screenName: s.name,
             kind: 'OFFLINE' as const,
-            startedAtMs: s.lastPingAt.getTime(),
+            startedAtMs: startOf(s),
+            missedOnTime: missedById.get(s.id),
           })),
         ...noContent
           .filter((c) => near(problemStartOf(c)))
@@ -492,9 +555,14 @@ export class CustomerAlertEmailsService {
       const events: ProblemEvent[] = nearby
         .filter((p) => {
           const f = facts.get(p.screenId);
-          return !!f && !intendedDowntime(f.facts, p.kind, p.startedAtMs, now);
+          return !!f && !intendedDowntime(f.facts, p.kind, p.startedAtMs, now, p.missedOnTime ? 'missed-on-time' : undefined);
         })
-        .map((p) => ({ screenId: p.screenId, orgId: this.rootOf(p.tenantId, tenants), startedAtMs: p.startedAtMs }));
+        .map((p) => ({
+          screenId: p.screenId,
+          orgId: this.rootOf(p.tenantId, tenants),
+          startedAtMs: p.startedAtMs,
+          ...(p.missedOnTime ? { scheduled: true } : {}),
+        }));
       const fleet = await this.recentlyActiveFleet(now);
       const inIncident = real.filter((p) => platformClusterAround(p.startedAtMs, events, fleet).incident);
       if (inIncident.length > 0) {
@@ -547,7 +615,8 @@ export class CustomerAlertEmailsService {
     await this.prune(now);
     if (result.opened || result.held || result.recovered || result.silenced || result.sends) {
       this.logger.log(
-        `[alert-email] mode=${mode} offline=${result.offlineCandidates} noContent=${result.noContentCandidates} ` +
+        `[alert-email] mode=${mode} offline=${result.offlineCandidates} missedOnTime=${result.offlineMissedOnTime} ` +
+          `noContent=${result.noContentCandidates} ` +
           `opened=${result.opened} held=${result.held} silenced=${result.silenced} recovered=${result.recovered} ` +
           `sends=${result.sends} deferred=${JSON.stringify(result.deferred)}`,
       );
@@ -616,9 +685,10 @@ export class CustomerAlertEmailsService {
       this.prisma.client.displaySchedule
         .findMany({
           where: { tenantId: { in: tenantIds }, isActive: true },
-          select: { id: true, screenId: true, screenGroupId: true, daysOfWeek: true, onTime: true, offTime: true, timezone: true, isActive: true },
+          select: SCHEDULE_SELECT,
           take: 5_000,
         })
+        .then((r) => r as ScheduleRow[])
         .catch(() => null),
       this.prisma.client.auditLog
         .findMany({
@@ -651,7 +721,26 @@ export class CustomerAlertEmailsService {
       // have been an "off" one, an unknown audit trail a power-off.
       if (schedules === null || audits === null || ledger === null) continue;
       const mine = audits.filter((a) => a.targetId === row.id);
-      const power = lastPowerCommandOf(mine.filter((a) => a.action === DISPLAY_AUDIT_ACTIONS.CONTROL));
+      const displayWindows = windowsForScreen(
+        { id: row.faceOfScreenId ?? row.id, screenGroupId: row.screenGroupId },
+        // Its own tenant's rows only (2026-10-25): a batch spans tenants, and
+        // the manifest serves a screen only its own tenant's schedule.
+        schedulesForScreen(schedules, row),
+      );
+      // A power-off excuses the screen only while it still holds on the glass
+      // (owner, 2026-10-25) — decided once here, so every reader of these facts
+      // (the emails, the post-restart fleet check, the dashboard) agrees.
+      const power = effectivePowerCommand(
+        lastPowerCommandOf(mine.filter((a) => a.action === DISPLAY_AUDIT_ACTIONS.CONTROL)),
+        {
+          nowMs: now,
+          displayWindows,
+          lastRenderedAt: row.lastRenderedAt,
+          credentialEpochRotatedAt: row.credentialEpochRotatedAt,
+          nativeRuntimeReport: row.nativeRuntimeReport,
+          nativeRuntimeReportAt: row.nativeRuntimeReportAt,
+        },
+      );
       const rebootAt = mine.find((a) => a.action === DISPLAY_AUDIT_ACTIONS.REBOOT)?.createdAt ?? null;
       const ledgerAt = ledger
         .filter((l) => l.screenId === row.id)
@@ -671,10 +760,7 @@ export class CustomerAlertEmailsService {
         lastOtaState: row.lastOtaState,
         forceApkUpdatePendingAt: row.forceApkUpdatePendingAt,
         forceApkUpdateHold: row.forceApkUpdateHold,
-        displayWindows: windowsForScreen(
-          { id: row.faceOfScreenId ?? row.id, screenGroupId: row.screenGroupId },
-          schedules.filter((s) => !s.screenId || s.screenId === row.id || s.screenId === row.faceOfScreenId) as DisplayScheduleRowLike[],
-        ),
+        displayWindows,
         otaWindow: tenant ? otaWindowOf(tenant) : null,
         lastPowerCommand: power,
         lastMaintenanceAt,
@@ -682,6 +768,26 @@ export class CustomerAlertEmailsService {
       out.set(row.id, { row, facts });
     }
     return out;
+  }
+
+  /**
+   * The active on/off schedule rows of these tenants, for the switch-on clock
+   * (2026-10-25); null when the read failed — then no problem starts at a
+   * switch-on this scan (the last check-in stands, and `loadFacts` defers it).
+   */
+  private async onOffSchedulesFor(tenantIds: string[]): Promise<ScheduleRow[] | null> {
+    const ids = [...new Set(tenantIds)];
+    if (ids.length === 0) return [];
+    try {
+      return (await this.prisma.client.displaySchedule.findMany({
+        where: { tenantId: { in: ids }, isActive: true },
+        select: SCHEDULE_SELECT,
+        take: 5_000,
+      })) as ScheduleRow[];
+    } catch (e) {
+      this.logger.warn(`[alert-email] on/off schedule read failed, no switch-on check this scan: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   /** Which candidates have content assigned right now, and which of those show a web page (no render proof by design). */
@@ -912,6 +1018,7 @@ export class CustomerAlertEmailsService {
             locationName: location?.name ?? '—',
             minutes: Math.max(1, Math.round((now - p.startedAtMs) / MIN)),
             contentUnavailable: p.contentUnavailable,
+            missedOnTime: p.missedOnTime,
           })),
           ...g.recs.map((r) => ({
             kind: g.kind,
@@ -981,7 +1088,13 @@ export class CustomerAlertEmailsService {
       }
     }
     for (const p of args.problems) {
-      items.push({ tenantId: p.tenantId, kind: p.kind, screenName: p.screenName, locationName: nameOf(p.tenantId) });
+      items.push({
+        tenantId: p.tenantId,
+        kind: p.kind,
+        screenName: p.screenName,
+        locationName: nameOf(p.tenantId),
+        missedOnTime: p.missedOnTime,
+      });
     }
     for (const r of args.recoveries) {
       items.push({
@@ -1257,7 +1370,8 @@ export class CustomerAlertEmailsService {
       tenantId: p.tenantId,
       open: true,
       state: o.state,
-      reason: o.reason ?? null,
+      // The row says WHY when the problem's clock is the schedule's switch-on.
+      reason: o.reason ?? (p.missedOnTime ? 'missed-on-time' : null),
       screenName: p.screenName,
       startedAt: new Date(p.startedAtMs),
       openedAt: now,

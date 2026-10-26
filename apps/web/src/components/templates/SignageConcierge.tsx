@@ -49,7 +49,7 @@ import { referenceMenuItemCount } from './conciergeMenuContent';
 // 2026-09-22 — the POS card: "Use your Toast menu?" / "Which POS do you use?".
 import { ConciergePosPanel } from './ConciergePosCard';
 import { looksLikeMenuBoard } from './conciergePos';
-import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
+import { useAiBillingMessages, type AiBillingMessages } from '@/components/ai/useAiBillingMessages';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -73,7 +73,7 @@ function normalizeWebUrl(raw: string): string {
   return 'https://' + s.replace(/^\/+/, '');
 }
 
-function friendlyConciergeError(err: unknown): string {
+function friendlyConciergeError(err: unknown, billing: AiBillingMessages): string {
   const e = (err ?? {}) as ApiError;
   const code = String(e.code || '');
   const status = Number(e.status || 0);
@@ -89,10 +89,8 @@ function friendlyConciergeError(err: unknown): string {
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
     return bodyMsg || msg || 'Your AI provider is out of credit. Add credits with your provider and try again.';
   }
-  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
-  if (code === 'AI_CAP_REACHED' || status === 402) {
-    return "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
-  }
+  if (code === 'AI_PLAN_REQUIRED') return billing.planRequired;
+  if (code === 'AI_CAP_REACHED' || status === 402) return billing.capReached;
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
   }
@@ -173,6 +171,7 @@ type ChipKind = ConciergeReference['kind'];
 export function SignageConcierge(props: SignageConciergeProps) {
   const { canvas, interactive, vertical, onGenerate, generating, generateError, typeToggle, screenPicker, posEnabled } = props;
   const tPos = useTranslations('conciergePos');
+  const billing = useAiBillingMessages();
 
   // Display transcript. The leading assistant greeting is display-only and
   // is NOT sent in the FIRST chat call (the contract prefers a leading USER
@@ -289,10 +288,10 @@ export function SignageConcierge(props: SignageConciergeProps) {
         setReady(!!turn.ready);
         setMissing(Array.isArray(turn.missing) ? turn.missing : []);
       } catch (e) {
-        setError(friendlyConciergeError(e));
+        setError(friendlyConciergeError(e, billing));
       }
     },
-    [busy, messages, references, vertical, canvas.w, canvas.h, chat, posSelection],
+    [busy, messages, references, vertical, canvas.w, canvas.h, chat, posSelection, billing],
   );
 
   // POS card actions — each one also tells the Concierge, in the operator's
@@ -328,9 +327,9 @@ export function SignageConcierge(props: SignageConciergeProps) {
       // suggestions — instead of going silent or asking for the URL again.
       void send(`I added our website (${url}). Scan it and use what you find — its brand colors, logo, and the actual products/services — then tell me what you found and tailor the board to it.`, nextRefs);
     } catch (e) {
-      setRefError(friendlyConciergeError(e));
+      setRefError(friendlyConciergeError(e, billing));
     }
-  }, [urlValue, urlRef, references, send]);
+  }, [urlValue, urlRef, references, send, billing]);
 
   const addImage = useCallback(
     async (file: File) => {
@@ -341,10 +340,10 @@ export function SignageConcierge(props: SignageConciergeProps) {
         setReferences(nextRefs);
         void send('I uploaded a look I like — use its style, palette, and mood. Tell me what you see and reflect it in the board.', nextRefs);
       } catch (e) {
-        setRefError(friendlyConciergeError(e));
+        setRefError(friendlyConciergeError(e, billing));
       }
     },
-    [imageRef, references, send],
+    [imageRef, references, send, billing],
   );
 
   const removeReference = useCallback((idx: number) => {
@@ -366,7 +365,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
         setUrlValue('');
         setUrlOpen(false);
       } catch (e) {
-        setRefError(friendlyConciergeError(e));
+        setRefError(friendlyConciergeError(e, billing));
       }
     }
     const prompt = (brief || lastUserText).trim();
@@ -393,7 +392,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
       // The POS menu picked in the card: the server builds a board BOUND to it.
       ...(posSelection ? { posSelection } : {}),
     });
-  }, [generating, brief, lastUserText, intake, references, operatorText, guidance.touchNotice, onGenerate, urlValue, urlRef, posSelection]);
+  }, [generating, brief, lastUserText, intake, references, operatorText, guidance.touchNotice, onGenerate, urlValue, urlRef, posSelection, billing]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {
