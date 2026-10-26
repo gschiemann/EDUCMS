@@ -15,7 +15,12 @@ import {
   emergencyEnablementLocked,
   emergencyVerticalStated,
   effectiveMfaEnforced,
+  normalizeTimeZoneInput,
+  resolveEffectiveTimeZone,
 } from '@cms/api-types';
+// 2026-10-24 — a location's automatic time zone, from its own coordinates
+// (the same offline lookup the screen manifest uses).
+import { autoTimeZoneFor } from '../screens/screen-time-zone';
 import { evaluateMfaPolicy } from '../auth/mfa-policy';
 import { tenantMfaEnforced } from '../auth/tenant-mfa-enforcement';
 import { randomBytes, createHash, createHmac, timingSafeEqual } from 'crypto';
@@ -28,6 +33,29 @@ import { assertSupportReach, currentSupportAccessFrame } from '../support-access
 
 /** Transaction attempts for a rename that loses a race for its new URL. */
 const ORGANIZATION_RENAME_ATTEMPTS = 3;
+
+/**
+ * A LOCATION's time zone as the dashboard shows it (2026-10-24): the stored
+ * setting when there is one, else the automatic zone from the location's own
+ * coordinates, else null (screens there use the device's zone). Pure over
+ * the row; the same resolver every screen's manifest runs
+ * (`screen-time-zone.ts`), minus the per-screen levels.
+ */
+export function locationTimeZoneView(row: {
+  timezone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}): { timeZone: string | null; timeZoneSource: 'location' | 'auto' | 'device'; timeZoneAuto: string | null } {
+  const resolved = resolveEffectiveTimeZone({
+    locationSetting: row.timezone ?? null,
+    auto: autoTimeZoneFor({ location: { latitude: row.latitude ?? null, longitude: row.longitude ?? null } }),
+  });
+  return {
+    timeZone: resolved.zone,
+    timeZoneSource: resolved.source === 'screen' ? 'location' : resolved.source,
+    timeZoneAuto: resolved.auto?.zone ?? null,
+  };
+}
 
 @Controller('api/v1/tenants')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -163,11 +191,19 @@ export class TenantsController {
       where: { parentId: districtId, archivedAt: null }, // archived children excluded from the locations list + count
       select: {
         id: true, name: true, slug: true, createdAt: true,
+        // 2026-10-24 — each location's address + time-zone setting + saved
+        // coordinates, so the Locations list can say "America/Chicago ·
+        // automatic" per row (the automatic zone is derived from the
+        // coordinates right here, never stored).
+        address: true, latitude: true, longitude: true, timezone: true,
         _count: { select: { screens: true, users: true } },
-      },
+      } as any,
       orderBy: { name: 'asc' },
     });
-    return { districtId, children };
+    return {
+      districtId,
+      children: (children as any[]).map((row) => ({ ...row, ...locationTimeZoneView(row) })),
+    };
   }
 
   /**
@@ -524,10 +560,25 @@ export class TenantsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
   async updateMyTenant(
     @Request() req: any,
-    @Body() body: { vertical?: string; name?: string; address?: string | null; latitude?: number; longitude?: number },
+    @Body() body: {
+      vertical?: string; name?: string; address?: string | null; latitude?: number; longitude?: number;
+      // 2026-10-24 — the location's time-zone SETTING (IANA). `null` / `''`
+      // clears it back to automatic (from the address); unknown → 400.
+      timezone?: string | null;
+    },
   ) {
     const tenantId = req.user.tenantId;
     const data: any = {};
+    if (body.timezone !== undefined) {
+      const verdict = normalizeTimeZoneInput(body.timezone);
+      if (!verdict.ok) {
+        throw new HttpException(
+          { code: 'TENANT_TIMEZONE_INVALID', message: 'timezone must be an IANA zone such as America/Chicago, or empty for automatic' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      data.timezone = verdict.zone;
+    }
     if (body.vertical) {
       const v = body.vertical.toUpperCase();
       // Validated against the canonical VERTICALS list
@@ -915,6 +966,9 @@ export class TenantsController {
         address: true,
         latitude: true,
         longitude: true,
+        // 2026-10-24 — the location's time-zone setting (null = automatic);
+        // the resolved `timeZone` view below is what the editor renders.
+        timezone: true,
         emergencyStatus: true,
         // 2026-10-10 — whether the active tenant-wide alert is a DRILL, so the
         // dashboard overlay can say DRILL even when its alert list is down.
@@ -966,6 +1020,11 @@ export class TenantsController {
       emergencyVerticalStated: emergencyVerticalStated(vertical),
       /** The resolved MFA posture — what the dashboard toggle renders. */
       mfaEnforcedEffective: effectiveMfaEnforced(row.mfaEnforced),
+      // 2026-10-24 — the location's effective time zone: the setting when one
+      // is stored, else the automatic zone from the saved coordinates, else
+      // null (the device's own). `timeZoneAuto` is shown as "Automatic (X,
+      // from the address)" whether or not a setting overrides it.
+      ...locationTimeZoneView(row),
     };
   }
 

@@ -79,6 +79,19 @@ export interface OpsScreen {
   effectiveAddress?: string | null;
   geoSource?: 'screen' | 'group' | 'tenant' | 'none';
   /**
+   * 2026-10-24 — the screen's effective TIME ZONE and where it came from
+   * (API `screen-time-zone.ts`: override > location setting > automatic from
+   * the address > the device's own). `timezone` is the override column
+   * itself; `deviceTimeZone` is what the device reports itself set to. All
+   * optional: a payload from before this shipped means "unknown".
+   */
+  timeZone?: string | null;
+  timeZoneSource?: 'screen' | 'location' | 'auto' | 'device';
+  timeZoneAuto?: string | null;
+  timeZoneAutoFrom?: 'screen' | 'group' | 'location' | null;
+  timezone?: string | null;
+  deviceTimeZone?: string | null;
+  /**
    * 2026-09-16 — server-derived "this screen is frame-locked right now", from
    * `Playlist.syncPlayback` on whatever it is scheduled (plus the legacy group
    * flag). Replaces reading `screenGroup.syncMode` here: a group holds several

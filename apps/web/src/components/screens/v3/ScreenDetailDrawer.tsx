@@ -47,6 +47,10 @@ import {
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
+// 2026-10-24 — the screen's time zone row: the effective zone, where it came
+// from, the device's own setting when it disagrees, and the override picker.
+import { deviceTimeZoneDiffers } from '@cms/api-types';
+import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-label';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
@@ -465,6 +469,32 @@ export function ScreenDetailDrawer({
       { onSuccess: () => { setAnnouncement('Group updated.'); onChanged?.(); } },
     );
   };
+
+  // 2026-10-24 — the per-screen time-zone override. '' = back to automatic
+  // (the server stores null); PUT /screens/:id, admin-only. The manifest
+  // carries the new zone to the screen on its next poll.
+  const saveTimeZone = (zone: string) => {
+    if (!canControl) return;
+    const next = zone || null;
+    if ((screen.timezone ?? null) === next) return;
+    updateScreen.mutate(
+      { id: screen.id, timezone: next },
+      { onSuccess: () => { setAnnouncement(t('screens.drawer.timeZoneSaved')); onChanged?.(); } },
+    );
+  };
+  const effectiveTimeZone = screen.timeZone ?? null;
+  const timeZoneSourceLine = (() => {
+    switch (screen.timeZoneSource) {
+      case 'screen': return t('screens.drawer.timeZoneSourceScreen');
+      case 'location': return t('screens.drawer.timeZoneSourceLocation');
+      case 'auto': return t('screens.drawer.timeZoneSourceAuto');
+      case 'device': return t('screens.drawer.timeZoneSourceDevice');
+      default: return null;
+    }
+  })();
+  // Two names for the same rules (America/Los_Angeles vs US/Pacific) never
+  // read as a disagreement; a GUQ left on Asia/Shanghai in Los Angeles does.
+  const deviceZoneDiffers = deviceTimeZoneDiffers(effectiveTimeZone, screen.deviceTimeZone ?? null);
 
   const removeScreen = async () => {
     const ok = await appConfirm({
@@ -914,6 +944,59 @@ export function ScreenDetailDrawer({
                     >
                       {screen.address ? t('screens.drawer.changeLocation') : inheritedLocation ? t('screens.drawer.overrideLocation') : t('screens.drawer.setLocation')}
                     </button>
+                  </div>
+                )}
+
+                {/* ── Time zone (2026-10-24) ──────────────────────────
+                    The zone this screen's clocks, dates and overnight updates
+                    follow: automatic from the address by default (nothing to
+                    set), the location's setting when there is one, or an
+                    override picked here. Rendered only when the API answered
+                    the field — an older payload shows nothing rather than a
+                    guess. If the device's own clock setting disagrees (a GUQ
+                    shipped on Asia/Shanghai), it says so in plain words. */}
+                {screen.timeZoneSource !== undefined && (
+                  <div className="mt-3" data-testid="screen-time-zone">
+                    <label htmlFor="v3-drawer-timezone" className="block text-[11px] font-bold text-slate-500">
+                      {t('screens.drawer.timeZone')}
+                    </label>
+                    <p className="text-[12.5px] font-semibold text-slate-700 truncate" data-testid="screen-time-zone-effective">
+                      {(() => {
+                        if (!effectiveTimeZone) return screen.deviceTimeZone ? describeTimeZone(screen.deviceTimeZone, now) : '—';
+                        const local = localTimeIn(effectiveTimeZone, now);
+                        const label = describeTimeZone(effectiveTimeZone, now);
+                        return local ? `${label} · ${t('screens.drawer.timeZoneLocalTime', { time: local })}` : label;
+                      })()}
+                    </p>
+                    {timeZoneSourceLine && (
+                      <p className="text-[11px] text-slate-500">{timeZoneSourceLine}</p>
+                    )}
+                    {effectiveTimeZone && screen.deviceTimeZone && (
+                      <p
+                        className={`mt-1 text-[11px] font-semibold leading-snug ${deviceZoneDiffers ? 'text-amber-800' : 'text-slate-400'}`}
+                        data-testid="screen-time-zone-device"
+                      >
+                        {deviceZoneDiffers
+                          ? t('screens.drawer.timeZoneDeviceDiffers', { zone: screen.deviceTimeZone, effective: effectiveTimeZone })
+                          : t('screens.drawer.timeZoneDeviceMatches')}
+                      </p>
+                    )}
+                    <select
+                      id="v3-drawer-timezone"
+                      value={screen.timezone ?? ''}
+                      disabled={!canControl || updateScreen.isPending}
+                      onChange={(e) => saveTimeZone(e.target.value)}
+                      className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-200 text-[13px] font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 bg-white"
+                    >
+                      <option value="">
+                        {screen.timeZoneAuto
+                          ? t('screens.drawer.timeZoneOptionAuto', { zone: screen.timeZoneAuto })
+                          : t('screens.drawer.timeZoneOptionAutoNone')}
+                      </option>
+                      {timeZoneOptions().map((zone) => (
+                        <option key={zone} value={zone}>{zone}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
 
