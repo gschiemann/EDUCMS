@@ -26,6 +26,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { ClipboardPaste, Loader2, X, Sparkles, Store } from 'lucide-react';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useCreateTemplate } from '@/hooks/use-api';
@@ -35,6 +36,7 @@ import {
 } from '@/lib/menu/menu-console-api';
 
 export function ConnectMenuPanel({ schoolId }: { schoolId: string }) {
+  const t = useTranslations('menuConnect');
   const [pasteOpen, setPasteOpen] = useState(false);
 
   return (
@@ -44,14 +46,14 @@ export function ConnectMenuPanel({ schoolId }: { schoolId: string }) {
           href={`/${schoolId}/settings/pos`}
           className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
         >
-          <Store className="w-4 h-4" /> Connect your POS
+          <Store className="w-4 h-4" aria-hidden /> {t('connectPos')}
         </Link>
         <button
           type="button"
           onClick={() => setPasteOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200 hover:border-orange-300 text-slate-700 px-4 py-2.5 text-sm font-semibold transition-colors"
         >
-          <ClipboardPaste className="w-4 h-4" /> Paste your menu
+          <ClipboardPaste className="w-4 h-4" aria-hidden /> {t('pasteMenu')}
         </button>
       </div>
       {pasteOpen && <PasteMenuModal schoolId={schoolId} onClose={() => setPasteOpen(false)} />}
@@ -60,6 +62,7 @@ export function ConnectMenuPanel({ schoolId }: { schoolId: string }) {
 }
 
 function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () => void }) {
+  const t = useTranslations('menuConnect');
   const router = useRouter();
   const qc = useQueryClient();
   const createTemplate = useCreateTemplate();
@@ -74,18 +77,19 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
     // the moment a POS connects the board fills itself per location.
     try {
       await createTemplate.mutateAsync({
-        name: 'Menu Board',
-        description: 'Auto-created from your pasted menu — pulls live prices from your POS.',
+        // Written in the operator's language: this is THEIR template, listed by this name.
+        name: t('templateName'),
+        description: t('templateDescription'),
         category: 'Restaurant',
         orientation: 'LANDSCAPE',
         screenWidth: 1920,
         screenHeight: 1080,
         zones: [
           {
-            name: 'Menu',
+            name: t('zoneName'),
             widgetType: 'RESTAURANT_MENU_BOARD',
             x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0,
-            defaultConfig: { posSync: true, title: 'OUR MENU', columns: 3, theme: 'cream' },
+            defaultConfig: { posSync: true, title: t('boardTitle'), columns: 3, theme: 'cream' },
           },
         ],
       });
@@ -97,21 +101,20 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
 
   const handleImportAndSeed = async () => {
     if (parsed.length === 0) {
-      await appAlert({ title: 'Nothing to import', message: 'Paste a few menu lines first — one item per line, price at the end (e.g. “Cheeseburger  $8.99”).', tone: 'info' });
+      await appAlert({ title: t('nothingTitle'), message: t('nothingBody'), tone: 'info' });
       return;
     }
     setBusy(true);
     let importNote = '';
     try {
       const { imported } = await importMenu(parsed);
-      importNote = `Imported ${imported} item${imported === 1 ? '' : 's'}.`;
+      importNote = t('imported', { count: imported });
     } catch (err) {
       if (err instanceof MenuApiUnavailable) {
-        importNote =
-          'Your menu is captured. Connect a POS (or the custom webhook) to push these live to your screens.';
+        importNote = t('capturedNote');
       } else {
         setBusy(false);
-        await appAlert({ title: 'Import failed', message: String((err as Error).message), tone: 'danger' });
+        await appAlert({ title: t('importFailed'), message: String((err as Error).message), tone: 'danger' });
         return;
       }
     }
@@ -120,8 +123,8 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
     qc.invalidateQueries({ queryKey: ['menu-catalog'] });
     qc.invalidateQueries({ queryKey: ['templates'] });
     await appAlert({
-      title: 'Menu ready',
-      message: `${importNote}${seeded ? ' A “Menu Board” template is in your Templates — drop it on any screen.' : ''}`,
+      title: t('readyTitle'),
+      message: seeded ? `${importNote} ${t('readySeeded', { name: t('templateName') })}` : importNote,
       tone: 'info',
     });
     onClose();
@@ -141,28 +144,26 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-            <ClipboardPaste className="w-4 h-4 text-orange-600" /> Paste your menu
+            <ClipboardPaste className="w-4 h-4 text-orange-600" aria-hidden /> {t('pasteMenu')}
           </h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-700">
+          <button type="button" onClick={onClose} aria-label={t('close')} className="text-slate-400 hover:text-slate-700">
             <X className="w-5 h-5" />
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <p className="text-sm text-slate-500 leading-relaxed">
-            One item per line, price at the end. We&rsquo;ll create a Menu Board template for you and
-            wire it to your live prices.
-          </p>
+          <p className="text-sm text-slate-500 leading-relaxed">{t('modalBody')}</p>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={8}
-            placeholder={'Classic Cheeseburger   $8.99\nSea Salt Fries   $3.49\nFountain Soda   $2.79'}
+            placeholder={t('placeholder')}
+            aria-label={t('pasteMenu')}
             className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 resize-y"
           />
           {parsed.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Preview — {parsed.length} item{parsed.length === 1 ? '' : 's'}
+                {t('preview', { count: parsed.length })}
               </div>
               <ul className="space-y-1 max-h-32 overflow-y-auto">
                 {parsed.slice(0, 8).map((it: ParsedMenuItem) => (
@@ -171,14 +172,14 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
                     <span className="font-bold text-slate-500 tabular-nums">${(it.priceCents / 100).toFixed(2)}</span>
                   </li>
                 ))}
-                {parsed.length > 8 && <li className="text-[11px] text-slate-400">+ {parsed.length - 8} more…</li>}
+                {parsed.length > 8 && <li className="text-[11px] text-slate-400">{t('more', { count: parsed.length - 8 })}</li>}
               </ul>
             </div>
           )}
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100">
           <button type="button" onClick={onClose} className="px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors">
-            Cancel
+            {t('cancel')}
           </button>
           <button
             type="button"
@@ -186,8 +187,8 @@ function PasteMenuModal({ schoolId, onClose }: { schoolId: string; onClose: () =
             disabled={busy || parsed.length === 0}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
           >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            Create my menu board
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Sparkles className="w-4 h-4" aria-hidden />}
+            {t('create')}
           </button>
         </div>
       </div>

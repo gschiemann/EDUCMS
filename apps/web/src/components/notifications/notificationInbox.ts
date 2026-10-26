@@ -145,16 +145,31 @@ export function buildInbox(items: InboxNotification[] | undefined | null): Inbox
  * caller renders the absent case as no timestamp at all.
  */
 export function relativeAge(iso: string, now: number = Date.now()): string | null {
+  const p = relativeAgeParts(iso, now);
+  if (!p) return null;
+  if (p.unit === 'justNow') return 'just now';
+  return `${p.count}${p.unit === 'minutes' ? 'm' : p.unit === 'hours' ? 'h' : 'd'} ago`;
+}
+
+/**
+ * The same age as numbers, for a caller that words it in the reader's
+ * language (`notifications.age.*`). Same rules as `relativeAge`: a future or
+ * unparseable stamp is null.
+ */
+export function relativeAgeParts(
+  iso: string,
+  now: number = Date.now(),
+): { unit: 'justNow'; count: 0 } | { unit: 'minutes' | 'hours' | 'days'; count: number } | null {
   const t = stamp(iso);
   if (!Number.isFinite(t)) return null;
   const s = Math.floor((now - t) / 1000);
   if (s < 0) return null;
-  if (s < 60) return 'just now';
+  if (s < 60) return { unit: 'justNow', count: 0 };
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return { unit: 'minutes', count: m };
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return { unit: 'hours', count: h };
+  return { unit: 'days', count: Math.floor(h / 24) };
 }
 
 /**

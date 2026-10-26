@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Languages, Loader2, Check, ChevronDown } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
+import { useAiBillingMessages, type AiBillingMessages } from './useAiBillingMessages';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import type { ChatEditZone, ChatDiffEntry } from '@/components/ai/ChatToEditBox';
 
@@ -55,12 +55,12 @@ function hasTranslatableText(z: ChatEditZone): boolean {
   return Object.values(cfg).some((v) => typeof v === 'string' && v.trim().length > 0);
 }
 
-function friendlyErr(e: any): string {
+function friendlyErr(e: any, billing: AiBillingMessages): string {
   const code = String(e?.code || '');
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
-  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
-  if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
+  if (code === 'AI_PLAN_REQUIRED') return billing.planRequired;
+  if (code === 'AI_CAP_REACHED' || status === 402) return billing.capReached;
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (status === 400 || raw.includes('no editable text')) return e?.body?.message || 'Nothing to translate on this board.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';
@@ -80,6 +80,7 @@ export function TranslateBoardButton({
   /** Commit the validated text-only diff (parent owns the undo commit). */
   onApply: (diff: ChatDiffEntry[]) => void;
 }) {
+  const billing = useAiBillingMessages();
   const [aiSource, setAiSource] = useState<'platform' | 'tenant' | 'none' | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -132,7 +133,7 @@ export function TranslateBoardButton({
       setDone(`Translated ${diff.length} element${diff.length === 1 ? '' : 's'} to ${res?.targetLangLabel || label} · undo to revert`);
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
-      setError(friendlyErr(e));
+      setError(friendlyErr(e, billing));
     } finally {
       setBusy(false);
     }

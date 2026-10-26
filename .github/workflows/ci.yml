@@ -676,8 +676,11 @@ jobs:
         # tar keeps them as links, which resolve again under each shard's own
         # `pnpm install` of the same lockfile; a zip would replace them with
         # copies that cannot resolve their own dependencies. `.next/cache` is
-        # build-time only (~600 MB) and is left out.
-        run: tar -C apps/web --exclude=.next/cache -cf "$RUNNER_TEMP/e2e-next.tar" .next
+        # build-time only (~600 MB) and is left out. `public/locales` is a
+        # build OUTPUT too (`scripts/emit-locale-catalogs.cjs`, gitignored):
+        # the Spanish and Chinese pages fetch `/locales/<lang>.json` at run
+        # time, so without it every es/zh page in the shards stays English.
+        run: tar -C apps/web --exclude=.next/cache -cf "$RUNNER_TEMP/e2e-next.tar" .next public/locales
 
       - name: Upload the build
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -765,7 +768,7 @@ jobs:
           path: ${{ runner.temp }}
 
       - name: Unpack the build
-        run: tar -C apps/web -xf "$RUNNER_TEMP/e2e-next.tar" && test -f apps/web/.next/BUILD_ID
+        run: tar -C apps/web -xf "$RUNNER_TEMP/e2e-next.tar" && test -f apps/web/.next/BUILD_ID && test -f apps/web/public/locales/es.json && test -f apps/web/public/locales/zh.json
 
       - name: Run E2E tests (${{ matrix.browser }} shard ${{ matrix.shard }}/${{ matrix.of }})
         # `--workers` from the matrix (why it differs per browser is there).
