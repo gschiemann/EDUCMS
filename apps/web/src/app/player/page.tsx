@@ -13,7 +13,7 @@ import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, overlappedTemplate
 import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, nativeVideoFallbackLine, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useTranslations } from 'next-intl';
-import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
@@ -299,7 +299,12 @@ import { SeamlessLoopVideo } from './SeamlessLoopVideo';
 import { pickLoopBackend } from './loopEligibility';
 import { collapseIdenticalVideoCopies } from './collapseCopies';
 import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './loopGuard';
-import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+// 2026-10-26 — the player's OWN question dialog. Never the dashboard's
+// `appConfirm` / `appAlert` here: that is a portal the remote cannot reach,
+// the APK's Back never closed it, and it drew above the emergency overlay.
+// `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
+import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
+import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -3468,6 +3473,32 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const identityConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackStoppedRef = useRef(false);
   playbackStoppedRef.current = playbackStopped;
+  // ── The player's own question dialog (2026-10-26, Goodview 24" on site) ──
+  // Unpair's "are you sure?" and the idle card's "Nothing to play yet" used
+  // to be the DASHBOARD's dialog (`appConfirm` / `appAlert`): a portal the
+  // remote could not reach, that the APK's Back (`edu-show-stop-overlay`)
+  // never closed — Back closed the menu UNDER it, content resumed, and the
+  // question stayed drawn over the content until a restart — and that sat at
+  // z-index 10000, above the emergency overlay. Now: state machine in
+  // `remoteConfirm.ts`, drawing + keys in `RemoteDialog.tsx`, mounted INSIDE
+  // the paired card. Parked on the safe answer; Back cancels it and nothing
+  // else; it closes — as "cancel" — when the surface that opened it closes or
+  // an alert reaches the glass (CLAUDE.md player rule 15).
+  /** The control that opened the question — the remote is parked back on it. */
+  const remoteDialogOpenerRef = useRef<HTMLElement | null>(null);
+  /** Runs an answer (exactly once per question). Set by a layout effect below `handleUnpair`, re-armed after every commit. */
+  const remoteDialogAnswerRef = useRef<(outcome: RemoteDialogOutcome) => void>(() => {});
+  const {
+    state: remoteDialog,
+    stateRef: remoteDialogRef,
+    dispatch: dispatchRemoteDialog,
+  } = useRemoteDialog((outcome) => remoteDialogAnswerRef.current(outcome));
+  // The surface that opened it went away (Resume, the menu toggled closed, or
+  // the idle card turned into the menu): the question goes with it.
+  useEffect(() => {
+    const s = remoteDialogRef.current;
+    if (s.open && !remoteSurfaceStillUp(s, playbackStopped)) dispatchRemoteDialog({ type: 'surface-closed' });
+  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
   // ── Off-hours background update (2026-10-10) ────────────────────────────
   // What the 15-min build-info check found, and how far the background
   // preparation got. Read by the apply tick (the bundle-drift effect below)
@@ -4443,6 +4474,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         console.warn('[Player] remote input ignored — emergency active (controls locked)');
         return;
       }
+      // 2026-10-26 — a question is up (Unpair / Nothing to play yet): Back
+      // answers "cancel" and closes IT. The menu underneath stays up with the
+      // remote parked on the control that opened it (rule 15). This runs
+      // BEFORE the menu toggle below — that toggle is exactly how the old
+      // dashboard dialog outlived its menu (the APK delivers Back as this
+      // event, never as an Escape key the dialog could hear).
+      if (remoteDialogRef.current.open) {
+        dispatchRemoteDialog({ type: 'back' });
+        return;
+      }
       // 2026-10-11 — Back from the on-screen LED canvas editor returns to
       // the Screen options menu it was opened from (rule 15: Back always
       // reaches an actionable escape, never a silent state change). Checked
@@ -4496,7 +4537,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped]);
+  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -4626,6 +4667,29 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     ? emergencyPaintIdentity(pushedEmergencyMessage)
     : activeEmergency ? emergencyPaintIdentity(activeEmergency) : null;
   const emergencyRenderExtrasAllowedRef = useRef(true);
+
+  // An alert always wins over the player's question dialog. ANY alert signal
+  // — a tenant override, a pushed or polled message, the native hold, an
+  // emergency playlist — closes it as "cancel", the render gate hides it in
+  // the same commit, and it can never be opened while one is up. Read-only
+  // here: nothing on the emergency path changes.
+  const remoteDialogBlockedByAlert =
+    !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld || emergencyRenderHold
+    || phase === 'emergency' || playlist?.isEmergency === true;
+  useEffect(() => {
+    if (remoteDialogBlockedByAlert) dispatchRemoteDialog({ type: 'emergency' });
+  }, [remoteDialogBlockedByAlert, dispatchRemoteDialog]);
+  /** Ask a question from the paired card. `opener` gets the remote back after a cancel. */
+  const openRemoteDialog = (kind: RemoteDialogKind, opener: HTMLElement | null) => {
+    if (remoteDialogBlockedByAlert || remoteDialogRef.current.open) return;
+    remoteDialogOpenerRef.current = opener;
+    dispatchRemoteDialog({
+      type: 'open',
+      kind,
+      surface: playbackStopped ? 'paused' : 'idle',
+      danger: kind === 'unpair',
+    });
+  };
 
   // ── SOFT BLANK — the universal, unbrickable blank (2026-08-25) ─────────
   //
@@ -11555,6 +11619,30 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     setPhase('registering');
   };
 
+  // The question dialog's answers. Only "Unpair" on the unpair question does
+  // anything; every other close is a cancel. After a cancel the surface is
+  // still up (Back, or the safe answer), so the remote is parked back on the
+  // control that opened the question (rule 15) — after the dialog has left
+  // the DOM. A closed surface or an alert has nothing to return to.
+  // Re-armed after every commit (a layout effect, before any event or effect
+  // can dispatch), so it always runs THIS render's `handleUnpair`.
+  useLayoutEffect(() => {
+    remoteDialogAnswerRef.current = (outcome: RemoteDialogOutcome) => {
+      const opener = remoteDialogOpenerRef.current;
+      remoteDialogOpenerRef.current = null;
+      if (outcome.kind === 'unpair' && outcome.result === 'confirm') {
+        void handleUnpair();
+        return;
+      }
+      if (outcome.reason !== 'back' && outcome.reason !== 'answer') return;
+      requestAnimationFrame(() => {
+        try {
+          if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+        } catch { /* focus is best-effort */ }
+      });
+    };
+  });
+
   // ─── OTA progress overlay — rendered on top of every phase
   //     when an admin has just clicked "Push update" from the
   //     dashboard. Stage label morphs the same way the dashboard
@@ -14885,6 +14973,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 position: relative !important;
                 z-index: 60 !important;
               }
+              /* 2026-10-26 — the Back menu's "Unpair device" link sits BELOW
+                 the action row, so the row's outline never reached it: the
+                 remote could land on it with nothing on the glass changing
+                 (the owner's accidental Unpair, Goodview 24"). Same amber
+                 outline, plus the text turns red so the destructive control
+                 reads as selected from across the room. (Scoped by the card
+                 so it ties the LED dark palette's text rule, and wins by
+                 coming later.) */
+              .edu-paired-view .edu-unpair-link:focus,
+              .edu-paired-view .edu-unpair-link:focus-visible {
+                outline: calc(3px * var(--splash-k, 1)) solid #fde047 !important;
+                outline-offset: calc(3px * var(--splash-k, 1)) !important;
+                color: #dc2626 !important;
+                position: relative !important;
+                z-index: 60 !important;
+              }
             `}</style>
             <div
               className="edu-action-row flex flex-wrap items-center justify-center gap-3 flex-shrink-0 mt-6 w-full"
@@ -14985,16 +15089,15 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 </>
               ) : (
                 <>
-                  <button onClick={async (e) => {
-                    e.stopPropagation();
-                    const ok = await appConfirm({
-                      title: 'Unpair this screen?',
-                      message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
-                      tone: 'danger',
-                      confirmLabel: 'Unpair device',
-                    });
-                    if (ok) handleUnpair();
-                  }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative group">
+                  <button
+                    // 2026-10-26 — asks the player's own remote question (parked
+                    // on "Keep paired"), never the dashboard dialog. No
+                    // focus:scale-95: a focused control must grow louder, not
+                    // shrink; the action-row amber outline is its highlight.
+                    data-edu-unpair=""
+                    onClick={(e) => { e.stopPropagation(); openRemoteDialog('unpair', e.currentTarget); }}
+                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-red-100 hover:bg-red-50 text-slate-700 hover:text-red-600 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 z-20 relative group"
+                  >
                     <Power className="w-4 h-4 text-slate-400 group-hover:text-red-500" /> Unpair
                   </button>
                   <button
@@ -15046,14 +15149,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     // in opposite arms of the `playbackStopped ?` ternary, so
                     // exactly one is ever mounted.
                     autoFocus
-                    onClick={async (e) => {
-                    e.stopPropagation();
-                    await appAlert({
-                      title: 'Nothing to play yet',
-                      message: 'No assigned content is currently queued for this screen. Schedule a playlist from the dashboard, then tap Sync now to refresh.',
-                      tone: 'info',
-                    });
-                  }} className="px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 focus:scale-95 z-20 relative">
+                    // 2026-10-26 — the player's own one-answer notice (OK or
+                    // Back closes it, the remote comes back here), not the
+                    // dashboard's appAlert the remote could not dismiss.
+                    data-edu-autoplay=""
+                    onClick={(e) => { e.stopPropagation(); openRemoteDialog('nothing-to-play', e.currentTarget); }}
+                    className="px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all shadow-[0_8px_20px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_25px_rgb(99,102,241,0.4)] hover:-translate-y-0.5 flex items-center gap-2 z-20 relative">
                     <Play className="w-4 h-4 fill-current" /> Auto-Play
                   </button>
                 </>
@@ -15061,22 +15162,33 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             </div>
             {playbackStopped && (
               <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const ok = await appConfirm({
-                    title: 'Unpair this screen?',
-                    message: 'Tearing down the connection wipes the pairing from this device. The next session will require a new pairing code from the dashboard.',
-                    tone: 'danger',
-                    confirmLabel: 'Unpair device',
-                  });
-                  if (ok) handleUnpair();
-                }}
-                className="mt-3 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-3 py-1"
+                // 2026-10-26 (Goodview 24", on site) — this is the control the
+                // owner pressed by accident: below the action row, so it had
+                // no visible focus (`.edu-unpair-link` now has the amber
+                // outline), and it opened the dashboard dialog the remote
+                // could not reach. It now asks the player's own question,
+                // parked on "Keep paired".
+                data-edu-unpair=""
+                onClick={(e) => { e.stopPropagation(); openRemoteDialog('unpair', e.currentTarget); }}
+                className="edu-unpair-link mt-3 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors px-3 py-1"
               >
                 Unpair device
               </button>
             )}
           </div>
+          {/* The player's question dialog. A CHILD of this card on purpose —
+              never a portal — so it cannot be drawn anywhere the card is not;
+              unmounting with the card closes it ("surface-closed"). Hidden in
+              the same commit an alert arrives, and when the surface that
+              asked (Back menu vs idle card) is no longer the one showing. */}
+          {remoteDialog.open && !remoteDialogBlockedByAlert && remoteSurfaceStillUp(remoteDialog, playbackStopped) ? (
+            <RemoteDialog
+              name={remoteDialog.kind}
+              {...REMOTE_DIALOG_COPY[remoteDialog.kind]}
+              focus={remoteDialog.focus}
+              onEvent={dispatchRemoteDialog}
+            />
+          ) : null}
         </div>
       )}
 
