@@ -6,6 +6,7 @@
 import {
   MAX_LISTED,
   alertLocaleOf,
+  onTimeLabel,
   renderDigestEmail,
   renderEmergencyEmail,
   renderScreenAlertEmail,
@@ -84,5 +85,48 @@ describe('digest + emergency', () => {
       expect(x.body).toContain('m');
       expect(x.subject).toMatch(/^VenueOS[:：]/);
     }
+  });
+});
+
+describe('"didn’t come back on at its scheduled on time" (2026-10-25)', () => {
+  // Monday 07:00 in Los Angeles = 14:00 UTC.
+  const missedOnTime = { onAtMs: Date.parse('2026-10-26T14:00:00Z'), timeZone: 'America/Los_Angeles' };
+  const missed = (screenName: string) => ({ ...item(screenName, 'OFFLINE', 16), locationName: 'Brookfield', missedOnTime });
+  const render = (l: AlertLocale, items: ReturnType<typeof missed>[]) =>
+    renderScreenAlertEmail(l, { kind: 'OFFLINE', locationName: 'Brookfield', items }, links);
+
+  it('the switch-on time in the location’s own zone, in the reader’s language', () => {
+    expect(onTimeLabel('en', missedOnTime)).toBe('7:00 AM');
+    expect(onTimeLabel('es', missedOnTime)).toBe('7:00');
+    expect(onTimeLabel('zh', missedOnTime)).toBe('上午7:00');
+  });
+
+  it('one screen: the subject and the line say what happened, in en / es / zh', () => {
+    expect(render('en', [missed('G24')]).subject).toBe("VenueOS: G24 at Brookfield didn't come back on at 7:00 AM");
+    expect(render('en', [missed('G24')]).body).toContain("G24 — didn't come back on at 7:00 AM, its scheduled on time");
+    expect(render('es', [missed('G24')]).subject).toBe('VenueOS: G24 en Brookfield no volvió a encenderse a las 7:00');
+    expect(render('es', [missed('G24')]).body).toContain('G24 — no volvió a encenderse a las 7:00, su hora programada de encendido');
+    expect(render('zh', [missed('G24')]).subject).toBe('VenueOS：Brookfield 的 G24 未在 上午7:00 按时开机');
+    expect(render('zh', [missed('G24')]).body).toContain('G24 — 未在计划开机时间 上午7:00 恢复开机');
+  });
+
+  it('several, all at one switch-on: one email says so; mixed with an ordinary drop: the ordinary subject, each line its own', () => {
+    expect(render('en', [missed('G24'), missed('G43')]).subject).toBe("VenueOS: 2 screens at Brookfield didn't come back on at 7:00 AM");
+    const mixed = render('en', [missed('G24'), { ...item('Lobby TV', 'OFFLINE', 22), locationName: 'Brookfield' } as any]);
+    expect(mixed.subject).toBe('VenueOS: 2 screens offline at Brookfield');
+    expect(mixed.body).toContain("G24 — didn't come back on at 7:00 AM, its scheduled on time");
+    expect(mixed.body).toContain('Lobby TV — offline for 22 minutes');
+  });
+
+  it('a 1 o’clock switch-on reads "a la 1:00" in Spanish', () => {
+    const one = { onAtMs: Date.parse('2026-10-26T08:00:00Z'), timeZone: 'America/Los_Angeles' };
+    expect(renderScreenAlertEmail('es', { kind: 'OFFLINE', locationName: 'Brookfield', items: [{ ...missed('G24'), missedOnTime: one }] }, links).subject).toBe(
+      'VenueOS: G24 en Brookfield no volvió a encenderse a la 1:00',
+    );
+  });
+
+  it('the digest names it too', () => {
+    const d = renderDigestEmail('en', { orgName: 'Brookfield', items: [missed('G24')] }, links);
+    expect(d.body).toContain("Didn't come back on at 7:00 AM: G24 (Brookfield)");
   });
 });

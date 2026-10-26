@@ -30,6 +30,7 @@ function build(opts: { leader?: boolean; alertEmails?: 'wired' | 'none'; scanThr
     mode: 'shadow',
     offlineDue: 1,
     offlineTooOld: 3,
+    offlineMissedOnTime: 0,
     offlineCandidates: 1,
     noContentCandidates: 0,
     deferred: { 'display-schedule-off': 1 },
@@ -114,7 +115,7 @@ describe('every 15 minutes: ONE counts-only summary of what the pipeline saw and
     expect(summaries(logs)).toEqual([
       '[alert-email] pipeline summary (15 min): mode=shadow scans=16 leader=16 follower=0 skipped=0 ' +
         'scanFailed=0 alertFailed=0 | sends=0 opened=0 held=0 silenced=0 recovered=0 platformIncidents=0 gated={} | ' +
-        'last scan: offline=4 due=1 tooOld=3 confirmed=1 noContent=0 gate=open deferred={"display-schedule-off":1}',
+        'last scan: offline=4 due=1 missedOnTime=0 tooOld=3 confirmed=1 noContent=0 gate=open deferred={"display-schedule-off":1}',
     ]);
     for (let i = 0; i < 15; i++) await tick(); // BOOT+16 … BOOT+30 min
     expect(summaries(logs)).toHaveLength(2);
