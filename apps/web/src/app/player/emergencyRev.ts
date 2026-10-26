@@ -110,6 +110,15 @@ export interface RevAlertPayload {
   expiresAt: number | null;
   /** 2026-10-10 — a DRILL (`manifest.isDrill`). Only the literal `true` counts. */
   isDrill: boolean;
+  /**
+   * 2026-10-26 — raised from a SIGNED envelope (the rev body or the OVERRIDE
+   * push) ahead of the committed manifest. While the E-P0-01 confirmation
+   * window is open, a LIVE manifest that still reads normal is the trigger's
+   * own pre-commit state and may not release this alert (the window is
+   * bounded: the confirming manifest replaces it, the 30 s timeout drops it).
+   * Absent on everything the manifest itself asserted.
+   */
+  provisional?: true;
 }
 
 export type RevPollOutcome =
@@ -192,6 +201,48 @@ export function alertFromRevEnvelope(env: RevAlertEnvelope | null | undefined): 
         : null,
     // Mirrors applyManifest: `manifest.isDrill === true`, nothing looser.
     isDrill: row.isDrill === true,
+    provisional: true,
+  };
+}
+
+/**
+ * The `activeEmergency` object to raise from a gate-accepted OVERRIDE PUSH
+ * (WS / SSE), or `null` when the signed payload is not a complete alert
+ * (2026-10-26, the MEDICAL drill at a launch site).
+ *
+ * WHY. The push already raised the display hold and the APK's paint-proof
+ * deadline the instant it landed, while the page painted a generic red
+ * "EMERGENCY" surface with no identity until a manifest round-trip that
+ * races the trigger's own DB commit — so no paint proof could reach the APK
+ * for seconds, and its ladder reloaded the page. The signed payload names
+ * the alert (`type`, `severity`, `isDrill`); it is the same push contract
+ * the rev fast path already raises from (`alertFromRevEnvelope`), over the
+ * wire it arrived on. RAISE ONLY (player rule 11): the caller never
+ * overwrites an alert already on the glass, and only the manifest releases.
+ *
+ * The push has no `scope` field (the gateway scoped the channel). `scope` is
+ * not part of the paint identity (`emergencyPaintIdentityInput`) and nothing
+ * on the page keys on it, so it is recorded as `'push'` until the manifest
+ * states the real one. `expiresAt` is left null like the rev descriptor: the
+ * manifest's own expiry (per-screen rows only) replaces it within seconds,
+ * and the cache must not age a tenant-wide alert out locally (E-P1-01).
+ */
+export function alertFromOverridePush(payload: unknown): RevAlertPayload | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as Record<string, unknown>;
+  const type = typeof row.type === 'string' && row.type.length > 0 ? row.type : null;
+  const severity =
+    typeof row.severity === 'string' && row.severity.length > 0 ? row.severity : null;
+  if (!type || !severity) return null;
+  return {
+    active: true,
+    type,
+    severity,
+    scopeNote: typeof row.scopeNote === 'string' && row.scopeNote.length > 0 ? row.scopeNote : null,
+    scope: 'push',
+    expiresAt: null,
+    isDrill: row.isDrill === true,
+    provisional: true,
   };
 }
 
