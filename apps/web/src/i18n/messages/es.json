@@ -4303,7 +4303,8 @@
       "mainAccount": "Cuenta principal",
       "mapEveryStore": "Asigna cada tienda a la ubicación cuyas pantallas la muestran, para que cada tienda muestre sus propios precios de Toast.",
       "mapFailed": "No se pudo actualizar esta tienda."
-    }
+    },
+    "priceCustom": "Personalizado"
   },
   "changePassword": {
     "title": "Cambiar contraseña",
@@ -7046,5 +7047,21 @@
       "exercise": "Haz un simulacro para que la primera alerta real nunca sea la primera vez.",
       "delivery_fallback": "No tienes que hacer nada: VenueOS está vigilando el canal instantáneo."
     }
+  },
+  "ledPoster": {
+    "title": "Pósteres LED",
+    "desc": "Tamaño estándar del póster: el tamaño del módulo de un panel. Los pósteres nuevos lo usan hasta que definas un tamaño en la pantalla.",
+    "width": "Ancho",
+    "height": "Alto",
+    "save": "Guardar",
+    "reset": "Restablecer a {w}×{h}",
+    "resetTitle": "Borra el estándar de la organización. Los pósteres vuelven al {w}×{h} integrado.",
+    "current": "Actual:",
+    "builtInDefault": "(predeterminado integrado)",
+    "loadFailed": "· No se pudo cargar el valor actual.",
+    "invalid": "· El ancho y el alto deben ser números enteros entre {min} y {max}.",
+    "saveFailed": "· No se pudo guardar; inténtalo de nuevo.",
+    "saved": "· Guardado.",
+    "readOnly": "· Solo lectura para tu rol."
   }
 }

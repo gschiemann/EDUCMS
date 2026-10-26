@@ -4303,7 +4303,8 @@
       "mainAccount": "主账户",
       "mapEveryStore": "将每家门店匹配到显示它的屏幕所在地点，这样每家门店都会显示自己的 Toast 价格。",
       "mapFailed": "无法更新此门店。"
-    }
+    },
+    "priceCustom": "自定义"
   },
   "changePassword": {
     "title": "修改密码",
@@ -7046,5 +7047,21 @@
       "exercise": "进行一次演习，让第一次真实警报不再是第一次使用。",
       "delivery_fallback": "无需操作——VenueOS 正在监控即时通道。"
     }
+  },
+  "ledPoster": {
+    "title": "LED 海报屏",
+    "desc": "标准海报尺寸——单个面板的模组尺寸。新海报屏会使用此尺寸，直到您在屏幕上设置尺寸。",
+    "width": "宽度",
+    "height": "高度",
+    "save": "保存",
+    "reset": "重置为 {w}×{h}",
+    "resetTitle": "清除组织标准。海报屏将恢复为内置的 {w}×{h}。",
+    "current": "当前：",
+    "builtInDefault": "（内置默认）",
+    "loadFailed": "· 无法加载当前值。",
+    "invalid": "· 宽度和高度必须是 {min} 到 {max} 之间的整数。",
+    "saveFailed": "· 无法保存——请重试。",
+    "saved": "· 已保存。",
+    "readOnly": "· 您的角色只能查看。"
   }
 }

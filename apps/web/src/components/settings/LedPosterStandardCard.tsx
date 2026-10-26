@@ -20,6 +20,7 @@
 
 import { useEffect, useState } from 'react';
 import { LayoutPanelTop, Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
   DEFAULT_POSTER_STANDARD, useSetTenantPosterStandard, useTenantPosterStandard,
 } from '@/hooks/use-api';
@@ -62,6 +63,8 @@ export function LedPosterStandardCard() {
     nw >= MIN && nw <= MAX && nh >= MIN && nh <= MAX;
   const dirty = nw !== standard.w || nh !== standard.h;
 
+  const t = useTranslations('ledPoster');
+
   function commit(next: { w: number | null; h: number | null }) {
     setSaved(false);
     save.mutate(next, { onSuccess: () => setSaved(true) });
@@ -74,11 +77,8 @@ export function LedPosterStandardCard() {
           <LayoutPanelTop className="w-4 h-4 text-amber-600" />
         </div>
         <div className="min-w-0">
-          <h2 className="text-sm font-bold text-slate-700">LED posters</h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Standard poster size — the module size of one panel. New posters use this
-            until you set a size on the screen.
-          </p>
+          <h2 className="text-sm font-bold text-slate-700">{t('title')}</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">{t('desc')}</p>
         </div>
       </div>
 
@@ -110,7 +110,7 @@ export function LedPosterStandardCard() {
 
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Width</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('width')}</span>
             <input
               type="number" inputMode="numeric" min={MIN} max={MAX}
               value={w}
@@ -121,7 +121,7 @@ export function LedPosterStandardCard() {
           </label>
           <span className="text-slate-300 pb-2">×</span>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Height</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('height')}</span>
             <input
               type="number" inputMode="numeric" min={MIN} max={MAX}
               value={h}
@@ -138,7 +138,7 @@ export function LedPosterStandardCard() {
             className="px-3 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
           >
             {save.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save
+            {t('save')}
           </button>
 
           <button
@@ -146,9 +146,9 @@ export function LedPosterStandardCard() {
             disabled={readOnly || save.isPending || standard.isDefault}
             onClick={() => commit({ w: null, h: null })}
             className="px-3 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={`Clear the org standard. Posters fall back to the built-in ${DEFAULT_POSTER_STANDARD.w}×${DEFAULT_POSTER_STANDARD.h}.`}
+            title={t('resetTitle', { w: DEFAULT_POSTER_STANDARD.w, h: DEFAULT_POSTER_STANDARD.h })}
           >
-            Reset to {DEFAULT_POSTER_STANDARD.w}×{DEFAULT_POSTER_STANDARD.h}
+            {t('reset', { w: DEFAULT_POSTER_STANDARD.w, h: DEFAULT_POSTER_STANDARD.h })}
           </button>
         </div>
 
@@ -156,17 +156,17 @@ export function LedPosterStandardCard() {
             default is named as a default, never dressed up as a saved choice. */}
         <div className="text-[11px] text-slate-500 mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span>
-            Current:{' '}
+            {t('current')}{' '}
             <span className="font-mono text-slate-700">{standard.w}×{standard.h}</span>
-            {standard.isDefault && <span className="text-slate-400"> (built-in default)</span>}
+            {standard.isDefault && <span className="text-slate-400"> {t('builtInDefault')}</span>}
           </span>
-          {standard.isError && <span className="text-amber-600">· Could not load the current value.</span>}
+          {standard.isError && <span className="text-amber-600">{t('loadFailed')}</span>}
           {!valid && !readOnly && (
-            <span className="text-amber-600">· Width and height must be whole numbers between {MIN} and {MAX}.</span>
+            <span className="text-amber-600">{t('invalid', { min: MIN, max: MAX })}</span>
           )}
-          {save.isError && <span className="text-rose-600">· Could not save — try again.</span>}
-          {saved && !save.isPending && !save.isError && <span className="text-emerald-600">· Saved.</span>}
-          {readOnly && <span className="text-slate-400">· Read-only for your role.</span>}
+          {save.isError && <span className="text-rose-600">{t('saveFailed')}</span>}
+          {saved && !save.isPending && !save.isError && <span className="text-emerald-600">{t('saved')}</span>}
+          {readOnly && <span className="text-slate-400">{t('readOnly')}</span>}
         </div>
       </div>
     </div>

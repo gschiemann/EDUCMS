@@ -22,7 +22,8 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { licenseTierCopy } from '@cms/api-types';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import {
@@ -98,22 +99,40 @@ interface Invoice {
   invoicePdf: string | null;
 }
 
-const fmtCents = (c: number | null | undefined) =>
-  c == null
-    ? '—'
-    : `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtWhole = (c: number | null) =>
-  c == null ? "Custom" : c === 0 ? "Free" : `$${Math.round(c / 100)}`;
-const fmtDate = (d: string | number | null | undefined) => {
-  if (d == null) return '—';
-  const date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-};
+/** The operator's language for numbers and dates (US dollars always). */
+const intlLocale = (l: string) => (l === 'zh' ? 'zh-CN' : l === 'es' ? 'es-US' : 'en-US');
+
+/**
+ * Prices and dates in the operator's language (2026-10-26 — they were forced
+ * to en-US, and "Custom" / "Free" were English literals).
+ */
+function useBillingFormat() {
+  const t = useTranslations('billingCommerce');
+  const locale = useLocale();
+  const tag = intlLocale(locale);
+  return {
+    locale,
+    cents: (c: number | null | undefined) =>
+      c == null ? '—' : new Intl.NumberFormat(tag, { style: 'currency', currency: 'USD' }).format(c / 100),
+    whole: (c: number | null) =>
+      c == null
+        ? t('priceCustom')
+        : c === 0
+          ? t('free')
+          : new Intl.NumberFormat(tag, { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(c / 100)),
+    date: (d: string | number | null | undefined) => {
+      if (d == null) return '—';
+      const date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
+      return Number.isNaN(date.getTime())
+        ? '—'
+        : date.toLocaleDateString(tag, { year: 'numeric', month: 'short', day: 'numeric' });
+    },
+  };
+}
 
 export default function BillingPage() {
   const t = useTranslations();
+  const fmt = useBillingFormat();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const { data: tenant } = useTenant();
@@ -296,7 +315,7 @@ export default function BillingPage() {
       </ContextModule>
       <ContextModule
         label={t('settings.cc.billing.railNextInvoiceLabel')}
-        title={nextInvoice ? fmtDate(nextInvoice) : undefined}
+        title={nextInvoice ? fmt.date(nextInvoice) : undefined}
       >
         {nextInvoice ? null : t('settings.cc.billing.railNextInvoiceNone')}
       </ContextModule>
@@ -453,7 +472,7 @@ export default function BillingPage() {
                 className={`mb-4 flex items-start gap-3 rounded-[13px] border p-4 cursor-pointer ${includeAi ? 'border-violet-300 bg-violet-50/50' : 'border-slate-200 bg-white'}`}
                 data-testid="plans-include-ai"
                 aria-label={t('billingAi.includeAi', {
-                      price: fmtWhole(
+                      price: fmt.whole(
                         (billingSummary.data?.aiPrices?.monthlyCents ?? 2500) - (billingSummary.data?.prices.monthlyCents ?? 2000),
                       ),
                     })}
@@ -467,7 +486,7 @@ export default function BillingPage() {
                 <span className="text-[13px] leading-[19px] text-slate-700">
                   <span className="block font-medium text-slate-900">
                     {t('billingAi.includeAi', {
-                      price: fmtWhole(
+                      price: fmt.whole(
                         (billingSummary.data?.aiPrices?.monthlyCents ?? 2500) - (billingSummary.data?.prices.monthlyCents ?? 2000),
                       ),
                     })}
@@ -532,6 +551,7 @@ function CurrentPlanCard({
   showManage: boolean;
 }) {
   const t = useTranslations();
+  const fmt = useBillingFormat();
   const status = license?.status || 'ACTIVE';
   const statusKind = status === 'ACTIVE' ? 'ready' : status === 'PAST_DUE' ? 'attention' : 'blocked';
   // A trial's catalogue price is 0 — show "no charge" rather than "$0.00 per month".
@@ -554,11 +574,11 @@ function CurrentPlanCard({
           <div className="text-[13px] text-slate-500">
             {monthlyCost != null ? (
               <>
-                <strong className="font-medium text-slate-700">{fmtCents(monthlyCost)}</strong>{' '}
+                <strong className="font-medium text-slate-700">{fmt.cents(monthlyCost)}</strong>{' '}
                 {t('billingCommerce.perMonth')}
                 <span className="text-slate-400">
                   {' '}
-                  {t('billingCommerce.screensTimesPrice', { count: screens, price: fmtCents(perScreen) })}
+                  {t('billingCommerce.screensTimesPrice', { count: screens, price: fmt.cents(perScreen) })}
                 </span>
               </>
             ) : (
@@ -609,13 +629,13 @@ function CurrentPlanCard({
         <Metric
           icon={<CreditCard className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} aria-hidden />}
           label={t('billingCommerce.thisMonth')}
-          value={monthlyCost != null ? fmtCents(monthlyCost) : t('billingCommerce.free')}
+          value={monthlyCost != null ? fmt.cents(monthlyCost) : t('billingCommerce.free')}
           sub={<span className="text-[12px] text-slate-400">{t('billingCommerce.billedPerScreen')}</span>}
         />
         <Metric
           icon={<Star className="w-4 h-4 text-amber-500" aria-hidden />}
           label={status === 'ACTIVE' ? t('billingCommerce.renews') : t('billingCommerce.periodEnds')}
-          value={<span className="text-[15px]">{fmtDate(renews)}</span>}
+          value={<span className="text-[15px]">{fmt.date(renews)}</span>}
           sub={
             <span className="text-[12px] text-slate-400">
               {showManage ? t('billingCommerce.autoRenews') : t('billingCommerce.noBillingDate')}
@@ -658,6 +678,7 @@ function InvoicesCard({
   unavailableNote?: string;
 }) {
   const t = useTranslations();
+  const fmt = useBillingFormat();
   const list = data?.invoices || [];
   if (list.length === 0) {
     return (
@@ -691,10 +712,10 @@ function InvoicesCard({
             const paid = (inv.status || '').toLowerCase() === 'paid';
             return (
               <tr key={inv.id} className="border-b border-slate-50 last:border-0">
-                <td className="px-4 py-2.5 text-slate-600">{fmtDate(inv.created)}</td>
+                <td className="px-4 py-2.5 text-slate-600">{fmt.date(inv.created)}</td>
                 <td className="px-4 py-2.5 font-medium text-slate-700">{inv.number || inv.id}</td>
                 <td className="px-4 py-2.5 text-right font-medium text-slate-900 tabular-nums">
-                  {fmtCents(amount)}
+                  {fmt.cents(amount)}
                 </td>
                 <td className="px-4 py-2.5">
                   <StatusPill kind={paid ? 'ready' : 'attention'} label={inv.status || 'open'} />
@@ -749,14 +770,17 @@ function TierTile({
   withAi?: boolean;
 }) {
   const t = useTranslations();
+  const fmt = useBillingFormat();
+  // The plan's words in the operator's language; prices come from the tier.
+  const copy = licenseTierCopy(tier, fmt.locale);
   const isCurrent = currentTier === tier.id;
   const isPaid = tier.id === 'MONTHLY' || tier.id === 'ANNUAL';
   const period: 'monthly' | 'annual' = tier.id === 'ANNUAL' ? 'annual' : 'monthly';
   const ai = withAi && isPaid;
   const price =
     tier.id === 'ANNUAL'
-      ? fmtWhole(ai && tier.aiAnnualPriceCents != null ? tier.aiAnnualPriceCents : tier.annualPriceCents)
-      : fmtWhole(ai && tier.aiMonthlyPriceCents != null ? tier.aiMonthlyPriceCents : tier.monthlyPriceCents);
+      ? fmt.whole(ai && tier.aiAnnualPriceCents != null ? tier.aiAnnualPriceCents : tier.annualPriceCents)
+      : fmt.whole(ai && tier.aiMonthlyPriceCents != null ? tier.aiMonthlyPriceCents : tier.monthlyPriceCents);
   const cadence =
     tier.id === 'FREE_TRIAL'
       ? t('billingCommerce.fourteenDays')
@@ -788,16 +812,16 @@ function TierTile({
         </div>
       )}
       <div className="font-medium text-slate-900 text-[15px]">
-        {tier.name}
+        {copy.name}
         {ai && <span className="ml-1.5 text-[11px] font-semibold text-violet-700">{t('billingAi.withAiBadge')}</span>}
       </div>
-      <p className="text-[12px] text-slate-500 leading-snug mt-0.5 mb-4">{tier.blurb}</p>
+      <p className="text-[12px] text-slate-500 leading-snug mt-0.5 mb-4">{copy.blurb}</p>
       <div className="mb-4">
         <span className="text-[26px] font-medium text-slate-900">{price}</span>
         <span className="text-[12px] text-slate-400 ml-1">{cadence}</span>
       </div>
       <ul className="space-y-1.5 mb-5 flex-1">
-        {tier.features.map((f) => (
+        {copy.features.map((f) => (
           <li key={f} className="text-[12px] text-slate-600 flex items-start gap-2">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" aria-hidden /> {f}
           </li>
@@ -815,7 +839,7 @@ function TierTile({
           className="w-full min-h-[38px] text-[13px] font-medium rounded-[10px] inline-flex items-center justify-center gap-1.5 disabled:opacity-50 bg-slate-800 text-white hover:bg-slate-900"
         >
           {busy === period && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />}
-          {t('billingCommerce.chooseTier', { name: tier.name })}
+          {t('billingCommerce.chooseTier', { name: copy.name })}
         </button>
       ) : isPaid ? (
         // Stripe dormant: state the real path instead of a dead button.
@@ -837,6 +861,7 @@ function TierTile({
 /** An organisation billed by invoice / PO through ARC, or comp'd: no card, ever. */
 function OfflineBillingCard({ account }: { account: BillingAccount }) {
   const t = useTranslations();
+  const fmt = useBillingFormat();
   const invoiceBilled = account.invoiceBilled;
   return (
     <div className="mb-5 rounded-[13px] bg-white border border-slate-200 p-5" data-testid="offline-billing">
@@ -852,7 +877,7 @@ function OfflineBillingCard({ account }: { account: BillingAccount }) {
             <div><dt className="text-slate-500">{t('customerConsole.customerBilling.poNumber')}</dt><dd className="font-medium text-slate-900">{account.poNumber}</dd></div>
           )}
           {account.renewalDate && (
-            <div><dt className="text-slate-500">{t('customerConsole.customerBilling.renews')}</dt><dd className="font-medium text-slate-900">{fmtDate(account.renewalDate)}</dd></div>
+            <div><dt className="text-slate-500">{t('customerConsole.customerBilling.renews')}</dt><dd className="font-medium text-slate-900">{fmt.date(account.renewalDate)}</dd></div>
           )}
         </dl>
       )}
@@ -877,9 +902,9 @@ function OfflineBillingCard({ account }: { account: BillingAccount }) {
                   {account.invoices.map((inv) => (
                     <tr key={inv.number} className="border-b border-slate-50 last:border-0">
                       <td className="py-2 pr-3 font-medium text-slate-700">{inv.number}</td>
-                      <td className="py-2 pr-3 text-slate-600">{fmtDate(inv.sentAt)}</td>
-                      <td className="py-2 pr-3 text-slate-600">{fmtDate(inv.dueAt)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{fmtCents(inv.amountCents)}</td>
+                      <td className="py-2 pr-3 text-slate-600">{fmt.date(inv.sentAt)}</td>
+                      <td className="py-2 pr-3 text-slate-600">{fmt.date(inv.dueAt)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmt.cents(inv.amountCents)}</td>
                       <td className="py-2">
                         <StatusPill
                           kind={inv.status === 'PAID' ? 'ready' : 'attention'}

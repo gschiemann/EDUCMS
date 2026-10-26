@@ -1046,6 +1046,8 @@ export * from './sports-sources';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
+// 2026-10-26 — the plan cards' words in Spanish and Chinese (prices from the tier).
+export * from './billing-copy';
 export * from './pos';
 export * from './concierge-pos';
 export * from './ad-network';

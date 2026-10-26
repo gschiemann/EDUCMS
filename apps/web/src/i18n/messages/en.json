@@ -4303,7 +4303,8 @@
       "mainAccount": "Main account",
       "mapEveryStore": "Match every store to the location whose screens show it, so each store shows its own Toast prices.",
       "mapFailed": "Could not update this store."
-    }
+    },
+    "priceCustom": "Custom"
   },
   "changePassword": {
     "title": "Change password",
@@ -7046,5 +7047,21 @@
       "exercise": "Run a drill so the first real alert is never the first time.",
       "delivery_fallback": "Nothing to do — VenueOS is watching the instant channel."
     }
+  },
+  "ledPoster": {
+    "title": "LED posters",
+    "desc": "Standard poster size — the module size of one panel. New posters use this until you set a size on the screen.",
+    "width": "Width",
+    "height": "Height",
+    "save": "Save",
+    "reset": "Reset to {w}×{h}",
+    "resetTitle": "Clear the organization standard. Posters fall back to the built-in {w}×{h}.",
+    "current": "Current:",
+    "builtInDefault": "(built-in default)",
+    "loadFailed": "· Could not load the current value.",
+    "invalid": "· Width and height must be whole numbers between {min} and {max}.",
+    "saveFailed": "· Could not save — try again.",
+    "saved": "· Saved.",
+    "readOnly": "· Read-only for your role."
   }
 }
