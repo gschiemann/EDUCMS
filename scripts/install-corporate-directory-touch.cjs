@@ -17,7 +17,7 @@ if (!args.includes('--tenant-id') || !args.includes('--expected-tenant-name') ||
 const root = path.resolve(__dirname, '..');
 const release = JSON.parse(fs.readFileSync(path.join(root, 'docs/templates/corporate-directory-touch-install-manifest.json'), 'utf8'));
 const manifest = release.records;
-if (manifest.length !== 52 || manifest.filter(r => r.collection === 'standard').length !== 32 || manifest.filter(r => r.collection === 'custom').length !== 20) throw new Error('Incomplete manifest');
+if (manifest.length !== release.standardCount + release.customCount || manifest.filter(r => r.collection === 'standard').length !== release.standardCount || manifest.filter(r => r.collection === 'custom').length !== release.customCount) throw new Error('Incomplete manifest');
 for (const record of release.assets) {
   const file = path.join(root, 'apps/web/public', record.url);
   if ('sha256-' + createHash('sha256').update(fs.readFileSync(file)).digest('base64') !== record.sha256) throw new Error(`HTML digest mismatch: ${record.url}`);

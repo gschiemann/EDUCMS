@@ -32,6 +32,8 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   {"id": "preset-corporate-touch-future-studio-portrait", "name": "Corporate · Commercial Real Estate · Future Studio — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/future-studio-portrait.html"},
 
   // ARC RIOT DIRECTORY COLLECTION
+  {"id": "preset-corporate-directory-building-index-landscape", "name": "Corporate · Directory · Large Building", "url": "/templates/signage/corporate/directory/building-index-landscape.html", "group": "Corporate"},
+  {"id": "preset-corporate-directory-building-index-portrait", "name": "Corporate · Directory · Large Building — Portrait", "url": "/templates/signage/corporate/directory/building-index-portrait.html", "group": "Corporate"},
   {"id": "preset-corporate-directory-pacific-editorial-landscape", "name": "Corporate · Directory · Pacific Editorial", "url": "/templates/signage/corporate/directory/pacific-editorial-landscape.html", "group": "Corporate"},
   {"id": "preset-corporate-directory-pacific-editorial-portrait", "name": "Corporate · Directory · Pacific Editorial — Portrait", "url": "/templates/signage/corporate/directory/pacific-editorial-portrait.html", "group": "Corporate"},
   {"id": "preset-corporate-directory-elevator-stack-landscape", "name": "Corporate · Directory · Elevator Stack", "url": "/templates/signage/corporate/directory/elevator-stack-landscape.html", "group": "Corporate"},

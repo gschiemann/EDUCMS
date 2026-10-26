@@ -2,7 +2,7 @@ import type { SystemPreset } from './system-presets';
 export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   {
     "name": "Corporate · Directory · Pacific Editorial",
-    "description": "Commercial real estate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Commercial real estate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -320,7 +320,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -330,7 +333,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Pacific Editorial — Portrait",
-    "description": "Commercial real estate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Commercial real estate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -648,7 +651,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -658,7 +664,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Elevator Stack",
-    "description": "Corporate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Corporate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -976,7 +982,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -986,7 +995,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Elevator Stack — Portrait",
-    "description": "Corporate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Corporate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -1304,7 +1313,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1314,7 +1326,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Departures Board",
-    "description": "Industrial / logistics directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Industrial / logistics directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -1632,7 +1644,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1642,7 +1657,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Departures Board — Portrait",
-    "description": "Industrial / logistics directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Industrial / logistics directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -1960,7 +1975,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1970,7 +1988,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Luxury Concierge",
-    "description": "Hospitality directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Hospitality directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -2288,7 +2306,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2298,7 +2319,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Luxury Concierge — Portrait",
-    "description": "Hospitality directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Hospitality directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -2616,7 +2637,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2626,7 +2650,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Swiss Wayfinding",
-    "description": "Government / civic directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Government / civic directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -2944,7 +2968,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2954,7 +2981,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Swiss Wayfinding — Portrait",
-    "description": "Government / civic directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Government / civic directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -3272,7 +3299,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3282,7 +3312,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Tropical Modernist",
-    "description": "Retail / mixed-use directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Retail / mixed-use directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -3600,7 +3630,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3610,7 +3643,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Tropical Modernist — Portrait",
-    "description": "Retail / mixed-use directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Retail / mixed-use directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -3928,7 +3961,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3938,7 +3974,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Glass Facade",
-    "description": "Creative / tech directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Creative / tech directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -4256,7 +4292,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4266,7 +4305,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Glass Facade — Portrait",
-    "description": "Creative / tech directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Creative / tech directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -4584,7 +4623,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4594,7 +4636,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Brutalist Poster",
-    "description": "Education / campus directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Education / campus directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -4912,7 +4954,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4922,7 +4967,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Brutalist Poster — Portrait",
-    "description": "Education / campus directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Education / campus directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -5240,7 +5285,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5250,7 +5298,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Care Atlas",
-    "description": "Medical / wellness directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Medical / wellness directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -5568,7 +5616,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5578,7 +5629,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Care Atlas — Portrait",
-    "description": "Medical / wellness directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Medical / wellness directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -5896,7 +5947,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5906,7 +5960,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Maison Residence",
-    "description": "Luxury / residential directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Luxury / residential directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -6224,7 +6278,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -6234,7 +6291,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Maison Residence — Portrait",
-    "description": "Luxury / residential directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Luxury / residential directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -6552,7 +6609,1734 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Large Building",
+    "description": "Large buildings / many suites directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#f3efe5",
+    "id": "preset-corporate-directory-building-index-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/building-index-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "building-index",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Meridian Business Center",
+              "subtitle": "Offices · Services · Professional practices",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Meridian",
+              "image": null,
+              "fictional": true,
+              "tenants": [
+                {
+                  "id": "large-001",
+                  "name": "Alder Advisory",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-002",
+                  "name": "Amberstone Design Group",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-003",
+                  "name": "Arcwell Legal Partners",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-004",
+                  "name": "Atlas Wellness",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-005",
+                  "name": "Beacon Engineering",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-006",
+                  "name": "Bellwether Capital",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-007",
+                  "name": "Birchline Architecture",
+                  "suite": "107",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-008",
+                  "name": "Bluehaven Consulting",
+                  "suite": "108",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-009",
+                  "name": "Bridgefield Studio",
+                  "suite": "109",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-010",
+                  "name": "Brightwell Property Group",
+                  "suite": "110",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-011",
+                  "name": "Brookline Advisory",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-012",
+                  "name": "Canyon Design Group",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-013",
+                  "name": "Cedar Legal Partners",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-014",
+                  "name": "Clearwater Wellness",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-015",
+                  "name": "Clover Engineering",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-016",
+                  "name": "Coastline Capital",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-017",
+                  "name": "Copper Architecture",
+                  "suite": "207",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-018",
+                  "name": "Crestview Consulting",
+                  "suite": "208",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-019",
+                  "name": "Daybreak Studio",
+                  "suite": "209",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-020",
+                  "name": "Eastbridge Property Group",
+                  "suite": "210",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-021",
+                  "name": "Evergreen Advisory",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-022",
+                  "name": "Fairway Design Group",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-023",
+                  "name": "Fieldstone Legal Partners",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-024",
+                  "name": "Harbor Wellness",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-025",
+                  "name": "Horizon Engineering",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-026",
+                  "name": "Juniper Capital",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-027",
+                  "name": "Keystone Architecture",
+                  "suite": "307",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-028",
+                  "name": "Lakeview Consulting",
+                  "suite": "308",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-029",
+                  "name": "Laurel Studio",
+                  "suite": "309",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-030",
+                  "name": "Linden Property Group",
+                  "suite": "310",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-031",
+                  "name": "Maple Advisory",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-032",
+                  "name": "Meridian Design Group",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-033",
+                  "name": "Northpoint Legal Partners",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-034",
+                  "name": "Oakwell Wellness",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-035",
+                  "name": "Orchard Engineering",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-036",
+                  "name": "Parkside Capital",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-037",
+                  "name": "Pinecrest Architecture",
+                  "suite": "407",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-038",
+                  "name": "Redwood Consulting",
+                  "suite": "408",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-039",
+                  "name": "Riverstone Studio",
+                  "suite": "409",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-040",
+                  "name": "Seabrook Property Group",
+                  "suite": "410",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-041",
+                  "name": "Silverline Advisory",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-042",
+                  "name": "Southwind Design Group",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-043",
+                  "name": "Springwell Legal Partners",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-044",
+                  "name": "Stonebridge Wellness",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-045",
+                  "name": "Summit Engineering",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-046",
+                  "name": "Tidewater Capital",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-047",
+                  "name": "Valley Architecture",
+                  "suite": "507",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-048",
+                  "name": "Westhaven Consulting",
+                  "suite": "508",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-049",
+                  "name": "Willow Studio",
+                  "suite": "509",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-050",
+                  "name": "Woodland Property Group",
+                  "suite": "510",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-051",
+                  "name": "Alder Capital",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-052",
+                  "name": "Amberstone Architecture",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-053",
+                  "name": "Arcwell Consulting",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-054",
+                  "name": "Atlas Studio",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-055",
+                  "name": "Beacon Property Group",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-056",
+                  "name": "Bellwether Advisory",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-057",
+                  "name": "Birchline Design Group",
+                  "suite": "607",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-058",
+                  "name": "Bluehaven Legal Partners",
+                  "suite": "608",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-059",
+                  "name": "Bridgefield Wellness",
+                  "suite": "609",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-060",
+                  "name": "Brightwell Engineering",
+                  "suite": "610",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-061",
+                  "name": "Brookline Capital",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-062",
+                  "name": "Canyon Architecture",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-063",
+                  "name": "Cedar Consulting",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-064",
+                  "name": "Clearwater Studio",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-065",
+                  "name": "Clover Property Group",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-066",
+                  "name": "Coastline Advisory",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-067",
+                  "name": "Copper Design Group",
+                  "suite": "707",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-068",
+                  "name": "Crestview Legal Partners",
+                  "suite": "708",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-069",
+                  "name": "Daybreak Wellness",
+                  "suite": "709",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-070",
+                  "name": "Eastbridge Engineering",
+                  "suite": "710",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-071",
+                  "name": "Evergreen Capital",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-072",
+                  "name": "Fairway Architecture",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-073",
+                  "name": "Fieldstone Consulting",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-074",
+                  "name": "Harbor Studio",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-075",
+                  "name": "Horizon Property Group",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-076",
+                  "name": "Juniper Advisory",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-077",
+                  "name": "Keystone Design Group",
+                  "suite": "807",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-078",
+                  "name": "Lakeview Legal Partners",
+                  "suite": "808",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-079",
+                  "name": "Laurel Wellness",
+                  "suite": "809",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-080",
+                  "name": "Linden Engineering",
+                  "suite": "810",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-081",
+                  "name": "Maple Capital",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-082",
+                  "name": "Meridian Architecture",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-083",
+                  "name": "Northpoint Consulting",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-084",
+                  "name": "Oakwell Studio",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-085",
+                  "name": "Orchard Property Group",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-086",
+                  "name": "Parkside Advisory",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-087",
+                  "name": "Pinecrest Design Group",
+                  "suite": "907",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-088",
+                  "name": "Redwood Legal Partners",
+                  "suite": "908",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-089",
+                  "name": "Riverstone Wellness",
+                  "suite": "909",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-090",
+                  "name": "Seabrook Engineering",
+                  "suite": "910",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-091",
+                  "name": "Silverline Capital",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-092",
+                  "name": "Southwind Architecture",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-093",
+                  "name": "Springwell Consulting",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-094",
+                  "name": "Stonebridge Studio",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-095",
+                  "name": "Summit Property Group",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-096",
+                  "name": "Tidewater Advisory",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-097",
+                  "name": "Valley Design Group",
+                  "suite": "1007",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-098",
+                  "name": "Westhaven Legal Partners",
+                  "suite": "1008",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-099",
+                  "name": "Willow Wellness",
+                  "suite": "1009",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-100",
+                  "name": "Woodland Engineering",
+                  "suite": "1010",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ],
+              "suiteLabel": "Suite"
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Large Building — Portrait",
+    "description": "Large buildings / many suites directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#f3efe5",
+    "id": "preset-corporate-directory-building-index-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/building-index-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "building-index",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Meridian Business Center",
+              "subtitle": "Offices · Services · Professional practices",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Meridian",
+              "image": null,
+              "fictional": true,
+              "tenants": [
+                {
+                  "id": "large-001",
+                  "name": "Alder Advisory",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-002",
+                  "name": "Amberstone Design Group",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-003",
+                  "name": "Arcwell Legal Partners",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-004",
+                  "name": "Atlas Wellness",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-005",
+                  "name": "Beacon Engineering",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-006",
+                  "name": "Bellwether Capital",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-007",
+                  "name": "Birchline Architecture",
+                  "suite": "107",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-008",
+                  "name": "Bluehaven Consulting",
+                  "suite": "108",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-009",
+                  "name": "Bridgefield Studio",
+                  "suite": "109",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-010",
+                  "name": "Brightwell Property Group",
+                  "suite": "110",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-011",
+                  "name": "Brookline Advisory",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-012",
+                  "name": "Canyon Design Group",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-013",
+                  "name": "Cedar Legal Partners",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-014",
+                  "name": "Clearwater Wellness",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-015",
+                  "name": "Clover Engineering",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-016",
+                  "name": "Coastline Capital",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-017",
+                  "name": "Copper Architecture",
+                  "suite": "207",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-018",
+                  "name": "Crestview Consulting",
+                  "suite": "208",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-019",
+                  "name": "Daybreak Studio",
+                  "suite": "209",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-020",
+                  "name": "Eastbridge Property Group",
+                  "suite": "210",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-021",
+                  "name": "Evergreen Advisory",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-022",
+                  "name": "Fairway Design Group",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-023",
+                  "name": "Fieldstone Legal Partners",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-024",
+                  "name": "Harbor Wellness",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-025",
+                  "name": "Horizon Engineering",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-026",
+                  "name": "Juniper Capital",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-027",
+                  "name": "Keystone Architecture",
+                  "suite": "307",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-028",
+                  "name": "Lakeview Consulting",
+                  "suite": "308",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-029",
+                  "name": "Laurel Studio",
+                  "suite": "309",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-030",
+                  "name": "Linden Property Group",
+                  "suite": "310",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-031",
+                  "name": "Maple Advisory",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-032",
+                  "name": "Meridian Design Group",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-033",
+                  "name": "Northpoint Legal Partners",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-034",
+                  "name": "Oakwell Wellness",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-035",
+                  "name": "Orchard Engineering",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-036",
+                  "name": "Parkside Capital",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-037",
+                  "name": "Pinecrest Architecture",
+                  "suite": "407",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-038",
+                  "name": "Redwood Consulting",
+                  "suite": "408",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-039",
+                  "name": "Riverstone Studio",
+                  "suite": "409",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-040",
+                  "name": "Seabrook Property Group",
+                  "suite": "410",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-041",
+                  "name": "Silverline Advisory",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-042",
+                  "name": "Southwind Design Group",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-043",
+                  "name": "Springwell Legal Partners",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-044",
+                  "name": "Stonebridge Wellness",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-045",
+                  "name": "Summit Engineering",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-046",
+                  "name": "Tidewater Capital",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-047",
+                  "name": "Valley Architecture",
+                  "suite": "507",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-048",
+                  "name": "Westhaven Consulting",
+                  "suite": "508",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-049",
+                  "name": "Willow Studio",
+                  "suite": "509",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-050",
+                  "name": "Woodland Property Group",
+                  "suite": "510",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-051",
+                  "name": "Alder Capital",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-052",
+                  "name": "Amberstone Architecture",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-053",
+                  "name": "Arcwell Consulting",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-054",
+                  "name": "Atlas Studio",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-055",
+                  "name": "Beacon Property Group",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-056",
+                  "name": "Bellwether Advisory",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-057",
+                  "name": "Birchline Design Group",
+                  "suite": "607",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-058",
+                  "name": "Bluehaven Legal Partners",
+                  "suite": "608",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-059",
+                  "name": "Bridgefield Wellness",
+                  "suite": "609",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-060",
+                  "name": "Brightwell Engineering",
+                  "suite": "610",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-061",
+                  "name": "Brookline Capital",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-062",
+                  "name": "Canyon Architecture",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-063",
+                  "name": "Cedar Consulting",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-064",
+                  "name": "Clearwater Studio",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-065",
+                  "name": "Clover Property Group",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-066",
+                  "name": "Coastline Advisory",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-067",
+                  "name": "Copper Design Group",
+                  "suite": "707",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-068",
+                  "name": "Crestview Legal Partners",
+                  "suite": "708",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-069",
+                  "name": "Daybreak Wellness",
+                  "suite": "709",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-070",
+                  "name": "Eastbridge Engineering",
+                  "suite": "710",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-071",
+                  "name": "Evergreen Capital",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-072",
+                  "name": "Fairway Architecture",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-073",
+                  "name": "Fieldstone Consulting",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-074",
+                  "name": "Harbor Studio",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-075",
+                  "name": "Horizon Property Group",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-076",
+                  "name": "Juniper Advisory",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-077",
+                  "name": "Keystone Design Group",
+                  "suite": "807",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-078",
+                  "name": "Lakeview Legal Partners",
+                  "suite": "808",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-079",
+                  "name": "Laurel Wellness",
+                  "suite": "809",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-080",
+                  "name": "Linden Engineering",
+                  "suite": "810",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-081",
+                  "name": "Maple Capital",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-082",
+                  "name": "Meridian Architecture",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-083",
+                  "name": "Northpoint Consulting",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-084",
+                  "name": "Oakwell Studio",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-085",
+                  "name": "Orchard Property Group",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-086",
+                  "name": "Parkside Advisory",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-087",
+                  "name": "Pinecrest Design Group",
+                  "suite": "907",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-088",
+                  "name": "Redwood Legal Partners",
+                  "suite": "908",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-089",
+                  "name": "Riverstone Wellness",
+                  "suite": "909",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-090",
+                  "name": "Seabrook Engineering",
+                  "suite": "910",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-091",
+                  "name": "Silverline Capital",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-092",
+                  "name": "Southwind Architecture",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-093",
+                  "name": "Springwell Consulting",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-094",
+                  "name": "Stonebridge Studio",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-095",
+                  "name": "Summit Property Group",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-096",
+                  "name": "Tidewater Advisory",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-097",
+                  "name": "Valley Design Group",
+                  "suite": "1007",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-098",
+                  "name": "Westhaven Legal Partners",
+                  "suite": "1008",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-099",
+                  "name": "Willow Wellness",
+                  "suite": "1009",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-100",
+                  "name": "Woodland Engineering",
+                  "suite": "1010",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ],
+              "suiteLabel": "Suite"
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
