@@ -7911,6 +7911,42 @@
     "preview": {
       "title": "实时预览",
       "subtitle": "——随你的调整实时更新"
+    },
+    "livePreview": {
+      "defaultName": "你的数字标牌",
+      "defaultTagline": "一目了然地查看你的屏幕",
+      "logoAlt": "标志",
+      "signage": "数字标牌",
+      "nav": {
+        "dashboard": "仪表板",
+        "screens": "屏幕",
+        "templates": "模板",
+        "playlists": "播放列表",
+        "settings": "设置"
+      },
+      "emergency": "紧急警报",
+      "search": "搜索…",
+      "newPlaylist": "新建播放列表",
+      "welcome": "欢迎使用 {name}",
+      "heroLine": "紧急警报已就绪 · 23 块屏幕在线 · 2 个播放列表已排期",
+      "kpiActive": "在线屏幕",
+      "kpiScheduled": "已排期",
+      "kpiDrills": "紧急演习",
+      "chips": {
+        "all": "全部",
+        "lobby": "大厅",
+        "entrance": "入口",
+        "mainFloor": "主楼层",
+        "backOfHouse": "员工区"
+      },
+      "rows": {
+        "mainLobby": "主大厅",
+        "eastHallway": "东侧走廊",
+        "gymEntry": "体育馆入口",
+        "cafeteria": "餐厅 A"
+      },
+      "live": "播放中",
+      "offline": "离线"
     }
   },
   "playlistConflict": {

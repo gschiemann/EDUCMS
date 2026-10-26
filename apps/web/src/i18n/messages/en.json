@@ -7911,6 +7911,42 @@
     "preview": {
       "title": "Live preview",
       "subtitle": "— repaints as you tweak"
+    },
+    "livePreview": {
+      "defaultName": "Your Venue Signage",
+      "defaultTagline": "Your signage at a glance",
+      "logoAlt": "Logo",
+      "signage": "Signage",
+      "nav": {
+        "dashboard": "Dashboard",
+        "screens": "Screens",
+        "templates": "Templates",
+        "playlists": "Playlists",
+        "settings": "Settings"
+      },
+      "emergency": "Emergency",
+      "search": "Search…",
+      "newPlaylist": "New playlist",
+      "welcome": "Welcome to {name}",
+      "heroLine": "Emergency alerts ready · 23 screens online · 2 playlists scheduled",
+      "kpiActive": "Active screens",
+      "kpiScheduled": "Scheduled",
+      "kpiDrills": "Emergency drills",
+      "chips": {
+        "all": "All",
+        "lobby": "Lobby",
+        "entrance": "Entrance",
+        "mainFloor": "Main Floor",
+        "backOfHouse": "Back of House"
+      },
+      "rows": {
+        "mainLobby": "Main Lobby",
+        "eastHallway": "East Hallway",
+        "gymEntry": "Gym Entry",
+        "cafeteria": "Cafeteria A"
+      },
+      "live": "Live",
+      "offline": "Offline"
     }
   },
   "playlistConflict": {

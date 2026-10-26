@@ -7911,6 +7911,42 @@
     "preview": {
       "title": "Vista previa en vivo",
       "subtitle": "— se actualiza mientras ajustas"
+    },
+    "livePreview": {
+      "defaultName": "Tu señalización",
+      "defaultTagline": "Tus pantallas de un vistazo",
+      "logoAlt": "Logotipo",
+      "signage": "Señalización",
+      "nav": {
+        "dashboard": "Panel",
+        "screens": "Pantallas",
+        "templates": "Plantillas",
+        "playlists": "Listas de reproducción",
+        "settings": "Ajustes"
+      },
+      "emergency": "Emergencia",
+      "search": "Buscar…",
+      "newPlaylist": "Nueva lista",
+      "welcome": "Te damos la bienvenida a {name}",
+      "heroLine": "Alertas de emergencia listas · 23 pantallas en línea · 2 listas programadas",
+      "kpiActive": "Pantallas activas",
+      "kpiScheduled": "Programadas",
+      "kpiDrills": "Simulacros",
+      "chips": {
+        "all": "Todas",
+        "lobby": "Vestíbulo",
+        "entrance": "Entrada",
+        "mainFloor": "Planta principal",
+        "backOfHouse": "Zona de personal"
+      },
+      "rows": {
+        "mainLobby": "Vestíbulo principal",
+        "eastHallway": "Pasillo este",
+        "gymEntry": "Entrada del gimnasio",
+        "cafeteria": "Cafetería A"
+      },
+      "live": "En vivo",
+      "offline": "Sin conexión"
     }
   },
   "playlistConflict": {
