@@ -79,7 +79,7 @@ it('a forbidden deep link gets the permission page, not a dead form', async () =
   role = 'CONTRIBUTOR';
   routes();
   renderInShell(<SettingsOrganizationPage />);
-  expect(await screen.findByText(/don’t have access to Organization/)).toBeInTheDocument();
+  expect(await screen.findByText(/don’t have access to Organization profile/)).toBeInTheDocument();
   const called = apiFetch.mock.calls.map((c) => c[0]);
   expect(called).not.toContain('/tenants/children');
 });

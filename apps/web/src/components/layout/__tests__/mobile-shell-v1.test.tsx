@@ -119,9 +119,11 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
   it.each([
     'Templates',
     'Reviews',
-    'Audit Log',
+    // 2026-10-26 — the audit log reads "Activity" (owner decision 4) and
+    // "Account" is "My account" (owner decision 1).
+    'Activity',
     'Settings',
-    'Account',
+    'My account',
     'Help and support',
   ])('reaches %s', async (label) => {
     render(<MobileTabBar />);
@@ -139,16 +141,16 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
   /**
    * 2026-09-24 — the always-there way to a passkey. The phone hides the
    * avatar menu, so the sheet's account area carries the entry: "Set up a
-   * passkey" opens the Security page's Add panel; once one exists it reads
-   * "Manage passkeys" and lands on the list.
+   * passkey" opens My account's Add panel (2026-10-26: My security moved
+   * there); once one exists it reads "Manage passkeys" and lands on the list.
    */
-  it('reaches "Set up a passkey" (→ the Security page with the Add panel open) when the account has none', async () => {
+  it('reaches "Set up a passkey" (→ My account with the Add panel open) when the account has none', async () => {
     mockPasskeyList = { passkeys: [], max: 10 };
     render(<MobileTabBar />);
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     await screen.findByRole('dialog');
     const row = await screen.findByRole('link', { name: /Set up a passkey/i });
-    expect(row).toHaveAttribute('href', '/school-1/settings/security?add=passkey');
+    expect(row).toHaveAttribute('href', '/school-1/account?add=passkey');
     expect(screen.queryByRole('link', { name: /Manage passkeys/i })).not.toBeInTheDocument();
   });
 
@@ -158,7 +160,7 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
     fireEvent.click(screen.getByRole('button', { name: /More/ }));
     await screen.findByRole('dialog');
     const row = await screen.findByRole('link', { name: /Manage passkeys/i });
-    expect(row).toHaveAttribute('href', '/school-1/settings/security#sec-passkeys');
+    expect(row).toHaveAttribute('href', '/school-1/account#sec-passkeys');
     expect(screen.queryByRole('link', { name: /Set up a passkey/i })).not.toBeInTheDocument();
   });
 
@@ -180,8 +182,11 @@ describe('§6.3 — one navigation system: the More sheet is a superset of the d
     expect(screen.getByRole('link', { name: /My submissions/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /^Reviews$/i })).not.toBeInTheDocument();
     // An admin-only destination must not be offered to a contributor at all
-    // (§10: never let a user discover permissions via a 403).
-    expect(screen.queryByRole('link', { name: /Audit Log/i })).not.toBeInTheDocument();
+    // (§10: never let a user discover permissions via a 403) — and since
+    // 2026-10-26 that includes Settings (owner decision 1: My account instead).
+    expect(screen.queryByRole('link', { name: /Activity/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Settings$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /My account/i })).toBeInTheDocument();
   });
 
   it('shows the owner console to a SUPER_ADMIN only', async () => {

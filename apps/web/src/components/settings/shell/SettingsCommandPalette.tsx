@@ -1,48 +1,59 @@
 "use client";
 
 /**
- * Settings command palette (§12). Searches category labels, per-page field
- * labels and synonyms, provider names and location names. Respects the
- * permission filter — hidden sections never appear in results.
+ * Settings search (§12, rebuilt for Phase 1). Answers "how do I …" from
+ * anywhere in Settings: the six areas, their pages, ~25 plain-language jobs
+ * ("Change my logo", "Invite someone", "Square") and the fields of the page
+ * you are on. Labels AND synonyms come from the catalogs, so a Spanish or
+ * Chinese operator can search in their own words (audit P9 — synonyms used to
+ * be English-only arrays). Respects the role/vertical filter: a place this
+ * person cannot open never appears.
  *
  * Keyboard: arrows move, Enter opens, Escape closes, focus returns to the
- * command button that opened it.
+ * search button that opened it.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Search, ChevronRight, MapPin } from 'lucide-react';
+import { Search, ChevronRight, UserRound, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { settingsHref, visibleSections, type SettingsSectionDefinition } from './registry';
+import {
+  areaById,
+  areaHref,
+  tabHref,
+  visibleAreas,
+  visibleJobs,
+  visibleTabs,
+} from './registry';
 import { useSettingsShell, type SettingsSearchItem } from './SettingsShellContext';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
+type IconType = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+
 interface PaletteResult {
   key: string;
-  section: SettingsSectionDefinition | null;
+  icon: IconType;
   label: string;
   detail: string;
   href: string;
   anchor?: string;
+  /** True when the result is a field on the page that is open right now. */
+  onThisPage?: boolean;
   score: number;
 }
 
-export interface PaletteLocation {
-  id: string;
-  name: string;
-  href: string;
+/** Split a translated "a, b, c" synonym list. */
+function words(list: string): string[] {
+  return list.split(/[,，、]/).map((w) => w.trim()).filter(Boolean);
 }
 
 export function SettingsCommandPalette({
   schoolId,
   role,
-  scopeLabel,
-  locations = [],
   returnFocusTo,
 }: {
   schoolId: string;
   role: string | null | undefined;
-  scopeLabel: string;
-  locations?: readonly PaletteLocation[];
   returnFocusTo: React.RefObject<HTMLElement | null>;
 }) {
   const t = useTranslations();
@@ -51,15 +62,16 @@ export function SettingsCommandPalette({
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const params = useParams<{ schoolId: string }>();
+  const slug = schoolId || params?.schoolId || '';
 
   const { vertical } = useTenantCopy();
-  const sections = useMemo(() => visibleSections(role, vertical), [role, vertical]);
 
   const results = useMemo<PaletteResult[]>(() => {
     const q = query.trim().toLowerCase();
     const out: PaletteResult[] = [];
     const scoreOf = (hay: readonly string[]) => {
-      if (!q) return 1;
+      if (!q) return 0;
       let best = 0;
       for (const h of hay) {
         const s = h.toLowerCase();
@@ -69,43 +81,82 @@ export function SettingsCommandPalette({
       }
       return best;
     };
-    for (const s of sections) {
-      const label = t(`settings.shell.sections.${s.labelKey}.label`);
-      const desc = t(`settings.shell.sections.${s.descriptionKey}.description`);
-      const score = scoreOf([label, ...s.keywords]);
+    const areas = visibleAreas(role, vertical);
+
+    for (const area of areas) {
+      const label = t(`settings.shell.areas.${area.id}.label`);
+      const hay = [label, ...area.keywords, ...words(t(`settings.shell.areas.${area.id}.keywords`))];
+      const score = q ? scoreOf(hay) : 1;
       if (score > 0) {
-        out.push({ key: `sec:${s.id}`, section: s, label, detail: desc, href: settingsHref(schoolId, s), score: score + 5 });
+        out.push({
+          key: `area:${area.id}`,
+          icon: area.icon,
+          label,
+          detail: t(`settings.shell.areas.${area.id}.description`),
+          href: areaHref(slug, area, role, vertical),
+          score: score + 6,
+        });
+      }
+      if (!q) continue;
+      for (const tab of visibleTabs(area, role, vertical)) {
+        const tabLabel = t(`settings.shell.tabs.${tab.id}`);
+        const tabScore = scoreOf([tabLabel]);
+        if (tabScore > 0 && tabLabel !== label) {
+          out.push({ key: `tab:${tab.id}`, icon: area.icon, label: tabLabel, detail: label, href: tabHref(slug, tab), score: tabScore + 4 });
+        }
       }
     }
-    const pageItems: readonly SettingsSearchItem[] = page?.searchItems ?? [];
-    const pageSection = page ? sections.find((s) => s.id === page.section) ?? null : null;
-    if (pageSection) {
+
+    if (q) {
+      for (const job of visibleJobs(role, vertical)) {
+        const label = t(`settings.shell.jobs.${job.id}.label`);
+        const score = scoreOf([label, ...job.keywords, ...words(t(`settings.shell.jobs.${job.id}.keywords`))]);
+        if (score <= 0) continue;
+        const [path, anchor] = job.href.split('#');
+        const icon: IconType = job.area === 'account' ? UserRound : job.area === 'activity' ? History : areaById(job.area).icon;
+        const detail = job.area === 'account' || job.area === 'activity'
+          ? t(`settings.shell.jobAreas.${job.area}`)
+          : t(`settings.shell.areas.${job.area}.label`);
+        out.push({ key: `job:${job.id}`, icon, label, detail, href: `/${slug}/${path}`, anchor, score: score + 2 });
+      }
+
+      const pageItems: readonly SettingsSearchItem[] = page?.searchItems ?? [];
       for (const item of pageItems) {
         const score = scoreOf([item.label, ...(item.keywords ?? [])]);
         if (score > 0) {
           out.push({
             key: `item:${item.anchor ?? item.href ?? item.label}`,
-            section: pageSection,
+            icon: Search,
             label: item.label,
-            detail: t(`settings.shell.sections.${pageSection.labelKey}.label`),
-            href: item.href ?? settingsHref(schoolId, pageSection),
+            detail: page?.title ?? '',
+            href: item.href ?? '',
             anchor: item.anchor,
+            onThisPage: !item.href,
             score,
           });
         }
       }
     }
-    for (const loc of locations) {
-      const score = q ? scoreOf([loc.name]) : 0;
-      if (score > 0) {
-        out.push({ key: `loc:${loc.id}`, section: null, label: loc.name, detail: t('settings.shell.paletteSwitchScope'), href: loc.href, score: score - 10 });
-      }
-    }
-    return out.sort((a, b) => b.score - a.score).slice(0, 12);
-  }, [query, sections, page, locations, schoolId, t]);
 
+    // One row per destination; the best-scoring label wins.
+    const seen = new Set<string>();
+    return out
+      .sort((a, b) => b.score - a.score)
+      .filter((r) => {
+        const dest = `${r.href}#${r.anchor ?? ''}#${r.label}`;
+        if (seen.has(dest)) return false;
+        seen.add(dest);
+        return true;
+      })
+      .slice(0, 12);
+  }, [query, role, vertical, page, slug, t]);
+
+  // Whatever opened the palette gets focus back on close (the home's search
+  // field, the header button, or the element that had focus for ⌘K).
+  const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (paletteOpen) {
+      openerRef.current = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
       setQuery('');
       setCursor(0);
       const id = window.setTimeout(() => inputRef.current?.focus(), 10);
@@ -125,12 +176,13 @@ export function SettingsCommandPalette({
 
   const close = () => {
     setPaletteOpen(false);
-    window.setTimeout(() => returnFocusTo.current?.focus(), 0);
+    window.setTimeout(() => (returnFocusTo.current ?? openerRef.current)?.focus?.(), 0);
   };
 
   const open = (r: PaletteResult) => {
     setPaletteOpen(false);
-    if (r.anchor && page && r.section?.id === page.section) {
+    const here = typeof window !== 'undefined' ? window.location.pathname : '';
+    if (r.anchor && (r.onThisPage || r.href === here)) {
       const target = document.getElementById(r.anchor);
       if (target) {
         target.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -139,6 +191,7 @@ export function SettingsCommandPalette({
         return;
       }
     }
+    if (!r.href) return;
     navigate(r.anchor ? `${r.href}#${r.anchor}` : r.href);
   };
 
@@ -187,11 +240,11 @@ export function SettingsCommandPalette({
           <kbd className="text-[11px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500">Esc</kbd>
         </div>
         <div id="sv-palette-list" ref={listRef} role="listbox" className="max-h-[52vh] overflow-y-auto py-1.5">
-          {results.length === 0 && (
+          {results.length === 0 && query.trim() && (
             <div className="px-4 py-6 text-center text-[13px] text-slate-500">{t('settings.shell.paletteEmpty', { query })}</div>
           )}
           {results.map((r, i) => {
-            const Icon = r.section?.icon ?? MapPin;
+            const Icon = r.icon;
             return (
               <div
                 key={r.key}
@@ -218,10 +271,7 @@ export function SettingsCommandPalette({
                   <span className="block text-[13px] font-medium truncate">{r.label}</span>
                   <span className="block text-[11px] text-slate-500 truncate">{r.detail}</span>
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap">
-                  {r.section ? scopeLabel : null}
-                  <ChevronRight className="w-3.5 h-3.5" aria-hidden />
-                </span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" aria-hidden />
               </div>
             );
           })}

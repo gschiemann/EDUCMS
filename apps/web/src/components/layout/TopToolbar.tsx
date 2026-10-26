@@ -3,7 +3,7 @@
 import { useAppStore } from '@/lib/store';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LogOut, Menu, UserCog, Fingerprint } from 'lucide-react';
+import { ShieldAlert, LogOut, Menu, UserCog, Fingerprint, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { LanguageMenuRows } from './LanguageMenu';
 import Link from 'next/link';
@@ -71,8 +71,8 @@ export function TopToolbar() {
   // back to the operator's home slug.
   const securitySlug = schoolId || user?.tenantSlug || user?.tenantId || '';
   const passkeyHref = hasPasskey
-    ? `/${securitySlug}/settings/security#sec-passkeys`
-    : `/${securitySlug}/settings/security?add=passkey`;
+    ? `/${securitySlug}/account#sec-passkeys`
+    : `/${securitySlug}/account?add=passkey`;
 
   /**
    * The active alert's own name, when the tenant row carries one
@@ -271,6 +271,19 @@ export function TopToolbar() {
                   )}
                   <p className="text-[10px] text-slate-400 mt-0.5">{topToolbarTenantCopy.roleLabel(user?.role || '')}</p>
                 </div>
+                {/* 2026-10-26 — My account: profile, password, passkeys,
+                    two-step sign-in, language and alert emails, for every
+                    role (Settings simplification, owner decision 1). */}
+                {securitySlug && (
+                  <Link
+                    href={`/${securitySlug}/account`}
+                    data-testid="account-menu-entry"
+                    onClick={() => setShowUserMenu(false)}
+                    className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <UserRound className="w-3.5 h-3.5 text-slate-400" aria-hidden /> {t('nav.account')}
+                  </Link>
+                )}
                 {/* 2026-05-11 — Edit profile lives here, not in
                     /settings (operator: "settings page is fucking
                     crazy now"). Opens a small modal with name fields
@@ -281,7 +294,7 @@ export function TopToolbar() {
                 >
                   <UserCog className="w-3.5 h-3.5 text-slate-400" /> {t('toolbar.editProfile')}
                 </button>
-                {/* 2026-09-24 — "Set up a passkey" opens the Security page's
+                {/* 2026-09-24 — "Set up a passkey" opens My account's passkey
                     Add panel (`?add=passkey`); once the account has one it
                     reads "Manage passkeys" and lands on the list. */}
                 {passkeyCapable && securitySlug && (

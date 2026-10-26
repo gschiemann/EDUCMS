@@ -46,7 +46,7 @@ function renderEditor() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <PeopleAccessEditor ssoManageable ssoHref="/t1/settings/people/sso" securityHref="/t1/settings/security" />
+      <PeopleAccessEditor ssoManageable ssoHref="/t1/settings/people/sso" securityHref="/t1/account" />
     </QueryClientProvider>,
   );
 }
@@ -179,11 +179,11 @@ it('lists an INVITED account under Pending invitations, in one plain line', asyn
   expect(within(section).getByText(/People who haven't signed in yet/i)).toBeInTheDocument();
 });
 
-it('states the MFA policy count and points personal enrollment at My security', async () => {
+it('states the MFA policy count and points personal enrollment at My account', async () => {
   mockApi([ME, JUNIOR]);
   renderEditor();
   expect(await screen.findByText('1 of 2 accounts are required to use two-factor authentication.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'My security' })).toHaveAttribute('href', '/t1/settings/security');
+  expect(screen.getByRole('link', { name: 'My account' })).toHaveAttribute('href', '/t1/account');
 });
 
 // ── Per-tenant MFA enforcement (2026-09-11) ────────────────────────────────
@@ -444,7 +444,7 @@ it('hides the SSO subsection from a caller who cannot read the SSO config', asyn
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <PeopleAccessEditor ssoManageable={false} ssoHref="/t1/settings/people/sso" securityHref="/t1/settings/security" />
+      <PeopleAccessEditor ssoManageable={false} ssoHref="/t1/settings/people/sso" securityHref="/t1/account" />
     </QueryClientProvider>,
   );
   await screen.findByText('jr@x.edu');
