@@ -123,9 +123,11 @@ export const SETTINGS_AREAS: readonly SettingsAreaDefinition[] = [
     id: 'organization',
     icon: Building2,
     keywords: ['name', 'address', 'time zone', 'timezone', 'logo', 'colors', 'colours', 'brand', 'locations', 'schools', 'student privacy', 'ferpa', 'industry'],
+    // Logo & colors first: it is the day-1 job (name and industry are set at
+    // signup), so the area opens where most people want to be.
     tabs: [
-      { id: 'profile', section: 'organization', path: 'organization', matches: ['organization'], roles: ORG_ADMIN_ROLES },
       { id: 'brand', section: 'brand', path: 'branding', matches: ['branding'], roles: ADMIN_ROLES },
+      { id: 'profile', section: 'organization', path: 'organization', matches: ['organization'], roles: ORG_ADMIN_ROLES },
       // Org admins only: the page itself requires it (a location admin used to
       // be listed this row and then told "no access" — audit 2.4).
       { id: 'locations', section: 'locations', path: 'locations', matches: ['locations'], roles: ORG_ADMIN_ROLES },

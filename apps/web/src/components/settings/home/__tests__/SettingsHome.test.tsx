@@ -77,7 +77,7 @@ it('an admin sees search, the six areas and one link to Activity', () => {
   ]) {
     expect(screen.getByTestId(`settings-home-area-${id}`)).toHaveTextContent(name);
   }
-  expect(screen.getByTestId('settings-home-area-organization')).toHaveAttribute('href', '/springfield/settings/organization');
+  expect(screen.getByTestId('settings-home-area-organization')).toHaveAttribute('href', '/springfield/settings/branding');
   expect(screen.getByTestId('settings-home-area-team')).toHaveAttribute('href', '/springfield/settings/people');
   const activity = screen.getByTestId('settings-home-activity');
   expect(activity).toHaveAttribute('href', '/springfield/audit');
@@ -86,7 +86,7 @@ it('an admin sees search, the six areas and one link to Activity', () => {
   expect(replace).not.toHaveBeenCalled();
 });
 
-it('a location admin opens Organization on the page they can change', () => {
+it('a location admin opens Organization on the page they can change too', () => {
   role = 'SCHOOL_ADMIN';
   mount();
   expect(screen.getByTestId('settings-home-area-organization')).toHaveAttribute('href', '/springfield/settings/branding');

@@ -129,7 +129,8 @@ describe('every old URL still opens its page', () => {
 describe('links', () => {
   it('an area opens on the first page this person can see', () => {
     const org = SETTINGS_AREAS.find((a) => a.id === 'organization')!;
-    expect(areaHref('s', org, 'DISTRICT_ADMIN', 'K12')).toBe('/s/settings/organization');
+    // Logo & colors is the day-1 job, so Organization opens there for everyone.
+    expect(areaHref('s', org, 'DISTRICT_ADMIN', 'K12')).toBe('/s/settings/branding');
     expect(areaHref('s', org, 'SCHOOL_ADMIN', 'K12')).toBe('/s/settings/branding');
   });
 

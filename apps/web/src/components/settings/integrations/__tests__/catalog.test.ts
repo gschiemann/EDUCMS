@@ -361,3 +361,11 @@ describe('filters and counts', () => {
     expect(matchesSearch(hls, '')).toBe(true);
   });
 });
+
+describe('Connect opens the provider form directly', () => {
+  it('an unconnected provider row links to its form; a connected one to its page', () => {
+    expect(posEntry(square, undefined).action.href).toBe('integrations/pos?connect=square');
+    expect(streamingEntry(customHls, undefined).action.href).toBe('integrations/streaming?connect=custom-hls');
+    expect(posEntry(square, { providerId: 'square', status: 'ACTIVE' }).action.href).toBe('integrations/pos');
+  });
+});

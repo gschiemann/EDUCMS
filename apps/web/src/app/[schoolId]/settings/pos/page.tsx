@@ -19,7 +19,7 @@
  * ones (Aloha/NCR) are no longer drawn as tiles: a tile that opens
  * "connector in development" is a choice that is not a choice.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -83,6 +83,19 @@ export default function PosSettingsPage() {
   const providers = useQuery<PosProvider[]>({ queryKey: ['pos-providers'], queryFn: () => apiFetch<PosProvider[]>('/pos/providers') });
   const connections = useQuery<PosConnection[]>({ queryKey: ['pos-connections'], queryFn: () => apiFetch<PosConnection[]>('/pos/connections') });
   const [connectModalProvider, setConnectModalProvider] = useState<PosProvider | null>(null);
+  // `?connect=<provider>` (2026-10-26): "Connect" on a Connections row opens
+  // that provider's form straight away — once, after the list has loaded,
+  // and only for a provider that can really be connected and is not yet.
+  const connectRequestHandled = useRef(false);
+  useEffect(() => {
+    if (connectRequestHandled.current || !providers.data || !connections.data) return;
+    connectRequestHandled.current = true;
+    let wanted: string | null = null;
+    try { wanted = new URLSearchParams(window.location.search).get('connect'); } catch { /* nothing to read */ }
+    if (!wanted) return;
+    const p = providers.data.find((x) => x.id === wanted);
+    if (p && posProviderConnectable(p) && !connections.data.some((c) => c.providerId === p.id)) setConnectModalProvider(p);
+  }, [providers.data, connections.data]);
 
   // Only what can really be connected — plus anything already connected.
   const listed = (providers.data || []).filter(

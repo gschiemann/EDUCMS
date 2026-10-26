@@ -157,6 +157,16 @@ export function primaryActionFor(
   }
 }
 
+/**
+ * "Connect" on a provider row opens that provider's connect form directly
+ * (`?connect=<id>`), instead of the provider page it lives on — one click
+ * fewer for "connect Square" or "add a stream" (2026-10-26).
+ */
+export function withConnectTarget(action: IntegrationAction, state: IntegrationState, providerId: string): IntegrationAction {
+  if (state !== 'notConfigured' || action.kind !== 'configure' || !action.href) return action;
+  return { ...action, href: `${action.href}?connect=${encodeURIComponent(providerId)}` };
+}
+
 /* ─────────────────────────── inputs ─────────────────────────── */
 
 export interface ConnectionRowLike {
@@ -294,7 +304,7 @@ export function streamingEntry(
     statusSource: 'streamingConnections',
     state,
     detail,
-    action: primaryActionFor(state, route, { docsUrl: p.docsUrl }),
+    action: withConnectTarget(primaryActionFor(state, route, { docsUrl: p.docsUrl }), state, p.id),
     searchTerms: [p.name, p.id, 'streaming', 'video', 'channel'],
   };
 }
@@ -335,7 +345,7 @@ export function posEntry(
     state,
     detail,
     lastSyncAt: connection?.lastSyncedAt ?? undefined,
-    action: primaryActionFor(state, route, { docsUrl: p.docsUrl }),
+    action: withConnectTarget(primaryActionFor(state, route, { docsUrl: p.docsUrl }), state, p.id),
     searchTerms: [p.name, p.id, 'pos', 'menu', 'catalog', 'prices'],
   };
 }

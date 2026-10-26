@@ -14,7 +14,8 @@
  *     custom URL, "no auth"). On save → POST /streaming/connections.
  *   • Bottom: picked channels list (per-connection drill-down).
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { streamProviderConnectable } from '@/components/settings/integrations/connectable';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -129,6 +130,17 @@ export default function StreamingSettingsPage() {
   });
 
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
+  // `?connect=custom-hls` (2026-10-26): "Connect" on the Connections row opens
+  // the stream form straight away — once, after the list has loaded.
+  const connectRequestHandled = useRef(false);
+  useEffect(() => {
+    if (connectRequestHandled.current || !providers.data) return;
+    connectRequestHandled.current = true;
+    let wanted: string | null = null;
+    try { wanted = new URLSearchParams(window.location.search).get('connect'); } catch { /* nothing to read */ }
+    const p = wanted ? providers.data.find((x) => x.id === wanted) : undefined;
+    if (p && streamProviderConnectable(p)) setConnectModalProvider(p);
+  }, [providers.data]);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
 
   // Context rail (§6.6) — counted from the SAME `/streaming/connections`
