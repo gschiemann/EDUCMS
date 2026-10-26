@@ -168,7 +168,7 @@ function friendlyAiError(e: any): string {
     // boards … or add your own AI key …"), for everything else when the included AI comes back.
     // The dialog puts Buy more / Add your own key right under it (AiCapActions).
     const own = e?.body?.message || (typeof e?.message === 'string' && !/^API error: \d+$/.test(e.message) ? e.message : '');
-    return own || "This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month.";
+    return own || "This month's included AI is used up. Add your own AI key in Settings → Connections → AI to keep going, or wait for it to reset next month.";
   }
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
@@ -182,7 +182,7 @@ function friendlyAiError(e: any): string {
     return 'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.';
   }
   if (raw.includes('not configured')) {
-    return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
+    return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → Connections → AI.";
   }
   if (raw.includes('rejected') || raw.includes('re-enter')) return e.message;
   if (status === 429 || raw.includes('hourly') || raw.includes('rate-limit')) {
@@ -1181,7 +1181,7 @@ export default function TemplatesPage() {
       await appAlert({
         title: 'AI isn’t enabled yet',
         message:
-          'This account doesn’t have an AI provider set up. Ask your administrator to enable AI in Settings → AI, then try again.',
+          'This account doesn’t have an AI provider set up. Ask your administrator to enable AI in Settings → Connections → AI, then try again.',
         tone: 'info',
       });
       return;
@@ -5372,7 +5372,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
       const code = e?.code || e?.data?.code;
       setAiPhotoError(
         code === 'AI_IMAGE_UNAVAILABLE'
-          ? 'AI photos need an OpenAI or Google key — add one in Settings → AI provider.'
+          ? 'AI photos need an OpenAI or Google key — add one in Settings → Connections → AI.'
           : (e?.message || 'Could not generate a photo. Try again.'),
       );
     }

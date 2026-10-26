@@ -358,7 +358,7 @@ test.describe('set up a passkey on this phone', () => {
 
       await expect(page.getByRole('heading', { name: "You're signed in" })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('phone-setup-later')).toHaveText(
-        'You can add a passkey for this device later in Settings → My security.',
+        'You can add a passkey for this device later in My account.',
       );
       await expect(page.locator('.bg-rose-50')).toHaveCount(0);
       const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });

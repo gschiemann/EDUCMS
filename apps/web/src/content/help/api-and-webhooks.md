@@ -1,7 +1,7 @@
 ---
 title: REST API and webhooks
 category: Integrations
-updated: 2026-10-11
+updated: 2026-10-26
 excerpt: Connect your own systems to VenueOS with scoped API keys and signed webhooks — authentication, endpoints, rate limits and signature checks.
 <!-- Source of truth (2026-10-11): apps/api/src/api-keys/api-key-scopes.ts (scopes), auth/jwt-auth.guard.ts (vos_ keys, emergency deny), api-keys.service.ts (90/365-day expiry), webhooks/webhooks.service.ts + webhook-dispatch.service.ts (events, headers, signature, retries). Document only what an API key can really do; re-check these files before adding an endpoint here. -->
 ---
@@ -15,12 +15,12 @@ This page documents only what an API key can do today.
 ## Before you start
 
 - Creating API keys and webhooks requires the **Super Admin** role in your organization.
-- Everything happens in **Settings → Developer & audit**.
-- Every request is made over HTTPS to your API base URL. For VenueOS cloud it is `https://api-production-39a1.up.railway.app/api/v1`. The exact URL for your deployment is shown under **Environment** on the Developer & audit page.
+- Everything happens in **Settings → Advanced → API keys & webhooks**.
+- Every request is made over HTTPS to your API base URL. For VenueOS cloud it is `https://api-production-39a1.up.railway.app/api/v1`. The exact URL for your deployment is shown as **API address** under **About this workspace** on the API keys & webhooks page.
 
 ## Create an API key
 
-1. Open **Settings → Developer & audit → API keys** and click to create a key.
+1. Open **Settings → Advanced → API keys & webhooks**, go to **API keys** and click to create a key.
 2. Give it a **name** (for example "Menu price sync").
 3. Choose a **role**: Super Admin, Admin, Editor or Viewer. A key can never do more than its role allows — an endpoint marked *Admin* below needs an Admin or Super Admin key.
 4. Choose its **scopes** (below). Tick only what the integration needs.
@@ -243,7 +243,7 @@ Webhooks send an HTTPS `POST` to your server when an event happens.
 
 ### Create a webhook
 
-1. Open **Settings → Developer & audit → Webhooks** and add an endpoint.
+1. Open **Settings → Advanced → API keys & webhooks**, go to **Webhooks** and add an endpoint.
 2. Enter a **name** and your **URL**. It must be publicly reachable on port 443 (or 80); private, local and internal addresses are refused.
 3. Pick the **events**.
 4. Copy the **signing secret** (`whsec_…`). It is **shown only once**.

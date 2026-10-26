@@ -105,7 +105,7 @@ describe('AiBoardsLeft / AiImagesLeft', () => {
     server.allowance = planRequired();
     renderWith(<AiBoardsLeft onBuy={jest.fn()} />);
     const line = await screen.findByTestId('ai-boards-left');
-    expect(line).toHaveTextContent('Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).');
+    expect(line).toHaveTextContent('Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → Connections → AI).');
     expect(screen.getByTestId('ai-plan-upsell-add')).toHaveAttribute('href', '/taco/settings/billing#bill-plans');
     expect(screen.queryByRole('button', { name: 'Buy more' })).toBeNull();
   });

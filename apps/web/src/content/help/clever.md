@@ -1,7 +1,7 @@
 ---
 title: Connecting Clever for rostering
 category: Clever
-updated: 2026-10-11
+updated: 2026-10-26
 excerpt: Auto-sync staff, classrooms, and bell schedules from your SIS via Clever's secure data API.
 ---
 
@@ -21,7 +21,7 @@ We do **not** sync student PII. Student data is scoped to the Clever `students` 
 
 ## Connecting your district
 
-1. In the VenueOS dashboard, as a **Super Admin**, go to **Settings → Integrations → Clever**.
+1. In the VenueOS dashboard, as a **Super Admin**, go to **Settings → Connections → Student rosters**.
 2. Click **Connect via Clever OAuth**.
 3. A Clever-hosted consent screen opens. Log in as a Clever district admin and approve the data scopes we request.
 4. You'll be redirected back and the first sync kicks off automatically. Initial syncs for a 10-school district take about 5 minutes.
@@ -43,7 +43,7 @@ You can override individual users after they're created — the sync won't overw
 
 ## Disconnecting
 
-Disconnect from **Settings → Integrations → Clever → Disconnect**. Existing users and classrooms stay put; they just stop receiving updates. You can re-connect later and a full sync will reconcile any changes.
+Disconnect from **Settings → Connections → Student rosters → Disconnect**. Existing users and classrooms stay put; they just stop receiving updates. You can re-connect later and a full sync will reconcile any changes.
 
 ## Security + privacy
 

@@ -341,7 +341,7 @@ test.describe('the passkey is on another device', () => {
       // The mocked sheet is dismissed → a calm note and Continue, never red, never stuck.
       await add.click();
       expect(await page.evaluate(() => (window as unknown as { __creates?: number }).__creates)).toBe(1);
-      await expect(page.getByText('No passkey was set up. You can add one anytime in Settings → My security.')).toBeVisible();
+      await expect(page.getByText('No passkey was set up. You can add one anytime in My account.')).toBeVisible();
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/${SLUG}/dashboard`), { timeout: 30_000 });
     });

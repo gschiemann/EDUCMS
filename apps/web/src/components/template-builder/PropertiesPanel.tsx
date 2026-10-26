@@ -11879,9 +11879,9 @@ function StreamingChannelPickerField({
       )}
       {!isLoading && !isError && (!channels || channels.length === 0) && (
         <p className="text-[10px] text-slate-400 mt-1">
-          No channels picked yet — connect a provider + pick channels in{' '}
+          No live streams yet — add one in{' '}
           <a href={schoolId ? `/${schoolId}/settings/streaming` : '/settings/streaming'} className="underline text-indigo-600 inline-flex items-center gap-0.5">
-            Settings → Streaming <ExternalLink className="w-2.5 h-2.5" />
+            Settings → Connections → Live video <ExternalLink className="w-2.5 h-2.5" />
           </a>
         </p>
       )}

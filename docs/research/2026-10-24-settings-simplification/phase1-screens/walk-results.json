@@ -1,0 +1,138 @@
+{
+  "results": [
+    {
+      "name": "1 invite a person + role",
+      "clicks": 1,
+      "steps": [
+        "Invite Teammate (dashboard)"
+      ],
+      "proof": "invite form open at /springfield-elementary/settings/people?invite=1, email field focused=true; next: type email (+ temp password) → 1 click Send/Create",
+      "ok": true
+    },
+    {
+      "name": "2 emergency alert content (K-12)",
+      "clicks": 2,
+      "steps": [
+        "Settings",
+        "Emergency"
+      ],
+      "proof": "messages step done=true; 6 alert cards show their standard message",
+      "ok": true
+    },
+    {
+      "name": "3 logo and colours",
+      "clicks": 2,
+      "steps": [
+        "Settings",
+        "Organization (opens on Logo & colors)"
+      ],
+      "proof": "landed on /springfield-elementary/settings/branding; next: swatch → Save (colour) or Replace logo → Upload → file → Adopt (logo)",
+      "ok": true
+    },
+    {
+      "name": "4 connect a POS",
+      "clicks": 3,
+      "steps": [
+        "Settings",
+        "Connections",
+        "Connect (Square row)"
+      ],
+      "proof": "Square connect form open on /springfield-elementary/settings/integrations/pos?connect=square; next: 1 click Connect → Square sign-in (external)",
+      "ok": true
+    },
+    {
+      "name": "5 add an AI key",
+      "clicks": 3,
+      "steps": [
+        "Settings",
+        "Connections",
+        "AI tab"
+      ],
+      "proof": "on /springfield-elementary/settings/ai; next: vendor → paste key → Test and save (2 clicks)",
+      "ok": true
+    },
+    {
+      "name": "6 see or change billing",
+      "clicks": 2,
+      "steps": [
+        "Settings",
+        "Plan & billing"
+      ],
+      "proof": "on /springfield-elementary/settings/billing",
+      "ok": true
+    },
+    {
+      "name": "8 connect a stream",
+      "clicks": 3,
+      "steps": [
+        "Settings",
+        "Connections",
+        "Connect (stream row)"
+      ],
+      "proof": "stream form open (?connect=custom-hls); next: paste the link once → 1 click Connect (connection + channel together)",
+      "ok": true
+    },
+    {
+      "name": "9 turn on SSO (OIDC)",
+      "clicks": 3,
+      "steps": [
+        "Settings",
+        "Team",
+        "Single sign-on tab"
+      ],
+      "proof": "SSO form loaded, provider=OIDC, SAML offered=false; next: Enabled + 3 fields + Save (+ DNS step outside)",
+      "ok": true
+    },
+    {
+      "name": "10 who did what",
+      "clicks": 2,
+      "steps": [
+        "Settings",
+        "Activity"
+      ],
+      "proof": "on /springfield-elementary/audit",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "log": [
+    "signed in as admin@springfield.edu → /springfield-elementary/dashboard",
+    "JOB 1 invite a person + role: 1 clicks — Invite Teammate (dashboard) ✓ invite form open at /springfield-elementary/settings/people?invite=1, email field focused=true; next: type email (+ temp password) → 1 click Send/Create",
+    "JOB 2 emergency alert content (K-12): 2 clicks — Settings → Emergency ✓ messages step done=true; 6 alert cards show their standard message",
+    "JOB 3 logo and colours: 2 clicks — Settings → Organization (opens on Logo & colors) ✓ landed on /springfield-elementary/settings/branding; next: swatch → Save (colour) or Replace logo → Upload → file → Adopt (logo)",
+    "JOB 4 connect a POS: 3 clicks — Settings → Connections → Connect (Square row) ✓ Square connect form open on /springfield-elementary/settings/integrations/pos?connect=square; next: 1 click Connect → Square sign-in (external)",
+    "JOB 5 add an AI key: 3 clicks — Settings → Connections → AI tab ✓ on /springfield-elementary/settings/ai; next: vendor → paste key → Test and save (2 clicks)",
+    "JOB 6 see or change billing: 2 clicks — Settings → Plan & billing ✓ on /springfield-elementary/settings/billing",
+    "JOB 8 connect a stream: 3 clicks — Settings → Connections → Connect (stream row) ✓ stream form open (?connect=custom-hls); next: paste the link once → 1 click Connect (connection + channel together)",
+    "JOB 9 turn on SSO (OIDC): 3 clicks — Settings → Team → Single sign-on tab ✓ SSO form loaded, provider=OIDC, SAML offered=false; next: Enabled + 3 fields + Save (+ DNS step outside)",
+    "JOB 10 who did what: 2 clicks — Settings → Activity ✓ on /springfield-elementary/audit",
+    "shot desktop-1325-home.png (+ -full, 1047px)  horizontal-overflow=false",
+    "shot desktop-1325-organization.png (+ -full, 1306px)  horizontal-overflow=false",
+    "shot desktop-1325-emergency.png (+ -full, 3666px)  horizontal-overflow=false",
+    "shot desktop-1325-team.png (+ -full, 1825px)  horizontal-overflow=false",
+    "shot desktop-1325-connections.png (+ -full, 1767px)  horizontal-overflow=false",
+    "shot desktop-1325-billing.png (+ -full, 1759px)  horizontal-overflow=false",
+    "shot desktop-1325-advanced.png (+ -full, 1232px)  horizontal-overflow=false",
+    "shot desktop-1325-my-account.png (+ -full, 1858px)  horizontal-overflow=false",
+    "shot iphone-390-home.png (+ -full, 1544px)  horizontal-overflow=false",
+    "shot iphone-390-organization.png (+ -full, 2398px)  horizontal-overflow=false",
+    "shot iphone-390-emergency.png (+ -full, 6039px)  horizontal-overflow=false",
+    "shot iphone-390-team.png (+ -full, 3181px)  horizontal-overflow=false",
+    "shot iphone-390-connections.png (+ -full, 2534px)  horizontal-overflow=false",
+    "shot iphone-390-billing.png (+ -full, 3339px)  horizontal-overflow=false",
+    "shot iphone-390-advanced.png (+ -full, 1888px)  horizontal-overflow=false",
+    "shot iphone-390-my-account.png (+ -full, 2137px)  horizontal-overflow=false",
+    "old /settings/overview → /springfield-elementary/settings  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/security?add=passkey → /springfield-elementary/account?add=passkey  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/player → /springfield-elementary/settings/player  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/sso → /springfield-elementary/settings/sso  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/ai → /springfield-elementary/settings/ai  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/pos → /springfield-elementary/settings/pos  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/streaming → /springfield-elementary/settings/streaming  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/monetize → /springfield-elementary/settings/integrations  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/usb → /springfield-elementary/playlists  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/locations → /springfield-elementary/settings/locations  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/sports → /springfield-elementary/settings/sports  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\"",
+    "old /settings/support-access → /springfield-elementary/settings/support-access  h1=\"SpringfieldELEMENTARYSpringfield ElementaryHome of the Otters\""
+  ]
+}

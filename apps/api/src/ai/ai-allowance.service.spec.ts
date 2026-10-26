@@ -405,7 +405,7 @@ describe('AiAllowanceService — BOARDS (the AI Designer on our key)', () => {
     delete process.env.OPENAI_API_KEY;
     expect(await svc.operatorView('bare')).toMatchObject({
       source: 'none', unlimited: false, boardsLeft: null, purchaseEnabled: false, reasonCode: 'NO_PLATFORM_KEY',
-      reason: 'AI runs on your own key — add it in Settings → AI provider.',
+      reason: 'AI runs on your own key — add it in Settings → Connections → AI.',
     });
   });
 

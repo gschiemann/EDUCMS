@@ -236,9 +236,9 @@ export function AiImageModal({
       } else if (code === 'AI_IMAGE_CAP_REACHED' || (status === 429 && /image cap/i.test(msg))) {
         setError('You’ve hit the hourly AI image limit. Try again in a bit.');
       } else if (code === 'AI_CAP_REACHED' || status === 402) {
-        setError("This month's included AI is used up. Add your own AI key in Settings → AI provider to keep going.");
+        setError("This month's included AI is used up. Add your own AI key in Settings → Connections → AI to keep going.");
       } else if (/not configured/i.test(msg)) {
-        setError('AI is not configured. Ask your admin to add a provider key in Settings → AI provider.');
+        setError('AI is not configured. Ask your admin to add a provider key in Settings → Connections → AI.');
       } else if (/rejected|re-enter/i.test(msg)) {
         setError(msg);
       } else {
@@ -283,7 +283,7 @@ export function AiImageModal({
               <h3 className="text-sm font-bold text-slate-900 mb-1">Image generation needs OpenAI or Google</h3>
               <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed mb-4">
                 Your current AI provider can write copy but doesn’t create images. Add an OpenAI or Google
-                key in Settings → AI provider, then come back and generate.
+                key in Settings → Connections → AI, then come back and generate.
               </p>
               <a
                 href={aiSettingsHref}

@@ -26,6 +26,7 @@
  *              server-side before the list is returned)
  */
 import type { SettingsStatusKind } from '../shell/primitives';
+import { posProviderConnectable, streamProviderConnectable } from './connectable';
 
 export type IntegrationFamily = 'ai' | 'clever' | 'streaming' | 'pos' | 'monetization';
 
@@ -81,10 +82,30 @@ export interface IntegrationCatalogEntry {
 
 export const INTEGRATION_FAMILIES: readonly IntegrationFamily[] = [
   'ai',
-  'clever',
-  'streaming',
   'pos',
+  'streaming',
+  'clever',
 ];
+
+/**
+ * The order the families are shown in, by what this kind of business uses
+ * most (settings audit §6.2): food and retail lead with point of sale,
+ * sports and gyms with live video, schools with AI and rosters.
+ */
+export function familyOrder(vertical?: string | null): readonly IntegrationFamily[] {
+  switch (vertical) {
+    case 'QSR':
+    case 'RESTAURANT':
+    case 'BAR':
+    case 'RETAIL':
+      return ['pos', 'ai', 'streaming', 'clever'];
+    case 'SPORTS':
+    case 'GYM':
+      return ['streaming', 'ai', 'pos', 'clever'];
+    default:
+      return INTEGRATION_FAMILIES;
+  }
+}
 
 export const FAMILY_ROUTES: Record<IntegrationFamily, string> = {
   ai: 'integrations/ai',
@@ -95,14 +116,12 @@ export const FAMILY_ROUTES: Record<IntegrationFamily, string> = {
 };
 
 /** The five state filters in §7.7, mapped onto the §11 vocabulary. */
-export type IntegrationStateFilter = 'connected' | 'attention' | 'available' | 'external' | 'planned';
+export type IntegrationStateFilter = 'connected' | 'attention' | 'available';
 
 export const STATE_FILTER_MEMBERS: Record<IntegrationStateFilter, readonly IntegrationState[]> = {
   connected: ['connected', 'ready'],
   attention: ['attention', 'degraded', 'blocked', 'unknown'],
   available: ['notConfigured'],
-  external: ['external'],
-  planned: ['planned'],
 };
 
 /**
@@ -136,6 +155,16 @@ export function primaryActionFor(
     default:
       return { kind: 'none' };
   }
+}
+
+/**
+ * "Connect" on a provider row opens that provider's connect form directly
+ * (`?connect=<id>`), instead of the provider page it lives on — one click
+ * fewer for "connect Square" or "add a stream" (2026-10-26).
+ */
+export function withConnectTarget(action: IntegrationAction, state: IntegrationState, providerId: string): IntegrationAction {
+  if (state !== 'notConfigured' || action.kind !== 'configure' || !action.href) return action;
+  return { ...action, href: `${action.href}?connect=${encodeURIComponent(providerId)}` };
 }
 
 /* ─────────────────────────── inputs ─────────────────────────── */
@@ -253,7 +282,7 @@ export function streamingEntry(
     // unavailable → `unsupported`, explanation, no connect action.
     state = 'unsupported';
     detail = p.tierReason || p.blurb;
-  } else if (p.integrationTier === 'DIRECT') {
+  } else if (streamProviderConnectable(p)) {
     state = 'notConfigured';
     detail = p.blurb;
   } else if (p.integrationTier === 'PARTNER') {
@@ -275,7 +304,7 @@ export function streamingEntry(
     statusSource: 'streamingConnections',
     state,
     detail,
-    action: primaryActionFor(state, route, { docsUrl: p.docsUrl }),
+    action: withConnectTarget(primaryActionFor(state, route, { docsUrl: p.docsUrl }), state, p.id),
     searchTerms: [p.name, p.id, 'streaming', 'video', 'channel'],
   };
 }
@@ -293,7 +322,9 @@ export function posEntry(
   if (connection) {
     state = connectionState(connection.status);
     detail = connection.statusReason || p.blurb;
-  } else if (p.integrationTier === 'DIRECT') {
+  } else if (posProviderConnectable(p)) {
+    // DIRECT providers, and Toast: its API-credential connector discovers
+    // the stores and syncs the menu (it is PARTNER in the provider list).
     state = 'notConfigured';
     detail = p.blurb;
   } else if (p.integrationTier === 'PARTNER') {
@@ -314,7 +345,7 @@ export function posEntry(
     state,
     detail,
     lastSyncAt: connection?.lastSyncedAt ?? undefined,
-    action: primaryActionFor(state, route, { docsUrl: p.docsUrl }),
+    action: withConnectTarget(primaryActionFor(state, route, { docsUrl: p.docsUrl }), state, p.id),
     searchTerms: [p.name, p.id, 'pos', 'menu', 'catalog', 'prices'],
   };
 }
@@ -364,7 +395,10 @@ export function adNetworkEntry(
  * The detail line says that, rather than implying the provider has
  * accepted the key on a live call.
  */
-export function aiKeyEntry(status: AiKeyStatusLike | null | undefined): IntegrationCatalogEntry {
+export function aiKeyEntry(
+  status: AiKeyStatusLike | null | undefined,
+  name = 'Your AI key',
+): IntegrationCatalogEntry {
   const route = FAMILY_ROUTES.ai;
   let state: IntegrationState;
   let statusSource: IntegrationStatusSource = 'aiKey';
@@ -384,7 +418,7 @@ export function aiKeyEntry(status: AiKeyStatusLike | null | undefined): Integrat
 
   return {
     id: 'ai:key',
-    name: 'AI provider key',
+    name,
     family: 'ai',
     route,
     statusSource,
@@ -397,12 +431,16 @@ export function aiKeyEntry(status: AiKeyStatusLike | null | undefined): Integrat
 }
 
 /** Brand voice is a free-text field on `GET /branding/me`; set or not set. */
-export function brandVoiceEntry(brandVoice: string | null | undefined, reachable: boolean): IntegrationCatalogEntry {
+export function brandVoiceEntry(
+  brandVoice: string | null | undefined,
+  reachable: boolean,
+  name = 'Brand voice',
+): IntegrationCatalogEntry {
   const route = FAMILY_ROUTES.ai;
   const state: IntegrationState = !reachable ? 'unknown' : brandVoice && brandVoice.trim() ? 'ready' : 'notConfigured';
   return {
     id: 'ai:brandVoice',
-    name: 'Brand voice',
+    name,
     family: 'ai',
     route,
     statusSource: reachable ? 'brandingMe' : 'unavailable',
@@ -414,7 +452,10 @@ export function brandVoiceEntry(brandVoice: string | null | undefined, reachable
 
 /* ───────────────────────── Clever ───────────────────────── */
 
-export function cleverEntry(status: CleverStatusLike | null | undefined): IntegrationCatalogEntry {
+export function cleverEntry(
+  status: CleverStatusLike | null | undefined,
+  name = 'Clever roster sync',
+): IntegrationCatalogEntry {
   const route = FAMILY_ROUTES.clever;
   let state: IntegrationState;
   if (!status) {
@@ -430,7 +471,7 @@ export function cleverEntry(status: CleverStatusLike | null | undefined): Integr
   }
   return {
     id: 'clever:roster',
-    name: 'Clever roster sync',
+    name,
     family: 'clever',
     route,
     statusSource: status ? 'cleverStatus' : 'unavailable',
@@ -441,26 +482,6 @@ export function cleverEntry(status: CleverStatusLike | null | undefined): Integr
   };
 }
 
-/* ───────────────────── static policy rows ───────────────────── */
-
-/**
- * Consumer entertainment services. There is no provider row for these in
- * the API catalog because there is nothing to connect: no consumer
- * subscription grants public-performance rights, so the product refuses
- * to present them as connectable. `catalog.policy` is the status source —
- * a stated product policy, not a reading of a live endpoint.
- */
-export const CONSUMER_ENTERTAINMENT_ENTRY: IntegrationCatalogEntry = {
-  id: 'streaming:consumer-entertainment',
-  name: 'Hulu · Netflix · Disney+ · Max',
-  family: 'streaming',
-  route: FAMILY_ROUTES.streaming,
-  statusSource: 'catalogPolicy',
-  state: 'unsupported',
-  action: { kind: 'none' },
-  searchTerms: ['hulu', 'netflix', 'disney', 'max', 'consumer', 'entertainment'],
-};
-
 /* ─────────────────────────── build ─────────────────────────── */
 
 export interface CatalogInputs {
@@ -470,13 +491,12 @@ export interface CatalogInputs {
   posProviders?: readonly PosProviderLike[];
   posConnections?: readonly ConnectionRowLike[];
   posReachable: boolean;
-  adNetworks?: readonly AdNetworkLike[];
-  adConnections?: readonly ConnectionRowLike[];
-  adsReachable: boolean;
   aiKey?: AiKeyStatusLike | null;
-  brandVoice?: string | null;
-  brandingReachable: boolean;
   clever?: CleverStatusLike | null;
+  /** The tenant's vertical: Clever roster sync is a K-12 connection. */
+  vertical?: string | null;
+  /** Translated row names (the catalog is pure; the page passes `t()` output). */
+  labels?: { aiKey?: string; clever?: string };
 }
 
 function firstConnection(
@@ -491,16 +511,39 @@ function firstConnection(
 }
 
 /**
+ * States a row may be listed in. Connections shows ONLY what can really be
+ * connected today (owner, 2026-10-24): a provider that runs on its own
+ * licensed device (`external`), one with no commercially usable path
+ * (`unsupported`) and one whose adapter has not shipped (`planned`) are not
+ * listed — they were choices that are not choices. A provider the
+ * organization already has a connection to always is (a connection row is
+ * never one of those three states).
+ */
+const LISTED_STATES: ReadonlySet<IntegrationState> = new Set<IntegrationState>([
+  'connected',
+  'ready',
+  'attention',
+  'degraded',
+  'blocked',
+  'notConfigured',
+  'unknown',
+]);
+
+/**
  * Build the whole catalog. Pure: same inputs → same rows, in a stable
- * order (AI, Clever, streaming, POS, monetization; providers in the order
- * the API returned them, which is the API's own priority order).
+ * order (AI, POS, live video, rosters; providers in the order the API
+ * returned them, which is the API's own priority order).
  */
 export function buildCatalog(input: CatalogInputs): IntegrationCatalogEntry[] {
   const rows: IntegrationCatalogEntry[] = [];
 
-  rows.push(aiKeyEntry(input.aiKey));
-  rows.push(brandVoiceEntry(input.brandVoice, input.brandingReachable));
-  rows.push(cleverEntry(input.clever));
+  rows.push(aiKeyEntry(input.aiKey, input.labels?.aiKey));
+
+  for (const p of input.posProviders ?? []) {
+    rows.push(
+      posEntry(p, input.posReachable ? firstConnection(input.posConnections, 'providerId', p.id) : undefined),
+    );
+  }
 
   for (const p of input.streamingProviders ?? []) {
     rows.push(
@@ -510,22 +553,17 @@ export function buildCatalog(input: CatalogInputs): IntegrationCatalogEntry[] {
       ),
     );
   }
-  rows.push(CONSUMER_ENTERTAINMENT_ENTRY);
 
-  for (const p of input.posProviders ?? []) {
-    rows.push(
-      posEntry(p, input.posReachable ? firstConnection(input.posConnections, 'providerId', p.id) : undefined),
-    );
+  // Clever is a K-12 district roster sync: listed for schools, or anywhere a
+  // connection already exists. An unknown vertical lists it, as before.
+  if (!input.vertical || input.vertical === 'K12' || input.clever?.connected) {
+    rows.push(cleverEntry(input.clever, input.labels?.clever));
   }
 
-  // Ad-network monetization is not built (no inventory delivery), so it has no
-  // row here at all — a catalog entry for something that cannot work reads as
-  // an unfinished product. `adNetworkEntry` stays for when delivery ships.
-
-  // A `planned` provider has no connector yet: nothing to configure, so it is
-  // hidden rather than shown with a label. A provider with a connection is
-  // never `planned`, so this cannot hide anything an operator set up.
-  return rows.filter((r) => r.state !== 'planned');
+  // Brand voice is a writing style, not a connection — it stays on the AI
+  // page, not in this list. Ad networks are not built (no inventory
+  // delivery), so they have no row; `adNetworkEntry` stays for when they ship.
+  return rows.filter((r) => LISTED_STATES.has(r.state));
 }
 
 /** Rows whose §11 state means an operator has something to fix right now. */

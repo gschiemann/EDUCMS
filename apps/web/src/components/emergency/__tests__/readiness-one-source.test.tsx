@@ -33,18 +33,19 @@ const report: ReadinessReport = {
 
 it('the rail shows exactly the types the report counts as having live content', () => {
   render(<AlertTypeRail report={report} loading={false} kinds={KINDS} />);
-  // Header says 1 of 6 → the rail shows exactly one Configured.
-  expect(screen.getAllByText('Configured')).toHaveLength(1);
-  expect(screen.getAllByText('No content')).toHaveLength(5);
+  // Header says 1 of 6 → the rail shows exactly one with the school's own
+  // content; the other five show their standard message (2026-10-26).
+  expect(screen.getAllByText('Your content')).toHaveLength(1);
+  expect(screen.getAllByText('Standard message')).toHaveLength(5);
   // Drill content (hold) is its own module, and does not flip hold to Configured.
   expect(screen.getByText('Drill content')).toBeInTheDocument();
   expect(screen.getByText('1 of 6 types')).toBeInTheDocument();
 });
 
-it('without a report the rail says Checking / Unknown, never "No content"', () => {
+it('without a report the rail says Checking / Unknown, never a state it cannot prove', () => {
   const { rerender } = render(<AlertTypeRail report={undefined} loading kinds={KINDS} />);
   expect(screen.getAllByText('Checking')).toHaveLength(6);
-  expect(screen.queryByText('No content')).not.toBeInTheDocument();
+  expect(screen.queryByText('Standard message')).not.toBeInTheDocument();
   rerender(<AlertTypeRail report={undefined} loading={false} kinds={KINDS} />);
   expect(screen.getAllByText('Unknown')).toHaveLength(6);
 });

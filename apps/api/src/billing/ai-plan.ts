@@ -224,8 +224,8 @@ export function aiAddonUsd(): string {
 /** The English upsell the API answers with (the dashboard shows its own en/es/zh copy by `code`). */
 export function aiPlanRequiredMessage(): string {
   return (
-    `Add VenueOS AI for ${aiAddonUsd()}/screen/month (Settings → Billing) — ` +
-    'or connect your own AI key for free (Settings → AI). Your own key works on every plan, with every AI feature.'
+    `Add VenueOS AI for ${aiAddonUsd()}/screen/month (Settings → Plan & billing) — ` +
+    'or connect your own AI key for free (Settings → Connections → AI). Your own key works on every plan, with every AI feature.'
   );
 }
 
@@ -238,6 +238,6 @@ export function aiLimitMessage(o: { unit: 'boards' | 'images'; plan: AiPlan; res
       : `this month${o.resetAt ? ` (they reset ${new Date(o.resetAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })})` : ''}`;
   return (
     `You've used all your ${what} ${when}. ` +
-    'Add your own AI key in Settings → AI provider to keep going, or contact us for more.'
+    'Add your own AI key in Settings → Connections → AI to keep going, or contact us for more.'
   );
 }

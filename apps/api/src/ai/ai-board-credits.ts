@@ -293,7 +293,7 @@ export function boardPurchaseAvailability(
     return {
       enabled: false,
       reasonCode: 'NO_PLATFORM_KEY',
-      reason: 'AI runs on your own key — add it in Settings → AI provider.',
+      reason: 'AI runs on your own key — add it in Settings → Connections → AI.',
     };
   }
   if (source === 'tenant') {
@@ -344,7 +344,7 @@ export function boardsCapMessage(o: {
     timeZone: 'UTC',
   });
   const ways = o.purchaseEnabled
-    ? 'Buy more boards in Settings → Billing, or add your own AI key in Settings → AI provider — you pay your provider directly, with no limit here.'
-    : 'Add your own AI key in Settings → AI provider to keep going — you pay your provider directly, with no limit here — or contact us for more.';
+    ? 'Buy more boards in Settings → Billing, or add your own AI key in Settings → Connections → AI — you pay your provider directly, with no limit here.'
+    : 'Add your own AI key in Settings → Connections → AI to keep going — you pay your provider directly, with no limit here — or contact us for more.';
   return `${needs}; ${have} (included boards reset ${resetDay}). ${ways}`;
 }

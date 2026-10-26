@@ -15,8 +15,8 @@
     "settings": "设置",
     "reviews": "审核",
     "proofOfPlay": "播放证明",
-    "audit": "审计日志",
-    "account": "账户",
+    "audit": "活动记录",
+    "account": "我的账户",
     "more": "更多",
     "mainMenu": "主菜单",
     "media": "媒体",
@@ -79,7 +79,7 @@
     },
     "modal": {
       "title": "触发紧急警报",
-      "configuredIn": "紧急内容在<b>设置 → 紧急内容</b>中配置。",
+      "configuredIn": "紧急内容在<b>设置 → 紧急警报</b>中配置。",
       "close": "关闭",
       "step1": "1. 选择紧急类型",
       "step2": "2. 确认",
@@ -380,12 +380,12 @@
     "passkeyOfferBody": "下次无需输入密码，直接使用{method}。",
     "passkeyOfferNotNow": "以后再说",
     "passkeyOfferDontAsk": "在此设备上不再询问",
-    "passkeyOfferFootnote": "你可以随时在“设置 → 我的安全”中添加或移除通行密钥。",
+    "passkeyOfferFootnote": "你可以随时在“我的账户”中添加或移除通行密钥。",
     "passkeyOfferDoneTitle": "通行密钥已保存",
     "passkeyOfferDoneBody": "下次请选择“使用通行密钥登录”，然后使用{method}。",
     "passkeyOfferContinue": "继续",
-    "passkeyOfferCancelled": "未设置通行密钥。你可以随时在“设置 → 我的安全”中添加。",
-    "passkeyOfferFailed": "这次未能设置通行密钥。你可以稍后在“设置 → 我的安全”中添加。",
+    "passkeyOfferCancelled": "未设置通行密钥。你可以随时在“我的账户”中添加。",
+    "passkeyOfferFailed": "这次未能设置通行密钥。你可以稍后在“我的账户”中添加。",
     "useAnotherWay": "使用其他方式",
     "passkeyElsewhereNote": "你的通行密钥可能在另一台设备上。请在这台设备上用其他方式登录：",
     "passkeyTryAgain": "再次尝试通行密钥",
@@ -393,8 +393,8 @@
     "otherWaysLabel": "其他登录方式",
     "otherWayAuthenticator": "输入身份验证器应用中的验证码",
     "otherWayEmail": "通过邮件发送验证码给我",
-    "otherWayDeviceHint": "或者在存有通行密钥的设备上登录，然后在“设置 → 我的安全”中添加这台设备。",
-    "otherWayNone": "请在存有通行密钥的设备上登录，然后在“设置 → 我的安全”中为这台设备添加通行密钥。",
+    "otherWayDeviceHint": "或者在存有通行密钥的设备上登录，然后在“我的账户”中添加这台设备。",
+    "otherWayNone": "请在存有通行密钥的设备上登录，然后在“我的账户”中为这台设备添加通行密钥。",
     "mfaUsePasskeySub": "使用你的通行密钥完成登录。",
     "emailCodeSubtitle": "输入我们通过邮件发送的验证码以完成登录。",
     "emailCodeSending": "正在发送…",
@@ -425,29 +425,18 @@
     "phoneSetupTurnOnSub": "你已登录。开启后，下次在这里登录只需轻点一下。",
     "phoneSetupTurnOnButton": "{device, select, iphone {开启面容 ID 或触控 ID} ipad {开启面容 ID 或触控 ID} android {开启指纹登录} other {开启通行密钥登录}}",
     "phoneSetupSignedInTitle": "你已登录",
-    "phoneSetupLater": "你可以稍后在“设置 → 我的安全”中为这台设备添加通行密钥。",
+    "phoneSetupLater": "你可以稍后在“我的账户”中为这台设备添加通行密钥。",
     "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
     "security": "安全"
   },
   "account": {
-    "title": "账户",
+    "title": "我的账户",
     "editProfile": "编辑资料",
     "signOut": "退出登录",
     "signOutTitle": "确定退出登录？",
     "signOutMessage": "你需要重新登录才能管理屏幕和内容。",
-    "sectionSchool": "机构",
-    "currentSchool": "当前机构",
-    "schoolSettings": "机构设置",
-    "schoolSettingsSub": "品牌、紧急内容、集成",
     "sectionNotifications": "通知",
-    "notificationSettings": "通知设置",
-    "notificationSettingsSub": "推送、邮件、应用内偏好",
     "appInfo": "VenueOS 控制台",
-    "roleSuperAdmin": "超级管理员",
-    "roleDistrictAdmin": "区域管理员",
-    "roleSchoolAdmin": "机构管理员",
-    "roleContributor": "内容编辑",
-    "roleViewer": "查看者",
     "roleUnknown": "未知",
     "alertEmails": {
       "title": "提醒邮件",
@@ -459,7 +448,17 @@
       "languageDefault": "与我的组织相同",
       "saved": "已保存",
       "saveFailed": "无法保存，请重试。"
-    }
+    },
+    "subtitle": "您的个人资料、登录方式和语言。",
+    "securityTitle": "登录与安全",
+    "securityDesc": "只有您可以更改这些设置，它们适用于您登录的所有地方。",
+    "mfaTitle": "两步验证登录",
+    "mfaDesc": "除密码外，再输入身份验证器应用中的验证码。",
+    "languageTitle": "语言",
+    "languageDesc": "VenueOS 在此设备上以该语言显示。",
+    "organizationTitle": "您的组织",
+    "openSettings": "打开设置",
+    "openSettingsSub": "标志、警报、团队、连接和账单。"
   },
   "settings": {
     "common": {
@@ -674,71 +673,58 @@
       "autoPromoteAfterSoak": "观察期后自动晋级"
     },
     "shell": {
-      "indexLabel": "设置索引",
-      "indexHeading": "设置",
-      "groups": {
-        "workspace": "工作区",
-        "operations": "运营",
-        "access": "访问与平台",
-        "account": "账户"
-      },
+      "indexLabel": "设置区域",
       "sections": {
-        "overview": {
-          "label": "概览",
-          "description": "该组织是否已配置完成，是否有阻碍运营的问题？"
-        },
         "organization": {
-          "label": "组织",
-          "description": "身份、行业和组织级默认设置。"
+          "label": "组织资料",
+          "description": "您组织的名称、地址、时区和行业。"
         },
         "locations": {
           "label": "地点",
-          "description": "组织结构以及每个地点的继承来源。"
+          "description": "您组织中的学校、门店或场所。"
         },
         "brand": {
-          "label": "品牌与外观",
-          "description": "仪表盘界面和受支持屏幕模板的唯一真实来源。"
+          "label": "标志与颜色",
+          "description": "您的标志和颜色，用于控制台和您的屏幕。"
         },
         "emergency": {
-          "label": "紧急情况",
-          "description": "配置并验证警报就绪状态。触发操作位于全局“紧急情况”入口。"
+          "label": "紧急警报",
+          "description": "警报消息以及谁可以发送警报。警报通过“紧急”按钮发送。"
         },
         "player": {
-          "label": "播放器与离线",
-          "description": "播放器软件分发、更新窗口、分阶段发布和离线连续性。"
+          "label": "屏幕更新",
+          "description": "VenueOS 会为您自动更新屏幕上的软件。"
         },
         "integrations": {
-          "label": "集成",
-          "description": "AI、流媒体、POS、身份连接的真实目录。"
+          "label": "连接",
+          "description": "目前可与 VenueOS 配合使用的服务。连接后即可在屏幕上使用。"
         },
         "people": {
-          "label": "人员与访问",
-          "description": "团队成员、邀请、角色、MFA 策略、SSO 和内容审批。"
+          "label": "人员",
+          "description": "谁可以使用 VenueOS、每个人可以做什么，以及如何登录。"
         },
         "billing": {
-          "label": "账单",
-          "description": "套餐、屏幕席位、发票和付款状态。"
+          "label": "套餐与账单",
+          "description": "您的套餐、屏幕席位、发票和付款。"
         },
         "developer": {
-          "label": "开发者与审计",
-          "description": "API 密钥、Webhook、构建信息和审计日志。"
+          "label": "API 密钥与 Webhook",
+          "description": "将您自己的软件连接到 VenueOS。"
         },
         "security": {
-          "label": "我的安全",
-          "description": "你自己账户的密码和两步验证设置。"
+          "label": "我的账户",
+          "description": "您的密码、通行密钥和两步验证登录。"
         },
         "sports": {
-          "label": "体育",
+          "label": "学生隐私",
           "description": "比赛日设置，包括公共屏幕可以显示哪些学生信息。"
         },
         "supportAccess": {
-          "label": "VenueOS 支持访问",
+          "label": "VenueOS 支持",
           "description": "决定 VenueOS 支持何时可以进入你的组织，并可随时结束。"
         }
       },
       "scopePersonal": "个人账户",
-      "historyTitle": "设置历史",
-      "historyBody": "每次保存的更改都会记录范围、作者和时间。",
       "statusAttention": "需要关注",
       "statusError": "错误",
       "save": "保存更改",
@@ -746,11 +732,8 @@
       "noChanges": "无更改",
       "discard": "放弃",
       "allSettings": "全部设置",
-      "context": "上下文",
-      "contextLabel": "设置上下文",
-      "contextEmpty": "此部分暂无内容。",
-      "palettePlaceholder": "查找设置或跳转到某个地点…",
-      "paletteLabel": "查找设置",
+      "palettePlaceholder": "搜索设置——试试“标志”或“邀请”",
+      "paletteLabel": "搜索设置",
       "paletteEmpty": "没有与“{query}”匹配的设置。",
       "paletteSwitchScope": "切换范围",
       "noAccessTitle": "你无权访问{section}",
@@ -759,17 +742,248 @@
       "dirtyBody": "离开前请保存、放弃更改，或留在此页面。",
       "dirtySave": "保存更改",
       "dirtyDiscard": "放弃并继续",
-      "dirtyStay": "留在此处"
+      "dirtyStay": "留在此处",
+      "areas": {
+        "organization": {
+          "label": "组织",
+          "description": "名称、地址、标志、颜色和地点。",
+          "keywords": "名称, 地址, 时区, 标志, 颜色, 品牌, 地点, 学校, 学生隐私"
+        },
+        "emergency": {
+          "label": "紧急警报",
+          "description": "警报消息，以及谁可以发送警报。",
+          "keywords": "封锁, 疏散, 火警, 天气, 医疗, 原地等待, 安全警戒, 警报, 演习"
+        },
+        "team": {
+          "label": "团队",
+          "description": "人员、角色以及登录方式。",
+          "keywords": "人员, 用户, 邀请, 角色, 登录, 两步验证, 单点登录"
+        },
+        "connections": {
+          "label": "连接",
+          "description": "AI、收银系统、直播视频及其他服务。",
+          "keywords": "集成, AI, 密钥, 收银, 菜单, 价格, 视频, 直播, 名册"
+        },
+        "billing": {
+          "label": "套餐与账单",
+          "description": "您的套餐、发票和 AI 附加功能。",
+          "keywords": "套餐, 账单, 发票, 付款, 信用卡, 订阅, 试用, 席位"
+        },
+        "advanced": {
+          "label": "高级",
+          "description": "API 密钥、Webhook 和 VenueOS 支持访问。",
+          "keywords": "API, 密钥, Webhook, 开发者, 支持"
+        }
+      },
+      "tabs": {
+        "profile": "基本信息",
+        "brand": "标志与颜色",
+        "locations": "地点",
+        "privacy": "学生隐私",
+        "emergency": "警报",
+        "people": "人员",
+        "sso": "单点登录",
+        "connections": "全部",
+        "ai": "AI",
+        "pos": "收银系统",
+        "video": "直播视频",
+        "rosters": "学生名册",
+        "billing": "套餐与账单",
+        "developer": "API 密钥与 Webhook",
+        "support": "VenueOS 支持"
+      },
+      "tabsLabel": "{area}页面",
+      "details": "详情",
+      "detailsLabel": "关于此页面的更多信息",
+      "searchButton": "搜索设置",
+      "noAccessBodyAccount": "此项由管理员管理。您的个人资料、密码和登录设置都在“我的账户”中。",
+      "openMyAccount": "打开“我的账户”",
+      "backToSettings": "返回设置",
+      "homeLink": "设置首页",
+      "home": {
+        "subtitle": "选择一个区域，或搜索您想做的事情。",
+        "areasLabel": "设置区域",
+        "attentionTitle": "需要处理",
+        "moreTitle": "更多",
+        "activityTitle": "活动记录",
+        "activityBody": "查看谁在何时更改了什么。",
+        "accountTitle": "我的账户",
+        "accountBody": "您的个人资料、密码、通行密钥和语言。",
+        "status": {
+          "checking": "正在检查…",
+          "emergencyReady": "已就绪",
+          "emergencyAttention": "需要处理",
+          "emergencyNotSet": "未设置",
+          "emergencyOff": "已关闭",
+          "trial": "免费试用 · 剩余 {days} 天",
+          "trialEnded": "免费试用已结束",
+          "active": "有效",
+          "paymentProblem": "付款出现问题",
+          "ended": "套餐已结束"
+        },
+        "attention": {
+          "noScreens": "还没有配对任何屏幕，因此警报无法送达任何人。",
+          "pairScreen": "配对屏幕",
+          "screensOffline": "部分屏幕处于离线状态，将收不到警报。",
+          "checkScreens": "检查屏幕",
+          "oneSender": "只有一个人可以发送警报。",
+          "noSender": "目前还没有人可以发送警报。",
+          "chooseSenders": "选择人员",
+          "delivery": "警报目前无法送达您的屏幕。",
+          "openEmergency": "打开紧急警报",
+          "practice": "过去 90 天内没有演习过警报。",
+          "practiceAction": "如何进行演习",
+          "trialEnds": "您的免费试用将在 {days} 天后结束。",
+          "planEnded": "您的套餐已结束。选择一个套餐即可继续编辑。",
+          "pickPlan": "选择套餐",
+          "paymentProblem": "您的付款出现问题。",
+          "fixPayment": "处理付款",
+          "seatsFull": "所有屏幕席位均已使用（{used}/{limit}）。",
+          "addSeats": "增加席位"
+        },
+        "notAdmin": "设置由管理员管理。正在打开“我的账户”…"
+      },
+      "jobs": {
+        "changeLogo": {
+          "label": "更换标志",
+          "keywords": "标志, 品牌, 图片"
+        },
+        "changeColors": {
+          "label": "更改品牌颜色",
+          "keywords": "颜色, 配色, 主题"
+        },
+        "orgDetails": {
+          "label": "名称、地址和时区",
+          "keywords": "名称, 地址, 时区, 行业"
+        },
+        "addLocation": {
+          "label": "添加地点",
+          "keywords": "地点, 学校, 场所, 门店"
+        },
+        "studentPrivacy": {
+          "label": "屏幕显示的学生信息",
+          "keywords": "FERPA, 照片, 姓名, 未成年人"
+        },
+        "alertMessages": {
+          "label": "更改警报消息",
+          "keywords": "封锁, 疏散, 天气, 文字, 图片"
+        },
+        "whoCanSend": {
+          "label": "选择谁可以发送警报",
+          "keywords": "紧急按钮, 触发, 权限"
+        },
+        "practiceDrill": {
+          "label": "进行演习",
+          "keywords": "演习, 练习, 测试警报"
+        },
+        "floorPlans": {
+          "label": "楼层平面图",
+          "keywords": "地图, 建筑, 楼层"
+        },
+        "invite": {
+          "label": "邀请成员",
+          "keywords": "邀请, 添加人员, 同事"
+        },
+        "changeRole": {
+          "label": "更改成员权限",
+          "keywords": "角色, 权限, 编辑者, 查看者"
+        },
+        "require2Step": {
+          "label": "要求两步验证登录",
+          "keywords": "两步验证, 双重验证, 安全"
+        },
+        "sso": {
+          "label": "设置单点登录",
+          "keywords": "SSO, Okta, Azure, Entra, OIDC"
+        },
+        "aiKey": {
+          "label": "添加 AI 密钥",
+          "keywords": "AI, OpenAI, Anthropic, Gemini, 密钥"
+        },
+        "connectPos": {
+          "label": "连接收银系统",
+          "keywords": "收银, 菜单, 价格, Square, Toast, Clover"
+        },
+        "liveVideo": {
+          "label": "添加直播视频",
+          "keywords": "直播, 视频, 流媒体, HLS"
+        },
+        "clever": {
+          "label": "同步学生名册（Clever）",
+          "keywords": "Clever, 名册, 学生"
+        },
+        "plan": {
+          "label": "更改套餐",
+          "keywords": "套餐, 升级, 席位, 试用"
+        },
+        "invoices": {
+          "label": "发票与付款",
+          "keywords": "发票, 收据, 付款, 信用卡"
+        },
+        "apiKeys": {
+          "label": "API 密钥与 Webhook",
+          "keywords": "API, 密钥, 令牌, Webhook"
+        },
+        "supportAccess": {
+          "label": "允许 VenueOS 支持协助",
+          "keywords": "支持, 帮助, 远程访问"
+        },
+        "activity": {
+          "label": "查看谁更改了什么",
+          "keywords": "审计, 历史, 日志, 活动"
+        },
+        "myPassword": {
+          "label": "更改我的密码",
+          "keywords": "密码"
+        },
+        "myPasskey": {
+          "label": "设置通行密钥",
+          "keywords": "通行密钥, 面容 ID, 触控 ID, 指纹"
+        },
+        "myLanguage": {
+          "label": "更改我的语言",
+          "keywords": "语言, 英语, 西班牙语, 中文"
+        }
+      },
+      "jobAreas": {
+        "account": "我的账户",
+        "activity": "活动记录"
+      },
+      "status": {
+        "ready": "已就绪",
+        "connected": "已连接",
+        "attention": "需要处理",
+        "degraded": "需要处理",
+        "blocked": "无法使用",
+        "notConfigured": "未设置",
+        "external": "使用自带设备",
+        "planned": "暂不可用",
+        "unsupported": "不可用",
+        "unknown": "未知"
+      },
+      "inheritance": {
+        "default": "组织默认设置",
+        "inherited": "继承自 {name}",
+        "inheritedFallback": "您的组织",
+        "override": "已在此处更改",
+        "unsupported": "此处不可用"
+      },
+      "denied": {
+        "title": "您无权访问 {section}",
+        "body": "{grantedBy}可以为您授予访问权限。",
+        "defaultGrantor": "组织管理员"
+      },
+      "errorSummaryTitle": "无法保存"
     },
     "cc": {
       "emergency": {
         "title": "紧急警报",
         "description": "配置并验证警报是否就绪。此页面不用于触发警报。",
         "editorTitle": "紧急警报",
-        "editorDescription": "触发警报时各屏幕显示的内容，以及现在是否真的能生效。",
+        "editorDescription": "发送警报时屏幕显示的内容，以及现在是否可以正常工作。",
         "readiness": {
-          "title": "就绪状态",
-          "desc": "警报今天能否送达各屏幕；若不能，具体缺少什么。",
+          "title": "一切正常吗？",
+          "desc": "警报今天能否送达您的屏幕，以及如果不能需要修复什么。",
           "disabled": "本组织已关闭紧急警报，因此没有可评估的内容。请在下方开启该功能以查看就绪检查。"
         },
         "enablement": {
@@ -808,7 +1022,7 @@
           "unchanged": "没有任何改变。服务器最后确认的设置仍然有效。"
         },
         "delivery": {
-          "title": "下发方式",
+          "title": "所有屏幕相同，或按屏幕设置",
           "desc": "所有屏幕显示同一条警报，还是各屏幕显示各自的警报。",
           "loading": "正在读取下发方式…",
           "loadFailed": "无法读取下发方式。请先重新加载页面再做更改——服务器最后确认的设置仍然有效。",
@@ -823,8 +1037,8 @@
           "saveFailedFallback": "服务器未确认此更改。"
         },
         "content": {
-          "title": "警报类型与内容",
-          "desc": "各警报类型在屏幕上呈现的素材。没有内容的警报类型不会发送任何东西。",
+          "title": "警报消息",
+          "desc": "每种警报类型都已就绪，会在红色屏幕上显示标准消息。您也可以为任意类型添加自己的图片或视频。",
           "criticalGroup": "危急",
           "awarenessGroup": "提高戒备"
         },
@@ -867,14 +1081,14 @@
         "history": {
           "title": "历史记录",
           "desc": "本页的每一次更改和发出的每一条警报都会被永久记录，包含操作人与时间。",
-          "link": "打开审计日志"
+          "link": "查看谁做了什么"
         },
         "rail": {
           "capability": "功能",
           "capabilityOffBody": "该功能关闭期间不进行任何评估，也无法发送警报。",
           "byType": "警报内容",
-          "typeConfigured": "已配置",
-          "typeNotConfigured": "无内容",
+          "typeConfigured": "您的内容",
+          "typeNotConfigured": "标准消息",
           "typeChecking": "正在检查",
           "coverage": "覆盖范围",
           "coverageOrg": "所有屏幕显示相同的警报内容。",
@@ -931,6 +1145,28 @@
             "screen": "屏幕",
             "unknownUser": "未知"
           }
+        },
+        "setup": {
+          "title": "两步即可就绪",
+          "step1Title": "警报消息",
+          "step1Done": "每种警报类型都已准备好清晰的消息。您自己的图片或视频为可选项。",
+          "step1OffTitle": "开启安全警报",
+          "step1OffBody": "使用下方的按钮。之后每种警报类型都会准备好清晰的消息。",
+          "step2Title": "谁可以发送警报",
+          "step2Ok": "{count} 人可以发送警报。",
+          "step2One": "只有一个人可以发送警报。再添加一人，确保警报不会只依赖一个人。",
+          "step2None": "目前还没有人可以发送警报。",
+          "step2Checking": "正在检查谁可以发送…",
+          "step2Action": "选择人员",
+          "ready": "您的警报已就绪。",
+          "readyHint": "警报通过“紧急警报”按钮发送，绝不会从此页面发送。",
+          "stepDone": "已完成",
+          "stepTodo": "待完成"
+        },
+        "practice": {
+          "title": "进行演习",
+          "desc": "打开紧急警报页面，切换到“演习”，然后发送。每块屏幕都会显示“演习”，以免有人误以为是真实情况。",
+          "action": "打开紧急警报页面"
         }
       },
       "brand": {
@@ -1042,26 +1278,18 @@
         "searchInvoices": "发票"
       },
       "developer": {
-        "editorTitle": "开发与审计",
-        "editorDesc": "本组织的 API 密钥、出站 Webhook、构建信息和审计日志。",
+        "editorTitle": "API 密钥与 Webhook",
+        "editorDesc": "让您自己的软件读取 VenueOS 的数据或对其做出响应。",
         "deniedGrantedBy": "学区管理员或超级管理员",
-        "systemTitle": "系统与构建",
-        "systemDesc": "本部署的只读端点，在部署时设定。",
-        "integrationsTitle": "已连接的集成",
-        "integrationsDesc": "接入本组织的所有外部系统，并链接到各自的设置页。",
+        "systemTitle": "关于此工作区",
+        "systemDesc": "地址和版本号，以备 VenueOS 支持人员询问。",
         "apiKeysTitle": "API 密钥",
         "apiKeysDesc": "调用 REST API 的 Bearer 令牌。令牌只在创建时显示一次。",
         "webhooksTitle": "Webhook",
         "webhooksDesc": "带签名的出站 POST。签名密钥只在创建时显示一次。",
-        "docsTitle": "SDK 与文档",
-        "docsDesc": "基于 VenueOS 开发的参考资料。",
-        "auditTitle": "审计日志",
-        "auditDesc": "每一次管理操作都会记录操作者、内容和时间。",
-        "auditAction": "打开审计日志",
-        "toolsTitle": "开发者工具",
-        "toolsDesc": "用于集成冒烟测试的示例数据工具。有意不放进日常运营导航中。",
-        "toolsAction": "集成测试数据",
-        "toolsAvailability": "生产环境仅限超级管理员；非生产环境学区管理员也可打开。",
+        "docsTitle": "指南",
+        "docsDesc": "如何在 VenueOS 中使用 API 密钥和 Webhook。",
+        "toolsAvailability": "检查此部署上的每项集成，并加载带有明确标记的示例数据。",
         "railKeysLabel": "API 密钥",
         "railKeysValue": "{active} 个有效 · {revoked} 个已吊销",
         "railKeysUnknown": "加载中…",
@@ -1072,43 +1300,21 @@
         "railBuildUnknown": "本部署未标记控制台构建版本",
         "searchApiKeys": "API 密钥",
         "searchWebhooks": "Webhook",
-        "searchAudit": "审计日志",
         "testTitle": "集成测试数据",
         "testDesc": "加载和清除带明确标记的示例数据，无需供应商沙箱账号即可测试每一项集成。",
-        "testDeniedBody": "示例数据工具属于超级管理员工具。非生产环境下学区管理员也可使用。",
-        "backToDeveloper": "返回开发与审计",
         "revokeKeyTitle": "撤销 API 密钥？",
         "revokeKeyMessage": "“{label}”将立即停止工作。此操作无法撤销。",
         "revokeKeyConfirm": "撤销",
         "apiDocsTitle": "REST API 与 Webhook",
-        "apiDocsBlurb": "身份验证、权限范围、带示例的接口、速率限制，以及如何验证 Webhook 签名。"
-      },
-      "security": {
-        "editorTitle": "你的账号安全",
-        "editorDesc": "你自己账户的密码和双重验证。",
-        "passwordTitle": "密码",
-        "passwordDesc": "更改密码，同时让其他所有设备退出登录。",
-        "mfaTitle": "两步验证",
-        "mfaDesc": "在密码之外，再加一个身份验证器应用生成的一次性验证码。",
-        "sessionsNote": "要退出你其他设备上的登录，请更改密码。",
-        "railScopeLabel": "适用范围",
-        "railScopeTitle": "仅限你的账号",
-        "railScopeBody": "本页任何设置都不会改变你所在组织看到的内容。全组织的 MFA 策略在“人员与访问”中。",
-        "railMfaLabel": "两步验证",
-        "railMfaOn": "已启用",
-        "railMfaOff": "未启用",
-        "railMfaUnknown": "未知",
-        "railMfaOnBody": "登录时需要输入一次性验证码。",
-        "railMfaOffBody": "目前只有密码在保护这个账号。",
-        "railMfaUnknownBody": "暂时无法读取你的两步验证状态。",
-        "searchPassword": "密码",
-        "searchMfa": "两步验证",
-        "passkeysTitle": "通行密钥",
-        "passkeysDesc": "使用 Face ID、触控 ID、Windows Hello 或安全密钥登录，无需输入验证码。",
-        "searchPasskeys": "通行密钥"
+        "apiDocsBlurb": "身份验证、权限范围、带示例的接口、速率限制，以及如何验证 Webhook 签名。",
+        "playerUrl": "播放器地址",
+        "apiEndpoint": "API 地址",
+        "dashboardBuild": "控制台版本",
+        "healthTitle": "服务状态",
+        "healthBlurb": "显示 VenueOS 服务是否正常运行及其版本。"
       },
       "people": {
-        "editorTitle": "人员与访问",
+        "editorTitle": "人员",
         "editorDescription": "谁可以登录、能做什么，以及如何保护他们的登录。",
         "actionFailed": "该更改未生效",
         "teamDescription": "本组织中拥有账户的所有人。",
@@ -1179,7 +1385,7 @@
         "mfaEnforceFailed": "无法更改组织的双重验证设置。",
         "mfaPersonalNote": "设置你自己的验证器属于个人操作，位于",
         "ssoTitle": "单点登录",
-        "ssoDescription": "本组织的 SAML 或 OIDC 登录。",
+        "ssoDescription": "让成员通过你所在组织的身份提供商登录。",
         "ssoSummary": "配置身份提供商、服务提供商元数据、允许的邮箱域名，以及新账户获得的角色。",
         "ssoManage": "管理 SSO",
         "ssoBreadcrumb": "SSO",
@@ -1191,7 +1397,7 @@
         "railStatus": "状态",
         "ssoAppliesTo": "所有登录本组织的人",
         "ssoAppliesToHelp": "邮箱加密码登录仍与 SSO 并行可用。",
-        "backToPeople": "返回人员与访问",
+        "backToPeople": "返回人员",
         "ssoSaveFailed": "无法保存 SSO 配置",
         "spMetadataHelp": "把这些值粘贴到你的身份提供商中。",
         "samlUnavailableBody": "你可以先保存设置以备就绪。在此之前，请使用 OIDC 或邮箱加密码登录。",
@@ -1200,7 +1406,7 @@
         "ssoTestTitle": "测试配置",
         "ssoTestDescription": "检查你已保存的设置，不会让任何人登录。",
         "approvalOnNote": "贡献者的发布会进入审核队列。管理员直接发布。",
-        "approvalOffNote": "贡献者直接发布，仅在自己选择时使用“提交审核”。",
+        "approvalOffNote": "编辑直接发布，仅在自己选择时使用“提交审核”。",
         "railAppliesTo": "适用范围",
         "railAppliesToHelp": "本组织的账户与访问策略。",
         "railThisOrganization": "本组织",
@@ -1349,7 +1555,8 @@
         "ssoDomainTakenElsewhere": "此邮箱域名已被其他组织验证。如果它属于您，请联系 VenueOS 支持。",
         "actionsFor": "{email} 的操作",
         "accessNoScreensYet": "尚无屏幕：{locations}",
-        "ssoLoadFailed": "无法加载 SSO 配置"
+        "ssoLoadFailed": "无法加载 SSO 配置",
+        "ssoOidcOption": "OpenID Connect（Google Workspace、Microsoft Entra ID、Okta、Auth0）"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",
@@ -1456,7 +1663,7 @@
         "noAddress": "未记录地址。",
         "timeZoneAuto": "{zone} · 自动，根据地址",
         "timeZoneSet": "{zone} · 为此位置设置",
-        "removeLabel":"移除 {name}",
+        "removeLabel": "移除 {name}",
         "removeConfirm": "确认移除？",
         "removeFailed": "无法移除该地点。",
         "archiveNote": "移除地点后，它将不再显示在此列表中。其屏幕和用户会保留。",
@@ -1473,94 +1680,87 @@
         "requiresPrimaryAdmin": "主账户管理员"
       },
       "integrations": {
-        "editorTitle": "已连接的服务",
-        "editorDescription": "你可以连接的所有服务，以及它们是否已连接。",
-        "searchLabel": "搜索集成",
-        "searchPlaceholder": "按提供商、功能或关键词搜索",
-        "familyFilterLabel": "按集成类别筛选",
+        "editorTitle": "可连接的服务",
+        "editorDescription": "VenueOS 目前可以连接的所有服务，以及已连接的服务。",
+        "searchLabel": "搜索连接",
+        "searchPlaceholder": "Square、Toast、AI、直播…",
+        "familyFilterLabel": "显示某类连接",
         "stateFilterLabel": "按状态筛选",
         "filterAll": "全部",
         "sourceLabel": "状态来源",
         "lastSync": "上次同步 {date}",
-        "noResults": "没有符合这些筛选条件的集成",
-        "noResultsHint": "请清空搜索框，或选择其他类别或状态。",
+        "noResults": "没有匹配的结果",
+        "noResultsHint": "清除搜索，或选择其他类型或状态。",
         "degradedNotice": "部分状态暂时无法检查，因此显示为“未知”。",
         "railStatusLabel": "状态",
         "railConnected": "已连接：{count}",
         "railAttention": "需要处理：{count}",
-        "railFamiliesLabel": "本工作区的集成类别",
-        "railImportsLabel": "设计导入",
-        "railImportsTitle": "在“模板”中管理",
-        "railImportsHint": "PDF 和图片导入属于模板工作流，不是设置中的连接。",
-        "railImportsAction": "打开设计导入",
         "railAuditLabel": "审计",
         "railAuditAction": "查看审计日志",
         "families": {
-          "ai": "AI 提供商与品牌语气",
-          "clever": "Clever",
-          "streaming": "流媒体与视频",
-          "pos": "POS 与菜单数据",
+          "ai": "AI",
+          "clever": "学生名册",
+          "streaming": "直播视频",
+          "pos": "收银系统",
           "monetization": "变现与广告网络"
         },
         "states": {
           "connected": "已连接",
           "attention": "需要处理",
-          "available": "可用",
-          "external": "外部设备",
-          "planned": "计划中"
+          "available": "未连接"
         },
         "actions": {
           "manage": "管理",
-          "resolve": "处理",
-          "diagnose": "诊断",
-          "configure": "配置",
+          "resolve": "修复",
+          "diagnose": "修复",
+          "configure": "连接",
           "instructions": "查看安装说明",
           "learnMore": "了解更多",
-          "refresh": "刷新状态",
+          "refresh": "重新检查",
           "none": "暂无可用操作"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "已声明的产品政策",
-          "unavailable": "无法检查"
+          "streamingConnections": "您的直播连接",
+          "posConnections": "您的收银系统连接",
+          "adsConnections": "您的广告连接",
+          "aiKey": "您保存的 AI 密钥",
+          "brandingMe": "您的品牌设置",
+          "cleverStatus": "您的 Clever 连接",
+          "catalogPolicy": "VenueOS 产品规则",
+          "unavailable": "暂时无法检查"
         },
         "stateHelp": {
           "ready": "已配置并在使用中。",
-          "connected": "你的登录信息已保存。运行测试或同步即可确认是否可用。",
-          "degraded": "该提供商已实现的某项功能当前出现故障。",
-          "attention": "可用但不完整、已暂停或即将过期。请打开提供商页面查看具体原因。",
-          "blocked": "访问权限已被撤销。重新连接后才能继续使用该提供商。",
-          "notConfigured": "已实现且可用，但尚未进行任何设置。",
+          "connected": "已连接。运行测试或同步以确认其正常工作。",
+          "degraded": "此连接目前出现故障。打开即可修复。",
+          "attention": "已连接，但已暂停、未完成或即将过期。打开查看原因。",
+          "blocked": "访问权限已被撤销。重新连接后即可使用。",
+          "notConfigured": "可以连接。",
           "external": "播放在提供商自有的授权设备上进行。VenueOS 目前不会切换信号输入。",
           "planned": "该提供商的连接器尚未发布，因此没有可配置的内容。",
           "unsupported": "有意不提供。此处不存在可用于商业用途的连接路径。",
-          "unknown": "无法读取权威状态，因此不对状态作出任何断言。"
+          "unknown": "暂时无法检查，因此不显示状态。"
         },
         "pages": {
           "ai": {
-            "title": "AI 提供商与品牌语气",
+            "title": "AI",
             "description": "使用你自己的 AI 密钥，并设定每块生成看板所采用的语气。"
           },
           "streaming": {
-            "title": "流媒体与视频",
-            "description": "你自有的授权信号可原生播放。其他来源都会明确说明能做什么、不能做什么。"
+            "title": "直播视频",
+            "description": "播放您拥有或获授权播放的直播。"
           },
           "pos": {
-            "title": "POS 与菜单数据",
-            "description": "将价目表同步到菜单看板，并把每家门店映射到展示它的屏幕。"
+            "title": "收银系统",
+            "description": "让菜单板和价格标签与收银系统逐店保持同步。"
           },
           "monetization": {
             "title": "变现与广告网络",
             "description": "广告网络连接、收益，以及适用于它们的内容控制。"
           },
           "clever": {
-            "title": "Clever",
-            "description": "面向在 Clever 中管理教职员账户的学区的名册同步。"
+            "title": "学生名册",
+            "description": "从 Clever 导入教职员工和学生名册。"
           }
         },
         "providerRail": {
@@ -1573,11 +1773,25 @@
           "lastSyncLabel": "上次同步",
           "noSync": "尚未执行过同步。",
           "notReachable": "无法读取该状态。"
+        },
+        "notListed": "Netflix、Hulu、Disney+ 等家庭流媒体服务无法在屏幕上播放：它们的订阅不允许公开展示。",
+        "rows": {
+          "aiKey": "您的 AI 密钥",
+          "clever": "Clever 名册同步"
+        },
+        "blurbs": {
+          "key": "使用您自己的 OpenAI、Anthropic 或 Google 密钥进行 AI 设计和写作。",
+          "roster": "从 Clever 导入教职员工和学生名册。",
+          "square": "菜单项、规格、价格和售罄状态，自动保持同步。",
+          "toast": "从 Toast 同步您已发布的菜单、价格和照片。",
+          "clover": "您的 Clover 商品和价格，每小时自动同步，也可随时同步。",
+          "lightspeed-retail": "来自 Lightspeed 的各门店商品和价格。",
+          "shopify-pos": "来自 Shopify 的商品、规格、库存和地点。",
+          "custom-webhook": "从任何系统发送您自己的菜单或价目表。",
+          "custom-hls": "粘贴您拥有或获授权播放的直播链接（.m3u8）。"
         }
       },
       "player": {
-        "offlineBreadcrumb": "离线",
-        "backToPlayer": "返回播放器与离线",
         "editorTitle": "播放器分发",
         "editorDescription": "Android 播放器版本如何送达您的屏幕，以及哪些证据证明它已送达。",
         "state": {
@@ -1679,7 +1893,14 @@
           "empty": "还没有屏幕。",
           "loadFailed": "无法加载屏幕的更新状态。",
           "loading": "正在加载…"
-        }
+        },
+        "managedTitle": "VenueOS 会让您的屏幕保持最新",
+        "managedBody": "屏幕软件更新由 VenueOS 管理，因此这里无需任何设置。",
+        "oneScreenNow": "需要立即更新某块屏幕？在“屏幕”中打开它，然后在其设置中点击“推送更新”。",
+        "openScreens": "打开屏幕",
+        "ownerConsoleLink": "此组织的更新设置位于所有者控制台中",
+        "apkBody": "要设置新的 Android 显示屏？只需安装一次播放器应用：",
+        "apkLink": "下载播放器应用（APK）"
       },
       "supportAccess": {
         "searchGive": "授予 VenueOS 支持访问",
@@ -2148,7 +2369,7 @@
         "already-set": "已是此设置",
         "unverified": "Android 无法确认",
         "changed-elsewhere": "之后被屏幕上的其他程序更改——VenueOS 不再干预",
-        "wifi-rejected":"Wi-Fi 网络已在屏幕上被拒绝",
+        "wifi-rejected": "Wi-Fi 网络已在屏幕上被拒绝",
         "wifi-limit": "屏幕上建议的网络过多",
         "wifi-invalid": "Android 不接受该网络信息",
         "wifi-restricted": "此设备限制了 Wi-Fi 更改",
@@ -2298,7 +2519,7 @@
       "timeZoneOptionAutoNone": "自动（没有可用于检测的地址）",
       "timeZoneOptionLocation": "位置的设置（{zone}）",
       "timeZoneSaved": "时区已更新。",
-      "removeTitle":"移除“{name}”？",
+      "removeTitle": "移除“{name}”？",
       "removeMessage": "它将不再接收内容，并从此列表中移除。重新配对即可恢复。",
       "removeConfirm": "移除屏幕",
       "thisScreen": "此屏幕",
@@ -2456,7 +2677,7 @@
       "reasonInstalledByAnotherApp": "此应用由其他安装程序安装。推送一次更新并由人点按“安装”后，之后的更新即可静默进行。",
       "reasonNotArmed": "Android 报告此次安装会先询问。",
       "reasonReportPredatesInstall": "它最近一次上报来自较旧的应用版本。",
-      "noTimezone": "时区未知，因此无法自动更新。请在“设置 → Player”中设置更新窗口的时区，或为此屏幕设置开关机计划。",
+      "noTimezone": "此屏幕的时区未知，因此暂时无法自动更新。请在“设置 → 组织”中设置时区，或为此屏幕设置开关机计划。",
       "saving": "正在保存…",
       "saveFailed": "无法保存，请重试。",
       "loading": "正在检查…"
@@ -2957,7 +3178,7 @@
     "generateAltTitle": "使用 AI 为该图片生成替代文本",
     "aiQuotaExhausted": "AI 额度已用尽",
     "aiNotConfigured": "AI 未配置",
-    "aiConfigureHint": "请在“设置 → AI 服务商”中配置 AI 服务商密钥，以启用替代文本生成。",
+    "aiConfigureHint": "在“设置 → 连接 → AI”中添加 AI 密钥，即可自动生成替代文本。",
     "deleteFolderTitle": "删除该文件夹？",
     "deleteFolderMsg": "其中的文件将被移动到上级文件夹。",
     "deleteFolder": "删除文件夹",
@@ -3447,7 +3668,7 @@
     "couldNotRemove": "无法移除 — 请重试。"
   },
   "mfaCard": {
-    "twoFactorAuthTitle": "双重验证",
+    "twoFactorAuthTitle": "两步验证登录",
     "statusOn": "已开启",
     "subtitle": "每次登录时都需要输入身份验证器应用中的验证码。",
     "enable2fa": "启用 2FA",
@@ -3582,8 +3803,8 @@
     "selectedTitle": "正在使用你的 {provider} 菜单 · {count, plural, other {# 个菜品}}",
     "change": "更改",
     "unsyncedTitle": "你的 {provider} 菜单尚未同步。",
-    "unsyncedHint": "请在“设置 → POS”中同步后再回来，或者直接输入菜单。",
-    "openPosSettings": "打开“设置 → POS”",
+    "unsyncedHint": "请在“设置 → 连接 → 收银系统”中同步后再回来，或者直接输入菜单。",
+    "openPosSettings": "打开收银系统设置",
     "connectTitle": "你使用哪个 POS？",
     "connectDetectedTitle": "你的网站链接到了 {provider}，要连接它吗？",
     "connectHint": "连接后，我会用你的实时菜单来制作这块看板。",
@@ -3592,7 +3813,7 @@
     "noPos": "我不使用 POS",
     "declinedNote": "好的，请在对话中输入或粘贴你的菜单。",
     "declinedUndo": "改用 POS",
-    "connectFailed": "无法在这里打开 {provider} 登录，请改用“设置 → POS”。",
+    "connectFailed": "无法在这里打开 {provider} 登录，请改用“设置 → 连接 → 收银系统”。",
     "chatUse": "使用我的 {provider} 菜单：{sections}。",
     "chatDecline": "我不使用 POS，我会自己输入菜单。"
   },
@@ -4047,7 +4268,41 @@
     "catDoohProgrammatic": "⚡ 程序化 DOOH",
     "catVenueNetwork": "🏢 场馆网络",
     "catDoohDirect": "🤝 直接销售",
-    "catHouseOnly": "🏠 仅自有广告"
+    "catHouseOnly": "🏠 仅自有广告",
+    "posScopes": {
+      "restaurant-qsr": "餐厅 / 快餐",
+      "restaurant-table": "堂食餐厅",
+      "retail": "零售",
+      "bar": "酒吧",
+      "universal": "任何业务"
+    },
+    "posHow": {
+      "square": "使用 Square 登录",
+      "clover": "使用 Clover 登录",
+      "lightspeed-retail": "使用 Lightspeed 登录",
+      "shopify-pos": "使用 Shopify 登录",
+      "toast": "使用您的 Toast API 访问权限",
+      "custom-webhook": "免费"
+    },
+    "toast": {
+      "intro": "输入您的 Toast API 信息。我们会查找您的门店，导入已发布的菜单，并让已连接的屏幕保持最新。",
+      "clientId": "客户端 ID",
+      "clientSecret": "客户端密钥",
+      "advancedEndpoint": "高级：Toast API 地址",
+      "endpoint": "API 地址",
+      "chooseStores": "选择此账户的门店",
+      "manualLabel": "Toast 门店——名称 | 餐厅 GUID，每行一个",
+      "manualPlaceholder": "主街店 | 餐厅 GUID",
+      "manualHint": "部分 Toast 账户不支持自动查找门店。GUID 列在您的 Toast API 访问信息中。",
+      "findAndConnect": "查找门店并连接",
+      "noDiscovery": "此 Toast 账户不支持自动查找门店。请输入 Toast 中的餐厅 GUID 以继续。",
+      "pickStore": "请至少选择一家 Toast 门店。",
+      "needsAttention": "Toast 连接需要处理",
+      "mainAccount": "主账户",
+      "mapEveryStore": "将每家门店匹配到显示它的屏幕所在地点，这样每家门店都会显示自己的 Toast 价格。",
+      "mapFailed": "无法更新此门店。"
+    },
+    "priceCustom": "自定义"
   },
   "changePassword": {
     "title": "修改密码",
@@ -4109,10 +4364,10 @@
       "ownKey": "正在使用你自己的 AI 密钥 — 看板数量不限",
       "buyMore": "购买更多",
       "reasons": {
-        "NO_PLATFORM_KEY": "AI 使用你自己的密钥 — 请在 设置 → AI 服务商 中添加。",
+        "NO_PLATFORM_KEY": "AI 使用你自己的密钥 — 请在“设置 → 连接 → AI”中添加。",
         "OWN_KEY": "你的看板使用你自己的 AI 密钥，这里没有数量限制 — 无需购买。",
         "STRIPE_NOT_CONFIGURED": "此部署尚未开通购买更多看板。",
-        "AI_PLAN_REQUIRED": "每块屏幕每月 $5 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → AI）。",
+        "AI_PLAN_REQUIRED": "每块屏幕每月 $5 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → 连接 → AI）。",
         "TRIAL": "免费试用包含固定数量的 AI 设计。选择 VenueOS + AI 套餐后即可购买更多。"
       },
       "capBuyMore": "购买更多看板",
@@ -4451,7 +4706,7 @@
     "checkFailed": "无法在此处检查你的 {provider} 菜单。屏幕仍会继续同步。",
     "connectionGone": "此看板绑定的 {provider} 连接已不存在。屏幕显示看板中保存的名称和价格。",
     "connectionAttention": "{provider} 需要处理（{status}）。在重新同步之前，屏幕会保留最近一次收到的价格。",
-    "openPosSettings": "打开 设置 → POS",
+    "openPosSettings": "打开收银系统设置",
     "cadencePublish": "在 {provider} 中发布名称和价格的更改后，约 5 分钟内会显示到屏幕上。",
     "cadenceWebhook": "名称和价格的更改约一分钟内会显示到屏幕上。",
     "cadenceHourly": "名称和价格的更改会在一小时内显示到屏幕上——{provider} 每小时同步一次。",
@@ -4497,7 +4752,7 @@
     "chooseConnection": "选择一个连接",
     "loading": "正在加载 Toast 商品…",
     "loadFailed": "无法加载 Toast 商品。请检查连接后重试。",
-    "empty": "未找到已发布的 Toast 商品。请在 设置 → POS 中同步该连接。",
+    "empty": "未找到已发布的 Toast 商品。请在“设置 → 连接 → 收银系统”中同步该连接。",
     "automaticMatch": "自动 · {name}",
     "automaticNext": "自动 · 下一个匹配的菜单商品",
     "missingOption": "之前关联的商品已不在 Toast 中",
@@ -5148,7 +5403,7 @@
   },
   "uploadFormats": {
     "thisFile": "此文件",
-    "svg": "不能将 SVG 作为内容上传——SVG 可能包含隐藏脚本。请导出为 PNG。如需上传徽标，“设置 → 品牌”可安全接受 SVG。",
+    "svg": "不能将 SVG 作为内容上传——SVG 可能包含隐藏脚本。请导出为 PNG。如需上传徽标，“设置 → 组织 → 标志与颜色”可安全接受 SVG。",
     "unsupported": "无法上传 {name}。请上传照片（{images}）、视频（{videos}）、音频（{audio}）或 PDF。",
     "wrongKind": "{name} 不能在此使用——此处支持 {formats}。",
     "convertInLibrary": "{name} 是 {format} 视频。屏幕需要先将其转换为 MP4 才能播放，但警报内容必须在触发时立即播放。请先将其上传到媒体库（会在那里转换），或导出为 MP4（H.264）。",
@@ -5439,7 +5694,7 @@
       "active": "访问已授予，截止 {until}。",
       "activeBreakGlass": "紧急访问已开启，截止 {until}。",
       "pending": "请求已于 {on} 发送，等待客户管理员处理。",
-      "none": "当前无访问权。向客户请求，或由客户在“设置 → VenueOS 支持访问”中授予。",
+      "none": "当前无访问权。向客户请求，或由客户在“设置 → 高级 → VenueOS 支持”中授予。",
       "reason": "原因（客户可见）",
       "reasonPlaceholder": "例如：大厅屏幕视频循环异常，需要检查播放列表",
       "reasonRequired": "必须填写原因。",
@@ -5743,7 +5998,7 @@
   "aiPlan": {
     "upsell": {
       "title": "您的套餐不含 AI",
-      "body": "每块屏幕每月 {price} 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → AI）。",
+      "body": "每块屏幕每月 {price} 添加 VenueOS AI，或免费连接您自己的 AI 密钥（设置 → 连接 → AI）。",
       "addAi": "添加 AI（每块屏幕每月 {price}）",
       "addAiShort": "添加 AI",
       "ownKey": "连接我自己的 AI 密钥（免费）",
@@ -5752,10 +6007,10 @@
     "imagesLeft": "本月还剩 {left}/{total} 张 AI 图片 · {date} 重置",
     "imagesLeftTrial": "免费试用还剩 {left}/{total} 张 AI 图片",
     "limit": {
-      "images": "本月的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥继续使用，或联系我们获取更多额度。",
-      "imagesTrial": "免费试用中的 AI 图片已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。",
-      "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥，或在“设置 → 账单”中选择 VenueOS + AI。",
-      "month": "本月包含的 AI 额度已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥以继续使用，或等待下月重置。"
+      "images": "本月的 AI 图片已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥继续使用，或联系我们获取更多额度。",
+      "imagesTrial": "免费试用中的 AI 图片已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥，或在“设置 → 套餐与账单”中选择 VenueOS + AI。",
+      "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥，或在“设置 → 套餐与账单”中选择 VenueOS + AI。",
+      "month": "本月包含的 AI 额度已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥以继续使用，或等待下月重置。"
     }
   },
   "billingAi": {
@@ -5773,7 +6028,7 @@
     "trialTitle": "免费试用已包含 AI",
     "trialBody": "试用设计、图片和文案助手。试用结束后如需继续使用 AI，请选择 VenueOS + AI（每块屏幕每月 +{price}）。",
     "ownKeyNote": "想用自己的 AI 账户？您自己的密钥在所有套餐中均可使用。",
-    "ownKeyLink": "设置 → AI 服务商",
+    "ownKeyLink": "设置 → 连接 → AI",
     "addAi": "添加 AI（每块屏幕每月 +{price}）",
     "turnOff": "关闭 AI",
     "cancel": "取消",
@@ -6327,7 +6582,16 @@
     "overdueReceivables": "逾期发票",
     "subscriptionService": "VenueOS 订阅服务",
     "invalidLogo": "请输入 HTTPS 标志 URL，或留空。",
-    "fieldBuilds": "现场构建"
+    "fieldBuilds": "现场构建",
+    "playerUpdates": "屏幕更新",
+    "testIntegrations": "集成测试",
+    "playerUpdatesTitle": "屏幕软件更新",
+    "playerUpdatesBody": "您当前登录的组织的自动更新、更新时段和分阶段发布。客户已不再看到这些控件。",
+    "appliesTo": "适用于：{name}",
+    "appliesToHint": "要更改其他客户，请（在其支持访问授权下）打开该组织，然后返回此处。",
+    "testIntegrationsTitle": "集成测试",
+    "testIntegrationsBody": "检查此部署上的每项集成，并将示例数据加载到您当前登录的组织中。",
+    "noOrganization": "请先登录一个组织。"
   },
   "fieldBuilds": {
     "title": "现场测试版",
@@ -6614,7 +6878,7 @@
     "posSyncing": "你的商品目录正在同步。首次同步完成后（通常不到一分钟），菜单屏幕会显示实时商品。",
     "socialSyncing": "正在载入你的最新帖子。正在带你返回刚才的页面…",
     "reason": "原因：",
-    "posRetry": "请在“设置 → POS 目录同步”中重试。",
+    "posRetry": "请在“设置 → 连接 → 收银系统”中重试。",
     "socialRetry": "请在模板中该应用的设置里重试。",
     "backToPos": "返回 POS 设置",
     "backToVenueOS": "返回 VenueOS"
@@ -6748,39 +7012,110 @@
     "mismatch": "两次输入的密码不一致。",
     "acceptFailed": "无法接受邀请。"
   },
-  "playlistConflict": {
-    "replaceTitleOne": "在 1 个屏幕上替换？",
-    "replaceTitleMany": "在 {count} 个屏幕上替换？",
-    "confirmReplace": "替换",
-    "leadSwitchOn": "开启“{name}”",
-    "leadAddOne": "将该屏幕添加到“{name}”",
-    "leadAddMany": "将这些屏幕添加到“{name}”",
-    "replaceOneScreen": "“{other}”正在{screens}上播放。{lead}后，只会在该屏幕上替换它，它的其他屏幕保持不变。",
-    "replaceManyScreens": "“{other}”正在{screens}上播放。{lead}后，只会在这些屏幕上替换它，它的其他屏幕保持不变。",
-    "replaceMany": "以下播放列表与“{name}”在所列屏幕上重叠：\n\n{list}\n\n{lead}后，只会在这些屏幕上替换它们。",
-    "listItem": "• {screens}上的“{other}”",
-    "keepTitleOne": "其余时间继续播放“{other}”？",
-    "keepTitleMany": "其余时间继续播放其他播放列表？",
-    "keepOneScreen": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，该屏幕不会出现空白。",
-    "keepManyScreens": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，这些屏幕不会出现空白。",
-    "keepMany": "“{name}”只在设定的时间播放。其余时间，以下播放列表会继续播放，屏幕不会出现空白：\n\n{list}",
-    "alsoReplaces": "{screens}上的“{other}”与这些时间重叠，将在那里被替换。",
-    "hintOneScreen": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，该屏幕将没有内容可播放。",
-    "hintManyScreens": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
-    "hintMany": "选择“全部替换”会停止这些屏幕上的它们。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
-    "confirmKeepOne": "两者都保留",
-    "confirmKeepMany": "全部保留",
-    "replaceEverything": "全部替换",
-    "cancel": "取消"
+  "panicContent": {
+    "standardMessage": "标准消息",
+    "usesLive": "使用真实内容",
+    "ownCount": "您的内容 · {landscape} 个横屏 · {portrait} 个竖屏",
+    "previewLabel": "{label}时屏幕显示的内容",
+    "standardCaption": "在您添加自己的图片或视频之前，屏幕会显示此内容。",
+    "meaning": "屏幕上以英文显示，意思是",
+    "orientationLabel": "{label}的屏幕方向",
+    "landscape": "横屏",
+    "portrait": "竖屏",
+    "addOwn": "添加您自己的图片或视频（可选）",
+    "emptyLive": "此屏幕方向还没有您自己的图片或视频。",
+    "emptyDrill": "没有演习内容——演习会显示真实内容，并标记为“演习”。",
+    "tooLarge": "文件过大（{size} MB）。上限为 500 MB。",
+    "bindFailed": "已上传，但无法添加到此警报。请重试。",
+    "badResponse": "服务器返回了无法读取的响应。请重试。",
+    "uploadFailed": "上传失败（{status}）。",
+    "networkError": "没有网络连接。请检查网络后重试。",
+    "removeTitle": "要从{label}中移除吗？",
+    "removeMessage": "要从{label}中移除“{name}”吗？该文件仍会保留在您的媒体库中。",
+    "remove": "移除",
+    "removeHint": "从此警报中移除",
+    "removeAria": "移除 {name}",
+    "thisFile": "此文件",
+    "dismiss": "关闭"
   },
-  "termsGate": {
-    "title": "继续之前",
-    "intro": "请阅读并接受 {brand} 最终用户许可协议。协议说明了本产品的功能（包括紧急警报的工作方式）以及它无法保证的事项。只需操作一次。",
-    "accept": "接受并继续",
-    "saving": "正在保存…",
-    "failed": "无法保存。请检查网络连接后重试。",
-    "version": "版本 {version}",
-    "signOut": "不是你？退出登录"
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "已就绪",
+        "blurb": "消息、送达、屏幕和人员均正常。"
+      },
+      "NEEDS_ATTENTION": {
+        "title": "已就绪，但仍有缺口",
+        "blurb": "今天可以送达警报。请在需要之前补齐下方的缺口。"
+      },
+      "NOT_CONFIGURED": {
+        "title": "尚未就绪",
+        "blurb": "缺少关键环节——警报无法正确送达您的屏幕。"
+      },
+      "DISABLED": {
+        "title": "紧急警报已关闭",
+        "blurb": "警报关闭时不会进行任何检查。开启后即可让每种警报就绪。"
+      }
+    },
+    "loading": "正在检查警报是否就绪…",
+    "loadFailed": "无法检查就绪状态。检查本身失败，通常表示无法连接到服务。",
+    "retry": "重试",
+    "recheck": "重新检查",
+    "scoreLabel": "就绪度",
+    "drillLine": "演习内容（不计分）",
+    "statusOk": "正常",
+    "statusWarn": "需要处理",
+    "statusMissing": "缺失",
+    "labels": {
+      "content": "警报消息",
+      "delivery": "送达屏幕",
+      "screens": "在线屏幕",
+      "staff": "可发送警报的人员",
+      "exercise": "上次演习"
+    },
+    "detail": {
+      "content_allOwn": "全部 {total} 种警报类型都使用您自己的图片或视频。",
+      "content_someStandard": "{total} 种警报类型中有 {own} 种使用您自己的图片或视频，其余显示标准消息。",
+      "content_allStandard": "全部 {total} 种警报类型都已就绪，显示标准消息。",
+      "delivery_ok": "即时送达、备用检查和消息签名均正常工作。",
+      "delivery_fallback": "即时送达处于备用模式——警报仍会送达，但需约 20 秒而非即时。",
+      "delivery_down": "警报目前无法送达。这是 VenueOS 的问题，不是您的设置问题——请联系支持人员。",
+      "screens_none": "还没有配对任何屏幕。",
+      "screens_allOffline": "您的 {total} 块屏幕均不在线。",
+      "screens_someOffline": "{total} 块屏幕中有 {online} 块在线，其中 {fresh} 块在过去 5 分钟内报告过状态。",
+      "screens_ok": "全部 {total} 块屏幕都在线并正常报告。",
+      "staff_ok": "{count} 人可以发送警报。",
+      "staff_one": "只有一个人可以发送警报。",
+      "staff_none": "目前还没有人可以发送警报。",
+      "exercise_never": "这里从未发送过警报——连演习都没有。",
+      "exercise_today": "上次发送：今天。",
+      "exercise_recent": "上次发送：{days} 天前。",
+      "exercise_stale": "上次发送：{days} 天前。"
+    },
+    "fix": {
+      "screens_none": "请配对屏幕——没有屏幕，警报无法送达任何人。",
+      "screens_offline": "请在“屏幕”页面检查离线屏幕；离线屏幕在恢复在线之前无法接收新警报。",
+      "staff_one": "请在“设置 → 团队”中再允许一位可信人员发送警报。",
+      "staff_none": "请在“设置 → 团队”中选择谁可以发送警报。",
+      "exercise": "进行一次演习，让第一次真实警报不再是第一次使用。",
+      "delivery_fallback": "无需操作——VenueOS 正在监控即时通道。"
+    }
+  },
+  "ledPoster": {
+    "title": "LED 海报屏",
+    "desc": "标准海报尺寸——单个面板的模组尺寸。新海报屏会使用此尺寸，直到您在屏幕上设置尺寸。",
+    "width": "宽度",
+    "height": "高度",
+    "save": "保存",
+    "reset": "重置为 {w}×{h}",
+    "resetTitle": "清除组织标准。海报屏将恢复为内置的 {w}×{h}。",
+    "current": "当前：",
+    "builtInDefault": "（内置默认）",
+    "loadFailed": "· 无法加载当前值。",
+    "invalid": "· 宽度和高度必须是 {min} 到 {max} 之间的整数。",
+    "saveFailed": "· 无法保存——请重试。",
+    "saved": "· 已保存。",
+    "readOnly": "· 您的角色只能查看。"
   },
   "addressSearch": {
     "clear": "清除地址",
@@ -7015,8 +7350,8 @@
       "submissionLiveBody": "内容现已上线。",
       "submissionNoFeedbackBody": "审核人未留下反馈。准备好后请修改并重新提交。",
       "ownerLinkBody": "根据您批准的支持访问，已为新的组织所有者签发一次性登录链接。如果这不在您的预期之内，请在“设置”中撤销支持访问。",
-      "supportRequestedBody": "{who} 申请访问 {org}，时长 {duration}：“{reason}”。请在“设置 → VenueOS 支持访问”中批准或拒绝。",
-      "supportBreakGlassBody": "{who} 已开启对 {org} 的紧急访问，有效期至 {until}：“{reason}”。您现在可以在“设置 → VenueOS 支持访问”中结束它。",
+      "supportRequestedBody": "{who} 申请访问 {org}，时长 {duration}：“{reason}”。请在“设置 → 高级 → VenueOS 支持”中批准或拒绝。",
+      "supportBreakGlassBody": "{who} 已开启对 {org} 的紧急访问，有效期至 {until}：“{reason}”。您现在可以在“设置 → 高级 → VenueOS 支持”中结束它。",
       "supportEndedBody": "VenueOS 已结束对 {org} 的支持访问。",
       "accessUntil": "访问有效期至 {until}。",
       "venueosSupport": "VenueOS 支持团队",
@@ -7420,5 +7755,206 @@
     "next": "下一页",
     "filters": "筛选",
     "filtersOn": "已筛选"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "试试自动品牌设置",
+      "authed": "为 VenueOS 设置你的品牌"
+    },
+    "intro": "粘贴你的网站地址。大约 10 秒后，我们会获取你的标志、颜色和字体，让 VenueOS 看起来是你的，而不是我们的。",
+    "urlLabel": "你的网站地址",
+    "scan": "扫描",
+    "scanning": "正在扫描…",
+    "tryExample": "试试示例：",
+    "exampleBlocked": "如果某个示例网站阻止了扫描，请换一个试试，或者粘贴你自己的网站地址。",
+    "errors": {
+      "pasteUrlFirst": "请先粘贴你的网站地址。",
+      "scanFailed": "无法扫描该网站。请检查地址后重试。",
+      "notAnImage": "请选择图片文件（PNG、JPG、SVG 或 WebP）。",
+      "logoTooLarge": "该标志文件过大——上限为 2 MB。",
+      "readFailed": "无法读取该文件——请换一个试试。",
+      "adoptFailed": "无法保存你的品牌，请重试。"
+    },
+    "confidence": {
+      "title": "我们有多大把握",
+      "logo": "标志",
+      "palette": "颜色",
+      "fonts": "字体",
+      "displayName": "名称"
+    },
+    "logos": {
+      "title": "找到的标志",
+      "chooseLabel": "选择第 {n} 个标志",
+      "optionAlt": "标志选项",
+      "yourLogoAlt": "你的标志",
+      "usingUploaded": "正在使用你上传的标志",
+      "usingPasted": "正在使用你粘贴的链接中的标志",
+      "remove": "移除你的标志",
+      "upload": "上传你的标志",
+      "pastePlaceholder": "……或粘贴标志图片的链接",
+      "noneFound": "无法从该网站获取标志——有些网站（例如 dominos.com）会阻止自动扫描。请在上方上传你的标志，或粘贴图片链接。",
+      "kind": {
+        "svgInline": "标志",
+        "imgLogo": "标志",
+        "imgWordmark": "文字标志",
+        "icon": "图标",
+        "appleTouch": "应用图标",
+        "mask": "单色图标",
+        "og": "分享图片",
+        "twitter": "社交媒体图片"
+      }
+    },
+    "logoBackground": {
+      "title": "标志背景",
+      "picked": "我们为此标志选择了“<b>{label}</b>”",
+      "optionLabel": "标志背景：{label}",
+      "appliesEverywhere": "适用于你的标志出现的所有位置——侧边栏、预览，以及任何使用你标志的模板。",
+      "options": {
+        "transparent": "无",
+        "white": "白色",
+        "dark": "深色",
+        "primary": "品牌色",
+        "tile": "浅色块"
+      },
+      "hints": {
+        "transparent": "无背景——标志直接显示在页面上",
+        "white": "在标志后面加一个白色方块",
+        "dark": "深色方块——最适合白色或浅色标志",
+        "primary": "使用品牌主色的方块",
+        "tile": "使用品牌色浅色调的圆角方块"
+      }
+    },
+    "palette": {
+      "title": "配色",
+      "primary": "主色",
+      "accent": "强调色",
+      "primaryPickerLabel": "主色",
+      "accentPickerLabel": "强调色",
+      "discovered": "发现的颜色——点击即可应用",
+      "swatchPrimary": "{hex}——点击设为主色",
+      "swatchAccent": "{hex}——点击设为强调色",
+      "swatchFromSite": "该网站将其标注为品牌色",
+      "badgePrimary": "主",
+      "badgeAccent": "强"
+    },
+    "contrast": {
+      "textOnPrimary": "主色上的文字",
+      "textOnAccent": "强调色上的文字",
+      "gradeAAA": "非常易读",
+      "gradeAA": "易读",
+      "gradeAALarge": "仅适合大号文字",
+      "gradeFail": "难以阅读"
+    },
+    "fonts": {
+      "title": "字体",
+      "heading": "标题",
+      "body": "正文",
+      "noneDetected": "{label}：未检测到",
+      "system": "系统字体",
+      "noGoogleMatch": "未匹配到 Google Fonts 字体——将改用标准字体。"
+    },
+    "identity": {
+      "title": "名称和标语",
+      "namePlaceholder": "显示名称",
+      "taglinePlaceholder": "标语（显示在登录页上）"
+    },
+    "apply": {
+      "title": "将品牌应用到模板",
+      "fillBlanks": "填充空白",
+      "fillBlanksHint": "仅限仍使用默认颜色的区域",
+      "override": "覆盖",
+      "overrideHint": "重绘所有区域，包括你自己设置过样式的区域",
+      "apply": "应用",
+      "applying": "正在应用…",
+      "done": "已应用到 {count} 个模板 · 更新了 {zones} 个区域。",
+      "failed": "应用失败——请重试。",
+      "updatedTitle": "已更新的模板",
+      "more": "还有 {count} 个"
+    },
+    "actions": {
+      "rescan": "重新扫描",
+      "adopt": "使用此品牌",
+      "adopting": "正在应用…",
+      "adoptDemo": "使用（需要登录）",
+      "adoptDemoHint": "登录后即可使用此品牌"
+    },
+    "footer": {
+      "source": "来源：",
+      "scannedIn": "扫描用时 {seconds} 秒"
+    },
+    "preview": {
+      "title": "实时预览",
+      "subtitle": "——随你的调整实时更新"
+    },
+    "livePreview": {
+      "defaultName": "你的数字标牌",
+      "defaultTagline": "一目了然地查看你的屏幕",
+      "logoAlt": "标志",
+      "signage": "数字标牌",
+      "nav": {
+        "dashboard": "仪表板",
+        "screens": "屏幕",
+        "templates": "模板",
+        "playlists": "播放列表",
+        "settings": "设置"
+      },
+      "emergency": "紧急警报",
+      "search": "搜索…",
+      "newPlaylist": "新建播放列表",
+      "welcome": "欢迎使用 {name}",
+      "heroLine": "紧急警报已就绪 · 23 块屏幕在线 · 2 个播放列表已排期",
+      "kpiActive": "在线屏幕",
+      "kpiScheduled": "已排期",
+      "kpiDrills": "紧急演习",
+      "chips": {
+        "all": "全部",
+        "lobby": "大厅",
+        "entrance": "入口",
+        "mainFloor": "主楼层",
+        "backOfHouse": "员工区"
+      },
+      "rows": {
+        "mainLobby": "主大厅",
+        "eastHallway": "东侧走廊",
+        "gymEntry": "体育馆入口",
+        "cafeteria": "餐厅 A"
+      },
+      "live": "播放中",
+      "offline": "离线"
+    }
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "在 1 个屏幕上替换？",
+    "replaceTitleMany": "在 {count} 个屏幕上替换？",
+    "confirmReplace": "替换",
+    "leadSwitchOn": "开启“{name}”",
+    "leadAddOne": "将该屏幕添加到“{name}”",
+    "leadAddMany": "将这些屏幕添加到“{name}”",
+    "replaceOneScreen": "“{other}”正在{screens}上播放。{lead}后，只会在该屏幕上替换它，它的其他屏幕保持不变。",
+    "replaceManyScreens": "“{other}”正在{screens}上播放。{lead}后，只会在这些屏幕上替换它，它的其他屏幕保持不变。",
+    "replaceMany": "以下播放列表与“{name}”在所列屏幕上重叠：\n\n{list}\n\n{lead}后，只会在这些屏幕上替换它们。",
+    "listItem": "• {screens}上的“{other}”",
+    "keepTitleOne": "其余时间继续播放“{other}”？",
+    "keepTitleMany": "其余时间继续播放其他播放列表？",
+    "keepOneScreen": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，该屏幕不会出现空白。",
+    "keepManyScreens": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，这些屏幕不会出现空白。",
+    "keepMany": "“{name}”只在设定的时间播放。其余时间，以下播放列表会继续播放，屏幕不会出现空白：\n\n{list}",
+    "alsoReplaces": "{screens}上的“{other}”与这些时间重叠，将在那里被替换。",
+    "hintOneScreen": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，该屏幕将没有内容可播放。",
+    "hintManyScreens": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
+    "hintMany": "选择“全部替换”会停止这些屏幕上的它们。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
+    "confirmKeepOne": "两者都保留",
+    "confirmKeepMany": "全部保留",
+    "replaceEverything": "全部替换",
+    "cancel": "取消"
+  },
+  "termsGate": {
+    "title": "继续之前",
+    "intro": "请阅读并接受 {brand} 最终用户许可协议。协议说明了本产品的功能（包括紧急警报的工作方式）以及它无法保证的事项。只需操作一次。",
+    "accept": "接受并继续",
+    "saving": "正在保存…",
+    "failed": "无法保存。请检查网络连接后重试。",
+    "version": "版本 {version}",
+    "signOut": "不是你？退出登录"
   }
 }

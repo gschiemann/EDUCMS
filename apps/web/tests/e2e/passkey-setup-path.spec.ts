@@ -6,8 +6,9 @@
  * for me". The sign-in offer is one screen, once per sign-in, and a single "Not now" used to put
  * it away for THIRTY DAYS with nothing else in the product naming the Settings path. Now:
  *
- *   - the account menu (the avatar) carries "Set up a passkey" → Settings → My security with the
- *     Add panel ALREADY open and the password field focused (`?add=passkey`);
+ *   - the account menu (the avatar) carries "Set up a passkey" → My account (since 2026-10-26;
+ *     it was Settings → My security, whose old URL now redirects there) with the Add panel
+ *     ALREADY open and the password field focused (`?add=passkey`);
  *   - the ceremony runs to a saved passkey: creation options from the API (password re-auth),
  *     the platform authenticator, the attestation verified, the list updated — and the menu
  *     entry then reads "Manage passkeys" (→ the list, `#sec-passkeys`).
@@ -148,7 +149,7 @@ const avatar = (page: Page) => page.getByTitle(EMAIL).first();
 test.describe('Passkeys — the always-there way to set one up', () => {
   test.setTimeout(180_000);
 
-  test('the account menu names the way in: "Set up a passkey" → My security with the Add panel open and the password focused', async ({ page }) => {
+  test('the account menu names the way in: "Set up a passkey" → My account with the Add panel open and the password focused', async ({ page }) => {
     const a = api();
     await signedIn(page, a);
     await page.goto(`/${SCHOOL_ID}/templates`, { waitUntil: 'domcontentloaded' });
@@ -161,11 +162,11 @@ test.describe('Passkeys — the always-there way to set one up', () => {
     const entry = page.getByTestId('passkey-menu-entry');
     await expect(entry).toBeVisible();
     await expect(entry).toHaveText(/Set up a passkey/);
-    await expect(entry).toHaveAttribute('href', `/${SCHOOL_ID}/settings/security?add=passkey`);
+    await expect(entry).toHaveAttribute('href', `/${SCHOOL_ID}/account?add=passkey`);
     await shot(page, 'menu');
     await entry.click();
 
-    await expect(page).toHaveURL(new RegExp(`/${SCHOOL_ID}/settings/security\\?add=passkey`));
+    await expect(page).toHaveURL(new RegExp(`/${SCHOOL_ID}/account\\?add=passkey`));
     const password = page.locator('#passkey-add-password');
     await expect(password).toBeVisible({ timeout: 60_000 });
     await expect(password).toBeFocused();
@@ -191,7 +192,10 @@ test.describe('Passkeys — the always-there way to set one up', () => {
       },
     });
 
+    // From the OLD address on purpose: bookmarks and sign-in emails still carry it,
+    // and it must land on My account with the Add panel open.
     await page.goto(`/${SCHOOL_ID}/settings/security?add=passkey`, { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(new RegExp(`/${SCHOOL_ID}/account\\?add=passkey`), { timeout: 60_000 });
     const password = page.locator('#passkey-add-password');
     await expect(password).toBeVisible({ timeout: 60_000 });
     await password.fill(PASSWORD);
@@ -219,13 +223,13 @@ test.describe('Passkeys — the always-there way to set one up', () => {
     await avatar(page).click();
     const entry = page.getByTestId('passkey-menu-entry');
     await expect(entry).toHaveText(/Manage passkeys/, { timeout: 30_000 });
-    await expect(entry).toHaveAttribute('href', `/${SCHOOL_ID}/settings/security#sec-passkeys`);
+    await expect(entry).toHaveAttribute('href', `/${SCHOOL_ID}/account#sec-passkeys`);
   });
 
   test('a wrong password is refused in place — the panel stays, nothing is created', async ({ page }) => {
     const a = api();
     await signedIn(page, a);
-    await page.goto(`/${SCHOOL_ID}/settings/security?add=passkey`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`/${SCHOOL_ID}/account?add=passkey`, { waitUntil: 'domcontentloaded' });
     await expect(avatar(page)).toBeVisible({ timeout: 60_000 });
     test.skip(!(await webAuthnCapable(page)), 'this browser build has no WebAuthn — the Add panel is (correctly) absent');
     const password = page.locator('#passkey-add-password');

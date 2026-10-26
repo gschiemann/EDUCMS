@@ -322,7 +322,7 @@ describe('"Set up a passkey on this iPhone" — ONE guided path', () => {
 
     expect(await screen.findByRole('heading', { name: "You're signed in" })).toBeInTheDocument();
     expect(screen.getByTestId('phone-setup-later')).toHaveTextContent(
-      'You can add a passkey for this device later in Settings → My security.',
+      'You can add a passkey for this device later in My account.',
     );
     expect(document.querySelector('.bg-rose-50')).toBeNull();
     expect(useUIStore.getState().token).toBe('tok-email');

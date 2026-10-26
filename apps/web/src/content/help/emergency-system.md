@@ -1,7 +1,7 @@
 ---
 title: Emergency system overview
 category: Emergency System
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: How lockdown, weather, and evacuation alerts work, how to run a practice drill, and the safeguards that keep them reliable.
 ---
 
@@ -20,7 +20,7 @@ A triggered alert instantly replaces whatever is showing on the targeted screens
 - **Shelter** — severe weather, hazardous material, or an air-quality event
 - **Hold** — stay put and clear the hallways
 
-You set the media and text for each type in **Settings → Emergency**. A type with no content sends nothing, so the Readiness panel on that page tells you exactly what is missing before you need it.
+You set the media and text for each type in **Settings → Emergency**. Every type works from day one: a type with no content of its own shows VenueOS's standard message for that type — for example **LOCKDOWN** with "Locks, lights, out of sight." Anything you add for a type replaces it, and each type on that page says whether it plays **Your content** or the **Standard message**.
 
 When you trigger an alert, the **Send to** line chooses where it goes:
 

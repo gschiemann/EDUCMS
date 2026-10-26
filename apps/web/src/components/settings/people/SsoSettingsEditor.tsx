@@ -11,6 +11,27 @@
  * unchanged. The API (`@RequireRoles('SUPER_ADMIN','DISTRICT_ADMIN')` on
  * GET/POST/test) remains the authority.
  *
+ * 2026-10-26 — WHY THIS PAGE COULD NOT LOAD OR SAVE FOR ~6–7 WEEKS (root
+ * cause, settings audit 3.10). It was the one Settings page that did its own
+ * networking: four hand-rolled `fetch()` calls that built their own
+ * `Authorization` header from a storage key nothing had written since
+ * SEC-010 moved the access token — so every load, save, test and domain
+ * check went out as "Bearer " and 401'd. 886cd9db repointed the header at
+ * the right store, but the page still bypassed the shared client, so it kept
+ * missing everything else the client does: the one-shot session refresh
+ * after the 1-hour token expires (a remembered admin who left the tab open
+ * still got a 401 here and only here), the CSRF header on writes, network
+ * retries, and the structured `err.code`. The fix is the class, not the
+ * symptom: every call goes through `apiFetch`, like the People page that
+ * reads the same endpoint (`useSsoSettings`), and a test pins it
+ * (`SsoSettingsEditor.test.tsx` fails if a raw `fetch(` comes back).
+ *
+ * SAML cannot run in this build (its library was removed for CVE-2025-54419
+ * and the API refuses to arm it), so a first-time admin no longer opens on
+ * it: the form starts on OpenID Connect and the SAML choice is shown only
+ * when this organization already HAS a stored SAML configuration (so the
+ * page never hides what is saved).
+ *
  * What the shell migration adds (§13.2 — access/SSO is a critical setting):
  *   - a real dirty count driving the shared Save / Discard header buttons
  *   - no optimistic success: Save awaits the server, then RE-READS the
@@ -23,7 +44,6 @@ import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Shield, Loader2, CheckCircle2, AlertCircle, Copy } from 'lucide-react';
-import { API_URL } from '@/lib/api-url';
 import { apiFetch } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { tenantRoleOptions } from '@/lib/role-assignment';
@@ -69,6 +89,13 @@ interface SpMeta {
 
 /** Roles the SSO read endpoint accepts. Presentation mirror only. */
 export const SSO_ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN'];
+
+/**
+ * SAML sign-in cannot run in this build (library removed for CVE-2025-54419;
+ * the API refuses `enabled: true` for SAML). While false, SAML is offered
+ * only to show a configuration that is already stored.
+ */
+export const SAML_AVAILABLE = false;
 
 /**
  * GET /tenants/:tenantSlug/sso — shared by this editor and the People
@@ -128,7 +155,8 @@ function Field({ id, label, value, onChange, placeholder, type = 'text' }: {
 }
 
 const EMPTY_FORM = {
-  provider: 'SAML' as Provider,
+  // Never open on an option that cannot be turned on (owner, 2026-10-24).
+  provider: (SAML_AVAILABLE ? 'SAML' : 'OIDC') as Provider,
   enabled: false,
   metadataUrl: '',
   entityId: '',
@@ -187,28 +215,16 @@ export function SsoSettingsEditor() {
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // The access token lives in the UI store (sessionStorage since SEC-010).
-  // This editor used to read localStorage 'auth_token' — a key nothing has
-  // written since then — so every load, save, test and domain check went
-  // out as "Bearer " and 401'd: the SSO page could never load or save
-  // (QA 2026-10-23).
-  const getToken = () => useUIStore.getState().token || '';
-
+  // Every request goes through the shared client (see the file header for
+  // why this page could not load or save for weeks when it did not).
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/tenants/${schoolId}/sso`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setSp(data.sp ?? null);
-      setConfig(data.config ?? null);
-      const next = formFromConfig(data.config);
+      const data = await apiFetch<{ config: SsoConfigSafe | null; sp: SpMeta | null }>(`/tenants/${schoolId}/sso`);
+      setSp(data?.sp ?? null);
+      setConfig(data?.config ?? null);
+      const next = formFromConfig(data?.config);
       setForm(next);
       setBaseline(next);
     } catch (e) {
@@ -258,15 +274,10 @@ export function SsoSettingsEditor() {
         body.oidcClientId = form.oidcClientId || null;
         if (form.oidcClientSecret) body.oidcClientSecret = form.oidcClientSecret;
       }
-      const res = await fetch(`${API_URL}/tenants/${schoolId}/sso`, {
+      await apiFetch(`/tenants/${schoolId}/sso`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.message || `HTTP ${res.status}`);
-      }
       // §13.2 — no optimistic success. Re-read the stored config; only the
       // values that came BACK from the server become the new baseline.
       await loadConfig();
@@ -296,18 +307,19 @@ export function SsoSettingsEditor() {
     setVerifying(true);
     setVerifyNote(null);
     try {
-      const res = await fetch(`${API_URL}/tenants/${schoolId}/sso/domain/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(manual ? { manual: true, reason: manualReason } : {}),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      let data: { verified?: boolean } | null;
+      try {
+        data = await apiFetch<{ verified?: boolean }>(`/tenants/${schoolId}/sso/domain/verify`, {
+          method: 'POST',
+          body: JSON.stringify(manual ? { manual: true, reason: manualReason } : {}),
+        });
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
         setVerifyNote({
           ok: false,
-          message: data?.code === 'SSO_DOMAIN_VERIFIED_ELSEWHERE'
+          message: err?.code === 'SSO_DOMAIN_VERIFIED_ELSEWHERE'
             ? t('settings.cc.people.ssoDomainTakenElsewhere')
-            : (data?.message || `HTTP ${res.status}`),
+            : (err?.message || t('settings.cc.people.ssoSaveFailed')),
         });
         return;
       }
@@ -326,11 +338,7 @@ export function SsoSettingsEditor() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(`${API_URL}/tenants/${schoolId}/sso/test`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
+      const data = await apiFetch<{ ok: boolean; message: string }>(`/tenants/${schoolId}/sso/test`, { method: 'POST' });
       setTestResult(data);
     } catch (e) {
       setTestResult({ ok: false, message: (e as Error).message });
@@ -399,9 +407,14 @@ export function SsoSettingsEditor() {
               description={t('settings.cc.people.spMetadataHelp')}
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <CopyField label={t('streamingSso.entityIdAudience')} value={sp.entityId} />
-                <CopyField label="SAML ACS URL" value={sp.acsUrl} />
-                <CopyField label={t('streamingSso.oidcRedirectUri')} value={sp.oidcRedirectUri} />
+                {form.provider === 'SAML' ? (
+                  <>
+                    <CopyField label={t('streamingSso.entityIdAudience')} value={sp.entityId} />
+                    <CopyField label={t('streamingSso.acsUrlLabel')} value={sp.acsUrl} />
+                  </>
+                ) : (
+                  <CopyField label={t('streamingSso.oidcRedirectUri')} value={sp.oidcRedirectUri} />
+                )}
               </div>
             </EditorSection>
           )}
@@ -422,8 +435,10 @@ export function SsoSettingsEditor() {
                   onChange={(e) => set('provider', e.target.value as Provider)}
                   className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px]"
                 >
-                  <option value="SAML">{t('streamingSso.samlOption')}</option>
-                  <option value="OIDC">OIDC (Google Workspace, Auth0, Azure AD)</option>
+                  <option value="OIDC">{t('settings.cc.people.ssoOidcOption')}</option>
+                  {(SAML_AVAILABLE || config?.provider === 'SAML') && (
+                    <option value="SAML">{t('streamingSso.samlOption')}</option>
+                  )}
                 </select>
               </div>
               <div className="flex items-end">

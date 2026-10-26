@@ -324,6 +324,15 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
     if (showAddUser) inviteEmailRef.current?.focus();
   }, [showAddUser]);
 
+  // `?invite=1` (2026-10-26) — the dashboard's "Invite a teammate" and the
+  // Settings search land here with the invite form already open, so inviting
+  // is type an email and Send. Read after mount (no Suspense boundary).
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('invite') === '1') setShowAddUser(true);
+    } catch { /* nothing to read */ }
+  }, []);
+
   const handleInvite = async () => {
     if (!newEmail.trim()) return;
     setInviteStatus(null);

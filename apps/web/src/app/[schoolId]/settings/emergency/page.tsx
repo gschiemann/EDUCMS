@@ -22,6 +22,15 @@
  *   5. Floor-plan and location coverage
  *   7. Audit/history link
  *
+ * WHAT CHANGED 2026-10-26 (Settings simplification, owner decision 2):
+ * every alert type is READY on day 1 with its standard wording (the words
+ * live in @cms/api-types emergency-wording.ts and are what the manifest's
+ * fallback board shows), so the page opens with "Ready in two steps" —
+ * 1. alert messages (done by default; own picture/video optional),
+ * 2. who can send alerts (from the readiness report's staff check) — and a
+ * "Practice with a drill" link to the Emergency page, where the LIVE | DRILL
+ * switch is. Drills are still never started from here.
+ *
  * WHAT CHANGED 2026-09-02 (handoff §19.5). The master on/off used to live in
  * browser localStorage (`emergencyEnabled:${tenantId}`) — per-device,
  * per-profile, invisible to the server. It is now `Tenant.emergencyEnabled`
@@ -55,6 +64,8 @@ import {
   Image as ImageIcon,
   FlaskConical,
   ShieldAlert,
+  Users,
+  ArrowRight,
 } from 'lucide-react';
 import {
   useTenant,
@@ -99,6 +110,8 @@ const HEALTH_LINK_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN']);
 
 /** Anchor ids — also the `searchItems` targets for the ⌘K palette. */
 const ANCHORS = {
+  setup: 'emergency-setup',
+  practice: 'emergency-practice',
   readiness: 'emergency-readiness',
   enablement: 'emergency-enabled',
   delivery: 'emergency-delivery',
@@ -213,6 +226,9 @@ function EmergencyEditor({ schoolId }: { schoolId: string }) {
         description={t('settings.cc.emergency.editorDescription')}
       />
 
+      {/* 0 — Ready in two steps (2026-10-26) */}
+      <SetupSteps schoolId={schoolId} capabilityOn={capabilityOn} loading={enablement.isLoading} readiness={readiness.data} readinessLoading={readiness.isLoading} />
+
       {/* 1 — Readiness summary */}
       <EditorSection
         id={ANCHORS.readiness}
@@ -234,6 +250,25 @@ function EmergencyEditor({ schoolId }: { schoolId: string }) {
       {/* 3, 4 (Live | Drill), 5 */}
       {capabilityOn && <DeliveryAndContent schoolId={schoolId} />}
 
+      {/* 6 — Practice with a drill: a LINK to the trigger surface, where the
+          LIVE | DRILL switch lives. Never a trigger on this page. */}
+      {capabilityOn && (
+        <EditorSection
+          id={ANCHORS.practice}
+          title={t('settings.cc.emergency.practice.title')}
+          description={t('settings.cc.emergency.practice.desc')}
+        >
+          <Link
+            href={`/panic?schoolId=${encodeURIComponent(schoolId)}`}
+            data-testid="emergency-practice-link"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-[10px] border border-indigo-200 bg-indigo-50 text-[13px] font-medium text-indigo-800 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+          >
+            <FlaskConical className="w-4 h-4" aria-hidden />
+            {t('settings.cc.emergency.practice.action')}
+          </Link>
+        </EditorSection>
+      )}
+
       {/* 7 — Audit / history */}
       <EditorSection
         id={ANCHORS.history}
@@ -249,6 +284,140 @@ function EmergencyEditor({ schoolId }: { schoolId: string }) {
         </Link>
       </EditorSection>
     </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// 0 — Ready in two steps (2026-10-26)
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Two steps to "ready", each graded by the server:
+ *   1. Alert messages — done whenever alerts are on: every type has its
+ *      standard message (owner decision 2). If alerts are OFF (non-K-12),
+ *      step 1 is turning them on, with the real switch just below.
+ *   2. Who can send alerts — the readiness report's `staff` check (two or
+ *      more people is "done"; one is a single point of failure).
+ * Practising a drill and pairing screens stay in the readiness card below:
+ * recommendations, not setup steps.
+ */
+function SetupSteps({
+  schoolId,
+  capabilityOn,
+  loading,
+  readiness,
+  readinessLoading,
+}: {
+  schoolId: string;
+  capabilityOn: boolean;
+  loading: boolean;
+  readiness: { items?: Array<{ key: string; status: string; params?: Record<string, number> }> } | undefined;
+  readinessLoading: boolean;
+}) {
+  const t = useTranslations();
+  if (loading) return null;
+  const staff = readiness?.items?.find((i) => i.key === 'staff');
+  const staffCount = staff?.params?.count;
+  const step1Done = capabilityOn;
+  const step2Done = capabilityOn && staff?.status === 'ok';
+  const allDone = step1Done && step2Done;
+  const step2Body = !capabilityOn
+    ? t('settings.cc.emergency.setup.step2None')
+    : readinessLoading || !staff
+      ? t('settings.cc.emergency.setup.step2Checking')
+      : staff.status === 'ok'
+        ? t('settings.cc.emergency.setup.step2Ok', { count: staffCount ?? 2 })
+        : staff.status === 'warn'
+          ? t('settings.cc.emergency.setup.step2One')
+          : t('settings.cc.emergency.setup.step2None');
+  return (
+    <section
+      id={ANCHORS.setup}
+      aria-labelledby={`${ANCHORS.setup}-heading`}
+      data-testid="emergency-setup"
+      className="mb-5 rounded-[14px] border border-slate-200 bg-white p-4 scroll-mt-24"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 id={`${ANCHORS.setup}-heading`} className="text-[14px] font-semibold text-slate-900">
+          {allDone ? t('settings.cc.emergency.setup.ready') : t('settings.cc.emergency.setup.title')}
+        </h3>
+        {allDone && (
+          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-emerald-700">
+            <CheckCircle2 className="w-4 h-4" aria-hidden />
+            {t('settings.cc.emergency.setup.readyHint')}
+          </span>
+        )}
+      </div>
+      <ol className="grid gap-2 list-none m-0 p-0 md:grid-cols-2">
+        <SetupStep
+          n={1}
+          done={step1Done}
+          title={capabilityOn ? t('settings.cc.emergency.setup.step1Title') : t('settings.cc.emergency.setup.step1OffTitle')}
+          body={capabilityOn ? t('settings.cc.emergency.setup.step1Done') : t('settings.cc.emergency.setup.step1OffBody')}
+          testId="emergency-setup-step-messages"
+        />
+        <SetupStep
+          n={2}
+          done={step2Done}
+          title={t('settings.cc.emergency.setup.step2Title')}
+          body={step2Body}
+          testId="emergency-setup-step-senders"
+          action={
+            capabilityOn && !step2Done && staff ? (
+              <Link
+                href={`/${schoolId}/settings/people`}
+                className="mt-2 inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-[10px] text-[13px] font-medium text-[var(--brand-primary-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                style={{ background: 'var(--brand-primary)' }}
+              >
+                <Users className="w-4 h-4" aria-hidden />
+                {t('settings.cc.emergency.setup.step2Action')}
+                <ArrowRight className="w-4 h-4" aria-hidden />
+              </Link>
+            ) : null
+          }
+        />
+      </ol>
+    </section>
+  );
+}
+
+function SetupStep({
+  n,
+  done,
+  title,
+  body,
+  action,
+  testId,
+}: {
+  n: number;
+  done: boolean;
+  title: string;
+  body: string;
+  action?: React.ReactNode;
+  testId: string;
+}) {
+  const t = useTranslations();
+  return (
+    <li
+      data-testid={testId}
+      data-done={done ? 'true' : 'false'}
+      className={`flex items-start gap-3 rounded-[11px] border px-3 py-3 ${done ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50/60'}`}
+    >
+      <span
+        aria-hidden
+        className={`w-7 h-7 shrink-0 grid place-items-center rounded-full text-[12px] font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-300 text-slate-600'}`}
+      >
+        {done ? <CheckCircle2 className="w-4 h-4" /> : n}
+      </span>
+      <div className="min-w-0">
+        <strong className="block text-[13px] font-medium text-slate-900">
+          {title}
+          <span className="sr-only"> — {done ? t('settings.cc.emergency.setup.stepDone') : t('settings.cc.emergency.setup.stepTodo')}</span>
+        </strong>
+        <p className="mt-0.5 text-[12px] leading-[17px] text-slate-600">{body}</p>
+        {action}
+      </div>
+    </li>
   );
 }
 

@@ -91,7 +91,7 @@ describe('POST /billing/ai-packs/checkout', () => {
   it.each([
     [
       'NO_PLATFORM_KEY',
-      'AI runs on your own key — add it in Settings → AI provider.',
+      'AI runs on your own key — add it in Settings → Connections → AI.',
     ],
     [
       'OWN_KEY',

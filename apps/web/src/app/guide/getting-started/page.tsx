@@ -329,7 +329,7 @@ function Chapter1Pair() {
         <strong>Want to use the Android player APK instead?</strong> Open your
         dashboard&rsquo;s <em>Screens → Connect a screen</em> card and pick
         &ldquo;Android display&rdquo; — it shows a QR code and a download link
-        for the current APK (the same build as Settings → Devices). Sideload
+        for the current APK. Sideload
         it, open it once, and it pairs the same way — except every future
         update lands automatically with no reinstall.
       </Tip>

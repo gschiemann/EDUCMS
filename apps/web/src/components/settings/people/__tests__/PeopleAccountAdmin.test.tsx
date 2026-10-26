@@ -44,7 +44,7 @@ function renderEditor() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <PeopleAccessEditor ssoManageable ssoHref="/t/settings/people/sso" securityHref="/t/settings/security" />
+      <PeopleAccessEditor ssoManageable ssoHref="/t/settings/people/sso" securityHref="/t/account" />
     </QueryClientProvider>,
   );
 }

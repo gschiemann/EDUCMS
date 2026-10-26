@@ -1042,6 +1042,9 @@ export * from './verticals';
 // Emergency capability enablement (Tenant.emergencyEnabled, nullable) — the
 // server-side replacement for the localStorage gate (handoff §19.5).
 export * from './emergency-enablement';
+// 2026-10-26 — standard alert wording: what a screen shows for an alert type
+// with no content of its own (Settings simplification, owner-approved words).
+export * from './emergency-wording';
 // Per-tenant MFA enforcement (Tenant.mfaEnforced, nullable tri-state) — the
 // one resolver the API gate and the dashboard toggle both read (2026-09-11).
 export * from './mfa-enforcement';
@@ -1074,6 +1077,8 @@ export * from './sports-sources';
 export * from './streaming';
 export * from './streaming-presets';
 export * from './billing';
+// 2026-10-26 — the plan cards' words in Spanish and Chinese (prices from the tier).
+export * from './billing-copy';
 export * from './pos';
 export * from './concierge-pos';
 export * from './ad-network';

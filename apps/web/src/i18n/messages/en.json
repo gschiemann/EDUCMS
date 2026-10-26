@@ -15,8 +15,8 @@
     "settings": "Settings",
     "reviews": "Reviews",
     "proofOfPlay": "Proof of play",
-    "audit": "Audit Log",
-    "account": "Account",
+    "audit": "Activity",
+    "account": "My account",
     "more": "More",
     "mainMenu": "Main Menu",
     "media": "Media",
@@ -79,7 +79,7 @@
     },
     "modal": {
       "title": "Trigger Emergency",
-      "configuredIn": "Emergency content is configured in <b>Settings → Emergency Content</b>.",
+      "configuredIn": "Emergency content is configured in <b>Settings → Emergency</b>.",
       "close": "Close",
       "step1": "1. Select Emergency Type",
       "step2": "2. Confirm",
@@ -380,12 +380,12 @@
     "passkeyOfferBody": "Use {method} instead of your password.",
     "passkeyOfferNotNow": "Not now",
     "passkeyOfferDontAsk": "Don't ask on this device",
-    "passkeyOfferFootnote": "You can add or remove passkeys anytime in Settings → My security.",
+    "passkeyOfferFootnote": "You can add or remove passkeys anytime in My account.",
     "passkeyOfferDoneTitle": "Passkey saved",
     "passkeyOfferDoneBody": "Next time, choose “Sign in with a passkey” and use {method}.",
     "passkeyOfferContinue": "Continue",
-    "passkeyOfferCancelled": "No passkey was set up. You can add one anytime in Settings → My security.",
-    "passkeyOfferFailed": "We couldn't set up a passkey this time. You can add one later in Settings → My security.",
+    "passkeyOfferCancelled": "No passkey was set up. You can add one anytime in My account.",
+    "passkeyOfferFailed": "We couldn't set up a passkey this time. You can add one later in My account.",
     "useAnotherWay": "Use another way",
     "passkeyElsewhereNote": "Your passkey may be on another device. Sign in another way on this one:",
     "passkeyTryAgain": "Try your passkey again",
@@ -393,8 +393,8 @@
     "otherWaysLabel": "Other ways to sign in",
     "otherWayAuthenticator": "Enter a code from your authenticator app",
     "otherWayEmail": "Email me a code",
-    "otherWayDeviceHint": "Or sign in on the device that has your passkey, then add this device in Settings → My security.",
-    "otherWayNone": "Sign in on the device that has your passkey. Then add a passkey for this device in Settings → My security.",
+    "otherWayDeviceHint": "Or sign in on the device that has your passkey, then add this device in My account.",
+    "otherWayNone": "Sign in on the device that has your passkey. Then add a passkey for this device in My account.",
     "mfaUsePasskeySub": "Use your passkey to finish signing in.",
     "emailCodeSubtitle": "Enter the code we emailed you to finish signing in.",
     "emailCodeSending": "Sending…",
@@ -425,29 +425,18 @@
     "phoneSetupTurnOnSub": "You're signed in. Turn it on, and next time signing in here is one tap.",
     "phoneSetupTurnOnButton": "{device, select, iphone {Turn on Face ID or Touch ID} ipad {Turn on Face ID or Touch ID} android {Turn on fingerprint sign-in} other {Turn on passkey sign-in}}",
     "phoneSetupSignedInTitle": "You're signed in",
-    "phoneSetupLater": "You can add a passkey for this device later in Settings → My security.",
+    "phoneSetupLater": "You can add a passkey for this device later in My account.",
     "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
     "security": "Security"
   },
   "account": {
-    "title": "Account",
+    "title": "My account",
     "editProfile": "Edit profile",
     "signOut": "Sign out",
     "signOutTitle": "Sign out?",
     "signOutMessage": "You’ll need to sign in again to manage screens and content.",
-    "sectionSchool": "School",
-    "currentSchool": "Current school",
-    "schoolSettings": "School settings",
-    "schoolSettingsSub": "Branding, emergency content, integrations",
     "sectionNotifications": "Notifications",
-    "notificationSettings": "Notification settings",
-    "notificationSettingsSub": "Push, email, in-app preferences",
     "appInfo": "VenueOS dashboard",
-    "roleSuperAdmin": "Super Admin",
-    "roleDistrictAdmin": "District Admin",
-    "roleSchoolAdmin": "School Admin",
-    "roleContributor": "Contributor",
-    "roleViewer": "Viewer",
     "roleUnknown": "Unknown",
     "alertEmails": {
       "title": "Alert emails",
@@ -459,7 +448,17 @@
       "languageDefault": "Same as my organization",
       "saved": "Saved",
       "saveFailed": "Couldn’t save. Try again."
-    }
+    },
+    "subtitle": "Your profile, how you sign in, and your language.",
+    "securityTitle": "Sign-in and security",
+    "securityDesc": "Only you can change these, and they apply wherever you sign in.",
+    "mfaTitle": "Two-step sign-in",
+    "mfaDesc": "A code from an authenticator app, on top of your password.",
+    "languageTitle": "Language",
+    "languageDesc": "VenueOS shows in this language on this device.",
+    "organizationTitle": "Your organization",
+    "openSettings": "Open Settings",
+    "openSettingsSub": "Logo, alerts, team, connections and billing."
   },
   "settings": {
     "common": {
@@ -674,71 +673,58 @@
       "autoPromoteAfterSoak": "Auto-promote after soak"
     },
     "shell": {
-      "indexLabel": "Settings index",
-      "indexHeading": "Settings",
-      "groups": {
-        "workspace": "Workspace",
-        "operations": "Operations",
-        "access": "Access & platform",
-        "account": "Account"
-      },
+      "indexLabel": "Settings areas",
       "sections": {
-        "overview": {
-          "label": "Overview",
-          "description": "Is this organization configured, and is anything blocking operations?"
-        },
         "organization": {
-          "label": "Organization",
-          "description": "Identity, industry and organization-wide defaults."
+          "label": "Organization profile",
+          "description": "Your organization’s name, address, time zone and industry."
         },
         "locations": {
           "label": "Locations",
-          "description": "Your organization structure and where each location inherits from."
+          "description": "The schools, stores or sites in your organization."
         },
         "brand": {
-          "label": "Brand & appearance",
-          "description": "One source of truth for dashboard chrome and supported screen templates."
+          "label": "Logo & colors",
+          "description": "Your logo and colors, used across the dashboard and your screens."
         },
         "emergency": {
-          "label": "Emergency",
-          "description": "Configure and validate alert readiness. Triggering lives in the global Emergency action."
+          "label": "Emergency alerts",
+          "description": "Alert messages and who can send them. Alerts are sent from the Emergency button."
         },
         "player": {
-          "label": "Player & offline",
-          "description": "Player software delivery, update windows, staged rollout and offline continuity."
+          "label": "Screen updates",
+          "description": "VenueOS keeps the software on your screens up to date for you."
         },
         "integrations": {
-          "label": "Integrations",
-          "description": "One truthful catalog of AI, streaming, POS and identity connections."
+          "label": "Connections",
+          "description": "Services that work with VenueOS today. Connect one to use it on your screens."
         },
         "people": {
-          "label": "People & access",
-          "description": "Team members, invitations, roles, MFA policy, SSO and content approval."
+          "label": "People",
+          "description": "Who can use VenueOS, what each person can do, and how they sign in."
         },
         "billing": {
-          "label": "Billing",
-          "description": "Plan, screen seats, invoices and payment status."
+          "label": "Plan & billing",
+          "description": "Your plan, screen seats, invoices and payment."
         },
         "developer": {
-          "label": "Developer & audit",
-          "description": "API keys, webhooks, build information and the audit log."
+          "label": "API keys & webhooks",
+          "description": "Connect your own software to VenueOS."
         },
         "security": {
-          "label": "My security",
-          "description": "Password and two-factor setup for your own account."
+          "label": "My account",
+          "description": "Your password, passkeys and two-step sign-in."
         },
         "sports": {
-          "label": "Sports",
+          "label": "Student privacy",
           "description": "Game day, including what public screens may show about students."
         },
         "supportAccess": {
-          "label": "VenueOS support access",
+          "label": "VenueOS support",
           "description": "Decide when VenueOS support may reach your organization, and end it any time."
         }
       },
       "scopePersonal": "Personal account",
-      "historyTitle": "Settings history",
-      "historyBody": "Every saved change is recorded with scope, author and timestamp.",
       "statusAttention": "Needs attention",
       "statusError": "Error",
       "save": "Save changes",
@@ -746,11 +732,8 @@
       "noChanges": "No changes",
       "discard": "Discard",
       "allSettings": "All settings",
-      "context": "Context",
-      "contextLabel": "Setting context",
-      "contextEmpty": "Nothing to show for this section.",
-      "palettePlaceholder": "Find a setting or jump to a location…",
-      "paletteLabel": "Find a setting",
+      "palettePlaceholder": "Search settings — try “logo” or “invite”",
+      "paletteLabel": "Search settings",
       "paletteEmpty": "No settings match “{query}”.",
       "paletteSwitchScope": "Switch scope",
       "noAccessTitle": "You don’t have access to {section}",
@@ -759,17 +742,248 @@
       "dirtyBody": "Save them before leaving, discard them, or stay on this page.",
       "dirtySave": "Save changes",
       "dirtyDiscard": "Discard and continue",
-      "dirtyStay": "Stay here"
+      "dirtyStay": "Stay here",
+      "areas": {
+        "organization": {
+          "label": "Organization",
+          "description": "Name, address, logo, colors and locations.",
+          "keywords": "name, address, time zone, logo, colors, brand, locations, schools, student privacy"
+        },
+        "emergency": {
+          "label": "Emergency",
+          "description": "Alert messages and who can send them.",
+          "keywords": "lockdown, evacuate, fire, weather, medical, hold, secure, alert, drill"
+        },
+        "team": {
+          "label": "Team",
+          "description": "People, roles and how they sign in.",
+          "keywords": "people, users, invite, roles, sign-in, two-step, single sign-on"
+        },
+        "connections": {
+          "label": "Connections",
+          "description": "AI, point of sale, live video and other services.",
+          "keywords": "integrations, ai, key, point of sale, menu, prices, video, stream, roster"
+        },
+        "billing": {
+          "label": "Plan & billing",
+          "description": "Your plan, invoices and the AI add-on.",
+          "keywords": "plan, billing, invoice, payment, card, subscription, trial, seats"
+        },
+        "advanced": {
+          "label": "Advanced",
+          "description": "API keys, webhooks and VenueOS support access.",
+          "keywords": "api, key, webhook, developer, support"
+        }
+      },
+      "tabs": {
+        "profile": "Profile",
+        "brand": "Logo & colors",
+        "locations": "Locations",
+        "privacy": "Student privacy",
+        "emergency": "Alerts",
+        "people": "People",
+        "sso": "Single sign-on",
+        "connections": "All",
+        "ai": "AI",
+        "pos": "Point of sale",
+        "video": "Live video",
+        "rosters": "Student rosters",
+        "billing": "Plan & billing",
+        "developer": "API keys & webhooks",
+        "support": "VenueOS support"
+      },
+      "tabsLabel": "{area} pages",
+      "details": "Details",
+      "detailsLabel": "More about this page",
+      "searchButton": "Search settings",
+      "noAccessBodyAccount": "Your administrators manage this. Your own profile, password and sign-in are in My account.",
+      "openMyAccount": "Open My account",
+      "backToSettings": "Back to Settings",
+      "homeLink": "Settings home",
+      "home": {
+        "subtitle": "Pick an area, or search for what you want to do.",
+        "areasLabel": "Settings areas",
+        "attentionTitle": "Needs attention",
+        "moreTitle": "More",
+        "activityTitle": "Activity",
+        "activityBody": "See who changed what, and when.",
+        "accountTitle": "My account",
+        "accountBody": "Your profile, password, passkeys and language.",
+        "status": {
+          "checking": "Checking…",
+          "emergencyReady": "Ready",
+          "emergencyAttention": "Needs attention",
+          "emergencyNotSet": "Not set up",
+          "emergencyOff": "Off",
+          "trial": "Free trial · {days, plural, one {# day} other {# days}} left",
+          "trialEnded": "Free trial ended",
+          "active": "Active",
+          "paymentProblem": "Payment problem",
+          "ended": "Plan ended"
+        },
+        "attention": {
+          "noScreens": "No screens are paired yet, so an alert would reach no one.",
+          "pairScreen": "Pair a screen",
+          "screensOffline": "Some screens are offline and would miss an alert.",
+          "checkScreens": "Check screens",
+          "oneSender": "Only one person can send an alert.",
+          "noSender": "Nobody can send an alert yet.",
+          "chooseSenders": "Choose people",
+          "delivery": "Alerts can’t reach your screens right now.",
+          "openEmergency": "Open Emergency",
+          "practice": "Alerts have not been practiced in the last 90 days.",
+          "practiceAction": "How to run a drill",
+          "trialEnds": "Your free trial ends in {days, plural, one {# day} other {# days}}.",
+          "planEnded": "Your plan has ended. Pick a plan to keep editing.",
+          "pickPlan": "Pick a plan",
+          "paymentProblem": "There is a problem with your payment.",
+          "fixPayment": "Fix payment",
+          "seatsFull": "Every screen seat is in use ({used} of {limit}).",
+          "addSeats": "Add seats"
+        },
+        "notAdmin": "Settings are managed by your administrators. Opening My account…"
+      },
+      "jobs": {
+        "changeLogo": {
+          "label": "Change my logo",
+          "keywords": "logo, brand, image"
+        },
+        "changeColors": {
+          "label": "Change brand colors",
+          "keywords": "colors, palette, theme"
+        },
+        "orgDetails": {
+          "label": "Name, address and time zone",
+          "keywords": "name, address, time zone, industry"
+        },
+        "addLocation": {
+          "label": "Add a location",
+          "keywords": "location, school, site, store"
+        },
+        "studentPrivacy": {
+          "label": "What screens show about students",
+          "keywords": "ferpa, photos, names, minors"
+        },
+        "alertMessages": {
+          "label": "Change an alert message",
+          "keywords": "lockdown, evacuate, weather, wording, picture"
+        },
+        "whoCanSend": {
+          "label": "Choose who can send alerts",
+          "keywords": "panic, trigger, permission"
+        },
+        "practiceDrill": {
+          "label": "Practice with a drill",
+          "keywords": "drill, practice, test alert"
+        },
+        "floorPlans": {
+          "label": "Floor plans",
+          "keywords": "map, building, floor"
+        },
+        "invite": {
+          "label": "Invite someone",
+          "keywords": "invite, add person, teammate"
+        },
+        "changeRole": {
+          "label": "Change what someone can do",
+          "keywords": "role, permissions, editor, viewer"
+        },
+        "require2Step": {
+          "label": "Require two-step sign-in",
+          "keywords": "2fa, mfa, two-step, security"
+        },
+        "sso": {
+          "label": "Set up single sign-on",
+          "keywords": "sso, okta, azure, entra, oidc"
+        },
+        "aiKey": {
+          "label": "Add an AI key",
+          "keywords": "ai, openai, anthropic, gemini, key"
+        },
+        "connectPos": {
+          "label": "Connect a point of sale",
+          "keywords": "pos, menu, prices, square, toast, clover"
+        },
+        "liveVideo": {
+          "label": "Add a live video stream",
+          "keywords": "stream, live, video, hls"
+        },
+        "clever": {
+          "label": "Sync student rosters (Clever)",
+          "keywords": "clever, roster, students"
+        },
+        "plan": {
+          "label": "Change my plan",
+          "keywords": "plan, upgrade, seats, trial"
+        },
+        "invoices": {
+          "label": "Invoices and payment",
+          "keywords": "invoice, receipt, payment, card"
+        },
+        "apiKeys": {
+          "label": "API keys and webhooks",
+          "keywords": "api, key, token, webhook"
+        },
+        "supportAccess": {
+          "label": "Let VenueOS support help",
+          "keywords": "support, help, remote access"
+        },
+        "activity": {
+          "label": "See who changed what",
+          "keywords": "audit, history, log, activity"
+        },
+        "myPassword": {
+          "label": "Change my password",
+          "keywords": "password"
+        },
+        "myPasskey": {
+          "label": "Set up a passkey",
+          "keywords": "passkey, face id, touch id, fingerprint"
+        },
+        "myLanguage": {
+          "label": "Change my language",
+          "keywords": "language, english, spanish, chinese"
+        }
+      },
+      "jobAreas": {
+        "account": "My account",
+        "activity": "Activity"
+      },
+      "status": {
+        "ready": "Ready",
+        "connected": "Connected",
+        "attention": "Needs attention",
+        "degraded": "Needs attention",
+        "blocked": "Not working",
+        "notConfigured": "Not set up",
+        "external": "Uses its own device",
+        "planned": "Not available yet",
+        "unsupported": "Not available",
+        "unknown": "Unknown"
+      },
+      "inheritance": {
+        "default": "Organization default",
+        "inherited": "Inherited from {name}",
+        "inheritedFallback": "your organization",
+        "override": "Changed here",
+        "unsupported": "Not available here"
+      },
+      "denied": {
+        "title": "You don’t have access to {section}",
+        "body": "{grantedBy} can give you access.",
+        "defaultGrantor": "An organization administrator"
+      },
+      "errorSummaryTitle": "Could not save"
     },
     "cc": {
       "emergency": {
         "title": "Emergency",
         "description": "Configure and validate alert readiness. This is not the trigger screen.",
         "editorTitle": "Emergency alerts",
-        "editorDescription": "What your screens show when an alert is triggered, and whether that would actually work right now.",
+        "editorDescription": "What your screens show when an alert is sent, and whether that would work right now.",
         "readiness": {
-          "title": "Readiness",
-          "desc": "Whether an alert would reach your screens today, and exactly what is missing if it would not.",
+          "title": "Is everything working?",
+          "desc": "Whether an alert would reach your screens today, and what to fix if not.",
           "disabled": "Emergency alerts are off for this organization, so there is nothing to grade. Turn the capability on below to see a readiness check."
         },
         "enablement": {
@@ -808,7 +1022,7 @@
           "unchanged": "Nothing changed. The last setting the server confirmed is still in effect."
         },
         "delivery": {
-          "title": "Delivery model",
+          "title": "Same alert everywhere, or per screen",
           "desc": "Whether every screen shows the same alert, or each screen shows its own.",
           "loading": "Reading the delivery model…",
           "loadFailed": "Could not read the delivery model. Reload this page before changing anything — the last setting the server confirmed is still in effect.",
@@ -823,8 +1037,8 @@
           "saveFailedFallback": "The server did not confirm the change."
         },
         "content": {
-          "title": "Alert types and content",
-          "desc": "The media each alert type puts on screen. An alert type with no content sends nothing.",
+          "title": "Alert messages",
+          "desc": "Every alert type is ready with a standard message on a red screen. Add your own picture or video to any of them if you like.",
           "criticalGroup": "Critical",
           "awarenessGroup": "Heightened awareness"
         },
@@ -867,14 +1081,14 @@
         "history": {
           "title": "History",
           "desc": "Every change on this page and every alert that was sent is recorded permanently, with who did it and when.",
-          "link": "Open the audit log"
+          "link": "See who did what"
         },
         "rail": {
           "capability": "Capability",
           "capabilityOffBody": "Nothing is graded and no alert can be sent while the capability is off.",
           "byType": "Alert content",
-          "typeConfigured": "Configured",
-          "typeNotConfigured": "No content",
+          "typeConfigured": "Your content",
+          "typeNotConfigured": "Standard message",
           "typeChecking": "Checking",
           "coverage": "Coverage",
           "coverageOrg": "Every screen shows the same alert content.",
@@ -931,6 +1145,28 @@
             "screen": "Screen",
             "unknownUser": "Unknown"
           }
+        },
+        "setup": {
+          "title": "Ready in two steps",
+          "step1Title": "Alert messages",
+          "step1Done": "Every alert type has a clear message ready. Your own picture or video is optional.",
+          "step1OffTitle": "Turn on safety alerts",
+          "step1OffBody": "Use the button just below. Every alert type then has a clear message ready.",
+          "step2Title": "Who can send alerts",
+          "step2Ok": "{count, plural, one {# person} other {# people}} can send an alert.",
+          "step2One": "Only one person can send an alert. Add a second, so an alert never waits on one person.",
+          "step2None": "Nobody can send an alert yet.",
+          "step2Checking": "Checking who can send…",
+          "step2Action": "Choose people",
+          "ready": "Your alerts are ready.",
+          "readyHint": "Alerts are sent from the Emergency button, never from this page.",
+          "stepDone": "Done",
+          "stepTodo": "To do"
+        },
+        "practice": {
+          "title": "Practice with a drill",
+          "desc": "Open the Emergency page, switch it to DRILL, then send. Every screen shows DRILL, so nobody mistakes it for the real thing.",
+          "action": "Open the Emergency page"
         }
       },
       "brand": {
@@ -1042,26 +1278,18 @@
         "searchInvoices": "Invoices"
       },
       "developer": {
-        "editorTitle": "Developer & audit",
-        "editorDesc": "API keys, outbound webhooks, build information and the audit log for this organization.",
+        "editorTitle": "API keys & webhooks",
+        "editorDesc": "Let your own software read from or react to VenueOS.",
         "deniedGrantedBy": "A district or super administrator",
-        "systemTitle": "System & build",
-        "systemDesc": "Read-only endpoints for this deployment, set at deploy time.",
-        "integrationsTitle": "Connected integrations",
-        "integrationsDesc": "Every external system wired into this organization, with a link to its own settings.",
+        "systemTitle": "About this workspace",
+        "systemDesc": "Addresses and the build number, in case VenueOS support asks for them.",
         "apiKeysTitle": "API keys",
         "apiKeysDesc": "Bearer tokens for the REST API. A token is shown once, at creation.",
         "webhooksTitle": "Webhooks",
         "webhooksDesc": "Signed outbound POSTs. A signing secret is shown once, at creation.",
-        "docsTitle": "SDK & documentation",
-        "docsDesc": "References for building against VenueOS.",
-        "auditTitle": "Audit log",
-        "auditDesc": "Every admin action is recorded with who, what and when.",
-        "auditAction": "Open the audit log",
-        "toolsTitle": "Developer tools",
-        "toolsDesc": "Sample-data harness for integration smoke tests. Deliberately absent from ordinary operator navigation.",
-        "toolsAction": "Integration test data",
-        "toolsAvailability": "Super admins only in production; district admins may also open it outside production.",
+        "docsTitle": "Guides",
+        "docsDesc": "How to use API keys and webhooks with VenueOS.",
+        "toolsAvailability": "Checks every integration on this deploy and loads clearly marked sample data.",
         "railKeysLabel": "API keys",
         "railKeysValue": "{active} active · {revoked} revoked",
         "railKeysUnknown": "Loading…",
@@ -1072,43 +1300,21 @@
         "railBuildUnknown": "Dashboard build is not stamped on this deployment",
         "searchApiKeys": "API keys",
         "searchWebhooks": "Webhooks",
-        "searchAudit": "Audit log",
         "testTitle": "Integration test data",
         "testDesc": "Loads and clears clearly-tagged sample rows so every integration can be exercised without vendor sandbox accounts.",
-        "testDeniedBody": "The sample-data harness is a super-admin tool. Outside production it is also open to district administrators.",
-        "backToDeveloper": "Back to Developer & audit",
         "revokeKeyTitle": "Revoke API key?",
         "revokeKeyMessage": "“{label}” will stop working right away. This can't be undone.",
         "revokeKeyConfirm": "Revoke",
         "apiDocsTitle": "REST API and webhooks",
-        "apiDocsBlurb": "Authentication, scopes, endpoints with examples, rate limits, and how to verify webhook signatures."
-      },
-      "security": {
-        "editorTitle": "Your account security",
-        "editorDesc": "Password and two-factor sign-in for your own account.",
-        "passwordTitle": "Password",
-        "passwordDesc": "Rotate your password and sign every other device out at the same time.",
-        "mfaTitle": "Two-factor authentication",
-        "mfaDesc": "Add a one-time code from an authenticator app on top of your password.",
-        "sessionsNote": "To sign out your other devices, change your password.",
-        "railScopeLabel": "Applies to",
-        "railScopeTitle": "Your account only",
-        "railScopeBody": "Nothing on this page changes what your organization sees. Organization-wide MFA policy lives under People & access.",
-        "railMfaLabel": "Two-factor",
-        "railMfaOn": "Enabled",
-        "railMfaOff": "Not enabled",
-        "railMfaUnknown": "Unknown",
-        "railMfaOnBody": "A one-time code is required at sign-in.",
-        "railMfaOffBody": "Your password is the only thing protecting this account.",
-        "railMfaUnknownBody": "We could not read your two-factor state just now.",
-        "searchPassword": "Password",
-        "searchMfa": "Two-factor",
-        "passkeysTitle": "Passkeys",
-        "passkeysDesc": "Sign in with Face ID, Touch ID, Windows Hello or a security key instead of a code.",
-        "searchPasskeys": "Passkeys"
+        "apiDocsBlurb": "Authentication, scopes, endpoints with examples, rate limits, and how to verify webhook signatures.",
+        "playerUrl": "Player address",
+        "apiEndpoint": "API address",
+        "dashboardBuild": "Dashboard build",
+        "healthTitle": "Service status",
+        "healthBlurb": "Shows whether the VenueOS service is up, and its build."
       },
       "people": {
-        "editorTitle": "People & access",
+        "editorTitle": "People",
         "editorDescription": "Who can sign in, what they can do, and how their sign-in is protected.",
         "actionFailed": "That change did not go through",
         "teamDescription": "Everyone with an account in this organization.",
@@ -1179,7 +1385,7 @@
         "mfaEnforceFailed": "Couldn't change the organization's two-factor setting.",
         "mfaPersonalNote": "Setting up your own authenticator is a personal task and lives under",
         "ssoTitle": "Single sign-on",
-        "ssoDescription": "SAML or OIDC sign-in for this organization.",
+        "ssoDescription": "Let people sign in through your organization’s identity provider.",
         "ssoSummary": "Configure your identity provider, service-provider metadata, allowed email domain and the role new accounts receive.",
         "ssoManage": "Manage SSO",
         "ssoBreadcrumb": "SSO",
@@ -1191,7 +1397,7 @@
         "railStatus": "Status",
         "ssoAppliesTo": "Everyone signing in to this organization",
         "ssoAppliesToHelp": "Email and password sign-in keeps working alongside SSO.",
-        "backToPeople": "Back to People & access",
+        "backToPeople": "Back to People",
         "ssoSaveFailed": "Could not save the SSO configuration",
         "spMetadataHelp": "Paste these values into your identity provider.",
         "samlUnavailableBody": "You can save your settings so they're ready. Use OIDC or email and password until then.",
@@ -1200,7 +1406,7 @@
         "ssoTestTitle": "Test configuration",
         "ssoTestDescription": "Checks your saved settings. It doesn't sign anyone in.",
         "approvalOnNote": "Contributor publishes are routed through the review queue. Admins publish directly.",
-        "approvalOffNote": "Contributors publish directly and use “Send for review” only when they choose to.",
+        "approvalOffNote": "Editors publish directly and use “Send for review” only when they choose to.",
         "railAppliesTo": "Applies to",
         "railAppliesToHelp": "Accounts and access policy for this organization.",
         "railThisOrganization": "This organization",
@@ -1349,7 +1555,8 @@
         "ssoDomainTakenElsewhere": "This email domain is already verified by another organization. Contact VenueOS support if it belongs to you.",
         "actionsFor": "Actions for {email}",
         "accessNoScreensYet": "No screens yet: {locations}",
-        "ssoLoadFailed": "Could not load the SSO configuration"
+        "ssoLoadFailed": "Could not load the SSO configuration",
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
       },
       "overview": {
         "readinessTitle": "Configuration readiness",
@@ -1473,94 +1680,87 @@
         "requiresPrimaryAdmin": "A primary-account administrator"
       },
       "integrations": {
-        "editorTitle": "Connected services",
-        "editorDescription": "Every service you can connect, and whether it's connected.",
-        "searchLabel": "Search integrations",
-        "searchPlaceholder": "Search by provider, capability or keyword",
-        "familyFilterLabel": "Filter by integration family",
+        "editorTitle": "What you can connect",
+        "editorDescription": "Everything VenueOS can connect to today, and what is already connected.",
+        "searchLabel": "Search connections",
+        "searchPlaceholder": "Square, Toast, AI, stream…",
+        "familyFilterLabel": "Show a kind of connection",
         "stateFilterLabel": "Filter by status",
         "filterAll": "All",
-        "sourceLabel": "Status source",
+        "sourceLabel": "Status from",
         "lastSync": "Last sync {date}",
-        "noResults": "No integrations match these filters",
-        "noResultsHint": "Clear the search box or choose a different family or status.",
-        "degradedNotice": "Some statuses couldn't be checked right now, so they show as Unknown.",
+        "noResults": "Nothing matches",
+        "noResultsHint": "Clear the search, or pick another kind or status.",
+        "degradedNotice": "Some statuses couldn’t be checked right now, so they show as Unknown.",
         "railStatusLabel": "Status",
         "railConnected": "Connected: {count}",
         "railAttention": "Needs attention: {count}",
-        "railFamiliesLabel": "Families in this workspace",
-        "railImportsLabel": "Design imports",
-        "railImportsTitle": "Managed under Templates",
-        "railImportsHint": "PDF and image imports are a template workflow, not a settings connection.",
-        "railImportsAction": "Open design imports",
         "railAuditLabel": "Audit",
         "railAuditAction": "View audit log",
         "families": {
-          "ai": "AI provider & brand voice",
-          "clever": "Clever",
-          "streaming": "Streaming & video",
-          "pos": "POS & menu data",
+          "ai": "AI",
+          "clever": "Student rosters",
+          "streaming": "Live video",
+          "pos": "Point of sale",
           "monetization": "Monetization & ad networks"
         },
         "states": {
           "connected": "Connected",
           "attention": "Needs attention",
-          "available": "Available",
-          "external": "External device",
-          "planned": "Planned"
+          "available": "Not connected"
         },
         "actions": {
           "manage": "Manage",
-          "resolve": "Resolve",
-          "diagnose": "Diagnose",
-          "configure": "Configure",
+          "resolve": "Fix",
+          "diagnose": "Fix",
+          "configure": "Connect",
           "instructions": "View setup instructions",
           "learnMore": "Learn more",
-          "refresh": "Refresh status",
+          "refresh": "Check again",
           "none": "No action available"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "Stated product policy",
-          "unavailable": "Couldn't check"
+          "streamingConnections": "your stream connections",
+          "posConnections": "your point-of-sale connections",
+          "adsConnections": "your ad connections",
+          "aiKey": "your saved AI key",
+          "brandingMe": "your brand settings",
+          "cleverStatus": "your Clever connection",
+          "catalogPolicy": "VenueOS product rules",
+          "unavailable": "couldn’t check right now"
         },
         "stateHelp": {
           "ready": "Configured and in use.",
-          "connected": "Your login is saved. Run a test or a sync to check it works.",
-          "attention": "Usable but incomplete, paused or expiring. Open the provider page for the exact reason.",
-          "degraded": "A capability that is built for this provider is currently failing.",
-          "blocked": "Access was revoked. Reconnect before this provider can be used again.",
-          "notConfigured": "Built and available. Nothing has been set up yet.",
+          "connected": "Connected. Run a test or a sync to check it works.",
+          "attention": "Connected, but paused, incomplete or expiring. Open it to see why.",
+          "degraded": "This connection is failing right now. Open it to fix it.",
+          "blocked": "Access was taken away. Connect it again to use it.",
+          "notConfigured": "Ready to connect.",
           "external": "Playback runs on the provider’s own licensed device. VenueOS does not switch inputs today.",
           "planned": "No connector has shipped for this provider yet, so there is nothing to configure.",
           "unsupported": "Intentionally unavailable. No commercially usable connection path exists here.",
-          "unknown": "The authoritative status could not be read, so no state is being claimed."
+          "unknown": "We couldn’t check this right now, so no status is shown."
         },
         "pages": {
           "ai": {
-            "title": "AI provider & brand voice",
+            "title": "AI",
             "description": "Bring your own AI key and set the voice every generated board writes in."
           },
           "streaming": {
-            "title": "Streaming & video",
-            "description": "Your own licensed feeds play natively. Everything else states exactly what it can and cannot do."
+            "title": "Live video",
+            "description": "Show a live stream you own or are licensed to show."
           },
           "pos": {
-            "title": "POS & menu data",
-            "description": "Sync a price book into your menu boards, and map each store to the screens that show it."
+            "title": "Point of sale",
+            "description": "Keep menu boards and price tags in sync with your point of sale, store by store."
           },
           "monetization": {
             "title": "Monetization & ad networks",
             "description": "Ad-network connections, earnings and the content controls that apply to them."
           },
           "clever": {
-            "title": "Clever",
-            "description": "Roster sync for districts that manage staff accounts in Clever."
+            "title": "Student rosters",
+            "description": "Bring staff and student rosters in from Clever."
           }
         },
         "providerRail": {
@@ -1573,11 +1773,25 @@
           "lastSyncLabel": "Last sync",
           "noSync": "No sync has run yet.",
           "notReachable": "This status could not be read."
+        },
+        "notListed": "Netflix, Hulu, Disney+ and other home streaming services can’t be shown on screens: their subscriptions don’t allow showing them in public.",
+        "rows": {
+          "aiKey": "Your AI key",
+          "clever": "Clever roster sync"
+        },
+        "blurbs": {
+          "key": "Use your own OpenAI, Anthropic or Google key for AI designs and writing.",
+          "roster": "Bring staff and student rosters in from Clever.",
+          "square": "Menu items, sizes, prices and sold-out items, kept in sync.",
+          "toast": "Your published menu, prices and photos, synced from Toast.",
+          "clover": "Your Clover items and prices, synced every hour and whenever you ask.",
+          "lightspeed-retail": "Products and prices for every store, from Lightspeed.",
+          "shopify-pos": "Products, variants, stock and locations, from Shopify.",
+          "custom-webhook": "Send your own menu or price list from any system.",
+          "custom-hls": "Paste a live stream link (.m3u8) you own or are licensed to show."
         }
       },
       "player": {
-        "offlineBreadcrumb": "Offline",
-        "backToPlayer": "Back to Player & offline",
         "editorTitle": "Player delivery",
         "editorDescription": "How the Android player build reaches your screens, and what proves it arrived.",
         "state": {
@@ -1679,7 +1893,14 @@
           "empty": "No screens yet.",
           "loadFailed": "Could not load screen update readiness.",
           "loading": "Loading…"
-        }
+        },
+        "managedTitle": "VenueOS keeps your screens up to date",
+        "managedBody": "Screen software updates are managed by VenueOS, so there is nothing to set here.",
+        "oneScreenNow": "Need one screen updated now? Open it in Screens and press “Push update” in its settings.",
+        "openScreens": "Open Screens",
+        "ownerConsoleLink": "Update settings for this organization are in the owner console",
+        "apkBody": "Setting up a new Android display? Install the player app once:",
+        "apkLink": "Download the player app (APK)"
       },
       "supportAccess": {
         "searchGive": "Give VenueOS support access",
@@ -2456,7 +2677,7 @@
       "reasonInstalledByAnotherApp": "The app was installed by a different installer. One pushed update that someone taps Install on makes later updates silent.",
       "reasonNotArmed": "Android reports that this install would ask first.",
       "reasonReportPredatesInstall": "Its last report came from an older app version.",
-      "noTimezone": "No timezone is known, so automatic updates cannot run. Set the update window’s timezone in Settings → Player, or give this screen an on/off schedule.",
+      "noTimezone": "No time zone is known for this screen, so automatic updates cannot run yet. Set a time zone in Settings → Organization, or give this screen an on/off schedule.",
       "saving": "Saving…",
       "saveFailed": "Could not save — try again.",
       "loading": "Checking…"
@@ -2957,7 +3178,7 @@
     "generateAltTitle": "Generate alt text from this image using AI",
     "aiQuotaExhausted": "AI quota exhausted",
     "aiNotConfigured": "AI not configured",
-    "aiConfigureHint": "Configure an AI provider key in Settings → AI provider to enable alt-text generation.",
+    "aiConfigureHint": "Add an AI key in Settings → Connections → AI to write alt text automatically.",
     "deleteFolderTitle": "Delete folder?",
     "deleteFolderMsg": "Files inside will be moved to the parent folder.",
     "deleteFolder": "Delete folder",
@@ -3447,7 +3668,7 @@
     "couldNotRemove": "Could not remove — try again."
   },
   "mfaCard": {
-    "twoFactorAuthTitle": "Two-factor authentication",
+    "twoFactorAuthTitle": "Two-step sign-in",
     "statusOn": "On",
     "subtitle": "Require a code from your authenticator app each time you sign in.",
     "enable2fa": "Enable 2FA",
@@ -3582,8 +3803,8 @@
     "selectedTitle": "Using your {provider} menu · {count, plural, one {# item} other {# items}}",
     "change": "Change",
     "unsyncedTitle": "Your {provider} menu hasn't synced yet.",
-    "unsyncedHint": "Sync it in Settings → POS, then come back — or type your menu instead.",
-    "openPosSettings": "Open Settings → POS",
+    "unsyncedHint": "Sync it in Settings → Connections → Point of sale, then come back — or type your menu instead.",
+    "openPosSettings": "Open point of sale settings",
     "connectTitle": "Which POS do you use?",
     "connectDetectedTitle": "Your website links to {provider} — connect it?",
     "connectHint": "Connect it and I'll build the board from your live menu.",
@@ -3592,7 +3813,7 @@
     "noPos": "I don't use a POS",
     "declinedNote": "Got it — type or paste your menu in the chat.",
     "declinedUndo": "Use a POS instead",
-    "connectFailed": "Couldn't open {provider} sign-in here — use Settings → POS instead.",
+    "connectFailed": "Couldn't open {provider} sign-in here — use Settings → Connections → Point of sale instead.",
     "chatUse": "Use my {provider} menu: {sections}.",
     "chatDecline": "I don't use a POS — I'll type my menu."
   },
@@ -4047,11 +4268,45 @@
     "catDoohProgrammatic": "⚡ Programmatic DOOH",
     "catVenueNetwork": "🏢 Venue networks",
     "catDoohDirect": "🤝 Direct sales",
-    "catHouseOnly": "🏠 House ads only"
+    "catHouseOnly": "🏠 House ads only",
+    "posScopes": {
+      "restaurant-qsr": "Restaurant / quick service",
+      "restaurant-table": "Full-service dining",
+      "retail": "Retail",
+      "bar": "Bar",
+      "universal": "Any business"
+    },
+    "posHow": {
+      "square": "Sign in with Square",
+      "clover": "Sign in with Clover",
+      "lightspeed-retail": "Sign in with Lightspeed",
+      "shopify-pos": "Sign in with Shopify",
+      "toast": "Uses your Toast API access",
+      "custom-webhook": "Free"
+    },
+    "toast": {
+      "intro": "Enter your Toast API details. We find your stores, bring in the published menu, and keep connected screens up to date.",
+      "clientId": "Client ID",
+      "clientSecret": "Client secret",
+      "advancedEndpoint": "Advanced: Toast API address",
+      "endpoint": "API address",
+      "chooseStores": "Choose the stores for this account",
+      "manualLabel": "Toast stores — Name | restaurant GUID, one per line",
+      "manualPlaceholder": "Main Street | restaurant GUID",
+      "manualHint": "Some Toast accounts do not allow finding stores automatically. The GUID is listed with your Toast API access details.",
+      "findAndConnect": "Find stores and connect",
+      "noDiscovery": "This Toast account doesn’t allow finding stores automatically. Enter the restaurant GUID from Toast to continue.",
+      "pickStore": "Choose at least one Toast store.",
+      "needsAttention": "Toast connection needs attention",
+      "mainAccount": "Main account",
+      "mapEveryStore": "Match every store to the location whose screens show it, so each store shows its own Toast prices.",
+      "mapFailed": "Could not update this store."
+    },
+    "priceCustom": "Custom"
   },
   "changePassword": {
     "title": "Change password",
-    "subtitle": "Rotate your password and sign out every other device.",
+    "subtitle": "Change your password. Every other device you are signed in on is signed out.",
     "currentLabel": "Current password",
     "newLabel": "New password",
     "confirmLabel": "Confirm new password",
@@ -4109,10 +4364,10 @@
       "ownKey": "Using your own AI key — no board limit",
       "buyMore": "Buy more",
       "reasons": {
-        "NO_PLATFORM_KEY": "AI runs on your own key — add it in Settings → AI provider.",
+        "NO_PLATFORM_KEY": "AI runs on your own key — add it in Settings → Connections → AI.",
         "OWN_KEY": "Your boards run on your own AI key, with no limit here — there is nothing to buy.",
         "STRIPE_NOT_CONFIGURED": "Buying more boards isn't set up on this deployment yet.",
-        "AI_PLAN_REQUIRED": "Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → AI).",
+        "AI_PLAN_REQUIRED": "Add VenueOS AI for $5/screen/month — or connect your own AI key for free (Settings → Connections → AI).",
         "TRIAL": "Your free trial includes a set number of AI boards. Buying more opens with the VenueOS + AI plan."
       },
       "capBuyMore": "Buy more boards",
@@ -4451,7 +4706,7 @@
     "checkFailed": "Couldn't check your {provider} menu from here. Screens still follow it.",
     "connectionGone": "The {provider} connection this board was bound to is gone. Screens show the names and prices saved in the board.",
     "connectionAttention": "{provider} needs attention ({status}). Screens keep the last prices they received until it syncs again.",
-    "openPosSettings": "Open Settings → POS",
+    "openPosSettings": "Open point of sale settings",
     "cadencePublish": "Name and price changes reach your screens about 5 minutes after you publish them in {provider}.",
     "cadenceWebhook": "Name and price changes reach your screens within about a minute.",
     "cadenceHourly": "Name and price changes reach your screens within the hour — {provider} syncs hourly.",
@@ -4497,7 +4752,7 @@
     "chooseConnection": "Choose a connection",
     "loading": "Loading Toast products…",
     "loadFailed": "Could not load Toast products. Check the connection and try again.",
-    "empty": "No published Toast products were found. Sync the connection in Settings → POS.",
+    "empty": "No published Toast products were found. Sync the connection in Settings → Connections → Point of sale.",
     "automaticMatch": "Automatic · {name}",
     "automaticNext": "Automatic · next matching menu item",
     "missingOption": "Previously linked product is missing from Toast",
@@ -5148,7 +5403,7 @@
   },
   "uploadFormats": {
     "thisFile": "This file",
-    "svg": "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Branding takes SVG safely.",
+    "svg": "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Organization → Logo & colors takes SVG safely.",
     "unsupported": "{name} can't be uploaded. Upload photos ({images}), video ({videos}), audio ({audio}) or PDF.",
     "wrongKind": "{name} can't be used here — this takes {formats}.",
     "convertInLibrary": "{name} is a {format} video. Screens play it once it's converted to MP4, but alert content has to play the moment it's triggered. Upload it to the Media Library first (it's converted there), or export it as MP4 (H.264).",
@@ -5439,7 +5694,7 @@
       "active": "Access granted until {until}.",
       "activeBreakGlass": "Emergency access open until {until}.",
       "pending": "Request sent {on} — waiting for the customer’s administrators.",
-      "none": "No access right now. Ask the customer, or they can give access from Settings → VenueOS support access.",
+      "none": "No access right now. Ask the customer, or they can give access from Settings → Advanced → VenueOS support.",
       "reason": "Reason (the customer sees this)",
       "reasonPlaceholder": "e.g. Looping video on the lobby screen — need to check the playlist",
       "reasonRequired": "A reason is required.",
@@ -5743,7 +5998,7 @@
   "aiPlan": {
     "upsell": {
       "title": "AI isn't on your plan",
-      "body": "Add VenueOS AI for {price}/screen/month — or connect your own AI key for free (Settings → AI).",
+      "body": "Add VenueOS AI for {price}/screen/month — or connect your own AI key for free (Settings → Connections → AI).",
       "addAi": "Add AI ({price}/screen/month)",
       "addAiShort": "Add AI",
       "ownKey": "Connect my own AI key (free)",
@@ -5752,10 +6007,10 @@
     "imagesLeft": "{left} of {total} AI images left this month · resets {date}",
     "imagesLeftTrial": "{left} of {total} AI images left in your free trial",
     "limit": {
-      "images": "You've used all your AI images this month. Add your own AI key in Settings → AI provider to keep going, or contact us for more.",
-      "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
-      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
-      "month": "This month’s included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month."
+      "images": "You've used all your AI images this month. Add your own AI key in Settings → Connections → AI to keep going, or contact us for more.",
+      "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → Connections → AI, or choose VenueOS + AI in Settings → Plan & billing.",
+      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → Connections → AI, or choose VenueOS + AI in Settings → Plan & billing.",
+      "month": "This month’s included AI is used up. Add your own AI key in Settings → Connections → AI to keep going, or wait for it to reset next month."
     }
   },
   "billingAi": {
@@ -5773,7 +6028,7 @@
     "trialTitle": "AI is included in your free trial",
     "trialBody": "Try board designs, images and writing help. To keep AI after the trial, choose VenueOS + AI (+{price} per screen a month).",
     "ownKeyNote": "Prefer your own AI account? Your own key works on every plan.",
-    "ownKeyLink": "Settings → AI provider",
+    "ownKeyLink": "Settings → Connections → AI",
     "addAi": "Add AI (+{price}/screen/month)",
     "turnOff": "Turn off AI",
     "cancel": "Cancel",
@@ -6327,7 +6582,16 @@
     "overdueReceivables": "Overdue invoices",
     "subscriptionService": "VenueOS subscription services",
     "invalidLogo": "Enter an HTTPS logo URL, or leave it blank.",
-    "fieldBuilds": "Field builds"
+    "fieldBuilds": "Field builds",
+    "playerUpdates": "Screen updates",
+    "testIntegrations": "Integration tests",
+    "playerUpdatesTitle": "Screen software updates",
+    "playerUpdatesBody": "Automatic updates, the update window and the staged rollout for the organization you are signed in to. Customers no longer see these controls.",
+    "appliesTo": "Applies to: {name}",
+    "appliesToHint": "To change another customer, open that organization (with their support access) and come back here.",
+    "testIntegrationsTitle": "Integration tests",
+    "testIntegrationsBody": "Check every integration on this deploy and load sample data into the organization you are signed in to.",
+    "noOrganization": "Sign in to an organization first."
   },
   "fieldBuilds": {
     "title": "Field builds",
@@ -6614,7 +6878,7 @@
     "posSyncing": "Your catalog is syncing now. Menu boards will pick up the live items once the first poll finishes (usually under a minute).",
     "socialSyncing": "Your latest posts are loading now. Taking you back to where you were…",
     "reason": "Reason:",
-    "posRetry": "Try again from Settings → POS catalog sync.",
+    "posRetry": "Try again from Settings → Connections → Point of sale.",
     "socialRetry": "Try again from the app's settings in your template.",
     "backToPos": "Back to POS settings",
     "backToVenueOS": "Back to VenueOS"
@@ -6748,39 +7012,110 @@
     "mismatch": "Passwords do not match.",
     "acceptFailed": "Could not accept the invitation."
   },
-  "playlistConflict": {
-    "replaceTitleOne": "Replace on 1 screen?",
-    "replaceTitleMany": "Replace on {count} screens?",
-    "confirmReplace": "Replace",
-    "leadSwitchOn": "Switching “{name}” on",
-    "leadAddOne": "Adding that screen to “{name}”",
-    "leadAddMany": "Adding those screens to “{name}”",
-    "replaceOneScreen": "“{other}” is currently playing on {screens}. {lead} will replace it on that screen only — its other screens stay untouched.",
-    "replaceManyScreens": "“{other}” is currently playing on {screens}. {lead} will replace it on those screens only — its other screens stay untouched.",
-    "replaceMany": "These playlists overlap “{name}” on the listed screens:\n\n{list}\n\n{lead} will replace them on those screens only.",
-    "listItem": "• “{other}” on {screens}",
-    "keepTitleOne": "Keep “{other}” playing the rest of the time?",
-    "keepTitleMany": "Keep the other playlists playing the rest of the time?",
-    "keepOneScreen": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so that screen is never blank.",
-    "keepManyScreens": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so those screens are never blank.",
-    "keepMany": "“{name}” plays only at its scheduled times. The rest of the time, these keep playing, so no screen is left blank:\n\n{list}",
-    "alsoReplaces": "“{other}” on {screens} overlaps those times and will be replaced there.",
-    "hintOneScreen": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, that screen would then have nothing to play.",
-    "hintManyScreens": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, those screens would then have nothing to play.",
-    "hintMany": "Replace everything stops them on those screens instead. Outside the times of “{name}”, those screens would then have nothing to play.",
-    "confirmKeepOne": "Keep both",
-    "confirmKeepMany": "Keep them all",
-    "replaceEverything": "Replace everything",
-    "cancel": "Cancel"
+  "panicContent": {
+    "standardMessage": "Standard message",
+    "usesLive": "Uses live content",
+    "ownCount": "Your content · {landscape} landscape · {portrait} portrait",
+    "previewLabel": "What screens show for {label}",
+    "standardCaption": "Screens show this until you add your own picture or video.",
+    "meaning": "On screens it is in English. It means",
+    "orientationLabel": "Screen shape for {label}",
+    "landscape": "Landscape",
+    "portrait": "Portrait",
+    "addOwn": "Add your own picture or video (optional)",
+    "emptyLive": "No picture or video of your own for this screen shape.",
+    "emptyDrill": "No drill content — a drill shows the live content, marked DRILL.",
+    "tooLarge": "Too large ({size} MB). The limit is 500 MB.",
+    "bindFailed": "Uploaded, but it could not be added to this alert. Try again.",
+    "badResponse": "The server sent an answer we could not read. Try again.",
+    "uploadFailed": "Upload failed ({status}).",
+    "networkError": "No connection. Check the network and try again.",
+    "removeTitle": "Remove from {label}?",
+    "removeMessage": "Remove “{name}” from {label}? The file stays in your Media Library.",
+    "remove": "Remove",
+    "removeHint": "Remove from this alert",
+    "removeAria": "Remove {name}",
+    "thisFile": "this file",
+    "dismiss": "Dismiss"
   },
-  "termsGate": {
-    "title": "Before you continue",
-    "intro": "Please read and accept the {brand} End User License Agreement. It explains what the product does — including how emergency alerts work — and what it cannot promise. You only do this once.",
-    "accept": "Accept and continue",
-    "saving": "Saving…",
-    "failed": "We couldn’t save that. Check your connection and try again.",
-    "version": "Version {version}",
-    "signOut": "Not you? Sign out"
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "Ready",
+        "blurb": "Messages, delivery, screens and people all check out."
+      },
+      "NEEDS_ATTENTION": {
+        "title": "Ready, with gaps",
+        "blurb": "An alert would be delivered today. Close the gaps below before you need them."
+      },
+      "NOT_CONFIGURED": {
+        "title": "Not ready",
+        "blurb": "Something critical is missing — an alert would not reach your screens correctly."
+      },
+      "DISABLED": {
+        "title": "Emergency alerts are off",
+        "blurb": "Nothing is checked while alerts are off. Turn them on to get every alert ready."
+      }
+    },
+    "loading": "Checking whether alerts are ready…",
+    "loadFailed": "Couldn’t check readiness. The check itself failed, which usually means the service can’t be reached.",
+    "retry": "Try again",
+    "recheck": "Check again",
+    "scoreLabel": "Readiness",
+    "drillLine": "Drill content (not graded)",
+    "statusOk": "OK",
+    "statusWarn": "Needs attention",
+    "statusMissing": "Missing",
+    "labels": {
+      "content": "Alert messages",
+      "delivery": "Delivery to screens",
+      "screens": "Screens online",
+      "staff": "People who can send alerts",
+      "exercise": "Last practiced"
+    },
+    "detail": {
+      "content_allOwn": "All {total} alert types use your own picture or video.",
+      "content_someStandard": "{own} of {total} alert types use your own picture or video; the others show their standard message.",
+      "content_allStandard": "All {total} alert types are ready with their standard message.",
+      "delivery_ok": "Instant delivery, the backup check and message signing are all working.",
+      "delivery_fallback": "Instant delivery is in backup mode — alerts still arrive, within about 20 seconds instead of instantly.",
+      "delivery_down": "Alerts can’t be delivered right now. This is a VenueOS problem, not your setup — contact support.",
+      "screens_none": "No screens are paired yet.",
+      "screens_allOffline": "None of your {total, plural, one {# screen is} other {# screens are}} online.",
+      "screens_someOffline": "{online} of {total} screens are online; {fresh} of them reported in the last 5 minutes.",
+      "screens_ok": "All {total} screens are online and reporting.",
+      "staff_ok": "{count, plural, one {# person} other {# people}} can send an alert.",
+      "staff_one": "Only one person can send an alert.",
+      "staff_none": "Nobody can send an alert yet.",
+      "exercise_never": "Alerts have never been sent here — not even as a drill.",
+      "exercise_today": "Last sent today.",
+      "exercise_recent": "Last sent {days, plural, one {# day} other {# days}} ago.",
+      "exercise_stale": "Last sent {days, plural, one {# day} other {# days}} ago."
+    },
+    "fix": {
+      "screens_none": "Pair a screen — an alert with no screens reaches no one.",
+      "screens_offline": "Check the offline screens on the Screens page; an offline screen can’t receive a new alert until it is back online.",
+      "staff_one": "Let a second trusted person send alerts in Settings → Team.",
+      "staff_none": "Choose who can send alerts in Settings → Team.",
+      "exercise": "Run a drill so the first real alert is never the first time.",
+      "delivery_fallback": "Nothing to do — VenueOS is watching the instant channel."
+    }
+  },
+  "ledPoster": {
+    "title": "LED posters",
+    "desc": "Standard poster size — the module size of one panel. New posters use this until you set a size on the screen.",
+    "width": "Width",
+    "height": "Height",
+    "save": "Save",
+    "reset": "Reset to {w}×{h}",
+    "resetTitle": "Clear the organization standard. Posters fall back to the built-in {w}×{h}.",
+    "current": "Current:",
+    "builtInDefault": "(built-in default)",
+    "loadFailed": "· Could not load the current value.",
+    "invalid": "· Width and height must be whole numbers between {min} and {max}.",
+    "saveFailed": "· Could not save — try again.",
+    "saved": "· Saved.",
+    "readOnly": "· Read-only for your role."
   },
   "addressSearch": {
     "clear": "Clear address",
@@ -7015,8 +7350,8 @@
       "submissionLiveBody": "Content is now live.",
       "submissionNoFeedbackBody": "Reviewer left no feedback. Edit and resubmit when ready.",
       "ownerLinkBody": "A one-time sign-in link for a new organization owner was issued under your support access approval. If you did not expect this, revoke support access in Settings.",
-      "supportRequestedBody": "{who} asked for access to {org} for {duration}: \"{reason}\". Approve or deny it in Settings → Support access.",
-      "supportBreakGlassBody": "{who} opened emergency access to {org} until {until}: \"{reason}\". You can end it now in Settings → Support access.",
+      "supportRequestedBody": "{who} asked for access to {org} for {duration}: \"{reason}\". Approve or deny it in Settings → Advanced → VenueOS support.",
+      "supportBreakGlassBody": "{who} opened emergency access to {org} until {until}: \"{reason}\". You can end it now in Settings → Advanced → VenueOS support.",
       "supportEndedBody": "VenueOS ended its support access to {org}.",
       "accessUntil": "Access until {until}.",
       "venueosSupport": "VenueOS support",
@@ -7420,5 +7755,206 @@
     "next": "Next page",
     "filters": "Filters",
     "filtersOn": "Filters on"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "Try auto-branding",
+      "authed": "Brand VenueOS"
+    },
+    "intro": "Paste your website. In about 10 seconds we’ll pull your logo, colors, and fonts so VenueOS looks like yours — not ours.",
+    "urlLabel": "Your website address",
+    "scan": "Scan",
+    "scanning": "Scanning…",
+    "tryExample": "Try an example:",
+    "exampleBlocked": "If a sample site blocks our scan, try a different one — or paste your own website address.",
+    "errors": {
+      "pasteUrlFirst": "Paste your website address first.",
+      "scanFailed": "We couldn’t scan that website. Check the address and try again.",
+      "notAnImage": "Please choose an image file (PNG, JPG, SVG, or WebP).",
+      "logoTooLarge": "That logo is too large — the limit is 2 MB.",
+      "readFailed": "Could not read that file — try another.",
+      "adoptFailed": "Couldn’t save your brand. Try again."
+    },
+    "confidence": {
+      "title": "How sure we are",
+      "logo": "Logo",
+      "palette": "Colors",
+      "fonts": "Fonts",
+      "displayName": "Name"
+    },
+    "logos": {
+      "title": "Logos found",
+      "chooseLabel": "Choose logo {n}",
+      "optionAlt": "Logo option",
+      "yourLogoAlt": "Your logo",
+      "usingUploaded": "Using your uploaded logo",
+      "usingPasted": "Using your pasted logo",
+      "remove": "Remove your logo",
+      "upload": "Upload your logo",
+      "pastePlaceholder": "…or paste a link to your logo image",
+      "noneFound": "We couldn’t get a logo from this site — some sites (like dominos.com) block automatic scans. Upload your logo or paste a link to the image above.",
+      "kind": {
+        "svgInline": "Logo",
+        "imgLogo": "Logo",
+        "imgWordmark": "Text logo",
+        "icon": "Icon",
+        "appleTouch": "App icon",
+        "mask": "One-color icon",
+        "og": "Sharing image",
+        "twitter": "Social image"
+      }
+    },
+    "logoBackground": {
+      "title": "Logo background",
+      "picked": "We picked <b>{label}</b> for this logo",
+      "optionLabel": "Logo background: {label}",
+      "appliesEverywhere": "Applies everywhere your logo shows — the sidebar, the preview, and any template that uses your logo.",
+      "options": {
+        "transparent": "None",
+        "white": "White",
+        "dark": "Dark",
+        "primary": "Brand",
+        "tile": "Tile"
+      },
+      "hints": {
+        "transparent": "No background — your logo sits right on the page",
+        "white": "A white box behind your logo",
+        "dark": "A dark box — best for white or light-colored logos",
+        "primary": "A box in your main brand color",
+        "tile": "A soft rounded box in a light shade of your brand color"
+      }
+    },
+    "palette": {
+      "title": "Palette",
+      "primary": "Primary",
+      "accent": "Accent",
+      "primaryPickerLabel": "Primary color",
+      "accentPickerLabel": "Accent color",
+      "discovered": "Colors discovered — click to apply",
+      "swatchPrimary": "{hex} — click to set as primary",
+      "swatchAccent": "{hex} — click to set as accent",
+      "swatchFromSite": "The website lists this as a brand color",
+      "badgePrimary": "P",
+      "badgeAccent": "A"
+    },
+    "contrast": {
+      "textOnPrimary": "Text on the primary color",
+      "textOnAccent": "Text on the accent color",
+      "gradeAAA": "Very easy to read",
+      "gradeAA": "Easy to read",
+      "gradeAALarge": "Large text only",
+      "gradeFail": "Hard to read"
+    },
+    "fonts": {
+      "title": "Typography",
+      "heading": "Heading",
+      "body": "Body",
+      "noneDetected": "{label}: none detected",
+      "system": "System",
+      "noGoogleMatch": "No Google Font match — we’ll use a standard font instead."
+    },
+    "identity": {
+      "title": "Name & tagline",
+      "namePlaceholder": "Display name",
+      "taglinePlaceholder": "Tagline (shown on the sign-in page)"
+    },
+    "apply": {
+      "title": "Apply brand to templates",
+      "fillBlanks": "Fill blanks",
+      "fillBlanksHint": "Only zones still using the default colors",
+      "override": "Override",
+      "overrideHint": "Repaint every zone, even ones you styled yourself",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "done": "{count, plural, one {Applied to # template} other {Applied to # templates}} · {zones, plural, one {# zone updated} other {# zones updated}}.",
+      "failed": "Apply failed — try again.",
+      "updatedTitle": "Templates updated",
+      "more": "+{count} more"
+    },
+    "actions": {
+      "rescan": "Re-scan",
+      "adopt": "Adopt branding",
+      "adopting": "Applying…",
+      "adoptDemo": "Adopt (sign-in required)",
+      "adoptDemoHint": "Sign in to adopt this branding"
+    },
+    "footer": {
+      "source": "Source:",
+      "scannedIn": "Scanned in {seconds, plural, one {# second} other {# seconds}}"
+    },
+    "preview": {
+      "title": "Live preview",
+      "subtitle": "— repaints as you tweak"
+    },
+    "livePreview": {
+      "defaultName": "Your Venue Signage",
+      "defaultTagline": "Your signage at a glance",
+      "logoAlt": "Logo",
+      "signage": "Signage",
+      "nav": {
+        "dashboard": "Dashboard",
+        "screens": "Screens",
+        "templates": "Templates",
+        "playlists": "Playlists",
+        "settings": "Settings"
+      },
+      "emergency": "Emergency",
+      "search": "Search…",
+      "newPlaylist": "New playlist",
+      "welcome": "Welcome to {name}",
+      "heroLine": "Emergency alerts ready · 23 screens online · 2 playlists scheduled",
+      "kpiActive": "Active screens",
+      "kpiScheduled": "Scheduled",
+      "kpiDrills": "Emergency drills",
+      "chips": {
+        "all": "All",
+        "lobby": "Lobby",
+        "entrance": "Entrance",
+        "mainFloor": "Main Floor",
+        "backOfHouse": "Back of House"
+      },
+      "rows": {
+        "mainLobby": "Main Lobby",
+        "eastHallway": "East Hallway",
+        "gymEntry": "Gym Entry",
+        "cafeteria": "Cafeteria A"
+      },
+      "live": "Live",
+      "offline": "Offline"
+    }
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "Replace on 1 screen?",
+    "replaceTitleMany": "Replace on {count} screens?",
+    "confirmReplace": "Replace",
+    "leadSwitchOn": "Switching “{name}” on",
+    "leadAddOne": "Adding that screen to “{name}”",
+    "leadAddMany": "Adding those screens to “{name}”",
+    "replaceOneScreen": "“{other}” is currently playing on {screens}. {lead} will replace it on that screen only — its other screens stay untouched.",
+    "replaceManyScreens": "“{other}” is currently playing on {screens}. {lead} will replace it on those screens only — its other screens stay untouched.",
+    "replaceMany": "These playlists overlap “{name}” on the listed screens:\n\n{list}\n\n{lead} will replace them on those screens only.",
+    "listItem": "• “{other}” on {screens}",
+    "keepTitleOne": "Keep “{other}” playing the rest of the time?",
+    "keepTitleMany": "Keep the other playlists playing the rest of the time?",
+    "keepOneScreen": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so that screen is never blank.",
+    "keepManyScreens": "“{name}” plays only at its scheduled times. The rest of the time, “{other}” keeps playing on {screens}, so those screens are never blank.",
+    "keepMany": "“{name}” plays only at its scheduled times. The rest of the time, these keep playing, so no screen is left blank:\n\n{list}",
+    "alsoReplaces": "“{other}” on {screens} overlaps those times and will be replaced there.",
+    "hintOneScreen": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, that screen would then have nothing to play.",
+    "hintManyScreens": "Replace everything stops “{other}” on {screens} instead. Outside the times of “{name}”, those screens would then have nothing to play.",
+    "hintMany": "Replace everything stops them on those screens instead. Outside the times of “{name}”, those screens would then have nothing to play.",
+    "confirmKeepOne": "Keep both",
+    "confirmKeepMany": "Keep them all",
+    "replaceEverything": "Replace everything",
+    "cancel": "Cancel"
+  },
+  "termsGate": {
+    "title": "Before you continue",
+    "intro": "Please read and accept the {brand} End User License Agreement. It explains what the product does — including how emergency alerts work — and what it cannot promise. You only do this once.",
+    "accept": "Accept and continue",
+    "saving": "Saving…",
+    "failed": "We couldn’t save that. Check your connection and try again.",
+    "version": "Version {version}",
+    "signOut": "Not you? Sign out"
   }
 }

@@ -1,7 +1,7 @@
 ---
 title: Kiosk and touch display hardening
 category: Screens
-updated: 2026-10-11
+updated: 2026-10-26
 excerpt: Lock down Chromeboxes, Fire TVs, and Raspberry Pi displays so the public can't escape to the browser or OS.
 ---
 
@@ -53,7 +53,7 @@ For ADA: don't mount touch displays higher than 48" from the floor (reachable fr
 Allowlist in your network's content filter. Three of these are separate hosts — get all three, or you will hit failures that look like a broken screen rather than a blocked request:
 
 - **The dashboard and player** — `venue-os.app` and `*.venue-os.app`, port 443
-- **The VenueOS API, including its WebSocket** — this is a *different* host from the dashboard. Its address is the API URL configured for your deployment — a Super Admin can read the exact value under **Settings → Developer & audit**, in the **System & build** section, shown as **API Endpoint**. Allow both `https://` and `wss://` on that host. A filter that permits the dashboard but blocks this host is the classic "screen sits on Connecting…" cause, and it also blocks the realtime emergency channel — alerts then arrive only on the slower HTTP polling path.
+- **The VenueOS API, including its WebSocket** — this is a *different* host from the dashboard. Its address is the API URL configured for your deployment — a Super Admin can read the exact value under **Settings → Advanced → API keys & webhooks**, in the **About this workspace** section, shown as **API address**. Allow both `https://` and `wss://` on that host. A filter that permits the dashboard but blocks this host is the classic "screen sits on Connecting…" cause, and it also blocks the realtime emergency channel — alerts then arrive only on the slower HTTP polling path.
 - **Uploaded assets** — served from your VenueOS storage host, not from a `venue-os.app` CDN. Copy the hostname out of any asset's URL in the Assets library; on standard deployments it is a `*.supabase.co` address. Miss this one and templates render with every image and video missing.
 - **Any third-party widget sources you enable** (RSS feeds, weather APIs)
 

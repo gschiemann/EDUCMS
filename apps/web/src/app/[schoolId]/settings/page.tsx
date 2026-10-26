@@ -1,29 +1,13 @@
 "use client";
 
 /**
- * /[schoolId]/settings — Settings index.
- *
- * Desktop/tablet: redirects to /settings/overview (handoff §8).
- * Mobile (<768px): the shell renders the category index as its own view
- * (§14); this page contributes nothing so the index stays the only content.
+ * /[schoolId]/settings — the Settings home (Phase 1 simplification,
+ * 2026-10-26): search, what needs attention, the six areas, Activity and
+ * My account — on every screen size. It replaces the desktop redirect to
+ * /settings/overview and the phone-only index.
  */
-import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { settingsHref } from '@/components/settings/shell/registry';
+import { SettingsHome } from '@/components/settings/home/SettingsHome';
 
 export default function SettingsIndexPage() {
-  const params = useParams<{ schoolId: string }>();
-  const router = useRouter();
-  const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (window.innerWidth >= 768 && params?.schoolId) {
-      router.replace(settingsHref(params.schoolId, 'overview'));
-    }
-  }, [params?.schoolId, router]);
-
-  if (isMobile) return null;
-  return null;
+  return <SettingsHome />;
 }

@@ -82,7 +82,7 @@ export interface WebAuthnChallengeRecord {
   issuedAt: number;
   /**
    * `reg:` only (2026-09-22) — WHAT re-authenticated the user who asked for
-   * this registration ceremony: their password (Settings → My security), or
+   * this registration ceremony: their password (My account), or
    * the single-use grant a real sign-in leaves behind (the post-sign-in
    * passkey offer, `passkey-enrollment-grant.ts`). Carried so the
    * `PASSKEY_REGISTERED` audit row can say which door the credential came

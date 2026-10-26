@@ -98,7 +98,7 @@ function friendlyConciergeError(err: unknown, billing: AiBillingMessages): strin
     return 'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.';
   }
   if (raw.includes('not configured')) {
-    return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
+    return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → Connections → AI.";
   }
   if (status === 429 || raw.includes('hourly') || raw.includes('rate-limit')) {
     return "You've hit this hour's AI limit. Try again in a few minutes.";

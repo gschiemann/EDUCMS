@@ -98,14 +98,15 @@ export type InheritanceState = 'default' | 'inherited' | 'override' | 'unsupport
 
 /** §9.3 — one of four presentation states for an inheritable value. */
 export function InheritanceBadge({ state, parentName }: { state: InheritanceState; parentName?: string }) {
+  const t = useTranslations('settings.shell.inheritance');
   const label =
     state === 'default'
-      ? 'Organization default'
+      ? t('default')
       : state === 'inherited'
-        ? `Inherited from ${parentName ?? 'organization'}`
+        ? t('inherited', { name: parentName ?? t('inheritedFallback') })
         : state === 'override'
-          ? 'Local override'
-          : 'Not supported at this scope';
+          ? t('override')
+          : t('unsupported');
   const tone =
     state === 'override'
       ? 'bg-amber-50 text-amber-800'
@@ -257,24 +258,12 @@ const STATUS_TONE: Record<SettingsStatusKind, string> = {
   unknown: 'bg-slate-100 text-slate-600 border-slate-300',
 };
 
-const STATUS_LABEL: Record<SettingsStatusKind, string> = {
-  ready: 'Ready',
-  connected: 'Connected',
-  attention: 'Needs attention',
-  degraded: 'Degraded',
-  blocked: 'Blocked',
-  notConfigured: 'Not configured',
-  external: 'External device',
-  planned: 'Planned',
-  unsupported: 'Unsupported',
-  unknown: 'Unknown',
-};
-
-/** §11 status vocabulary. Text always accompanies color (never color alone). */
+/** §11 status vocabulary. Text always accompanies color (never color alone). Labels: `settings.shell.status.*`. */
 export function StatusPill({ kind, label, className }: { kind: SettingsStatusKind; label?: string; className?: string }) {
+  const t = useTranslations('settings.shell.status');
   return (
     <span className={cn('inline-flex items-center min-h-[24px] px-2 rounded-full border text-[12px] font-medium whitespace-nowrap', STATUS_TONE[kind], className)}>
-      {label ?? STATUS_LABEL[kind]}
+      {label ?? t(kind)}
     </span>
   );
 }
@@ -332,10 +321,11 @@ export function ChoiceRow({
 
 /** Editor-top error summary (§13.1 / §15). Focus it after a failed submit. */
 export function ErrorSummary({ id, title, errors }: { id?: string; title?: string; errors: readonly { message: string; fieldId?: string }[] }) {
+  const t = useTranslations('settings.shell');
   if (!errors.length) return null;
   return (
     <div id={id} role="alert" tabIndex={-1} className="mb-5 rounded-[11px] border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300">
-      <strong className="block font-medium">{title ?? 'Could not save'}</strong>
+      <strong className="block font-medium">{title ?? t('errorSummaryTitle')}</strong>
       <ul className="mt-1.5 space-y-1 list-disc pl-5">
         {errors.map((e, i) => (
           <li key={i}>
@@ -377,11 +367,12 @@ export function EditorSkeleton({ groups = 3 }: { groups?: number }) {
 
 /** Permission page for a forbidden deep link (§10): names the category and who can grant access. */
 export function PermissionDenied({ sectionLabel, grantedBy }: { sectionLabel: string; grantedBy?: string }) {
+  const t = useTranslations('settings.shell.denied');
   return (
     <div className="rounded-[11px] border border-slate-200 bg-slate-50 px-5 py-6 text-center">
-      <strong className="block text-[14px] font-medium text-slate-900">You don’t have access to {sectionLabel}</strong>
+      <strong className="block text-[14px] font-medium text-slate-900">{t('title', { section: sectionLabel })}</strong>
       <p className="mt-1.5 text-[13px] text-slate-500">
-        {grantedBy ?? 'An organization administrator'} can grant access to this section.
+        {t('body', { grantedBy: grantedBy ?? t('defaultGrantor') })}
       </p>
     </div>
   );

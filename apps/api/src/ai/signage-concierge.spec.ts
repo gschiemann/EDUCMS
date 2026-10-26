@@ -699,7 +699,7 @@ describe('buildConciergeSystemPrompt — POS CONTEXT, every state', () => {
   it('CONNECTED by the organisation, and a menu that has not synced: says so', () => {
     const p = prompt(conciergePosPromptState(context([{ ...toast, owner: 'parent', itemCount: 0, sections: [], lastSyncedAt: undefined, status: 'PENDING' }]), undefined, [], NOW));
     expect(p).toContain('CONNECTED POS: Toast (connected by their organisation) — connected, first sync still pending; not synced yet — no menu items synced yet.');
-    expect(p).toContain('open Settings → POS and press Sync');
+    expect(p).toContain('open Settings → Connections → Point of sale and press Sync');
   });
 
   it('a selection naming ANOTHER tenant\'s connection is ignored — the chat talks as if nothing was picked', () => {

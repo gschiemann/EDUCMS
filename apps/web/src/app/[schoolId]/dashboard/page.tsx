@@ -1135,7 +1135,7 @@ export default function DashboardPage() {
             <QuickLink href={`${tenantBase}/playlists`} Icon={Plus} label={t('dashboard.newPlaylist')} tone="indigo" />
             <QuickLink href={`${tenantBase}/templates`} Icon={ListVideo} label={t('dashboard.pickTemplate')} tone="violet" />
             <QuickLink href={`${tenantBase}/screens`} Icon={MonitorPlay} label={t('dashboard.pairScreen')} tone="emerald" />
-            <QuickLink href={`${tenantBase}/settings`} Icon={UsersIcon} label={t('dashboard.inviteTeammate')} tone="slate" />
+            <QuickLink href={`${tenantBase}/settings/people?invite=1`} Icon={UsersIcon} label={t('dashboard.inviteTeammate')} tone="slate" />
           </div>
         </div>
       </div>

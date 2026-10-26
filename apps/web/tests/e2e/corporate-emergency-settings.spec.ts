@@ -91,7 +91,9 @@ test('local administrator sees populated landscape and portrait defaults and can
   page.on('pageerror', (error) => errors.push(error.message));
   const writes = await openSettings(page, true);
   const card = page.locator('[data-alert-content-card="lockdown"]');
-  await expect(card.getByText('1L · 1P')).toBeVisible();
+  // The card's status says it in words (2026-10-26) — it used to read "1L · 1P".
+  const status = page.getByTestId('alert-status-lockdown');
+  await expect(status).toHaveText('Your content · 1 landscape · 1 portrait');
   await expect(card.getByText('lockdown-default.png')).toBeVisible();
   await card.getByRole('tab', { name: /Portrait/ }).click();
   await expect(card.getByText('lockdown-default.png')).toBeVisible();
@@ -99,7 +101,7 @@ test('local administrator sees populated landscape and portrait defaults and can
   await page.screenshot({ path: info.outputPath('local-emergency-defaults.png'), fullPage: true });
   await card.getByRole('button', { name: /Remove/ }).click();
   await page.getByRole('button', { name: 'Remove', exact: true }).last().click();
-  await expect(card.getByText('0L · 1P')).toBeVisible();
+  await expect(status).toHaveText('Your content · 0 landscape · 1 portrait');
   await expect(page.locator('[data-alert-content-card="weather"]').getByText('weather-default.png')).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]).toContain('/panic-content/lockdown/assets/alert-office-lockdown-item');

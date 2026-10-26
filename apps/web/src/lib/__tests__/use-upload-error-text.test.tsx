@@ -132,7 +132,7 @@ describe('useUploadErrorText — the upload content check', () => {
     );
     const svg = new DirectUploadError('unsupported', 'SERVER', 415, 'api', 'ASSET_SVG_NOT_SUPPORTED', { code: 'ASSET_SVG_NOT_SUPPORTED' });
     expect(result.current(svg, new File(['x'], 'logo.svg'))).toBe(
-      "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Branding takes SVG safely.",
+      "SVG can't be uploaded as content — an SVG can carry hidden scripts. Export it as PNG. For a logo, Settings → Organization → Logo & colors takes SVG safely.",
     );
   });
 

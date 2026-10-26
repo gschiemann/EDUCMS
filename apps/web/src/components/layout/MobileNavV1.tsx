@@ -169,7 +169,11 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
     ...(hasPanicAuthority(user)
       ? [{ key: 'broadcast', label: t('nav.broadcast'), icon: Megaphone, href: `${base}/emergency/broadcast` }]
       : []),
-    { key: 'settings', label: t('nav.settings'), icon: Settings, href: `${base}/settings` },
+    // Owner decision 1 (2026-10-24): Settings is for administrators; an
+    // Editor or Viewer has My account (the next row) for everything of theirs.
+    ...(isAdmin
+      ? [{ key: 'settings', label: t('nav.settings'), icon: Settings, href: `${base}/settings` }]
+      : []),
     { key: 'account', label: t('nav.account'), icon: User, href: `${base}/account` },
     // Language lives on the account page; §6.2 groups them as one entry.
     // /help is a top-level route, not tenant-scoped.
@@ -251,8 +255,8 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
               {passkeyCapable && securityBase && (
                 <Link
                   href={hasPasskey
-                    ? `${securityBase}/settings/security#sec-passkeys`
-                    : `${securityBase}/settings/security?add=passkey`}
+                    ? `${securityBase}/account#sec-passkeys`
+                    : `${securityBase}/account?add=passkey`}
                   data-testid="passkey-menu-entry"
                   onClick={() => setMoreOpen(false)}
                   className="flex items-center gap-3 px-3 min-h-[48px] rounded-xl text-slate-700 transition-colors active:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"

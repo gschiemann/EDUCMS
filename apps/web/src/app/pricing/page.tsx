@@ -84,7 +84,7 @@ const FAQ = [
   },
   {
     q: 'Can we use our own AI key instead?',
-    a: 'Yes, on every plan. Add your own OpenAI, Anthropic or Google key in Settings → AI provider and you pay your AI provider directly, with no VenueOS limit.',
+    a: 'Yes, on every plan. Add your own OpenAI, Anthropic or Google key in Settings → Connections → AI and you pay your AI provider directly, with no VenueOS limit.',
   },
   {
     q: 'What counts as a screen?',

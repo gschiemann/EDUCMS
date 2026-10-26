@@ -75,7 +75,7 @@ describe('boardsLine — what the dialog, Settings → AI and the Stripe return 
   });
 
   it('nobody\'s key: the reason, in the operator\'s words', () => {
-    expect(boardsLine(t, 'en', noKeyAllowance())?.text).toBe('AI runs on your own key — add it in Settings → AI provider.');
+    expect(boardsLine(t, 'en', noKeyAllowance())?.text).toBe('AI runs on your own key — add it in Settings → Connections → AI.');
   });
 
   it('a degraded answer (the API\'s floor) still reads as a line; no answer reads as nothing', () => {

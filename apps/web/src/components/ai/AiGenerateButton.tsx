@@ -442,7 +442,7 @@ function AiGenerateModal({
         // mislabeled EVERY downstream 503 — bad key, empty/truncated model
         // reply, provider 4xx — as "not configured", hiding the real,
         // fixable error from the operator.)
-        setError('AI is not configured for this deployment. Ask your admin to add a provider key in Settings → AI provider, then try again.');
+        setError('AI is not configured for this deployment. Ask your admin to add a provider key in Settings → Connections → AI, then try again.');
       } else if (/rejected|re-enter/i.test(msg)) {
         setError(msg); // BYOK key invalid/expired — server message is actionable
       } else if (status === 429 || /hourly AI cap|rate.?limit/i.test(msg)) {

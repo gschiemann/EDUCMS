@@ -1,7 +1,7 @@
 ---
 title: Menu boards + POS pricing
 category: Integrations
-updated: 2026-09-23
+updated: 2026-10-26
 excerpt: Put a designed menu on screen in minutes — and bind it to your point-of-sale so prices update themselves (and sold-out items, where your POS reports them).
 ---
 
@@ -17,7 +17,7 @@ No POS? Stop here — edit prices right in the panel and you still have a beauti
 
 ## Connect your point-of-sale
 
-1. Open **Settings → Point of Sale** and click **Connect**.
+1. Open **Settings → Connections → Point of sale** and click **Connect**.
 2. Choose your provider — **Toast**, Square, or **Clover** — and approve the connection in that provider's own sign-in window.
 3. VenueOS pulls your menu catalog. You'll see it listed with a healthy/attention status right on the settings card.
 
@@ -38,7 +38,7 @@ Ask the AI Concierge for a menu board and, with a POS connected, it offers to us
 
 - **Square** — within about a minute.
 - **Toast** — about 5 minutes after you publish the menu in Toast.
-- **Clover, Lightspeed, Shopify** — within the hour (they sync hourly), or right away with **Sync now** in Settings → Point of Sale.
+- **Clover, Lightspeed, Shopify** — within the hour (they sync hourly), or right away with **Sync now** in Settings → Connections → Point of sale.
 
 Screens pick up each sync within 30 seconds. A screen that loses its connection keeps showing the last prices it received; one that restarts while offline shows the prices saved in the board until it reconnects.
 

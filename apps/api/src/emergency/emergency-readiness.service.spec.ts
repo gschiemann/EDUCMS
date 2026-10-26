@@ -97,7 +97,10 @@ describe('EmergencyReadinessService', () => {
     expect(r.items.every((i) => i.status === 'ok')).toBe(true);
   });
 
-  it('nothing configured → NOT_CONFIGURED with actionable hints', async () => {
+  // 2026-10-26 — standard wording (owner decision 2): a type with no content of
+  // its own shows its standard message, so a brand-new tenant's content is
+  // READY. What still needs work is screens, people and practice.
+  it('nothing configured → content ready (standard message), the rest needs attention with hints', async () => {
     const { prisma, redis, wsSigner } = makeMocks({
       tenant: {},
       screenCounts: [0, 0, 0],
@@ -107,12 +110,21 @@ describe('EmergencyReadinessService', () => {
     });
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
-    expect(r.verdict).toBe('NOT_CONFIGURED');
+    expect(r.verdict).toBe('NEEDS_ATTENTION');
     const content = r.items.find((i) => i.key === 'content')!;
-    expect(content.status).toBe('missing');
-    expect(content.fixHint).toMatch(/Lockdown/);
-    expect(r.items.find((i) => i.key === 'screens')!.fixHint).toMatch(/Pair a screen/);
-    expect(r.items.find((i) => i.key === 'staff')!.status).toBe('missing');
+    expect(content.status).toBe('ok');
+    expect(content.code).toBe('content.allStandard');
+    expect(content.params).toEqual({ own: 0, total: 6, standard: 6 });
+    expect(content.detail).toBe('All 6 alert types are ready with their standard message.');
+    expect(content.fixHint).toBe('');
+    const screens = r.items.find((i) => i.key === 'screens')!;
+    expect(screens.fixHint).toMatch(/Pair a screen/);
+    expect(screens.code).toBe('screens.none');
+    const staff = r.items.find((i) => i.key === 'staff')!;
+    expect(staff.status).toBe('missing');
+    expect(staff.code).toBe('staff.none');
+    // No more "Team settings" — the place is Settings → Team.
+    expect(staff.fixHint).toMatch(/Settings → Team/);
   });
 
   it('GYM vertical: evacuate+weather+medical wired → content OK (never graded on K12 lockdown)', async () => {
@@ -131,20 +143,21 @@ describe('EmergencyReadinessService', () => {
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
     expect(content.status).toBe('ok');
-    expect(content.detail).toContain('3 of 3');
+    expect(content.code).toBe('content.allOwn');
+    expect(content.detail).toBe('All 3 alert types use your own picture or video.');
     expect(r.verdict).toBe('READY');
   });
 
-  it('GYM vertical: nothing wired → anchor copy says Fire / Evacuate, not Lockdown', async () => {
+  it('GYM vertical: nothing wired → ready on its THREE types with the standard message (never graded on lockdown)', async () => {
     const { prisma, redis, wsSigner } = makeMocks({
       tenant: { vertical: 'GYM', emergencyEnabled: true },
     });
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
-    expect(content.status).toBe('missing');
-    expect(content.fixHint).toContain('Start with Fire / Evacuate');
-    expect(content.fixHint).not.toContain('Lockdown');
+    expect(content.status).toBe('ok');
+    expect(content.params).toEqual({ own: 0, total: 3, standard: 3 });
+    expect(content.detail).toBe('All 3 alert types are ready with their standard message.');
   });
 
   // ── Enablement (2026-09-24) ─────────────────────────────────────────
@@ -192,7 +205,9 @@ describe('EmergencyReadinessService', () => {
       k12.wsSigner,
     );
     const r = await k12Svc.compute('t1');
-    expect(r.verdict).toBe('NOT_CONFIGURED');
+    // Graded (the lock wins): content is ready with the standard message.
+    expect(r.verdict).not.toBe('DISABLED');
+    expect(r.items.find((i) => i.key === 'content')!.status).toBe('ok');
     expect(r.enabled).toBe(true);
     expect(r.locked).toBe(true);
   });
@@ -216,16 +231,17 @@ describe('EmergencyReadinessService', () => {
     expect(r.verticalStated).toBe(true);
   });
 
-  it('lockdown-only wiring → content WARN naming the missing types', async () => {
+  it('lockdown-only wiring → content OK: one type with own content, five with the standard message', async () => {
     const { prisma, redis, wsSigner } = makeMocks({
       tenant: { panicLockdownPlaylistId: 'pl1' },
     });
     const svc = new EmergencyReadinessService(prisma, redis, wsSigner);
     const r = await svc.compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
-    expect(content.status).toBe('warn');
-    expect(content.fixHint).toMatch(/Fire \/ Evacuate/);
-    expect(r.verdict).toBe('NEEDS_ATTENTION');
+    expect(content.status).toBe('ok');
+    expect(content.code).toBe('content.someStandard');
+    expect(content.detail).toBe('1 of 6 alert types use your own picture or video; the others show their standard message.');
+    expect(r.verdict).toBe('READY');
   });
 
   it('redis fallback → delivery WARN with the polling-backstop copy, never NOT_CONFIGURED', async () => {
@@ -255,7 +271,16 @@ describe('EmergencyReadinessService', () => {
     const rNever = await new EmergencyReadinessService(never.prisma, never.redis, never.wsSigner).compute('t1');
     expect(rOld.items.find((i) => i.key === 'exercise')!.status).toBe('warn');
     expect(rNever.items.find((i) => i.key === 'exercise')!.detail).toMatch(/never/i);
-    expect(rNever.items.find((i) => i.key === 'exercise')!.fixHint).toMatch(/test alert/i);
+    expect(rNever.items.find((i) => i.key === 'exercise')!.fixHint).toMatch(/drill/i);
+    expect(rNever.items.find((i) => i.key === 'exercise')!.code).toBe('exercise.never');
+  });
+
+  it('a drill counts as practice — "drill or real", as the check promises', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ lastTrigger: { createdAt: new Date(Date.now() - 3 * 86_400_000) } });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const where = (prisma.client.auditLog.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.action).toEqual({ in: ['TRIGGER_EMERGENCY', 'TRIGGER_EMERGENCY_DRILL'] });
+    expect(r.items.find((i) => i.key === 'exercise')).toMatchObject({ status: 'ok', code: 'exercise.recent', params: { days: 3 } });
   });
 
   it('partial fleet (some offline / stale cache) → screens WARN with honest counts', async () => {
@@ -283,7 +308,8 @@ describe('EmergencyReadinessService', () => {
     const { prisma, redis, wsSigner } = makeMocks({ itemCounts: { pl4: 0, pl5: 0 } });
     const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
     const content = r.items.find((i) => i.key === 'content')!;
-    expect(content.detail).toBe('4 of 6 alert types have content.');
+    expect(content.detail).toBe('4 of 6 alert types use your own picture or video; the others show their standard message.');
+    expect(content.params).toEqual({ own: 4, total: 6, standard: 2 });
     const byType = r.contentByType!;
     expect(byType).toHaveLength(6);
     expect(byType.filter((c) => c.required && c.liveItems > 0)).toHaveLength(4);
@@ -298,7 +324,7 @@ describe('EmergencyReadinessService', () => {
     });
     const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
     expect(r.contentByType!.find((c) => c.kind === 'lockdown')!.liveItems).toBe(2);
-    expect(r.items.find((i) => i.key === 'content')!.status).toBe('warn');
+    expect(r.items.find((i) => i.key === 'content')!.params).toEqual({ own: 1, total: 6, standard: 5 });
   });
 
   it('DEV-002: drill content is reported on its own line and never graded', async () => {
@@ -307,8 +333,8 @@ describe('EmergencyReadinessService', () => {
       itemCounts: { d1: 3 },
     });
     const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
-    // Live content is still missing: drill content must not make it "wired".
-    expect(r.items.find((i) => i.key === 'content')!.status).toBe('missing');
+    // Drill content must not count as live content of its own.
+    expect(r.items.find((i) => i.key === 'content')!.params).toEqual({ own: 0, total: 6, standard: 6 });
     expect(r.items.map((i) => i.key)).not.toContain('drill');
     expect(r.drillContent).toEqual(expect.objectContaining({ typesWithDrillContent: 1, typesTotal: 6 }));
     expect(r.contentByType!.find((c) => c.kind === 'lockdown')!.drillItems).toBe(3);

@@ -15,8 +15,8 @@
     "settings": "Ajustes",
     "reviews": "Revisiones",
     "proofOfPlay": "Prueba de reproducción",
-    "audit": "Registro de actividad",
-    "account": "Cuenta",
+    "audit": "Actividad",
+    "account": "Mi cuenta",
     "more": "Más",
     "mainMenu": "Menú principal",
     "media": "Medios",
@@ -79,7 +79,7 @@
     },
     "modal": {
       "title": "Activar emergencia",
-      "configuredIn": "El contenido de emergencia se configura en <b>Ajustes → Contenido de emergencia</b>.",
+      "configuredIn": "El contenido de emergencia se configura en <b>Ajustes → Emergencias</b>.",
       "close": "Cerrar",
       "step1": "1. Elija el tipo de emergencia",
       "step2": "2. Confirme",
@@ -380,12 +380,12 @@
     "passkeyOfferBody": "Usa {method} en lugar de tu contraseña.",
     "passkeyOfferNotNow": "Ahora no",
     "passkeyOfferDontAsk": "No volver a preguntar en este dispositivo",
-    "passkeyOfferFootnote": "Puedes añadir o quitar claves de acceso cuando quieras en Ajustes → Mi seguridad.",
+    "passkeyOfferFootnote": "Puedes añadir o quitar claves de acceso cuando quieras en Mi cuenta.",
     "passkeyOfferDoneTitle": "Clave de acceso guardada",
     "passkeyOfferDoneBody": "La próxima vez, elige “Iniciar sesión con una clave de acceso” y usa {method}.",
     "passkeyOfferContinue": "Continuar",
-    "passkeyOfferCancelled": "No se configuró ninguna clave de acceso. Puedes añadir una cuando quieras en Ajustes → Mi seguridad.",
-    "passkeyOfferFailed": "No pudimos configurar una clave de acceso esta vez. Puedes añadir una más tarde en Ajustes → Mi seguridad.",
+    "passkeyOfferCancelled": "No se configuró ninguna clave de acceso. Puedes añadir una cuando quieras en Mi cuenta.",
+    "passkeyOfferFailed": "No pudimos configurar una clave de acceso esta vez. Puedes añadir una más tarde en Mi cuenta.",
     "useAnotherWay": "Usar otro método",
     "passkeyElsewhereNote": "Es posible que tu clave de acceso esté en otro dispositivo. Inicia sesión de otra forma en este:",
     "passkeyTryAgain": "Volver a intentar con tu clave de acceso",
@@ -393,8 +393,8 @@
     "otherWaysLabel": "Otras formas de iniciar sesión",
     "otherWayAuthenticator": "Introducir un código de tu aplicación de autenticación",
     "otherWayEmail": "Enviarme un código por correo",
-    "otherWayDeviceHint": "O inicia sesión en el dispositivo que tiene tu clave de acceso y luego añade este dispositivo en Ajustes → Mi seguridad.",
-    "otherWayNone": "Inicia sesión en el dispositivo que tiene tu clave de acceso. Luego añade una clave de acceso para este dispositivo en Ajustes → Mi seguridad.",
+    "otherWayDeviceHint": "O inicia sesión en el dispositivo que tiene tu clave de acceso y luego añade este dispositivo en Mi cuenta.",
+    "otherWayNone": "Inicia sesión en el dispositivo que tiene tu clave de acceso. Luego añade una clave de acceso para este dispositivo en Mi cuenta.",
     "mfaUsePasskeySub": "Usa tu clave de acceso para terminar de iniciar sesión.",
     "emailCodeSubtitle": "Introduce el código que te enviamos por correo para terminar de iniciar sesión.",
     "emailCodeSending": "Enviando…",
@@ -425,29 +425,18 @@
     "phoneSetupTurnOnSub": "Ya iniciaste sesión. Actívalo y la próxima vez iniciar sesión aquí será un solo toque.",
     "phoneSetupTurnOnButton": "{device, select, iphone {Activar Face ID o Touch ID} ipad {Activar Face ID o Touch ID} android {Activar el inicio con huella} other {Activar el inicio con clave de acceso}}",
     "phoneSetupSignedInTitle": "Ya iniciaste sesión",
-    "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Ajustes → Mi seguridad.",
+    "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Mi cuenta.",
     "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
     "security": "Seguridad"
   },
   "account": {
-    "title": "Cuenta",
+    "title": "Mi cuenta",
     "editProfile": "Editar perfil",
     "signOut": "Cerrar sesión",
     "signOutTitle": "¿Cerrar sesión?",
     "signOutMessage": "Tendrás que iniciar sesión de nuevo para gestionar pantallas y contenido.",
-    "sectionSchool": "Centro",
-    "currentSchool": "Centro actual",
-    "schoolSettings": "Ajustes del centro",
-    "schoolSettingsSub": "Marca, contenido de emergencia, integraciones",
     "sectionNotifications": "Notificaciones",
-    "notificationSettings": "Ajustes de notificaciones",
-    "notificationSettingsSub": "Preferencias push, correo y en la app",
     "appInfo": "Panel de VenueOS",
-    "roleSuperAdmin": "Superadministrador",
-    "roleDistrictAdmin": "Administrador de distrito",
-    "roleSchoolAdmin": "Administrador del centro",
-    "roleContributor": "Colaborador",
-    "roleViewer": "Visualizador",
     "roleUnknown": "Desconocido",
     "alertEmails": {
       "title": "Correos de alerta",
@@ -459,7 +448,17 @@
       "languageDefault": "El mismo que mi organización",
       "saved": "Guardado",
       "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
-    }
+    },
+    "subtitle": "Tu perfil, cómo inicias sesión y tu idioma.",
+    "securityTitle": "Inicio de sesión y seguridad",
+    "securityDesc": "Solo tú puedes cambiar esto, y se aplica dondequiera que inicies sesión.",
+    "mfaTitle": "Verificación en dos pasos",
+    "mfaDesc": "Un código de una aplicación de autenticación, además de tu contraseña.",
+    "languageTitle": "Idioma",
+    "languageDesc": "VenueOS se muestra en este idioma en este dispositivo.",
+    "organizationTitle": "Tu organización",
+    "openSettings": "Abrir Ajustes",
+    "openSettingsSub": "Logotipo, alertas, equipo, conexiones y facturación."
   },
   "settings": {
     "common": {
@@ -674,71 +673,58 @@
       "autoPromoteAfterSoak": "Promover automáticamente tras la observación"
     },
     "shell": {
-      "indexLabel": "Índice de configuración",
-      "indexHeading": "Configuración",
-      "groups": {
-        "workspace": "Espacio de trabajo",
-        "operations": "Operaciones",
-        "access": "Acceso y plataforma",
-        "account": "Cuenta"
-      },
+      "indexLabel": "Áreas de Ajustes",
       "sections": {
-        "overview": {
-          "label": "Resumen",
-          "description": "¿Está configurada esta organización y hay algo que bloquee las operaciones?"
-        },
         "organization": {
-          "label": "Organización",
-          "description": "Identidad, sector y valores predeterminados de toda la organización."
+          "label": "Perfil de la organización",
+          "description": "El nombre, la dirección, la zona horaria y el sector de tu organización."
         },
         "locations": {
           "label": "Ubicaciones",
-          "description": "La estructura de tu organización y de dónde hereda cada ubicación."
+          "description": "Las escuelas, tiendas o sitios de tu organización."
         },
         "brand": {
-          "label": "Marca y apariencia",
-          "description": "Una sola fuente de verdad para el panel y las plantillas de pantalla compatibles."
+          "label": "Logotipo y colores",
+          "description": "Tu logotipo y tus colores, en el panel y en tus pantallas."
         },
         "emergency": {
-          "label": "Emergencia",
-          "description": "Configura y valida la preparación de alertas. La activación vive en la acción global de Emergencia."
+          "label": "Alertas de emergencia",
+          "description": "Mensajes de alerta y quién puede enviarlos. Las alertas se envían desde el botón Emergencia."
         },
         "player": {
-          "label": "Reproductor y sin conexión",
-          "description": "Entrega del software del reproductor, ventanas de actualización, despliegue por etapas y continuidad sin conexión."
+          "label": "Actualizaciones de pantallas",
+          "description": "VenueOS mantiene actualizado el software de tus pantallas por ti."
         },
         "integrations": {
-          "label": "Integraciones",
-          "description": "Un catálogo veraz de conexiones de IA, streaming, POS e identidad."
+          "label": "Conexiones",
+          "description": "Servicios que hoy funcionan con VenueOS. Conecta uno para usarlo en tus pantallas."
         },
         "people": {
-          "label": "Personas y acceso",
-          "description": "Miembros del equipo, invitaciones, roles, política de MFA, SSO y aprobación de contenido."
+          "label": "Personas",
+          "description": "Quién puede usar VenueOS, qué puede hacer cada persona y cómo inicia sesión."
         },
         "billing": {
-          "label": "Facturación",
-          "description": "Plan, licencias de pantalla, facturas y estado de pago."
+          "label": "Plan y facturación",
+          "description": "Tu plan, tus puestos de pantalla, tus facturas y el pago."
         },
         "developer": {
-          "label": "Desarrollador y auditoría",
-          "description": "Claves de API, webhooks, información de compilación y el registro de auditoría."
+          "label": "Claves de API y webhooks",
+          "description": "Conecta tu propio software con VenueOS."
         },
         "security": {
-          "label": "Mi seguridad",
-          "description": "Contraseña y verificación en dos pasos de tu propia cuenta."
+          "label": "Mi cuenta",
+          "description": "Tu contraseña, tus claves de acceso y la verificación en dos pasos."
         },
         "sports": {
-          "label": "Deportes",
+          "label": "Privacidad de estudiantes",
           "description": "Día de partido, incluido lo que las pantallas públicas pueden mostrar sobre los estudiantes."
         },
         "supportAccess": {
-          "label": "Acceso de soporte de VenueOS",
+          "label": "Soporte de VenueOS",
           "description": "Decide cuándo el soporte de VenueOS puede entrar en tu organización y termina el acceso cuando quieras."
         }
       },
       "scopePersonal": "Cuenta personal",
-      "historyTitle": "Historial de configuración",
-      "historyBody": "Cada cambio guardado se registra con alcance, autor y fecha.",
       "statusAttention": "Requiere atención",
       "statusError": "Error",
       "save": "Guardar cambios",
@@ -746,11 +732,8 @@
       "noChanges": "Sin cambios",
       "discard": "Descartar",
       "allSettings": "Toda la configuración",
-      "context": "Contexto",
-      "contextLabel": "Contexto del ajuste",
-      "contextEmpty": "Nada que mostrar para esta sección.",
-      "palettePlaceholder": "Busca un ajuste o salta a una ubicación…",
-      "paletteLabel": "Buscar un ajuste",
+      "palettePlaceholder": "Buscar en Ajustes: prueba «logotipo» o «invitar»",
+      "paletteLabel": "Buscar en Ajustes",
       "paletteEmpty": "Ningún ajuste coincide con “{query}”.",
       "paletteSwitchScope": "Cambiar alcance",
       "noAccessTitle": "No tienes acceso a {section}",
@@ -759,17 +742,248 @@
       "dirtyBody": "Guárdalos antes de salir, descártalos o permanece en esta página.",
       "dirtySave": "Guardar cambios",
       "dirtyDiscard": "Descartar y continuar",
-      "dirtyStay": "Quedarme aquí"
+      "dirtyStay": "Quedarme aquí",
+      "areas": {
+        "organization": {
+          "label": "Organización",
+          "description": "Nombre, dirección, logotipo, colores y ubicaciones.",
+          "keywords": "nombre, dirección, zona horaria, logotipo, colores, marca, ubicaciones, escuelas, privacidad"
+        },
+        "emergency": {
+          "label": "Emergencias",
+          "description": "Mensajes de alerta y quién puede enviarlos.",
+          "keywords": "encierro, evacuar, incendio, clima, médica, permanecer, asegurar, alerta, simulacro"
+        },
+        "team": {
+          "label": "Equipo",
+          "description": "Personas, roles y cómo inician sesión.",
+          "keywords": "personas, usuarios, invitar, roles, inicio de sesión, verificación en dos pasos, inicio de sesión único"
+        },
+        "connections": {
+          "label": "Conexiones",
+          "description": "IA, punto de venta, video en vivo y otros servicios.",
+          "keywords": "integraciones, ia, clave, punto de venta, menú, precios, video, transmisión, lista"
+        },
+        "billing": {
+          "label": "Plan y facturación",
+          "description": "Tu plan, tus facturas y el complemento de IA.",
+          "keywords": "plan, facturación, factura, pago, tarjeta, suscripción, prueba, puestos"
+        },
+        "advanced": {
+          "label": "Avanzado",
+          "description": "Claves de API, webhooks y acceso del soporte de VenueOS.",
+          "keywords": "api, clave, webhook, desarrollador, soporte"
+        }
+      },
+      "tabs": {
+        "profile": "Perfil",
+        "brand": "Logotipo y colores",
+        "locations": "Ubicaciones",
+        "privacy": "Privacidad de estudiantes",
+        "emergency": "Alertas",
+        "people": "Personas",
+        "sso": "Inicio de sesión único",
+        "connections": "Todas",
+        "ai": "IA",
+        "pos": "Punto de venta",
+        "video": "Video en vivo",
+        "rosters": "Listas de estudiantes",
+        "billing": "Plan y facturación",
+        "developer": "Claves de API y webhooks",
+        "support": "Soporte de VenueOS"
+      },
+      "tabsLabel": "Páginas de {area}",
+      "details": "Detalles",
+      "detailsLabel": "Más sobre esta página",
+      "searchButton": "Buscar en Ajustes",
+      "noAccessBodyAccount": "Tus administradores gestionan esto. Tu perfil, tu contraseña y tu inicio de sesión están en Mi cuenta.",
+      "openMyAccount": "Abrir Mi cuenta",
+      "backToSettings": "Volver a Ajustes",
+      "homeLink": "Inicio de Ajustes",
+      "home": {
+        "subtitle": "Elige un área o busca lo que quieres hacer.",
+        "areasLabel": "Áreas de Ajustes",
+        "attentionTitle": "Requiere atención",
+        "moreTitle": "Más",
+        "activityTitle": "Actividad",
+        "activityBody": "Mira quién cambió qué y cuándo.",
+        "accountTitle": "Mi cuenta",
+        "accountBody": "Tu perfil, contraseña, claves de acceso e idioma.",
+        "status": {
+          "checking": "Comprobando…",
+          "emergencyReady": "Listas",
+          "emergencyAttention": "Requiere atención",
+          "emergencyNotSet": "Sin configurar",
+          "emergencyOff": "Desactivadas",
+          "trial": "Prueba gratuita · {days, plural, one {queda # día} other {quedan # días}}",
+          "trialEnded": "La prueba gratuita terminó",
+          "active": "Activo",
+          "paymentProblem": "Problema con el pago",
+          "ended": "El plan terminó"
+        },
+        "attention": {
+          "noScreens": "Todavía no hay pantallas emparejadas, así que una alerta no llegaría a nadie.",
+          "pairScreen": "Emparejar una pantalla",
+          "screensOffline": "Algunas pantallas están sin conexión y no recibirían una alerta.",
+          "checkScreens": "Revisar pantallas",
+          "oneSender": "Solo una persona puede enviar una alerta.",
+          "noSender": "Todavía nadie puede enviar una alerta.",
+          "chooseSenders": "Elegir personas",
+          "delivery": "Las alertas no pueden llegar a sus pantallas en este momento.",
+          "openEmergency": "Abrir Emergencias",
+          "practice": "Las alertas no se han practicado en los últimos 90 días.",
+          "practiceAction": "Cómo hacer un simulacro",
+          "trialEnds": "Tu prueba gratuita termina en {days, plural, one {# día} other {# días}}.",
+          "planEnded": "Tu plan terminó. Elige un plan para seguir editando.",
+          "pickPlan": "Elegir un plan",
+          "paymentProblem": "Hay un problema con tu pago.",
+          "fixPayment": "Resolver el pago",
+          "seatsFull": "Todos los puestos de pantalla están en uso ({used} de {limit}).",
+          "addSeats": "Agregar puestos"
+        },
+        "notAdmin": "Tus administradores gestionan los ajustes. Abriendo Mi cuenta…"
+      },
+      "jobs": {
+        "changeLogo": {
+          "label": "Cambiar mi logotipo",
+          "keywords": "logotipo, marca, imagen"
+        },
+        "changeColors": {
+          "label": "Cambiar los colores de la marca",
+          "keywords": "colores, paleta, tema"
+        },
+        "orgDetails": {
+          "label": "Nombre, dirección y zona horaria",
+          "keywords": "nombre, dirección, zona horaria, sector"
+        },
+        "addLocation": {
+          "label": "Agregar una ubicación",
+          "keywords": "ubicación, escuela, sitio, tienda"
+        },
+        "studentPrivacy": {
+          "label": "Lo que las pantallas muestran sobre los estudiantes",
+          "keywords": "ferpa, fotos, nombres, menores"
+        },
+        "alertMessages": {
+          "label": "Cambiar un mensaje de alerta",
+          "keywords": "encierro, evacuar, clima, texto, imagen"
+        },
+        "whoCanSend": {
+          "label": "Elegir quién puede enviar alertas",
+          "keywords": "pánico, activar, permiso"
+        },
+        "practiceDrill": {
+          "label": "Practicar con un simulacro",
+          "keywords": "simulacro, práctica, alerta de prueba"
+        },
+        "floorPlans": {
+          "label": "Planos de planta",
+          "keywords": "mapa, edificio, planta"
+        },
+        "invite": {
+          "label": "Invitar a alguien",
+          "keywords": "invitar, agregar persona, compañero"
+        },
+        "changeRole": {
+          "label": "Cambiar lo que alguien puede hacer",
+          "keywords": "rol, permisos, editor, lector"
+        },
+        "require2Step": {
+          "label": "Exigir verificación en dos pasos",
+          "keywords": "2fa, mfa, dos pasos, seguridad"
+        },
+        "sso": {
+          "label": "Configurar el inicio de sesión único",
+          "keywords": "sso, okta, azure, entra, oidc"
+        },
+        "aiKey": {
+          "label": "Agregar una clave de IA",
+          "keywords": "ia, openai, anthropic, gemini, clave"
+        },
+        "connectPos": {
+          "label": "Conectar un punto de venta",
+          "keywords": "punto de venta, menú, precios, square, toast, clover"
+        },
+        "liveVideo": {
+          "label": "Agregar una transmisión de video en vivo",
+          "keywords": "transmisión, en vivo, video, hls"
+        },
+        "clever": {
+          "label": "Sincronizar listas de estudiantes (Clever)",
+          "keywords": "clever, lista, estudiantes"
+        },
+        "plan": {
+          "label": "Cambiar mi plan",
+          "keywords": "plan, mejorar, puestos, prueba"
+        },
+        "invoices": {
+          "label": "Facturas y pago",
+          "keywords": "factura, recibo, pago, tarjeta"
+        },
+        "apiKeys": {
+          "label": "Claves de API y webhooks",
+          "keywords": "api, clave, token, webhook"
+        },
+        "supportAccess": {
+          "label": "Permitir que el soporte de VenueOS ayude",
+          "keywords": "soporte, ayuda, acceso remoto"
+        },
+        "activity": {
+          "label": "Ver quién cambió qué",
+          "keywords": "auditoría, historial, registro, actividad"
+        },
+        "myPassword": {
+          "label": "Cambiar mi contraseña",
+          "keywords": "contraseña"
+        },
+        "myPasskey": {
+          "label": "Configurar una clave de acceso",
+          "keywords": "clave de acceso, face id, touch id, huella"
+        },
+        "myLanguage": {
+          "label": "Cambiar mi idioma",
+          "keywords": "idioma, inglés, español, chino"
+        }
+      },
+      "jobAreas": {
+        "account": "Mi cuenta",
+        "activity": "Actividad"
+      },
+      "status": {
+        "ready": "Listo",
+        "connected": "Conectado",
+        "attention": "Requiere atención",
+        "degraded": "Requiere atención",
+        "blocked": "No funciona",
+        "notConfigured": "Sin configurar",
+        "external": "Usa su propio dispositivo",
+        "planned": "Aún no disponible",
+        "unsupported": "No disponible",
+        "unknown": "Desconocido"
+      },
+      "inheritance": {
+        "default": "Predeterminado de la organización",
+        "inherited": "Heredado de {name}",
+        "inheritedFallback": "tu organización",
+        "override": "Cambiado aquí",
+        "unsupported": "No disponible aquí"
+      },
+      "denied": {
+        "title": "No tiene acceso a {section}",
+        "body": "{grantedBy} puede darte acceso.",
+        "defaultGrantor": "Un administrador de la organización"
+      },
+      "errorSummaryTitle": "No se pudo guardar"
     },
     "cc": {
       "emergency": {
         "title": "Emergencias",
         "description": "Configura y verifica que las alertas estén listas. Esta no es la pantalla para activarlas.",
         "editorTitle": "Alertas de emergencia",
-        "editorDescription": "Lo que muestran tus pantallas cuando se activa una alerta, y si eso funcionaría ahora mismo.",
+        "editorDescription": "Lo que muestran tus pantallas cuando se envía una alerta y si eso funcionaría ahora mismo.",
         "readiness": {
-          "title": "Estado de preparación",
-          "desc": "Si una alerta llegaría hoy a tus pantallas y qué falta exactamente si no fuera así.",
+          "title": "¿Funciona todo?",
+          "desc": "Si una alerta llegaría hoy a tus pantallas y qué arreglar si no.",
           "disabled": "Las alertas de emergencia están desactivadas en esta organización, así que no hay nada que evaluar. Actívalas abajo para ver la comprobación."
         },
         "enablement": {
@@ -808,7 +1022,7 @@
           "unchanged": "No cambió nada. Sigue vigente la última configuración confirmada por el servidor."
         },
         "delivery": {
-          "title": "Modelo de entrega",
+          "title": "La misma alerta en todas partes o por pantalla",
           "desc": "Si todas las pantallas muestran la misma alerta o cada una muestra la suya.",
           "loading": "Leyendo el modelo de entrega…",
           "loadFailed": "No se pudo leer el modelo de entrega. Vuelve a cargar la página antes de cambiar nada: sigue vigente la última configuración confirmada por el servidor.",
@@ -823,8 +1037,8 @@
           "saveFailedFallback": "El servidor no confirmó el cambio."
         },
         "content": {
-          "title": "Tipos de alerta y contenido",
-          "desc": "El material que cada tipo de alerta pone en pantalla. Un tipo de alerta sin contenido no envía nada.",
+          "title": "Mensajes de alerta",
+          "desc": "Cada tipo de alerta está lista con un mensaje estándar en una pantalla roja. Si quieres, agrega tu propia imagen o video a cualquiera.",
           "criticalGroup": "Críticas",
           "awarenessGroup": "Mayor vigilancia"
         },
@@ -867,14 +1081,14 @@
         "history": {
           "title": "Historial",
           "desc": "Cada cambio de esta página y cada alerta enviada quedan registrados de forma permanente, con su autor y su fecha.",
-          "link": "Abrir el registro de auditoría"
+          "link": "Ver quién hizo qué"
         },
         "rail": {
           "capability": "Función",
           "capabilityOffBody": "Mientras la función esté desactivada no se evalúa nada ni se puede enviar ninguna alerta.",
           "byType": "Contenido de alerta",
-          "typeConfigured": "Configurado",
-          "typeNotConfigured": "Sin contenido",
+          "typeConfigured": "Tu contenido",
+          "typeNotConfigured": "Mensaje estándar",
           "typeChecking": "Comprobando",
           "coverage": "Cobertura",
           "coverageOrg": "Todas las pantallas muestran el mismo contenido de alerta.",
@@ -931,6 +1145,28 @@
             "screen": "Pantalla",
             "unknownUser": "Desconocido"
           }
+        },
+        "setup": {
+          "title": "Lista en dos pasos",
+          "step1Title": "Mensajes de alerta",
+          "step1Done": "Cada tipo de alerta tiene un mensaje claro listo. Tu propia imagen o video es opcional.",
+          "step1OffTitle": "Activa las alertas de seguridad",
+          "step1OffBody": "Usa el botón que está justo abajo. Después, cada tipo de alerta tendrá un mensaje claro listo.",
+          "step2Title": "Quién puede enviar alertas",
+          "step2Ok": "{count, plural, one {# persona puede} other {# personas pueden}} enviar una alerta.",
+          "step2One": "Solo una persona puede enviar una alerta. Agrega una segunda, para que una alerta nunca dependa de una sola persona.",
+          "step2None": "Todavía nadie puede enviar una alerta.",
+          "step2Checking": "Comprobando quién puede enviar…",
+          "step2Action": "Elegir personas",
+          "ready": "Tus alertas están listas.",
+          "readyHint": "Las alertas se envían desde el botón Emergencia, nunca desde esta página.",
+          "stepDone": "Listo",
+          "stepTodo": "Pendiente"
+        },
+        "practice": {
+          "title": "Practica con un simulacro",
+          "desc": "Abre la página de Emergencia, cámbiala a SIMULACRO y envía. Cada pantalla muestra SIMULACRO, para que nadie lo confunda con una emergencia real.",
+          "action": "Abrir la página de Emergencia"
         }
       },
       "brand": {
@@ -1042,26 +1278,18 @@
         "searchInvoices": "Facturas"
       },
       "developer": {
-        "editorTitle": "Desarrollo y auditoría",
-        "editorDesc": "Claves de API, webhooks salientes, información de compilación y el registro de auditoría de esta organización.",
+        "editorTitle": "Claves de API y webhooks",
+        "editorDesc": "Permite que tu propio software lea datos de VenueOS o reaccione a ellos.",
         "deniedGrantedBy": "Un administrador de distrito o un superadministrador",
-        "systemTitle": "Sistema y compilación",
-        "systemDesc": "Endpoints de solo lectura de esta instalación, fijados en el despliegue.",
-        "integrationsTitle": "Integraciones conectadas",
-        "integrationsDesc": "Todos los sistemas externos conectados a esta organización, con un enlace a sus propios ajustes.",
+        "systemTitle": "Acerca de este espacio de trabajo",
+        "systemDesc": "Direcciones y número de compilación, por si el soporte de VenueOS los pide.",
         "apiKeysTitle": "Claves de API",
         "apiKeysDesc": "Tokens Bearer para la API REST. Un token se muestra una sola vez, al crearlo.",
         "webhooksTitle": "Webhooks",
         "webhooksDesc": "POST salientes firmados. El secreto de firma se muestra una sola vez, al crearlo.",
-        "docsTitle": "SDK y documentación",
-        "docsDesc": "Referencias para desarrollar sobre VenueOS.",
-        "auditTitle": "Registro de auditoría",
-        "auditDesc": "Cada acción de administración queda registrada con quién, qué y cuándo.",
-        "auditAction": "Abrir el registro de auditoría",
-        "toolsTitle": "Herramientas de desarrollo",
-        "toolsDesc": "Banco de datos de muestra para pruebas de integración. Queda deliberadamente fuera de la navegación normal del operador.",
-        "toolsAction": "Datos de prueba de integraciones",
-        "toolsAvailability": "Solo superadministradores en producción; fuera de producción también pueden abrirlo los administradores de distrito.",
+        "docsTitle": "Guías",
+        "docsDesc": "Cómo usar claves de API y webhooks con VenueOS.",
+        "toolsAvailability": "Comprueba cada integración de esta implementación y carga datos de ejemplo claramente marcados.",
         "railKeysLabel": "Claves de API",
         "railKeysValue": "{active} activas · {revoked} revocadas",
         "railKeysUnknown": "Cargando…",
@@ -1072,43 +1300,21 @@
         "railBuildUnknown": "Esta instalación no marca la compilación del panel",
         "searchApiKeys": "Claves de API",
         "searchWebhooks": "Webhooks",
-        "searchAudit": "Registro de auditoría",
         "testTitle": "Datos de prueba de integraciones",
         "testDesc": "Carga y borra filas de muestra claramente etiquetadas para poder probar cada integración sin cuentas de prueba de los proveedores.",
-        "testDeniedBody": "El banco de datos de muestra es una herramienta de superadministrador. Fuera de producción también está abierto a los administradores de distrito.",
-        "backToDeveloper": "Volver a Desarrollo y auditoría",
         "revokeKeyTitle": "¿Revocar la clave de API?",
         "revokeKeyMessage": "«{label}» dejará de funcionar de inmediato. No se puede deshacer.",
         "revokeKeyConfirm": "Revocar",
         "apiDocsTitle": "API REST y webhooks",
-        "apiDocsBlurb": "Autenticación, permisos, endpoints con ejemplos, límites de uso y cómo verificar la firma de los webhooks."
-      },
-      "security": {
-        "editorTitle": "La seguridad de tu cuenta",
-        "editorDesc": "Contraseña y verificación en dos pasos de tu propia cuenta.",
-        "passwordTitle": "Contraseña",
-        "passwordDesc": "Cambia tu contraseña y cierra la sesión en todos los demás dispositivos a la vez.",
-        "mfaTitle": "Verificación en dos pasos",
-        "mfaDesc": "Añade un código de un solo uso de una app de autenticación además de tu contraseña.",
-        "sessionsNote": "Para cerrar la sesión en tus otros dispositivos, cambia tu contraseña.",
-        "railScopeLabel": "Se aplica a",
-        "railScopeTitle": "Solo a tu cuenta",
-        "railScopeBody": "Nada de esta página cambia lo que ve tu organización. La política de MFA de toda la organización está en Personas y acceso.",
-        "railMfaLabel": "Dos pasos",
-        "railMfaOn": "Activada",
-        "railMfaOff": "Sin activar",
-        "railMfaUnknown": "Desconocido",
-        "railMfaOnBody": "Se pide un código de un solo uso al iniciar sesión.",
-        "railMfaOffBody": "Tu contraseña es lo único que protege esta cuenta.",
-        "railMfaUnknownBody": "Ahora mismo no hemos podido leer el estado de tu verificación en dos pasos.",
-        "searchPassword": "Contraseña",
-        "searchMfa": "Dos pasos",
-        "passkeysTitle": "Claves de acceso",
-        "passkeysDesc": "Inicia sesión con Face ID, Touch ID, Windows Hello o una llave de seguridad en lugar de un código.",
-        "searchPasskeys": "Claves de acceso"
+        "apiDocsBlurb": "Autenticación, permisos, endpoints con ejemplos, límites de uso y cómo verificar la firma de los webhooks.",
+        "playerUrl": "Dirección del reproductor",
+        "apiEndpoint": "Dirección de la API",
+        "dashboardBuild": "Compilación del panel",
+        "healthTitle": "Estado del servicio",
+        "healthBlurb": "Muestra si el servicio de VenueOS está activo y su compilación."
       },
       "people": {
-        "editorTitle": "Personas y acceso",
+        "editorTitle": "Personas",
         "editorDescription": "Quién puede iniciar sesión, qué puede hacer y cómo se protege su acceso.",
         "actionFailed": "Ese cambio no se aplicó",
         "teamDescription": "Todas las personas con cuenta en esta organización.",
@@ -1179,7 +1385,7 @@
         "mfaEnforceFailed": "No se pudo cambiar la configuración de doble factor de la organización.",
         "mfaPersonalNote": "Configurar tu propio autenticador es una tarea personal y está en",
         "ssoTitle": "Inicio de sesión único",
-        "ssoDescription": "Inicio de sesión SAML u OIDC para esta organización.",
+        "ssoDescription": "Permite que las personas inicien sesión con el proveedor de identidad de tu organización.",
         "ssoSummary": "Configura tu proveedor de identidad, los metadatos del proveedor de servicios, el dominio permitido y el rol de las cuentas nuevas.",
         "ssoManage": "Gestionar SSO",
         "ssoBreadcrumb": "SSO",
@@ -1191,7 +1397,7 @@
         "railStatus": "Estado",
         "ssoAppliesTo": "Todo quien inicie sesión en esta organización",
         "ssoAppliesToHelp": "El inicio de sesión con correo y contraseña sigue funcionando junto al SSO.",
-        "backToPeople": "Volver a Personas y acceso",
+        "backToPeople": "Volver a Personas",
         "ssoSaveFailed": "No se pudo guardar la configuración de SSO",
         "spMetadataHelp": "Copia estos valores en tu proveedor de identidad.",
         "samlUnavailableBody": "Puedes guardar tu configuración para tenerla lista. Mientras tanto, usa OIDC o correo y contraseña.",
@@ -1200,7 +1406,7 @@
         "ssoTestTitle": "Probar la configuración",
         "ssoTestDescription": "Revisa tu configuración guardada. No inicia la sesión de nadie.",
         "approvalOnNote": "Las publicaciones de los colaboradores pasan por la cola de revisión. Los administradores publican directamente.",
-        "approvalOffNote": "Los colaboradores publican directamente y usan «Enviar a revisión» solo cuando lo eligen.",
+        "approvalOffNote": "Los editores publican directamente y usan «Enviar a revisión» solo cuando lo eligen.",
         "railAppliesTo": "Se aplica a",
         "railAppliesToHelp": "Cuentas y política de acceso de esta organización.",
         "railThisOrganization": "Esta organización",
@@ -1349,7 +1555,8 @@
         "ssoDomainTakenElsewhere": "Este dominio de correo ya está verificado por otra organización. Contacta con el soporte de VenueOS si te pertenece.",
         "actionsFor": "Acciones para {email}",
         "accessNoScreensYet": "Aún sin pantallas: {locations}",
-        "ssoLoadFailed": "No se pudo cargar la configuración de SSO"
+        "ssoLoadFailed": "No se pudo cargar la configuración de SSO",
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",
@@ -1456,7 +1663,7 @@
         "noAddress": "Sin dirección registrada.",
         "timeZoneAuto": "{zone} · automática, según la dirección",
         "timeZoneSet": "{zone} · configurada para esta ubicación",
-        "removeLabel":"Eliminar {name}",
+        "removeLabel": "Eliminar {name}",
         "removeConfirm": "¿Eliminar?",
         "removeFailed": "No se pudo eliminar la ubicación.",
         "archiveNote": "Al quitar una ubicación, deja de aparecer en esta lista. Sus pantallas y usuarios se conservan.",
@@ -1473,94 +1680,87 @@
         "requiresPrimaryAdmin": "Un administrador de la cuenta principal"
       },
       "integrations": {
-        "editorTitle": "Servicios conectados",
-        "editorDescription": "Todos los servicios que puedes conectar y si están conectados.",
-        "searchLabel": "Buscar integraciones",
-        "searchPlaceholder": "Buscar por proveedor, capacidad o palabra clave",
-        "familyFilterLabel": "Filtrar por familia de integración",
+        "editorTitle": "Lo que puedes conectar",
+        "editorDescription": "Todo lo que VenueOS puede conectar hoy y lo que ya está conectado.",
+        "searchLabel": "Buscar conexiones",
+        "searchPlaceholder": "Square, Toast, IA, transmisión…",
+        "familyFilterLabel": "Mostrar un tipo de conexión",
         "stateFilterLabel": "Filtrar por estado",
         "filterAll": "Todas",
-        "sourceLabel": "Origen del estado",
+        "sourceLabel": "Estado según",
         "lastSync": "Última sincronización {date}",
-        "noResults": "Ninguna integración coincide con estos filtros",
-        "noResultsHint": "Borra el cuadro de búsqueda o elige otra familia u otro estado.",
+        "noResults": "No hay coincidencias",
+        "noResultsHint": "Borra la búsqueda o elige otro tipo o estado.",
         "degradedNotice": "Algunos estados no se pudieron comprobar ahora, así que aparecen como Desconocido.",
         "railStatusLabel": "Estado",
         "railConnected": "Conectadas: {count}",
         "railAttention": "Requieren atención: {count}",
-        "railFamiliesLabel": "Familias en este espacio",
-        "railImportsLabel": "Importaciones de diseño",
-        "railImportsTitle": "Se gestionan en Plantillas",
-        "railImportsHint": "Las importaciones de PDF e imágenes son un flujo de plantillas, no una conexión de ajustes.",
-        "railImportsAction": "Abrir importaciones de diseño",
         "railAuditLabel": "Auditoría",
         "railAuditAction": "Ver registro de auditoría",
         "families": {
-          "ai": "Proveedor de IA y voz de marca",
-          "clever": "Clever",
-          "streaming": "Streaming y vídeo",
-          "pos": "TPV y datos de menú",
+          "ai": "IA",
+          "clever": "Listas de estudiantes",
+          "streaming": "Video en vivo",
+          "pos": "Punto de venta",
           "monetization": "Monetización y redes publicitarias"
         },
         "states": {
           "connected": "Conectada",
           "attention": "Requiere atención",
-          "available": "Disponible",
-          "external": "Dispositivo externo",
-          "planned": "Prevista"
+          "available": "Sin conectar"
         },
         "actions": {
           "manage": "Gestionar",
-          "resolve": "Resolver",
-          "diagnose": "Diagnosticar",
-          "configure": "Configurar",
+          "resolve": "Arreglar",
+          "diagnose": "Arreglar",
+          "configure": "Conectar",
           "instructions": "Ver instrucciones de instalación",
           "learnMore": "Más información",
-          "refresh": "Actualizar estado",
+          "refresh": "Volver a comprobar",
           "none": "Sin acción disponible"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "Política de producto declarada",
-          "unavailable": "No se pudo comprobar"
+          "streamingConnections": "tus conexiones de transmisión",
+          "posConnections": "tus conexiones de punto de venta",
+          "adsConnections": "tus conexiones de anuncios",
+          "aiKey": "tu clave de IA guardada",
+          "brandingMe": "tus ajustes de marca",
+          "cleverStatus": "tu conexión con Clever",
+          "catalogPolicy": "las reglas de producto de VenueOS",
+          "unavailable": "no se pudo comprobar ahora"
         },
         "stateHelp": {
           "ready": "Configurada y en uso.",
-          "connected": "Tu acceso está guardado. Haz una prueba o una sincronización para comprobar que funciona.",
-          "attention": "Utilizable pero incompleta, en pausa o por caducar. Abre la página del proveedor para ver el motivo exacto.",
-          "degraded": "Una capacidad ya construida para este proveedor está fallando ahora mismo.",
-          "blocked": "Se revocó el acceso. Vuelve a conectar antes de usar este proveedor.",
-          "notConfigured": "Construida y disponible. Todavía no se ha configurado nada.",
+          "connected": "Conectado. Haz una prueba o una sincronización para comprobarlo.",
+          "attention": "Conectado, pero en pausa, incompleto o por vencer. Ábrelo para ver por qué.",
+          "degraded": "Esta conexión está fallando ahora. Ábrela para arreglarla.",
+          "blocked": "Se quitó el acceso. Vuelve a conectarla para usarla.",
+          "notConfigured": "Lista para conectar.",
           "external": "La reproducción ocurre en el dispositivo con licencia del propio proveedor. VenueOS no cambia entradas hoy.",
           "planned": "Aún no se ha publicado un conector para este proveedor, así que no hay nada que configurar.",
           "unsupported": "No disponible de forma intencionada. Aquí no existe una ruta de conexión de uso comercial.",
-          "unknown": "No se pudo leer el estado autoritativo, así que no se afirma ningún estado."
+          "unknown": "No pudimos comprobarlo ahora, así que no mostramos un estado."
         },
         "pages": {
           "ai": {
-            "title": "Proveedor de IA y voz de marca",
+            "title": "IA",
             "description": "Usa tu propia clave de IA y define la voz con la que se escribe cada tablero generado."
           },
           "streaming": {
-            "title": "Streaming y vídeo",
-            "description": "Tus propias señales con licencia se reproducen de forma nativa. Todo lo demás indica exactamente qué puede y qué no puede hacer."
+            "title": "Video en vivo",
+            "description": "Muestra una transmisión en vivo que te pertenezca o tengas licencia para mostrar."
           },
           "pos": {
-            "title": "TPV y datos de menú",
-            "description": "Sincroniza una lista de precios con tus tableros de menú y asigna cada tienda a las pantallas que la muestran."
+            "title": "Punto de venta",
+            "description": "Mantén los menús y los precios sincronizados con tu punto de venta, tienda por tienda."
           },
           "monetization": {
             "title": "Monetización y redes publicitarias",
             "description": "Conexiones con redes publicitarias, ingresos y los controles de contenido que se les aplican."
           },
           "clever": {
-            "title": "Clever",
-            "description": "Sincronización de listas para distritos que gestionan cuentas de personal en Clever."
+            "title": "Listas de estudiantes",
+            "description": "Trae las listas de personal y estudiantes desde Clever."
           }
         },
         "providerRail": {
@@ -1573,11 +1773,25 @@
           "lastSyncLabel": "Última sincronización",
           "noSync": "Todavía no se ha ejecutado ninguna sincronización.",
           "notReachable": "No se pudo leer este estado."
+        },
+        "notListed": "Netflix, Hulu, Disney+ y otros servicios de streaming para el hogar no se pueden mostrar en pantallas: sus suscripciones no permiten mostrarlos en público.",
+        "rows": {
+          "aiKey": "Tu clave de IA",
+          "clever": "Sincronización de listas con Clever"
+        },
+        "blurbs": {
+          "key": "Usa tu propia clave de OpenAI, Anthropic o Google para diseños y textos con IA.",
+          "roster": "Trae las listas de personal y estudiantes desde Clever.",
+          "square": "Artículos del menú, tamaños, precios y agotados, siempre sincronizados.",
+          "toast": "Tu menú publicado, precios y fotos, sincronizados desde Toast.",
+          "clover": "Tus artículos y precios de Clover, sincronizados cada hora y cuando quieras.",
+          "lightspeed-retail": "Productos y precios de cada tienda, desde Lightspeed.",
+          "shopify-pos": "Productos, variantes, inventario y ubicaciones, desde Shopify.",
+          "custom-webhook": "Envía tu propio menú o lista de precios desde cualquier sistema.",
+          "custom-hls": "Pega un enlace de transmisión en vivo (.m3u8) que te pertenezca o tengas licencia para mostrar."
         }
       },
       "player": {
-        "offlineBreadcrumb": "Sin conexión",
-        "backToPlayer": "Volver a Reproductor y sin conexión",
         "editorTitle": "Entrega del reproductor",
         "editorDescription": "Cómo llega la versión del reproductor Android a sus pantallas y qué demuestra que llegó.",
         "state": {
@@ -1679,7 +1893,14 @@
           "empty": "Aún no hay pantallas.",
           "loadFailed": "No se pudo cargar el estado de actualización de las pantallas.",
           "loading": "Cargando…"
-        }
+        },
+        "managedTitle": "VenueOS mantiene tus pantallas actualizadas",
+        "managedBody": "VenueOS gestiona las actualizaciones del software de las pantallas, así que aquí no hay nada que configurar.",
+        "oneScreenNow": "¿Necesitas actualizar una pantalla ahora? Ábrela en Pantallas y pulsa «Enviar actualización» en sus ajustes.",
+        "openScreens": "Abrir Pantallas",
+        "ownerConsoleLink": "Los ajustes de actualización de esta organización están en la consola del propietario",
+        "apkBody": "¿Vas a instalar una pantalla Android nueva? Instala la app del reproductor una vez:",
+        "apkLink": "Descargar la app del reproductor (APK)"
       },
       "supportAccess": {
         "searchGive": "Dar acceso de soporte a VenueOS",
@@ -2148,7 +2369,7 @@
         "already-set": "ya estaba aplicado",
         "unverified": "Android no puede confirmarlo",
         "changed-elsewhere": "algo en la pantalla lo cambió después: VenueOS no lo toca",
-        "wifi-rejected":"la red Wi-Fi se rechazó en la pantalla",
+        "wifi-rejected": "la red Wi-Fi se rechazó en la pantalla",
         "wifi-limit": "la pantalla tiene demasiadas redes sugeridas",
         "wifi-invalid": "Android no aceptó los datos de la red",
         "wifi-restricted": "los cambios de Wi-Fi están restringidos en esta unidad",
@@ -2298,7 +2519,7 @@
       "timeZoneOptionAutoNone": "Automática (no hay dirección para detectarla)",
       "timeZoneOptionLocation": "Configuración de la ubicación ({zone})",
       "timeZoneSaved": "Zona horaria actualizada.",
-      "removeTitle":"¿Quitar «{name}»?",
+      "removeTitle": "¿Quitar «{name}»?",
       "removeMessage": "Dejará de recibir contenido y saldrá de esta lista. Vuelve a vincularla para recuperarla.",
       "removeConfirm": "Quitar pantalla",
       "thisScreen": "esta pantalla",
@@ -2456,7 +2677,7 @@
       "reasonInstalledByAnotherApp": "La app la instaló otro instalador. Una actualización enviada en la que alguien toque Instalar hace que las siguientes sean silenciosas.",
       "reasonNotArmed": "Android indica que esta instalación preguntaría primero.",
       "reasonReportPredatesInstall": "Su último informe es de una versión anterior de la app.",
-      "noTimezone": "No se conoce la zona horaria, así que las actualizaciones automáticas no pueden ejecutarse. Define la zona horaria de la ventana de actualización en Configuración → Player o asigna a esta pantalla un horario de encendido/apagado.",
+      "noTimezone": "No se conoce la zona horaria de esta pantalla, así que las actualizaciones automáticas aún no pueden ejecutarse. Define una zona horaria en Ajustes → Organización o asigna a esta pantalla un horario de encendido/apagado.",
       "saving": "Guardando…",
       "saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
       "loading": "Comprobando…"
@@ -2957,7 +3178,7 @@
     "generateAltTitle": "Generar texto alternativo de esta imagen con IA",
     "aiQuotaExhausted": "Cuota de IA agotada",
     "aiNotConfigured": "IA no configurada",
-    "aiConfigureHint": "Configura una clave de proveedor de IA en Ajustes → Proveedor de IA para generar texto alternativo.",
+    "aiConfigureHint": "Agrega una clave de IA en Ajustes → Conexiones → IA para escribir el texto alternativo automáticamente.",
     "deleteFolderTitle": "¿Eliminar la carpeta?",
     "deleteFolderMsg": "Los archivos que contiene se moverán a la carpeta principal.",
     "deleteFolder": "Eliminar carpeta",
@@ -3447,7 +3668,7 @@
     "couldNotRemove": "No se pudo eliminar — inténtalo de nuevo."
   },
   "mfaCard": {
-    "twoFactorAuthTitle": "Autenticación de dos factores",
+    "twoFactorAuthTitle": "Verificación en dos pasos",
     "statusOn": "Activada",
     "subtitle": "Solicita un código de tu app de autenticación cada vez que inicies sesión.",
     "enable2fa": "Activar 2FA",
@@ -3582,8 +3803,8 @@
     "selectedTitle": "Usando tu menú de {provider} · {count, plural, one {# artículo} other {# artículos}}",
     "change": "Cambiar",
     "unsyncedTitle": "Tu menú de {provider} aún no se ha sincronizado.",
-    "unsyncedHint": "Sincronízalo en Ajustes → POS y vuelve, o escribe tu menú.",
-    "openPosSettings": "Abrir Ajustes → POS",
+    "unsyncedHint": "Sincronízalo en Ajustes → Conexiones → Punto de venta y vuelve, o escribe tu menú.",
+    "openPosSettings": "Abrir los ajustes de punto de venta",
     "connectTitle": "¿Qué POS usas?",
     "connectDetectedTitle": "Tu sitio web enlaza a {provider}. ¿Lo conectas?",
     "connectHint": "Conéctalo y crearé el tablero con tu menú en vivo.",
@@ -3592,7 +3813,7 @@
     "noPos": "No uso un POS",
     "declinedNote": "Entendido: escribe o pega tu menú en el chat.",
     "declinedUndo": "Usar un POS",
-    "connectFailed": "No se pudo abrir el inicio de sesión de {provider} aquí; usa Ajustes → POS.",
+    "connectFailed": "No se pudo abrir el inicio de sesión de {provider} aquí; usa Ajustes → Conexiones → Punto de venta.",
     "chatUse": "Usa mi menú de {provider}: {sections}.",
     "chatDecline": "No uso un POS; escribiré mi menú."
   },
@@ -4047,7 +4268,41 @@
     "catDoohProgrammatic": "⚡ DOOH programático",
     "catVenueNetwork": "🏢 Redes de recintos",
     "catDoohDirect": "🤝 Venta directa",
-    "catHouseOnly": "🏠 Solo anuncios propios"
+    "catHouseOnly": "🏠 Solo anuncios propios",
+    "posScopes": {
+      "restaurant-qsr": "Restaurante / servicio rápido",
+      "restaurant-table": "Restaurante con servicio a la mesa",
+      "retail": "Comercio minorista",
+      "bar": "Bar",
+      "universal": "Cualquier negocio"
+    },
+    "posHow": {
+      "square": "Inicia sesión con Square",
+      "clover": "Inicia sesión con Clover",
+      "lightspeed-retail": "Inicia sesión con Lightspeed",
+      "shopify-pos": "Inicia sesión con Shopify",
+      "toast": "Usa tu acceso a la API de Toast",
+      "custom-webhook": "Gratis"
+    },
+    "toast": {
+      "intro": "Ingresa los datos de tu API de Toast. Buscamos tus tiendas, traemos el menú publicado y mantenemos actualizadas las pantallas conectadas.",
+      "clientId": "ID de cliente",
+      "clientSecret": "Secreto de cliente",
+      "advancedEndpoint": "Avanzado: dirección de la API de Toast",
+      "endpoint": "Dirección de la API",
+      "chooseStores": "Elige las tiendas de esta cuenta",
+      "manualLabel": "Tiendas de Toast: Nombre | GUID del restaurante, una por línea",
+      "manualPlaceholder": "Calle Principal | GUID del restaurante",
+      "manualHint": "Algunas cuentas de Toast no permiten buscar tiendas automáticamente. El GUID aparece junto a los datos de acceso a tu API de Toast.",
+      "findAndConnect": "Buscar tiendas y conectar",
+      "noDiscovery": "Esta cuenta de Toast no permite buscar tiendas automáticamente. Ingresa el GUID del restaurante de Toast para continuar.",
+      "pickStore": "Elige al menos una tienda de Toast.",
+      "needsAttention": "La conexión con Toast requiere atención",
+      "mainAccount": "Cuenta principal",
+      "mapEveryStore": "Asigna cada tienda a la ubicación cuyas pantallas la muestran, para que cada tienda muestre sus propios precios de Toast.",
+      "mapFailed": "No se pudo actualizar esta tienda."
+    },
+    "priceCustom": "Personalizado"
   },
   "changePassword": {
     "title": "Cambiar contraseña",
@@ -4109,10 +4364,10 @@
       "ownKey": "Usas tu propia clave de IA — sin límite de tableros",
       "buyMore": "Comprar más",
       "reasons": {
-        "NO_PLATFORM_KEY": "La IA funciona con tu propia clave — agrégala en Ajustes → Proveedor de IA.",
+        "NO_PLATFORM_KEY": "La IA funciona con tu propia clave: agrégala en Ajustes → Conexiones → IA.",
         "OWN_KEY": "Tus tableros usan tu propia clave de IA, sin límite aquí — no hay nada que comprar.",
         "STRIPE_NOT_CONFIGURED": "La compra de más tableros todavía no está disponible en esta instalación.",
-        "AI_PLAN_REQUIRED": "Agrega la IA de VenueOS por $5/pantalla/mes, o conecta tu propia clave de IA gratis (Configuración → IA).",
+        "AI_PLAN_REQUIRED": "Agrega la IA de VenueOS por $5/pantalla/mes, o conecta tu propia clave de IA gratis (Ajustes → Conexiones → IA).",
         "TRIAL": "Tu prueba gratuita incluye una cantidad fija de diseños con IA. Comprar más se habilita con el plan VenueOS + IA."
       },
       "capBuyMore": "Comprar más tableros",
@@ -4451,7 +4706,7 @@
     "checkFailed": "No se pudo comprobar tu menú de {provider} desde aquí. Las pantallas lo siguen igualmente.",
     "connectionGone": "La conexión de {provider} a la que estaba vinculado este tablero ya no existe. Las pantallas muestran los nombres y precios guardados en el tablero.",
     "connectionAttention": "{provider} necesita atención ({status}). Las pantallas conservan los últimos precios que recibieron hasta que vuelva a sincronizarse.",
-    "openPosSettings": "Abrir Configuración → POS",
+    "openPosSettings": "Abrir los ajustes de punto de venta",
     "cadencePublish": "Los cambios de nombre y precio llegan a tus pantallas unos 5 minutos después de publicarlos en {provider}.",
     "cadenceWebhook": "Los cambios de nombre y precio llegan a tus pantallas en aproximadamente un minuto.",
     "cadenceHourly": "Los cambios de nombre y precio llegan a tus pantallas en menos de una hora: {provider} se sincroniza cada hora.",
@@ -4497,7 +4752,7 @@
     "chooseConnection": "Elige una conexión",
     "loading": "Cargando productos de Toast…",
     "loadFailed": "No se pudieron cargar los productos de Toast. Revisa la conexión e inténtalo de nuevo.",
-    "empty": "No se encontraron productos publicados en Toast. Sincroniza la conexión en Configuración → POS.",
+    "empty": "No se encontraron productos publicados en Toast. Sincroniza la conexión en Ajustes → Conexiones → Punto de venta.",
     "automaticMatch": "Automático · {name}",
     "automaticNext": "Automático · siguiente artículo del menú que coincida",
     "missingOption": "El producto vinculado antes ya no está en Toast",
@@ -5148,7 +5403,7 @@
   },
   "uploadFormats": {
     "thisFile": "Este archivo",
-    "svg": "No se puede subir un SVG como contenido: un SVG puede llevar scripts ocultos. Expórtalo como PNG. Para un logotipo, Configuración → Marca acepta SVG de forma segura.",
+    "svg": "No se puede subir un SVG como contenido: un SVG puede llevar scripts ocultos. Expórtalo como PNG. Para un logotipo, Ajustes → Organización → Logotipo y colores acepta SVG de forma segura.",
     "unsupported": "No se puede subir {name}. Sube fotos ({images}), vídeo ({videos}), audio ({audio}) o PDF.",
     "wrongKind": "{name} no se puede usar aquí: aquí se admite {formats}.",
     "convertInLibrary": "{name} es un vídeo {format}. Las pantallas lo reproducen una vez convertido a MP4, pero el contenido de alerta debe reproducirse en el momento en que se activa. Súbelo primero a la Biblioteca de medios (allí se convierte) o expórtalo como MP4 (H.264).",
@@ -5439,7 +5694,7 @@
       "active": "Acceso otorgado hasta {until}.",
       "activeBreakGlass": "Acceso de emergencia abierto hasta {until}.",
       "pending": "Solicitud enviada {on}: esperando a los administradores del cliente.",
-      "none": "Sin acceso ahora mismo. Pídeselo al cliente, o él puede darlo desde Ajustes → Acceso de soporte de VenueOS.",
+      "none": "Sin acceso ahora mismo. Pídeselo al cliente, o él puede darlo desde Ajustes → Avanzado → Soporte de VenueOS.",
       "reason": "Motivo (el cliente lo verá)",
       "reasonPlaceholder": "p. ej. Vídeo en bucle en la pantalla del vestíbulo: hay que revisar la lista",
       "reasonRequired": "Se requiere un motivo.",
@@ -5743,7 +5998,7 @@
   "aiPlan": {
     "upsell": {
       "title": "La IA no está en tu plan",
-      "body": "Agrega la IA de VenueOS por {price}/pantalla/mes, o conecta tu propia clave de IA gratis (Configuración → IA).",
+      "body": "Agrega la IA de VenueOS por {price}/pantalla/mes, o conecta tu propia clave de IA gratis (Ajustes → Conexiones → IA).",
       "addAi": "Agregar IA ({price}/pantalla/mes)",
       "addAiShort": "Agregar IA",
       "ownKey": "Conectar mi propia clave de IA (gratis)",
@@ -5752,10 +6007,10 @@
     "imagesLeft": "Te quedan {left} de {total} imágenes con IA este mes · se renuevan el {date}",
     "imagesLeftTrial": "Te quedan {left} de {total} imágenes con IA en tu prueba gratuita",
     "limit": {
-      "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Configuración → Proveedor de IA para continuar, o contáctanos para obtener más.",
-      "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
-      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
-      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Proveedor de IA para seguir, o espera a que se renueve el próximo mes."
+      "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Ajustes → Conexiones → IA para continuar, o contáctanos para obtener más.",
+      "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Ajustes → Conexiones → IA, o elige VenueOS + IA en Ajustes → Plan y facturación.",
+      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Ajustes → Conexiones → IA, o elige VenueOS + IA en Ajustes → Plan y facturación.",
+      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Conexiones → IA para seguir, o espera a que se renueve el próximo mes."
     }
   },
   "billingAi": {
@@ -5773,7 +6028,7 @@
     "trialTitle": "La IA está incluida en tu prueba gratuita",
     "trialBody": "Prueba los diseños, las imágenes y la ayuda para redactar. Para seguir con IA después de la prueba, elige VenueOS + IA (+{price} por pantalla al mes).",
     "ownKeyNote": "¿Prefieres tu propia cuenta de IA? Tu propia clave funciona en todos los planes.",
-    "ownKeyLink": "Configuración → Proveedor de IA",
+    "ownKeyLink": "Ajustes → Conexiones → IA",
     "addAi": "Agregar IA (+{price}/pantalla/mes)",
     "turnOff": "Desactivar IA",
     "cancel": "Cancelar",
@@ -6327,7 +6582,16 @@
     "overdueReceivables": "Facturas vencidas",
     "subscriptionService": "Servicios de suscripción de VenueOS",
     "invalidLogo": "Introduce una URL HTTPS del logotipo o deja el campo vacío.",
-    "fieldBuilds": "Compilaciones de campo"
+    "fieldBuilds": "Compilaciones de campo",
+    "playerUpdates": "Actualizaciones de pantallas",
+    "testIntegrations": "Pruebas de integraciones",
+    "playerUpdatesTitle": "Actualizaciones del software de pantallas",
+    "playerUpdatesBody": "Actualizaciones automáticas, la ventana de actualización y el despliegue por etapas de la organización en la que iniciaste sesión. Los clientes ya no ven estos controles.",
+    "appliesTo": "Se aplica a: {name}",
+    "appliesToHint": "Para cambiar otro cliente, abre esa organización (con su acceso de soporte) y vuelve aquí.",
+    "testIntegrationsTitle": "Pruebas de integraciones",
+    "testIntegrationsBody": "Comprueba cada integración de esta implementación y carga datos de ejemplo en la organización en la que iniciaste sesión.",
+    "noOrganization": "Primero inicia sesión en una organización."
   },
   "fieldBuilds": {
     "title": "Versiones de prueba",
@@ -6614,7 +6878,7 @@
     "posSyncing": "Tu catálogo se está sincronizando. Los menús mostrarán los productos en vivo cuando termine la primera consulta (normalmente en menos de un minuto).",
     "socialSyncing": "Tus publicaciones más recientes se están cargando. Te llevamos de vuelta a donde estabas…",
     "reason": "Motivo:",
-    "posRetry": "Inténtalo de nuevo desde Configuración → Sincronización del catálogo POS.",
+    "posRetry": "Inténtalo de nuevo desde Ajustes → Conexiones → Punto de venta.",
     "socialRetry": "Inténtalo de nuevo desde la configuración de la app en tu plantilla.",
     "backToPos": "Volver a la configuración POS",
     "backToVenueOS": "Volver a VenueOS"
@@ -6748,39 +7012,110 @@
     "mismatch": "Las contraseñas no coinciden.",
     "acceptFailed": "No se pudo aceptar la invitación."
   },
-  "playlistConflict": {
-    "replaceTitleOne": "¿Reemplazar en 1 pantalla?",
-    "replaceTitleMany": "¿Reemplazar en {count} pantallas?",
-    "confirmReplace": "Reemplazar",
-    "leadSwitchOn": "Activar “{name}”",
-    "leadAddOne": "Agregar esa pantalla a “{name}”",
-    "leadAddMany": "Agregar esas pantallas a “{name}”",
-    "replaceOneScreen": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esa pantalla; sus otras pantallas no cambian.",
-    "replaceManyScreens": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esas pantallas; sus otras pantallas no cambian.",
-    "replaceMany": "Estas listas coinciden con “{name}” en las pantallas indicadas:\n\n{list}\n\n{lead} las reemplazará solo en esas pantallas.",
-    "listItem": "• “{other}” en {screens}",
-    "keepTitleOne": "¿Mantener “{other}” el resto del tiempo?",
-    "keepTitleMany": "¿Mantener las otras listas el resto del tiempo?",
-    "keepOneScreen": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esa pantalla nunca queda en blanco.",
-    "keepManyScreens": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esas pantallas nunca quedan en blanco.",
-    "keepMany": "“{name}” solo se reproduce en su horario. El resto del tiempo, estas siguen reproduciéndose y ninguna pantalla queda en blanco:\n\n{list}",
-    "alsoReplaces": "“{other}” en {screens} coincide con ese horario y se reemplazará allí.",
-    "hintOneScreen": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esa pantalla no tendría nada que reproducir.",
-    "hintManyScreens": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
-    "hintMany": "Reemplazar todo las detiene en esas pantallas. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
-    "confirmKeepOne": "Mantener ambas",
-    "confirmKeepMany": "Mantener todas",
-    "replaceEverything": "Reemplazar todo",
-    "cancel": "Cancelar"
+  "panicContent": {
+    "standardMessage": "Mensaje estándar",
+    "usesLive": "Usa el contenido real",
+    "ownCount": "Tu contenido · {landscape} horizontal · {portrait} vertical",
+    "previewLabel": "Lo que muestran las pantallas para {label}",
+    "standardCaption": "Las pantallas muestran esto hasta que agregues tu propia imagen o video.",
+    "meaning": "En las pantallas aparece en inglés. Significa",
+    "orientationLabel": "Forma de la pantalla para {label}",
+    "landscape": "Horizontal",
+    "portrait": "Vertical",
+    "addOwn": "Agrega tu propia imagen o video (opcional)",
+    "emptyLive": "No hay imagen ni video propio para esta forma de pantalla.",
+    "emptyDrill": "No hay contenido de simulacro: un simulacro muestra el contenido real, marcado como SIMULACRO.",
+    "tooLarge": "Demasiado grande ({size} MB). El límite es de 500 MB.",
+    "bindFailed": "Se subió, pero no se pudo agregar a esta alerta. Inténtalo de nuevo.",
+    "badResponse": "El servidor envió una respuesta que no pudimos leer. Inténtalo de nuevo.",
+    "uploadFailed": "La subida falló ({status}).",
+    "networkError": "Sin conexión. Revisa la red e inténtalo de nuevo.",
+    "removeTitle": "¿Quitar de {label}?",
+    "removeMessage": "¿Quitar «{name}» de {label}? El archivo se queda en tu biblioteca de medios.",
+    "remove": "Quitar",
+    "removeHint": "Quitar de esta alerta",
+    "removeAria": "Quitar {name}",
+    "thisFile": "este archivo",
+    "dismiss": "Descartar"
   },
-  "termsGate": {
-    "title": "Antes de continuar",
-    "intro": "Lee y acepta el Contrato de Licencia de Usuario Final de {brand}. Explica lo que hace el producto, incluido cómo funcionan las alertas de emergencia, y lo que no puede garantizar. Solo lo harás una vez.",
-    "accept": "Aceptar y continuar",
-    "saving": "Guardando…",
-    "failed": "No pudimos guardarlo. Revisa tu conexión e inténtalo de nuevo.",
-    "version": "Versión {version}",
-    "signOut": "¿No eres tú? Cerrar sesión"
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "Listas",
+        "blurb": "Los mensajes, la entrega, las pantallas y las personas están bien."
+      },
+      "NEEDS_ATTENTION": {
+        "title": "Listas, con pendientes",
+        "blurb": "Una alerta se entregaría hoy. Resuelve los pendientes de abajo antes de necesitarlos."
+      },
+      "NOT_CONFIGURED": {
+        "title": "No están listas",
+        "blurb": "Falta algo crítico: una alerta no llegaría correctamente a tus pantallas."
+      },
+      "DISABLED": {
+        "title": "Las alertas de emergencia están desactivadas",
+        "blurb": "No se comprueba nada mientras las alertas están desactivadas. Actívalas para dejar lista cada alerta."
+      }
+    },
+    "loading": "Comprobando si las alertas están listas…",
+    "loadFailed": "No se pudo comprobar. La comprobación falló, lo que suele significar que no se puede acceder al servicio.",
+    "retry": "Intentar de nuevo",
+    "recheck": "Volver a comprobar",
+    "scoreLabel": "Preparación",
+    "drillLine": "Contenido de simulacro (no se califica)",
+    "statusOk": "Bien",
+    "statusWarn": "Requiere atención",
+    "statusMissing": "Falta",
+    "labels": {
+      "content": "Mensajes de alerta",
+      "delivery": "Entrega a las pantallas",
+      "screens": "Pantallas en línea",
+      "staff": "Personas que pueden enviar alertas",
+      "exercise": "Última práctica"
+    },
+    "detail": {
+      "content_allOwn": "Los {total} tipos de alerta usan tu propia imagen o video.",
+      "content_someStandard": "{own} de {total} tipos de alerta usan tu propia imagen o video; los demás muestran su mensaje estándar.",
+      "content_allStandard": "Los {total} tipos de alerta están listos con su mensaje estándar.",
+      "delivery_ok": "La entrega instantánea, la comprobación de respaldo y la firma de mensajes funcionan.",
+      "delivery_fallback": "La entrega instantánea está en modo de respaldo: las alertas siguen llegando, en unos 20 segundos en lugar de al instante.",
+      "delivery_down": "Las alertas no se pueden entregar ahora. Es un problema de VenueOS, no de tu configuración: contacta al soporte.",
+      "screens_none": "Todavía no hay pantallas emparejadas.",
+      "screens_allOffline": "Ninguna de tus {total, plural, one {# pantalla está} other {# pantallas están}} en línea.",
+      "screens_someOffline": "{online} de {total} pantallas están en línea; {fresh} de ellas informaron en los últimos 5 minutos.",
+      "screens_ok": "Las {total} pantallas están en línea e informando.",
+      "staff_ok": "{count, plural, one {# persona puede} other {# personas pueden}} enviar una alerta.",
+      "staff_one": "Solo una persona puede enviar una alerta.",
+      "staff_none": "Todavía nadie puede enviar una alerta.",
+      "exercise_never": "Aquí nunca se han enviado alertas, ni siquiera como simulacro.",
+      "exercise_today": "Última vez: hoy.",
+      "exercise_recent": "Última vez hace {days, plural, one {# día} other {# días}}.",
+      "exercise_stale": "Última vez hace {days, plural, one {# día} other {# días}}."
+    },
+    "fix": {
+      "screens_none": "Empareja una pantalla: una alerta sin pantallas no llega a nadie.",
+      "screens_offline": "Revisa las pantallas sin conexión en la página Pantallas; una pantalla sin conexión no recibe una alerta nueva hasta que vuelve a estar en línea.",
+      "staff_one": "Permite que una segunda persona de confianza envíe alertas en Ajustes → Equipo.",
+      "staff_none": "Elige quién puede enviar alertas en Ajustes → Equipo.",
+      "exercise": "Haz un simulacro para que la primera alerta real nunca sea la primera vez.",
+      "delivery_fallback": "No tienes que hacer nada: VenueOS está vigilando el canal instantáneo."
+    }
+  },
+  "ledPoster": {
+    "title": "Pósteres LED",
+    "desc": "Tamaño estándar del póster: el tamaño del módulo de un panel. Los pósteres nuevos lo usan hasta que definas un tamaño en la pantalla.",
+    "width": "Ancho",
+    "height": "Alto",
+    "save": "Guardar",
+    "reset": "Restablecer a {w}×{h}",
+    "resetTitle": "Borra el estándar de la organización. Los pósteres vuelven al {w}×{h} integrado.",
+    "current": "Actual:",
+    "builtInDefault": "(predeterminado integrado)",
+    "loadFailed": "· No se pudo cargar el valor actual.",
+    "invalid": "· El ancho y el alto deben ser números enteros entre {min} y {max}.",
+    "saveFailed": "· No se pudo guardar; inténtalo de nuevo.",
+    "saved": "· Guardado.",
+    "readOnly": "· Solo lectura para tu rol."
   },
   "addressSearch": {
     "clear": "Borrar dirección",
@@ -7015,8 +7350,8 @@
       "submissionLiveBody": "El contenido ya está publicado.",
       "submissionNoFeedbackBody": "El revisor no dejó comentarios. Edítalo y vuelve a enviarlo cuando esté listo.",
       "ownerLinkBody": "Se emitió un enlace de inicio de sesión de un solo uso para un nuevo propietario de la organización, con base en el acceso de soporte que aprobaste. Si no lo esperabas, revoca el acceso de soporte en Ajustes.",
-      "supportRequestedBody": "{who} solicitó acceso a {org} durante {duration}: \"{reason}\". Apruébalo o recházalo en Ajustes → Acceso de soporte de VenueOS.",
-      "supportBreakGlassBody": "{who} abrió acceso de emergencia a {org} hasta {until}: \"{reason}\". Puedes terminarlo ahora en Ajustes → Acceso de soporte de VenueOS.",
+      "supportRequestedBody": "{who} solicitó acceso a {org} durante {duration}: \"{reason}\". Apruébalo o recházalo en Ajustes → Avanzado → Soporte de VenueOS.",
+      "supportBreakGlassBody": "{who} abrió acceso de emergencia a {org} hasta {until}: \"{reason}\". Puedes terminarlo ahora en Ajustes → Avanzado → Soporte de VenueOS.",
       "supportEndedBody": "VenueOS terminó su acceso de soporte a {org}.",
       "accessUntil": "Acceso hasta {until}.",
       "venueosSupport": "El soporte de VenueOS",
@@ -7420,5 +7755,206 @@
     "next": "Página siguiente",
     "filters": "Filtros",
     "filtersOn": "Filtros activos"
+  },
+  "brandingWizard": {
+    "title": {
+      "demo": "Prueba la personalización automática",
+      "authed": "Personaliza VenueOS con tu marca"
+    },
+    "intro": "Pega tu sitio web. En unos 10 segundos tomaremos tu logotipo, tus colores y tus fuentes para que VenueOS se vea como tuyo, no como nuestro.",
+    "urlLabel": "La dirección de tu sitio web",
+    "scan": "Escanear",
+    "scanning": "Escaneando…",
+    "tryExample": "Prueba un ejemplo:",
+    "exampleBlocked": "Si un sitio de ejemplo bloquea el escaneo, prueba con otro o pega la dirección de tu propio sitio web.",
+    "errors": {
+      "pasteUrlFirst": "Primero pega la dirección de tu sitio web.",
+      "scanFailed": "No pudimos escanear ese sitio web. Revisa la dirección e inténtalo de nuevo.",
+      "notAnImage": "Elige un archivo de imagen (PNG, JPG, SVG o WebP).",
+      "logoTooLarge": "Ese logotipo es demasiado grande: el límite es de 2 MB.",
+      "readFailed": "No se pudo leer ese archivo: prueba con otro.",
+      "adoptFailed": "No se pudo guardar tu marca. Inténtalo de nuevo."
+    },
+    "confidence": {
+      "title": "Qué tan seguros estamos",
+      "logo": "Logotipo",
+      "palette": "Colores",
+      "fonts": "Fuentes",
+      "displayName": "Nombre"
+    },
+    "logos": {
+      "title": "Logotipos encontrados",
+      "chooseLabel": "Elegir el logotipo {n}",
+      "optionAlt": "Opción de logotipo",
+      "yourLogoAlt": "Tu logotipo",
+      "usingUploaded": "Usando el logotipo que subiste",
+      "usingPasted": "Usando el logotipo del enlace que pegaste",
+      "remove": "Quitar tu logotipo",
+      "upload": "Sube tu logotipo",
+      "pastePlaceholder": "…o pega un enlace a la imagen de tu logotipo",
+      "noneFound": "No pudimos obtener un logotipo de este sitio: algunos sitios (como dominos.com) bloquean los escaneos automáticos. Sube tu logotipo o pega arriba un enlace a la imagen.",
+      "kind": {
+        "svgInline": "Logotipo",
+        "imgLogo": "Logotipo",
+        "imgWordmark": "Logotipo de texto",
+        "icon": "Icono",
+        "appleTouch": "Icono de app",
+        "mask": "Icono de un color",
+        "og": "Imagen para compartir",
+        "twitter": "Imagen para redes sociales"
+      }
+    },
+    "logoBackground": {
+      "title": "Fondo del logotipo",
+      "picked": "Elegimos <b>{label}</b> para este logotipo",
+      "optionLabel": "Fondo del logotipo: {label}",
+      "appliesEverywhere": "Se aplica en todos los lugares donde aparece tu logotipo: la barra lateral, la vista previa y cualquier plantilla que lo use.",
+      "options": {
+        "transparent": "Ninguno",
+        "white": "Blanco",
+        "dark": "Oscuro",
+        "primary": "Marca",
+        "tile": "Suave"
+      },
+      "hints": {
+        "transparent": "Sin fondo: tu logotipo va directamente sobre la página",
+        "white": "Un recuadro blanco detrás de tu logotipo",
+        "dark": "Un recuadro oscuro: ideal para logotipos blancos o claros",
+        "primary": "Un recuadro con el color principal de tu marca",
+        "tile": "Un recuadro redondeado con un tono claro del color de tu marca"
+      }
+    },
+    "palette": {
+      "title": "Paleta",
+      "primary": "Principal",
+      "accent": "Acento",
+      "primaryPickerLabel": "Color principal",
+      "accentPickerLabel": "Color de acento",
+      "discovered": "Colores encontrados: haz clic para aplicarlos",
+      "swatchPrimary": "{hex}: haz clic para usarlo como color principal",
+      "swatchAccent": "{hex}: haz clic para usarlo como color de acento",
+      "swatchFromSite": "El sitio web lo indica como color de marca",
+      "badgePrimary": "P",
+      "badgeAccent": "A"
+    },
+    "contrast": {
+      "textOnPrimary": "Texto sobre el color principal",
+      "textOnAccent": "Texto sobre el color de acento",
+      "gradeAAA": "Muy fácil de leer",
+      "gradeAA": "Fácil de leer",
+      "gradeAALarge": "Solo para texto grande",
+      "gradeFail": "Difícil de leer"
+    },
+    "fonts": {
+      "title": "Tipografía",
+      "heading": "Títulos",
+      "body": "Texto",
+      "noneDetected": "{label}: no se detectó ninguna",
+      "system": "Del sistema",
+      "noGoogleMatch": "No hay ninguna fuente de Google Fonts que coincida: usaremos una fuente estándar."
+    },
+    "identity": {
+      "title": "Nombre y lema",
+      "namePlaceholder": "Nombre visible",
+      "taglinePlaceholder": "Lema (se muestra en la página de inicio de sesión)"
+    },
+    "apply": {
+      "title": "Aplicar la marca a las plantillas",
+      "fillBlanks": "Rellenar vacíos",
+      "fillBlanksHint": "Solo las zonas que aún usan los colores predeterminados",
+      "override": "Sobrescribir",
+      "overrideHint": "Repinta todas las zonas, incluso las que personalizaste",
+      "apply": "Aplicar",
+      "applying": "Aplicando…",
+      "done": "{count, plural, one {Aplicado a # plantilla} other {Aplicado a # plantillas}} · {zones, plural, one {# zona actualizada} other {# zonas actualizadas}}.",
+      "failed": "Error al aplicar: inténtalo de nuevo.",
+      "updatedTitle": "Plantillas actualizadas",
+      "more": "+{count} más"
+    },
+    "actions": {
+      "rescan": "Reescanear",
+      "adopt": "Usar esta marca",
+      "adopting": "Aplicando…",
+      "adoptDemo": "Usar (inicia sesión)",
+      "adoptDemoHint": "Inicia sesión para usar esta marca"
+    },
+    "footer": {
+      "source": "Fuente:",
+      "scannedIn": "Escaneado en {seconds, plural, one {# segundo} other {# segundos}}"
+    },
+    "preview": {
+      "title": "Vista previa en vivo",
+      "subtitle": "— se actualiza mientras ajustas"
+    },
+    "livePreview": {
+      "defaultName": "Tu señalización",
+      "defaultTagline": "Tus pantallas de un vistazo",
+      "logoAlt": "Logotipo",
+      "signage": "Señalización",
+      "nav": {
+        "dashboard": "Panel",
+        "screens": "Pantallas",
+        "templates": "Plantillas",
+        "playlists": "Listas de reproducción",
+        "settings": "Ajustes"
+      },
+      "emergency": "Emergencia",
+      "search": "Buscar…",
+      "newPlaylist": "Nueva lista",
+      "welcome": "Te damos la bienvenida a {name}",
+      "heroLine": "Alertas de emergencia listas · 23 pantallas en línea · 2 listas programadas",
+      "kpiActive": "Pantallas activas",
+      "kpiScheduled": "Programadas",
+      "kpiDrills": "Simulacros",
+      "chips": {
+        "all": "Todas",
+        "lobby": "Vestíbulo",
+        "entrance": "Entrada",
+        "mainFloor": "Planta principal",
+        "backOfHouse": "Zona de personal"
+      },
+      "rows": {
+        "mainLobby": "Vestíbulo principal",
+        "eastHallway": "Pasillo este",
+        "gymEntry": "Entrada del gimnasio",
+        "cafeteria": "Cafetería A"
+      },
+      "live": "En vivo",
+      "offline": "Sin conexión"
+    }
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "¿Reemplazar en 1 pantalla?",
+    "replaceTitleMany": "¿Reemplazar en {count} pantallas?",
+    "confirmReplace": "Reemplazar",
+    "leadSwitchOn": "Activar “{name}”",
+    "leadAddOne": "Agregar esa pantalla a “{name}”",
+    "leadAddMany": "Agregar esas pantallas a “{name}”",
+    "replaceOneScreen": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esa pantalla; sus otras pantallas no cambian.",
+    "replaceManyScreens": "“{other}” se está reproduciendo en {screens}. {lead} la reemplazará solo en esas pantallas; sus otras pantallas no cambian.",
+    "replaceMany": "Estas listas coinciden con “{name}” en las pantallas indicadas:\n\n{list}\n\n{lead} las reemplazará solo en esas pantallas.",
+    "listItem": "• “{other}” en {screens}",
+    "keepTitleOne": "¿Mantener “{other}” el resto del tiempo?",
+    "keepTitleMany": "¿Mantener las otras listas el resto del tiempo?",
+    "keepOneScreen": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esa pantalla nunca queda en blanco.",
+    "keepManyScreens": "“{name}” solo se reproduce en su horario. El resto del tiempo, “{other}” sigue reproduciéndose en {screens}, así esas pantallas nunca quedan en blanco.",
+    "keepMany": "“{name}” solo se reproduce en su horario. El resto del tiempo, estas siguen reproduciéndose y ninguna pantalla queda en blanco:\n\n{list}",
+    "alsoReplaces": "“{other}” en {screens} coincide con ese horario y se reemplazará allí.",
+    "hintOneScreen": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esa pantalla no tendría nada que reproducir.",
+    "hintManyScreens": "Reemplazar todo detiene “{other}” en {screens}. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
+    "hintMany": "Reemplazar todo las detiene en esas pantallas. Fuera del horario de “{name}”, esas pantallas no tendrían nada que reproducir.",
+    "confirmKeepOne": "Mantener ambas",
+    "confirmKeepMany": "Mantener todas",
+    "replaceEverything": "Reemplazar todo",
+    "cancel": "Cancelar"
+  },
+  "termsGate": {
+    "title": "Antes de continuar",
+    "intro": "Lee y acepta el Contrato de Licencia de Usuario Final de {brand}. Explica lo que hace el producto, incluido cómo funcionan las alertas de emergencia, y lo que no puede garantizar. Solo lo harás una vez.",
+    "accept": "Aceptar y continuar",
+    "saving": "Guardando…",
+    "failed": "No pudimos guardarlo. Revisa tu conexión e inténtalo de nuevo.",
+    "version": "Versión {version}",
+    "signOut": "¿No eres tú? Cerrar sesión"
   }
 }

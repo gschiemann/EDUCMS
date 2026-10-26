@@ -638,9 +638,9 @@ export class SupportAccessService {
           : 'VenueOS support access has ended';
     const body =
       event === 'requested'
-        ? `${grant.requestedByEmail ?? 'VenueOS support'} asked for access to ${org.name} for ${describeMinutes(grant.requestedDurationMinutes)}: "${grant.reason}". Approve or deny it in Settings → Support access.`
+        ? `${grant.requestedByEmail ?? 'VenueOS support'} asked for access to ${org.name} for ${describeMinutes(grant.requestedDurationMinutes)}: "${grant.reason}". Approve or deny it in Settings → Advanced → VenueOS support.`
         : event === 'break-glass'
-          ? `${grant.requestedByEmail ?? 'VenueOS support'} opened emergency access to ${org.name} until ${fmt(grant.expiresAt)}: "${grant.reason}". You can end it now in Settings → Support access.`
+          ? `${grant.requestedByEmail ?? 'VenueOS support'} opened emergency access to ${org.name} until ${fmt(grant.expiresAt)}: "${grant.reason}". You can end it now in Settings → Advanced → VenueOS support.`
           : `VenueOS ended its support access to ${org.name}.`;
     for (const a of admins) {
       await this.notifications?.notify({

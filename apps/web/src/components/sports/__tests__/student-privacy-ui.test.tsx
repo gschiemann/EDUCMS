@@ -194,6 +194,6 @@ describe('Settings lists "Sports" for schools and venues only', () => {
     expect(ids('K12')).toContain('sports');
     expect(ids('SPORTS')).toContain('sports');
     expect(ids('RESTAURANT')).not.toContain('sports');
-    expect(ids('RESTAURANT')).toContain('player'); // everything else unchanged
+    expect(ids('RESTAURANT')).toContain('brand'); // everything else unchanged
   });
 });

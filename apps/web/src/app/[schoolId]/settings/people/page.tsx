@@ -154,7 +154,7 @@ export default function PeopleSettingsPage() {
         <PeopleAccessEditor
           ssoManageable={ssoManageable}
           ssoHref={`/${schoolId}/settings/people/sso`}
-          securityHref={`/${schoolId}/settings/security`}
+          securityHref={`/${schoolId}/account`}
         />
       ) : (
         <PermissionDenied sectionLabel={t('settings.shell.sections.people.label')} />

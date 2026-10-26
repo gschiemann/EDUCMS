@@ -177,7 +177,7 @@ export class CleverController {
       this.logger.warn(`Clever callback rejected: ${msg}`);
       res
         .status(400)
-        .send('Clever connect failed. Start the connection again from Settings → Integrations.');
+        .send('Clever connect failed. Start the connection again from Settings → Connections → Student rosters.');
     }
   }
 

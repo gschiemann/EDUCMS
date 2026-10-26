@@ -288,7 +288,7 @@ describe('who may buy a pack', () => {
     expect(boardPurchaseAvailability('none')).toMatchObject({
       enabled: false,
       reasonCode: 'NO_PLATFORM_KEY',
-      reason: 'AI runs on your own key — add it in Settings → AI provider.',
+      reason: 'AI runs on your own key — add it in Settings → Connections → AI.',
     });
     expect(boardPurchaseAvailability('platform')).toMatchObject({
       enabled: false,
@@ -335,7 +335,7 @@ describe('the 402 message', () => {
       }),
     ).toBe(
       'This batch needs 2 boards; you have 1 left this month (included boards reset October 1). ' +
-        'Buy more boards in Settings → Billing, or add your own AI key in Settings → AI provider — you pay your provider directly, with no limit here.',
+        'Buy more boards in Settings → Billing, or add your own AI key in Settings → Connections → AI — you pay your provider directly, with no limit here.',
     );
   });
   it('one board, none left, and no "buy more" when a pack cannot be bought', () => {
@@ -350,6 +350,6 @@ describe('the 402 message', () => {
       'This edit needs 1 board; you have none left this month',
     );
     expect(m).not.toContain('Buy more');
-    expect(m).toContain('Settings → AI provider');
+    expect(m).toContain('Settings → Connections → AI');
   });
 });

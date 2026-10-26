@@ -10,11 +10,12 @@
  *   2. DEVELOPER & AUDIT refuses a SCHOOL_ADMIN with the shell's permission
  *      page naming the category and who can grant access (§10) — not a
  *      redirect to somewhere unrelated.
- *   3. MY SECURITY renders for a CONTRIBUTOR. It is account-scoped and every
- *      authenticated role must reach it (§5, §7.11, §22).
- *   4. THE SAMPLE-DATA HARNESS is refused to a DISTRICT_ADMIN in production.
- *      "Sample integration data is absent from ordinary production operator
- *      navigation" (§22) is the acceptance criterion; this is its test.
+ *   3. MY ACCOUNT renders password, passkeys and two-step sign-in for a
+ *      CONTRIBUTOR. "My security" moved there on 2026-10-26 (Editors and
+ *      Viewers no longer see Settings), and every role must reach it.
+ *   4. THE INTEGRATION TEST TOOL left customer Settings (2026-10-26): the old
+ *      URL is a redirect to the owner console, whose layout admits
+ *      SUPER_ADMIN only, and the tool itself still runs there.
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -36,9 +37,8 @@ import { SettingsShellProvider } from '@/components/settings/shell/SettingsShell
 import { useUIStore } from '@/store/ui-store';
 import BillingPage from '../../../app/[schoolId]/settings/billing/page';
 import DeveloperPage from '../../../app/[schoolId]/settings/developer/page';
-import SecurityPage from '../../../app/[schoolId]/settings/security/page';
-import TestIntegrationsPage from '../../../app/[schoolId]/settings/test-integrations/page';
-import { developerToolsVisible } from '../developer-tools';
+import AccountPage from '../../../app/[schoolId]/account/page';
+import { TestIntegrationsPanel } from '@/components/super/TestIntegrationsPanel';
 
 function renderInShell(ui: ReactElement) {
   const qc = new QueryClient({
@@ -105,70 +105,66 @@ describe('Billing — Stripe not configured', () => {
   });
 });
 
-describe('Developer & audit — permission', () => {
+describe('API keys & webhooks — permission', () => {
   it('refuses a SCHOOL_ADMIN by name, and says who can grant access', () => {
     setRole('SCHOOL_ADMIN');
     renderInShell(<DeveloperPage />);
-    expect(screen.getByText(/You don’t have access to Developer & audit/)).toBeInTheDocument();
-    expect(screen.getByText(/can grant access to this section/)).toBeInTheDocument();
+    expect(screen.getByText(/You don’t have access to API keys & webhooks/)).toBeInTheDocument();
+    expect(screen.getByText(/A district or super administrator can give you access/)).toBeInTheDocument();
     // No developer surface leaked into the denied view.
     expect(screen.queryByText('API keys')).not.toBeInTheDocument();
   });
 });
 
-describe('My security — every authenticated role', () => {
-  it('renders password + two-factor for a CONTRIBUTOR', async () => {
+describe('My account — every authenticated role', () => {
+  it('renders password, passkeys and two-step sign-in for a CONTRIBUTOR', async () => {
     setRole('CONTRIBUTOR');
     apiFetch.mockImplementation((url: string) => {
       if (url === '/auth/mfa/status') return Promise.resolve({ enabled: false });
       return Promise.resolve(null);
     });
-    renderInShell(<SecurityPage />);
-    expect(await screen.findByText('Your account security')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Password' })).toBeInTheDocument();
-    // The MfaCard carries its own heading too, so assert presence, not count.
-    expect(screen.getAllByRole('heading', { name: 'Two-factor authentication' }).length).toBeGreaterThan(0);
-    // The containment behaviour that IS built is stated; no invented
-    // "active sessions" list.
-    expect(screen.getByText(/To sign out your other devices, change your password/)).toBeInTheDocument();
+    renderInShell(<AccountPage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'My account' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign-in and security' })).toBeInTheDocument();
+    // Each security card carries its own heading.
+    expect(screen.getAllByRole('heading', { name: /password/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { name: /Passkeys/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { name: /Two-step sign-in/ }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Language' })).toBeInTheDocument();
+    // The anchors old links and sign-in prompts land on.
+    for (const id of ['sec-password', 'sec-passkeys', 'sec-mfa', 'account-language']) {
+      expect(document.getElementById(id)).not.toBeNull();
+    }
+    // An Editor gets no way into Settings from here.
+    expect(screen.queryByRole('link', { name: /Open Settings/ })).not.toBeInTheDocument();
+  });
+
+  it('an admin also gets a way into Settings', () => {
+    setRole('SCHOOL_ADMIN');
+    renderInShell(<AccountPage />);
+    expect(screen.getByRole('link', { name: /Open Settings/ })).toHaveAttribute('href', '/springfield/settings');
   });
 });
 
-describe('Sample-data harness visibility', () => {
-  const realEnv = process.env.NODE_ENV;
-  afterEach(() => {
-    (process.env as any).NODE_ENV = realEnv;
+describe('Integration test tool — owner console only', () => {
+  it('the old Settings URL sends staff to the owner console', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const src = fs.readFileSync(
+      path.join(__dirname, '../../../app/[schoolId]/settings/test-integrations/page.tsx'),
+      'utf8',
+    );
+    expect(src).toMatch(/redirect\('\/super\/test-integrations'\)/);
   });
 
-  it('developerToolsVisible: super admin always; district admin only outside production', () => {
-    (process.env as any).NODE_ENV = 'production';
-    expect(developerToolsVisible('SUPER_ADMIN')).toBe(true);
-    expect(developerToolsVisible('DISTRICT_ADMIN')).toBe(false);
-    expect(developerToolsVisible('SCHOOL_ADMIN')).toBe(false);
-    expect(developerToolsVisible(undefined)).toBe(false);
-
-    (process.env as any).NODE_ENV = 'development';
-    expect(developerToolsVisible('DISTRICT_ADMIN')).toBe(true);
-    expect(developerToolsVisible('SCHOOL_ADMIN')).toBe(false);
-  });
-
-  it('the page itself refuses a DISTRICT_ADMIN in production', () => {
-    (process.env as any).NODE_ENV = 'production';
-    setRole('DISTRICT_ADMIN');
-    renderInShell(<TestIntegrationsPage />);
-    expect(screen.getByText(/You don’t have access to Integration test data/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Run full audit/i })).not.toBeInTheDocument();
-  });
-
-  it('the page opens for a SUPER_ADMIN in production', async () => {
-    (process.env as any).NODE_ENV = 'production';
+  it('runs in the owner console', async () => {
     setRole('SUPER_ADMIN');
     apiFetch.mockImplementation((url: string) => {
       if (url.startsWith('/health/integrations'))
         return Promise.resolve({ generatedAt: new Date().toISOString(), generatedInMs: 5, summary: {}, rows: [] });
       return Promise.resolve(null);
     });
-    renderInShell(<TestIntegrationsPage />);
+    renderInShell(<TestIntegrationsPanel schoolId="springfield" />);
     expect(await screen.findByRole('button', { name: /Run full audit/i })).toBeInTheDocument();
   });
 });

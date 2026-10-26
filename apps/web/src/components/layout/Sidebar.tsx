@@ -6,7 +6,8 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, Megaphone } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, Megaphone, UserRound } from 'lucide-react';
+import { canSeeSettings } from '@/components/settings/shell/registry';
 import { RoleGate } from '../RoleGate';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
@@ -262,7 +263,13 @@ export function Sidebar() {
     ...(mounted && hasPanicAuthority(user)
       ? [{ name: t('nav.broadcast'), href: hrefFor('/emergency/broadcast'), icon: Megaphone }]
       : []),
-    { name: t('nav.settings'), href: hrefFor('/settings'), icon: Settings },
+    // Owner decision 1 (Settings simplification, 2026-10-24): Editors and
+    // Viewers do not see Settings — everything they can change about
+    // themselves is in My account. Mounted-gated like the admin set below
+    // (`user` lives in storage, so SSR and the first paint show Settings).
+    ...(mounted && user && !canSeeSettings(user.role)
+      ? [{ name: t('nav.account'), href: hrefFor('/account'), icon: UserRound }]
+      : [{ name: t('nav.settings'), href: hrefFor('/settings'), icon: Settings }]),
   ];
 
   // Hydration safety: `user` is loaded from localStorage on the client

@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { LayoutDashboard, MonitorPlay, LayoutTemplate, Folders, Settings, Bell, ShieldAlert, Search, ChevronDown } from 'lucide-react';
 import { useLogoTone } from './useLogoTone';
@@ -60,6 +61,9 @@ function remapBrandVars(style: React.CSSProperties): React.CSSProperties {
 }
 
 export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
+  // The mock dashboard reads in the operator's language (2026-10-26), like
+  // the wizard beside it. Sample names and numbers are sample data.
+  const t = useTranslations('brandingWizard.livePreview');
   const p = branding?.palette || {};
   const safeLogoSvg = useMemo(
     () => (branding?.logoSvgInline ? sanitizeSvg(branding.logoSvgInline) : ''),
@@ -88,7 +92,7 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
   // Vertical-neutral default — "District" only fits K-12. Real tenants set
   // branding.displayName; this placeholder shows before they do, so it must
   // read right for a gym / restaurant / arena too.
-  const name = branding?.displayName || 'Your Venue Signage';
+  const name = branding?.displayName || t('defaultName');
 
   // Detect whether the picked logo is light-toned (e.g., the white
   // Dodgers wordmark). When it is, wrap it in a brand-color chip so
@@ -167,7 +171,7 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
                 ) : branding?.logoUrl ? (
                   <img
                     src={branding.logoUrl}
-                    alt="logo"
+                    alt={t('logoAlt')}
                     className="max-h-full max-w-full object-contain"
                   />
                 ) : null}
@@ -184,20 +188,20 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
                   2 lines with line-clamp-2. Hover still shows the
                   full name via title attr. */}
               <div className="preview-heading text-[10px] font-bold line-clamp-2 leading-tight max-w-[110px]" title={name}>{name}</div>
-              <div className="text-[9px] text-slate-500">Signage</div>
+              <div className="text-[9px] text-slate-500">{t('signage')}</div>
             </div>
           </div>
           <nav className="space-y-1 text-[12px]">
-            <SideLink active icon={<LayoutDashboard className="h-3.5 w-3.5" />}>Dashboard</SideLink>
-            <SideLink icon={<MonitorPlay className="h-3.5 w-3.5" />}>Screens</SideLink>
-            <SideLink icon={<LayoutTemplate className="h-3.5 w-3.5" />}>Templates</SideLink>
-            <SideLink icon={<Folders className="h-3.5 w-3.5" />}>Playlists</SideLink>
-            <SideLink icon={<Settings className="h-3.5 w-3.5" />}>Settings</SideLink>
+            <SideLink active icon={<LayoutDashboard className="h-3.5 w-3.5" />}>{t('nav.dashboard')}</SideLink>
+            <SideLink icon={<MonitorPlay className="h-3.5 w-3.5" />}>{t('nav.screens')}</SideLink>
+            <SideLink icon={<LayoutTemplate className="h-3.5 w-3.5" />}>{t('nav.templates')}</SideLink>
+            <SideLink icon={<Folders className="h-3.5 w-3.5" />}>{t('nav.playlists')}</SideLink>
+            <SideLink icon={<Settings className="h-3.5 w-3.5" />}>{t('nav.settings')}</SideLink>
           </nav>
 
           <button className="preview-btn-accent w-full mt-5 rounded-md text-[11px] py-1.5 font-semibold flex items-center justify-center gap-1.5">
             <ShieldAlert className="h-3.5 w-3.5" />
-            Emergency
+            {t('emergency')}
           </button>
         </aside>
 
@@ -206,21 +210,21 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
           {/* Header bar */}
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="preview-heading text-lg font-bold" style={{ color: 'var(--bp-ink)' }}>Dashboard</h2>
+              <h2 className="preview-heading text-lg font-bold" style={{ color: 'var(--bp-ink)' }}>{t('nav.dashboard')}</h2>
               <div className="text-[11px]" style={{ color: 'var(--bp-ink-muted)' }}>
                 {/* 2026-05-25 — vertical-neutral default. The old
                     "Your district signage at a glance" was K-12-
                     specific copy bleeding into a Sports tenant
                     preview. */}
-                {branding?.tagline || 'Your signage at a glance'}
+                {branding?.tagline || t('defaultTagline')}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
-                <input className="preview-card border rounded-md text-[11px] pl-6 pr-2 py-1 w-28" placeholder="Search…" />
+                <input className="preview-card border rounded-md text-[11px] pl-6 pr-2 py-1 w-28" placeholder={t('search')} />
               </div>
-              <button className="preview-btn-primary rounded-md text-[11px] px-3 py-1.5 font-medium">New playlist</button>
+              <button className="preview-btn-primary rounded-md text-[11px] px-3 py-1.5 font-medium">{t('newPlaylist')}</button>
               <div className="relative">
                 <Bell className="h-4 w-4" style={{ color: 'var(--bp-primary)' }} />
                 <div className="absolute -top-1 -right-1 preview-bar-accent h-2 w-2 rounded-full" />
@@ -230,8 +234,8 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
 
           {/* Hero card */}
           <div className="preview-hero-gradient rounded-xl p-4 text-white mb-5 relative overflow-hidden">
-            <div className="preview-heading text-lg font-bold">Welcome to {name}</div>
-            <div className="text-[11px] opacity-90 mt-0.5">Emergency system green · 23 screens online · 2 playlists scheduled</div>
+            <div className="preview-heading text-lg font-bold">{t('welcome', { name })}</div>
+            <div className="text-[11px] opacity-90 mt-0.5">{t('heroLine')}</div>
             <div className="absolute right-4 top-3 flex gap-1">
               <div className="preview-bar h-1.5 w-14 rounded-full opacity-70" />
               <div className="preview-bar-accent h-1.5 w-6 rounded-full" />
@@ -240,30 +244,30 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
 
           {/* KPI row */}
           <div className="grid grid-cols-3 gap-3 mb-5">
-            <Kpi label="Active screens" value="23" trend="+2" positive />
-            <Kpi label="Scheduled" value="7" trend="—" />
-            <Kpi label="Emergency drills" value="4" trend="+1" positive />
+            <Kpi label={t('kpiActive')} value="23" trend="+2" positive />
+            <Kpi label={t('kpiScheduled')} value="7" trend="—" />
+            <Kpi label={t('kpiDrills')} value="4" trend="+1" positive />
           </div>
 
           {/* Chip row — vertical-neutral location labels. The old
               "Hallways / Cafeteria / Auditorium" set was K-12-specific
               and bled into Gym / Retail / Sports tenant previews. */}
           <div className="flex gap-2 mb-4 flex-wrap">
-            {['All','Lobby','Entrance','Main Floor','Back of House'].map((t, i) => (
-              <span key={t} className={cn('px-2.5 py-1 rounded-full text-[10px] font-medium', i === 0 ? 'preview-chip' : 'bg-slate-100 text-slate-600')}>{t}</span>
+            {(['all', 'lobby', 'entrance', 'mainFloor', 'backOfHouse'] as const).map((chip, i) => (
+              <span key={chip} className={cn('px-2.5 py-1 rounded-full text-[10px] font-medium', i === 0 ? 'preview-chip' : 'bg-slate-100 text-slate-600')}>{t(`chips.${chip}`)}</span>
             ))}
           </div>
 
           {/* Table preview */}
           <div className="preview-card border rounded-xl overflow-hidden">
             <div className="px-3 py-2 text-[11px] font-semibold flex items-center justify-between border-b" style={{ borderColor: 'var(--bp-border)' }}>
-              Screens <ChevronDown className="h-3 w-3" />
+              {t('nav.screens')} <ChevronDown className="h-3 w-3" />
             </div>
             {[
-              { name: 'Main Lobby', status: 'Live', ok: true },
-              { name: 'East Hallway', status: 'Live', ok: true },
-              { name: 'Gym Entry', status: 'Offline', ok: false },
-              { name: 'Cafeteria A', status: 'Live', ok: true },
+              { name: t('rows.mainLobby'), ok: true },
+              { name: t('rows.eastHallway'), ok: true },
+              { name: t('rows.gymEntry'), ok: false },
+              { name: t('rows.cafeteria'), ok: true },
             ].map(row => (
               <div key={row.name} className="px-3 py-2 text-[11px] flex items-center justify-between border-b last:border-0" style={{ borderColor: 'var(--bp-border)' }}>
                 <span className="flex items-center gap-2">
@@ -271,7 +275,7 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
                   {row.name}
                 </span>
                 <span className={cn('px-2 py-0.5 rounded-full text-[9px]', row.ok ? 'preview-chip' : 'bg-red-50 text-red-700')}>
-                  {row.status}
+                  {row.ok ? t('live') : t('offline')}
                 </span>
               </div>
             ))}

@@ -784,7 +784,7 @@ describe('Media Library v1 — upload queue phases (§14)', () => {
       expect(queue).toHaveTextContent('logo.svg');
       expect(queue).toHaveTextContent('Failed');
       expect(queue).toHaveTextContent("SVG can't be uploaded as content");
-      expect(queue).toHaveTextContent('Settings → Branding takes SVG safely');
+      expect(queue).toHaveTextContent('Settings → Organization → Logo & colors takes SVG safely');
       // An unknown kind of file is told what IS taken — the same lists as the strip.
       expect(queue).toHaveTextContent("old-clip.flv can't be uploaded. Upload photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS)");
       expect(queue).not.toHaveTextContent('Ready');

@@ -3271,7 +3271,7 @@ describe('AiService — the Designer is capped in BOARDS, and draws 2 by default
     expect(err.getStatus()).toBe(402);
     expect(err.getResponse()).toMatchObject({ code: 'AI_CAP_REACHED', unit: 'boards', boardsNeeded: 2, boardsLeft: 1, used: 9, cap: 10 });
     expect(err.getResponse().message).toContain('This batch needs 2 boards; you have 1 left this month');
-    expect(err.getResponse().message).toContain('Settings → AI provider');
+    expect(err.getResponse().message).toContain('Settings → Connections → AI');
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
@@ -3383,7 +3383,7 @@ describe('AiService — the AI plan gate (AI plan / trial / no AI / own key)', (
     expect(err.getStatus()).toBe(402);
     expect(err.getResponse()).toMatchObject({ code: 'AI_PLAN_REQUIRED', aiAddonMonthlyCents: 500, byokAvailable: true });
     expect(err.getResponse().message).toContain('$5/screen/month');
-    expect(err.getResponse().message).toContain('connect your own AI key for free (Settings → AI)');
+    expect(err.getResponse().message).toContain('connect your own AI key for free (Settings → Connections → AI)');
     expect(dispatchMock).not.toHaveBeenCalled();
     // the board designer refuses at the same door
     const board = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);

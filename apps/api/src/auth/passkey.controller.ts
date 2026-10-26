@@ -379,7 +379,7 @@ export class PasskeyController {
         throw new ForbiddenException({
           code: 'PASSKEY_GRANT_INVALID',
           message:
-            'This passkey offer has expired. Add a passkey from Settings → My security instead.',
+            'This passkey offer has expired. Add a passkey from My account instead.',
         });
       }
       reauth = 'enrollment-grant';
