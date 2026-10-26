@@ -125,6 +125,9 @@ export default function BusinessWorkspaceShell({
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
               ["/super/field-builds", "fieldBuilds"],
+              // 2026-10-26 — moved out of customer Settings.
+              ["/super/player-updates", "playerUpdates"],
+              ["/super/test-integrations", "testIntegrations"],
             ].map(([href, key]) => (
               <Link
                 key={key}
@@ -179,6 +182,9 @@ export default function BusinessWorkspaceShell({
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
               ["/super/field-builds", "fieldBuilds"],
+              // 2026-10-26 — moved out of customer Settings.
+              ["/super/player-updates", "playerUpdates"],
+              ["/super/test-integrations", "testIntegrations"],
             ].map(([href, key]) => (
               <Link
                 key={key}

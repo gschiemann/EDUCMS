@@ -48,9 +48,6 @@ import {
   Plug,
   ExternalLink,
   BookOpen,
-  FileClock,
-  Beaker,
-  GitBranch,
   Plus,
   Copy,
   Check,
@@ -70,7 +67,6 @@ import {
   useDeleteWebhook,
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
-import { developerToolsVisible } from '@/components/settings/developer-tools';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import {
   ContextModule,
@@ -123,7 +119,6 @@ export default function DeveloperSettingsPage() {
       searchItems={[
         { label: t('settings.cc.developer.searchApiKeys'), anchor: 'dev-api-keys', keywords: ['token', 'bearer', 'rest', 'scope'] },
         { label: t('settings.cc.developer.searchWebhooks'), anchor: 'dev-webhooks', keywords: ['callback', 'signing secret', 'hmac'] },
-        { label: t('settings.cc.developer.searchAudit'), anchor: 'dev-audit', href: `/${schoolId}/audit`, keywords: ['history', 'log', 'who changed'] },
       ]}
       context={<DeveloperContextRail apiUrl={apiUrl} dashboardCommit={dashboardCommit} />}
     >
@@ -132,71 +127,6 @@ export default function DeveloperSettingsPage() {
         title={t('settings.cc.developer.editorTitle')}
         description={t('settings.cc.developer.editorDesc')}
       />
-
-      {/* ── System & build ─────────────────────────────────────── */}
-      <EditorSection
-        id="dev-system"
-        title={t('settings.cc.developer.systemTitle')}
-        description={t('settings.cc.developer.systemDesc')}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <InfoCell label="Player URL" value={playerUrl} />
-          <InfoCell label="API Endpoint" value={apiUrl} />
-          {dashboardCommit && (
-            <InfoCell
-              label="Dashboard build"
-              value={dashboardCommit.slice(0, 7)}
-              mono
-            />
-          )}
-        </div>
-      </EditorSection>
-
-      {/* ── Connected Integrations ─────────────────────────────── */}
-      <EditorSection
-        id="dev-integrations"
-        title={t('settings.cc.developer.integrationsTitle')}
-        description={t('settings.cc.developer.integrationsDesc')}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <IntegrationCard
-            name="Stripe billing"
-            blurb="Plans, invoices, customer portal."
-            href={`/${schoolId}/settings/billing`}
-          />
-          <IntegrationCard
-            name="Clever SIS"
-            blurb="Roster import + class periods for K-12."
-            href={`/${schoolId}/settings/integrations/clever`}
-          />
-          <IntegrationCard
-            name="Streaming providers"
-            blurb="Twitch / YouTube / Vimeo embeds for live tiles."
-            href={`/${schoolId}/settings/streaming`}
-          />
-          <IntegrationCard
-            name="POS catalog sync"
-            blurb="Square / Toast / Clover for menu boards."
-            href={`/${schoolId}/settings/pos`}
-          />
-          <IntegrationCard
-            name="SSO / SAML / OIDC"
-            blurb="District directory integration for staff login."
-            href={`/${schoolId}/settings/sso`}
-          />
-          {/* 2026-05-25 — Design imports moved out of Settings into
-              the Templates section ("its not a setting its a feature"
-              — operator). The Developer integrations index still
-              surfaces it because operators with the developer mindset
-              expect to find every integration in one place, but the
-              link now points at the new home. */}
-          <IntegrationCard
-            name="Design imports"
-            blurb="PDF / Canva / Slides → template (or playlist)."
-            href={`/${schoolId}/templates/imports`}
-          />
-        </div>
-      </EditorSection>
 
       {/* ── API Keys ───────────────────────────────────────────── */}
       <ApiKeysSection />
@@ -212,16 +142,9 @@ export default function DeveloperSettingsPage() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <DocLink
-            href="https://github.com/gschiemann/EDUCMS"
-            title="Public repo"
-            blurb="Source-of-truth GitHub repository."
-            icon={<GitBranch className="w-4 h-4" />}
-            external
-          />
-          <DocLink
             href={`${apiUrl.replace(/\/api\/v1$/, '')}/api/v1/health`}
-            title="API health endpoint"
-            blurb="Liveness probe — also returns the current build commit + DB/Redis status."
+            title={t('settings.cc.developer.healthTitle')}
+            blurb={t('settings.cc.developer.healthBlurb')}
             icon={<Plug className="w-4 h-4" />}
             external
           />
@@ -234,40 +157,27 @@ export default function DeveloperSettingsPage() {
         </div>
       </EditorSection>
 
-      {/* ── Audit log ENTRY POINT (never a second copy of the log) ── */}
-      <EditorSection
-        id="dev-audit"
-        title={t('settings.cc.developer.auditTitle')}
-        action={
-          <SectionAction href={`/${schoolId}/audit`}>
-            <FileClock className="w-3.5 h-3.5" aria-hidden />
-            {t('settings.cc.developer.auditAction')}
-          </SectionAction>
-        }
-      >
-        <p className="text-[12px] leading-[17px] text-slate-500">
-          {t('settings.cc.developer.auditDesc')}
-        </p>
-      </EditorSection>
-
-      {/* ── Developer tooling (sample data) ───────────────────── */}
-      {developerToolsVisible(role) && (
-        <EditorSection
-          id="dev-tools"
-          title={t('settings.cc.developer.toolsTitle')}
-          description={t('settings.cc.developer.toolsDesc')}
-          action={
-            <SectionAction href={`/${schoolId}/settings/test-integrations`}>
-              <Beaker className="w-3.5 h-3.5" aria-hidden />
-              {t('settings.cc.developer.toolsAction')}
-            </SectionAction>
-          }
-        >
-          <p className="text-[12px] leading-[17px] text-slate-500">
-            {t('settings.cc.developer.toolsAvailability')}
-          </p>
-        </EditorSection>
-      )}
+      {/* ── About this workspace — for a support call, folded ─── */}
+      <details id="dev-system" className="group py-[19px] border-t border-slate-200 scroll-mt-24">
+        <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-[44px] text-[14px] font-medium text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 rounded-md">
+          <span>
+            {t('settings.cc.developer.systemTitle')}
+            <span className="block mt-0.5 text-[12px] font-normal text-slate-500">{t('settings.cc.developer.systemDesc')}</span>
+          </span>
+          <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-90">›</span>
+        </summary>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <InfoCell label={t('settings.cc.developer.playerUrl')} value={playerUrl} />
+          <InfoCell label={t('settings.cc.developer.apiEndpoint')} value={apiUrl} />
+          {dashboardCommit && (
+            <InfoCell
+              label={t('settings.cc.developer.dashboardBuild')}
+              value={dashboardCommit.slice(0, 7)}
+              mono
+            />
+          )}
+        </div>
+      </details>
     </SettingsPageFrame>
   );
 }
@@ -335,31 +245,6 @@ function InfoCell({
         {value}
       </code>
     </div>
-  );
-}
-
-function IntegrationCard({
-  name,
-  blurb,
-  href,
-}: {
-  name: string;
-  blurb: string;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-between gap-3 p-3 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-colors"
-    >
-      <div className="min-w-0">
-        <div className="text-xs font-bold text-slate-800 truncate">{name}</div>
-        <div className="text-[11px] text-slate-500 truncate">{blurb}</div>
-      </div>
-      <span className="text-[10px] font-bold text-indigo-600 shrink-0">
-        Manage →
-      </span>
-    </Link>
   );
 }
 

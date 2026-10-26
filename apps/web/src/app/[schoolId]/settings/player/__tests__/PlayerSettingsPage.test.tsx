@@ -33,7 +33,11 @@ jest.mock('@/components/ui/app-dialog', () => ({
 }));
 
 import { SettingsShellProvider, useSettingsShell } from '@/components/settings/shell/SettingsShellContext';
-import PlayerSettingsPage from '../page';
+import { PlayerUpdatesPanel } from '@/components/settings/player/PlayerUpdatesPanel';
+import ScreenUpdatesNotePage from '../page';
+
+/** The owner console's panel, as it renders at /super/player-updates. */
+const PlayerSettingsPage = () => <PlayerUpdatesPanel schoolId="t1" />;
 import OfflinePage from '../offline/page';
 import UsbLegacyPage from '../../usb/page';
 
@@ -256,5 +260,25 @@ describe('the old USB settings URLs send you to Playlists (no USB settings any m
   it('and at the preserved /settings/usb', async () => {
     renderPage(UsbLegacyPage);
     expect(await screen.findByText(/USB has no settings any more/)).toBeInTheDocument();
+  });
+});
+
+// 2026-10-26 — owner decision 3: "Updates are managed by VenueOS." The URL a
+// customer used to manage rollouts at is now one plain note, and the controls
+// above render only in the owner console.
+describe('customers see a plain note at /settings/player', () => {
+  it('says VenueOS manages updates, offers Screens, and shows no rollout controls', () => {
+    role = 'SCHOOL_ADMIN';
+    renderPage(ScreenUpdatesNotePage);
+    expect(screen.getByText('VenueOS keeps your screens up to date')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open Screens/ })).toHaveAttribute('href', '/t1/screens');
+    expect(screen.queryByText(/cohort|soak|canary/i)).toBeNull();
+    expect(screen.queryByTestId('screen-updates-owner-link')).toBeNull();
+  });
+
+  it('the owner gets one link to the console', () => {
+    role = 'SUPER_ADMIN';
+    renderPage(ScreenUpdatesNotePage);
+    expect(screen.getByTestId('screen-updates-owner-link')).toHaveAttribute('href', '/super/player-updates');
   });
 });

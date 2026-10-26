@@ -13,9 +13,9 @@
  *   3. MY ACCOUNT renders password, passkeys and two-step sign-in for a
  *      CONTRIBUTOR. "My security" moved there on 2026-10-26 (Editors and
  *      Viewers no longer see Settings), and every role must reach it.
- *   4. THE SAMPLE-DATA HARNESS is refused to a DISTRICT_ADMIN in production.
- *      "Sample integration data is absent from ordinary production operator
- *      navigation" (§22) is the acceptance criterion; this is its test.
+ *   4. THE INTEGRATION TEST TOOL left customer Settings (2026-10-26): the old
+ *      URL is a redirect to the owner console, whose layout admits
+ *      SUPER_ADMIN only, and the tool itself still runs there.
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -38,8 +38,7 @@ import { useUIStore } from '@/store/ui-store';
 import BillingPage from '../../../app/[schoolId]/settings/billing/page';
 import DeveloperPage from '../../../app/[schoolId]/settings/developer/page';
 import AccountPage from '../../../app/[schoolId]/account/page';
-import TestIntegrationsPage from '../../../app/[schoolId]/settings/test-integrations/page';
-import { developerToolsVisible } from '../developer-tools';
+import { TestIntegrationsPanel } from '@/components/super/TestIntegrationsPanel';
 
 function renderInShell(ui: ReactElement) {
   const qc = new QueryClient({
@@ -147,41 +146,25 @@ describe('My account — every authenticated role', () => {
   });
 });
 
-describe('Sample-data harness visibility', () => {
-  const realEnv = process.env.NODE_ENV;
-  afterEach(() => {
-    (process.env as any).NODE_ENV = realEnv;
+describe('Integration test tool — owner console only', () => {
+  it('the old Settings URL sends staff to the owner console', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const src = fs.readFileSync(
+      path.join(__dirname, '../../../app/[schoolId]/settings/test-integrations/page.tsx'),
+      'utf8',
+    );
+    expect(src).toMatch(/redirect\('\/super\/test-integrations'\)/);
   });
 
-  it('developerToolsVisible: super admin always; district admin only outside production', () => {
-    (process.env as any).NODE_ENV = 'production';
-    expect(developerToolsVisible('SUPER_ADMIN')).toBe(true);
-    expect(developerToolsVisible('DISTRICT_ADMIN')).toBe(false);
-    expect(developerToolsVisible('SCHOOL_ADMIN')).toBe(false);
-    expect(developerToolsVisible(undefined)).toBe(false);
-
-    (process.env as any).NODE_ENV = 'development';
-    expect(developerToolsVisible('DISTRICT_ADMIN')).toBe(true);
-    expect(developerToolsVisible('SCHOOL_ADMIN')).toBe(false);
-  });
-
-  it('the page itself refuses a DISTRICT_ADMIN in production', () => {
-    (process.env as any).NODE_ENV = 'production';
-    setRole('DISTRICT_ADMIN');
-    renderInShell(<TestIntegrationsPage />);
-    expect(screen.getByText(/You don’t have access to Integration test data/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Run full audit/i })).not.toBeInTheDocument();
-  });
-
-  it('the page opens for a SUPER_ADMIN in production', async () => {
-    (process.env as any).NODE_ENV = 'production';
+  it('runs in the owner console', async () => {
     setRole('SUPER_ADMIN');
     apiFetch.mockImplementation((url: string) => {
       if (url.startsWith('/health/integrations'))
         return Promise.resolve({ generatedAt: new Date().toISOString(), generatedInMs: 5, summary: {}, rows: [] });
       return Promise.resolve(null);
     });
-    renderInShell(<TestIntegrationsPage />);
+    renderInShell(<TestIntegrationsPanel schoolId="springfield" />);
     expect(await screen.findByRole('button', { name: /Run full audit/i })).toBeInTheDocument();
   });
 });
