@@ -423,7 +423,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {Activar Face ID o Touch ID} ipad {Activar Face ID o Touch ID} android {Activar el inicio con huella} other {Activar el inicio con clave de acceso}}",
     "phoneSetupSignedInTitle": "Ya iniciaste sesión",
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Ajustes → Mi seguridad.",
-    "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos."
+    "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
+    "security": "Seguridad"
   },
   "account": {
     "title": "Cuenta",
@@ -4881,7 +4882,49 @@
     "viaSwim": "el cronometraje de natación",
     "ageSeconds": "hace {seconds} s",
     "ageMinutes": "hace {minutes} min",
-    "developerDesc": "De dónde vienen los marcadores: la consola, un enlace de teléfono o una fuente firmada que envía tu sistema."
+    "developerDesc": "De dónde vienen los marcadores: la consola, un enlace de teléfono o una fuente firmada que envía tu sistema.",
+    "vendorOther": "Otro sistema",
+    "steps": {
+      "sportzcast": {
+        "step1": "En tu portal en la nube de Sportzcast (ScoreHub / ScoreLink), abre la configuración de salida de datos del Scorebot de este recinto.",
+        "step2": "Agrega una salida de envío HTTP (webhook) y pega como destino la URL de ingesta de abajo.",
+        "step3": "Agrega un encabezado de solicitud llamado x-feed-token con el token de abajo.",
+        "step4": "Asigna la salida a los campos JSON indicados abajo (sirve cualquier subconjunto). Si tu plan solo envía un formato fijo, usa su puente o relé —o cualquier script pequeño— que reenvíe a esta URL; la línea curl es un paquete que funciona."
+      },
+      "scorebird": {
+        "step1": "En tu panel de Scorebird (MyScorebird), abre la configuración de integraciones / feed de datos del nest de este marcador.",
+        "step2": "Agrega un envío HTTP (webhook) que apunte a la URL de ingesta de abajo.",
+        "step3": "Agrega un encabezado de solicitud llamado x-feed-token con el token de abajo.",
+        "step4": "Asigna el envío a los campos JSON indicados abajo (sirve cualquier subconjunto). Si el portal no puede dar forma al JSON, sirve un pequeño script de relé que reenvíe los datos; la línea curl es un paquete que funciona."
+      },
+      "generic": {
+        "step1": "Sirve cualquier cosa que pueda enviar JSON por POST: un puente lector de consola, Node-RED, una app de estadísticas o un script de 5 líneas.",
+        "step2": "Envía por POST a la URL de ingesta de abajo, con el encabezado x-feed-token igual al token.",
+        "step3": "Envía cualquier subconjunto de los campos JSON indicados abajo; los campos que omitas no cambian.",
+        "step4": "La línea curl de abajo es un paquete completo que funciona y que puedes adaptar."
+      }
+    },
+    "creating": "Creando credenciales…",
+    "loadFailed": "No se pudieron cargar las credenciales del feed.",
+    "retry": "Reintentar",
+    "revoked": "Se revocaron todas las credenciales del feed de este partido.",
+    "createNew": "Crear credenciales nuevas",
+    "rotated": "<b>Rotado</b>: los tokens emitidos antes de la última regeneración (incluido el original) ya no funcionan. Asegúrate de que tu proveedor tenga el token de abajo.",
+    "postTo": "Enviar (POST) a",
+    "header": "Encabezado",
+    "fieldsLabel": "Campos",
+    "anySubset": "cualquier subconjunto",
+    "testPacket": "Paquete de prueba:",
+    "tokenExpires": "El token vence el {date}; vuelve a abrir esta tarjeta cuando quieras para obtener uno vigente.",
+    "copied": "Datos de configuración copiados",
+    "copy": "Copiar URL y token",
+    "copyPrompt": "Copia los datos del feed de marcador:",
+    "confirmRegenerate": "Sí, revocar y reemplazar",
+    "keep": "Conservar",
+    "regenerate": "Regenerar…",
+    "regenerateTitle": "Revocar y reemplazar: todas las credenciales ya instaladas para este partido dejan de funcionar y se emite un token nuevo",
+    "confirmWarning": "Esto invalida todas las credenciales ya instaladas para este partido (incluido el token original) en cuanto confirmes: tu proveedor deja de sincronizar hasta que pegues el nuevo.",
+    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token."
   },
   "sportsConsoleSetup": {
     "title": "Consola del marcador",
@@ -5680,7 +5723,8 @@
     "limit": {
       "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Configuración → Proveedor de IA para continuar, o contáctanos para obtener más.",
       "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
-      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación."
+      "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Configuración → Proveedor de IA, o elige VenueOS + IA en Configuración → Facturación.",
+      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Proveedor de IA para seguir, o espera a que se renueve el próximo mes."
     }
   },
   "billingAi": {
@@ -6411,7 +6455,6 @@
       "trust": "Seguridad",
       "itSecurity": "Resumen de seguridad",
       "networkRequirements": "Requisitos de red",
-      "reportVulnerability": "Reportar una vulnerabilidad",
       "legal": "Legal",
       "privacy": "Política de privacidad",
       "terms": "Términos del servicio",
@@ -6420,7 +6463,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS — una sola plataforma para cada lugar.",
-      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia"
+      "strapline": "Señalización digital · quioscos interactivos · marcadores en vivo · alertas de emergencia",
+      "reportSecurityIssue": "Reportar un problema de seguridad"
     },
     "help": {
       "back": "Volver al centro de ayuda",
@@ -6508,6 +6552,14 @@
       "apiBuild": "Versión de la API {version}",
       "firstCheck": "Haciendo la primera comprobación…",
       "offlineNote": "Si una pantalla pierde la conexión, sigue reproduciendo su contenido guardado, y una alerta de emergencia que ya está en pantalla se mantiene hasta el fin de alerta — vea el <help>resumen del sistema de emergencia</help>."
+    },
+    "header": {
+      "industries": "Industrias",
+      "templates": "Plantillas",
+      "pricing": "Precios",
+      "help": "Ayuda",
+      "signIn": "Iniciar sesión",
+      "startTrial": "Prueba gratis"
     }
   },
   "usbDelivery": {
@@ -6664,5 +6716,277 @@
     "tooShort": "La contraseña debe tener al menos 8 caracteres.",
     "mismatch": "Las contraseñas no coinciden.",
     "acceptFailed": "No se pudo aceptar la invitación."
+  },
+  "addressSearch": {
+    "clear": "Borrar dirección",
+    "resultsFrom": "Resultados de",
+    "noMatchApprox": "Aún no hay coincidencias: esta búsqueda de direcciones es aproximada. Agrega la ciudad y el estado, o revisa el número de la calle."
+  },
+  "signup": {
+    "haveWorkspace": "¿Ya tienes un espacio de trabajo?",
+    "signIn": "Iniciar sesión",
+    "trialBadge": "Prueba gratis de 14 días — hasta 3 pantallas, sin tarjeta",
+    "title": "Crea tu espacio de trabajo gratis.",
+    "lead": "Configura VenueOS para {where} en menos de tres minutos — luego programa cada pantalla y activa una alerta de emergencia en todas ellas en segundos.",
+    "industryLabel": "¿Qué tipo de organización administras?",
+    "industryPlaceholder": "Elige tu industria…",
+    "workspaceUrl": "URL del espacio de trabajo",
+    "workspaceUrlHint": "Solo letras, números y guiones.",
+    "firstName": "Nombre",
+    "firstNamePlaceholder": "Alex",
+    "lastName": "Apellido",
+    "lastNamePlaceholder": "García",
+    "adminEmail": "Correo del administrador",
+    "phone": "Teléfono (opcional)",
+    "phoneHint": "Se usa para recuperar la verificación en dos pasos si pierdes el acceso a tu app de autenticación. Nunca te enviaremos mensajes de marketing.",
+    "address": "Dirección (opcional)",
+    "addressPlaceholder": "Empieza a escribir — 1000 Vin Scully Ave…",
+    "addressHint": "Escribe y elige una opción de la lista. Ubicaremos tus sitios en el mapa de tu flota.",
+    "password": "Contraseña",
+    "passwordPlaceholder": "8 caracteres o más",
+    "confirmPassword": "Confirmar contraseña",
+    "confirmPasswordPlaceholder": "Escríbela de nuevo",
+    "creating": "Creando tu espacio de trabajo…",
+    "create": "Crear espacio de trabajo",
+    "agree": "Al crear un espacio de trabajo, aceptas nuestros <terms>términos</terms> y nuestra <privacy>política de privacidad</privacy>.",
+    "agreeK12": "Al crear un espacio de trabajo, aceptas nuestros <terms>términos</terms> y nuestra <privacy>política de privacidad</privacy>, incluidos nuestros compromisos de datos <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa>.",
+    "footer": {
+      "label": "Legal",
+      "terms": "Términos",
+      "privacy": "Privacidad",
+      "security": "Seguridad",
+      "dpa": "DPA"
+    },
+    "errors": {
+      "industry": "Elige tu industria.",
+      "passwordLength": "La contraseña debe tener al menos 8 caracteres.",
+      "passwordMismatch": "Las contraseñas no coinciden.",
+      "nameRequired": "Escribe el nombre de tu organización.",
+      "slugRequired": "Elige una URL para el espacio de trabajo.",
+      "slugTaken": "Esa URL de espacio de trabajo ya está en uso: prueba con otra.",
+      "emailInvalid": "Escribe un correo de administrador válido.",
+      "emailTaken": "Ya existe una cuenta con ese correo. Inicia sesión o usa otro correo.",
+      "checkFields": "Algunos datos no son válidos. Revisa el formulario e inténtalo de nuevo.",
+      "tooMany": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+      "generic": "No se pudo crear la cuenta. Inténtalo de nuevo.",
+      "unreachable": "No se puede conectar con el servidor en {url}."
+    },
+    "panel": {
+      "eyebrow": "Por qué los equipos eligen VenueOS",
+      "title": "Todas tus pantallas, en un solo lugar.",
+      "lead": "Un solo panel para señalización, quioscos, marcadores y la alerta de seguridad que tiene prioridad sobre todo lo demás.",
+      "alertsTitle": "Alertas de emergencia con un toque",
+      "alertsDesc": "Los mensajes de confinamiento, incendio / evacuación y clima cambian todas las pantallas en segundos.",
+      "scheduleTitle": "Programa una vez, en todas partes",
+      "scheduleDesc": "Contenido por día, franja horaria o evento puntual: una pantalla o diez mil.",
+      "templatesTitle": "Más de 170 plantillas para cada industria",
+      "templatesDesc": "Totalmente editables, con los colores de tu marca y listas para cualquier pantalla.",
+      "screensTitle": "Funciona en cualquier pantalla",
+      "screensDesc": "Smart TV, reproductores Android, controladores LED, quioscos: sin hardware especial."
+    },
+    "defaults": {
+      "nameLabel": "Nombre de la organización",
+      "namePlaceholder": "Tu establecimiento u organización",
+      "where": "todo tu establecimiento"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "Escuela o distrito escolar (K-12)",
+        "nameLabel": "Nombre del distrito o la escuela",
+        "namePlaceholder": "Distrito Escolar Unificado de Springfield",
+        "where": "todo tu distrito"
+      },
+      "GYM": {
+        "picker": "Gimnasio, club deportivo o instalación atlética",
+        "nameLabel": "Nombre del gimnasio o club",
+        "namePlaceholder": "Iron Peak Fitness",
+        "where": "todo tu gimnasio"
+      },
+      "RETAIL": {
+        "picker": "Tienda o cadena minorista",
+        "nameLabel": "Nombre de la tienda o cadena",
+        "namePlaceholder": "Northside Outfitters",
+        "where": "toda tu tienda"
+      },
+      "CORPORATE": {
+        "picker": "Oficina corporativa o empresa",
+        "nameLabel": "Nombre de la empresa",
+        "namePlaceholder": "Acme Corp",
+        "where": "toda tu oficina"
+      },
+      "QSR": {
+        "picker": "Restaurante / comida rápida (QSR)",
+        "nameLabel": "Nombre del restaurante o la marca",
+        "namePlaceholder": "Burger Junction",
+        "where": "toda tu marca"
+      },
+      "FASHION": {
+        "picker": "Boutique de moda o ropa",
+        "nameLabel": "Nombre de la boutique o la marca",
+        "namePlaceholder": "Studio 5 Boutique",
+        "where": "toda tu boutique"
+      },
+      "BAR": {
+        "picker": "Bar, cervecería o club nocturno",
+        "nameLabel": "Nombre del bar o local",
+        "namePlaceholder": "The Tap Room",
+        "where": "todo tu bar"
+      },
+      "HEALTHCARE": {
+        "picker": "Clínica, consultorio u hospital",
+        "nameLabel": "Nombre del consultorio o la red",
+        "namePlaceholder": "Harbor Health",
+        "where": "todo tu consultorio"
+      },
+      "HOSPITALITY": {
+        "picker": "Hotel, resort o propiedad",
+        "nameLabel": "Nombre de la propiedad o el grupo",
+        "namePlaceholder": "Summit Hotels",
+        "where": "toda tu propiedad"
+      },
+      "RESTAURANT": {
+        "picker": "Restaurante de servicio completo",
+        "nameLabel": "Nombre del restaurante o el grupo",
+        "namePlaceholder": "The Copper Table",
+        "where": "todo tu restaurante"
+      },
+      "SPORTS": {
+        "picker": "Recinto deportivo, estadio o programa atlético",
+        "nameLabel": "Nombre del recinto, equipo o liga",
+        "namePlaceholder": "Riverside Arena",
+        "where": "todo tu recinto"
+      },
+      "WORSHIP": {
+        "picker": "Iglesia, ministerio o casa de culto",
+        "nameLabel": "Nombre de la iglesia o el ministerio",
+        "namePlaceholder": "Iglesia Comunidad de Gracia",
+        "where": "todo tu ministerio"
+      }
+    }
+  },
+  "notifications": {
+    "inbox": {
+      "title": "Notificaciones",
+      "checking": "Buscando mensajes nuevos…",
+      "unreadOf": "{unread} sin leer de {total}",
+      "messages": "{count, plural, one {# mensaje} other {# mensajes}}",
+      "markAllRead": "Marcar todo como leído",
+      "categoriesLabel": "Categorías de notificaciones",
+      "unreadCount": "{count} sin leer",
+      "unread": "Sin leer",
+      "stale": "No se pudo actualizar ahora mismo: se muestra la última lista que recibió este dispositivo. Lo más reciente aún no aparece.",
+      "retry": "Reintentar",
+      "emptyFiltered": "No hay nada en esta categoría",
+      "empty": "Aún no hay notificaciones",
+      "emptyAll": "VenueOS escribe aquí cuando una pantalla deja de responder, cuando un trabajo necesita revisión y cuando algo cambia en tu cuenta.",
+      "showAll": "Mostrar todas las notificaciones",
+      "errorTitle": "No se pueden cargar las notificaciones",
+      "errorBody": "VenueOS no pudo conectarse con el servidor, así que esta lista puede estar incompleta o desactualizada.",
+      "tryAgain": "Intentar de nuevo",
+      "footnote": "Llegan mientras VenueOS está abierto. Tu teléfono no te avisará cuando la app esté cerrada; durante una emergencia activa, mira el aviso de alerta en la parte superior de la app."
+    },
+    "bell": {
+      "labelUnread": "Notificaciones ({count} sin leer)",
+      "caughtUp": "Estás al día."
+    },
+    "categories": {
+      "all": "Todas",
+      "exceptions": "Problemas de entrega",
+      "reviews": "Revisiones",
+      "system": "Avisos del sistema"
+    },
+    "categoriesShort": {
+      "exceptions": "Entrega",
+      "reviews": "Revisión",
+      "system": "Sistema"
+    },
+    "blurbs": {
+      "exceptions": "Pantallas que dejaron de responder y otros problemas de entrega que detectamos.",
+      "reviews": "Trabajo enviado para aprobación y decisiones sobre lo que enviaste.",
+      "system": "Mensajes de la cuenta, la licencia y la plataforma."
+    },
+    "age": {
+      "justNow": "justo ahora",
+      "minutes": "hace {count} min",
+      "hours": "hace {count} h",
+      "days": "hace {count} d"
+    },
+    "server": {
+      "screenOffline": "Pantalla sin conexión: {screen}",
+      "screenOfflineAt": "{site} · Pantalla sin conexión: {screen}",
+      "infraEvent": "Posible falla de infraestructura: se desconectaron {count} de {total} pantallas",
+      "infraEventAt": "{site} · Posible falla de infraestructura: se desconectaron {count} de {total} pantallas",
+      "pushDeadPolling": "{screen}: canal en tiempo real caído; funciona con consultas periódicas",
+      "pushDeadUnproven": "{screen}: sin tiempo real y sin prueba del contenido; requiere atención ahora",
+      "assetPending": "Nuevo archivo pendiente de revisión",
+      "assetApproved": "Tu archivo fue aprobado",
+      "assetRejected": "Tu archivo fue rechazado",
+      "submissionAwaiting": "Nuevo envío pendiente de tu revisión",
+      "submissionApproved": "Tu envío fue aprobado",
+      "submissionRejected": "Tu envío fue rechazado",
+      "ownerLink": "El soporte de VenueOS creó un enlace de inicio de sesión para un propietario",
+      "supportRequested": "VenueOS solicita acceso de soporte",
+      "supportBreakGlass": "VenueOS usó el acceso de soporte de emergencia",
+      "supportEnded": "Terminó el acceso de soporte de VenueOS",
+      "supportApproved": "{org} aprobó el acceso de soporte",
+      "supportDenied": "{org} rechazó el acceso de soporte",
+      "supportInvited": "{org} dio acceso de soporte a VenueOS",
+      "kioskHelp": "Un visitante necesita ayuda — {screen}",
+      "videoStutter": "El video se entrecorta en {screen}",
+      "noHeartbeat": "Sin señal de actividad desde {time}.",
+      "noHeartbeatUnknown": "Aún no hay registro de señal de actividad.",
+      "noHeartbeatAt": "{site}: sin señal de actividad de \"{screen}\" desde {time}.",
+      "unknownTime": "una hora desconocida",
+      "infraBody": "{count} pantallas se desconectaron en {seconds} s (más del {pct} % de la flota). Probablemente una falla de la red WAN, del proveedor de internet o de la energía local; se omitieron los avisos por pantalla. Afectadas: {names}.",
+      "infraBodyAt": "{site}: {count} pantallas se desconectaron en {seconds} s (más del {pct} % de las pantallas de esa ubicación). Probablemente una falla de la red WAN, del proveedor de internet o de la energía.",
+      "pushDeadPollingBody": "Esta pantalla no puede recibir comandos instantáneos (actualizar, entrega inmediata de emergencias). Su prueba de reproducción está al día, así que sigue reproduciendo y se actualiza con sus consultas periódicas (cada 5–10 s), incluidas las emergencias. Causa habitual: la red del local bloquea las conexiones WebSocket o de streaming.",
+      "pushDeadUnprovenBody": "Esta pantalla no puede recibir comandos instantáneos Y no ha demostrado hace poco que muestra contenido: lo que se ve ahora mismo no está verificado. Se dejó en cola una orden de actualización persistente en su manifiesto; si no se recupera en unos minutos, necesita atención en el lugar o en la red hoy mismo, no un recordatorio diario.",
+      "assetPendingBody": "{email} subió \"{asset}\"; necesita revisión antes de poder programarse.",
+      "assetApprovedBody": "\"{asset}\" ya está publicado y se puede agregar a listas de reproducción.",
+      "assetRejectedBody": "{reviewer} rechazó \"{asset}\".",
+      "assetRejectedReasonBody": "{reviewer} rechazó \"{asset}\": \"{reason}\".",
+      "submissionScheduleBody": "Se envió una programación para aprobación antes de publicarse.",
+      "submissionItemsBody": "{count, plural, one {Se envió # elemento} other {Se enviaron # elementos}} para aprobación.",
+      "submissionLiveBody": "El contenido ya está publicado.",
+      "submissionNoFeedbackBody": "El revisor no dejó comentarios. Edítalo y vuelve a enviarlo cuando esté listo.",
+      "ownerLinkBody": "Se emitió un enlace de inicio de sesión de un solo uso para un nuevo propietario de la organización, con base en el acceso de soporte que aprobaste. Si no lo esperabas, revoca el acceso de soporte en Ajustes.",
+      "supportRequestedBody": "{who} solicitó acceso a {org} durante {duration}: \"{reason}\". Apruébalo o recházalo en Ajustes → Acceso de soporte de VenueOS.",
+      "supportBreakGlassBody": "{who} abrió acceso de emergencia a {org} hasta {until}: \"{reason}\". Puedes terminarlo ahora en Ajustes → Acceso de soporte de VenueOS.",
+      "supportEndedBody": "VenueOS terminó su acceso de soporte a {org}.",
+      "accessUntil": "Acceso hasta {until}.",
+      "venueosSupport": "El soporte de VenueOS",
+      "aCustomer": "Un cliente",
+      "kioskHelpBody": "Un visitante tocó “Pedir ayuda” en el quiosco.",
+      "videoStutterConcurrencyBody": "“{screen}” se entrecorta con “{file}” mientras reproduce más de un video a la vez. Sigue reproduciendo; una copia más liviana no lo solucionaría.",
+      "videoStutterNoCopyBody": "“{screen}” se entrecorta con “{file}” y no hay una copia más liviana a la cual cambiar. Sigue reproduciendo.",
+      "duration": {
+        "days": "{count, plural, one {# día} other {# días}}",
+        "hours": "{count, plural, one {# hora} other {# horas}}",
+        "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+        "unspecified": "un tiempo no especificado"
+      }
+    }
+  },
+  "menuConnect": {
+    "connectPos": "Conecta tu punto de venta (POS)",
+    "pasteMenu": "Pega tu menú",
+    "templateName": "Menú digital",
+    "templateDescription": "Creado a partir del menú que pegaste: toma los precios en vivo de tu POS.",
+    "zoneName": "Menú",
+    "boardTitle": "NUESTRO MENÚ",
+    "nothingTitle": "No hay nada que importar",
+    "nothingBody": "Primero pega algunas líneas del menú: un producto por línea y el precio al final (por ejemplo, “Hamburguesa con queso  $8.99”).",
+    "imported": "{count, plural, one {Se importó # producto.} other {Se importaron # productos.}}",
+    "capturedNote": "Tu menú quedó guardado. Conecta un POS (o el webhook personalizado) para enviarlo en vivo a tus pantallas.",
+    "importFailed": "No se pudo importar",
+    "readyTitle": "Menú listo",
+    "readySeeded": "La plantilla “{name}” ya está en tus Plantillas: ponla en cualquier pantalla.",
+    "modalBody": "Un producto por línea, con el precio al final. Crearemos una plantilla de menú digital y la conectaremos a tus precios en vivo.",
+    "placeholder": "Hamburguesa clásica con queso   $8.99\nPapas fritas con sal de mar   $3.49\nRefresco de máquina   $2.79",
+    "preview": "{count, plural, one {Vista previa — # producto} other {Vista previa — # productos}}",
+    "more": "+ {count} más…",
+    "close": "Cerrar",
+    "cancel": "Cancelar",
+    "create": "Crear mi menú digital"
   }
 }

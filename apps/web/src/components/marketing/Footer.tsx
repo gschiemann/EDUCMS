@@ -45,7 +45,7 @@ export function Footer() {
           links={[
             { href: '/help/it-security-overview', label: t('itSecurity') },
             { href: '/help/network-requirements', label: t('networkRequirements') },
-            { href: '/security', label: t('reportVulnerability') },
+            { href: '/security', label: t('reportSecurityIssue') },
             { href: '/dpa#subprocessors', label: t('subprocessors') },
           ]}
         />
