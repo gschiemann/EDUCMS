@@ -1689,94 +1689,87 @@
         "requiresPrimaryAdmin": "主账户管理员"
       },
       "integrations": {
-        "editorTitle": "已连接的服务",
-        "editorDescription": "你可以连接的所有服务，以及它们是否已连接。",
-        "searchLabel": "搜索集成",
-        "searchPlaceholder": "按提供商、功能或关键词搜索",
-        "familyFilterLabel": "按集成类别筛选",
+        "editorTitle": "可连接的服务",
+        "editorDescription": "VenueOS 目前可以连接的所有服务，以及已连接的服务。",
+        "searchLabel": "搜索连接",
+        "searchPlaceholder": "Square、Toast、AI、直播…",
+        "familyFilterLabel": "显示某类连接",
         "stateFilterLabel": "按状态筛选",
         "filterAll": "全部",
         "sourceLabel": "状态来源",
         "lastSync": "上次同步 {date}",
-        "noResults": "没有符合这些筛选条件的集成",
-        "noResultsHint": "请清空搜索框，或选择其他类别或状态。",
+        "noResults": "没有匹配的结果",
+        "noResultsHint": "清除搜索，或选择其他类型或状态。",
         "degradedNotice": "部分状态暂时无法检查，因此显示为“未知”。",
         "railStatusLabel": "状态",
         "railConnected": "已连接：{count}",
         "railAttention": "需要处理：{count}",
-        "railFamiliesLabel": "本工作区的集成类别",
-        "railImportsLabel": "设计导入",
-        "railImportsTitle": "在“模板”中管理",
-        "railImportsHint": "PDF 和图片导入属于模板工作流，不是设置中的连接。",
-        "railImportsAction": "打开设计导入",
         "railAuditLabel": "审计",
         "railAuditAction": "查看审计日志",
         "families": {
-          "ai": "AI 提供商与品牌语气",
-          "clever": "Clever",
-          "streaming": "流媒体与视频",
-          "pos": "POS 与菜单数据",
+          "ai": "AI",
+          "clever": "学生名册",
+          "streaming": "直播视频",
+          "pos": "收银系统",
           "monetization": "变现与广告网络"
         },
         "states": {
           "connected": "已连接",
           "attention": "需要处理",
-          "available": "可用",
-          "external": "外部设备",
-          "planned": "计划中"
+          "available": "未连接"
         },
         "actions": {
           "manage": "管理",
-          "resolve": "处理",
-          "diagnose": "诊断",
-          "configure": "配置",
+          "resolve": "修复",
+          "diagnose": "修复",
+          "configure": "连接",
           "instructions": "查看安装说明",
           "learnMore": "了解更多",
-          "refresh": "刷新状态",
+          "refresh": "重新检查",
           "none": "暂无可用操作"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "已声明的产品政策",
-          "unavailable": "无法检查"
+          "streamingConnections": "您的直播连接",
+          "posConnections": "您的收银系统连接",
+          "adsConnections": "您的广告连接",
+          "aiKey": "您保存的 AI 密钥",
+          "brandingMe": "您的品牌设置",
+          "cleverStatus": "您的 Clever 连接",
+          "catalogPolicy": "VenueOS 产品规则",
+          "unavailable": "暂时无法检查"
         },
         "stateHelp": {
           "ready": "已配置并在使用中。",
-          "connected": "你的登录信息已保存。运行测试或同步即可确认是否可用。",
-          "degraded": "该提供商已实现的某项功能当前出现故障。",
-          "attention": "可用但不完整、已暂停或即将过期。请打开提供商页面查看具体原因。",
-          "blocked": "访问权限已被撤销。重新连接后才能继续使用该提供商。",
-          "notConfigured": "已实现且可用，但尚未进行任何设置。",
+          "connected": "已连接。运行测试或同步以确认其正常工作。",
+          "degraded": "此连接目前出现故障。打开即可修复。",
+          "attention": "已连接，但已暂停、未完成或即将过期。打开查看原因。",
+          "blocked": "访问权限已被撤销。重新连接后即可使用。",
+          "notConfigured": "可以连接。",
           "external": "播放在提供商自有的授权设备上进行。VenueOS 目前不会切换信号输入。",
           "planned": "该提供商的连接器尚未发布，因此没有可配置的内容。",
           "unsupported": "有意不提供。此处不存在可用于商业用途的连接路径。",
-          "unknown": "无法读取权威状态，因此不对状态作出任何断言。"
+          "unknown": "暂时无法检查，因此不显示状态。"
         },
         "pages": {
           "ai": {
-            "title": "AI 提供商与品牌语气",
+            "title": "AI",
             "description": "使用你自己的 AI 密钥，并设定每块生成看板所采用的语气。"
           },
           "streaming": {
-            "title": "流媒体与视频",
-            "description": "你自有的授权信号可原生播放。其他来源都会明确说明能做什么、不能做什么。"
+            "title": "直播视频",
+            "description": "播放您拥有或获授权播放的直播。"
           },
           "pos": {
-            "title": "POS 与菜单数据",
-            "description": "将价目表同步到菜单看板，并把每家门店映射到展示它的屏幕。"
+            "title": "收银系统",
+            "description": "让菜单板和价格标签与收银系统逐店保持同步。"
           },
           "monetization": {
             "title": "变现与广告网络",
             "description": "广告网络连接、收益，以及适用于它们的内容控制。"
           },
           "clever": {
-            "title": "Clever",
-            "description": "面向在 Clever 中管理教职员账户的学区的名册同步。"
+            "title": "学生名册",
+            "description": "从 Clever 导入教职员工和学生名册。"
           }
         },
         "providerRail": {
@@ -1789,6 +1782,22 @@
           "lastSyncLabel": "上次同步",
           "noSync": "尚未执行过同步。",
           "notReachable": "无法读取该状态。"
+        },
+        "notListed": "Netflix、Hulu、Disney+ 等家庭流媒体服务无法在屏幕上播放：它们的订阅不允许公开展示。",
+        "rows": {
+          "aiKey": "您的 AI 密钥",
+          "clever": "Clever 名册同步"
+        },
+        "blurbs": {
+          "key": "使用您自己的 OpenAI、Anthropic 或 Google 密钥进行 AI 设计和写作。",
+          "roster": "从 Clever 导入教职员工和学生名册。",
+          "square": "菜单项、规格、价格和售罄状态，自动保持同步。",
+          "toast": "从 Toast 同步您已发布的菜单、价格和照片。",
+          "clover": "您的 Clover 商品和价格，每小时自动同步，也可随时同步。",
+          "lightspeed-retail": "来自 Lightspeed 的各门店商品和价格。",
+          "shopify-pos": "来自 Shopify 的商品、规格、库存和地点。",
+          "custom-webhook": "从任何系统发送您自己的菜单或价目表。",
+          "custom-hls": "粘贴您拥有或获授权播放的直播链接（.m3u8）。"
         }
       },
       "player": {
@@ -4239,7 +4248,40 @@
     "catDoohProgrammatic": "⚡ 程序化 DOOH",
     "catVenueNetwork": "🏢 场馆网络",
     "catDoohDirect": "🤝 直接销售",
-    "catHouseOnly": "🏠 仅自有广告"
+    "catHouseOnly": "🏠 仅自有广告",
+    "posScopes": {
+      "restaurant-qsr": "餐厅 / 快餐",
+      "restaurant-table": "堂食餐厅",
+      "retail": "零售",
+      "bar": "酒吧",
+      "universal": "任何业务"
+    },
+    "posHow": {
+      "square": "使用 Square 登录",
+      "clover": "使用 Clover 登录",
+      "lightspeed-retail": "使用 Lightspeed 登录",
+      "shopify-pos": "使用 Shopify 登录",
+      "toast": "使用您的 Toast API 访问权限",
+      "custom-webhook": "免费"
+    },
+    "toast": {
+      "intro": "输入您的 Toast API 信息。我们会查找您的门店，导入已发布的菜单，并让已连接的屏幕保持最新。",
+      "clientId": "客户端 ID",
+      "clientSecret": "客户端密钥",
+      "advancedEndpoint": "高级：Toast API 地址",
+      "endpoint": "API 地址",
+      "chooseStores": "选择此账户的门店",
+      "manualLabel": "Toast 门店——名称 | 餐厅 GUID，每行一个",
+      "manualPlaceholder": "主街店 | 餐厅 GUID",
+      "manualHint": "部分 Toast 账户不支持自动查找门店。GUID 列在您的 Toast API 访问信息中。",
+      "findAndConnect": "查找门店并连接",
+      "noDiscovery": "此 Toast 账户不支持自动查找门店。请输入 Toast 中的餐厅 GUID 以继续。",
+      "pickStore": "请至少选择一家 Toast 门店。",
+      "needsAttention": "Toast 连接需要处理",
+      "mainAccount": "主账户",
+      "mapEveryStore": "将每家门店匹配到显示它的屏幕所在地点，这样每家门店都会显示自己的 Toast 价格。",
+      "mapFailed": "无法更新此门店。"
+    }
   },
   "changePassword": {
     "title": "修改密码",

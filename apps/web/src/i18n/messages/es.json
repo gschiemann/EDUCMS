@@ -1689,94 +1689,87 @@
         "requiresPrimaryAdmin": "Un administrador de la cuenta principal"
       },
       "integrations": {
-        "editorTitle": "Servicios conectados",
-        "editorDescription": "Todos los servicios que puedes conectar y si están conectados.",
-        "searchLabel": "Buscar integraciones",
-        "searchPlaceholder": "Buscar por proveedor, capacidad o palabra clave",
-        "familyFilterLabel": "Filtrar por familia de integración",
+        "editorTitle": "Lo que puedes conectar",
+        "editorDescription": "Todo lo que VenueOS puede conectar hoy y lo que ya está conectado.",
+        "searchLabel": "Buscar conexiones",
+        "searchPlaceholder": "Square, Toast, IA, transmisión…",
+        "familyFilterLabel": "Mostrar un tipo de conexión",
         "stateFilterLabel": "Filtrar por estado",
         "filterAll": "Todas",
-        "sourceLabel": "Origen del estado",
+        "sourceLabel": "Estado según",
         "lastSync": "Última sincronización {date}",
-        "noResults": "Ninguna integración coincide con estos filtros",
-        "noResultsHint": "Borra el cuadro de búsqueda o elige otra familia u otro estado.",
+        "noResults": "No hay coincidencias",
+        "noResultsHint": "Borra la búsqueda o elige otro tipo o estado.",
         "degradedNotice": "Algunos estados no se pudieron comprobar ahora, así que aparecen como Desconocido.",
         "railStatusLabel": "Estado",
         "railConnected": "Conectadas: {count}",
         "railAttention": "Requieren atención: {count}",
-        "railFamiliesLabel": "Familias en este espacio",
-        "railImportsLabel": "Importaciones de diseño",
-        "railImportsTitle": "Se gestionan en Plantillas",
-        "railImportsHint": "Las importaciones de PDF e imágenes son un flujo de plantillas, no una conexión de ajustes.",
-        "railImportsAction": "Abrir importaciones de diseño",
         "railAuditLabel": "Auditoría",
         "railAuditAction": "Ver registro de auditoría",
         "families": {
-          "ai": "Proveedor de IA y voz de marca",
-          "clever": "Clever",
-          "streaming": "Streaming y vídeo",
-          "pos": "TPV y datos de menú",
+          "ai": "IA",
+          "clever": "Listas de estudiantes",
+          "streaming": "Video en vivo",
+          "pos": "Punto de venta",
           "monetization": "Monetización y redes publicitarias"
         },
         "states": {
           "connected": "Conectada",
           "attention": "Requiere atención",
-          "available": "Disponible",
-          "external": "Dispositivo externo",
-          "planned": "Prevista"
+          "available": "Sin conectar"
         },
         "actions": {
           "manage": "Gestionar",
-          "resolve": "Resolver",
-          "diagnose": "Diagnosticar",
-          "configure": "Configurar",
+          "resolve": "Arreglar",
+          "diagnose": "Arreglar",
+          "configure": "Conectar",
           "instructions": "Ver instrucciones de instalación",
           "learnMore": "Más información",
-          "refresh": "Actualizar estado",
+          "refresh": "Volver a comprobar",
           "none": "Sin acción disponible"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "Política de producto declarada",
-          "unavailable": "No se pudo comprobar"
+          "streamingConnections": "tus conexiones de transmisión",
+          "posConnections": "tus conexiones de punto de venta",
+          "adsConnections": "tus conexiones de anuncios",
+          "aiKey": "tu clave de IA guardada",
+          "brandingMe": "tus ajustes de marca",
+          "cleverStatus": "tu conexión con Clever",
+          "catalogPolicy": "las reglas de producto de VenueOS",
+          "unavailable": "no se pudo comprobar ahora"
         },
         "stateHelp": {
           "ready": "Configurada y en uso.",
-          "connected": "Tu acceso está guardado. Haz una prueba o una sincronización para comprobar que funciona.",
-          "attention": "Utilizable pero incompleta, en pausa o por caducar. Abre la página del proveedor para ver el motivo exacto.",
-          "degraded": "Una capacidad ya construida para este proveedor está fallando ahora mismo.",
-          "blocked": "Se revocó el acceso. Vuelve a conectar antes de usar este proveedor.",
-          "notConfigured": "Construida y disponible. Todavía no se ha configurado nada.",
+          "connected": "Conectado. Haz una prueba o una sincronización para comprobarlo.",
+          "attention": "Conectado, pero en pausa, incompleto o por vencer. Ábrelo para ver por qué.",
+          "degraded": "Esta conexión está fallando ahora. Ábrela para arreglarla.",
+          "blocked": "Se quitó el acceso. Vuelve a conectarla para usarla.",
+          "notConfigured": "Lista para conectar.",
           "external": "La reproducción ocurre en el dispositivo con licencia del propio proveedor. VenueOS no cambia entradas hoy.",
           "planned": "Aún no se ha publicado un conector para este proveedor, así que no hay nada que configurar.",
           "unsupported": "No disponible de forma intencionada. Aquí no existe una ruta de conexión de uso comercial.",
-          "unknown": "No se pudo leer el estado autoritativo, así que no se afirma ningún estado."
+          "unknown": "No pudimos comprobarlo ahora, así que no mostramos un estado."
         },
         "pages": {
           "ai": {
-            "title": "Proveedor de IA y voz de marca",
+            "title": "IA",
             "description": "Usa tu propia clave de IA y define la voz con la que se escribe cada tablero generado."
           },
           "streaming": {
-            "title": "Streaming y vídeo",
-            "description": "Tus propias señales con licencia se reproducen de forma nativa. Todo lo demás indica exactamente qué puede y qué no puede hacer."
+            "title": "Video en vivo",
+            "description": "Muestra una transmisión en vivo que te pertenezca o tengas licencia para mostrar."
           },
           "pos": {
-            "title": "TPV y datos de menú",
-            "description": "Sincroniza una lista de precios con tus tableros de menú y asigna cada tienda a las pantallas que la muestran."
+            "title": "Punto de venta",
+            "description": "Mantén los menús y los precios sincronizados con tu punto de venta, tienda por tienda."
           },
           "monetization": {
             "title": "Monetización y redes publicitarias",
             "description": "Conexiones con redes publicitarias, ingresos y los controles de contenido que se les aplican."
           },
           "clever": {
-            "title": "Clever",
-            "description": "Sincronización de listas para distritos que gestionan cuentas de personal en Clever."
+            "title": "Listas de estudiantes",
+            "description": "Trae las listas de personal y estudiantes desde Clever."
           }
         },
         "providerRail": {
@@ -1789,6 +1782,22 @@
           "lastSyncLabel": "Última sincronización",
           "noSync": "Todavía no se ha ejecutado ninguna sincronización.",
           "notReachable": "No se pudo leer este estado."
+        },
+        "notListed": "Netflix, Hulu, Disney+ y otros servicios de streaming para el hogar no se pueden mostrar en pantallas: sus suscripciones no permiten mostrarlos en público.",
+        "rows": {
+          "aiKey": "Tu clave de IA",
+          "clever": "Sincronización de listas con Clever"
+        },
+        "blurbs": {
+          "key": "Usa tu propia clave de OpenAI, Anthropic o Google para diseños y textos con IA.",
+          "roster": "Trae las listas de personal y estudiantes desde Clever.",
+          "square": "Artículos del menú, tamaños, precios y agotados, siempre sincronizados.",
+          "toast": "Tu menú publicado, precios y fotos, sincronizados desde Toast.",
+          "clover": "Tus artículos y precios de Clover, sincronizados cada hora y cuando quieras.",
+          "lightspeed-retail": "Productos y precios de cada tienda, desde Lightspeed.",
+          "shopify-pos": "Productos, variantes, inventario y ubicaciones, desde Shopify.",
+          "custom-webhook": "Envía tu propio menú o lista de precios desde cualquier sistema.",
+          "custom-hls": "Pega un enlace de transmisión en vivo (.m3u8) que te pertenezca o tengas licencia para mostrar."
         }
       },
       "player": {
@@ -4239,7 +4248,40 @@
     "catDoohProgrammatic": "⚡ DOOH programático",
     "catVenueNetwork": "🏢 Redes de recintos",
     "catDoohDirect": "🤝 Venta directa",
-    "catHouseOnly": "🏠 Solo anuncios propios"
+    "catHouseOnly": "🏠 Solo anuncios propios",
+    "posScopes": {
+      "restaurant-qsr": "Restaurante / servicio rápido",
+      "restaurant-table": "Restaurante con servicio a la mesa",
+      "retail": "Comercio minorista",
+      "bar": "Bar",
+      "universal": "Cualquier negocio"
+    },
+    "posHow": {
+      "square": "Inicia sesión con Square",
+      "clover": "Inicia sesión con Clover",
+      "lightspeed-retail": "Inicia sesión con Lightspeed",
+      "shopify-pos": "Inicia sesión con Shopify",
+      "toast": "Usa tu acceso a la API de Toast",
+      "custom-webhook": "Gratis"
+    },
+    "toast": {
+      "intro": "Ingresa los datos de tu API de Toast. Buscamos tus tiendas, traemos el menú publicado y mantenemos actualizadas las pantallas conectadas.",
+      "clientId": "ID de cliente",
+      "clientSecret": "Secreto de cliente",
+      "advancedEndpoint": "Avanzado: dirección de la API de Toast",
+      "endpoint": "Dirección de la API",
+      "chooseStores": "Elige las tiendas de esta cuenta",
+      "manualLabel": "Tiendas de Toast: Nombre | GUID del restaurante, una por línea",
+      "manualPlaceholder": "Calle Principal | GUID del restaurante",
+      "manualHint": "Algunas cuentas de Toast no permiten buscar tiendas automáticamente. El GUID aparece junto a los datos de acceso a tu API de Toast.",
+      "findAndConnect": "Buscar tiendas y conectar",
+      "noDiscovery": "Esta cuenta de Toast no permite buscar tiendas automáticamente. Ingresa el GUID del restaurante de Toast para continuar.",
+      "pickStore": "Elige al menos una tienda de Toast.",
+      "needsAttention": "La conexión con Toast requiere atención",
+      "mainAccount": "Cuenta principal",
+      "mapEveryStore": "Asigna cada tienda a la ubicación cuyas pantallas la muestran, para que cada tienda muestre sus propios precios de Toast.",
+      "mapFailed": "No se pudo actualizar esta tienda."
+    }
   },
   "changePassword": {
     "title": "Cambiar contraseña",

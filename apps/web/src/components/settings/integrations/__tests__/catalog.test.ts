@@ -10,6 +10,9 @@
  *      A reachable provider catalog is NOT a connection ("reachable ≠
  *      licensed" — a CI gate in this repo).
  *   5. An unreadable status source produces `unknown`, never `Available`.
+ *   6. (2026-10-26) The list shows ONLY what can really be connected:
+ *      external-device, unlicensed and adapter-pending providers are not
+ *      rows; Toast (API credentials) is; Clever is for schools.
  */
 import {
   adNetworkEntry,
@@ -25,7 +28,7 @@ import {
   posEntry,
   primaryActionFor,
   streamingEntry,
-  CONSUMER_ENTERTAINMENT_ENTRY,
+  familyOrder,
   type AdNetworkLike,
   type IntegrationState,
   type PosProviderLike,
@@ -100,20 +103,74 @@ describe('§11 state vocabulary', () => {
       posProviders: [square, toast, aloha],
       posConnections: [],
       posReachable: true,
-      adNetworks: [houseOnly, hivestack],
-      adConnections: [],
-      adsReachable: true,
       aiKey: { configured: false },
-      brandVoice: null,
-      brandingReachable: true,
       clever: { connected: false },
     });
-    expect(rows.length).toBeGreaterThan(5);
-    // Ad networks were passed in, and still produce no customer-visible row.
-    expect(rows.some((r) => r.id.startsWith('ads:'))).toBe(false);
     for (const row of rows) {
       expect(ALL_STATES).toContain(row.state);
     }
+    // Only what connects: AI key, Square, Toast, the HLS feed, Clever.
+    expect(rows.map((r) => r.id)).toEqual([
+      'ai:key',
+      'pos:square',
+      'pos:toast',
+      'streaming:custom-hls',
+      'clever:roster',
+    ]);
+    expect(rows.some((r) => r.id.startsWith('ads:'))).toBe(false);
+    expect(rows.some((r) => r.id === 'ai:brandVoice')).toBe(false);
+  });
+
+  it('never lists a provider that cannot be connected', () => {
+    const rows = buildCatalog({
+      streamingProviders: [atmosphere, youtube, soundtrack, iptv],
+      streamingReachable: true,
+      posProviders: [aloha],
+      posReachable: true,
+      aiKey: { configured: true, keyHealthy: true },
+      clever: null,
+    });
+    for (const row of rows) {
+      expect(['external', 'unsupported', 'planned']).not.toContain(row.state);
+    }
+    expect(rows.map((r) => r.id)).toEqual(['ai:key', 'clever:roster']);
+  });
+
+  it('an existing connection is always listed', () => {
+    const rows = buildCatalog({
+      streamingProviders: [soundtrack],
+      streamingConnections: [{ providerId: 'soundtrack', status: 'ERROR' }],
+      streamingReachable: true,
+      posReachable: true,
+      aiKey: null,
+      clever: null,
+    });
+    expect(rows.find((r) => r.id === 'streaming:soundtrack')?.state).toBe('degraded');
+  });
+
+  it('Clever is a school connection: listed for K-12, hidden for a gym unless connected', () => {
+    const base = { streamingReachable: true, posReachable: true, aiKey: null };
+    expect(buildCatalog({ ...base, clever: { connected: false }, vertical: 'K12' }).map((r) => r.id)).toContain('clever:roster');
+    expect(buildCatalog({ ...base, clever: { connected: false }, vertical: 'GYM' }).map((r) => r.id)).not.toContain('clever:roster');
+    expect(buildCatalog({ ...base, clever: { connected: true }, vertical: 'GYM' }).map((r) => r.id)).toContain('clever:roster');
+  });
+
+  it('takes translated names for its own rows', () => {
+    const rows = buildCatalog({
+      streamingReachable: true,
+      posReachable: true,
+      aiKey: { configured: false },
+      clever: { connected: false },
+      labels: { aiKey: 'Tu clave de IA', clever: 'Sincronización de listas con Clever' },
+    });
+    expect(rows.find((r) => r.id === 'ai:key')?.name).toBe('Tu clave de IA');
+    expect(rows.find((r) => r.id === 'clever:roster')?.name).toBe('Sincronización de listas con Clever');
+  });
+
+  it('orders the kinds by what the business uses most', () => {
+    expect(familyOrder('RESTAURANT')[0]).toBe('pos');
+    expect(familyOrder('GYM')[0]).toBe('streaming');
+    expect(familyOrder('K12')[0]).toBe('ai');
   });
 
   it('gives every state exactly one primary action, and none to unsupported', () => {
@@ -170,11 +227,6 @@ describe('streaming truth model', () => {
     expect(e.detail).toMatch(/M3U/);
   });
 
-  it('the consumer-entertainment row is unsupported and carries no action', () => {
-    expect(CONSUMER_ENTERTAINMENT_ENTRY.state).toBe('unsupported');
-    expect(CONSUMER_ENTERTAINMENT_ENTRY.action.kind).toBe('none');
-    expect(CONSUMER_ENTERTAINMENT_ENTRY.statusSource).toBe('catalogPolicy');
-  });
 });
 
 describe('connection status mapping', () => {
@@ -192,9 +244,12 @@ describe('connection status mapping', () => {
 });
 
 describe('POS + monetization', () => {
-  it('Square with no connection is configurable; Toast is planned; Aloha is unsupported', () => {
+  it('Square and Toast with no connection are ready to connect; Aloha is unsupported', () => {
     expect(posEntry(square, undefined).state).toBe('notConfigured');
-    expect(posEntry(toast, undefined).state).toBe('planned');
+    // Toast connects with API credentials (store discovery + menu sync),
+    // even though the provider list calls it PARTNER.
+    expect(posEntry(toast, undefined).state).toBe('notConfigured');
+    expect(posEntry(toast, undefined).action.kind).toBe('configure');
     expect(posEntry(aloha, undefined).state).toBe('unsupported');
   });
 
@@ -261,8 +316,6 @@ describe('unreadable connection lists never fabricate a connection', () => {
       streamingConnections: [{ providerId: 'custom-hls', status: 'ACTIVE' }],
       streamingReachable: false, // the read failed; the rows are not trustworthy
       posReachable: false,
-      adsReachable: false,
-      brandingReachable: false,
       aiKey: null,
       clever: null,
     });
@@ -280,26 +333,22 @@ describe('filters and counts', () => {
     posProviders: [square],
     posConnections: [{ providerId: 'square', status: 'ERROR' }],
     posReachable: true,
-    adsReachable: true,
-    brandingReachable: true,
     aiKey: { configured: true, keyHealthy: true },
-    brandVoice: 'Warm',
     clever: { connected: false },
   });
 
   it('counts connected and needs-attention from real states', () => {
-    expect(countConnected(rows)).toBe(3); // HLS + AI key + brand voice (ready)
+    expect(countConnected(rows)).toBe(2); // HLS + AI key
     expect(countNeedsAttention(rows)).toBe(1); // Square ERROR → degraded
   });
 
-  it('maps the five §7.7 filters onto §11 states', () => {
-    const external = rows.filter((r) => matchesStateFilter(r, 'external'));
-    expect(external.map((r) => r.id)).toEqual(['streaming:atmosphere']);
-    // A provider with no connector yet is hidden, not listed with a label,
-    // and ad-network monetization has no row at all (it is not built).
-    const planned = rows.filter((r) => matchesStateFilter(r, 'planned'));
-    expect(planned).toEqual([]);
+  it('maps the three filters onto §11 states', () => {
+    // Nothing that cannot connect is listed, and ad-network monetization
+    // has no row at all (it is not built).
+    expect(rows.map((r) => r.id)).not.toContain('streaming:atmosphere');
     expect(rows.map((r) => r.id)).not.toContain('streaming:soundtrack');
+    const connected = rows.filter((r) => matchesStateFilter(r, 'connected'));
+    expect(connected.map((r) => r.id).sort()).toEqual(['ai:key', 'streaming:custom-hls']);
     expect(rows.some((r) => r.family === 'monetization')).toBe(false);
     const available = rows.filter((r) => matchesStateFilter(r, 'available'));
     expect(available.map((r) => r.id)).toContain('clever:roster');

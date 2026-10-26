@@ -1,13 +1,15 @@
 /**
- * The Integrations catalog page — what the operator can actually see and
- * click (handoff §7.7 / §11).
+ * Connections → All — what the operator can actually see and click
+ * (handoff §7.7 / §11; Settings simplification Phase 1, 2026-10-26).
  *
  * The contracts under test are the ones a redesign could quietly break:
- *   1. A `planned` row renders NO interactive control — no link, no
- *      button. "Coming soon" wearing a real-button costume is banned.
- *   2. An `unsupported` row renders no control either, and says why.
- *   3. Family and state filters actually filter.
- *   4. Every row names the status source that produced its state.
+ *   1. Only things that really connect are listed (the catalog filters; the
+ *      page lists what it is given), and one plain sentence answers the
+ *      "why can't I add Netflix" question instead of a dead row.
+ *   2. Every row has exactly one action, in plain words ("Connect", "Fix").
+ *   3. Family and state filters actually filter; the kinds come in the order
+ *      this business uses them.
+ *   4. Every row names, in plain words, where its status came from.
  */
 import * as React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
@@ -23,13 +25,35 @@ jest.mock('next/navigation', () => ({
 const ENTRIES: IntegrationCatalogEntry[] = [
   {
     id: 'ai:key',
-    name: 'AI provider key',
+    name: 'Your AI key',
     family: 'ai',
     route: 'integrations/ai',
     statusSource: 'aiKey',
     state: 'connected',
     action: { kind: 'manage', href: 'integrations/ai' },
     searchTerms: ['ai key', 'anthropic'],
+  },
+  {
+    id: 'pos:square',
+    name: 'Square',
+    family: 'pos',
+    route: 'integrations/pos',
+    statusSource: 'posConnections',
+    state: 'degraded',
+    detail: 'Square refused the saved sign-in.',
+    action: { kind: 'diagnose', href: 'integrations/pos' },
+    searchTerms: ['square', 'pos'],
+  },
+  {
+    id: 'pos:toast',
+    name: 'Toast',
+    family: 'pos',
+    route: 'integrations/pos',
+    statusSource: 'posConnections',
+    state: 'notConfigured',
+    detail: 'Sync published menu items, prices, and photos from Toast.',
+    action: { kind: 'configure', href: 'integrations/pos' },
+    searchTerms: ['toast', 'pos'],
   },
   {
     id: 'streaming:custom-hls',
@@ -42,48 +66,18 @@ const ENTRIES: IntegrationCatalogEntry[] = [
     searchTerms: ['hls'],
   },
   {
-    id: 'streaming:atmosphere',
-    name: 'Atmosphere TV',
-    family: 'streaming',
-    route: 'integrations/streaming',
-    statusSource: 'streamingConnections',
-    state: 'external',
-    action: { kind: 'instructions', href: 'integrations/streaming' },
-    searchTerms: ['atmosphere'],
-  },
-  {
-    id: 'streaming:soundtrack',
-    name: 'Soundtrack Your Brand',
-    family: 'streaming',
-    route: 'integrations/streaming',
-    statusSource: 'streamingConnections',
-    state: 'planned',
-    detail: 'Real API, adapter not built.',
-    action: { kind: 'none' },
-    searchTerms: ['soundtrack', 'music'],
-  },
-  {
-    id: 'streaming:consumer-entertainment',
-    name: 'Hulu · Netflix · Disney+ · Max',
-    family: 'streaming',
-    route: 'integrations/streaming',
-    statusSource: 'catalogPolicy',
-    state: 'unsupported',
-    action: { kind: 'none' },
-    searchTerms: ['hulu', 'netflix'],
-  },
-  {
-    id: 'pos:square',
-    name: 'Square',
-    family: 'pos',
-    route: 'integrations/pos',
-    statusSource: 'posConnections',
-    state: 'degraded',
-    action: { kind: 'diagnose', href: 'integrations/pos' },
-    searchTerms: ['square', 'pos'],
+    id: 'clever:roster',
+    name: 'Clever roster sync',
+    family: 'clever',
+    route: 'integrations/clever',
+    statusSource: 'cleverStatus',
+    state: 'notConfigured',
+    action: { kind: 'configure', href: 'integrations/clever' },
+    searchTerms: ['clever'],
   },
 ];
 
+let vertical = 'K12';
 const refetchAll = jest.fn();
 jest.mock('@/components/settings/integrations/useIntegrationsCatalog', () => ({
   useIntegrationsCatalog: () => ({
@@ -91,6 +85,7 @@ jest.mock('@/components/settings/integrations/useIntegrationsCatalog', () => ({
     loading: false,
     degradedSources: false,
     refetchAll,
+    vertical,
   }),
 }));
 
@@ -113,80 +108,83 @@ function rowFor(name: string): HTMLElement {
   return li as HTMLElement;
 }
 
-describe('Integrations catalog rows', () => {
-  it('renders every provider with its §11 status pill', () => {
+beforeEach(() => {
+  vertical = 'K12';
+});
+
+describe('Connections rows', () => {
+  it('renders every provider with a plain status', () => {
     renderPage();
-    expect(within(rowFor('AI provider key')).getByText('Connected')).toBeInTheDocument();
-    expect(within(rowFor('Custom HLS Stream')).getByText('Not configured')).toBeInTheDocument();
-    expect(within(rowFor('Atmosphere TV')).getByText('External device')).toBeInTheDocument();
-    expect(within(rowFor('Soundtrack Your Brand')).getByText('Planned')).toBeInTheDocument();
-    expect(within(rowFor('Square')).getByText('Degraded')).toBeInTheDocument();
+    expect(within(rowFor('Your AI key')).getByText('Connected')).toBeInTheDocument();
+    expect(within(rowFor('Custom HLS Stream')).getByText('Not set up')).toBeInTheDocument();
+    expect(within(rowFor('Square')).getByText('Needs attention')).toBeInTheDocument();
+    expect(within(rowFor('Toast')).getByText('Not set up')).toBeInTheDocument();
   });
 
-  it('gives a planned row NO interactive control', () => {
-    renderPage();
-    const row = rowFor('Soundtrack Your Brand');
-    expect(within(row).queryByRole('link')).toBeNull();
-    expect(within(row).queryByRole('button')).toBeNull();
-    expect(within(row).getByText('No action available')).toBeInTheDocument();
-  });
-
-  it('gives an unsupported row no control and explains the state', () => {
-    renderPage();
-    const row = rowFor('Hulu · Netflix · Disney+ · Max');
-    expect(within(row).queryByRole('link')).toBeNull();
-    expect(within(row).queryByRole('button')).toBeNull();
-    expect(within(row).getByText(/Intentionally unavailable/i)).toBeInTheDocument();
-  });
-
-  it('gives each actionable row exactly one primary action, pointed at its route', () => {
+  it('gives each row exactly one action, in plain words, pointed at its page', () => {
     renderPage();
     const hls = within(rowFor('Custom HLS Stream')).getAllByRole('link');
     expect(hls).toHaveLength(1);
     expect(hls[0]).toHaveAttribute('href', '/school-1/settings/integrations/streaming');
-    expect(hls[0]).toHaveTextContent('Configure');
-
-    const external = within(rowFor('Atmosphere TV')).getAllByRole('link');
-    expect(external).toHaveLength(1);
-    expect(external[0]).toHaveTextContent('View setup instructions');
+    expect(hls[0]).toHaveTextContent('Connect');
+    const square = within(rowFor('Square')).getAllByRole('link');
+    expect(square).toHaveLength(1);
+    expect(square[0]).toHaveTextContent('Fix');
   });
 
-  it('names the status source on every row', () => {
+  it('a healthy or unconnected provider reads its plain line; a problem keeps the server’s reason', () => {
     renderPage();
-    expect(within(rowFor('AI provider key')).getByText(/GET \/ai\/key/)).toBeInTheDocument();
-    expect(
-      within(rowFor('Hulu · Netflix · Disney+ · Max')).getByText(/Stated product policy/),
-    ).toBeInTheDocument();
+    expect(within(rowFor('Toast')).getByText('Your published menu, prices and photos, synced from Toast.')).toBeInTheDocument();
+    expect(within(rowFor('Square')).getByText('Square refused the saved sign-in.')).toBeInTheDocument();
+  });
+
+  it('names the status source in plain words, never an API path', () => {
+    renderPage();
+    expect(within(rowFor('Your AI key')).getByText(/your saved AI key/)).toBeInTheDocument();
+    expect(screen.queryByText(/GET \//)).toBeNull();
+  });
+
+  it('answers the Netflix question once, instead of a row that can never connect', () => {
+    renderPage();
+    expect(screen.getByTestId('connections-not-listed')).toHaveTextContent(/Netflix, Hulu, Disney\+/);
+    expect(screen.queryByText('Hulu · Netflix · Disney+ · Max')).toBeNull();
   });
 });
 
 describe('filters', () => {
-  it('filters by family', () => {
+  it('filters by kind', () => {
     renderPage();
     expect(screen.getByText('Square')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Streaming & video' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Live video' }));
     expect(screen.queryByText('Square')).toBeNull();
     expect(screen.getByText('Custom HLS Stream')).toBeInTheDocument();
   });
 
-  it('filters by §11 state', () => {
+  it('filters by state', () => {
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'External device' }));
-    expect(screen.getByText('Atmosphere TV')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
+    expect(screen.getByText('Square')).toBeInTheDocument();
     expect(screen.queryByText('Custom HLS Stream')).toBeNull();
-    expect(screen.queryByText('AI provider key')).toBeNull();
+    expect(screen.queryByText('Your AI key')).toBeNull();
+  });
+
+  it('a restaurant sees point of sale first', () => {
+    vertical = 'RESTAURANT';
+    renderPage();
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings[0]).toBe('Point of sale');
   });
 
   it('filters by free-text search', () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText('Search integrations'), { target: { value: 'netflix' } });
-    expect(screen.getByText('Hulu · Netflix · Disney+ · Max')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search connections'), { target: { value: 'toast' } });
+    expect(screen.getByText('Toast')).toBeInTheDocument();
     expect(screen.queryByText('Square')).toBeNull();
   });
 
   it('shows a named empty state when nothing matches', () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText('Search integrations'), { target: { value: 'zzzz' } });
-    expect(screen.getByText('No integrations match these filters')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search connections'), { target: { value: 'zzzz' } });
+    expect(screen.getByText('Nothing matches')).toBeInTheDocument();
   });
 });

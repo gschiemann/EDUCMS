@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * /[schoolId]/settings/integrations — the Integrations catalog (§7.7).
+ * /[schoolId]/settings/integrations — Connections → All (§7.7; Settings
+ * simplification Phase 1, 2026-10-26).
  *
- * One truthful catalog of everything this deploy can (and cannot)
- * connect. Every row's state comes from `catalog.ts`, which derives it
- * from a named API field; this file only renders. The four rules that
- * must never be broken here:
+ * One truthful list of what VenueOS can REALLY connect today (owner: "show
+ * ONLY providers that actually connect"): AI key, point of sale (Square,
+ * Toast, Clover, Lightspeed, Shopify, a custom feed), live video, and
+ * Clever for schools — in the order this kind of business uses them. Every
+ * row's state comes from `catalog.ts`, which derives it from a named API
+ * field; this file only renders. The four rules that must never be broken
+ * here:
  *
  *   1. Exactly one primary action per row, derived from the §11 state.
  *   2. `Unsupported` rows and adapter-pending `Planned` rows without
@@ -19,21 +23,19 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Plug, ExternalLink, RefreshCw, Search } from 'lucide-react';
+import { Plug, ExternalLink, RefreshCw, Search, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import { useSettingsShellActions, type SettingsSearchItem } from '@/components/settings/shell/SettingsShellContext';
 import {
-  ContextAction,
   ContextModule,
   EditorHead,
   EditorSkeleton,
   StatusPill,
 } from '@/components/settings/shell/primitives';
 import {
-  FAMILY_ROUTES,
-  INTEGRATION_FAMILIES,
   countConnected,
+  familyOrder,
   countNeedsAttention,
   matchesSearch,
   matchesStateFilter,
@@ -47,7 +49,6 @@ const STATE_FILTERS: readonly IntegrationStateFilter[] = [
   'connected',
   'attention',
   'available',
-  'external',
 ];
 
 export default function SettingsIntegrationsPage() {
@@ -55,7 +56,11 @@ export default function SettingsIntegrationsPage() {
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId ?? '';
   const { setSectionStatus } = useSettingsShellActions();
-  const { entries, loading, degradedSources, refetchAll } = useIntegrationsCatalog();
+  const { entries, loading, degradedSources, refetchAll, vertical } = useIntegrationsCatalog();
+  const families = useMemo(
+    () => familyOrder(vertical).filter((f) => entries.some((e) => e.family === f)),
+    [vertical, entries],
+  );
 
   const [query, setQuery] = useState('');
   const [family, setFamily] = useState<IntegrationFamily | 'all'>('all');
@@ -84,10 +89,10 @@ export default function SettingsIntegrationsPage() {
 
   const grouped = useMemo(
     () =>
-      INTEGRATION_FAMILIES.map((f) => ({ family: f, rows: visible.filter((e) => e.family === f) })).filter(
+      families.map((f) => ({ family: f, rows: visible.filter((e) => e.family === f) })).filter(
         (g) => g.rows.length > 0,
       ),
-    [visible],
+    [visible, families],
   );
 
   const searchItems = useMemo<readonly SettingsSearchItem[]>(
@@ -106,39 +111,18 @@ export default function SettingsIntegrationsPage() {
   // re-renders us — an unbounded loop ("Maximum update depth exceeded").
   const context = useMemo(
     () => (
-    <>
       <ContextModule
         label={t('settings.cc.integrations.railStatusLabel')}
         title={t('settings.cc.integrations.railConnected', { count: connectedCount })}
       >
         {t('settings.cc.integrations.railAttention', { count: attentionCount })}
       </ContextModule>
-      <ContextModule label={t('settings.cc.integrations.railFamiliesLabel')}>
-        <ul className="space-y-1">
-          {INTEGRATION_FAMILIES.map((f) => (
-            <li key={f}>{t(`settings.cc.integrations.families.${f}`)}</li>
-          ))}
-        </ul>
-      </ContextModule>
-      <ContextModule
-        label={t('settings.cc.integrations.railImportsLabel')}
-        title={t('settings.cc.integrations.railImportsTitle')}
-      >
-        {t('settings.cc.integrations.railImportsHint')}
-        <ContextAction href={`/${schoolId}/templates/imports`}>
-          {t('settings.cc.integrations.railImportsAction')}
-        </ContextAction>
-      </ContextModule>
-      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
-        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
-      </ContextModule>
-    </>
     ),
     // `t` is intentionally NOT a dependency: useTranslations() returns a
     // fresh function identity on every render, which would defeat the
     // memo and re-register the page in a loop. Copy is static per locale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schoolId, connectedCount, attentionCount],
+    [connectedCount, attentionCount],
   );
 
   return (
@@ -182,7 +166,7 @@ export default function SettingsIntegrationsPage() {
         <FilterChip active={family === 'all'} onClick={() => setFamily('all')}>
           {t('settings.cc.integrations.filterAll')}
         </FilterChip>
-        {INTEGRATION_FAMILIES.map((f) => (
+        {families.map((f) => (
           <FilterChip key={f} active={family === f} onClick={() => setFamily(f)}>
             {t(`settings.cc.integrations.families.${f}`)}
           </FilterChip>
@@ -230,6 +214,13 @@ export default function SettingsIntegrationsPage() {
           ))}
         </div>
       )}
+
+      {/* The one question every gym and bar asks, answered once instead of
+          as a row that can never connect. */}
+      <p className="mt-6 flex items-start gap-2 text-[12px] leading-[17px] text-slate-500" data-testid="connections-not-listed">
+        <Info className="w-4 h-4 shrink-0 mt-px text-slate-400" aria-hidden />
+        {t('settings.cc.integrations.notListed')}
+      </p>
     </SettingsPageFrame>
   );
 }
@@ -269,7 +260,16 @@ function CatalogRow({
   onRefresh: () => void;
 }) {
   const t = useTranslations();
-  const detail = entry.detail ?? t(`settings.cc.integrations.stateHelp.${entry.state}`);
+  // A provider's own one-liner is translated when we have it; the API's
+  // English blurb is the fallback, then the plain meaning of the state.
+  // A problem row keeps the server's own reason; a healthy or unconnected one
+  // reads the plain line.
+  const providerId = entry.id.includes(':') ? entry.id.split(':')[1] : entry.id;
+  const blurbKey = `settings.cc.integrations.blurbs.${providerId}`;
+  const plainLine = ['notConfigured', 'connected', 'ready'].includes(entry.state) && t.has(blurbKey);
+  const detail = plainLine
+    ? t(blurbKey)
+    : entry.detail ?? t(`settings.cc.integrations.stateHelp.${entry.state}`);
   const actionCls =
     'shrink-0 inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-[9px] border text-[12px] font-medium hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1';
   const actionStyle = {

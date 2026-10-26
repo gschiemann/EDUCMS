@@ -1689,94 +1689,87 @@
         "requiresPrimaryAdmin": "A primary-account administrator"
       },
       "integrations": {
-        "editorTitle": "Connected services",
-        "editorDescription": "Every service you can connect, and whether it's connected.",
-        "searchLabel": "Search integrations",
-        "searchPlaceholder": "Search by provider, capability or keyword",
-        "familyFilterLabel": "Filter by integration family",
+        "editorTitle": "What you can connect",
+        "editorDescription": "Everything VenueOS can connect to today, and what is already connected.",
+        "searchLabel": "Search connections",
+        "searchPlaceholder": "Square, Toast, AI, stream…",
+        "familyFilterLabel": "Show a kind of connection",
         "stateFilterLabel": "Filter by status",
         "filterAll": "All",
-        "sourceLabel": "Status source",
+        "sourceLabel": "Status from",
         "lastSync": "Last sync {date}",
-        "noResults": "No integrations match these filters",
-        "noResultsHint": "Clear the search box or choose a different family or status.",
-        "degradedNotice": "Some statuses couldn't be checked right now, so they show as Unknown.",
+        "noResults": "Nothing matches",
+        "noResultsHint": "Clear the search, or pick another kind or status.",
+        "degradedNotice": "Some statuses couldn’t be checked right now, so they show as Unknown.",
         "railStatusLabel": "Status",
         "railConnected": "Connected: {count}",
         "railAttention": "Needs attention: {count}",
-        "railFamiliesLabel": "Families in this workspace",
-        "railImportsLabel": "Design imports",
-        "railImportsTitle": "Managed under Templates",
-        "railImportsHint": "PDF and image imports are a template workflow, not a settings connection.",
-        "railImportsAction": "Open design imports",
         "railAuditLabel": "Audit",
         "railAuditAction": "View audit log",
         "families": {
-          "ai": "AI provider & brand voice",
-          "clever": "Clever",
-          "streaming": "Streaming & video",
-          "pos": "POS & menu data",
+          "ai": "AI",
+          "clever": "Student rosters",
+          "streaming": "Live video",
+          "pos": "Point of sale",
           "monetization": "Monetization & ad networks"
         },
         "states": {
           "connected": "Connected",
           "attention": "Needs attention",
-          "available": "Available",
-          "external": "External device",
-          "planned": "Planned"
+          "available": "Not connected"
         },
         "actions": {
           "manage": "Manage",
-          "resolve": "Resolve",
-          "diagnose": "Diagnose",
-          "configure": "Configure",
+          "resolve": "Fix",
+          "diagnose": "Fix",
+          "configure": "Connect",
           "instructions": "View setup instructions",
           "learnMore": "Learn more",
-          "refresh": "Refresh status",
+          "refresh": "Check again",
           "none": "No action available"
         },
         "sources": {
-          "streamingConnections": "GET /streaming/connections",
-          "posConnections": "GET /pos/connections",
-          "adsConnections": "GET /ads/connections",
-          "aiKey": "GET /ai/key",
-          "brandingMe": "GET /branding/me",
-          "cleverStatus": "GET /integrations/clever/status",
-          "catalogPolicy": "Stated product policy",
-          "unavailable": "Couldn't check"
+          "streamingConnections": "your stream connections",
+          "posConnections": "your point-of-sale connections",
+          "adsConnections": "your ad connections",
+          "aiKey": "your saved AI key",
+          "brandingMe": "your brand settings",
+          "cleverStatus": "your Clever connection",
+          "catalogPolicy": "VenueOS product rules",
+          "unavailable": "couldn’t check right now"
         },
         "stateHelp": {
           "ready": "Configured and in use.",
-          "connected": "Your login is saved. Run a test or a sync to check it works.",
-          "attention": "Usable but incomplete, paused or expiring. Open the provider page for the exact reason.",
-          "degraded": "A capability that is built for this provider is currently failing.",
-          "blocked": "Access was revoked. Reconnect before this provider can be used again.",
-          "notConfigured": "Built and available. Nothing has been set up yet.",
+          "connected": "Connected. Run a test or a sync to check it works.",
+          "attention": "Connected, but paused, incomplete or expiring. Open it to see why.",
+          "degraded": "This connection is failing right now. Open it to fix it.",
+          "blocked": "Access was taken away. Connect it again to use it.",
+          "notConfigured": "Ready to connect.",
           "external": "Playback runs on the provider’s own licensed device. VenueOS does not switch inputs today.",
           "planned": "No connector has shipped for this provider yet, so there is nothing to configure.",
           "unsupported": "Intentionally unavailable. No commercially usable connection path exists here.",
-          "unknown": "The authoritative status could not be read, so no state is being claimed."
+          "unknown": "We couldn’t check this right now, so no status is shown."
         },
         "pages": {
           "ai": {
-            "title": "AI provider & brand voice",
+            "title": "AI",
             "description": "Bring your own AI key and set the voice every generated board writes in."
           },
           "streaming": {
-            "title": "Streaming & video",
-            "description": "Your own licensed feeds play natively. Everything else states exactly what it can and cannot do."
+            "title": "Live video",
+            "description": "Show a live stream you own or are licensed to show."
           },
           "pos": {
-            "title": "POS & menu data",
-            "description": "Sync a price book into your menu boards, and map each store to the screens that show it."
+            "title": "Point of sale",
+            "description": "Keep menu boards and price tags in sync with your point of sale, store by store."
           },
           "monetization": {
             "title": "Monetization & ad networks",
             "description": "Ad-network connections, earnings and the content controls that apply to them."
           },
           "clever": {
-            "title": "Clever",
-            "description": "Roster sync for districts that manage staff accounts in Clever."
+            "title": "Student rosters",
+            "description": "Bring staff and student rosters in from Clever."
           }
         },
         "providerRail": {
@@ -1789,6 +1782,22 @@
           "lastSyncLabel": "Last sync",
           "noSync": "No sync has run yet.",
           "notReachable": "This status could not be read."
+        },
+        "notListed": "Netflix, Hulu, Disney+ and other home streaming services can’t be shown on screens: their subscriptions don’t allow showing them in public.",
+        "rows": {
+          "aiKey": "Your AI key",
+          "clever": "Clever roster sync"
+        },
+        "blurbs": {
+          "key": "Use your own OpenAI, Anthropic or Google key for AI designs and writing.",
+          "roster": "Bring staff and student rosters in from Clever.",
+          "square": "Menu items, sizes, prices and sold-out items, kept in sync.",
+          "toast": "Your published menu, prices and photos, synced from Toast.",
+          "clover": "Your Clover items and prices, synced every hour and whenever you ask.",
+          "lightspeed-retail": "Products and prices for every store, from Lightspeed.",
+          "shopify-pos": "Products, variants, stock and locations, from Shopify.",
+          "custom-webhook": "Send your own menu or price list from any system.",
+          "custom-hls": "Paste a live stream link (.m3u8) you own or are licensed to show."
         }
       },
       "player": {
@@ -4239,7 +4248,40 @@
     "catDoohProgrammatic": "⚡ Programmatic DOOH",
     "catVenueNetwork": "🏢 Venue networks",
     "catDoohDirect": "🤝 Direct sales",
-    "catHouseOnly": "🏠 House ads only"
+    "catHouseOnly": "🏠 House ads only",
+    "posScopes": {
+      "restaurant-qsr": "Restaurant / quick service",
+      "restaurant-table": "Full-service dining",
+      "retail": "Retail",
+      "bar": "Bar",
+      "universal": "Any business"
+    },
+    "posHow": {
+      "square": "Sign in with Square",
+      "clover": "Sign in with Clover",
+      "lightspeed-retail": "Sign in with Lightspeed",
+      "shopify-pos": "Sign in with Shopify",
+      "toast": "Uses your Toast API access",
+      "custom-webhook": "Free"
+    },
+    "toast": {
+      "intro": "Enter your Toast API details. We find your stores, bring in the published menu, and keep connected screens up to date.",
+      "clientId": "Client ID",
+      "clientSecret": "Client secret",
+      "advancedEndpoint": "Advanced: Toast API address",
+      "endpoint": "API address",
+      "chooseStores": "Choose the stores for this account",
+      "manualLabel": "Toast stores — Name | restaurant GUID, one per line",
+      "manualPlaceholder": "Main Street | restaurant GUID",
+      "manualHint": "Some Toast accounts do not allow finding stores automatically. The GUID is listed with your Toast API access details.",
+      "findAndConnect": "Find stores and connect",
+      "noDiscovery": "This Toast account doesn’t allow finding stores automatically. Enter the restaurant GUID from Toast to continue.",
+      "pickStore": "Choose at least one Toast store.",
+      "needsAttention": "Toast connection needs attention",
+      "mainAccount": "Main account",
+      "mapEveryStore": "Match every store to the location whose screens show it, so each store shows its own Toast prices.",
+      "mapFailed": "Could not update this store."
+    }
   },
   "changePassword": {
     "title": "Change password",

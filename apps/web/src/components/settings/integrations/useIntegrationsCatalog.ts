@@ -1,23 +1,25 @@
 "use client";
 
 /**
- * Data source for the Integrations catalog (§7.7).
+ * Data source for the Connections catalog (§7.7; trimmed 2026-10-26).
  *
- * Six independent reads. Each one is allowed to fail on its own: a
- * failed read makes its rows `unknown` (§11) instead of poisoning the
- * whole page or — worse — defaulting to an optimistic "available".
+ * Independent reads, each allowed to fail on its own: a failed read makes
+ * its rows `unknown` (§11) instead of poisoning the whole page or — worse —
+ * defaulting to an optimistic "available".
  *
- * The Clever roster endpoints are a live example of why that matters:
- * `CleverModule` is not imported by any Nest module today, so
- * `/integrations/clever/status` 404s and the row correctly reads
- * `Unknown` rather than offering a Connect button that cannot work.
+ * Settings simplification Phase 1 cut this from nine requests to five (six
+ * for a school): the two ad-network reads fed no row (ad networks are not
+ * built), the branding read fed only the Brand voice row (a writing style,
+ * not a connection — it stays on the AI page), and the Clever roster status
+ * is read only where Clever is listed (K-12).
  */
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import {
   buildCatalog,
-  type AdNetworkLike,
   type AiKeyStatusLike,
   type CleverStatusLike,
   type ConnectionRowLike,
@@ -34,9 +36,13 @@ export interface IntegrationsCatalogResult {
   /** true when at least one status source could not be read. */
   degradedSources: boolean;
   refetchAll: () => void;
+  vertical: string | null;
 }
 
 export function useIntegrationsCatalog(): IntegrationsCatalogResult {
+  const t = useTranslations('settings.cc.integrations.rows');
+  const { vertical } = useTenantCopy();
+  const readsClever = !vertical || vertical === 'K12';
   const results = useQueries({
     queries: [
       {
@@ -60,48 +66,27 @@ export function useIntegrationsCatalog(): IntegrationsCatalogResult {
         retry: RETRY,
       },
       {
-        queryKey: ['integrations-catalog', 'ads-networks'],
-        queryFn: () => apiFetch<AdNetworkLike[]>('/ads/networks'),
-        retry: RETRY,
-      },
-      {
-        queryKey: ['integrations-catalog', 'ads-connections'],
-        queryFn: () => apiFetch<ConnectionRowLike[]>('/ads/connections'),
-        retry: RETRY,
-      },
-      {
         queryKey: ['integrations-catalog', 'ai-key'],
         queryFn: () => apiFetch<AiKeyStatusLike>('/ai/key'),
-        retry: RETRY,
-      },
-      {
-        queryKey: ['integrations-catalog', 'branding-me'],
-        queryFn: () => apiFetch<{ brandVoice?: string | null }>('/branding/me'),
         retry: RETRY,
       },
       {
         queryKey: ['integrations-catalog', 'clever-status'],
         queryFn: () => apiFetch<CleverStatusLike>('/integrations/clever/status'),
         retry: RETRY,
+        enabled: readsClever,
       },
     ],
   });
 
-  const [
-    streamProviders,
-    streamConnections,
-    posProviders,
-    posConnections,
-    adNetworks,
-    adConnections,
-    aiKey,
-    branding,
-    clever,
-  ] = results;
+  const [streamProviders, streamConnections, posProviders, posConnections, aiKey, clever] = results;
 
-  const loading = results.some((r) => r.isLoading);
-  const degradedSources = results.some((r) => r.isError);
+  const active = readsClever ? results : results.slice(0, 5);
+  const loading = active.some((r) => r.isLoading);
+  const degradedSources = active.some((r) => r.isError);
 
+  const aiKeyLabel = t('aiKey');
+  const cleverLabel = t('clever');
   const entries = useMemo(
     () =>
       buildCatalog({
@@ -111,13 +96,10 @@ export function useIntegrationsCatalog(): IntegrationsCatalogResult {
         posProviders: posProviders.data ?? undefined,
         posConnections: posConnections.data ?? undefined,
         posReachable: posConnections.isSuccess,
-        adNetworks: adNetworks.data ?? undefined,
-        adConnections: adConnections.data ?? undefined,
-        adsReachable: adConnections.isSuccess,
         aiKey: aiKey.isSuccess ? aiKey.data : null,
-        brandVoice: branding.data?.brandVoice ?? null,
-        brandingReachable: branding.isSuccess,
         clever: clever.isSuccess ? clever.data : null,
+        vertical,
+        labels: { aiKey: aiKeyLabel, clever: cleverLabel },
       }),
     [
       streamProviders.data,
@@ -126,23 +108,21 @@ export function useIntegrationsCatalog(): IntegrationsCatalogResult {
       posProviders.data,
       posConnections.data,
       posConnections.isSuccess,
-      adNetworks.data,
-      adConnections.data,
-      adConnections.isSuccess,
       aiKey.data,
       aiKey.isSuccess,
-      branding.data,
-      branding.isSuccess,
       clever.data,
       clever.isSuccess,
+      vertical,
+      aiKeyLabel,
+      cleverLabel,
     ],
   );
 
   const refetchAll = () => {
-    results.forEach((r) => {
+    active.forEach((r) => {
       void r.refetch();
     });
   };
 
-  return { entries, loading, degradedSources, refetchAll };
+  return { entries, loading, degradedSources, refetchAll, vertical: vertical ?? null };
 }

@@ -8,16 +8,16 @@
  * /settings/streaming (provider tile grid → connect modal → list of
  * connections + sync status).
  *
- * What actually works today (2026-05-28 honesty pass):
- *   • DIRECT providers — Square (OAuth → catalog sync → MenuBoard) and
- *     Custom Webhook (you POST your catalog to us) — show real connect
- *     forms and sync end-to-end.
- *   • PARTNER providers — Toast / Clover / Lightspeed / Shopify /
- *     Stripe-catalog / MINDBODY — have NO sync handler yet, so their
- *     connect modal shows an honest "connector in development" panel
- *     (no credential form). They no longer save inert PENDING rows.
- *   • CLOSED providers (Aloha/NCR) are info-only tiles linking to docs.
- * Per-provider sync handlers will ship in apps/api/src/pos/providers/<id>.ts.
+ * What is listed (Settings simplification Phase 1, 2026-10-26 — owner:
+ * "show ONLY providers that actually connect"):
+ *   • every provider `posProviderConnectable()` says yes to — Square,
+ *     Clover, Lightspeed, Shopify (OAuth), a custom feed (you POST your
+ *     catalog to us) and Toast (API credentials: store discovery, menu sync,
+ *     store → screen mapping; apps/api/src/pos/providers/toast.ts);
+ *   • any provider this organization already has a connection to.
+ * Providers with no connector yet (Stripe catalog, MINDBODY) and info-only
+ * ones (Aloha/NCR) are no longer drawn as tiles: a tile that opens
+ * "connector in development" is a choice that is not a choice.
  */
 import { useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
@@ -28,7 +28,8 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
-import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
+import { posProviderConnectable } from '@/components/settings/integrations/connectable';
+import { ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
 interface PosProvider {
   id: string;
@@ -64,13 +65,15 @@ interface PosConnection {
   itemCount: number;
 }
 
-const SCOPE_LABELS: Record<string, string> = {
-  'restaurant-qsr': "🍔 Restaurant / QSR",
-  'restaurant-table': "🍽 Full-service dining",
-  'retail': "🛍 Retail",
-  'bar': "🍺 Bar",
-  'universal': "🔗 Universal",
+/** Group headings: an emoji for a glance, the words translated. */
+const SCOPE_EMOJI: Record<string, string> = {
+  'restaurant-qsr': '🍔',
+  'restaurant-table': '🍽',
+  'retail': '🛍',
+  'bar': '🍺',
+  'universal': '🔗',
 };
+const SCOPE_KEYS = new Set(Object.keys(SCOPE_EMOJI));
 
 export default function PosSettingsPage() {
   const t = useTranslations();
@@ -81,7 +84,11 @@ export default function PosSettingsPage() {
   const connections = useQuery<PosConnection[]>({ queryKey: ['pos-connections'], queryFn: () => apiFetch<PosConnection[]>('/pos/connections') });
   const [connectModalProvider, setConnectModalProvider] = useState<PosProvider | null>(null);
 
-  const grouped = (providers.data || []).reduce<Record<string, PosProvider[]>>((acc, p) => {
+  // Only what can really be connected — plus anything already connected.
+  const listed = (providers.data || []).filter(
+    (p) => posProviderConnectable(p) || (connections.data || []).some((c) => c.providerId === p.id),
+  );
+  const grouped = listed.reduce<Record<string, PosProvider[]>>((acc, p) => {
     (acc[p.scope] = acc[p.scope] || []).push(p);
     return acc;
   }, {});
@@ -114,9 +121,6 @@ export default function PosSettingsPage() {
         {lastSyncedAt
           ? new Date(lastSyncedAt).toLocaleString()
           : t('settings.cc.integrations.providerRail.noSync')}
-      </ContextModule>
-      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
-        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
       </ContextModule>
     </>
     ),
@@ -198,7 +202,7 @@ export default function PosSettingsPage() {
             {Object.entries(grouped).map(([scope, list]) => (
               <div key={scope}>
                 <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                  {SCOPE_LABELS[scope] || scope}
+                  {SCOPE_KEYS.has(scope) ? `${SCOPE_EMOJI[scope]} ${t(`billingCommerce.posScopes.${scope}`)}` : scope}
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {list.map((p) => (
@@ -329,14 +333,14 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
               className="px-2 py-1 rounded-md border border-slate-300 bg-white text-slate-700 max-w-[13rem]"
             >
               <option value="">{t('billingCommerce.notMapped')}</option>
-              {children.data?.districtId && <option value={children.data.districtId}>Main account</option>}
+              {children.data?.districtId && <option value={children.data.districtId}>{t('billingCommerce.toast.mainAccount')}</option>}
               {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </div>
         ))}
       </div>
-      {mapped < stores.length && <p className="mt-2 text-[11px] text-amber-700">Map every store to its screen location to use that store’s Toast prices.</p>}
-      {mapStore.isError && <p className="mt-2 text-[11px] text-rose-700">{mapStore.error instanceof Error ? mapStore.error.message : 'Could not update this store mapping.'}</p>}
+      {mapped < stores.length && <p className="mt-2 text-[11px] text-amber-700">{t('billingCommerce.toast.mapEveryStore')}</p>}
+      {mapStore.isError && <p className="mt-2 text-[11px] text-rose-700">{mapStore.error instanceof Error ? mapStore.error.message : t('billingCommerce.toast.mapFailed')}</p>}
     </div>
   );
 }
@@ -362,21 +366,22 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">{t('billingCommerce.infoOnly')}</span>}
-          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">{provider.id === 'toast' ? 'API access' : t('billingCommerce.partnership')}</span>}
+          {isPartner && provider.id !== 'toast' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">{t('billingCommerce.partnership')}</span>}
           {provider.integrationTier === 'DIRECT' && !connected && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">{t('billingCommerce.selfServe')}</span>
           )}
         </div>
       </div>
       <div className="font-bold text-slate-800 text-sm">{provider.name}</div>
-      <div className="text-[11px] text-slate-500 mt-1 leading-snug line-clamp-2">{provider.blurb}</div>
-      {provider.tierReason && (
-        <div className="text-[10px] text-slate-400 mt-1 leading-snug italic line-clamp-2">{provider.tierReason}</div>
-      )}
+      <div className="text-[11px] text-slate-500 mt-1 leading-snug line-clamp-2">
+        {t.has(`settings.cc.integrations.blurbs.${provider.id}`) ? t(`settings.cc.integrations.blurbs.${provider.id}`) : provider.blurb}
+      </div>
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-        {provider.pricingNote && (
+        {t.has(`billingCommerce.posHow.${provider.id}`) ? (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{t(`billingCommerce.posHow.${provider.id}`)}</span>
+        ) : provider.pricingNote ? (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{provider.pricingNote}</span>
-        )}
+        ) : null}
         {caps.realtimeUpdates && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{t('billingCommerce.realtimeBadge')}</span>
         )}
@@ -411,7 +416,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         });
         if (result.manualRequired || !result.restaurants.length) {
           setManualToastStores(true);
-          setErr('This Toast account does not allow automatic store discovery. Enter the restaurant GUID from Toast to continue.');
+          setErr(t('billingCommerce.toast.noDiscovery'));
           return;
         }
         setDiscoveredStores(result.restaurants);
@@ -423,7 +428,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         setSelectedStores([stores[0].guid]);
       }
       if (provider.id === 'toast' && !manualToastStores && discoveredStores && !stores.length) {
-        setErr('Select at least one Toast store.');
+        setErr(t('billingCommerce.toast.pickStore'));
         return;
       }
       const toastCredentials = provider.id === 'toast' ? {
@@ -441,9 +446,9 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
       if (provider.id === 'toast') {
         try {
           const synced = await apiFetch<{ status: string; message: string }>(`/pos/connections/${created.id}/sync`, { method: 'POST' });
-          if (synced.status !== 'ok') await appAlert({ title: 'Toast connection needs attention', message: synced.message, tone: 'info' });
+          if (synced.status !== 'ok') await appAlert({ title: t('billingCommerce.toast.needsAttention'), message: synced.message, tone: 'info' });
         } catch (syncError) {
-          await appAlert({ title: 'Toast connection needs attention', message: syncError instanceof Error ? syncError.message : String(syncError), tone: 'info' });
+          await appAlert({ title: t('billingCommerce.toast.needsAttention'), message: syncError instanceof Error ? syncError.message : String(syncError), tone: 'info' });
         }
       }
       onConnected();
@@ -508,16 +513,16 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           {provider.id === 'toast' && (
             <>
               <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                Enter your Toast API credentials. We’ll look for your stores, import the published menu, and keep connected screens updated automatically.
+                {t('billingCommerce.toast.intro')}
               </p>
-              <Field label="Client ID" value={credentials.clientId || ''} onChange={(v) => { setCredentials({ ...credentials, clientId: v }); setDiscoveredStores(null); }} />
-              <Field label="Client secret" type="password" value={credentials.clientSecret || ''} onChange={(v) => { setCredentials({ ...credentials, clientSecret: v }); setDiscoveredStores(null); }} />
-              <details className="text-xs text-slate-600"><summary className="cursor-pointer">Advanced: Toast API endpoint</summary>
-                <div className="mt-2"><Field label="API endpoint" placeholder="https://ws-api.toasttab.com" value={credentials.apiBaseUrl || ''} onChange={(v) => { setCredentials({ ...credentials, apiBaseUrl: v }); setDiscoveredStores(null); }} /></div>
+              <Field label={t('billingCommerce.toast.clientId')} value={credentials.clientId || ''} onChange={(v) => { setCredentials({ ...credentials, clientId: v }); setDiscoveredStores(null); }} />
+              <Field label={t('billingCommerce.toast.clientSecret')} type="password" value={credentials.clientSecret || ''} onChange={(v) => { setCredentials({ ...credentials, clientSecret: v }); setDiscoveredStores(null); }} />
+              <details className="text-xs text-slate-600"><summary className="cursor-pointer">{t('billingCommerce.toast.advancedEndpoint')}</summary>
+                <div className="mt-2"><Field label={t('billingCommerce.toast.endpoint')} placeholder="https://ws-api.toasttab.com" value={credentials.apiBaseUrl || ''} onChange={(v) => { setCredentials({ ...credentials, apiBaseUrl: v }); setDiscoveredStores(null); }} /></div>
               </details>
               {discoveredStores && !manualToastStores && (
                 <fieldset className="rounded-lg border border-slate-200 p-3 space-y-2">
-                  <legend className="text-xs font-bold text-slate-700">Choose the stores for this account</legend>
+                  <legend className="text-xs font-bold text-slate-700">{t('billingCommerce.toast.chooseStores')}</legend>
                   {discoveredStores.map((store) => <label key={store.guid} className="flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" checked={selectedStores.includes(store.guid)} onChange={(e) => setSelectedStores((current) => e.target.checked ? [...current, store.guid] : current.filter((guid) => guid !== store.guid))} />
                     {store.name}
@@ -525,9 +530,9 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
                 </fieldset>
               )}
               {manualToastStores && <label className="block">
-                <span className="text-xs font-bold text-slate-600">Toast stores · Name | restaurant GUID, one per line</span>
-                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Calvine | restaurant-guid" value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
-                <span className="text-[11px] text-slate-500">Some Toast account types do not allow store discovery. The GUID is listed with your Toast API access details.</span>
+                <span className="text-xs font-bold text-slate-600">{t('billingCommerce.toast.manualLabel')}</span>
+                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder={t('billingCommerce.toast.manualPlaceholder')} value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
+                <span className="text-[11px] text-slate-500">{t('billingCommerce.toast.manualHint')}</span>
               </label>}
             </>
           )}
@@ -597,7 +602,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-              {provider.id === 'toast' && !manualToastStores && !discoveredStores ? 'Find stores & connect' : t('billingCommerce.connect')}
+              {provider.id === 'toast' && !manualToastStores && !discoveredStores ? t('billingCommerce.toast.findAndConnect') : t('billingCommerce.connect')}
             </button>
           )}
         </div>

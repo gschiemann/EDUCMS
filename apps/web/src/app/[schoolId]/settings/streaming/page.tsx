@@ -21,9 +21,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
+import { Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Zap, Sparkles } from 'lucide-react';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
-import { ContextAction, ContextModule, EditorHead } from '@/components/settings/shell/primitives';
+import { ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
 interface Provider {
   id: string;
@@ -104,23 +104,6 @@ interface StreamValidationProbe {
   suggestion?: string;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  'venue-fast': '🏢 Business services · external provider players',
-  'free-fast': '🌍 Direct distribution agreement required',
-  'live-platform': '📡 Consumer embeds blocked for public playback',
-  'music': '🎵 Licensed business music · adapters pending',
-  'sports-news': '🏈 Business TV · external provider devices',
-  'custom': '🔗 Customer-owned or licensed feeds',
-};
-
-const EXTERNAL_DEVICE_PROVIDER_IDS = new Set([
-  'atmosphere',
-  'directv-business',
-  'dish-business',
-  'mood-media',
-  'iheart-business',
-]);
-
 const BLOCKED_PROVIDER_IDS = new Set([
   'public-broadcasters',
   'youtube',
@@ -147,12 +130,6 @@ export default function StreamingSettingsPage() {
 
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
-  const [showWhyClosed, setShowWhyClosed] = useState(false);
-  const [pendingProvider, setPendingProvider] = useState<Provider | null>(null);
-  const grouped = (providers.data || []).reduce<Record<string, Provider[]>>((acc, p) => {
-    (acc[p.category] = acc[p.category] || []).push(p);
-    return acc;
-  }, {});
 
   // Context rail (§6.6) — counted from the SAME `/streaming/connections`
   // rows the list below renders, so the rail can never disagree with it.
@@ -180,9 +157,6 @@ export default function StreamingSettingsPage() {
         label={t('settings.cc.integrations.providerRail.appliesToLabel')}
         title={t('settings.cc.integrations.providerRail.appliesToValue')}
       />
-      <ContextModule label={t('settings.cc.integrations.railAuditLabel')}>
-        <ContextAction href={`/${schoolId}/audit`}>{t('settings.cc.integrations.railAuditAction')}</ContextAction>
-      </ContextModule>
     </>
     ),
     // `t` is intentionally NOT a dependency: useTranslations() returns a
@@ -213,7 +187,7 @@ export default function StreamingSettingsPage() {
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" /> {t('streamingSso.quickStartTitle')}
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:max-w-md gap-3">
           {/* 1. Native HLS — only for customer-owned/licensed feeds. */}
           <QuickStartCard
             tone="indigo"
@@ -227,36 +201,11 @@ export default function StreamingSettingsPage() {
               if (hls) setConnectModalProvider(hls);
             }}
           />
-          {/* 2. Consumer entertainment services are explicitly blocked. */}
-          <QuickStartCard
-            tone="amber"
-            icon={<Lock className="w-5 h-5" />}
-            badge={t('streamingSso.badgeBlocked')}
-            title="Hulu / Netflix / Disney+ / Max"
-            blurb={t('streamingSso.premiumStreamingBlurb')}
-            cta={t('streamingSso.whyBlocked')}
-            onClick={() => setShowWhyClosed(true)}
-          />
-          {/* 4. Business TV stays on the provider's licensed device today. */}
-          <QuickStartCard
-            tone="sky"
-            icon={<Radio className="w-5 h-5" />}
-            badge="External licensed device"
-            title="Atmosphere TV / DIRECTV"
-            blurb="Commercial programming stays on the approved provider player. VenueOS control and heartbeat adapters are not complete yet."
-            cta={t('streamingSso.viewBusinessProvider')}
-            onClick={() => {
-              const atmo = providers.data?.find((p) => p.id === 'atmosphere');
-              if (atmo?.websiteUrl) window.open(atmo.websiteUrl, '_blank', 'noopener,noreferrer');
-            }}
-          />
         </div>
-        <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-          {t('streamingSso.newToStreaming')}{' '}
-          <button onClick={() => setShowWhyClosed(true)} className="underline text-indigo-600 hover:text-indigo-700">
-            {t('streamingSso.whyHuluPassword')}
-          </button>
-          {' '}{t('streamingSso.shortHonestAnswer')}
+        {/* Netflix & co. and a provider's own licensed box are not choices
+            here (owner, 2026-10-24: show only what really connects). */}
+        <p className="text-[12px] text-slate-500 mt-3 leading-relaxed" data-testid="streaming-not-listed">
+          {t('settings.cc.integrations.notListed')}
         </p>
       </section>
 
@@ -294,43 +243,6 @@ export default function StreamingSettingsPage() {
         )}
       </section>
 
-      {/* Provider catalog */}
-      <section>
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('streamingSso.availableProviders')}</h2>
-        {providers.isLoading ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(grouped).map(([cat, list]) => (
-              <div key={cat}>
-                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                  {CATEGORY_LABELS[cat] || cat}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {list.map((p) => (
-                    <ProviderTile
-                      key={p.id}
-                      provider={p}
-                      connected={connections.data?.some((c) => c.providerId === p.id)}
-                      onConnect={() => {
-                        if (p.integrationTier === 'DIRECT') {
-                          setConnectModalProvider(p);
-                        } else if (p.integrationTier === 'PARTNER') {
-                          setPendingProvider(p);
-                        } else if (EXTERNAL_DEVICE_PROVIDER_IDS.has(p.id)) {
-                          const destination = p.websiteUrl || p.docsUrl;
-                          if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
       {/* Connect modal */}
       {connectModalProvider && (
         <ConnectModal
@@ -354,31 +266,6 @@ export default function StreamingSettingsPage() {
         />
       )}
 
-      {/* Consumer-service explainer with only sanctioned paths forward. */}
-      {showWhyClosed && (
-        <WhyClosedModal
-          onClose={() => setShowWhyClosed(false)}
-          onOpenAtmosphere={() => {
-            setShowWhyClosed(false);
-            const atmo = providers.data?.find((p) => p.id === 'atmosphere');
-            const destination = atmo?.websiteUrl || atmo?.docsUrl;
-            if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
-          }}
-          onOpenDirectv={() => {
-            setShowWhyClosed(false);
-            const dtv = providers.data?.find((p) => p.id === 'directv-business');
-            const destination = dtv?.websiteUrl || dtv?.docsUrl;
-            if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
-          }}
-        />
-      )}
-
-      {pendingProvider && (
-        <PartnerAdapterPendingModal
-          provider={pendingProvider}
-          onClose={() => setPendingProvider(null)}
-        />
-      )}
     </div>
     </SettingsPageFrame>
   );
@@ -425,90 +312,15 @@ function ConnectionRow({ connection, channelCount, onPickChannels, onDisconnect 
 }
 
 // ─── Provider tile ──────────────────────────────────────────────────────
-function ProviderTile({ provider, connected, onConnect }: { provider: Provider; connected?: boolean; onConnect: () => void }) {
-  const t = useTranslations();
-  const isClosed = provider.integrationTier === 'CLOSED';
-  const isPartner = provider.integrationTier === 'PARTNER';
-  const isExternalDevice = EXTERNAL_DEVICE_PROVIDER_IDS.has(provider.id) || provider.integrationTier === 'BRIDGE';
-  const isBlocked = BLOCKED_PROVIDER_IDS.has(provider.id) || (!provider.commercialUseLegal && isClosed);
-  const destination = provider.websiteUrl || provider.docsUrl;
-  return (
-    <button
-      onClick={
-        isBlocked
-          ? undefined
-          : (isClosed || isExternalDevice) && destination
-            ? () => window.open(destination, '_blank', 'noopener,noreferrer')
-            : onConnect
-      }
-      disabled={connected || isBlocked || ((isClosed || isExternalDevice) && !destination)}
-      className={`text-left p-4 rounded-xl border-2 transition-all ${
-        connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
-                  : isBlocked ? 'bg-rose-50/40 border-rose-200 cursor-not-allowed'
-                  : isExternalDevice ? 'bg-sky-50/40 border-sky-200 hover:border-sky-400 hover:shadow-md'
-                  : isClosed ? 'bg-slate-50 border-slate-200 opacity-75'
-                  : isPartner ? 'bg-amber-50/30 border-amber-200 hover:border-amber-400 hover:shadow-md'
-                  : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="text-2xl">{provider.iconEmoji || '📺'}</div>
-        <div className="flex items-center gap-1">
-          {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-          {isBlocked && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 uppercase tracking-wider">
-              {t('streamingSso.blocked')}
-            </span>
-          )}
-          {isExternalDevice && !isBlocked && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 uppercase tracking-wider inline-flex items-center gap-0.5">
-              <ExternalLink className="w-2.5 h-2.5" /> {t('streamingSso.externalDevice')}
-            </span>
-          )}
-          {isClosed && !isExternalDevice && !isBlocked && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">
-              {t('streamingSso.infoOnly')}
-            </span>
-          )}
-          {isPartner && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">
-              {t('streamingSso.adapterPending')}
-            </span>
-          )}
-          {provider.integrationTier === 'DIRECT' && !connected && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">
-              {t('streamingSso.selfServe')}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="font-bold text-slate-800 text-sm">{provider.name}</div>
-      <div className="text-[11px] text-slate-500 mt-1 leading-snug line-clamp-2">{provider.blurb}</div>
-      {provider.tierReason && (
-        <div className="text-[10px] text-slate-400 mt-1 leading-snug italic line-clamp-2">{provider.tierReason}</div>
-      )}
-      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-        {provider.pricingNote && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-            {provider.pricingNote}
-          </span>
-        )}
-        {provider.requiresVenueLicense && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">
-            <ShieldAlert className="w-2.5 h-2.5" /> {t('streamingSso.licenseRequired')}
-          </span>
-        )}
-        {!provider.allowsAdOverlay && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500" title={t('streamingSso.noOverlayTooltip')}>
-            {t('streamingSso.noOverlay')}
-          </span>
-        )}
-      </div>
-    </button>
-  );
+/** A readable channel name for a stream link: its host, else the link. */
+function streamTitleFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname || url;
+  } catch {
+    return url;
+  }
 }
 
-// ─── Connect modal ──────────────────────────────────────────────────────
 function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; onClose: () => void; onConnected: () => void }) {
   const t = useTranslations();
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
@@ -528,14 +340,56 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
     setSubmitting(true);
     setErr(null);
     try {
-      await apiFetch('/streaming/connections', {
+      // 2026-10-26 — ONE step for a stream link (settings audit: the same URL
+      // used to be typed twice, once here and again under "Pick channels").
+      // Check the link first, exactly as the channel picker does; then the
+      // connection and its channel are created together.
+      const streamUrl = provider.auth === 'customHls' ? String(credentials.playbackUrl || '').trim() : '';
+      if (provider.auth === 'customHls') {
+        if (!/\.m3u8(?:[?#]|$)/i.test(streamUrl)) {
+          setErr(t('streamingSso.licensedHlsRequired'));
+          return;
+        }
+        let probe: StreamValidationProbe;
+        try {
+          probe = await apiFetch<StreamValidationProbe>('/streaming/validate', {
+            method: 'POST',
+            body: JSON.stringify({ url: streamUrl }),
+          });
+        } catch {
+          // The checker being down never blocks a save (same rule as the picker).
+          probe = { ok: true, embeddable: true };
+        }
+        if (probe.ok === false && probe.embeddable === false) {
+          setErr(probe.reason || t('streamingSso.cannotEmbed'));
+          return;
+        }
+      }
+      const created = await apiFetch<{ id?: string }>('/streaming/connections', {
         method: 'POST',
         body: JSON.stringify({
           providerId: provider.id,
           displayName: displayName || undefined,
-          credentials,
+          credentials: provider.auth === 'customHls' ? { ...credentials, playbackUrl: streamUrl } : credentials,
         }),
       });
+      if (provider.auth === 'customHls' && created?.id) {
+        try {
+          await apiFetch('/streaming/channels', {
+            method: 'POST',
+            body: JSON.stringify({
+              connectionId: created.id,
+              externalId: streamUrl.slice(0, 250),
+              title: (displayName || streamTitleFromUrl(streamUrl)).slice(0, 80),
+              playbackUrl: streamUrl,
+              playbackType: 'hls',
+              kind: 'LIVE',
+            }),
+          });
+        } catch {
+          // The stream is connected; "Pick channels" can still add it.
+        }
+      }
       onConnected();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -991,153 +845,3 @@ function QuickStartCard({
 // at the Streaming Hub and see Hulu / Netflix / Disney+ tiles. Honest,
 // short, and ends with sanctioned business-content paths. Consumer HDMI
 // capture/re-encoding is deliberately not presented as a VenueOS feature.
-function WhyClosedModal({
-  onClose,
-  onOpenAtmosphere,
-  onOpenDirectv,
-}: {
-  onClose: () => void;
-  onOpenAtmosphere: () => void;
-  onOpenDirectv: () => void;
-}) {
-  const t = useTranslations();
-  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <button type="button" aria-label="Close streaming explanation" className="absolute inset-0 cursor-default" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
-        <div className="p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700">
-              <Lock className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">{t('streamingSso.whyHuluPassword')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('streamingSso.shortHonestAnswerPath')}</p>
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close streaming explanation" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="p-6 space-y-5 text-sm text-slate-700 leading-relaxed">
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <p>
-              <strong className="text-amber-900">{t('streamingSso.noCmsCanPlay')}</strong> {t('streamingSso.notVenueosLimitation')}
-            </p>
-          </div>
-
-          <ol className="list-decimal pl-5 space-y-3">
-            <li>
-              <strong>{t('streamingSso.noPublicApi')}</strong> {t('streamingSso.noPublicApiDetail')}
-            </li>
-            <li>
-              <strong>{t('streamingSso.drmLabel')}</strong> {t('streamingSso.drmDetail')}
-            </li>
-            <li>
-              <strong>{t('streamingSso.commercialForbidden')}</strong> {t('streamingSso.commercialForbiddenDetail')}
-            </li>
-          </ol>
-
-          <div className="rounded-lg bg-sky-50 border border-sky-200 p-4 space-y-3">
-            <h3 className="font-bold text-sky-950 flex items-center gap-2">
-              <ExternalLink className="w-4 h-4" /> Licensed business TV stays on the provider player
-            </h3>
-            <p className="text-sky-950/90">
-              {t('streamingSso.licensedTvBody')}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <button
-                onClick={onOpenAtmosphere}
-                className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> Open Atmosphere TV
-              </button>
-              <button
-                onClick={onOpenDirectv}
-                className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> Open DIRECTV for Business
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs space-y-2">
-            <h4 className="font-bold text-slate-800">What VenueOS can support honestly</h4>
-            <ul className="list-disc pl-5 space-y-1 text-slate-700">
-              <li><strong>Owned/licensed MP4:</strong> native playback works today.</li>
-              <li><strong>Customer-authorized HLS:</strong> the player exists; signed grants, rights records, and unified recovery telemetry still need completion.</li>
-              <li><strong>Soundtrack, Rockbot, and SoundMachine:</strong> official business APIs are viable adapter targets; audio remains on the provider player.</li>
-              <li><strong>Fitness On Demand, Wexer, and LES MILLS:</strong> require provider agreements and certified VenueOS adapters.</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-slate-100 flex justify-end sticky bottom-0 bg-white rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
-            {t('streamingSso.gotIt')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Partner adapter pending ────────────────────────────────────────────
-// A provider can have a legitimate business API without VenueOS having a
-// completed adapter. This modal prevents the catalog from turning that API
-// possibility into a false "connect now" claim.
-function PartnerAdapterPendingModal({ provider, onClose }: { provider: Provider; onClose: () => void }) {
-  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
-  const destination = provider.websiteUrl || provider.docsUrl;
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <button type="button" aria-label="Close partner adapter details" className="absolute inset-0 cursor-default" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700">
-              <Music className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">{provider.name} adapter pending</h2>
-              <p className="text-xs text-slate-500 mt-0.5">A real provider route, not a finished VenueOS connection.</p>
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close partner adapter details" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-
-        <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 text-sm text-slate-700 leading-relaxed">
-          <p>{provider.tierReason || `${provider.name} requires approved partner access and a certified VenueOS adapter.`}</p>
-        </div>
-
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs text-slate-600 leading-relaxed">
-          <strong className="text-slate-800">Current behavior:</strong> no customer token is collected and no tile is marked connected.
-          VenueOS must first implement server-side credentials, tenant isolation, permitted controls, health telemetry,
-          disconnected states, and provider-specific acceptance tests.
-        </div>
-
-        <div className="flex flex-wrap gap-2 justify-end pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">
-            Close
-          </button>
-          {destination && (
-            <a
-              href={destination}
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2 text-sm font-bold rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 inline-flex items-center gap-2"
-            >
-              Provider site <ExternalLink className="w-4 h-4" />
-            </a>
-          )}
-          <a
-            href={`mailto:sales@venue-os.app?subject=${encodeURIComponent(`${provider.name} VenueOS adapter request`)}`}
-            className="px-4 py-2 text-sm font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-2"
-          >
-            Request adapter
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
