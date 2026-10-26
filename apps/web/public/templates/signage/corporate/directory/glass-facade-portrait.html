@@ -360,8 +360,8 @@
 .canvas:is([data-design="luxury-concierge"],[data-design="maison-residence"],[data-design="tropical-modernist"],[data-design="glass-facade"]) .page-meta{font:50px/1.35 Manrope,sans-serif;max-width:420px}
 /* CONCIERGE / an architectural photograph and an open, warm paper ledger. */
 .canvas[data-design="luxury-concierge"]{background:var(--bg);color:var(--ink)}
-.canvas[data-design="luxury-concierge"] .art-direction-media{inset:0 auto 0 0;width:1640px}
-.canvas[data-design="luxury-concierge"] .art-direction-media:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#20150dee 0%,#20150d88 32%,transparent 66%,#20150d88 100%);pointer-events:none}
+.canvas[data-design="luxury-concierge"] .art-direction-media{top:0;right:auto;bottom:0;left:0;width:1640px}
+.canvas[data-design="luxury-concierge"] .art-direction-media:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,#20150dee 0%,#20150d88 32%,transparent 66%,#20150d88 100%);pointer-events:none}
 .canvas[data-design="luxury-concierge"] .art-direction-caption{bottom:195px;background:#20150dcc;padding:25px 120px}
 .canvas[data-design="luxury-concierge"] .display-header{left:120px;right:130px;top:80px;border:0;padding:0;color:#fff1dd}
 .canvas[data-design="luxury-concierge"] .site-type{color:#594b3e}
@@ -383,7 +383,7 @@
 .canvas[data-design="luxury-concierge"] .entry-suite b{font:500 64px/1.15 Manrope,sans-serif}
 .canvas[data-design="luxury-concierge"] .display-footer{left:120px;right:130px;bottom:70px;border:0;padding:0;color:#fff0dc}
 .canvas[data-design="luxury-concierge"] .footer-end{color:#594b3e}
-.canvas.portrait[data-design="luxury-concierge"] .art-direction-media{inset:0 0 auto;width:auto;height:1340px}
+.canvas.portrait[data-design="luxury-concierge"] .art-direction-media{top:0;right:0;bottom:auto;left:0;width:auto;height:1340px}
 .canvas.portrait[data-design="luxury-concierge"] .art-direction-image{object-position:center 55%}
 .canvas.portrait[data-design="luxury-concierge"] .art-direction-caption{bottom:0;padding:28px 125px}
 .canvas.portrait[data-design="luxury-concierge"] .site-type{color:#fff0dc}
@@ -460,7 +460,7 @@
 .canvas[data-design="tropical-modernist"] .entry-suite b{font:600 64px/1.2 Manrope,sans-serif}
 .canvas[data-design="tropical-modernist"] .display-footer{left:135px;right:1585px;bottom:70px;padding-top:30px;border-top:2px solid #24463866}
 .canvas.portrait[data-design="tropical-modernist"] .art-direction-media{left:0;right:0;top:0;width:auto;height:1400px}
-.canvas.portrait[data-design="tropical-modernist"] .art-direction-media:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#18291caa 0,transparent 65%);pointer-events:none}
+.canvas.portrait[data-design="tropical-modernist"] .art-direction-media:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(180deg,#18291caa 0,transparent 65%);pointer-events:none}
 .canvas.portrait[data-design="tropical-modernist"] .display-header{left:125px;right:125px;color:white}
 .canvas.portrait[data-design="tropical-modernist"] .hero{left:125px;right:125px;top:290px;bottom:auto;width:auto;height:700px;color:white}
 .canvas.portrait[data-design="tropical-modernist"] .eyebrow{color:#f6dcc1}
@@ -502,7 +502,7 @@
 .canvas[data-design="glass-facade"] .display-footer{left:135px;right:1570px;bottom:70px;border-top:2px solid #c6dae544;padding-top:30px}
 .canvas.portrait[data-design="glass-facade"] .art-direction-media{left:0;right:0;top:0;bottom:auto;height:1480px;clip-path:none}
 .canvas.portrait[data-design="glass-facade"] .art-direction-image{object-position:center 47%}
-.canvas.portrait[data-design="glass-facade"] .art-direction-media:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#101e2ae8 0%,#101e2a77 75%,transparent);pointer-events:none}
+.canvas.portrait[data-design="glass-facade"] .art-direction-media:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(90deg,#101e2ae8 0%,#101e2a77 75%,transparent);pointer-events:none}
 .canvas.portrait[data-design="glass-facade"] .art-direction-caption{padding:28px 125px}
 .canvas.portrait[data-design="glass-facade"] .display-header{left:125px;right:125px;top:75px}
 .canvas.portrait[data-design="glass-facade"] .hero{left:125px;right:125px;top:310px;width:auto;height:900px}
