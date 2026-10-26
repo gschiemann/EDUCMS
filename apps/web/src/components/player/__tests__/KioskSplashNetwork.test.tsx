@@ -90,6 +90,18 @@ describe('KioskSplash — the network card', () => {
     expect(button).toHaveFocus();
   });
 
+  it('its CSS outranks the flattened Tailwind preflight (the first cut rendered a 16px title)', () => {
+    render(<KioskSplash mode="registering" network={net({ status: 'offline', onOpenSettings: () => {} })} />);
+    const css = card()?.querySelector('style')?.textContent ?? '';
+    // Boosted above preflight's (2,0,x) by sceneCss…
+    expect(css).toContain(':not(#\\#):not(#\\#):not(#\\#) .kiosk-net-title');
+    expect(css).toContain(':not(#\\#):not(#\\#):not(#\\#) .kiosk-net-button:focus');
+    // …except the narrow-LED rules: <html> has no ancestor, so they stay
+    // unboosted and carry !important instead (a boosted copy never matches).
+    expect(css).toMatch(/(^|\n)html\[data-led-narrow\] \.kiosk-net-card \{/);
+    expect(css).not.toContain(':not(#\\#):not(#\\#):not(#\\#) html');
+  });
+
   it('never takes focus from a control that has it', () => {
     const outside = document.createElement('input');
     document.body.appendChild(outside);
