@@ -14,7 +14,7 @@
  * BuilderZone and the player use — and decodes the real iframe `src`, which
  * is the byte-for-byte thing a board receives.
  */
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WidgetPreview } from '../WidgetRenderer';
 
@@ -111,5 +111,22 @@ describe('EXTERNAL_HTML sender — the builder’s booleans reach the board as C
     const src = renderBoard({ textOverrides: { [FIELD]: 'Hello' } });
     expect(decodeParam(src, 'textStyles')).toBeNull();
     expect(decodeParam(src, 'text')).toEqual({ [FIELD]: 'Hello' });
+  });
+
+  it.each([
+    ['directoryDocument', 'directory.payload', { format: 'arc-riot.directory', version: 1, dataset: { title: 'Test', tenants: Array.from({ length: 100 }, (_, i) => ({ id: String(i), name: 'Destination '.repeat(10), suite: String(i) })) } }],
+    ['touchDocument', 'cre.payload', { format: 'arc-riot.touch-property', version: 1, property: { name: 'Test' }, spaces: Array.from({ length: 100 }, (_, i) => ({ id: String(i), description: 'Workspace '.repeat(20) })) }],
+  ])('keeps %s off the URL and restores it through the hosted frame bridge', (key, field, document) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const config = { url: '/templates/signage/corporate/directory/pacific-editorial-landscape.html', [key]: document, textOverrides: { [field as string]: JSON.stringify(document), 'hero.title': 'Saved title' } };
+    const { container } = render(<QueryClientProvider client={client}><WidgetPreview widgetType="EXTERNAL_HTML" config={config} width={100} height={100} /></QueryClientProvider>);
+    const frame = container.querySelector('iframe')!;
+    const src = frame.getAttribute('src') || '';
+    expect(src.length).toBeLessThan(500);
+    expect(decodeParam(src, 'text')).toEqual({ 'hero.title': 'Saved title' });
+    const postMessage = jest.fn();
+    Object.defineProperty(frame.contentWindow, 'postMessage', { value: postMessage, configurable: true });
+    fireEvent.load(frame);
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'educms-overrides', text: expect.objectContaining({ [field as string]: JSON.stringify(document) }) }), '*');
   });
 });

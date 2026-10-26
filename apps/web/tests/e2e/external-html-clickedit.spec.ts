@@ -53,6 +53,8 @@ import path from 'path';
  */
 
 const BOARDS = [
+  '/templates/signage/corporate/directory/pacific-editorial-landscape.html',
+  '/templates/signage/corporate/commercial-touch/harbor-cinema-landscape.html',
   '/templates/signage/retail/09-service-counter.html',
   '/templates/signage/corporate/04-new-hires.html',
   '/templates/signage/healthcare/06-patient-education.html',
@@ -379,8 +381,9 @@ test('every board family has a click-to-edit representative', () => {
       families.add(path.relative(TEMPLATE_ROOT, dir).split(path.sep).join('/') || '.');
     }
     for (const e of entries) {
-      // `_thumbs` holds generated preview images, never boards.
-      if (e.isDirectory() && e.name !== '_thumbs') walk(path.join(dir, e.name));
+      // Underscore folders contain authoring tools, runtimes and posters.
+      // Match the gallery/poster discovery contract; none is a signage board.
+      if (e.isDirectory() && !e.name.startsWith('_')) walk(path.join(dir, e.name));
     }
   })(TEMPLATE_ROOT);
 
