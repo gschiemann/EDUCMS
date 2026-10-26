@@ -10,6 +10,7 @@ import {
   type InboxCategory, type InboxNotification,
 } from './notificationInbox';
 import { useNotificationText } from './useNotificationText';
+import { NotificationHealthChip } from './NotificationHealthChip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -243,6 +244,7 @@ export function NotificationsInbox({
                         {shown.body}
                       </span>
                     )}
+                    <NotificationHealthChip n={n} />
                     <span className="mt-1 block text-[11px] text-slate-400">
                       {[age(n.createdAt), tn(`categoriesShort.${n.category}`)]
                         .filter(Boolean)

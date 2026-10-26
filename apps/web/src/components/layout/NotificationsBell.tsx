@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAppStore } from '@/lib/store';
 import { useNotificationText } from '@/components/notifications/useNotificationText';
+import { NotificationHealthChip } from '@/components/notifications/NotificationHealthChip';
 import { useMobileShell } from '@/lib/mobile-shell-pref';
 import {
   useNotifications,
@@ -152,6 +153,7 @@ export function NotificationsBell() {
                       {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 mt-1.5" />}
                     </div>
                     {shown.body && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{shown.body}</p>}
+                    <NotificationHealthChip n={n} />
                     <p className="text-[10px] text-slate-400 mt-1">{age(n.createdAt) ?? ''}</p>
                   </div>
                   {!n.isRead && (
