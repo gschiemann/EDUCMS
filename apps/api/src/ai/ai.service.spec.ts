@@ -3383,7 +3383,7 @@ describe('AiService — the AI plan gate (AI plan / trial / no AI / own key)', (
     expect(err.getStatus()).toBe(402);
     expect(err.getResponse()).toMatchObject({ code: 'AI_PLAN_REQUIRED', aiAddonMonthlyCents: 500, byokAvailable: true });
     expect(err.getResponse().message).toContain('$5/screen/month');
-    expect(err.getResponse().message).toContain('connect your own AI key for free (Settings → AI)');
+    expect(err.getResponse().message).toContain('connect your own AI key for free (Settings → Connections → AI)');
     expect(dispatchMock).not.toHaveBeenCalled();
     // the board designer refuses at the same door
     const board = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'coffee menu' }).catch((e) => e);

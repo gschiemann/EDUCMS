@@ -6870,7 +6870,7 @@ export class SportsService {
         code: 'STUDENT_PRIVACY_BLOCKS_SHARE',
         message: person.directoryOptOut
           ? "This student's family opted out of directory information, so their stats page cannot be shared."
-          : 'Student names stay off public pages until an administrator confirms your directory-information policy in Settings → Sports.',
+          : 'Student names stay off public pages until an administrator confirms your directory-information policy in Settings → Organization → Student privacy.',
       });
     }
     const token = randomUUID().replace(/-/g, '');

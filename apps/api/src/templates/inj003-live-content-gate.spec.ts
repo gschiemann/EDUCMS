@@ -378,7 +378,7 @@ describe('INJ-003 — emergency (protected) content is live even with no schedul
     expect(prisma.client.playlistItem.deleteMany).not.toHaveBeenCalled();
     // Points the operator at the surface that DOES own this content.
     const res: any = await controller.reorderItems(editor, 'pl-lockdown', { items } as any).catch((e) => e.getResponse());
-    expect(res.message).toMatch(/Panic Button Integrations/);
+    expect(res.message).toMatch(/Manage it from Settings → Emergency\./);
   });
 
   it('an admin can still manage protected content (this adds NO admin-facing restriction)', async () => {

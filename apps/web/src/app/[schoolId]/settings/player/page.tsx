@@ -16,7 +16,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { MonitorUp, ArrowRight } from 'lucide-react';
+import { MonitorUp, ArrowRight, Download } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
 import { EditorHead } from '@/components/settings/shell/primitives';
@@ -49,6 +49,16 @@ export default function ScreenUpdatesNotePage() {
           <ArrowRight className="w-4 h-4" aria-hidden />
         </Link>
       </div>
+      {/* The installer download that lived on the old Player & offline page
+          stays for customers: it installs, it does not update. Same branded
+          address as the Connect-a-screen card's QR code (/download/player). */}
+      <p className="mt-4 text-[13px] leading-[18px] text-slate-600" data-testid="screen-updates-apk">
+        {t('settings.cc.player.apkBody')}{' '}
+        <a href="/download/player" className="inline-flex items-center gap-1 font-medium text-slate-900 underline underline-offset-2">
+          <Download className="w-3.5 h-3.5" aria-hidden />
+          {t('settings.cc.player.apkLink')}
+        </a>
+      </p>
       {role === 'SUPER_ADMIN' && (
         <p className="mt-4 text-[12px] text-slate-500">
           <Link href="/super/player-updates" className="font-medium underline underline-offset-2" data-testid="screen-updates-owner-link">

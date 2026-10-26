@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { useAlertEmailPrefs, useTenantStatus } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { fullName as userFullName, firstName as userFirstName } from '@/lib/user-display';
 import { ProfileEditModal } from '@/components/layout/ProfileEditModal';
 import { AlertEmailSettings } from '@/components/notifications/AlertEmailSettings';
@@ -53,6 +54,7 @@ export default function AccountPage() {
   const logout = useAppStore((s) => s.logout);
   const { data: tenant } = useTenantStatus();
   const { data: alertPrefs } = useAlertEmailPrefs();
+  const tenantCopy = useTenantCopy();
   const [editOpen, setEditOpen] = useState(false);
   const isAdmin = canSeeSettings(user?.role);
 
@@ -103,16 +105,10 @@ export default function AccountPage() {
     router.push('/login');
   };
 
-  const roleLabel = (() => {
-    switch (user?.role) {
-      case 'SUPER_ADMIN':       return t('account.roleSuperAdmin');
-      case 'DISTRICT_ADMIN':    return t('account.roleDistrictAdmin');
-      case 'SCHOOL_ADMIN':      return t('account.roleSchoolAdmin');
-      case 'CONTRIBUTOR':       return t('account.roleContributor');
-      case 'RESTRICTED_VIEWER': return t('account.roleViewer');
-      default:                  return user?.role || t('account.roleUnknown');
-    }
-  })();
+  // The same role names Settings → Team → People shows (Platform Admin ·
+  // Super Admin · Admin · Editor · Viewer, en/es/zh) — this page used to say
+  // "District Admin" / "Contributor", so one person read two names for one role.
+  const roleLabel = user?.role ? tenantCopy.roleLabel(user.role) : t('account.roleUnknown');
 
   const buildSha = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
                     process.env.NEXT_PUBLIC_BUILD_SHA ||

@@ -437,11 +437,6 @@
     "signOutMessage": "You’ll need to sign in again to manage screens and content.",
     "sectionNotifications": "Notifications",
     "appInfo": "VenueOS dashboard",
-    "roleSuperAdmin": "Super Admin",
-    "roleDistrictAdmin": "District Admin",
-    "roleSchoolAdmin": "School Admin",
-    "roleContributor": "Contributor",
-    "roleViewer": "Viewer",
     "roleUnknown": "Unknown",
     "alertEmails": {
       "title": "Alert emails",
@@ -1930,7 +1925,9 @@
         "managedBody": "Screen software updates are managed by VenueOS, so there is nothing to set here.",
         "oneScreenNow": "Need one screen updated now? Open it in Screens and press “Push update” in its settings.",
         "openScreens": "Open Screens",
-        "ownerConsoleLink": "Update settings for this organization are in the owner console"
+        "ownerConsoleLink": "Update settings for this organization are in the owner console",
+        "apkBody": "Setting up a new Android display? Install the player app once:",
+        "apkLink": "Download the player app (APK)"
       },
       "supportAccess": {
         "searchGive": "Give VenueOS support access",
@@ -6040,7 +6037,7 @@
       "images": "You've used all your AI images this month. Add your own AI key in Settings → Connections → AI to keep going, or contact us for more.",
       "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → Connections → AI, or choose VenueOS + AI in Settings → Plan & billing.",
       "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → Connections → AI, or choose VenueOS + AI in Settings → Plan & billing.",
-      "month": "This month’s included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month."
+      "month": "This month’s included AI is used up. Add your own AI key in Settings → Connections → AI to keep going, or wait for it to reset next month."
     }
   },
   "billingAi": {

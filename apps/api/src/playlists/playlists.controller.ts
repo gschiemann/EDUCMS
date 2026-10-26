@@ -955,7 +955,7 @@ export class PlaylistsController {
       throw new HttpException(
         {
           code: 'PLAYLIST_PROTECTED',
-          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its schedules can't be toggled from here. Manage it from Settings → Panic Button Integrations.`,
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its schedules can't be toggled from here. Manage it from Settings → Emergency.`,
         },
         HttpStatus.FORBIDDEN,
       );
@@ -1129,7 +1129,7 @@ export class PlaylistsController {
       throw new HttpException(
         {
           code: 'PLAYLIST_PROTECTED',
-          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its screens can't be changed from here. Manage it from Settings → Panic Button Integrations.`,
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content — its screens can't be changed from here. Manage it from Settings → Emergency.`,
         },
         HttpStatus.FORBIDDEN,
       );
@@ -1470,7 +1470,7 @@ export class PlaylistsController {
       throw new HttpException(
         {
           code: 'PLAYLIST_PROTECTED',
-          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content and cannot be deleted from here. Manage it from Settings → Panic Button Integrations.`,
+          message: `This playlist holds ${playlist.protectedKind || 'emergency'} content and cannot be deleted from here. Manage it from Settings → Emergency.`,
         },
         HttpStatus.FORBIDDEN,
       );

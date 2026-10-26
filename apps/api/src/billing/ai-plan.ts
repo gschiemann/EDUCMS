@@ -224,8 +224,8 @@ export function aiAddonUsd(): string {
 /** The English upsell the API answers with (the dashboard shows its own en/es/zh copy by `code`). */
 export function aiPlanRequiredMessage(): string {
   return (
-    `Add VenueOS AI for ${aiAddonUsd()}/screen/month (Settings → Billing) — ` +
-    'or connect your own AI key for free (Settings → AI). Your own key works on every plan, with every AI feature.'
+    `Add VenueOS AI for ${aiAddonUsd()}/screen/month (Settings → Plan & billing) — ` +
+    'or connect your own AI key for free (Settings → Connections → AI). Your own key works on every plan, with every AI feature.'
   );
 }
 

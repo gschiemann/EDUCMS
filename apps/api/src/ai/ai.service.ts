@@ -998,7 +998,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     if (!opts.context || !opts.context.trim()) {
@@ -1238,7 +1238,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const prompt = (opts.prompt || '').trim();
@@ -1565,7 +1565,7 @@ export class AiService {
     }
     if (keyRejected && resolved.source === 'tenant') {
       throw new ServiceUnavailableException(
-        `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
+        `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Connections → AI.`,
       );
     }
     if (out.errorStatus === 429) {
@@ -1586,7 +1586,7 @@ export class AiService {
     if (job === 'design') {
       throw new HttpException(
         {
-          message: "AI board design isn't turned on for this account yet. Add your own OpenAI or Google AI key in Settings → AI to use it now.",
+          message: "AI board design isn't turned on for this account yet. Add your own OpenAI or Google AI key in Settings → Connections → AI to use it now.",
           code: 'AI_DESIGN_UNAVAILABLE',
         },
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -2123,7 +2123,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const currentText = (opts.currentText || '').trim();
@@ -2291,7 +2291,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const instruction = (opts.instruction || '').trim();
@@ -2428,7 +2428,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     // A board can be large — allow up to 40 zones (vs chat-edit's 12 selected).
@@ -2589,7 +2589,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const prompt = (opts.prompt || '').trim();
@@ -2778,7 +2778,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const prompt = (opts.prompt || '').trim();
@@ -3139,7 +3139,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const prompt = (opts.prompt || '').trim();
@@ -3638,7 +3638,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     // No design route on our key (no OpenAI or Google key — design never runs on Claude): say so
@@ -4321,7 +4321,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const instruction = (opts.instruction || '').trim();
@@ -4469,7 +4469,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const prompt = (opts.prompt || '').trim();
@@ -4601,7 +4601,7 @@ export class AiService {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
       throw new ServiceUnavailableException(
-        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+        'AI is not configured. Add your provider API key in Settings → Connections → AI, or contact your admin.',
       );
     }
     const instruction = (opts.instruction || '').trim();

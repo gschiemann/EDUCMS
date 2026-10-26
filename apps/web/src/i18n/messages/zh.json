@@ -437,11 +437,6 @@
     "signOutMessage": "你需要重新登录才能管理屏幕和内容。",
     "sectionNotifications": "通知",
     "appInfo": "VenueOS 控制台",
-    "roleSuperAdmin": "超级管理员",
-    "roleDistrictAdmin": "区域管理员",
-    "roleSchoolAdmin": "机构管理员",
-    "roleContributor": "内容编辑",
-    "roleViewer": "查看者",
     "roleUnknown": "未知",
     "alertEmails": {
       "title": "提醒邮件",
@@ -1930,7 +1925,9 @@
         "managedBody": "屏幕软件更新由 VenueOS 管理，因此这里无需任何设置。",
         "oneScreenNow": "需要立即更新某块屏幕？在“屏幕”中打开它，然后在其设置中点击“推送更新”。",
         "openScreens": "打开屏幕",
-        "ownerConsoleLink": "此组织的更新设置位于所有者控制台中"
+        "ownerConsoleLink": "此组织的更新设置位于所有者控制台中",
+        "apkBody": "要设置新的 Android 显示屏？只需安装一次播放器应用：",
+        "apkLink": "下载播放器应用（APK）"
       },
       "supportAccess": {
         "searchGive": "授予 VenueOS 支持访问",
@@ -6040,7 +6037,7 @@
       "images": "本月的 AI 图片已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥继续使用，或联系我们获取更多额度。",
       "imagesTrial": "免费试用中的 AI 图片已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥，或在“设置 → 套餐与账单”中选择 VenueOS + AI。",
       "boardsTrial": "免费试用中的 AI 设计已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥，或在“设置 → 套餐与账单”中选择 VenueOS + AI。",
-      "month": "本月包含的 AI 额度已用完。请在“设置 → AI 服务商”中添加您自己的 AI 密钥以继续使用，或等待下月重置。"
+      "month": "本月包含的 AI 额度已用完。请在“设置 → 连接 → AI”中添加您自己的 AI 密钥以继续使用，或等待下月重置。"
     }
   },
   "billingAi": {

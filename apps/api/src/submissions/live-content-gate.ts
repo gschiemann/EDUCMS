@@ -242,7 +242,7 @@ export function requiresApprovalException(
   const message =
     binding.reason === 'emergency'
       ? `This ${kind} holds emergency (panic) content, so only an admin can change it. ` +
-        `Manage it from Settings → Panic Button Integrations.`
+        `Manage it from Settings → Emergency.`
       : `This ${kind} is live${binding.target ? ` on “${binding.target}”` : ' on screens'} right now, ` +
         `so an Editor cannot change it directly. Duplicate it, edit the copy, and send that for review — ` +
         `or ask an admin to make the change.`;

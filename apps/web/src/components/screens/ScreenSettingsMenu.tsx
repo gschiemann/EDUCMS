@@ -385,7 +385,7 @@ const LED_CANVAS_HARDWARE = ['novastar-taurus', 'goodview-ecbox3576'];
  * 2026-09-01 — this used to hard-code "panels of 320×1080", which is only
  * the 1.86 mm poster. A NovaStar TB poster cannot report its own LED module
  * size, and the fleet also runs 1.56 mm (~360×1200), so the size now comes
- * from the tenant standard (Settings → LED posters) with a "Custom" escape
+ * from the tenant standard (Settings → Organization → Profile → LED posters) with a "Custom" escape
  * for a one-off. The saved canvas is still just `size.w × panels` by
  * `size.h` through the same `useSetScreenCanvas` — no API change.
  */
@@ -464,8 +464,8 @@ function LedCanvasSection({ screen, readOnly }: { screen: any; readOnly?: boolea
           }`}
           title={
             standard.isDefault
-              ? `The built-in standard poster (${standard.w}×${standard.h}). Change it for every screen in Settings → LED posters.`
-              : `Your organization's standard poster (${standard.w}×${standard.h}), set in Settings → LED posters.`
+              ? `The built-in standard poster (${standard.w}×${standard.h}). Change it for every screen in Settings → Organization → Profile → LED posters.`
+              : `Your organization's standard poster (${standard.w}×${standard.h}), set in Settings → Organization → Profile → LED posters.`
           }
         >
           Standard {standard.w}×{standard.h}

@@ -437,11 +437,6 @@
     "signOutMessage": "Tendrás que iniciar sesión de nuevo para gestionar pantallas y contenido.",
     "sectionNotifications": "Notificaciones",
     "appInfo": "Panel de VenueOS",
-    "roleSuperAdmin": "Superadministrador",
-    "roleDistrictAdmin": "Administrador de distrito",
-    "roleSchoolAdmin": "Administrador del centro",
-    "roleContributor": "Colaborador",
-    "roleViewer": "Visualizador",
     "roleUnknown": "Desconocido",
     "alertEmails": {
       "title": "Correos de alerta",
@@ -1930,7 +1925,9 @@
         "managedBody": "VenueOS gestiona las actualizaciones del software de las pantallas, así que aquí no hay nada que configurar.",
         "oneScreenNow": "¿Necesitas actualizar una pantalla ahora? Ábrela en Pantallas y pulsa «Enviar actualización» en sus ajustes.",
         "openScreens": "Abrir Pantallas",
-        "ownerConsoleLink": "Los ajustes de actualización de esta organización están en la consola del propietario"
+        "ownerConsoleLink": "Los ajustes de actualización de esta organización están en la consola del propietario",
+        "apkBody": "¿Vas a instalar una pantalla Android nueva? Instala la app del reproductor una vez:",
+        "apkLink": "Descargar la app del reproductor (APK)"
       },
       "supportAccess": {
         "searchGive": "Dar acceso de soporte a VenueOS",
@@ -6040,7 +6037,7 @@
       "images": "Usaste todas tus imágenes con IA de este mes. Agrega tu propia clave de IA en Ajustes → Conexiones → IA para continuar, o contáctanos para obtener más.",
       "imagesTrial": "Usaste todas las imágenes con IA de tu prueba gratuita. Agrega tu propia clave de IA en Ajustes → Conexiones → IA, o elige VenueOS + IA en Ajustes → Plan y facturación.",
       "boardsTrial": "Usaste todos los diseños con IA de tu prueba gratuita. Agrega tu propia clave de IA en Ajustes → Conexiones → IA, o elige VenueOS + IA en Ajustes → Plan y facturación.",
-      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Proveedor de IA para seguir, o espera a que se renueve el próximo mes."
+      "month": "Ya se usó la IA incluida de este mes. Agrega tu propia clave de IA en Ajustes → Conexiones → IA para seguir, o espera a que se renueve el próximo mes."
     }
   },
   "billingAi": {

@@ -129,7 +129,7 @@ export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?
         <div>
           <div style={{ fontSize: '2em', marginBottom: 8 }}>📺</div>
           <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{c.channelTitle || 'No channel selected'}</div>
-          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Connect a streaming provider in Settings → Streaming.</div>
+          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Add a live stream in Settings → Connections → Live video.</div>
         </div>
       </div>
     );
