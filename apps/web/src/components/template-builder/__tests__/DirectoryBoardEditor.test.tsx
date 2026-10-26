@@ -28,7 +28,8 @@ describe('directory configuration in the existing Properties panel', () => {
     expect(screen.queryByText('Cards / panels')).toBeNull();
     expect(screen.queryByText('Page order')).toBeNull();
     expect(screen.queryByText(/milliseconds|pixels per second/i)).toBeNull();
-    expect(screen.queryByLabelText('Transition')).toBeNull();
+    expect(screen.getByLabelText('Transition')).toHaveValue('crossfade');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(14);
     expect(container.querySelector('select:disabled')).toBeNull();
   });
   it('adds, edits and removes locations through the shared list editor', () => {
@@ -51,11 +52,42 @@ describe('directory configuration in the existing Properties panel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('3 pages');
     fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'flip' } });
     fireEvent.change(screen.getByLabelText('Transition speed'), { target: { value: 'fast' } });
-    const duration = screen.getByLabelText('Change pages every (seconds)'); fireEvent.change(duration, { target: { value: '6' } }); fireEvent.blur(duration);
+    const duration = screen.getByLabelText('Seconds per page'); fireEvent.change(duration, { target: { value: '6' } }); fireEvent.blur(duration);
     expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'pages', locationsPerPage: 12, transitionMode: 'flip', motionSpeed: 'fast', pageDurationMs: 6000 });
     fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'continuous-scroll' } });
-    expect(screen.queryByLabelText('Change pages every (seconds)')).toBeNull();
-    expect(screen.getByLabelText('Scroll speed')).toHaveValue('fast');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(6);
+    expect(screen.queryByLabelText('Transition speed')).toBeNull();
+  });
+  it('offers a visible photo picker and makes two rotating pages in one click', () => {
+    const { container } = mount(10);
+    const photo = container.querySelector('[data-edit-img="property.hero"]')!;
+    expect(photo.closest('details')).toBeNull();
+    expect(photo).toHaveTextContent('Building photo');
+    expect(photo).toHaveTextContent('Browse library');
+    expect(screen.getByText('Pages & rotation')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Make 2 pages' }));
+    expect(screen.getByRole('status')).toHaveTextContent('2 pages');
+    expect(screen.getByLabelText('Locations per page')).toHaveValue(5);
+    expect(screen.getByLabelText('Transition')).toHaveValue('crossfade');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(14);
+    expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'pages', locationsPerPage: 5 });
+  });
+  it('keeps saved timing and directional choices visible before making pages', () => {
+    mount(10);
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'slide-right' } });
+    const timing = screen.getByLabelText('Seconds per page');
+    fireEvent.change(timing, { target: { value: '8' } }); fireEvent.blur(timing);
+    expect(screen.getByRole('status')).toHaveTextContent('Slide right · 8 sec/page');
+    expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'single', transitionMode: 'slide-right', pageDurationMs: 8000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Make 2 pages' }));
+    expect(screen.getByLabelText('Transition')).toHaveValue('slide-right');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(8);
+    for (const mode of ['slide', 'vertical-scroll', 'vertical-scroll-down', 'continuous-scroll', 'continuous-scroll-down']) {
+      fireEvent.change(screen.getByLabelText('Transition'), { target: { value: mode } });
+      expect(saved().directoryDocument.playback.transitionMode).toBe(mode);
+    }
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(8);
+    expect(screen.queryByLabelText('Transition speed')).toBeNull();
   });
   it('opens only the clicked wording and saves it in the document', async () => {
     mount();
