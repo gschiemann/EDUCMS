@@ -36,9 +36,42 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wifi, QrCode, MonitorPlay } from 'lucide-react';
+import { Wifi, WifiOff, QrCode, MonitorPlay } from 'lucide-react';
+import type { NetworkStatus } from '@/app/player/networkStatus';
+import { SplashNetworkCard, type SplashNetworkProblem } from './SplashNetworkCard';
 
 type Mode = 'registering' | 'pairing';
+
+/**
+ * The network as this screen knows it (2026-10-26). The chip used to be a
+ * hard-coded "Online"; with the Wi-Fi removed the splash spun "Connecting to
+ * your CMS…" for ever and never said why. Decided in
+ * `app/player/networkStatus.ts`, passed in by the player page.
+ */
+export interface SplashNetwork {
+  status: NetworkStatus;
+  /** False while any alert is up: the chip stays honest, the card never shows over an alert. */
+  card: boolean;
+  /** APK ≥ 1.1.53: open VenueOS's Network screen. Absent → `hint` instead. */
+  onOpenSettings?: () => void;
+  /** The instruction for a screen that cannot open the Network screen itself. */
+  hint?: string | null;
+  /** Park the remote on the card's button (false while the Back menu owns the remote). */
+  parkFocus?: boolean;
+}
+
+const NETWORK_CHIP_LABEL: Record<NetworkStatus, string> = {
+  online: 'Online',
+  unreachable: 'No internet',
+  offline: 'Offline',
+  checking: 'Checking…',
+};
+
+/** The problem the card names, or null when there is none to show. */
+function networkProblem(network: SplashNetwork | null | undefined): SplashNetworkProblem | null {
+  if (!network || !network.card) return null;
+  return network.status === 'offline' || network.status === 'unreachable' ? network.status : null;
+}
 
 /**
  * Progress state the player pipes into the 'connecting' mode so the
@@ -162,6 +195,9 @@ export interface KioskSplashProps {
    *  noise — they render at the WebView's native resolution.
    *  Null / 'unknown' = show the prompt (safe default — legacy state). */
   hardwareModel?: string | null;
+
+  /** 2026-10-26 — the network chip + the "no network" card. See `SplashNetwork`. */
+  network?: SplashNetwork | null;
 }
 
 export function KioskSplash({
@@ -180,9 +216,20 @@ export function KioskSplash({
   orientation,
   onOrientationChange,
   hardwareModel,
+  network,
 }: KioskSplashProps) {
   const activeOrientation = orientation || 'LANDSCAPE';
   const displayName = brandName && brandName.trim() ? brandName : 'VenueOS';
+  const netStatus: NetworkStatus = network?.status ?? 'checking';
+  const netProblem = networkProblem(network);
+  const networkCard = netProblem && network ? (
+    <SplashNetworkCard
+      problem={netProblem}
+      onOpenSettings={network.onOpenSettings}
+      hint={network.hint}
+      parkFocus={network.parkFocus !== false}
+    />
+  ) : null;
 
   // ─── OTA banner state ────────────────────────────────────────
   // Tick every 5s while otaProgress is active so the stage label
@@ -325,8 +372,14 @@ export function KioskSplash({
           </div>
         ) : null}
 
+        {/* ── No network: the card takes the pairing block's place ──
+            2026-10-26. A code cannot be claimed by a screen that cannot reach
+            VenueOS; the fix comes first, and the code returns by itself with
+            the network. */}
+        {mode === 'pairing' && networkCard}
+
         {/* ── Pairing mode: the hero is the 6-character code ── */}
-        {mode === 'pairing' && (
+        {mode === 'pairing' && !networkCard && (
           <>
             <div className="kiosk-instructions">
               <span className="kiosk-instruction-label">To activate this screen</span>
@@ -394,8 +447,9 @@ export function KioskSplash({
           </>
         )}
 
-        {/* ── Registering mode: branded loader ── */}
-        {mode === 'registering' && (
+        {/* ── Registering mode: branded loader — or, with no network, the
+            card that says so and opens the Network screen (2026-10-26). ── */}
+        {mode === 'registering' && (networkCard || (
           <>
             <div className="kiosk-pulse-loader">
               <div />
@@ -404,7 +458,7 @@ export function KioskSplash({
             </div>
             <p className="kiosk-phase-copy">Connecting to your CMS&hellip;</p>
           </>
-        )}
+        ))}
 
         {/* Tech chips — resolution / screen name / online state. Tiny
             by design: clear on close inspection, invisible across a
@@ -416,9 +470,10 @@ export function KioskSplash({
               <span className="kiosk-chip-value">{resolution}</span>
             </span>
           )}
-          <span className="kiosk-chip">
-            <Wifi className="kiosk-chip-icon" />
-            <span className="kiosk-chip-value">Online</span>
+          {/* 2026-10-26 — the real state, never a hard-coded "Online". */}
+          <span className={`kiosk-chip kiosk-chip-net kiosk-chip-net-${netStatus}`} data-edu-network-chip={netStatus}>
+            {netStatus === 'offline' ? <WifiOff className="kiosk-chip-icon" /> : <Wifi className="kiosk-chip-icon" />}
+            <span className="kiosk-chip-value">{NETWORK_CHIP_LABEL[netStatus]}</span>
           </span>
           {screenName && mode !== 'pairing' && (
             <span className="kiosk-chip">
@@ -1477,6 +1532,14 @@ const CSS = `
   font-size: 12px;
 }
 .kiosk-chip-icon { width: 12px; height: 12px; color: #10b981; }
+/* Network chip (2026-10-26): its colour is the state, never a fixed green. */
+.kiosk-chip-net-checking .kiosk-chip-icon { color: #64748b; }
+.kiosk-chip-net-unreachable { border-color: rgba(245, 158, 11, 0.35); }
+.kiosk-chip-net-unreachable .kiosk-chip-icon { color: #f59e0b; }
+.kiosk-chip-net-unreachable .kiosk-chip-value { color: #fde68a; }
+.kiosk-chip-net-offline { border-color: rgba(244, 63, 94, 0.4); }
+.kiosk-chip-net-offline .kiosk-chip-icon { color: #fb7185; }
+.kiosk-chip-net-offline .kiosk-chip-value { color: #fecdd3; }
 /* Warning variant — Manager-missing chip uses this so the operator
    instantly sees Manager isn't installed without reading the value. */
 .kiosk-chip-warn {

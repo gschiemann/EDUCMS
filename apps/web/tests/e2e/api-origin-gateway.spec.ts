@@ -327,9 +327,13 @@ test.describe('same-origin gateway fallback — the Goodview story', () => {
     expect(state.gatewayRegisters, 'it must not jump to the gateway on the first try').toBe(0);
 
     // 2) (a) THE OPERATOR IS TOLD. Not a silent "Connecting…" forever.
+    //    Since 2026-10-26 a transport outage on the splash is told by the
+    //    network card ("Connected, but can't reach VenueOS"), which stands in
+    //    for the technical reconnect panel while it is up — either one is the
+    //    operator being told (player-splash-network-status.spec.ts).
     await expect(
-      page.locator('[data-edu-reconnect-toast]'),
-      'the reconnect panel never appeared — this is the "Connecting to your CMS…" forever bug',
+      page.locator('[data-edu-network-card], [data-edu-reconnect-toast]').first(),
+      'neither the network card nor the reconnect panel appeared — this is the "Connecting to your CMS…" forever bug',
     ).toBeVisible({ timeout: 90_000 });
     state.gatewayAvailable = true;
 
