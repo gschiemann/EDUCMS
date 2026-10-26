@@ -420,6 +420,9 @@ internal class UsbCardView(
     private data class Look(val top: Int, val bottom: Int, val icon: Int, val tint: Int)
 
     /** Even lines, no hyphens: a two-line title never leaves one word alone on the second line. */
+    // Layout.BREAK_STRATEGY_BALANCED (API 23) is the constant for minSdk 24; lint asks for
+    // LineBreaker's API-29 name of the same value (2).
+    @SuppressLint("WrongConstant")
     private fun TextView.balanced() {
         breakStrategy = Layout.BREAK_STRATEGY_BALANCED
         hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
