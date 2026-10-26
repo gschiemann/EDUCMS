@@ -13,7 +13,7 @@ import { holeClipPath, nativeZoneEligible, nativeZoneItemFor, overlappedTemplate
 import { nativeOrientationRequest, nativeSharedVideoEvidence, nativeVideoBlocked, nativeVideoBlockedNoted, nativeVideoFallbackLine, pickNativeVideo, readNativeSharedVideoDescriptor, readNativeVideoDescriptor, sharedVideoEligible, type NativeSharedVideoDescriptor, type NativeVideoDescriptor } from './nativeSharedVideo';
 
 import { useTranslations } from 'next-intl';
-import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { fitSplashK } from './splashFit';
@@ -3498,7 +3498,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   useEffect(() => {
     const s = remoteDialogRef.current;
     if (s.open && !remoteSurfaceStillUp(s, playbackStopped)) dispatchRemoteDialog({ type: 'surface-closed' });
-  }, [playbackStopped, dispatchRemoteDialog]);
+  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
   // ── Off-hours background update (2026-10-10) ────────────────────────────
   // What the 15-min build-info check found, and how far the background
   // preparation got. Read by the apply tick (the bundle-drift effect below)
@@ -4537,7 +4537,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped, dispatchRemoteDialog]);
+  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -11624,20 +11624,24 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // still up (Back, or the safe answer), so the remote is parked back on the
   // control that opened the question (rule 15) — after the dialog has left
   // the DOM. A closed surface or an alert has nothing to return to.
-  remoteDialogAnswerRef.current = (outcome: RemoteDialogOutcome) => {
-    const opener = remoteDialogOpenerRef.current;
-    remoteDialogOpenerRef.current = null;
-    if (outcome.kind === 'unpair' && outcome.result === 'confirm') {
-      void handleUnpair();
-      return;
-    }
-    if (outcome.reason !== 'back' && outcome.reason !== 'answer') return;
-    requestAnimationFrame(() => {
-      try {
-        if (opener && opener.isConnected) opener.focus({ preventScroll: true });
-      } catch { /* focus is best-effort */ }
-    });
-  };
+  // Re-armed after every commit (a layout effect, before any event or effect
+  // can dispatch), so it always runs THIS render's `handleUnpair`.
+  useLayoutEffect(() => {
+    remoteDialogAnswerRef.current = (outcome: RemoteDialogOutcome) => {
+      const opener = remoteDialogOpenerRef.current;
+      remoteDialogOpenerRef.current = null;
+      if (outcome.kind === 'unpair' && outcome.result === 'confirm') {
+        void handleUnpair();
+        return;
+      }
+      if (outcome.reason !== 'back' && outcome.reason !== 'answer') return;
+      requestAnimationFrame(() => {
+        try {
+          if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+        } catch { /* focus is best-effort */ }
+      });
+    };
+  });
 
   // ─── OTA progress overlay — rendered on top of every phase
   //     when an admin has just clicked "Push update" from the

@@ -31,7 +31,7 @@
  * operator-glass factor) and shrink on a narrow LED canvas through `--led-w`.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Info, Power } from 'lucide-react';
 import {
   REMOTE_DIALOG_CLOSED,
@@ -50,13 +50,16 @@ import {
  * handlers that must read it live (the page's Back authority runs in a
  * listener registered by an older render), and a stable `dispatch`.
  * `onAnswer` runs exactly once per question, on the event that closed it; it
- * is read through a ref, so it may be a new function every render.
+ * is read through a ref (synced after every commit, before any event or
+ * effect can dispatch), so it may be a new function every render.
  */
 export function useRemoteDialog(onAnswer: (outcome: RemoteDialogOutcome) => void) {
   const [state, setState] = useState<RemoteDialogState>(REMOTE_DIALOG_CLOSED);
   const stateRef = useRef<RemoteDialogState>(REMOTE_DIALOG_CLOSED);
   const onAnswerRef = useRef(onAnswer);
-  onAnswerRef.current = onAnswer;
+  useLayoutEffect(() => {
+    onAnswerRef.current = onAnswer;
+  });
   const dispatch = useCallback((event: RemoteDialogEvent) => {
     const step = stepRemoteDialog(stateRef.current, event);
     if (step.state === stateRef.current) return;
@@ -140,8 +143,11 @@ function answerStyle(answer: RemoteAnswer, parked: boolean): CSSProperties {
     cursor: 'pointer',
     fontFamily: 'inherit',
     boxSizing: 'border-box',
-    // Physical properties only; transform lifts the parked answer, tvOS-style.
-    transition: 'transform 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease, border-color 140ms ease',
+    // Only the lift animates. Colours, ring and shadow switch in ONE step, so
+    // the selection is never ambiguous mid-move (a fading white "Keep paired"
+    // next to a ringed "Unpair" read as two selections for 140 ms). Transform
+    // is also the one property cheap on a weak signage-box GPU.
+    transition: 'transform 120ms ease-out',
     WebkitTapHighlightColor: 'transparent',
   };
   if (!parked) {
@@ -182,54 +188,49 @@ export function RemoteDialog({
 }: RemoteDialogProps) {
   const safeRef = useRef<HTMLButtonElement | null>(null);
   const dangerRef = useRef<HTMLButtonElement | null>(null);
-  const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
-  const focusRef = useRef(focus);
-  focusRef.current = focus;
   const hasDanger = !!dangerLabel;
-  const hasDangerRef = useRef(hasDanger);
-  hasDangerRef.current = hasDanger;
 
-  // Keys. Registered once per mount; reads the live props through refs.
+  // Keys. The listener is registered once per mount; as an Effect Event it
+  // always sees the current props (the parked answer, the handler).
+  const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    const move = remoteMoveForKey(e.key);
+    if (move) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEvent({ type: 'move', direction: move });
+      return;
+    }
+    if (e.key === 'Tab') {
+      // A focus trap of two: Tab and Shift+Tab both flip between them.
+      e.preventDefault();
+      e.stopPropagation();
+      if (hasDanger) onEvent({ type: 'move', direction: focus === 'safe' ? 'next' : 'prev' });
+      return;
+    }
+    if (isRemoteOkKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      // A held OK never answers — the press that opened the question
+      // must not also answer it.
+      if (e.repeat) return;
+      onEvent({ type: 'activate' });
+    }
+  });
+  const onSurfaceGone = useEffectEvent(() => onEvent({ type: 'surface-closed' }));
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const move = remoteMoveForKey(e.key);
-      if (move) {
-        e.preventDefault();
-        e.stopPropagation();
-        onEventRef.current({ type: 'move', direction: move });
-        return;
-      }
-      if (e.key === 'Tab') {
-        // A focus trap of two: Tab and Shift+Tab both flip between them.
-        e.preventDefault();
-        e.stopPropagation();
-        if (hasDangerRef.current) {
-          onEventRef.current({ type: 'move', direction: focusRef.current === 'safe' ? 'next' : 'prev' });
-        }
-        return;
-      }
-      if (isRemoteOkKey(e)) {
-        e.preventDefault();
-        e.stopPropagation();
-        // A held OK never answers — the press that opened the question
-        // must not also answer it.
-        if (e.repeat) return;
-        onEventRef.current({ type: 'activate' });
-      }
-    };
+    const down = (e: KeyboardEvent) => onKeyDown(e);
     // Space activates a <button> on keyup; it was answered on keydown.
-    const onKeyUp = (e: KeyboardEvent) => {
+    const up = (e: KeyboardEvent) => {
       if (isRemoteOkKey(e)) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
-    window.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
     return () => {
-      window.removeEventListener('keydown', onKeyDown, true);
-      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
     };
   }, []);
 
@@ -255,7 +256,7 @@ export function RemoteDialog({
     return () => {
       aliveRef.current = false;
       setTimeout(() => {
-        if (!aliveRef.current) onEventRef.current({ type: 'surface-closed' });
+        if (!aliveRef.current) onSurfaceGone();
       }, 0);
     };
   }, []);
@@ -266,13 +267,14 @@ export function RemoteDialog({
   const Icon = tone === 'danger' ? Power : Info;
 
   return (
-    // The scrim: covers the surface that opened the question. A tap on it is Back.
+    // The scrim: covers the surface that opened the question. A tap on the
+    // scrim itself (not on the card) is Back; the remote's Back is the page's.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       data-edu-remote-dialog={name}
       onClick={(e) => {
         e.stopPropagation();
-        onEventRef.current({ type: 'back' });
+        if (e.target === e.currentTarget) onEvent({ type: 'back' });
       }}
       style={{
         position: 'absolute',
@@ -307,7 +309,6 @@ export function RemoteDialog({
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         data-edu-remote-dialog-card=""
-        onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
           width: k(640),
@@ -393,10 +394,10 @@ export function RemoteDialog({
             type="button"
             data-remote-answer="safe"
             data-remote-parked={focus === 'safe' ? 'true' : undefined}
-            onFocus={() => onEventRef.current({ type: 'focus', answer: 'safe' })}
+            onFocus={() => onEvent({ type: 'focus', answer: 'safe' })}
             onClick={(e) => {
               e.stopPropagation();
-              onEventRef.current({ type: 'choose', answer: 'safe' });
+              onEvent({ type: 'choose', answer: 'safe' });
             }}
             style={answerStyle('safe', focus === 'safe')}
           >
@@ -408,10 +409,10 @@ export function RemoteDialog({
               type="button"
               data-remote-answer="danger"
               data-remote-parked={focus === 'danger' ? 'true' : undefined}
-              onFocus={() => onEventRef.current({ type: 'focus', answer: 'danger' })}
+              onFocus={() => onEvent({ type: 'focus', answer: 'danger' })}
               onClick={(e) => {
                 e.stopPropagation();
-                onEventRef.current({ type: 'choose', answer: 'danger' });
+                onEvent({ type: 'choose', answer: 'danger' });
               }}
               style={answerStyle('danger', focus === 'danger')}
             >

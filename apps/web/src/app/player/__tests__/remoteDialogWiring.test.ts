@@ -133,7 +133,7 @@ describe('an alert always wins', () => {
 describe('it never outlives its menu', () => {
   it('a playbackStopped change that takes its surface away closes it', () => {
     expect(code(PAGE)).toMatch(
-      /if \(s\.open && !remoteSurfaceStillUp\(s, playbackStopped\)\) dispatchRemoteDialog\(\{ type: 'surface-closed' \}\);\s*\}, \[playbackStopped, dispatchRemoteDialog\]\);/,
+      /if \(s\.open && !remoteSurfaceStillUp\(s, playbackStopped\)\) dispatchRemoteDialog\(\{ type: 'surface-closed' \}\);\s*\}, \[playbackStopped, dispatchRemoteDialog, remoteDialogRef\]\);/,
     );
   });
 
