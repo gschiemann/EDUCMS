@@ -245,8 +245,8 @@ class OtaInstallReceiver : BroadcastReceiver() {
 
     /** What a person at the screen has to do — staged (Back menu) vs raised (the dialog is up). */
     internal fun needsTapMessage(target: String, dialogRaised: Boolean): String =
-        if (dialogRaised) "Android's Install dialog for $target is open on the screen — tap Install."
-        else "$target is downloaded and waiting for a person: on the screen press Back, choose Install $target, then tap Install."
+        if (dialogRaised) "Android's Install dialog for $target is open on the screen — select Install (OK on the remote, or tap it)."
+        else "$target is downloaded and waiting for a person: on the screen press Back, choose Install $target, then select Install (OK on the remote, or tap it)."
 
     private fun reportOtaError(context: Context, message: String) {
         try {

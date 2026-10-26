@@ -218,7 +218,7 @@ describe('player app row', () => {
   const pushedAt = '2026-10-16T10:00:00.000Z';
   const after = (min: number) => new Date(Date.parse(pushedAt) + min * 60_000).toISOString();
 
-  it('NEEDS_TAP after the push → "needs an Install tap on the screen", even after a reload', () => {
+  it('NEEDS_TAP after the push → "waiting for someone at the screen", in remote-first words, even after a reload', () => {
     latestVersionPayload = { versionName: '1.1.29', managerVersionName: '1.0.23' };
     renderPopover({
       playerVersion: '1.1.23',
@@ -227,8 +227,12 @@ describe('player app row', () => {
       lastOtaAt: after(3),
     });
     const row = rtl.getByTestId('apk-update-status');
-    expect(within(row).getByText('Needs an Install tap on the screen')).toBeInTheDocument();
-    expect(within(row).getByText(/Press Install now on the screen, then tap Install/)).toBeInTheDocument();
+    expect(within(row).getByText('Waiting for someone at the screen')).toBeInTheDocument();
+    // 2026-10-26 (owner, on site: "why do we say update needs a tap when most aren't touch
+    // screens"): the action AND the place, remote first — never a bare "tap".
+    expect(within(row).getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog \(OK on the remote, or tap it\)\./)).toBeInTheDocument();
+    expect(within(row).queryByText(/tap Install/i)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/needs a tap|Install tap/i)).not.toBeInTheDocument();
     // Not dressed as progress.
     expect(within(row).queryByText(/Updating/)).not.toBeInTheDocument();
   });
@@ -241,7 +245,7 @@ describe('player app row', () => {
       lastOtaState: 'NEEDS_TAP',
       lastOtaAt: after(-5),
     });
-    expect(rtl.queryByText('Needs an Install tap on the screen')).not.toBeInTheDocument();
+    expect(rtl.queryByText('Waiting for someone at the screen')).not.toBeInTheDocument();
   });
 
   it('a push from this session that the screen answered NEEDS_TAP is not stuck on "Updating…"', () => {
@@ -252,9 +256,35 @@ describe('player app row', () => {
         pushState={{ at: Date.now() - 120_000, priorVersion: '1.1.23' }}
       />,
     );
-    expect(rtl.getByText('Needs an Install tap on the screen')).toBeInTheDocument();
+    expect(rtl.getByText('Waiting for someone at the screen')).toBeInTheDocument();
     expect(rtl.getByTestId('apk-push')).toBeEnabled();
     expect(rtl.getByTestId('apk-push')).toHaveTextContent('Push update');
+  });
+
+  it('Device details → Last OTA words NEEDS_TAP itself, never in the player\'s own English "tap Install" line', () => {
+    // An older player reports its own sentence (still "…then tap Install."). The dashboard
+    // shows its own translated wording for NEEDS_TAP so a Spanish or Chinese reader never
+    // gets that line, and nobody is told to tap a panel that has no touch screen.
+    renderPopover({
+      playerVersion: '1.1.23',
+      lastOtaState: 'NEEDS_TAP',
+      lastOtaMessage: 'v1.1.45 is downloaded and waiting for a person: on the screen press Back, choose Install v1.1.45, then tap Install.',
+      lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    fireEvent.click(rtl.getByRole('button', { name: /Device details/ }));
+    expect(rtl.getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog \(OK on the remote, or tap it\)/)).toBeInTheDocument();
+    expect(rtl.queryByText(/then tap Install/)).not.toBeInTheDocument();
+  });
+
+  it('Device details → Last OTA still shows the player\'s own message for every other state', () => {
+    renderPopover({
+      playerVersion: '1.1.23',
+      lastOtaState: 'ERROR',
+      lastOtaMessage: 'Download failed: HTTP 503',
+      lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    fireEvent.click(rtl.getByRole('button', { name: /Device details/ }));
+    expect(rtl.getByText('Download failed: HTTP 503')).toBeInTheDocument();
   });
 
   it('a push answered "already on the latest" settles on "Already on" — no Updating…, no push footer (2026-10-22)', () => {
@@ -326,15 +356,15 @@ describe('player app row', () => {
       expect(rtl.getByTestId('apk-push-facts')).toHaveTextContent('Sent 2 hours ago · offered 2 times · v1.1.41');
     });
 
-    it('held NEEDS_TAP → the tap line, never "Updating…", Push re-offered', () => {
+    it('held NEEDS_TAP → the waiting-for-someone line, never "Updating…", Push re-offered', () => {
       renderPopover(tracked({
         forceApkUpdateHold: 'NEEDS_TAP', forceApkUpdateHoldAt: heldAt, forceApkUpdateOfferCount: 1,
         forceApkUpdateHoldReason: 'device-reported-needs-tap: Android on this screen is waiting…',
         lastOtaState: 'NEEDS_TAP', lastOtaAt: heldAt,
       }));
       const row = rtl.getByTestId('apk-update-status');
-      expect(within(row).getByText('Needs an Install tap on the screen')).toBeInTheDocument();
-      expect(within(row).getByText(/Press Install now on the screen, then tap Install/)).toBeInTheDocument();
+      expect(within(row).getByText('Waiting for someone at the screen')).toBeInTheDocument();
+      expect(within(row).getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog/)).toBeInTheDocument();
       expect(within(row).queryByText(/Updating/)).not.toBeInTheDocument();
       expect(within(row).getByTestId('apk-push-facts')).toHaveTextContent('offered 1 time');
     });
@@ -345,6 +375,7 @@ describe('player app row', () => {
         forceApkUpdateHoldReason: 'did-not-land-unknown-class: v1.1.41 did not install…',
       }));
       expect(rtl.getByText(/Most likely Android on this screen is waiting/)).toBeInTheDocument();
+      expect(rtl.getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog/)).toBeInTheDocument();
     });
 
     it('held STALLED at the offer limit → stalled, how many times, Retry', () => {
@@ -393,7 +424,7 @@ describe('player app row', () => {
         lastOtaState: 'DOWNLOADING', lastOtaProgress: 40, lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
       }));
       expect(rtl.getByText('Downloading… 40%')).toBeInTheDocument();
-      expect(rtl.queryByText('Needs an Install tap on the screen')).not.toBeInTheDocument();
+      expect(rtl.queryByText('Waiting for someone at the screen')).not.toBeInTheDocument();
     });
 
     it('an "up to date" answer to a push that was held back is not "Already on v1.1.23 ✓" on a screen that is behind', () => {

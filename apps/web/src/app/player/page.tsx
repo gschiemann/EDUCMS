@@ -14611,7 +14611,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       stage = { emoji: '🔍', label: 'Verifying download integrity…' };
                       break;
                     case 'INSTALLING':
-                      stage = { emoji: '⚙️', label: 'Installing… (Android prompt may show — tap Install)' };
+                      stage = { emoji: '⚙️', label: 'Installing… (if Android shows an Install dialog, select Install — OK on the remote, or tap it)' };
                       break;
                     case 'INSTALLED':
                       stage = { emoji: '✅', label: `Update complete${verLabel}. Player will restart.` };
@@ -14632,7 +14632,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     // prompt again on its own: say so, and offer the button
                     // that raises it for the person standing here.
                     case 'NEEDS_TAP':
-                      stage = { emoji: '👆', label: `Android needs someone to confirm the update${verLabel}. Press Install now, then tap Install.` };
+                      // The Back menu's button reads "Install v1.1.54" ("Install now"
+                      // when no build is named — see the button below). Remote first:
+                      // most panels are wall-mounted with no touch screen.
+                      stage = { emoji: '👆', label: `Android needs someone to confirm the update${verLabel}. Choose ${targetV ? `Install v${targetV}` : 'Install now'}, then select Install in Android's dialog (OK on the remote, or tap it).` };
                       break;
                     default:
                       stage = /^FAILED_[A-Z0-9_]+$/.test(realState)
@@ -14716,7 +14719,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       <span className="text-4xl shrink-0">{stage.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-base font-bold ${titleColor}`}>
-                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isNeedsTap ? 'Update needs a tap on this screen' : isError ? 'Update issue' : 'Update in progress'}
+                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isNeedsTap ? 'Update waiting for someone at this screen' : isError ? 'Update issue' : 'Update in progress'}
                         </div>
                         <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
                       </div>
@@ -14804,7 +14807,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       Player <span className="font-mono font-bold">v{otaTargetVersion(serverOtaState?.message, latestApkVersion)}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
                       {/* 2026-10-17 — this screen already said Android needs a
                           person to confirm; the update will not install on its own. */}
-                      {serverOtaState?.state === 'NEEDS_TAP' && ' Android on this screen needs someone to confirm: press Install now, then tap Install.'}
+                      {serverOtaState?.state === 'NEEDS_TAP' && " Android on this screen needs someone to confirm the install: choose Install now, then select Install in Android's dialog (OK on the remote, or tap it)."}
                     </div>
                   </div>
                   <button

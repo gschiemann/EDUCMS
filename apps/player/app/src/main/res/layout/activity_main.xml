@@ -118,7 +118,7 @@
                     android:id="@+id/managerGateHint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="When you see the system Install dialog, tap Install."
+                    android:text="When you see the system Install dialog, select Install (OK on the remote, or tap it)."
                     android:textColor="#FBBF24"
                     android:textSize="12sp"
                     android:gravity="center"
