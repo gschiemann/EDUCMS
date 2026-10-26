@@ -91,7 +91,7 @@ test('media: tap / click / Enter / Space / Home / i open nothing and the slidesh
   await pressBack(page);
   await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
   await expect(resume(page)).toBeVisible();
-  await expect(resizeLed(page)).toBeVisible();
+  await expect(resizeLed(page)).toHaveCount(0); // an LCD screen: no "Resize LED area" (2026-10-26)
   await expect(infoCard(page)).toHaveCount(0);
   await pressBack(page);
   await expect(resume(page)).toHaveCount(0);
@@ -126,7 +126,7 @@ test('template: tap / click / Enter / Space / Home / i open nothing and the widg
 
   await pressBack(page);
   await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
-  await expect(resizeLed(page)).toBeVisible();
+  await expect(resizeLed(page)).toHaveCount(0); // an LCD screen: no "Resize LED area" (2026-10-26)
   await expect(infoCard(page)).toHaveCount(0);
   await pressBack(page);
   await expect(resume(page)).toHaveCount(0);
