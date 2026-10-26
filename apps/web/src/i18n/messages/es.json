@@ -6863,6 +6863,8 @@
     "writing": "Escribiendo en la unidad USB… {done}/{total}",
     "doneFolder": "{name} está en la unidad USB. Conéctela a cualquier pantalla vinculada y empezará a reproducirse.",
     "doneZip": "{name} se descargó. Copie el archivo a una unidad USB y conéctela a cualquier pantalla vinculada; no hace falta descomprimirlo.",
+    "doneZipSafari": "{name} está en su carpeta Descargas. Arrastre el archivo a su unidad USB y conéctela a cualquier pantalla vinculada; no hace falta descomprimirlo. Para elegir la unidad USB usted mismo la próxima vez: en Safari, abra Ajustes → General y en «Ubicación de descarga de archivos» elija «Preguntar en cada descarga».",
+    "doneZipFirefox": "{name} está en su carpeta Descargas. Arrastre el archivo a su unidad USB y conéctela a cualquier pantalla vinculada; no hace falta descomprimirlo. Para elegir la unidad USB usted mismo la próxima vez: en Firefox, abra Ajustes → General → Descargas y active «Preguntar siempre dónde guardar los archivos».",
     "failed": "No se pudo preparar la copia USB: {message}",
     "dismiss": "Cerrar",
     "destinationTitle": "Unidad USB",

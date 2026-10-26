@@ -6863,6 +6863,8 @@
     "writing": "正在写入 USB 驱动器… {done}/{total}",
     "doneFolder": "{name} 已写入 USB 驱动器。插入任意已配对的屏幕即可自动播放。",
     "doneZip": "{name} 已下载。将该文件复制到 USB 驱动器，然后插入任意已配对的屏幕即可，无需解压。",
+    "doneZipSafari": "{name} 已在“下载”文件夹中。将文件拖到 USB 驱动器，然后插入任意已配对的屏幕即可，无需解压。下次想自己选择 USB 驱动器：在 Safari 中打开“设置”→“通用”，将“文件下载位置”设为“每次下载时询问”。",
+    "doneZipFirefox": "{name} 已在“下载”文件夹中。将文件拖到 USB 驱动器，然后插入任意已配对的屏幕即可，无需解压。下次想自己选择 USB 驱动器：在 Firefox 中打开“设置”→“常规”→“下载”，开启“总是询问保存文件的位置”。",
     "failed": "无法准备 USB 副本：{message}",
     "dismiss": "关闭",
     "destinationTitle": "USB 驱动器",

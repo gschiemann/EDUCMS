@@ -6863,6 +6863,8 @@
     "writing": "Writing to the USB drive… {done}/{total}",
     "doneFolder": "{name} is on the USB drive. Plug it into any paired screen and it starts playing.",
     "doneZip": "{name} downloaded. Copy the file onto a USB drive and plug it into any paired screen — no unzipping needed.",
+    "doneZipSafari": "{name} is in your Downloads folder. Drag the file onto your USB drive and plug it into any paired screen — no unzipping needed. To pick the USB drive yourself next time: in Safari, open Settings → General and set “File download location” to “Ask for each download”.",
+    "doneZipFirefox": "{name} is in your Downloads folder. Drag the file onto your USB drive and plug it into any paired screen — no unzipping needed. To pick the USB drive yourself next time: in Firefox, open Settings → General → Downloads and turn on “Always ask you where to save files”.",
     "failed": "Couldn't prepare the USB copy: {message}",
     "dismiss": "Dismiss",
     "destinationTitle": "USB drive",
