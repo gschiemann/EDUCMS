@@ -1,7 +1,7 @@
 ---
 title: Uploading and organizing assets
 category: Templates
-updated: 2026-10-11
+updated: 2026-10-26
 excerpt: Manage images, videos, and documents with folders, approval workflows, and file-size best practices.
 ---
 
@@ -31,7 +31,7 @@ Organize with folders (**Assets → New folder**). A few common patterns:
 
 ## Approval workflow
 
-Approval is available on every plan and is a switch you control: **Require approval before content goes live** on **Settings → People & access**. When it is on, an Editor's publish is sent to the review queue instead of going live, and Admins publish directly. Reviewers approve or reject (with a note) from **Reviews** in the sidebar, and approved content can then go live.
+Approval is available on every plan and is a switch you control: **Require approval before content goes live** on **Settings → Team → People**. When it is on, an Editor's publish is sent to the review queue instead of going live, and Admins publish directly. Reviewers approve or reject (with a note) from **Reviews** in the sidebar, and approved content can then go live.
 
 This workflow exists because content on a public screen — a lobby, a hallway, a storefront — deserves a second set of eyes.
 

@@ -1,7 +1,7 @@
 ---
 title: Transmisiones de emergencia y SOS del personal
 category: Emergency System
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Ponga un mensaje urgente encima de lo que muestran sus pantallas — texto, o imágenes, video y sonido — y vea quién puede enviarlo y finalizarlo, qué muestran las pantallas y qué guarda el registro de auditoría.
 ---
 
@@ -79,7 +79,7 @@ La página de transmisión no tiene el interruptor **REAL | SIMULACRO**: cada tr
 
 ## Qué guarda el registro de auditoría
 
-Cada envío y cada finalización agregan una entrada permanente al registro de auditoría. Los administradores lo abren desde **Ajustes → Emergencia → Abrir el registro de auditoría**, pueden filtrarlo y exportarlo como archivo CSV. Las entradas no se pueden editar ni borrar.
+Cada envío y cada finalización agregan una entrada permanente al registro de auditoría. Los administradores lo abren desde **Ajustes → Emergencias → Ver quién hizo qué**, pueden filtrarlo y exportarlo como archivo CSV. Las entradas no se pueden editar ni borrar.
 
 | Entrada | Qué guarda |
 |---|---|

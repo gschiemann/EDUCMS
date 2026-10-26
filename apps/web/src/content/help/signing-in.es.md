@@ -1,7 +1,7 @@
 ---
 title: Iniciar sesión, claves de acceso y verificación en dos pasos
 category: IT & Security
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Su primer inicio de sesión, las claves de acceso en Mac, iPhone o PC con Windows, las apps de autenticación y los códigos de respaldo, cómo entrar desde un dispositivo nuevo y qué hacer si no puede entrar.
 ---
 
@@ -46,7 +46,7 @@ Inicie sesión con la cuenta de su organización. No hay una contraseña de Venu
 
 Con la verificación en dos pasos, la contraseña sola no basta: también confirma con algo que solo usted tiene, ya sea una clave de acceso o un código de una app de autenticación.
 
-**Quién debe usarla.** Cuando un Superadministrador configura la organización con **Doble factor obligatorio** (**Ajustes → Personas y acceso → Política de MFA**), todos los Superadministradores, todos los Administradores y todas las personas autorizadas a enviar alertas de emergencia deben configurarla antes de poder iniciar sesión. Un administrador también puede exigirla a una sola persona con **Exigir 2FA** en la fila de esa persona. Cualquiera puede activarla para sí en **Ajustes → Mi seguridad**.
+**Quién debe usarla.** Cuando un Superadministrador configura la organización con **Doble factor obligatorio** (**Ajustes → Equipo → Personas → Política de MFA**), todos los Superadministradores, todos los Administradores y todas las personas autorizadas a enviar alertas de emergencia deben configurarla antes de poder iniciar sesión. Un administrador también puede exigirla a una sola persona con **Exigir 2FA** en la fila de esa persona. Cualquiera puede activarla para sí en **Mi cuenta → Inicio de sesión y seguridad** (su nombre, arriba a la derecha → **Mi cuenta**).
 
 **Configurarla cuando es obligatoria.** Después de la contraseña, la página de inicio de sesión muestra **Configura la verificación en dos pasos**. Elija una opción:
 
@@ -69,13 +69,13 @@ Una clave de acceso le permite entrar con su cara, su huella o el PIN de su disp
 
 Las claves de acceso guardadas en el Llavero de iCloud (dispositivos Apple) o en el Gestor de contraseñas de Google también aparecen en sus otros dispositivos con la misma cuenta. Una clave de Windows Hello normalmente se queda en ese PC. Puede tener hasta 10 claves de acceso, así que agregue una en cada dispositivo que use.
 
-**Agregar una clave de acceso.** Justo después de iniciar sesión, VenueOS puede preguntarle **¿Iniciar sesión con Face ID o Touch ID la próxima vez?** (en Windows, Windows Hello). Pulse el botón que nombra su dispositivo, por ejemplo **Añadir una clave de acceso para este Mac**, y siga las indicaciones del dispositivo. **Ahora no** vuelve a preguntar otro día; **No volver a preguntar en este dispositivo** deja de preguntar. O bien, en cualquier momento, abra **Ajustes → Mi seguridad**, vaya a **Claves de acceso**, pulse **Añadir una clave de acceso para este …**, confirme su contraseña y siga las indicaciones. En la misma lista puede cambiar el nombre de una clave o eliminarla; eliminarla pide su contraseña. Si una clave de acceso es su primer método de confirmación, VenueOS también le muestra códigos de respaldo: guárdelos.
+**Agregar una clave de acceso.** Justo después de iniciar sesión, VenueOS puede preguntarle **¿Iniciar sesión con Face ID o Touch ID la próxima vez?** (en Windows, Windows Hello). Pulse el botón que nombra su dispositivo, por ejemplo **Añadir una clave de acceso para este Mac**, y siga las indicaciones del dispositivo. **Ahora no** vuelve a preguntar otro día; **No volver a preguntar en este dispositivo** deja de preguntar. O bien, en cualquier momento, abra **Mi cuenta → Inicio de sesión y seguridad**, vaya a **Claves de acceso**, pulse **Añadir una clave de acceso para este …**, confirme su contraseña y siga las indicaciones. En la misma lista puede cambiar el nombre de una clave o eliminarla; eliminarla pide su contraseña. Si una clave de acceso es su primer método de confirmación, VenueOS también le muestra códigos de respaldo: guárdelos.
 
 **Entrar con una clave de acceso.** Pulse **Iniciar sesión con una clave de acceso** en la primera pantalla, o **Usa tu clave de acceso** después de la contraseña, y confirme en su dispositivo. En una computadora, el navegador también puede mostrar un código QR: escanéelo con el teléfono que tiene su clave de acceso (el Bluetooth debe estar activado en ambos).
 
 ## App de autenticación y códigos de respaldo
 
-Para usar una app de autenticación, abra **Ajustes → Mi seguridad**, vaya a **Verificación en dos pasos** y pulse **Activar 2FA**. Escanee el código QR (o escriba la clave de configuración), introduzca el código de 6 dígitos y pulse **Verificar y activar**.
+Para usar una app de autenticación, abra **Mi cuenta → Inicio de sesión y seguridad**, vaya a **Verificación en dos pasos** y pulse **Activar 2FA**. Escanee el código QR (o escriba la clave de configuración), introduzca el código de 6 dígitos y pulse **Verificar y activar**.
 
 **Códigos de respaldo.** La primera vez que configura la verificación en dos pasos, VenueOS muestra 10 códigos de respaldo, una sola vez. Cada código le permite entrar una vez si pierde el teléfono o no puede usar su clave de acceso. Cópielos o descárguelos y guárdelos en un lugar seguro: un gestor de contraseñas, o impresos y bajo llave. **Regenerar códigos de respaldo** (pide su contraseña) crea un juego nuevo, y los códigos anteriores sin usar dejan de funcionar.
 
@@ -97,8 +97,8 @@ Al entrar con un código por correo también recibe un correo de "nuevo inicio d
 | Olvidó su contraseña | En el paso de la contraseña, pulse **¿Olvidaste tu contraseña?** y escriba su correo. El enlace para restablecerla funciona durante una hora. La contraseña nueva cierra la sesión en todos sus dispositivos, y la verificación en dos pasos sigue aplicándose. |
 | "Demasiados intentos de inicio de sesión con este correo" | VenueOS frena el inicio de sesión tras varias contraseñas incorrectas y, después de 20 en 15 minutos, bloquea ese correo durante 15 minutos, incluso con la contraseña correcta. Espere o restablezca su contraseña. |
 | Demasiados códigos incorrectos | Tras 5 códigos incorrectos en un minuto, espere 5 minutos antes de volver a intentarlo. |
-| Perdió el teléfono, sus claves de acceso y sus códigos de respaldo | Pida a un administrador con un rol superior al suyo que abra **Ajustes → Personas y acceso** y pulse **Restablecer 2FA** en su fila. Eso quita su app de autenticación y sus claves de acceso y cierra su sesión. Su contraseña no cambia, y volverá a configurar la verificación en dos pasos en su próximo inicio de sesión. |
-| El correo de su cuenta está mal | Un administrador puede corregirlo con **Cambiar correo** en su fila de **Ajustes → Personas y acceso**. |
+| Perdió el teléfono, sus claves de acceso y sus códigos de respaldo | Pida a un administrador con un rol superior al suyo que abra **Ajustes → Equipo → Personas** y pulse **Restablecer 2FA** en su fila. Eso quita su app de autenticación y sus claves de acceso y cierra su sesión. Su contraseña no cambia, y volverá a configurar la verificación en dos pasos en su próximo inicio de sesión. |
+| El correo de su cuenta está mal | Un administrador puede corregirlo con **Cambiar correo** en su fila de **Ajustes → Equipo → Personas**. |
 | Un enlace de invitación o de configuración venció o ya se usó | Pida uno nuevo a su administrador. |
 | Su organización usa inicio de sesión único | Su contraseña y sus reglas dependen del proveedor de identidad de su organización: contacte a su equipo de TI. |
 | Su cuenta fue desactivada | Solo un administrador puede volver a activarla. |

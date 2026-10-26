@@ -1,7 +1,7 @@
 ---
 title: Branding — make VenueOS yours
 category: Templates
-updated: 2026-07-21
+updated: 2026-10-26
 excerpt: Paste your website and VenueOS pulls your logo, colors, and fonts — then puts them everywhere, from the dashboard to every template.
 ---
 
@@ -11,12 +11,12 @@ Your screens should look like *your* organization, not like software. Branding t
 
 ## Set it up
 
-1. Open **Settings → Brand your CMS → Configure**.
-2. **Paste your website address.** We visit it and pull your logo, brand colors, and fonts automatically.
-3. Review what we found — swap the logo, adjust a color, or pick different fonts if you like.
-4. Save.
+1. Open **Settings → Organization**. It opens on **Logo & colors**.
+2. Press **Update branding**, then **paste your website address** and press **Scan**. We visit it and pull your logo, brand colors, and fonts automatically.
+3. Review what we found — pick a different logo, upload your own, or adjust a color if you like.
+4. Press **Adopt branding**.
 
-No website yet? Skip the paste and set logo, colors, and fonts by hand in the same place.
+No website yet? Upload your logo and choose your colors by hand in the same place.
 
 ## Where your brand shows up
 

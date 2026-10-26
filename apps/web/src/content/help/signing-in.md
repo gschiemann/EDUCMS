@@ -1,7 +1,7 @@
 ---
 title: Signing in, passkeys and two-step sign-in
 category: IT & Security
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Your first sign-in, passkeys on a Mac, iPhone or Windows PC, authenticator apps and backup codes, signing in on a new device, and what to do if you are locked out.
 ---
 
@@ -46,7 +46,7 @@ Sign in with your organization's own account. There is no separate VenueOS passw
 
 With two-step sign-in, a password alone is not enough: you also confirm with something only you have — a passkey, or a code from an authenticator app.
 
-**Who must use it.** When a Super Admin sets the organization to **Two-factor required** (**Settings → People & access → MFA policy**), every Super Admin, every Admin and everyone allowed to send emergency alerts must set it up before they can sign in. An administrator can also require it for one person with **Require 2FA** on that person's row. Anyone can turn it on for themselves under **Settings → My security**.
+**Who must use it.** When a Super Admin sets the organization to **Two-factor required** (**Settings → Team → People → MFA policy**), every Super Admin, every Admin and everyone allowed to send emergency alerts must set it up before they can sign in. An administrator can also require it for one person with **Require 2FA** on that person's row. Anyone can turn it on for themselves under **My account → Sign-in and security** (your name at the top right → **My account**).
 
 **Setting it up when it is required.** After your password, the sign-in page shows **Set up two-factor**. Choose one:
 
@@ -69,13 +69,13 @@ A passkey lets you sign in with your face, your fingerprint or your device's PIN
 
 Passkeys saved in iCloud Keychain (Apple devices) or Google Password Manager also appear on your other devices signed in to the same account. A Windows Hello passkey normally stays on that PC. You can have up to 10 passkeys, so add one on each device you use.
 
-**Add a passkey.** Right after you sign in, VenueOS may ask **Sign in with Face ID or Touch ID next time?** (on Windows, Windows Hello). Press the button that names your device — for example **Add a passkey for this Mac** — and follow your device's prompt. **Not now** asks again another time; **Don't ask on this device** stops asking. Or, at any time, open **Settings → My security**, go to **Passkeys**, press **Add a passkey for this …**, confirm your password and follow the prompt. Rename or remove passkeys in the same list; removing one asks for your password. If a passkey is your first way to confirm, VenueOS also shows backup codes — save them.
+**Add a passkey.** Right after you sign in, VenueOS may ask **Sign in with Face ID or Touch ID next time?** (on Windows, Windows Hello). Press the button that names your device — for example **Add a passkey for this Mac** — and follow your device's prompt. **Not now** asks again another time; **Don't ask on this device** stops asking. Or, at any time, open **My account → Sign-in and security**, go to **Passkeys**, press **Add a passkey for this …**, confirm your password and follow the prompt. Rename or remove passkeys in the same list; removing one asks for your password. If a passkey is your first way to confirm, VenueOS also shows backup codes — save them.
 
 **Sign in with a passkey.** Press **Sign in with a passkey** on the first screen, or **Use your passkey** after your password, and confirm on your device. On a computer, your browser can also show a QR code: scan it with the phone that holds your passkey (Bluetooth must be on for both).
 
 ## Authenticator app and backup codes
 
-To use an authenticator app, open **Settings → My security**, go to **Two-factor authentication** and press **Enable 2FA**. Scan the QR code (or type the setup key), enter the 6-digit code and press **Verify & turn on**.
+To use an authenticator app, open **My account → Sign-in and security**, go to **Two-step sign-in** and press **Enable 2FA**. Scan the QR code (or type the setup key), enter the 6-digit code and press **Verify & turn on**.
 
 **Backup codes.** When you first set up two-step sign-in, VenueOS shows 10 backup codes — once, and never again. Each code signs you in a single time if you lose your phone or can't use your passkey. Copy or download them and keep them somewhere safe: a password manager, or printed and locked away. **Regenerate backup codes** (it asks for your password) makes a new set, and the old unused codes stop working.
 
@@ -97,8 +97,8 @@ A sign-in with an emailed code also sends you a "new sign-in" email, so you will
 | You forgot your password | On the password step, press **Forgot password?** and enter your email. The reset link works for one hour. A new password signs you out on every device, and two-step sign-in still applies. |
 | "Too many sign-in attempts for this email" | VenueOS slows down sign-in after repeated wrong passwords and, after 20 in 15 minutes, pauses that email for 15 minutes — even with the right password. Wait, or reset your password. |
 | Too many wrong codes | After 5 wrong codes in a minute, wait 5 minutes before trying again. |
-| You lost your phone, your passkeys and your backup codes | Ask an administrator with a higher role than yours to open **Settings → People & access** and press **Reset 2FA** on your row. It removes your authenticator app and passkeys and signs you out. Your password stays the same, and you set up two-step sign-in again at your next sign-in. |
-| The email on your account is wrong | An administrator can fix it with **Change email** on your row in **Settings → People & access**. |
+| You lost your phone, your passkeys and your backup codes | Ask an administrator with a higher role than yours to open **Settings → Team → People** and press **Reset 2FA** on your row. It removes your authenticator app and passkeys and signs you out. Your password stays the same, and you set up two-step sign-in again at your next sign-in. |
+| The email on your account is wrong | An administrator can fix it with **Change email** on your row in **Settings → Team → People**. |
 | An invitation or setup link has expired or was already used | Ask your administrator for a new one. |
 | Your organization uses single sign-on | Your password and its rules live with your organization's identity provider — contact your IT team. |
 | Your account was disabled | Only an administrator can turn it back on. |

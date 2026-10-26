@@ -48,8 +48,42 @@ describe('help articles — copy that must stay true', () => {
     const invite = articles.find((a) => a.slug === 'invite-users')!;
     expect(invite.body).not.toMatch(/Bulk invite/);
     for (const a of articles) {
-      expect(a.body).not.toMatch(/Settings → (Users|Team)\b/);
+      expect(a.body).not.toMatch(/Settings → Users\b/);
     }
+  });
+
+  // Settings is six areas since 2026-10-26 (Organization · Emergency · Team ·
+  // Connections · Plan & billing · Advanced), and each person's own sign-in
+  // lives in My account. An article that still names a retired place sends
+  // the reader looking for a page name that is no longer on screen.
+  it('names only Settings places that exist (six areas + My account)', () => {
+    const retired = [
+      /People & access/,
+      /My security/,
+      /Developer & audit/,
+      /Settings → AI provider/,
+      /Brand your CMS →/,
+      /Player & offline/,
+      /Settings → Integrations\b/,
+      /Settings → Point of Sale/,
+      /Settings → Billing\b/,
+      /Settings → Support access/,
+      /Panic Button Integrations/,
+      /Personas y acceso/,
+      /Mi seguridad/,
+      /人员与访问/,
+      /我的安全/,
+    ];
+    for (const a of articles) {
+      for (const re of retired) expect({ slug: a.slug, retired: String(re), found: re.test(a.body) }).toEqual({ slug: a.slug, retired: String(re), found: false });
+    }
+  });
+
+  it('never says an alert type with no content of its own sends nothing (every type has a standard message)', () => {
+    for (const a of articles) expect(a.body).not.toMatch(/sends nothing/i);
+    const em = articles.find((a) => a.slug === 'emergency-system')!;
+    expect(em.body).toMatch(/standard message/);
+    expect(em.body).toMatch(/Locks, lights, out of sight/);
   });
 
   it('says one thing about pairing: the screen shows the code, you type it in the dashboard', () => {

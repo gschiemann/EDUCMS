@@ -1,7 +1,7 @@
 ---
 title: Delegating panic-button access
 category: Emergency System
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Give specific non-admin staff the ability to trigger emergencies without handing them the admin keys.
 ---
 
@@ -23,7 +23,7 @@ The capability is granted **per person**, not through a role — triggering an e
 
 To turn it on:
 
-1. Go to **Settings → People & access**.
+1. Go to **Settings → Team → People**.
 2. Find the person's row. Each **Editor** you manage has an **Emergency alerts** switch.
 3. Tap the switch and confirm. The person can trigger alerts the next time they sign in.
 
@@ -48,6 +48,6 @@ A person with the capability sees the Emergency button in their dashboard, can u
 
 ## Revoking access
 
-Turn the **Emergency alerts** switch off on the same person's row under **Settings → People & access**, and confirm. Revoking is more than hiding a button: the capability is carried inside the person's signed session, so revoking it also **ends that person's existing sessions**. A session still holding the old permission stops working instead of keeping it until it would have expired. The revoke is audit-logged, same as the grant.
+Turn the **Emergency alerts** switch off on the same person's row under **Settings → Team → People**, and confirm. Revoking is more than hiding a button: the capability is carried inside the person's signed session, so revoking it also **ends that person's existing sessions**. A session still holding the old permission stops working instead of keeping it until it would have expired. The revoke is audit-logged, same as the grant.
 
-There is no organization-wide "revoke everyone's panic access" switch today. During a compromised-credentials incident, **Disable** the affected accounts under **Settings → People & access** — disabling signs them out immediately and preserves their audit history.
+There is no organization-wide "revoke everyone's panic access" switch today. During a compromised-credentials incident, **Disable** the affected accounts under **Settings → Team → People** — disabling signs them out immediately and preserves their audit history.

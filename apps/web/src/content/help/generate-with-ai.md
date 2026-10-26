@@ -1,7 +1,7 @@
 ---
 title: Designing with AI
 category: AI Studio
-updated: 2026-10-12
+updated: 2026-10-26
 excerpt: Describe a board in a sentence and pick from AI drafts, write copy with the sparkle button, and generate images — plus how AI keys and limits work.
 ---
 
@@ -53,9 +53,9 @@ In **Assets**, click **Generate with AI**, describe the image, and choose square
 
 **Free trial.** Every 14-day trial includes AI so you can try it: **2 board designs and 2 images** for the whole trial.
 
-**Without the AI plan**, AI buttons offer **Add AI** (Settings → Billing — one click, prorated) or your own key. You can turn AI on or off on the Billing page at any time.
+**Without the AI plan**, AI buttons offer **Add AI** (Settings → Plan & billing — one click, prorated) or your own key. You can turn AI on or off on the Billing page at any time.
 
-**Or bring your own key.** An Admin or Super Admin can add a key under **Settings → AI provider**:
+**Or bring your own key.** An Admin or Super Admin can add a key under **Settings → Connections → AI**:
 
 1. Pick a provider — Anthropic, OpenAI or Google (each option shows where to get a key).
 2. Paste the API key, choose a model, and click **Test & save**. We test the key before saving, so a typo fails here instead of later.

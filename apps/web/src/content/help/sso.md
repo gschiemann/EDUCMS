@@ -1,7 +1,7 @@
 ---
 title: Setting up single sign-on (SSO)
 category: SSO
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Let staff sign in with the account they already use — Google Workspace, Microsoft Entra ID, Okta, or any OIDC identity provider.
 ---
 
@@ -20,7 +20,7 @@ VenueOS connects to any **OpenID Connect (OIDC)** identity provider. That covers
 ## Connect your identity provider
 
 1. In your IdP, create a new **OIDC web application**. Use the **redirect URI** shown on our settings page (step 2) — it must match exactly, including `https`.
-2. Open **Settings → People & access → Manage SSO** in VenueOS. Your workspace's redirect URI and identifiers are there ready to copy.
+2. Open **Settings → Team → Single sign-on** in VenueOS. Your workspace's redirect URI and identifiers are there ready to copy.
 3. Paste in from your IdP: the **Issuer URL**, **Client ID**, and **Client Secret**.
 4. Optionally restrict sign-ins to your email domain (e.g. `yourcompany.com`) and choose the **default role** new SSO users receive.
 5. Save, then test it from the login page.
@@ -32,10 +32,10 @@ On the login page, staff type their work email. When it belongs to a domain your
 ## Roles and provisioning
 
 - First-time SSO users are created automatically with the **default role** you chose. Prefer invite-only? Turn auto-provisioning off in the same settings.
-- Adjust any individual any time in **Settings → People & access**.
+- Adjust any individual any time in **Settings → Team → People**.
 
 ## Troubleshooting
 
 - **"SSO is not enabled" on the login page** — the organization short name was typed differently than your workspace's, or SSO hasn't been saved yet.
 - **Redirect error inside your IdP** — the redirect URI in the IdP app doesn't exactly match the one on our settings page.
-- **Signed in, wrong permissions** — check the default role under **Settings → People & access → Manage SSO**, then adjust the person on **Settings → People & access**.
+- **Signed in, wrong permissions** — check the default role under **Settings → Team → Single sign-on**, then adjust the person on **Settings → Team → People**.

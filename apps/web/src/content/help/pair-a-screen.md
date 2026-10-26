@@ -1,7 +1,7 @@
 ---
 title: How to pair a new screen
 category: Screens
-updated: 2026-10-11
+updated: 2026-10-26
 excerpt: Turn an Android display, media player, Chromebook, or any browser-capable screen into a VenueOS display in a few minutes.
 ---
 
@@ -57,7 +57,7 @@ A screen needs to reach **three separate hosts** over port 443. Allow all three,
 Notes for IT:
 
 - The API host is a different address from the dashboard. A filter that allows the dashboard but blocks the API leaves the screen on "Connecting…". Blocking `wss://` on it only slows alerts down (the screen falls back to polling), but it should be allowed.
-- Your account's exact API address is also shown to administrators under **Settings → Developer & audit → System & build → API Endpoint**.
+- Your account's exact API address is also shown to administrators under **Settings → Advanced → API keys & webhooks → About this workspace → API address**.
 - No inbound ports need opening; screens only make outbound connections.
 - If you use content from other sources (RSS feeds, weather, web pages), allow those hosts too.
 - The same list is in [the kiosk hardening guide](/help/kiosk-hardening).

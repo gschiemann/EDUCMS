@@ -1,7 +1,7 @@
 ---
 title: Emergency broadcasts and staff SOS
 category: Emergency System
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: Put an urgent message over whatever your screens are showing — text, or pictures, video and sound — and learn who can send and end it, what screens show and what the audit log records.
 ---
 
@@ -79,7 +79,7 @@ The Broadcast page has no **LIVE | DRILL** switch: every broadcast is real, and 
 
 ## What the audit log records
 
-Every send and every clear adds a permanent entry to the audit log. Admins open it from **Settings → Emergency → Open the audit log**, can filter it and can export it as a CSV file. Entries can't be edited or deleted.
+Every send and every clear adds a permanent entry to the audit log. Admins open it from **Settings → Emergency → See who did what**, can filter it and can export it as a CSV file. Entries can't be edited or deleted.
 
 | Entry | What it records |
 |---|---|

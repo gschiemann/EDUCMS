@@ -1,7 +1,7 @@
 ---
 title: Getting started with VenueOS
 category: Getting Started
-updated: 2026-10-22
+updated: 2026-10-26
 excerpt: A 10-minute walkthrough from creating your workspace to showing content on your first screen.
 ---
 
@@ -43,7 +43,7 @@ Review and create it. Your screens pick up the change within seconds over their 
 
 ## 5. Next steps
 
-- Invite colleagues under **Settings → People & access**
+- Invite colleagues under **Settings → Team → People**
 - Add a passkey so signing in takes one tap — see [Signing in, passkeys and two-step sign-in](/help/signing-in)
 - Enable SSO with Google or Microsoft — see [the SSO guide](/help/sso)
 - Read the [emergency system overview](/help/emergency-system) before giving anyone panic-trigger access
