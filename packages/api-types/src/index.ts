@@ -126,6 +126,7 @@ import { z } from 'zod';
 // The Concierge's POS selection + website POS detection (2026-09-22) — defined
 // beside the rest of the POS-aware Concierge contract, used by the chat schema.
 import { ConciergePosSelectionSchema, ConciergeDetectedPosSchema } from './concierge-pos';
+import { CUSTOM_MESSAGE_MAX_SCREENS } from './custom-message';
 
 export const ScopeType = z.enum(['tenant', 'group', 'device']);
 export type ScopeType = z.infer<typeof ScopeType>;
@@ -230,8 +231,22 @@ export const BroadcastInputSchema = z
     severity: BroadcastSeverity.default('WARN'),
     durationMs: z.number().int().positive().max(24 * 60 * 60 * 1000).optional(),
     expiresAt: EpochSecondsOrIso.optional(),
+    /**
+     * 2026-10-26 — "pick displays if i want, and not have to hit them all."
+     * ADDITIVE: when present, the message goes to EXACTLY these screens (each
+     * pane of a double-sided display included) and to nobody else; absent, the
+     * request is byte-for-byte what every client has always sent. `scopeType`
+     * must be 'tenant' and `scopeId` the sender's own organisation — it names
+     * who is sending, not who receives. Every id is checked against the
+     * caller's authority before anything is written.
+     */
+    screenIds: z.array(Id).min(1).max(CUSTOM_MESSAGE_MAX_SCREENS).optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.screenIds === undefined || v.scopeType === 'tenant', {
+    message: 'screenIds can only be sent with scopeType "tenant"',
+    path: ['screenIds'],
+  });
 export type BroadcastInput = z.infer<typeof BroadcastInputSchema>;
 
 export const MediaAlertInputSchema = z
@@ -1195,3 +1210,6 @@ export * from './customer-activity';
 // what counts as a valid IANA id, shared by the API (manifest, list, PUT) and
 // the dashboard (the picker and the "device disagrees" note).
 export * from './time-zone';
+
+// Custom message (2026-10-26) — Info / Critical display mapping + the screen-list cap.
+export * from './custom-message';
