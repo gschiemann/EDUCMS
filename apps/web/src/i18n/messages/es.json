@@ -7019,7 +7019,7 @@
     "previewLabel": "Lo que muestran las pantallas para {label}",
     "standardCaption": "Las pantallas muestran esto hasta que agregues tu propia imagen o video.",
     "meaning": "En las pantallas aparece en inglés. Significa",
-    "orientationLabel": "Forma de la pantalla",
+    "orientationLabel": "Forma de la pantalla para {label}",
     "landscape": "Horizontal",
     "portrait": "Vertical",
     "addOwn": "Agrega tu propia imagen o video (opcional)",

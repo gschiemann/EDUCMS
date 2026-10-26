@@ -223,7 +223,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
           emergency trigger time (and falls back to the other if
           only one is configured), so this toggle is just an authoring
           switch; operators don't choose "which one to send." */}
-      <div className="grid grid-cols-2 w-full min-w-0 bg-white border border-slate-200 rounded-lg p-0.5 text-[10px]" role="tablist" aria-label={t('orientationLabel')}>
+      <div className="grid grid-cols-2 w-full min-w-0 bg-white border border-slate-200 rounded-lg p-0.5 text-[10px]" role="tablist" aria-label={t('orientationLabel', { label })}>
         <button
           type="button"
           role="tab"

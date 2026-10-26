@@ -89,14 +89,18 @@ test.describe('Settings → Emergency', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Emergency', exact: true })).toBeVisible();
     await expect(page.locator('section[id^="emergency-"] h1')).toHaveCount(0);
 
-    // §7.5 content order, by anchor id.
+    // §7.5 content order, by anchor id — plus the Settings Phase 1 sections
+    // (2026-10-26): "Ready in two steps" first, and the practice-drill link
+    // (a link to the Emergency page, never a send control) before History.
     const ids = await page.locator('section[id^="emergency-"]').evaluateAll((els) => els.map((e) => e.id));
     expect(ids).toEqual([
+      'emergency-setup',
       'emergency-readiness',
       'emergency-enabled',
       'emergency-delivery',
       'emergency-content',
       'emergency-coverage',
+      'emergency-practice',
       'emergency-history',
     ]);
 
@@ -104,9 +108,13 @@ test.describe('Settings → Emergency', () => {
     await expect(page.locator('#emergency-enabled').getByText('Emergency alerts are on')).toBeVisible();
     await expect(page.getByRole('button', { name: /turn off emergency alerts/i })).toBeVisible();
 
-    // Context rail (≥1280px) carries per-type readiness and effective scope.
-    await expect(page.getByText('Alert content', { exact: true })).toBeVisible();
-    await expect(page.getByText('Effective scope', { exact: true })).toBeVisible();
+    // The context modules (per-type readiness, effective scope) open from
+    // "Details" since Settings Phase 1 (2026-10-26) — the old right-hand rail
+    // took 260 px of the editor on a 1325 px screen.
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
+    const details = page.getByRole('dialog', { name: 'More about this page' });
+    await expect(details.getByText('Alert content', { exact: true })).toBeVisible();
+    await expect(details.getByText('Effective scope', { exact: true })).toBeVisible();
 
     // Item 6 of §7.5: no drill/test control exists server-side, so none renders.
     await expect(page.getByRole('button', { name: /drill|send a test|run a test/i })).toHaveCount(0);
@@ -154,7 +162,8 @@ for (const width of [1280, 1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     await mockApi(page, { vertical: 'GYM', emergencyEnabled: true, locked: false });
     await page.goto(PAGE_URL);
-    const tabs = page.getByRole('tablist', { name: 'Emergency content orientation' });
+    // Each card's tablist names its alert type ("Screen shape for Lockdown").
+    const tabs = page.getByRole('tablist', { name: /^Screen shape for / });
     await expect(tabs).toHaveCount(6);
     for (const tablist of await tabs.all()) {
       await tablist.scrollIntoViewIfNeeded();

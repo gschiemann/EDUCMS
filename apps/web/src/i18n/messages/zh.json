@@ -7019,7 +7019,7 @@
     "previewLabel": "{label}时屏幕显示的内容",
     "standardCaption": "在您添加自己的图片或视频之前，屏幕会显示此内容。",
     "meaning": "屏幕上以英文显示，意思是",
-    "orientationLabel": "屏幕方向",
+    "orientationLabel": "{label}的屏幕方向",
     "landscape": "横屏",
     "portrait": "竖屏",
     "addOwn": "添加您自己的图片或视频（可选）",

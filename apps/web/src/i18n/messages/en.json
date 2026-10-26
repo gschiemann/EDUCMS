@@ -7019,7 +7019,7 @@
     "previewLabel": "What screens show for {label}",
     "standardCaption": "Screens show this until you add your own picture or video.",
     "meaning": "On screens it is in English. It means",
-    "orientationLabel": "Screen shape",
+    "orientationLabel": "Screen shape for {label}",
     "landscape": "Landscape",
     "portrait": "Portrait",
     "addOwn": "Add your own picture or video (optional)",
