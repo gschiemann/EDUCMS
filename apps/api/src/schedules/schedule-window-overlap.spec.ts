@@ -11,7 +11,10 @@ import {
   FALLBACK_PRIORITY,
   isAlwaysOn,
   isFallbackRule,
+  isTimeLimited,
+  keepsAsFallback,
   shouldDisplace,
+  START_SLACK_MS,
   windowsCollide,
 } from './schedule-window-overlap';
 
@@ -76,5 +79,60 @@ describe('shouldDisplace', () => {
   it('publishing the fallback stands down NOTHING', () => {
     expect(shouldDisplace(w(null, '06:00', '10:00'), { priority: FALLBACK_PRIORITY })).toBe(false);
     expect(shouldDisplace({}, { priority: FALLBACK_PRIORITY })).toBe(false);
+  });
+});
+
+// Launch QA U15 (2026-10-24). The web port (`playlistOps.isTimeLimited`) is
+// pinned by the same cases in screenConflicts.test.ts.
+describe('isTimeLimited — does a rule cover only part of the time?', () => {
+  const NOW = Date.parse('2026-10-24T12:00:00Z');
+
+  it('a day/time window is time-limited', () => {
+    expect(isTimeLimited({ daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' }, NOW)).toBe(true);
+    expect(isTimeLimited({ timeStart: '06:00', timeEnd: '10:00' }, NOW)).toBe(true);
+    expect(isTimeLimited({ daysOfWeek: 'Sat,Sun' }, NOW)).toBe(true);
+  });
+
+  it('an end date is time-limited (the rule stops by itself)', () => {
+    expect(isTimeLimited({ endTime: '2026-12-31T23:59:59Z' }, NOW)).toBe(true);
+    expect(isTimeLimited({ endTime: new Date('2026-12-31T23:59:59Z') }, NOW)).toBe(true);
+  });
+
+  it('a start still ahead is time-limited; "now" (within a minute of slack) is not', () => {
+    expect(isTimeLimited({ startTime: new Date(NOW + 2 * START_SLACK_MS).toISOString() }, NOW)).toBe(true);
+    expect(isTimeLimited({ startTime: new Date(NOW + START_SLACK_MS / 2).toISOString() }, NOW)).toBe(false);
+    expect(isTimeLimited({ startTime: new Date(NOW - 60_000).toISOString() }, NOW)).toBe(false);
+  });
+
+  it('no window, no end, a past start → always on', () => {
+    expect(isTimeLimited({}, NOW)).toBe(false);
+    expect(isTimeLimited({ startTime: '2026-01-01T00:00:00Z', endTime: null }, NOW)).toBe(false);
+    expect(isTimeLimited({ startTime: 'not a date' }, NOW)).toBe(false);
+  });
+});
+
+describe('keepsAsFallback — keep the always-on playlist instead of switching it off', () => {
+  const SCHOOL = { daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00', priority: 0 };
+
+  it('an always-on replace rule under a time-limited publish is kept', () => {
+    expect(keepsAsFallback({ priority: 0, mode: 'replace' }, SCHOOL)).toBe(true);
+    expect(keepsAsFallback({}, SCHOOL)).toBe(true);
+  });
+
+  it('a windowed competitor is not kept (an overlap is still a replace)', () => {
+    expect(keepsAsFallback({ timeStart: '11:00', timeEnd: '13:00' }, SCHOOL)).toBe(false);
+  });
+
+  it('an always-on publish keeps nothing — two always-on playlists cannot share a screen', () => {
+    expect(keepsAsFallback({}, { priority: 0 })).toBe(false);
+  });
+
+  it('an append-mode competitor is not kept, and the existing fallback is not touched again', () => {
+    expect(keepsAsFallback({ mode: 'append' }, SCHOOL)).toBe(false);
+    expect(keepsAsFallback({ priority: FALLBACK_PRIORITY }, SCHOOL)).toBe(false);
+  });
+
+  it('publishing the fallback itself keeps (and displaces) nothing', () => {
+    expect(keepsAsFallback({}, { priority: FALLBACK_PRIORITY, endTime: '2026-12-31T00:00:00Z' })).toBe(false);
   });
 });

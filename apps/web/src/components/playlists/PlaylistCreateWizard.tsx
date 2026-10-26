@@ -156,7 +156,8 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // One screen, two playlists — the shared rule, so the wizard asks the same
 // question as the Add-screens dialog, the publish sheet and the on/off toggle
 // rather than growing a fourth hand-rolled copy of it.
-import { describeScreenConflicts, findScreenConflicts } from '@/components/playlists/v1/playlistOps';
+import { describeScreenConflicts, findScreenConflicts, isTimeLimited } from '@/components/playlists/v1/playlistOps';
+import { askScreenConflicts } from '@/components/playlists/v1/conflictPrompt';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { websitePreviewUrl } from '@/lib/website-preview';
@@ -243,8 +244,18 @@ interface Props {
     id: string; playlistId: string;
     screenId?: string | null; screenGroupId?: string | null; isActive?: boolean | null;
     daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null;
+    // 2026-10-24 (U15) — the fallback tier (always-on at a negative priority)
+    // is never a conflict, and only replace-mode always-on rules are kept.
+    priority?: number | null; mode?: string | null;
   }>;
 }
+
+/**
+ * The id a playlist that does not exist YET is checked under (launch QA U14):
+ * the conflict question is asked before the playlist row is created, so
+ * nothing can be "this playlist" — and no real row has this id.
+ */
+const NEW_PLAYLIST_ID = '__new-playlist__';
 
 // ─── Small helpers ─────────────────────────────────────────────────────
 
@@ -535,6 +546,11 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
 
   // Submit lifecycle
   const [creating, setCreating] = useState(false);
+  // The "one screen, two playlists" question is open (launch QA U14): the
+  // wizard stays busy (nothing behind the question is clickable) but the
+  // Create button keeps its own label — nothing is being created yet, and a
+  // "Creating…" spinner behind the question read as if Cancel came too late.
+  const [askingConflict, setAskingConflict] = useState(false);
   const [enterAnim, setEnterAnim] = useState(false);
 
   // Hooks
@@ -549,6 +565,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const user = useUIStore((s) => s.user);
   const canPublishCompany = user?.role === 'SUPER_ADMIN' || user?.role === 'DISTRICT_ADMIN';
   const tc = useTranslations('companyPublish');
+  // The "one screen, two playlists" question, in the operator's language.
+  const tConflict = useTranslations('playlistConflict');
   const fleetQuery = useFleetOperations({ enabled: open && canPublishCompany });
   const publishToFleet = usePublishToFleet();
   // Never reuse a previous tenant's cached company payload during a switch.
@@ -1059,6 +1077,93 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     if (reachBlocked || fleetTemplateBlocked) return;
     setCreating(true);
     let savedForRecovery: Parameters<Props['onCreated']>[0] | null = null;
+
+    // The rule's dates and window, decided once: the conflict question below
+    // and the schedules written later must describe the SAME rule.
+    const computeStartTime = (): string => {
+      if (!schedStartDate) return new Date().toISOString();
+      const tod = activateImmediately ? '00:00' : schedTimeStart || '00:00';
+      return new Date(`${schedStartDate}T${tod}:00`).toISOString();
+    };
+    const computeEndTime = (): string | undefined => {
+      if (!schedEndDate) return undefined;
+      const tod = activateImmediately ? '23:59' : schedTimeEnd || '23:59';
+      return new Date(`${schedEndDate}T${tod}:59`).toISOString();
+    };
+    const ruleStartTime = computeStartTime();
+    const ruleEndTime = computeEndTime();
+    const ruleWindow = activateImmediately
+      ? {}
+      : { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd };
+    // Screens covered by a picked group publish via the GROUP schedule, so
+    // don't ALSO emit a per-screen row for them (avoids double-scheduling).
+    const coveredScreenIds = new Set<string>();
+    for (const g of (screenGroups || [])) {
+      if (selectedGroupIds.has(g.id)) {
+        (g.screens || []).forEach((s: any) => { if (s?.id) coveredScreenIds.add(s.id); });
+      }
+    }
+
+    // ── One screen, two playlists — asked BEFORE anything is written ──────
+    // (launch QA U14, 2026-10-24). This used to run AFTER the playlist row was
+    // created, so "Cancel" on "Replace on N screens?" left an unassigned
+    // playlist behind — three cancels, three orphan "QA Replace Cancel"
+    // playlists — while the button read as "nothing happened". Now Cancel
+    // returns to Review with nothing created; the playlist does not exist yet,
+    // so nothing can conflict with it (NEW_PLAYLIST_ID matches no row).
+    //
+    // The rule is time-aware (Greg, 2026-09-16: "breakfast, lunch, dinner with
+    // different schedules but they cant be on at the same time"): a dinner
+    // playlist beside a breakfast one is silent; an overlap asks. And since
+    // launch QA U15: a TIME-LIMITED playlist (a window, an end date or a later
+    // start) landing on a screen that plays an ALWAYS-ON one asks "Keep both"
+    // (the default — the always-on one fills the other hours) or "Replace
+    // everything".
+    let replaceAlwaysOn = false;
+    const ask = async (...args: Parameters<typeof askScreenConflicts>) => {
+      setAskingConflict(true);
+      try {
+        return await askScreenConflicts(...args);
+      } finally {
+        setAskingConflict(false);
+      }
+    };
+    if (fleetPublish) {
+      const conflicts = findScreenConflicts({
+        targetScreenIds: fleetTargetIds,
+        windows: [{}],
+        excludePlaylistId: NEW_PLAYLIST_ID,
+        playlists: (fleet?.operations?.playlists ?? []) as never,
+        schedules: (fleet?.operations?.schedules ?? []) as never,
+        screens: (screens || []) as never,
+        groups: (screenGroups || []) as never,
+      });
+      const answer = await ask(
+        describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens', { t: tConflict }),
+        { cancelLabel: tConflict('cancel') },
+      );
+      if (!answer.proceed) { setCreating(false); return; }
+    } else if ((selectedScreenIds.size > 0 || selectedGroupIds.size > 0) && playlists && allSchedules) {
+      const conflicts = findScreenConflicts({
+        targetScreenIds: [...coveredScreenIds, ...Array.from(selectedScreenIds)],
+        windows: [ruleWindow],
+        limited: isTimeLimited({ ...ruleWindow, startTime: ruleStartTime, endTime: ruleEndTime ?? null }),
+        excludePlaylistId: NEW_PLAYLIST_ID,
+        playlists: playlists as never,
+        schedules: allSchedules as never,
+        screens: (screens || []) as never,
+        groups: (screenGroups || []) as never,
+      });
+      const answer = await ask(
+        describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens', { t: tConflict }),
+        // An Editor's publish is a draft; its approval always keeps the
+        // always-on playlist, so "Replace everything" is not offered there.
+        { cancelLabel: tConflict('cancel'), allowReplaceEverything: !willSubmitForReview },
+      );
+      if (!answer.proceed) { setCreating(false); return; }
+      replaceAlwaysOn = answer.replaceAlwaysOn;
+    }
+
     try {
       // 1. Create the playlist row.
       const body: { name: string; templateId?: string } = { name: name.trim() };
@@ -1155,21 +1260,6 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       let draftScheduleIds: string[] = [];
       if (fleetPublish) {
         savedForRecovery = { id: playlistId, name: created.name || name.trim(), templateId: created.templateId ?? null, items: editorItems };
-        const conflicts = findScreenConflicts({
-          targetScreenIds: fleetTargetIds,
-          windows: [{}],
-          excludePlaylistId: playlistId,
-          playlists: (fleet?.operations?.playlists ?? []) as never,
-          schedules: (fleet?.operations?.schedules ?? []) as never,
-          screens: (screens || []) as never,
-          groups: (screenGroups || []) as never,
-        });
-        const prompt = describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens');
-        if (prompt && !await appConfirm({ title: prompt.title, message: prompt.message, tone: 'warn', confirmLabel: prompt.confirmLabel })) {
-          setCreating(false);
-          onCreated(savedForRecovery);
-          return;
-        }
         const result = await publishToFleet.mutateAsync({ playlistId, screenIds: fleetTargetIds });
         qc.invalidateQueries({ queryKey: ['schedules'] });
         qc.invalidateQueries({ queryKey: ['screens', 'fleet'] });
@@ -1196,20 +1286,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           tone: failures.length ? 'warn' : 'info',
         });
       } else if (selectedScreenIds.size > 0 || selectedGroupIds.size > 0) {
-        const computeStartTime = (): string => {
-          if (!schedStartDate) return new Date().toISOString();
-          const tod = activateImmediately ? '00:00' : schedTimeStart || '00:00';
-          return new Date(`${schedStartDate}T${tod}:00`).toISOString();
-        };
-        const computeEndTime = (): string | undefined => {
-          if (!schedEndDate) return undefined;
-          const tod = activateImmediately ? '23:59' : schedTimeEnd || '23:59';
-          return new Date(`${schedEndDate}T${tod}:59`).toISOString();
-        };
         const base = {
           playlistId,
-          startTime: computeStartTime(),
-          endTime: computeEndTime(),
+          startTime: ruleStartTime,
+          endTime: ruleEndTime,
           daysOfWeek: !activateImmediately ? schedDays.join(',') : undefined,
           timeStart: !activateImmediately ? schedTimeStart : undefined,
           timeEnd: !activateImmediately ? schedTimeEnd : undefined,
@@ -1221,15 +1301,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           // Editor's rows are still staged inactive server-side by the
           // publish-review gate regardless of this flag.
           isActive: true,
+          // Launch QA U15 — only when the operator chose "Replace everything";
+          // the default keeps an always-on playlist as the fallback.
+          ...(replaceAlwaysOn ? { replaceAlwaysOn: true } : {}),
         };
-        // Screens covered by a picked group publish via the GROUP schedule, so
-        // don't ALSO emit a per-screen row for them (avoids double-scheduling).
-        const coveredScreenIds = new Set<string>();
-        for (const g of (screenGroups || [])) {
-          if (selectedGroupIds.has(g.id)) {
-            (g.screens || []).forEach((s: any) => { if (s?.id) coveredScreenIds.add(s.id); });
-          }
-        }
         const groupSchedules = Array.from(selectedGroupIds).map((screenGroupId) => ({ ...base, screenGroupId }));
         // Double-sided displays (2026-09-16): never write a schedule row for
         // a side that MIRRORS its front. Such a side resolves the front's
@@ -1259,44 +1334,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
         // Run in parallel — schedules are independent, no cross-row deps.
         // For an Editor these are staged INACTIVE server-side (the publish
         // gate); capture their ids to bundle into the review submission.
-        // One screen, two playlists — the FOURTH door (2026-09-16). Greg:
-        // "it needs to catch me adding a screen to an existing playlist,
-        // building a new playlist or turning on an old playlist that has
-        // screens in another active playlist". This is the middle case.
-        //
-        // The rule is time-aware: "you cant have a screen active in two
-        // playlist at the same time unless its scheduled...breakfast, lunch,
-        // dinner with different schedules". So a new dinner playlist landing
-        // beside an existing breakfast one is silent; an overlap warns.
-        //
-        // Declining leaves the playlist CREATED but unassigned — the same
-        // state as choosing "Skip" on the screen step, and recoverable from
-        // the Screens tab. Nothing is half-written.
-        if (playlists && allSchedules) {
-          const conflicts = findScreenConflicts({
-            targetScreenIds: [...coveredScreenIds, ...Array.from(selectedScreenIds)],
-            windows: [
-              activateImmediately
-                ? {}
-                : { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd },
-            ],
-            excludePlaylistId: playlistId,
-            playlists: playlists as never,
-            schedules: allSchedules as never,
-            screens: (screens || []) as never,
-            groups: (screenGroups || []) as never,
-          });
-          const prompt = describeScreenConflicts(conflicts, name.trim() || 'this playlist', 'add-screens');
-          if (prompt) {
-            const ok = await appConfirm({
-              title: prompt.title,
-              message: prompt.message,
-              tone: 'warn',
-              confirmLabel: prompt.confirmLabel,
-            });
-            if (!ok) { setCreating(false); onCreated({ id: playlistId, name: name.trim() }); return; }
-          }
-        }
+        // The "one screen, two playlists" question was asked before the
+        // playlist was created (launch QA U14) — see the top of handleCreate.
         const createdScheds = await Promise.all(schedules.map((s) => createSchedule.mutateAsync(s)));
         draftScheduleIds = createdScheds.map((s: any) => s?.id).filter(Boolean);
       }
@@ -1813,7 +1852,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 title={reachBlocked ? 'Pick at least one day, or switch to Activate immediately.' : undefined}
                 className="inline-flex items-center px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
-                {creating ? (
+                {creating && !askingConflict ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     {willSubmitForReview ? 'Sending…' : 'Creating…'}

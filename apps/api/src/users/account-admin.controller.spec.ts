@@ -239,6 +239,18 @@ describe('PUT /users/:id/email — change someone\'s sign-in email', () => {
     await expect(h.controller.changeEmail(reqAs(actor), 's1', { email: 'n@riot.test', password: PW })).rejects.toMatchObject({ response: { code: 'USER_EMAIL_CHANGE_SETUP_PENDING' } });
   });
 
+  // Launch QA S1 (2026-10-24): an account whose TEMPORARY password an admin
+  // set keeps the email that admin typed (its owner chooses only a password at
+  // first sign-in), so a typo in it can still be fixed before they sign in.
+  it('a password-only setup account (admin-set temporary password) CAN have its email corrected', async () => {
+    const actor = corpAdmin();
+    const typo = branchManager({ id: 'pat', email: 'pat@school.tset', mustSetupCredentials: true, setupPasswordOnly: true });
+    const h = harness({ users: [actor, typo], deliverable: false });
+    const out = await h.controller.changeEmail(reqAs(actor), 'pat', { email: 'pat@school.test', password: PW });
+    expect(out).toMatchObject({ ok: true, email: 'pat@school.test' });
+    expect(h.users[1].email).toBe('pat@school.test');
+  });
+
   describe('verification ON (a verified sending domain)', () => {
     it('step 1 emails a code to the NEW address (never returned); step 2 without it writes nothing', async () => {
       const actor = corpAdmin();

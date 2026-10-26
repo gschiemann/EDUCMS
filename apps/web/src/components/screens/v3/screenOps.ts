@@ -935,10 +935,21 @@ export function deriveExpectedContent(
   if (!mine.length) return NOTHING_SCHEDULED;
 
   const startMs = (s: OpsSchedule) => msOf(s.startTime) ?? 0;
+  // The fallback tier (always-on at a negative priority — a time-limited
+  // publish keeps the always-on playlist it landed on as the fallback outside
+  // its hours, launch QA U15) rides after every other replace rule, exactly as
+  // effective-schedule.ts key 0 orders it.
+  const isFallbackTier = (s: OpsSchedule) =>
+    (s.priority ?? 0) < 0 && !s.daysOfWeek && !s.timeStart && !s.timeEnd;
   const ranked = [...mine].sort((a, b) => {
     const aAppend = (a.mode ?? 'replace') === 'append' ? 1 : 0;
     const bAppend = (b.mode ?? 'replace') === 'append' ? 1 : 0;
     if (aAppend !== bAppend) return aAppend - bAppend;
+    if (!aAppend) {
+      const aFallback = isFallbackTier(a) ? 1 : 0;
+      const bFallback = isFallbackTier(b) ? 1 : 0;
+      if (aFallback !== bFallback) return aFallback - bFallback;
+    }
     const aPin = a.screenId ? 0 : 1;
     const bPin = b.screenId ? 0 : 1;
     if (aPin !== bPin) return aPin - bPin;

@@ -38,6 +38,8 @@ type CachedUser = {
   tenantSlug?: string | null;
   mustSetupCredentials?: boolean | null;
   emailVerificationPending?: boolean | null;
+  setupPasswordOnly?: boolean | null;
+  termsAcceptedVersion?: string | null;
 };
 
 /**
@@ -53,6 +55,10 @@ export interface MeResponse {
   tenantSlug?: string | null;
   mustSetupCredentials?: boolean | null;
   emailVerificationPending?: boolean | null;
+  /** 2026-10-24 (launch QA S1). */
+  setupPasswordOnly?: boolean | null;
+  /** 2026-10-24 (launch QA S2) — null = never accepted on the server. */
+  termsAcceptedVersion?: string | null;
 }
 
 export function profilePatch(cur: CachedUser, me: MeResponse): Record<string, unknown> {
@@ -67,6 +73,13 @@ export function profilePatch(cur: CachedUser, me: MeResponse): Record<string, un
   }
   if (typeof me.emailVerificationPending === 'boolean' && me.emailVerificationPending !== !!cur.emailVerificationPending) {
     patch.emailVerificationPending = me.emailVerificationPending;
+  }
+  if (typeof me.setupPasswordOnly === 'boolean' && me.setupPasswordOnly !== cur.setupPasswordOnly) {
+    patch.setupPasswordOnly = me.setupPasswordOnly;
+  }
+  // The server's answer is the record (S2): synced both ways, null included.
+  if (me.termsAcceptedVersion !== undefined && me.termsAcceptedVersion !== cur.termsAcceptedVersion) {
+    patch.termsAcceptedVersion = me.termsAcceptedVersion;
   }
   return patch;
 }

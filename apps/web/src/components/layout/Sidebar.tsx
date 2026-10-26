@@ -15,6 +15,7 @@ import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { showsSportsNav } from '@/lib/sports-nav';
 import { useTenantStatus } from '@/hooks/use-api';
+import { useEmergencyDrillOnly } from '@/hooks/use-emergency-drill';
 import type { TenantBranding } from '@/lib/branding';
 import { readLogoBackground } from '@/components/branding/logo-backdrop';
 import { BrandMark, decodeBrandText, type BrandIdentity } from './BrandMark';
@@ -43,6 +44,8 @@ export function Sidebar() {
   // Emergency modal trigger (moved from TopToolbar to match design spec)
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
   const isEmergencyActive = useAppStore((s) => s.isEmergencyActive);
+  // A practice drill is worded as one (launch QA U16) — no query of its own.
+  const drillOnly = useEmergencyDrillOnly();
   // 2026-05-25 — operator: "we dont show the emergency button by
   // default unless you enable the emergency content, becuase then
   // you could trigger something that doesnt exist." Tenant exposes
@@ -556,9 +559,18 @@ export function Sidebar() {
           <RoleGate allowedRoles={['admin']}>
             <div className="pt-3 mt-3 border-t border-slate-100 px-4">
               {isEmergencyActive ? (
-                <div className="inline-flex px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
+                // DRILL (launch QA U16): indigo "Drill in progress", never the
+                // red live pill. Wording only.
+                <div
+                  data-testid="sidebar-emergency-pill"
+                  data-drill={drillOnly ? 'true' : 'false'}
+                  className={cn(
+                    'inline-flex px-5 py-2 rounded-full text-white text-xs font-bold items-center gap-1.5 shadow-md animate-pulse',
+                    drillOnly ? 'bg-indigo-600 shadow-indigo-600/20' : 'bg-red-600 shadow-red-600/20',
+                  )}
+                >
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  {t('emergency.active')}
+                  {drillOnly ? t('emergency.drill.inProgress') : t('emergency.active')}
                 </div>
               ) : hasEmergencyContent ? (
                 <button

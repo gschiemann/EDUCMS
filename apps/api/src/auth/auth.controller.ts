@@ -69,7 +69,10 @@ type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
  */
 export const CompleteSetupSchema = z
   .object({
-    email: EmailString,
+    // Optional since 2026-10-24 (launch QA S1): an account whose password an
+    // admin set (`setupPasswordOnly`) keeps its email and sends only the new
+    // password. Every other setup account still must send one (checked below).
+    email: EmailString.optional(),
     password: z.string().min(8).max(200),
     /** The 6-digit code emailed to `email`; required once setup verifies the address. */
     emailCode: z.string().max(20).optional(),
@@ -386,8 +389,8 @@ export class AuthController {
     // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, tenantId: true, mustSetupCredentials: true },
-    });
+      select: { id: true, email: true, tenantId: true, mustSetupCredentials: true, setupPasswordOnly: true } as any,
+    }) as any;
     if (!dbUser) {
       throw new UnauthorizedException({ code: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
     }
@@ -397,6 +400,9 @@ export class AuthController {
         message: 'This account has already been set up.',
       });
     }
+    // Launch QA S1: a password-only setup keeps the email an admin entered —
+    // nothing about the address changes, so there is nothing to prove.
+    if (dbUser.setupPasswordOnly) return { required: false };
     if (!this.setupEmailVerificationRequired()) return { required: false };
 
     const email = body.email.trim().toLowerCase();
@@ -596,8 +602,10 @@ export class AuthController {
         lastName: true,
         passwordHash: true,
         mustSetupCredentials: true,
-      },
-    });
+        setupPasswordOnly: true,
+        termsAcceptedVersion: true,
+      } as any,
+    }) as any;
     if (!dbUser) {
       throw new UnauthorizedException({ code: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
     }
@@ -612,10 +620,21 @@ export class AuthController {
       });
     }
 
-    const email = body.email.trim().toLowerCase();
+    // Launch QA S1 (2026-10-24) — PASSWORD-ONLY SETUP. An admin who set this
+    // person's password ("Set password now") typed the person's OWN email, so
+    // that email stays — whatever the body says — and only the password the
+    // admin knows is retired. The live row decides, never the request.
+    const passwordOnly = dbUser.setupPasswordOnly === true;
+    if (!passwordOnly && !body.email) {
+      throw new BadRequestException({
+        code: 'SETUP_EMAIL_REQUIRED',
+        message: 'Enter your own work email.',
+      });
+    }
+    const email = passwordOnly ? dbUser.email.trim().toLowerCase() : body.email!.trim().toLowerCase();
 
     // 2. Neither provisioning credential may survive.
-    if (email === dbUser.email.trim().toLowerCase()) {
+    if (!passwordOnly && email === dbUser.email.trim().toLowerCase()) {
       throw new BadRequestException({
         code: 'SETUP_EMAIL_UNCHANGED',
         message:
@@ -626,7 +645,9 @@ export class AuthController {
     if (await this.authService.verifyPassword(dbUser.passwordHash, body.password)) {
       throw new BadRequestException({
         code: 'SETUP_PASSWORD_UNCHANGED',
-        message: 'Choose a new password — this is the starter password you were given.',
+        message: passwordOnly
+          ? 'Choose a new password — this is the temporary password you were given.'
+          : 'Choose a new password — this is the starter password you were given.',
       });
     }
 
@@ -634,10 +655,12 @@ export class AuthController {
     // clean 409 instead of a Prisma error. The write below still catches P2002:
     // this check and the update are not atomic, and two operators claiming the
     // same address in the same second must not produce a 500.
-    const taken = await this.prisma.client.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
+    const taken = passwordOnly
+      ? null
+      : await this.prisma.client.user.findUnique({
+          where: { email },
+          select: { id: true },
+        });
     if (taken && taken.id !== dbUser.id) {
       throw new ConflictException({
         code: 'SETUP_EMAIL_IN_USE',
@@ -646,8 +669,9 @@ export class AuthController {
     }
 
     // 2026-10-06: the new address must be proven with the emailed code (when
-    // this deploy can deliver mail — see setup-email-verification.ts).
-    const codeRowId = this.setupEmailVerificationRequired()
+    // this deploy can deliver mail — see setup-email-verification.ts). A
+    // password-only setup changes no address, so there is nothing to prove.
+    const codeRowId = !passwordOnly && this.setupEmailVerificationRequired()
       ? await this.checkSetupEmailCode(dbUser.id, email, body.emailCode)
       : null;
 
@@ -663,7 +687,7 @@ export class AuthController {
         // ten-ok: identity SELF-update — only touches the authenticated principal's own row
         await tx.user.update({
           where: { id: dbUser.id },
-          data: { email, passwordHash, mustSetupCredentials: false },
+          data: { email, passwordHash, mustSetupCredentials: false, setupPasswordOnly: false } as any,
         });
       });
     } catch (e: any) {
@@ -744,6 +768,8 @@ export class AuthController {
             ua: ((req.headers['user-agent'] as string | undefined) || '').slice(0, 256),
             previousEmail: dbUser.email,
             newEmail: email,
+            // S1 — the admin-set temporary password was retired; email kept.
+            ...(passwordOnly ? { passwordOnly: true } : {}),
             sessionsRevoked,
             // The required two-step setup comes next (no session until it is done).
             twoStepSetupNext: !!enrollment,
@@ -788,6 +814,8 @@ export class AuthController {
         tenantVertical: tenant?.vertical || 'K12',
         canTriggerPanic: dbUser.canTriggerPanic,
         mustSetupCredentials: false,
+        setupPasswordOnly: false,
+        termsAcceptedVersion: dbUser.termsAcceptedVersion ?? null,
       },
     };
   }

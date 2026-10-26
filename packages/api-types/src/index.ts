@@ -398,15 +398,38 @@ export const CreateUserDirectInputSchema = z
   .passthrough();
 export type CreateUserDirectInput = z.infer<typeof CreateUserDirectInputSchema>;
 
+/**
+ * 2026-10-24 (launch QA S2) — the End User License Agreement version people
+ * accept, shared by the API (which records each person's acceptance) and the
+ * dashboard (which asks for it). Publishing a new EULA = bump this: every
+ * browser AND every account is asked again.
+ */
+export const EULA_VERSION = '1.0';
+
 export const AcceptInviteInputSchema = z
   .object({
     password: PasswordString,
     firstName: PersonNameString.optional(),
     lastName: PersonNameString.optional(),
     phone: PhoneString.optional(),
+    /**
+     * 2026-10-24 (launch QA S2) — the EULA version the invitee ticked on the
+     * accept-invite form; recorded on their account in the same request.
+     */
+    termsVersion: BoundedText(32).optional(),
   })
   .passthrough();
 export type AcceptInviteInput = z.infer<typeof AcceptInviteInputSchema>;
+
+/** POST /users/me/terms — "I accept the End User License Agreement" (S2). */
+export const AcceptTermsInputSchema = z
+  .object({
+    version: BoundedText(32),
+    /** Where the acceptance was given: the sign-in form, or the in-app prompt. */
+    method: z.enum(['sign-in', 'prompt']).optional(),
+  })
+  .strict();
+export type AcceptTermsInput = z.infer<typeof AcceptTermsInputSchema>;
 
 // ─────────────────────────────────────────────────────────────
 // Playlist & schedule request bodies. `.passthrough()` — same
@@ -494,6 +517,14 @@ export const ScheduleCreateSchema = z
     mode: z.enum(['append', 'replace']).optional(),
     mutedOverride: z.boolean().nullish(),
     isActive: z.boolean().optional(),
+    /**
+     * 2026-10-24 (launch QA U15) — "Replace everything". A time-limited
+     * publish (a day/time window, an end date, or a later start) KEEPS any
+     * always-on playlist already on those screens as the fallback outside its
+     * hours. `true` is the operator's explicit choice to switch that one off
+     * instead. Omitted / false = keep it (the default).
+     */
+    replaceAlwaysOn: z.boolean().optional(),
   })
   .passthrough();
 export type ScheduleCreateInput = z.infer<typeof ScheduleCreateSchema>;

@@ -80,6 +80,16 @@ export function EmergencyOverlay() {
   const drillOnly = activeQuery.data
     ? allAlertsAreDrills(alerts)
     : (tenant as { emergencyIsDrill?: boolean } | undefined)?.emergencyIsDrill === true;
+  // 2026-10-24 (launch QA U16) — publish THIS answer, unchanged, so the rest
+  // of the dashboard (the phone strip and pill, the Sidebar pill, the
+  // dashboard card), which runs no query of its own, says DRILL exactly when
+  // this overlay does. Wording only: the all-clear below still sends what it
+  // always sent.
+  const setEmergencyDrillOnly = useAppStore((state) => state.setEmergencyDrillOnly);
+  useEffect(() => {
+    setEmergencyDrillOnly(drillOnly);
+  }, [drillOnly, setEmergencyDrillOnly]);
+  useEffect(() => () => setEmergencyDrillOnly(null), [setEmergencyDrillOnly]);
   const tone = drillOnly
     ? { root: 'bg-indigo-950/90 border-indigo-500', bar: 'bg-indigo-500', iconBg: 'bg-indigo-500/20', icon: 'text-indigo-300', desc: 'text-indigo-200', label: 'text-indigo-300', hint: 'text-indigo-200', ring: 'focus:ring-indigo-500', border: 'border-indigo-500/30', input: 'border-indigo-500/30', button: 'bg-indigo-600 hover:bg-indigo-700 disabled:hover:bg-indigo-600 hover:shadow-indigo-500/20', link: 'border-indigo-300/50 text-indigo-100 hover:bg-indigo-500/20', item: 'text-indigo-300', itemOn: 'rgba(99,102,241,0.30)', itemOnBorder: 'rgba(199,210,254,0.9)', itemOff: 'rgba(99,102,241,0.35)', selectText: 'text-indigo-200' }
     : { root: 'bg-red-950/90 border-red-500', bar: 'bg-red-500', iconBg: 'bg-red-500/20', icon: 'text-red-500', desc: 'text-red-200', label: 'text-red-400', hint: 'text-red-200', ring: 'focus:ring-red-500', border: 'border-red-500/30', input: 'border-red-500/30', button: 'bg-red-600 hover:bg-red-700 disabled:hover:bg-red-600 hover:shadow-red-500/20', link: 'border-red-300/50 text-red-100 hover:bg-red-500/20', item: 'text-red-300', itemOn: 'rgba(239,68,68,0.30)', itemOnBorder: 'rgba(254,202,202,0.9)', itemOff: 'rgba(239,68,68,0.35)', selectText: 'text-red-200' };

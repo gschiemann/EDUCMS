@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
-import { commitPendingEulaAcceptance } from '@/lib/eula-acceptance';
+import { commitPendingEulaAcceptance, parkServerTermsAcceptance } from '@/lib/eula-acceptance';
 
 /**
  * SSO Completion landing page.
@@ -62,7 +62,9 @@ function SsoCompleteInner() {
         // leaving for the identity provider. The sign-in has now actually
         // finished, so that tick becomes the record (2026-10-04). Nothing
         // parked → nothing recorded.
-        commitPendingEulaAcceptance(user.email || '');
+        // Launch QA S2: a tick given before the single sign-on round trip is
+        // recorded on the ACCOUNT too (TermsGate commits it on arrival).
+        if (commitPendingEulaAcceptance(user.email || '') && user?.id) parkServerTermsAcceptance(String(user.id));
         // Clear the hash so tokens don't stick around in history.
         window.history.replaceState(null, '', '/login/sso-complete');
         router.replace(`/${user.tenantSlug || user.tenantId}/dashboard`);

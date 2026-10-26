@@ -9,6 +9,7 @@ import { LanguageMenuRows } from './LanguageMenu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { usePasskeys, useTenantStatus } from '@/hooks/use-api';
+import { useEmergencyDrillOnly } from '@/hooks/use-emergency-drill';
 import { passkeysSupported } from '@/lib/passkeys';
 import { useState, useEffect } from 'react';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
@@ -38,6 +39,9 @@ export function TopToolbar() {
   // board with a generic message, and /panic is never gated. See Sidebar.)
   const { data: tenantInfo } = useTenantStatus();
   const tenantInfoAny = tenantInfo as any;
+  // A practice drill is worded as one (launch QA U16). Reads what the page
+  // already has — no query of its own.
+  const drillOnly = useEmergencyDrillOnly();
   const hasEmergencyContent = !!(
     tenantInfoAny?.panicLockdownPlaylistId ||
     tenantInfoAny?.panicWeatherPlaylistId ||
@@ -183,9 +187,18 @@ export function TopToolbar() {
           {mounted && hasPanicAuthority(user) && (
             <div className="md:hidden">
               {isEmergencyActive ? (
-                <span className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse">
+                // A DRILL says so (launch QA U16): indigo, "Drill in progress",
+                // never the red live pill. Wording only.
+                <span
+                  data-testid="toolbar-emergency-pill"
+                  data-drill={drillOnly ? 'true' : 'false'}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl text-white text-xs font-bold animate-pulse',
+                    drillOnly ? 'bg-indigo-600' : 'bg-red-600',
+                  )}
+                >
                   <ShieldAlert className="w-4 h-4" aria-hidden />
-                  <span className="hidden sm:inline">{t('emergency.active')}</span>
+                  <span className="hidden sm:inline">{drillOnly ? t('emergency.drill.inProgress') : t('emergency.active')}</span>
                 </span>
               ) : hasEmergencyContent ? (
                 // §6.3: "It opens the safe trigger surface; it never triggers
@@ -334,21 +347,33 @@ export function TopToolbar() {
           what the tenant row actually proves (an alert is active, of this
           type) and routes to the surface that can say more. When a real
           acknowledgement count lands, this is the one line to change. */}
+      {/* DRILL (launch QA U16, 2026-10-24): during a practice drill this
+          strip read "CRITICAL ACTIVE · View incident" — `emergencyStatus` is
+          the alert's SEVERITY, so the "type" label printed "Critical". A drill
+          is indigo and says "Drill in progress · View drill"; the live strip
+          is unchanged. Wording only — the link goes to the same place. */}
       {mounted && isEmergencyActive && (
         <div
           role="status"
           aria-live="polite"
-          className="sticky top-[73px] z-20 md:hidden bg-red-700 text-white px-4 py-2 flex items-center gap-2"
+          data-testid="toolbar-emergency-strip"
+          data-drill={drillOnly ? 'true' : 'false'}
+          className={cn(
+            'sticky top-[73px] z-20 md:hidden text-white px-4 py-2 flex items-center gap-2',
+            drillOnly ? 'bg-indigo-700' : 'bg-red-700',
+          )}
         >
           <ShieldAlert className="w-4 h-4 shrink-0 motion-safe:animate-pulse" aria-hidden />
           <span className="text-[12px] font-black uppercase tracking-wide truncate">
-            {emergencyTypeLabel ? `${emergencyTypeLabel} active` : t('emergency.active')}
+            {drillOnly
+              ? t('emergency.drill.inProgress')
+              : emergencyTypeLabel ? `${emergencyTypeLabel} active` : t('emergency.active')}
           </span>
           <Link
             href={`/panic?schoolId=${schoolId}`}
             className="ml-auto shrink-0 text-[12px] font-bold underline underline-offset-2 min-h-[44px] flex items-center px-1"
           >
-            {t('emergency.viewIncident')}
+            {drillOnly ? t('emergency.drill.viewDrill') : t('emergency.viewIncident')}
           </Link>
         </div>
       )}

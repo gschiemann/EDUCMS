@@ -279,3 +279,169 @@ describe('one playlist, several windows (the Schedule dialog feature)', () => {
     expect(activeOnScreen(rows)).toHaveLength(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Launch QA U15 (2026-10-24) — the owner's rule: "Replace" for a TIME-LIMITED
+// playlist (school hours, Mon–Fri 08:00–15:00) must NOT switch off the
+// screen's ALWAYS-ON playlist. It stays, as the fallback outside the new
+// playlist's hours, so the screen is never blank evenings and weekends. Only
+// an explicit "Replace everything" (`replaceAlwaysOn: true`) removes it.
+describe('a time-limited publish keeps the always-on playlist as the fallback (U15)', () => {
+  const SCHOOL_HOURS = { daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' };
+
+  it('school hours onto an always-on lobby loop: BOTH stay live, the loop becomes the fallback tier', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lobby' }); // always-on, priority 0
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS });
+
+    const live = activeOnScreen(rows);
+    expect(live.map((r) => r.playlistId).sort()).toEqual(['lobby', 'school']);
+    expect(live.find((r) => r.playlistId === 'lobby')!.priority).toBe(FALLBACK_PRIORITY);
+    expect(live.find((r) => r.playlistId === 'school')!.priority).toBe(0);
+  });
+
+  it('the publish audit row names the rule it kept', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+    await publish(controller, { playlistId: 'lobby' });
+    const lobbyId = rows[0].id;
+    const prisma = (controller as any).prisma;
+    prisma.client.auditLog.create.mockClear();
+
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS });
+
+    const created = prisma.client.auditLog.create.mock.calls
+      .map((c: any[]) => c[0].data)
+      .find((d: any) => d.action === 'SCHEDULE_CREATED');
+    expect(JSON.parse(created.details).keptAlwaysOnAsFallback).toEqual([lobbyId]);
+  });
+
+  it('"Replace everything" (replaceAlwaysOn: true) switches the always-on one off, exactly as before', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lobby' });
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS, replaceAlwaysOn: true });
+
+    const live = activeOnScreen(rows);
+    expect(live.map((r) => r.playlistId)).toEqual(['school']);
+    expect(rows.find((r) => r.playlistId === 'lobby')!.priority).toBe(0);
+  });
+
+  it('an END DATE alone is time-limited — an event that stops by itself keeps the loop', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lobby' });
+    await publish(controller, { playlistId: 'assembly', endTime: new Date('2026-12-31T23:59:59Z').toISOString() });
+
+    expect(activeOnScreen(rows).map((r) => r.playlistId).sort()).toEqual(['assembly', 'lobby']);
+  });
+
+  it('a start still AHEAD is time-limited — the loop keeps playing until it begins', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lobby' });
+    await publish(controller, {
+      playlistId: 'winter',
+      startTime: new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString(),
+    });
+
+    expect(activeOnScreen(rows).map((r) => r.playlistId).sort()).toEqual(['lobby', 'winter']);
+  });
+
+  it('a start of "now" is NOT time-limited — two always-on playlists still cannot share a screen', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lobby' });
+    await publish(controller, { playlistId: 'hall', startTime: new Date().toISOString() });
+
+    expect(activeOnScreen(rows).map((r) => r.playlistId)).toEqual(['hall']);
+  });
+
+  it('an overlapping WINDOWED rule is still replaced — only an always-on one is kept', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'lunch', daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '11:00', timeEnd: '13:00' });
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS });
+
+    expect(activeOnScreen(rows).map((r) => r.playlistId)).toEqual(['school']);
+  });
+
+  it("the playlist's OWN all-day rule is narrowed, never kept as a fallback for itself", async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'menu' });
+    await publish(controller, { playlistId: 'menu', ...SCHOOL_HOURS });
+
+    const live = activeOnScreen(rows);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({ playlistId: 'menu', timeStart: '08:00', priority: 0 });
+  });
+
+  it('an APPEND-mode always-on rule is not kept (it would append its items inside the window)', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+
+    await publish(controller, { playlistId: 'ticker', mode: 'append' });
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS });
+
+    expect(activeOnScreen(rows).map((r) => r.playlistId)).toEqual(['school']);
+  });
+
+  it('a GROUP-wide school-hours publish keeps a member screen’s always-on pin as the fallback', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+    (controller as any).prisma.client.screen.findMany.mockResolvedValue([{ id: SCREEN }]);
+
+    await publish(controller, { playlistId: 'lobby' }); // pinned to the member screen
+    await controller.create(adminReq as any, {
+      playlistId: 'school',
+      screenGroupId: 'grp',
+      startTime: new Date('2026-09-16T00:00:00Z').toISOString(),
+      mode: 'replace',
+      isActive: true,
+      ...SCHOOL_HOURS,
+    } as any);
+
+    const lobby = rows.find((r) => r.playlistId === 'lobby')!;
+    expect(lobby.isActive).toBe(true);
+    expect(lobby.priority).toBe(FALLBACK_PRIORITY);
+    expect(rows.find((r) => r.playlistId === 'school')!.isActive).toBe(true);
+  });
+
+  it('a publish HELD for a playback copy decides now: the loop is kept and stays on glass meanwhile', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+    await publish(controller, { playlistId: 'lobby' });
+    (controller as any).mediaPublication = { prepare: jest.fn().mockResolvedValue(true) };
+
+    await publish(controller, { playlistId: 'school', ...SCHOOL_HOURS });
+
+    const lobby = rows.find((r) => r.playlistId === 'lobby')!;
+    const school = rows.find((r) => r.playlistId === 'school')!;
+    expect(lobby).toMatchObject({ isActive: true, priority: FALLBACK_PRIORITY });
+    // Held: not live yet. When the sweep activates it, the fallback tier is
+    // exempt from its displacement.
+    expect(school.isActive).toBe(false);
+  });
+
+  it('an Editor’s draft decides nothing at publish time', async () => {
+    const rows: Row[] = [];
+    const { controller } = makeController(rows);
+    await publish(controller, { playlistId: 'lobby' });
+
+    await controller.create(
+      { user: { id: 'e1', userId: 'e1', role: AppRole.CONTRIBUTOR, tenantId: 't1' } } as any,
+      { playlistId: 'school', screenId: SCREEN, startTime: new Date('2026-09-16T00:00:00Z').toISOString(), mode: 'replace', isActive: true, ...SCHOOL_HOURS } as any,
+    );
+
+    expect(rows.find((r) => r.playlistId === 'lobby')).toMatchObject({ isActive: true, priority: 0 });
+  });
+});

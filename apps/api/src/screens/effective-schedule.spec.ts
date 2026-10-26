@@ -60,6 +60,45 @@ describe('orderSchedulesForManifest', () => {
     expect(orderSchedulesForManifest([append, legacy])[0].id).toBe('l1');
   });
 
+  // Launch QA U15 (2026-10-24) — the fallback tier (always-on at a negative
+  // priority: the always-on playlist a time-limited publish KEEPS for the
+  // other hours) rides after every other replace rule, whatever its pin.
+  it('THE FALLBACK TIER RIDES LAST: a screen-pinned fallback never outranks a group school-hours rule', () => {
+    const fallbackPin = {
+      id: 'aaa', screenId: 's1', screenGroupId: null, priority: -1, mode: 'replace',
+      startTime: d('2026-10-24T00:00:00Z'), daysOfWeek: null, timeStart: null, timeEnd: null,
+    };
+    const groupSchoolHours = {
+      id: 'bbb', screenId: null, screenGroupId: 'g1', priority: 0, mode: 'replace',
+      startTime: d('2026-09-01T00:00:00Z'), daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00',
+    };
+    expect(orderSchedulesForManifest([fallbackPin, groupSchoolHours]).map((s) => s.id)).toEqual(['bbb', 'aaa']);
+  });
+
+  it('a negative priority WITH a window is not the fallback tier — the old keys decide', () => {
+    const windowedNegative = {
+      id: 'aaa', screenId: 's1', priority: -1, mode: 'replace',
+      startTime: d('2026-10-24T00:00:00Z'), daysOfWeek: 'Mon', timeStart: '08:00', timeEnd: '09:00',
+    };
+    const group = { id: 'bbb', screenGroupId: 'g1', priority: 0, mode: 'replace', startTime: d('2026-09-01T00:00:00Z') };
+    // screen-pin beats group, exactly as before
+    expect(orderSchedulesForManifest([group, windowedNegative])[0].id).toBe('aaa');
+  });
+
+  it('nothing at a negative priority → the order is exactly what it always was', () => {
+    const a = { id: 'a', screenGroupId: 'g1', priority: 0, mode: 'replace', startTime: d('2026-08-01T00:00:00Z') };
+    const b = { id: 'b', screenId: 's1', priority: 0, mode: 'replace', startTime: d('2026-07-01T00:00:00Z') };
+    const c = { id: 'c', screenId: 's1', priority: 3, mode: 'replace', startTime: d('2026-06-01T00:00:00Z') };
+    expect(orderSchedulesForManifest([a, b, c]).map((s) => s.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('two fallbacks: the usual keys order them among themselves', () => {
+    const groupFallback = { id: 'g', screenGroupId: 'g1', priority: -1, mode: 'replace', startTime: d('2026-08-01T00:00:00Z') };
+    const pinFallback = { id: 'p', screenId: 's1', priority: -1, mode: 'replace', startTime: d('2026-07-01T00:00:00Z') };
+    const daypart = { id: 'd', screenGroupId: 'g1', priority: 0, mode: 'replace', startTime: d('2026-06-01T00:00:00Z'), timeStart: '06:00', timeEnd: '10:00' };
+    expect(orderSchedulesForManifest([groupFallback, pinFallback, daypart]).map((s) => s.id)).toEqual(['d', 'p', 'g']);
+  });
+
   it('does not mutate its input', () => {
     const rows = [
       { id: 'b', screenId: 's1', mode: 'replace', startTime: d('2026-08-02T00:00:00Z') },

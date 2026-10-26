@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EULA_VERSION } from '@cms/api-types';
 import { OnboardingService, hashToken, PASSWORD_RESET_TTL_MS } from './onboarding.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
@@ -446,6 +447,38 @@ describe('OnboardingService', () => {
       expect(state.users.find((u) => u.email === 'new-teacher@acme.edu')?.status).toBe('ACTIVE');
       expect(state.invites[0].acceptedAt).toBeInstanceOf(Date);
       expect(state.auditLogs.some((a) => a.action === 'INVITE_ACCEPTED')).toBe(true);
+      // No EULA ticked → nothing recorded (the dashboard asks instead).
+      expect(state.users.find((u) => u.email === 'new-teacher@acme.edu')?.termsAcceptedVersion).toBeUndefined();
+      expect(state.auditLogs.some((a) => a.action === 'TERMS_ACCEPTED')).toBe(false);
+    });
+
+    // Launch QA S2 (2026-10-24): an invited teammate was signed straight in
+    // and never saw the EULA. The accept-invite form now carries it, and the
+    // acceptance lands on THEIR account in the same transaction.
+    async function inviteToken(slug: string, email: string) {
+      const signup = await service.signup({ districtName: 'Acme', slug, adminEmail: `admin@${slug}.edu`, password: 'admin-password' });
+      await service.createInvite({ inviterId: signup.user.id, tenantId: signup.user.tenantId, email, role: 'CONTRIBUTOR' });
+      const inviteEmail = state.emailLogs.filter((e) => e.kind === 'INVITE').pop()!;
+      return decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+    }
+
+    it('records the EULA ticked on the form — version, time, and a TERMS_ACCEPTED row saying how and from where', async () => {
+      const token = await inviteToken('acme-terms', 'terms@acme.edu');
+      await service.acceptInvite({ token, password: 'chosen-password-123', termsVersion: EULA_VERSION, ip: '203.0.113.7', userAgent: 'jest' });
+      const row = state.users.find((u) => u.email === 'terms@acme.edu')!;
+      expect(row.termsAcceptedVersion).toBe(EULA_VERSION);
+      expect(row.termsAcceptedAt).toBeInstanceOf(Date);
+      const audit = state.auditLogs.find((a) => a.action === 'TERMS_ACCEPTED')!;
+      expect(audit.userId).toBe(row.id);
+      expect(JSON.parse(audit.details)).toMatchObject({ document: 'eula', version: EULA_VERSION, method: 'invite', ip: '203.0.113.7' });
+    });
+
+    it('an unknown terms version records nothing — never a refusal that strands the invitee', async () => {
+      const token = await inviteToken('acme-oldtab', 'oldtab@acme.edu');
+      const result = await service.acceptInvite({ token, password: 'chosen-password-123', termsVersion: '0.9' });
+      expect(result.access_token).toBe('signed.jwt');
+      expect(state.users.find((u) => u.email === 'oldtab@acme.edu')?.termsAcceptedVersion).toBeUndefined();
+      expect(state.auditLogs.some((a) => a.action === 'TERMS_ACCEPTED')).toBe(false);
     });
 
     // ── FAIL-OPEN #6 (recon 2026-09-11) ────────────────────────────────
@@ -931,6 +964,28 @@ describe('OnboardingService', () => {
       expect(created.status).toBe('ACTIVE');
       const row = state.users.find((u) => u.email === 'stuck@recovery.edu')!;
       expect(row.tenantId).toBe(admin.user.tenantId);
+      // Launch QA S1 — the admin-set password is temporary here too.
+      expect(row).toMatchObject({ mustSetupCredentials: true, setupPasswordOnly: true });
+    });
+  });
+
+  // Launch QA S1 (2026-10-24): "Set password now" — the admin knows this
+  // password, so it is TEMPORARY. The account goes through first-login setup
+  // (password only — the email is the person's own) at its first sign-in.
+  describe('S1 — an admin-set password is temporary', () => {
+    it('a new account is created in setup state, password-only, and the audit row says so', async () => {
+      const admin = await service.signup({ districtName: 'Temp', slug: 'temp-pass', adminEmail: 'admin@temp.edu', password: 'admin-password' });
+      await service.createUserDirect({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'pat@temp.edu',
+        role: 'CONTRIBUTOR',
+        password: 'admin-chosen-1',
+      });
+      const row = state.users.find((u) => u.email === 'pat@temp.edu')!;
+      expect(row).toMatchObject({ status: 'ACTIVE', mustSetupCredentials: true, setupPasswordOnly: true });
+      const audit = state.auditLogs.find((a) => a.action === 'USER_CREATED_DIRECT')!;
+      expect(JSON.parse(audit.details)).toMatchObject({ method: 'admin-set-password', temporaryPassword: true });
     });
   });
 });

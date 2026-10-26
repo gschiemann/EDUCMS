@@ -163,6 +163,15 @@ interface AppState {
      *  render EmailVerificationGate instead of the app; the API refuses
      *  everything but verify-email / logout / me. Absent = false. */
     emailVerificationPending?: boolean;
+    /** 2026-10-24 (launch QA S1) — an admin set this account's TEMPORARY
+     *  password; first-login setup asks for a new password only (the email
+     *  is the person's own). Absent = unknown: the setup screen asks
+     *  GET /users/me. */
+    setupPasswordOnly?: boolean;
+    /** 2026-10-24 (launch QA S2) — the End User License Agreement version
+     *  this person accepted ON THE SERVER. Absent = unknown (TermsGate asks
+     *  GET /users/me); null = never accepted. */
+    termsAcceptedVersion?: string | null;
   } | null;
 
   // UI state
@@ -209,6 +218,17 @@ interface AppState {
    *  `clear_<uuid>` and the AuditLog couldn't pair trigger → clear
    *  events, breaking forensic chain-of-custody. */
   activeEmergencyOverrideId: string | null;
+  /**
+   * 2026-10-24 (launch QA U16) — is every live alert a DRILL? Written by
+   * EmergencyOverlay, the one component that reads the live alert list
+   * (`/emergency/active`), so the always-mounted chrome (TopToolbar strip and
+   * pill, Sidebar pill, dashboard card) can say DRILL — indigo, "Drill in
+   * progress" — instead of "CRITICAL ACTIVE" / "ACTIVE EMERGENCY" without
+   * running a query of its own. `null` = not known yet (the chrome then uses
+   * the tenant row's own `emergencyIsDrill`). Wording only: nothing that
+   * delivers, clears or audits an alert reads it.
+   */
+  emergencyDrillOnly: boolean | null;
 
   // Auth actions
   login: (token: string, user: any, remember?: boolean) => void;
@@ -250,6 +270,7 @@ interface AppState {
   setInstallBannerShown: (shown: boolean) => void;
   setActiveTenant: (tenantId: string) => void;
   setEmergencyActive: (active: boolean, overrideId?: string | null) => void;
+  setEmergencyDrillOnly: (drillOnly: boolean | null) => void;
 }
 
 export const useUIStore = create<AppState>((set) => ({
@@ -267,6 +288,7 @@ export const useUIStore = create<AppState>((set) => ({
   activeTenant: initial.user?.tenantSlug || initial.user?.tenantId || null,
   isEmergencyActive: false,
   activeEmergencyOverrideId: null,
+  emergencyDrillOnly: null,
 
   // Auth actions
   login: (token, user, remember) => {
@@ -367,7 +389,10 @@ export const useUIStore = create<AppState>((set) => ({
       // we record the overrideId so a later all-clear can pair to it
       // in the AuditLog. On deactivate we null it back out.
       activeEmergencyOverrideId: active ? (overrideId ?? null) : null,
+      // The drill/live answer belongs to the alert that is ending.
+      ...(active ? {} : { emergencyDrillOnly: null }),
     }),
+  setEmergencyDrillOnly: (drillOnly) => set({ emergencyDrillOnly: drillOnly }),
 }));
 
 // Re-export for backward compatibility with components that imported useAppStore
