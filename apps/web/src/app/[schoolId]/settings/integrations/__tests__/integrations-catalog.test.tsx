@@ -7,8 +7,8 @@
  *      page lists what it is given), and one plain sentence answers the
  *      "why can't I add Netflix" question instead of a dead row.
  *   2. Every row has exactly one action, in plain words ("Connect", "Fix").
- *   3. Family and state filters actually filter; the kinds come in the order
- *      this business uses them.
+ *   3. The status filter actually filters (the kinds are the area's tabs);
+ *      the kinds come in the order this business uses them.
  *   4. Every row names, in plain words, where its status came from.
  */
 import * as React from 'react';
@@ -152,14 +152,6 @@ describe('Connections rows', () => {
 });
 
 describe('filters', () => {
-  it('filters by kind', () => {
-    renderPage();
-    expect(screen.getByText('Square')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Live video' }));
-    expect(screen.queryByText('Square')).toBeNull();
-    expect(screen.getByText('Custom HLS Stream')).toBeInTheDocument();
-  });
-
   it('filters by state', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Needs attention' }));

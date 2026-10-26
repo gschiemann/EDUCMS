@@ -362,7 +362,8 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
   const t = useTranslations();
   const caps = provider.capabilities;
   const isClosed = provider.integrationTier === 'CLOSED';
-  const isPartner = provider.integrationTier === 'PARTNER';
+  // A partner provider that really connects (Toast) looks like every other one.
+  const isPartner = provider.integrationTier === 'PARTNER' && !posProviderConnectable(provider);
   return (
     <button
       onClick={isClosed ? () => provider.docsUrl && window.open(provider.docsUrl, '_blank') : onConnect}
@@ -485,7 +486,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
             <div className="text-4xl">{provider.iconEmoji || '🛒'}</div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">{t('billingCommerce.connectProvider', { name: provider.name })}</h2>
-              <p className="text-xs text-slate-500">{provider.blurb}</p>
+              <p className="text-xs text-slate-500">{t.has(`settings.cc.integrations.blurbs.${provider.id}`) ? t(`settings.cc.integrations.blurbs.${provider.id}`) : provider.blurb}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>

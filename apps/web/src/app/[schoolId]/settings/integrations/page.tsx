@@ -40,7 +40,6 @@ import {
   matchesSearch,
   matchesStateFilter,
   type IntegrationCatalogEntry,
-  type IntegrationFamily,
   type IntegrationStateFilter,
 } from '@/components/settings/integrations/catalog';
 import { useIntegrationsCatalog } from '@/components/settings/integrations/useIntegrationsCatalog';
@@ -63,7 +62,6 @@ export default function SettingsIntegrationsPage() {
   );
 
   const [query, setQuery] = useState('');
-  const [family, setFamily] = useState<IntegrationFamily | 'all'>('all');
   const [stateFilter, setStateFilter] = useState<IntegrationStateFilter | 'all'>('all');
 
   const connectedCount = countConnected(entries);
@@ -80,11 +78,10 @@ export default function SettingsIntegrationsPage() {
     () =>
       entries.filter(
         (e) =>
-          (family === 'all' || e.family === family) &&
           (stateFilter === 'all' || matchesStateFilter(e, stateFilter)) &&
           matchesSearch(e, query),
       ),
-    [entries, family, stateFilter, query],
+    [entries, stateFilter, query],
   );
 
   const grouped = useMemo(
@@ -162,17 +159,8 @@ export default function SettingsIntegrationsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label={t('settings.cc.integrations.familyFilterLabel')}>
-        <FilterChip active={family === 'all'} onClick={() => setFamily('all')}>
-          {t('settings.cc.integrations.filterAll')}
-        </FilterChip>
-        {families.map((f) => (
-          <FilterChip key={f} active={family === f} onClick={() => setFamily(f)}>
-            {t(`settings.cc.integrations.families.${f}`)}
-          </FilterChip>
-        ))}
-      </div>
-
+      {/* The kinds of connection are the tabs above (All · AI · Point of sale ·
+          Live video · …), so this page filters only by status. */}
       <div className="flex flex-wrap gap-1.5 mb-5" role="group" aria-label={t('settings.cc.integrations.stateFilterLabel')}>
         <FilterChip active={stateFilter === 'all'} onClick={() => setStateFilter('all')}>
           {t('settings.cc.integrations.filterAll')}

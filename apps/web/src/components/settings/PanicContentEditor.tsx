@@ -257,8 +257,11 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
       {/* Drop zone — slim row, no "big drag-drop area" (2026-05-25
           operator: "no need for that big ass drag and drop area").
           Same drop target, same click target, half the vertical space. */}
-      <div
-        className={`border border-dashed rounded-md px-2.5 py-1.5 transition-colors cursor-pointer flex items-center gap-1.5 ${
+      {/* A real button now (2026-10-26): reachable by keyboard and by a
+          screen reader, still a drop target for a dragged file. */}
+      <button
+        type="button"
+        className={`w-full min-h-[40px] border border-dashed rounded-md px-2.5 py-1.5 transition-colors cursor-pointer flex items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
           dragOver
             ? 'border-slate-500 bg-slate-50'
             : 'border-slate-300 bg-slate-50/60 hover:border-slate-400 hover:bg-slate-50'
@@ -272,17 +275,19 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
         }}
       >
-        <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
         <span className="text-[11px] font-bold text-slate-600 truncate">{t('addOwn')}</span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ALERT_CONTENT_ACCEPT}
-          className="hidden"
-          onChange={(e) => { handleFiles(e.target.files); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-        />
-      </div>
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ALERT_CONTENT_ACCEPT}
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(e) => { handleFiles(e.target.files); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+      />
 
       {/* In-flight uploads */}
       {uploads.length > 0 && (
