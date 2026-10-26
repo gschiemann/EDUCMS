@@ -84,6 +84,7 @@ import { noteRegisterDeviceCredentialRefusal } from '../notifications/fleet-alar
 import {
   getTenantState,
   setTenantState,
+  tenantStateEpoch,
   shouldSkipLastPingWrite,
   markLastPingWritten,
   shouldSkipEmergencyAudit,
@@ -5869,11 +5870,14 @@ export class ScreensController {
 
       let ancestor = getTenantState(cursor) as any;
       if (!ancestor) {
+        // The epoch BEFORE the read: a trigger / all-clear that invalidates
+        // while this read is in flight makes the row uncacheable (2026-10-26).
+        const readEpoch = tenantStateEpoch(cursor);
         ancestor = (await this.prisma.client.tenant.findUnique({
           where: { id: cursor },
           select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
         })) as any;
-        if (ancestor) setTenantState(cursor, ancestor);
+        if (ancestor) setTenantState(cursor, ancestor, readEpoch);
       }
       if (!ancestor) return null;
       // Stop at an archived ancestor for the same reason the fan-out skips
@@ -6403,11 +6407,17 @@ export class ScreensController {
       // @prisma/client picks up the emergency_portrait_playlist_id column.
       let tenant = getTenantState(screen.tenantId) as any;
       if (!tenant) {
+        // 2026-10-26 — the epoch BEFORE the read. The emergency controller
+        // invalidates this cache before its fan-out and again after its
+        // commit; a read that began before the latter may carry the
+        // pre-commit row (the all-clear's "override rows gone, tenant still
+        // ACTIVE" phantom alert) and is refused by setTenantState.
+        const readEpoch = tenantStateEpoch(screen.tenantId);
         tenant = await this.prisma.client.tenant.findUnique({
           where: { id: screen.tenantId },
           select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
         }) as any;
-        if (tenant) setTenantState(screen.tenantId, tenant);
+        if (tenant) setTenantState(screen.tenantId, tenant, readEpoch);
       }
 
       // ── DISTRICT INHERITANCE SAFETY NET (2026-08-03) ────────────────────

@@ -42,7 +42,7 @@ import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
 import { decideEmergencySurface } from './emergencySurface';
-import { cachedManifestWouldClearLiveAlert } from './emergencyInterlock';
+import { cachedManifestWouldClearLiveAlert, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
   readUsbMemo, usbOnlyManifest, usbOverlayActive, writeUsbMemo, type UsbOverlayState,
@@ -157,6 +157,8 @@ import {
   reconcileCadenceMs,
   emergencyRevPath,
   alertFromRevEnvelope,
+  alertFromOverridePush,
+  type RevAlertPayload,
   type RevPollOutcome,
 } from './emergencyRev';
 // 2026-09-01 — WHERE the "Re-pair required" chip may paint. Truth unchanged
@@ -2584,7 +2586,7 @@ function FitToViewport({ children, padding = 40 }: { children: ReactNode; paddin
 // ─── Error boundary wraps the whole player so a single widget crash can't
 // ─── black out the screen mid-emergency. On crash, we surface the cached
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
-class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; err?: any; errInfo?: string }> {
+class PlayerErrorBoundary extends Component<{ children: ReactNode; drillBanner?: string; drillWord?: string }, { hasError: boolean; err?: any; errInfo?: string }> {
   state = { hasError: false, err: undefined as any, errInfo: undefined as string | undefined };
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   private reloadCount = 0;
@@ -2672,12 +2674,17 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       // the live EmergencyOverlay. Falls back to full viewport when no override.
       const led = readCanvasOverride();
       const faceStage = readEmergencyFaceStage();
+      // 2026-10-26 — a DRILL is never red, not even from the crash boundary:
+      // the same indigo the API's drill board and the dashboard use.
+      const crashDrill = cachedEm.isDrill === true;
       return (
         <div
           data-edu-emergency-root="crash"
           data-edu-emergency-identity={emergencyPaintIdentity(cachedEm)}
-          className="fixed bg-red-700 text-white"
+          data-edu-emergency-drill={crashDrill ? 'true' : undefined}
+          className="fixed text-white"
           style={{
+            backgroundColor: crashDrill ? '#3730a3' : '#b91c1c',
             position: 'fixed',
             top: 0,
             left: 0,
@@ -2696,7 +2703,10 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
                   EVACUATE reads "FIRE — EVACUATE" (operators look for FIRE;
                   EVACUATE is the drilled SRP word). Falsy type still falls
                   through to title/'Emergency' exactly as before. */}
-              <h1 className="text-7xl font-black uppercase tracking-wider mb-6 break-words">{(String(cachedEm.type || '').toUpperCase() === 'EVACUATE' ? 'FIRE — EVACUATE' : cachedEm.type) || cachedEm.title || 'Emergency'}</h1>
+              {crashDrill && (
+                <p className="text-3xl font-black uppercase tracking-wider mb-4 break-words">{this.props.drillBanner || 'DRILL — THIS IS A DRILL'}</p>
+              )}
+              <h1 className="text-7xl font-black uppercase tracking-wider mb-6 break-words">{(String(cachedEm.type || '').toUpperCase() === 'EVACUATE' ? 'FIRE — EVACUATE' : cachedEm.type) || cachedEm.title || 'Emergency'}{crashDrill ? ` ${this.props.drillWord || 'DRILL'}` : ''}</h1>
               {cachedEm.textBlob && <p className="text-3xl font-bold whitespace-pre-wrap break-words">{cachedEm.textBlob}</p>}
               <p className="text-sm mt-12 opacity-70">Player recovering — reloading shortly</p>
             </div>
@@ -2772,7 +2782,14 @@ export default function PlayerPageWrapper() {
       return { status: res.status, emergencyPaintAccepted: (json as { emergencyPaintAccepted?: boolean } | null)?.emergencyPaintAccepted };
     },
   });
-  return <PlayerErrorBoundary><PlayerPage emergencyMonitor={emergencyMonitor} /></PlayerErrorBoundary>;
+  // The boundary is a class (no hooks): hand it the drill words so a cached
+  // DRILL surviving a crash says so in the operator's language (en/es/zh).
+  const tBoundary = useTranslations('emergency');
+  return (
+    <PlayerErrorBoundary drillBanner={tBoundary('drill.playerBanner')} drillWord={tBoundary('drill.drill')}>
+      <PlayerPage emergencyMonitor={emergencyMonitor} />
+    </PlayerErrorBoundary>
+  );
 }
 
 
@@ -4642,6 +4659,28 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   useEffect(() => {
     activeEmergencyRef.current = activeEmergency;
   }, [activeEmergency]);
+  // 2026-10-26 — RAISE the typed alert from a gate-accepted SIGNED OVERRIDE
+  // push (WS or SSE), exactly as the rev fast path raises from the rev body
+  // (P0-7 #2): the caller raised the hold first; then state; then cache — so
+  // a crash or a native reload between steps still comes back to THIS alert,
+  // drill-aware, never to the cached normal manifest. Never overwrites an
+  // alert already on the glass; never releases anything (rule 11). The
+  // committed manifest replaces it; the E-P0-01 window bounds it (30 s).
+  // Before this the page painted a generic red "EMERGENCY" with no identity
+  // for the whole manifest round trip, so no paint proof could reach the APK
+  // and its ladder (1.1.51+) reloaded the page at +4 s.
+  // `pendingOverrideDrill` mirrors what the last signed push said, for the
+  // protective pending surface's colour only; it is read nowhere else and
+  // only matters while the confirmation window is open.
+  const [pendingOverrideDrill, setPendingOverrideDrill] = useState(false);
+  const raiseFromSignedPush = useCallback((payload: unknown, via: 'ws' | 'sse' | 'rev', raised: RevAlertPayload | null = alertFromOverridePush(payload)) => {
+    setPendingOverrideDrill(raised?.isDrill === true || (!!payload && typeof payload === 'object' && (payload as { isDrill?: unknown }).isDrill === true));
+    if (!raised || activeEmergencyRef.current) return;
+    console.warn(`[Player ${via}] RAISING ${raised.type}${raised.isDrill ? ' (DRILL)' : ''} from the signed OVERRIDE ${via === 'rev' ? 'rev body' : 'push'} — manifest confirm in flight`);
+    setActiveEmergency(raised);
+    activeEmergencyRef.current = raised;
+    cacheEmergency(raised);
+  }, []);
   // 2026-05-26 P0-3 — Sprint 5 emergency-message overlay state.
   // SOS / TEXT_BROADCAST / MEDIA_ALERT pushed via WS land here; the
   // mounted <EmergencyOverlay> also self-polls /emergency/status every
@@ -5650,6 +5689,33 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   useEffect(() => {
     const cached = readCachedEmergency();
     if (cached) setActiveEmergency(cached);
+  }, []);
+  // 2026-10-26 — a page that boots UNDER A PERSISTED NATIVE HOLD (the APK's
+  // paint-proof ladder reloaded or recreated it mid-alert, a crash reload, a
+  // reboot during a lockdown) used to put its cached NORMAL manifest on the
+  // glass while the hold was engaged — the normal-content flash the TC
+  // series showed in the 2026-10-26 drill. The APK says it is holding through
+  // an EXISTING face-bound reply: `sharedVideoState` carries `emergencyProof`
+  // only while THIS face holds (EmergencyPaintRecovery.challenge). Raise the
+  // page-side hold from it — a re-raise re-enforces and never resets the
+  // APK's deadline — so the surface decision answers `hold` (black,
+  // unattributed) until the live manifest decides; the cached alert above,
+  // when there is one, still wins with its typed, drill-aware surface. RAISE
+  // only (rule 11): the manifest releases exactly as before. No new bridge
+  // method (rule 9). Browser players and older APKs are unchanged.
+  useEffect(() => {
+    if (isPreviewMode() || !nativeHas('sharedVideoState')) return;
+    let cancelled = false;
+    nativeCall<unknown>('sharedVideoState').then(reply => {
+      if (cancelled) return;
+      const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
+      const proof = (state as { emergencyProof?: { challenge?: unknown } } | null)?.emergencyProof;
+      if (typeof proof?.challenge === 'string' && proof.challenge.length > 0) {
+        console.warn('[Player] booted under a persisted native emergency hold — content stays down until the live manifest decides');
+        signalDisplayEmergencyHold(true, true);
+      }
+    }).catch(() => { /* an unreadable bridge changes nothing */ });
+    return () => { cancelled = true; };
   }, []);
 
   // Register the offline-cache Service Worker on mount. Safe no-op when
@@ -6911,8 +6977,21 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const cachedNormalWouldClearLiveAlert = cachedManifestWouldClearLiveAlert({
         fromCache, manifestHasEmergency: !!em, liveAlertOnGlass: !!activeEmergencyRef.current,
       });
+      // 2026-10-26 — the second interlock: a LIVE manifest read inside the
+      // signed trigger's own commit window (the fan-out precedes the commit
+      // by design) may not release the alert that trigger raised from its
+      // signed push / rev body. Bounded by the committed manifest and the
+      // window's 30 s timeout (emergencyInterlock.ts).
+      const preCommitWouldClearProvisionalAlert = provisionalAlertSurvivesPreCommitManifest({
+        fromCache, manifestHasEmergency: !!em,
+        provisionalAlertOnGlass: activeEmergencyRef.current?.provisional === true,
+        confirmWindowOpen: !!pendingOverrideConfirmRef.current,
+      });
+      const alertStaysOnGlass = cachedNormalWouldClearLiveAlert || preCommitWouldClearProvisionalAlert;
       if (cachedNormalWouldClearLiveAlert) {
         console.warn('[Player] cached (offline) manifest carries no emergency — keeping the live alert; only the server clears it');
+      } else if (preCommitWouldClearProvisionalAlert) {
+        console.warn('[Player] live manifest still reads normal inside the signed OVERRIDE confirmation window — keeping the provisional alert; the committed manifest or the 30 s timeout decides');
       } else {
         setActiveEmergency(em);
         cacheEmergency(em);
@@ -6935,12 +7014,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         setNativeFirstDecided(true);
       }
 
-      setNativeSharedDescriptor(em || cachedNormalWouldClearLiveAlert ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
+      setNativeSharedDescriptor(em || alertStaysOnGlass ? null : readNativeSharedVideoDescriptor(manifest.nativeSharedVideo));
       // A replacement can wait for download/loop-boundary readiness. Keep its
       // native descriptor with those bytes until commitMediaPlaylist applies
       // both together; advancing it here tears down a healthy native session.
-      if (em || cachedNormalWouldClearLiveAlert) setNativeVideoDescriptor(null);
-      setNativeVideoItems(em || cachedNormalWouldClearLiveAlert ? null : readNativeVideoItems(manifest.nativeVideoItems));
+      if (em || alertStaysOnGlass) setNativeVideoDescriptor(null);
+      setNativeVideoItems(em || alertStaysOnGlass ? null : readNativeVideoItems(manifest.nativeVideoItems));
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -7630,7 +7709,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           const isEmergencyContent = manifest.isEmergency === true;
           if (newSig === currentPlaylistSigRef.current) {
             setNativeVideoDescriptor(committedNativeVideo(manifest.nativeVideo, combinedItems,
-              isEmergencyContent || !!em || cachedNormalWouldClearLiveAlert));
+              isEmergencyContent || !!em || alertStaysOnGlass));
             playbackManifestRef.current = { m: manifest, fromCache };
             if (!fromCache && renderStateRef.current.rendering) cacheManifest(serverManifest, screenId, true);
             // Same content, but the emergency FLAG may have flipped (e.g. a
@@ -7689,7 +7768,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // (reload, Resync, bundle apply, crash) must never treat "I just
           // booted" as "nothing is on glass" (§4.3).
           const commitReadiness = nativeFirstReadiness(
-            committedNativeVideo(manifest.nativeVideo, combinedItems, isEmergencyContent || !!em || cachedNormalWouldClearLiveAlert),
+            committedNativeVideo(manifest.nativeVideo, combinedItems, isEmergencyContent || !!em || alertStaysOnGlass),
             cacheDriveRef.current, cachedMediaKeysRef.current,
           );
           const decision = decidePlaylistCommit({
@@ -7969,6 +8048,19 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 'Either the trigger transaction FAILED after fan-out or replica lag exceeded the window. NO ALERT IS PAINTED on this screen. ' +
                 'Releasing the provisional hold; routine polling continues.',
               );
+              // 2026-10-26 — the alert raised from that signed push / rev body
+              // was provisional on exactly this window, which is now closed by
+              // THIS live manifest: drop it, and re-evaluate the hold the way
+              // the apply above would have without the window (still the
+              // manifest handler releasing, on a live read — emergencyHold.ts
+              // rule 1).
+              if (activeEmergencyRef.current?.provisional === true) {
+                setActiveEmergency(null);
+                activeEmergencyRef.current = null;
+                cacheEmergency(null);
+                const stillHeld = !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current;
+                signalDisplayEmergencyHold(stillHeld, stillHeld);
+              }
             } else {
               // Chase the commit on a rapid ladder (~2.5/5/10/20s) instead
               // of waiting for the routine poll.
@@ -9352,7 +9444,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         });
       };
       handle('SYNC', () => fetchContent());
-      handle('OVERRIDE', () => {
+      handle('OVERRIDE', (pl) => {
         // Mirror of the WS branch — a new emergency-path behaviour MUST be
         // handled on both transports or it silently no-ops for every screen
         // behind a WS-blocking proxy (Squid / ZScaler / iboss / GoGuardian),
@@ -9360,6 +9452,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         signalDisplayEmergencyHold(true, true);
         // E-P0-01: same confirmation window as the WS arm.
         pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
+        raiseFromSignedPush(pl, 'sse');
         preemptReconcile(); // F2: don't wait out an in-flight normal fetch
       });
       handle('ALL_CLEAR', () => {
@@ -9756,6 +9849,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 // gate-passed trigger may precede its own DB commit; the
                 // reconcile ladder chases the committed manifest.
                 pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
+                raiseFromSignedPush(msg.payload, 'ws');
               }
               if (msg.type === 'ALL_CLEAR' && pendingOverrideConfirmRef.current) {
                 // A signed all-clear supersedes a pending trigger.
@@ -10344,9 +10438,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // signed trigger may precede its own DB commit, so the reconcile
           // ladder chases the committed manifest.
           pendingOverrideConfirmRef.current = { firstAt: Date.now(), tries: 0 };
-          setActiveEmergency(raised);
-          activeEmergencyRef.current = raised;
-          cacheEmergency(raised);
+          raiseFromSignedPush(outcome.alert, 'rev', raised);
         } else if (!signed) {
           console.warn('[Player rev] dropped unsigned alert envelope');
         }
@@ -12147,6 +12239,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // An active status without decoded emergency media used to leave the
   // screen black while still claiming `em:` render proof. Keep a legible,
   // opaque alert on every render branch until its designed content loads.
+  // 2026-10-26 (the MEDICAL drill at a launch site) — a DRILL's protective
+  // surface is never red: the same indigo the API's drill board and the
+  // dashboard use, and it says so in the operator's language. The protective
+  // surface itself is unchanged for a live alert.
+  const emergencyIsDrill = activeEmergency?.isDrill === true;
   const emergencyFallback = activeEmergency &&
     (!playlist?.isEmergency || (isTemplate ? !emergencyTemplateReady :
       !mediaReady || displayIndex === null ||
@@ -12156,12 +12253,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         role="alert"
         data-edu-emergency-root="fallback"
         data-edu-emergency-identity={emergencyPaintIdentity(activeEmergency)}
-        style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', backgroundColor: '#b91c1c', color: '#fff', zIndex: 9998 }}
+        data-edu-emergency-drill={emergencyIsDrill ? 'true' : undefined}
+        style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', backgroundColor: emergencyIsDrill ? '#3730a3' : '#b91c1c', color: '#fff', zIndex: 9998 }}
       >
         <FitToViewport padding={40}>
           <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
             <AlertTriangle style={{ width: 96, height: 96, margin: '0 auto 24px' }} />
-            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || tEmergency('trigger').toUpperCase()}</h1>
+            {emergencyIsDrill ? <p style={{ fontSize: 40, fontWeight: 900, letterSpacing: '0.08em', marginBottom: 16 }}>{tEmergency('drill.playerBanner')}</p> : null}
+            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || tEmergency('trigger').toUpperCase()}{emergencyIsDrill ? ` ${tEmergency('drill.drill')}` : ''}</h1>
             {activeEmergency.textBlob ? <p style={{ fontSize: 32, whiteSpace: 'pre-wrap' }}>{activeEmergency.textBlob}</p> : null}
           </div>
         </FitToViewport>
@@ -12385,13 +12484,23 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
   });
-  if (emergencySurface === 'takeover' && !playlist?.isEmergency) {
+  // 2026-10-26 — `hold`: the display hold is engaged (observed on the APK at
+  // boot, or raised by this page) and nothing identifies the alert yet. No
+  // content may mount under an engaged hold — a page reloaded mid-alert by
+  // the APK's paint-proof ladder used to boot onto its cached NORMAL manifest
+  // — but the page cannot claim an emergency it has no evidence for either
+  // (rule 10), least of all a red one during a drill: black, no words, until
+  // the live manifest decides. The pending surface (a signed OVERRIDE whose
+  // payload named no type) stays, coloured by what the push said.
+  const pendingSurfaceIsDrill = emergencyIsDrill || pendingOverrideDrill;
+  const holdOnly = emergencySurface === 'hold';
+  if ((emergencySurface === 'takeover' || holdOnly) && !playlist?.isEmergency) {
     return (
-      <div data-edu-emergency-transition="true" style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: '#b91c1c', color: '#fff' }}>
-        {emergencyFallback || (!pushedEmergencyMessage && (
+      <div data-edu-emergency-transition="true" data-edu-emergency-hold={holdOnly ? 'true' : undefined} data-edu-emergency-drill={!holdOnly && pendingSurfaceIsDrill ? 'true' : undefined} style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: holdOnly ? '#000' : pendingSurfaceIsDrill ? '#3730a3' : '#b91c1c', color: '#fff' }}>
+        {emergencyFallback || (!pushedEmergencyMessage && !holdOnly && (
           // No alert identity yet: this is a protective pending surface,
           // never an overlay-painted receipt for an unknown alert.
-          <div role="alert" data-edu-emergency-pending="true" style={{ fontSize: 72, fontWeight: 900, textAlign: 'center', padding: 40 }}>{tEmergency('trigger').toUpperCase()}</div>
+          <div role="alert" data-edu-emergency-pending="true" style={{ fontSize: 72, fontWeight: 900, textAlign: 'center', padding: 40 }}>{pendingSurfaceIsDrill ? tEmergency('drill.playerBanner') : tEmergency('trigger').toUpperCase()}</div>
         ))}
         {emergencyMessageOverlay}
       </div>
