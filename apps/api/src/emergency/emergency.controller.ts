@@ -1397,6 +1397,15 @@ export class EmergencyController {
       }
 
       await this.prisma.client.$transaction(subtreeOps);
+      // 2026-10-26 — invalidate AGAIN now that the rows are committed. The
+      // invalidation above ran before the commit, and the fan-out it sits
+      // next to makes every screen read its manifest while the transaction
+      // is in flight: a read that reached Postgres pre-commit wrote the OLD
+      // row back into the 2 s cache. With the epoch guard in
+      // manifest-hot-cache.ts this second call makes every such read
+      // uncacheable, so no screen is served the pre-trigger state after the
+      // trigger has landed.
+      for (const tid of affectedTenantIds) invalidateTenantState(tid);
     } else {
       // Non-tenant scope (group / device). Persist per-screen
       // ScreenEmergencyOverride rows so the HTTP-poll manifest backstop ALSO
@@ -1953,6 +1962,20 @@ export class EmergencyController {
     // device scope dispatches here, AFTER its writes, so a screen that
     // reconciles on the push reads the cleared row rather than the old one.
     // Both awaited so the response reports the real dispatch outcome.
+    //
+    // 2026-10-26 — THE POST-COMMIT INVALIDATION (the MEDICAL drill at a
+    // launch site). The tenant-scope invalidation above ran BEFORE the
+    // transaction; the fan-out beside it made every screen re-read its
+    // manifest while the clear was in flight, and a read that reached
+    // Postgres pre-commit wrote the still-ACTIVE tenant row back into the
+    // 2 s cache. A poll a moment later then saw the override rows GONE and
+    // the tenant ACTIVE from cache: a tenant-wide alert that no longer
+    // existed, in a shape the glass had never shown — every screen announced
+    // a NEW alert, the APK's paint-proof ladder restarted, and its reload
+    // put the cached alert back on the glass in red on the way out. With
+    // the epoch guard in manifest-hot-cache.ts, invalidating here makes
+    // every read that began before the commit uncacheable.
+    if (scopeType === 'tenant') for (const tid of affectedTenantIds) invalidateTenantState(tid);
     const channel = `${scopeType}:${scopeId}`;
     if (!clearFanout) {
       // Move the OWNING tenant's revision so a screen on the cheap revision

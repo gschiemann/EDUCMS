@@ -16,9 +16,45 @@ export function emergencyRenderHash(proof: EmergencyPaintProof, manifestOkAtMs: 
   return manifestOkAtMs === 0 || nowMs - manifestOkAtMs > 120_000 ? `unconfirmed|${identity}` : identity;
 }
 
+/**
+ * What an OVERRIDE alert's paint identity is judged on (2026-10-26, the
+ * MEDICAL drill at a launch site).
+ *
+ * THE BUG THIS CLOSES. The identity used to hash the WHOLE alert object,
+ * `scope` and `expiresAt` included. Those two describe where the alert was
+ * read from and how long it lasts — not what is on the glass — and the same
+ * alert is read two ways: through the screen's own override row (a
+ * location-mode tenant writes one per screen: `scope: 'screen'`, an expiry)
+ * and through the tenant row (`scope: 'tenant'`, no expiry). On the all-clear
+ * a manifest built from a stale tenant-state read served the second shape for
+ * an alert that was on the glass in the first, the identity changed, the page
+ * announced a NEW alert, and the APK's paint-proof ladder started over —
+ * reloading the page onto the cached alert in RED on the way out. The two
+ * shapes hash to one identity now; only the facts that change the picture
+ * (type, severity, drill, the words) change it.
+ *
+ * A pushed message (SOS / broadcast / media alert) carries its own row `id`
+ * and is hashed whole, exactly as before.
+ */
+export function emergencyPaintIdentityInput(alert: unknown): unknown {
+  if (!alert || typeof alert !== 'object' || Array.isArray(alert)) return alert;
+  const a = alert as Record<string, unknown>;
+  if (typeof a.id === 'string' || typeof a.type !== 'string' || a.type.length === 0) return alert;
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  return {
+    kind: 'override',
+    type: a.type,
+    severity: text(a.severity),
+    isDrill: a.isDrill === true,
+    scopeNote: text(a.scopeNote),
+    textBlob: text(a.textBlob),
+    title: text(a.title),
+  };
+}
+
 /** Bounded opaque identity: alert text, URLs and customer details never leave in proof. */
 export function emergencyPaintIdentity(alert: unknown): string {
-  const text = JSON.stringify(alert) || '';
+  const text = JSON.stringify(emergencyPaintIdentityInput(alert)) || '';
   let hash = 2166136261;
   for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   return (hash >>> 0).toString(16).padStart(8, '0');

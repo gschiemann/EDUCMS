@@ -69,8 +69,18 @@ describe('decideEmergencySurface', () => {
     expect(decideEmergencySurface({ ...base, polledActive: true, polledTakeover: true, renderHold: true })).toBe('takeover');
   });
 
-  it('the hold raised with no identified alert is protective (eager WS raise, reload under a persisted hold)', () => {
-    expect(decideEmergencySurface({ ...base, renderHold: true })).toBe('takeover');
+  // 2026-10-26 (the MEDICAL drill at a launch site): a page that reloads
+  // under a persisted native hold has no alert to name yet — content must
+  // not mount (rule 11), but the page may not claim a red "EMERGENCY" it has
+  // no evidence for (rule 10), least of all during a drill. Black, until the
+  // live manifest decides. A signed OVERRIDE awaiting its manifest is still a
+  // takeover: the push named an alert.
+  it('the hold engaged with no identified alert is protective but unattributed: hold (black), never a red claim', () => {
+    expect(decideEmergencySurface({ ...base, renderHold: true })).toBe('hold');
+    expect(decideEmergencySurface({ ...base, renderHold: true, pendingOverrideConfirm: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, renderHold: true, activeEmergency: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, renderHold: true, pushed: sos })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, renderHold: true, playlistIsEmergency: true })).toBe('content');
   });
 
   it('a stale polledTakeover flag without an active poll never takes the glass', () => {

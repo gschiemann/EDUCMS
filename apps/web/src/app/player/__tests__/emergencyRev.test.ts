@@ -16,12 +16,14 @@ import {
   reconcileCadenceMs,
   emergencyRevPath,
   alertFromRevEnvelope,
+  alertFromOverridePush,
   REV_POLL_FAST_MS,
   REV_POLL_HEALTHY_MS,
   RECONCILE_HEALTHY_MS,
   RECONCILE_DEGRADED_MS,
   REV_THROTTLE_STRIKES,
 } from '../emergencyRev';
+import { emergencyPaintIdentity } from '../emergencyPaintProof';
 
 const REV_A = 'r1.aaaaaaaaaaaaaaaaaaaa';
 const REV_B = 'r1.bbbbbbbbbbbbbbbbbbbb';
@@ -310,6 +312,53 @@ describe('the raise fast path', () => {
       scope: 'tenant',
       expiresAt: null,
       isDrill: false,
+      // 2026-10-26 — raised ahead of the committed manifest: the signed
+      // trigger's own pre-commit manifest may not release it (bounded by the
+      // E-P0-01 window). The manifest's own object never carries this.
+      provisional: true,
+    });
+  });
+
+  // 2026-10-26 (the MEDICAL drill at a launch site) — the signed OVERRIDE
+  // push names the alert; the page raises the typed alert from it so paint
+  // proof reaches the APK before its first native step, instead of a generic
+  // red "EMERGENCY" with no identity for the whole manifest round trip.
+  describe('alertFromOverridePush', () => {
+    const PUSH = { overrideId: 'ovr_test', severity: 'CRITICAL', type: 'MEDICAL', expiresAt: 1_700_003_600 };
+
+    it('raises the same flat shape as the manifest, scope pending, never an expiry of its own', () => {
+      expect(alertFromOverridePush(PUSH)).toEqual({
+        active: true,
+        type: 'MEDICAL',
+        severity: 'CRITICAL',
+        scopeNote: null,
+        scope: 'push',
+        expiresAt: null,
+        isDrill: false,
+        provisional: true,
+      });
+    });
+
+    it('a drill is a drill only for the literal true', () => {
+      expect(alertFromOverridePush({ ...PUSH, isDrill: true })).toMatchObject({ isDrill: true });
+      for (const v of ['true', 1, false, null, undefined]) {
+        expect(alertFromOverridePush({ ...PUSH, isDrill: v })).toMatchObject({ isDrill: false });
+      }
+    });
+
+    it('a payload that names no type or severity raises nothing (the manifest decides, as before)', () => {
+      expect(alertFromOverridePush({ overrideId: 'ovr_x', severity: 'CRITICAL', textBlob: '', expiresAt: 0 })).toBeNull();
+      expect(alertFromOverridePush({ overrideId: 'ovr_x', type: 'LOCKDOWN' })).toBeNull();
+      expect(alertFromOverridePush(null)).toBeNull();
+      expect(alertFromOverridePush('OVERRIDE')).toBeNull();
+    });
+
+    it('is ONE paint identity with the manifest read through the override row or the tenant row', () => {
+      const pushed = alertFromOverridePush({ ...PUSH, isDrill: true });
+      const viaOverrideRow = { active: true, type: 'MEDICAL', severity: 'CRITICAL', scopeNote: null, scope: 'screen', expiresAt: 1_700_003_600, isDrill: true };
+      const viaTenantRow = { active: true, type: 'MEDICAL', severity: 'CRITICAL', scopeNote: null, scope: 'tenant', expiresAt: null, isDrill: true };
+      expect(emergencyPaintIdentity(pushed)).toBe(emergencyPaintIdentity(viaOverrideRow));
+      expect(emergencyPaintIdentity(pushed)).toBe(emergencyPaintIdentity(viaTenantRow));
     });
   });
 
