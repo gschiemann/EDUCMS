@@ -61,6 +61,14 @@ const goBackKey = (page: Page) =>
 const settle = (page: Page) =>
   page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
+/**
+ * Player rule 14: never send a key before the page's listeners are attached.
+ * `data-edu-booted` is stamped by a mount effect declared AFTER the Back
+ * listener's effect, so its presence proves the listener is live (SSR text,
+ * which paints first, cannot).
+ */
+const waitForMount = (page: Page) => expect(page.locator('html[data-edu-booted="1"]')).toHaveCount(1, { timeout: 30_000 });
+
 /** Walk the remote's focus with Tab — the browser's stand-in for D-pad traversal
  *  (WebKit skips buttons on a plain Tab, like Safari; Option+Tab walks them).
  *  `target` is an attribute the control carries, or its exact visible text. */
@@ -100,8 +108,10 @@ async function bootToMenu(page: Page, tag: string, opts: { emergencyManifest?: b
       });
     },
   });
-  // Hydration gate: the slides exist only after the mount effects registered
-  // the screen and applied the manifest — the Back listener is attached.
+  // Hydration gate: mounted (listeners live), and the slides exist — they
+  // only render after the mount effects registered the screen and applied
+  // the manifest.
+  await waitForMount(page);
   await expect(page.locator(SLIDES)).toHaveCount(3, { timeout: 30_000 });
   await page.keyboard.press('Escape');
   await expect(paused(page)).toBeVisible({ timeout: 5_000 });
@@ -302,7 +312,9 @@ test('5. the idle card: Auto-Play\'s notice and Unpair are remote questions too,
       await p.route('**/api/v1/screens/unpair/**', (route) => { unpairCalls.push(route.request().url()); return ok(route, { ok: true }); });
     },
   });
-  // Hydration gate: the paired card exists only after register + manifest ran.
+  // Hydration gate: mounted (listeners live), and the paired card exists only
+  // after register + manifest ran.
+  await waitForMount(page);
   await expect(page.getByRole('heading', { name: 'Screen Paired Successfully' })).toBeVisible({ timeout: 30_000 });
   const autoPlay = page.getByRole('button', { name: 'Auto-Play' });
   await expect(autoPlay).toBeFocused();
