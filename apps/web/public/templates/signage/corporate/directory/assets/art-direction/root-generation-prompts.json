@@ -1,0 +1,56 @@
+{
+  "created": "2026-10-25",
+  "mode": "built-in image_gen",
+  "prompts": [
+    [
+      "editorial",
+      "A fictional premium Pacific-coast commercial office tower: elegant warm limestone fins and blue-green curved glazing, a few palms at street level, late-afternoon sun, expansive architectural forms seen from a subtly low viewpoint. Sophisticated architectural editorial photography for a premium building-directory display, natural believable materials, bright blue sky, quiet luxury, warm cream and ocean teal. Make a single wide 16:9 architectural photograph, high-resolution 4K composition with building detail that also crops well to portrait. No text, letters, numbers, logos, arrows, signage, UI, borders, collage, people, or watermark. Not a recognizable existing building."
+    ],
+    [
+      "stack",
+      "A fictional contemporary corporate headquarters atrium, a breathtaking sculptural spiral staircase in pale travertine leading through three stories of warm oak, forest-green lounge elements, a mature indoor tree, expansive skylight with clear daylight, precise minimal architecture photographed for an architecture magazine. A calm composition with strong vertical rhythm and beautifully detailed real materials. Single wide 16:9 photograph that also crops well vertically, 4K composition. No text, lettering, numbers, logos, arrows, signage, diagrams, interface, border, collage, people or watermark."
+    ],
+    [
+      "board",
+      "A fictional premium logistics campus at blue hour, vast contemporary distribution buildings with precise illuminated loading bays, one elegant white semi trailer, long amber light reflections and crisp dark teal structural forms, photographed from a slightly elevated architectural vantage point. A cinematic industrial architecture photograph, refined composition, bold rhythmic geometry and realistic operational scale, not grungy. Single wide 16:9 frame, high-resolution 4K composition. No text, letters, numbers, logos, arrows, signs, diagram, UI, border, collage, people or watermark."
+    ],
+    [
+      "swiss",
+      "A fictional contemporary civic centre and public library entrance, monumental pale limestone columns, a deeply recessed red entrance door, clean glass pavilion, generous broad plaza, plane trees casting long shadows, crisp Swiss architectural editorial photography. Confident public architecture, accessible welcoming scale, warm cream stone and restrained brick-red accent, clear midday light, beautifully precise real materials. Single wide 16:9 photograph, high-resolution 4K composition. No text, lettering, numbers, logos, arrows, signage, UI, border, collage, people or watermark."
+    ],
+    [
+      "poster",
+      "A fictional university arts and design campus with a dramatic angular concrete building, terracotta interior visible behind large glazed openings, planted courtyard and broad stairs, bold hard afternoon sunlight, vibrant architectural editorial photograph. Strong brutalist geometric composition with beautiful tactile concrete and electric blue sky, inspiring contemporary art-school atmosphere. Single wide 16:9 image, high-resolution 4K composition that crops well vertically. No text, lettering, numbers, logos, arrows, signs, UI, border, collage, people or watermark."
+    ],
+    [
+      "care",
+      "A fictional beautifully designed medical wellness centre atrium, serene light-filled reception architecture with curved cream plaster, pale oak, soft sage upholstery, indoor trees and a carefully framed garden courtyard beyond tall glass, daylight filtered through timber fins. Premium healthcare architectural editorial photograph, reassuring, human and airy, no medical equipment or people. Single wide 16:9 image, high-resolution 4K composition that also crops vertically. No text, lettering, numbers, logos, arrows, signage, UI, border, collage or watermark."
+    ]
+  ],
+  "files": [
+    {
+      "name": "editorial",
+      "path": "editorial.png"
+    },
+    {
+      "name": "stack",
+      "path": "stack.png"
+    },
+    {
+      "name": "board",
+      "path": "board.png"
+    },
+    {
+      "name": "swiss",
+      "path": "swiss.png"
+    },
+    {
+      "name": "poster",
+      "path": "poster.png"
+    },
+    {
+      "name": "care",
+      "path": "care.png"
+    }
+  ]
+}
