@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="usb_caption">Unidad USB</string>
+    <string name="usb_hint">Pulse Atrás para cerrar.</string>
+    <string name="usb_closing">Se cierra en %1$d s</string>
+    <string name="usb_this_playlist">esta lista</string>
+
+    <!-- En curso -->
+    <string name="usb_looking_title">Buscando una unidad USB…</string>
+    <string name="usb_looking_body">Revisando los puertos USB de esta pantalla.</string>
+    <string name="usb_reading_title">Unidad USB encontrada: leyendo…</string>
+    <string name="usb_reading_body">Buscando una lista de VenueOS en la unidad.</string>
+    <string name="usb_copying_title">Copiando %1$s desde el USB</string>
+    <string name="usb_copying_body">Deje la unidad conectada hasta que termine.</string>
+    <string name="usb_copying_progress">%1$d de %2$d archivos · %3$s de %4$s</string>
+
+    <!-- Listo -->
+    <string name="usb_imported_title">Reproduciendo %1$s desde el USB</string>
+    <string name="usb_imported_body">Ya puede retirar la unidad.</string>
+    <string name="usb_imported_body_again">Ya estaba en esta pantalla y vuelve a reproducirse; puede retirar la unidad.</string>
+
+    <!-- Problemas: una frase cada uno; la solución es el botón seleccionado -->
+    <string name="usb_no_drive_title">No se encontró ninguna unidad USB</string>
+    <string name="usb_no_drive_body">Conecte la unidad al puerto USB de esta pantalla y elija Buscar de nuevo.</string>
+    <string name="usb_access_title">VenueOS necesita permiso para leer unidades USB</string>
+    <string name="usb_access_body">Elija Permitir, active “%1$s” y pulse Atrás para volver aquí.</string>
+    <string name="usb_no_access_page_title">Esta pantalla no puede dar a VenueOS acceso a unidades USB</string>
+    <string name="usb_no_access_page_body">Android en esta pantalla no tiene una página para permitirlo, así que la unidad no se puede leer aquí.</string>
+    <string name="usb_no_package_title">No hay ninguna lista de VenueOS en esta unidad</string>
+    <string name="usb_no_package_body">En VenueOS, abra la lista, elija Descargar a USB y copie la descarga en esta unidad.</string>
+    <string name="usb_waiting_key_title">Conecte esta pantalla a internet una vez para usar listas desde USB</string>
+    <string name="usb_waiting_key_body">La pantalla debe conectarse a VenueOS una vez antes de poder comprobar una lista desde una unidad.</string>
+    <string name="usb_other_org_title">Esta lista pertenece a otra organización</string>
+    <string name="usb_other_org_body">Descargue la lista desde la cuenta de VenueOS con la que está vinculada esta pantalla.</string>
+    <string name="usb_unverified_title">No se pudieron verificar los archivos de esta unidad</string>
+    <string name="usb_unverified_body">La lista cambió después de descargarse: descárguela de nuevo y cópiela en la unidad.</string>
+    <string name="usb_no_space_title">No hay espacio suficiente en esta pantalla</string>
+    <string name="usb_no_space_body">Esta lista necesita unos %1$s de espacio libre en la pantalla.</string>
+    <string name="usb_read_failed_title">No se pudo leer esta unidad</string>
+    <string name="usb_read_failed_body">La unidad se retiró o dejó de responder: vuelva a conectarla y elija Buscar de nuevo.</string>
+
+    <!-- Botones -->
+    <string name="usb_allow">Permitir</string>
+    <string name="usb_not_now">Ahora no</string>
+    <string name="usb_look_again">Buscar de nuevo</string>
+    <string name="usb_network">Configuración de red</string>
+    <string name="usb_close">Cerrar</string>
+    <string name="usb_ok">Aceptar</string>
+</resources>

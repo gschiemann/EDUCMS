@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="usb_caption">U 盘</string>
+    <string name="usb_hint">按返回键关闭。</string>
+    <string name="usb_closing">%1$d 秒后关闭</string>
+    <string name="usb_this_playlist">此播放列表</string>
+
+    <!-- 进行中 -->
+    <string name="usb_looking_title">正在查找 U 盘…</string>
+    <string name="usb_looking_body">正在检查此屏幕的 USB 接口。</string>
+    <string name="usb_reading_title">已找到 U 盘，正在读取…</string>
+    <string name="usb_reading_body">正在 U 盘中查找 VenueOS 播放列表。</string>
+    <string name="usb_copying_title">正在从 U 盘复制“%1$s”</string>
+    <string name="usb_copying_body">复制完成前请不要拔出 U 盘。</string>
+    <string name="usb_copying_progress">%1$d / %2$d 个文件 · %3$s / %4$s</string>
+
+    <!-- 完成 -->
+    <string name="usb_imported_title">正在从 U 盘播放“%1$s”</string>
+    <string name="usb_imported_body">现在可以拔出 U 盘了。</string>
+    <string name="usb_imported_body_again">此播放列表已在本屏幕上，现在重新播放，可以拔出 U 盘了。</string>
+
+    <!-- 问题：每项一句话；解决办法在已选中的按钮上 -->
+    <string name="usb_no_drive_title">未找到 U 盘</string>
+    <string name="usb_no_drive_body">请把 U 盘插入此屏幕的 USB 接口，然后选择“重新查找”。</string>
+    <string name="usb_access_title">VenueOS 需要读取 U 盘的权限</string>
+    <string name="usb_access_body">选择“允许”，打开“%1$s”的开关，然后按返回键回到这里。</string>
+    <string name="usb_no_access_page_title">此屏幕无法允许 VenueOS 读取 U 盘</string>
+    <string name="usb_no_access_page_body">此屏幕的 Android 系统没有允许此操作的设置页面，因此无法在这里读取 U 盘。</string>
+    <string name="usb_no_package_title">此 U 盘中没有 VenueOS 播放列表</string>
+    <string name="usb_no_package_body">在 VenueOS 中打开播放列表，选择“下载到 U 盘”，然后把下载的文件复制到此 U 盘。</string>
+    <string name="usb_waiting_key_title">请先将此屏幕连接一次互联网，才能使用 U 盘播放列表</string>
+    <string name="usb_waiting_key_body">屏幕需要先连接 VenueOS 一次，才能检查 U 盘中的播放列表。</string>
+    <string name="usb_other_org_title">此播放列表属于其他组织</string>
+    <string name="usb_other_org_body">请从此屏幕所配对的 VenueOS 账户下载播放列表。</string>
+    <string name="usb_unverified_title">无法验证此 U 盘中的文件</string>
+    <string name="usb_unverified_body">播放列表在下载后被更改过，请重新下载并复制到 U 盘。</string>
+    <string name="usb_no_space_title">此屏幕空间不足</string>
+    <string name="usb_no_space_body">此播放列表需要屏幕上约 %1$s 的可用空间。</string>
+    <string name="usb_read_failed_title">无法读取此 U 盘</string>
+    <string name="usb_read_failed_body">U 盘已被拔出或停止响应，请重新插入，然后选择“重新查找”。</string>
+
+    <!-- 按钮 -->
+    <string name="usb_allow">允许</string>
+    <string name="usb_not_now">以后再说</string>
+    <string name="usb_look_again">重新查找</string>
+    <string name="usb_network">网络设置</string>
+    <string name="usb_close">关闭</string>
+    <string name="usb_ok">确定</string>
+</resources>

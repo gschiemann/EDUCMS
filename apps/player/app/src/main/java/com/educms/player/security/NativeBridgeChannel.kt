@@ -175,6 +175,13 @@ object NativeBridgeChannel {
         // KNOWN_METHODS until the fleet floor includes this APK) and the
         // drift-guard canary count.
         "openNetworkScreen",
+        // 2026-10-26 — the Back menu's "Import from USB": reads the USB drive
+        // again and shows the USB card. Grants nothing, skips no verification;
+        // the Activity refuses it over an alert. THREE-FILE ATOMIC CHANGE: this
+        // array, the dispatch arm below, the web's NATIVE_VOID_METHODS (kept
+        // OUT of the web's KNOWN_METHODS until the fleet floor includes this
+        // APK) and the drift-guard canary count.
+        "importFromUsb",
         // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ────────
         // The three facts the native side cannot observe for itself. An
         // HTTP 200 plus `onPageFinished` is satisfied perfectly by a
@@ -667,6 +674,7 @@ object NativeBridgeChannel {
             "openSettingsForManager" -> { bridge.openSettingsForManager(bridge.channelNonce()); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
             "openNetworkScreen" -> { bridge.openNetworkScreen(); null }
+            "importFromUsb" -> { bridge.importFromUsb(); null }
             // 2026-09-02 (P0-2). No arguments to validate on the first two —
             // their whole content is "this happened, now". The third carries
             // a JSON verdict that degrades inside the handler (an
