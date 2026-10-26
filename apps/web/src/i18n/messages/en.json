@@ -982,10 +982,10 @@
         "title": "Emergency",
         "description": "Configure and validate alert readiness. This is not the trigger screen.",
         "editorTitle": "Emergency alerts",
-        "editorDescription": "What your screens show when an alert is triggered, and whether that would actually work right now.",
+        "editorDescription": "What your screens show when an alert is sent, and whether that would work right now.",
         "readiness": {
-          "title": "Readiness",
-          "desc": "Whether an alert would reach your screens today, and exactly what is missing if it would not.",
+          "title": "Is everything working?",
+          "desc": "Whether an alert would reach your screens today, and what to fix if not.",
           "disabled": "Emergency alerts are off for this organization, so there is nothing to grade. Turn the capability on below to see a readiness check."
         },
         "enablement": {
@@ -1024,7 +1024,7 @@
           "unchanged": "Nothing changed. The last setting the server confirmed is still in effect."
         },
         "delivery": {
-          "title": "Delivery model",
+          "title": "Same alert everywhere, or per screen",
           "desc": "Whether every screen shows the same alert, or each screen shows its own.",
           "loading": "Reading the delivery model…",
           "loadFailed": "Could not read the delivery model. Reload this page before changing anything — the last setting the server confirmed is still in effect.",
@@ -1039,8 +1039,8 @@
           "saveFailedFallback": "The server did not confirm the change."
         },
         "content": {
-          "title": "Alert types and content",
-          "desc": "The media each alert type puts on screen. An alert type with no content sends nothing.",
+          "title": "Alert messages",
+          "desc": "Every alert type is ready with a standard message on a red screen. Add your own picture or video to any of them if you like.",
           "criticalGroup": "Critical",
           "awarenessGroup": "Heightened awareness"
         },
@@ -1083,14 +1083,14 @@
         "history": {
           "title": "History",
           "desc": "Every change on this page and every alert that was sent is recorded permanently, with who did it and when.",
-          "link": "Open the audit log"
+          "link": "See who did what"
         },
         "rail": {
           "capability": "Capability",
           "capabilityOffBody": "Nothing is graded and no alert can be sent while the capability is off.",
           "byType": "Alert content",
-          "typeConfigured": "Configured",
-          "typeNotConfigured": "No content",
+          "typeConfigured": "Your content",
+          "typeNotConfigured": "Standard message",
           "typeChecking": "Checking",
           "coverage": "Coverage",
           "coverageOrg": "Every screen shows the same alert content.",
@@ -1147,6 +1147,28 @@
             "screen": "Screen",
             "unknownUser": "Unknown"
           }
+        },
+        "setup": {
+          "title": "Ready in two steps",
+          "step1Title": "Alert messages",
+          "step1Done": "Every alert type has a clear message ready. Your own picture or video is optional.",
+          "step1OffTitle": "Turn on safety alerts",
+          "step1OffBody": "Use the button just below. Every alert type then has a clear message ready.",
+          "step2Title": "Who can send alerts",
+          "step2Ok": "{count, plural, one {# person} other {# people}} can send an alert.",
+          "step2One": "Only one person can send an alert. Add a second, so an alert never waits on one person.",
+          "step2None": "Nobody can send an alert yet.",
+          "step2Checking": "Checking who can send…",
+          "step2Action": "Choose people",
+          "ready": "Your alerts are ready.",
+          "readyHint": "Alerts are sent from the Emergency button, never from this page.",
+          "stepDone": "Done",
+          "stepTodo": "To do"
+        },
+        "practice": {
+          "title": "Practice with a drill",
+          "desc": "Open the Emergency page, switch it to DRILL, then send. Every screen shows DRILL, so nobody mistakes it for the real thing.",
+          "action": "Open the Emergency page"
         }
       },
       "brand": {
@@ -6935,5 +6957,94 @@
     "tooShort": "Password must be at least 8 characters.",
     "mismatch": "Passwords do not match.",
     "acceptFailed": "Could not accept the invitation."
+  },
+  "panicContent": {
+    "standardMessage": "Standard message",
+    "usesLive": "Uses live content",
+    "ownCount": "Your content · {landscape} landscape · {portrait} portrait",
+    "previewLabel": "What screens show for {label}",
+    "standardCaption": "Screens show this until you add your own picture or video.",
+    "meaning": "On screens it is in English. It means",
+    "orientationLabel": "Screen shape",
+    "landscape": "Landscape",
+    "portrait": "Portrait",
+    "addOwn": "Add your own picture or video (optional)",
+    "emptyLive": "No picture or video of your own for this screen shape.",
+    "emptyDrill": "No drill content — a drill shows the live content, marked DRILL.",
+    "tooLarge": "Too large ({size} MB). The limit is 500 MB.",
+    "bindFailed": "Uploaded, but it could not be added to this alert. Try again.",
+    "badResponse": "The server sent an answer we could not read. Try again.",
+    "uploadFailed": "Upload failed ({status}).",
+    "networkError": "No connection. Check the network and try again.",
+    "removeTitle": "Remove from {label}?",
+    "removeMessage": "Remove “{name}” from {label}? The file stays in your Media Library.",
+    "remove": "Remove",
+    "removeHint": "Remove from this alert",
+    "removeAria": "Remove {name}",
+    "thisFile": "this file",
+    "dismiss": "Dismiss"
+  },
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "Ready",
+        "blurb": "Messages, delivery, screens and people all check out."
+      },
+      "NEEDS_ATTENTION": {
+        "title": "Ready, with gaps",
+        "blurb": "An alert would be delivered today. Close the gaps below before you need them."
+      },
+      "NOT_CONFIGURED": {
+        "title": "Not ready",
+        "blurb": "Something critical is missing — an alert would not reach your screens correctly."
+      },
+      "DISABLED": {
+        "title": "Emergency alerts are off",
+        "blurb": "Nothing is checked while alerts are off. Turn them on to get every alert ready."
+      }
+    },
+    "loading": "Checking whether alerts are ready…",
+    "loadFailed": "Couldn’t check readiness. The check itself failed, which usually means the service can’t be reached.",
+    "retry": "Try again",
+    "recheck": "Check again",
+    "scoreLabel": "Readiness",
+    "drillLine": "Drill content (not graded)",
+    "statusOk": "OK",
+    "statusWarn": "Needs attention",
+    "statusMissing": "Missing",
+    "labels": {
+      "content": "Alert messages",
+      "delivery": "Delivery to screens",
+      "screens": "Screens online",
+      "staff": "People who can send alerts",
+      "exercise": "Last practiced"
+    },
+    "detail": {
+      "content_allOwn": "All {total} alert types use your own picture or video.",
+      "content_someStandard": "{own} of {total} alert types use your own picture or video; the others show their standard message.",
+      "content_allStandard": "All {total} alert types are ready with their standard message.",
+      "delivery_ok": "Instant delivery, the backup check and message signing are all working.",
+      "delivery_fallback": "Instant delivery is in backup mode — alerts still arrive, within about 20 seconds instead of instantly.",
+      "delivery_down": "Alerts can’t be delivered right now. This is a VenueOS problem, not your setup — contact support.",
+      "screens_none": "No screens are paired yet.",
+      "screens_allOffline": "None of your {total, plural, one {# screen is} other {# screens are}} online.",
+      "screens_someOffline": "{online} of {total} screens are online; {fresh} of them reported in the last 5 minutes.",
+      "screens_ok": "All {total} screens are online and reporting.",
+      "staff_ok": "{count, plural, one {# person} other {# people}} can send an alert.",
+      "staff_one": "Only one person can send an alert.",
+      "staff_none": "Nobody can send an alert yet.",
+      "exercise_never": "Alerts have never been sent here — not even as a drill.",
+      "exercise_today": "Last sent today.",
+      "exercise_recent": "Last sent {days, plural, one {# day} other {# days}} ago.",
+      "exercise_stale": "Last sent {days, plural, one {# day} other {# days}} ago."
+    },
+    "fix": {
+      "screens_none": "Pair a screen — an alert with no screens reaches no one.",
+      "screens_offline": "Check the offline screens on the Screens page; an offline screen can’t receive a new alert until it is back online.",
+      "staff_one": "Let a second trusted person send alerts in Settings → Team.",
+      "staff_none": "Choose who can send alerts in Settings → Team.",
+      "exercise": "Run a drill so the first real alert is never the first time.",
+      "delivery_fallback": "Nothing to do — VenueOS is watching the instant channel."
+    }
   }
 }

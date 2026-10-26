@@ -754,7 +754,7 @@
         "emergency": {
           "label": "紧急警报",
           "description": "警报消息，以及谁可以发送警报。",
-          "keywords": "封锁, 疏散, 火警, 天气, 医疗, 原地等待, 安全警戒, 警报, 演练"
+          "keywords": "封锁, 疏散, 火警, 天气, 医疗, 原地等待, 安全警戒, 警报, 演习"
         },
         "team": {
           "label": "团队",
@@ -833,8 +833,8 @@
           "chooseSenders": "选择人员",
           "delivery": "警报目前无法送达您的屏幕。",
           "openEmergency": "打开紧急警报",
-          "practice": "过去 90 天内没有演练过警报。",
-          "practiceAction": "如何进行演练",
+          "practice": "过去 90 天内没有演习过警报。",
+          "practiceAction": "如何进行演习",
           "trialEnds": "您的免费试用将在 {days} 天后结束。",
           "planEnded": "您的套餐已结束。选择一个套餐即可继续编辑。",
           "pickPlan": "选择套餐",
@@ -875,8 +875,8 @@
           "keywords": "紧急按钮, 触发, 权限"
         },
         "practiceDrill": {
-          "label": "进行演练",
-          "keywords": "演练, 练习, 测试警报"
+          "label": "进行演习",
+          "keywords": "演习, 练习, 测试警报"
         },
         "floorPlans": {
           "label": "楼层平面图",
@@ -982,10 +982,10 @@
         "title": "紧急警报",
         "description": "配置并验证警报是否就绪。此页面不用于触发警报。",
         "editorTitle": "紧急警报",
-        "editorDescription": "触发警报时各屏幕显示的内容，以及现在是否真的能生效。",
+        "editorDescription": "发送警报时屏幕显示的内容，以及现在是否可以正常工作。",
         "readiness": {
-          "title": "就绪状态",
-          "desc": "警报今天能否送达各屏幕；若不能，具体缺少什么。",
+          "title": "一切正常吗？",
+          "desc": "警报今天能否送达您的屏幕，以及如果不能需要修复什么。",
           "disabled": "本组织已关闭紧急警报，因此没有可评估的内容。请在下方开启该功能以查看就绪检查。"
         },
         "enablement": {
@@ -1024,7 +1024,7 @@
           "unchanged": "没有任何改变。服务器最后确认的设置仍然有效。"
         },
         "delivery": {
-          "title": "下发方式",
+          "title": "所有屏幕相同，或按屏幕设置",
           "desc": "所有屏幕显示同一条警报，还是各屏幕显示各自的警报。",
           "loading": "正在读取下发方式…",
           "loadFailed": "无法读取下发方式。请先重新加载页面再做更改——服务器最后确认的设置仍然有效。",
@@ -1039,8 +1039,8 @@
           "saveFailedFallback": "服务器未确认此更改。"
         },
         "content": {
-          "title": "警报类型与内容",
-          "desc": "各警报类型在屏幕上呈现的素材。没有内容的警报类型不会发送任何东西。",
+          "title": "警报消息",
+          "desc": "每种警报类型都已就绪，会在红色屏幕上显示标准消息。您也可以为任意类型添加自己的图片或视频。",
           "criticalGroup": "危急",
           "awarenessGroup": "提高戒备"
         },
@@ -1083,14 +1083,14 @@
         "history": {
           "title": "历史记录",
           "desc": "本页的每一次更改和发出的每一条警报都会被永久记录，包含操作人与时间。",
-          "link": "打开审计日志"
+          "link": "查看谁做了什么"
         },
         "rail": {
           "capability": "功能",
           "capabilityOffBody": "该功能关闭期间不进行任何评估，也无法发送警报。",
           "byType": "警报内容",
-          "typeConfigured": "已配置",
-          "typeNotConfigured": "无内容",
+          "typeConfigured": "您的内容",
+          "typeNotConfigured": "标准消息",
           "typeChecking": "正在检查",
           "coverage": "覆盖范围",
           "coverageOrg": "所有屏幕显示相同的警报内容。",
@@ -1147,6 +1147,28 @@
             "screen": "屏幕",
             "unknownUser": "未知"
           }
+        },
+        "setup": {
+          "title": "两步即可就绪",
+          "step1Title": "警报消息",
+          "step1Done": "每种警报类型都已准备好清晰的消息。您自己的图片或视频为可选项。",
+          "step1OffTitle": "开启安全警报",
+          "step1OffBody": "使用下方的按钮。之后每种警报类型都会准备好清晰的消息。",
+          "step2Title": "谁可以发送警报",
+          "step2Ok": "{count} 人可以发送警报。",
+          "step2One": "只有一个人可以发送警报。再添加一人，确保警报不会只依赖一个人。",
+          "step2None": "目前还没有人可以发送警报。",
+          "step2Checking": "正在检查谁可以发送…",
+          "step2Action": "选择人员",
+          "ready": "您的警报已就绪。",
+          "readyHint": "警报通过“紧急警报”按钮发送，绝不会从此页面发送。",
+          "stepDone": "已完成",
+          "stepTodo": "待完成"
+        },
+        "practice": {
+          "title": "进行演习",
+          "desc": "打开紧急警报页面，切换到“演习”，然后发送。每块屏幕都会显示“演习”，以免有人误以为是真实情况。",
+          "action": "打开紧急警报页面"
         }
       },
       "brand": {
@@ -6935,5 +6957,94 @@
     "tooShort": "密码至少需要 8 个字符。",
     "mismatch": "两次输入的密码不一致。",
     "acceptFailed": "无法接受邀请。"
+  },
+  "panicContent": {
+    "standardMessage": "标准消息",
+    "usesLive": "使用真实内容",
+    "ownCount": "您的内容 · {landscape} 个横屏 · {portrait} 个竖屏",
+    "previewLabel": "{label}时屏幕显示的内容",
+    "standardCaption": "在您添加自己的图片或视频之前，屏幕会显示此内容。",
+    "meaning": "屏幕上以英文显示，意思是",
+    "orientationLabel": "屏幕方向",
+    "landscape": "横屏",
+    "portrait": "竖屏",
+    "addOwn": "添加您自己的图片或视频（可选）",
+    "emptyLive": "此屏幕方向还没有您自己的图片或视频。",
+    "emptyDrill": "没有演习内容——演习会显示真实内容，并标记为“演习”。",
+    "tooLarge": "文件过大（{size} MB）。上限为 500 MB。",
+    "bindFailed": "已上传，但无法添加到此警报。请重试。",
+    "badResponse": "服务器返回了无法读取的响应。请重试。",
+    "uploadFailed": "上传失败（{status}）。",
+    "networkError": "没有网络连接。请检查网络后重试。",
+    "removeTitle": "要从{label}中移除吗？",
+    "removeMessage": "要从{label}中移除“{name}”吗？该文件仍会保留在您的媒体库中。",
+    "remove": "移除",
+    "removeHint": "从此警报中移除",
+    "removeAria": "移除 {name}",
+    "thisFile": "此文件",
+    "dismiss": "关闭"
+  },
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "已就绪",
+        "blurb": "消息、送达、屏幕和人员均正常。"
+      },
+      "NEEDS_ATTENTION": {
+        "title": "已就绪，但仍有缺口",
+        "blurb": "今天可以送达警报。请在需要之前补齐下方的缺口。"
+      },
+      "NOT_CONFIGURED": {
+        "title": "尚未就绪",
+        "blurb": "缺少关键环节——警报无法正确送达您的屏幕。"
+      },
+      "DISABLED": {
+        "title": "紧急警报已关闭",
+        "blurb": "警报关闭时不会进行任何检查。开启后即可让每种警报就绪。"
+      }
+    },
+    "loading": "正在检查警报是否就绪…",
+    "loadFailed": "无法检查就绪状态。检查本身失败，通常表示无法连接到服务。",
+    "retry": "重试",
+    "recheck": "重新检查",
+    "scoreLabel": "就绪度",
+    "drillLine": "演习内容（不计分）",
+    "statusOk": "正常",
+    "statusWarn": "需要处理",
+    "statusMissing": "缺失",
+    "labels": {
+      "content": "警报消息",
+      "delivery": "送达屏幕",
+      "screens": "在线屏幕",
+      "staff": "可发送警报的人员",
+      "exercise": "上次演习"
+    },
+    "detail": {
+      "content_allOwn": "全部 {total} 种警报类型都使用您自己的图片或视频。",
+      "content_someStandard": "{total} 种警报类型中有 {own} 种使用您自己的图片或视频，其余显示标准消息。",
+      "content_allStandard": "全部 {total} 种警报类型都已就绪，显示标准消息。",
+      "delivery_ok": "即时送达、备用检查和消息签名均正常工作。",
+      "delivery_fallback": "即时送达处于备用模式——警报仍会送达，但需约 20 秒而非即时。",
+      "delivery_down": "警报目前无法送达。这是 VenueOS 的问题，不是您的设置问题——请联系支持人员。",
+      "screens_none": "还没有配对任何屏幕。",
+      "screens_allOffline": "您的 {total} 块屏幕均不在线。",
+      "screens_someOffline": "{total} 块屏幕中有 {online} 块在线，其中 {fresh} 块在过去 5 分钟内报告过状态。",
+      "screens_ok": "全部 {total} 块屏幕都在线并正常报告。",
+      "staff_ok": "{count} 人可以发送警报。",
+      "staff_one": "只有一个人可以发送警报。",
+      "staff_none": "目前还没有人可以发送警报。",
+      "exercise_never": "这里从未发送过警报——连演习都没有。",
+      "exercise_today": "上次发送：今天。",
+      "exercise_recent": "上次发送：{days} 天前。",
+      "exercise_stale": "上次发送：{days} 天前。"
+    },
+    "fix": {
+      "screens_none": "请配对屏幕——没有屏幕，警报无法送达任何人。",
+      "screens_offline": "请在“屏幕”页面检查离线屏幕；离线屏幕在恢复在线之前无法接收新警报。",
+      "staff_one": "请在“设置 → 团队”中再允许一位可信人员发送警报。",
+      "staff_none": "请在“设置 → 团队”中选择谁可以发送警报。",
+      "exercise": "进行一次演习，让第一次真实警报不再是第一次使用。",
+      "delivery_fallback": "无需操作——VenueOS 正在监控即时通道。"
+    }
   }
 }

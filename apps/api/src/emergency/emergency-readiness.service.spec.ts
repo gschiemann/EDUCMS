@@ -271,7 +271,16 @@ describe('EmergencyReadinessService', () => {
     const rNever = await new EmergencyReadinessService(never.prisma, never.redis, never.wsSigner).compute('t1');
     expect(rOld.items.find((i) => i.key === 'exercise')!.status).toBe('warn');
     expect(rNever.items.find((i) => i.key === 'exercise')!.detail).toMatch(/never/i);
-    expect(rNever.items.find((i) => i.key === 'exercise')!.fixHint).toMatch(/test alert/i);
+    expect(rNever.items.find((i) => i.key === 'exercise')!.fixHint).toMatch(/drill/i);
+    expect(rNever.items.find((i) => i.key === 'exercise')!.code).toBe('exercise.never');
+  });
+
+  it('a drill counts as practice — "drill or real", as the check promises', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ lastTrigger: { createdAt: new Date(Date.now() - 3 * 86_400_000) } });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const where = (prisma.client.auditLog.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(where.action).toEqual({ in: ['TRIGGER_EMERGENCY', 'TRIGGER_EMERGENCY_DRILL'] });
+    expect(r.items.find((i) => i.key === 'exercise')).toMatchObject({ status: 'ok', code: 'exercise.recent', params: { days: 3 } });
   });
 
   it('partial fleet (some offline / stale cache) → screens WARN with honest counts', async () => {

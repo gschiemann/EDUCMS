@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, Trash2, Upload, Image as ImageIcon, Video, Music, AlertTriangle, ShieldCheck, Monitor, Smartphone } from 'lucide-react';
+import { emergencyWordingKind, standardEmergencyWording, type EmergencyWordingLocale } from '@cms/api-types';
 import { useUIStore } from '@/store/ui-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePanicContent, useAddPanicAsset, useRemovePanicAsset, type PanicKind, type PanicMode, type PanicOrientation } from '@/hooks/use-api';
@@ -39,6 +41,16 @@ const ACCENT_DOT = {
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raised 2026-09-23)
 
 /**
+ * One alert type's content (2026-10-26: translated, and READY by default).
+ *
+ * Every alert type now has its STANDARD WORDING (owner-approved; @cms/api-types
+ * emergency-wording.ts): with no picture or video of its own, a live alert
+ * shows that wording on the red board, so the card says "Standard message"
+ * and previews exactly what the screens show — in English, the language of
+ * the board, with the meaning underneath for a Spanish or Chinese reader.
+ * Adding your own picture or video is optional and replaces the standard
+ * board for that type and orientation.
+ *
  * Direct asset uploader for one panic content bucket. Bypasses the
  * regular /playlists surface so emergency content can never be
  * accidentally deleted from the playlists list. Operators just see
@@ -54,6 +66,8 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // matches the /assets video cap (raise
  * orientation in play.
  */
 export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }: Props) {
+  const t = useTranslations('panicContent');
+  const locale = useLocale() as EmergencyWordingLocale;
   const dot = ACCENT_DOT[accent];
   const [orientation, setOrientation] = useState<PanicOrientation>('landscape');
   // Read BOTH variants so the toggle labels can show a count for each
@@ -95,7 +109,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
         return;
       }
       if (file.size > MAX_FILE_SIZE) {
-        setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: `Too large (${Math.round(file.size / (1024 * 1024))}MB > 500MB cap)` }, ...prev]);
+        setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'error', error: t('tooLarge', { size: Math.round(file.size / (1024 * 1024)) }) }, ...prev]);
         return;
       }
       setUploads(prev => [{ id, name: file.name, progress: 0, phase: 'uploading' }, ...prev]);
@@ -118,21 +132,21 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
                   queryClient.invalidateQueries({ queryKey: ['assets'] });
                 },
                 onError: () => {
-                  setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: 'Uploaded but could not bind — try again' } : u)));
+                  setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: t('bindFailed') } : u)));
                 },
               });
             }
           } catch {
-            setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: 'Server returned invalid response' } : u)));
+            setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: t('badResponse') } : u)));
           }
         } else {
-          let msg = `Upload failed (${xhr.status})`;
+          let msg = t('uploadFailed', { status: xhr.status });
           try { const r = JSON.parse(xhr.responseText); msg = r.message || msg; } catch {}
           setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: msg } : u)));
         }
       };
       xhr.onerror = () => {
-        setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: 'Network error' } : u)));
+        setUploads(prev => prev.map(u => (u.id === id ? { ...u, phase: 'error', error: t('networkError') } : u)));
       };
       xhr.open('POST', `${apiUrl}/assets/upload`);
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -142,19 +156,23 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
 
   const handleRemove = async (item: typeof items[number]) => {
     const ok = await appConfirm({
-      title: `Remove from ${label}?`,
-      message: `Remove "${item.asset.originalName || 'this asset'}" from ${label} content? The asset itself stays in your library.`,
+      title: t('removeTitle', { label }),
+      message: t('removeMessage', { name: item.asset.originalName || t('thisFile'), label }),
       tone: 'danger',
-      confirmLabel: 'Remove',
+      confirmLabel: t('remove'),
     });
     if (!ok) return;
     removeAsset.mutate(item.id);
   };
 
-  // Overall-status pill — GREEN if EITHER variant is populated, AMBER
-  // only when both are empty. A tenant that only has landscape screens
-  // legitimately should not be pestered about an empty portrait slot.
+  // Overall-status pill. Own content in EITHER orientation counts; with none,
+  // a live alert shows the type's standard message (ready, not a gap), and a
+  // drill falls back to the live content — still marked DRILL.
   const anyConfigured = landscapeCount > 0 || portraitCount > 0;
+  const wordingKind = emergencyWordingKind(kind);
+  const showStandard = mode === 'live' && !anyConfigured && !!wordingKind;
+  const boardWords = wordingKind ? standardEmergencyWording(wordingKind, 'en') : null;
+  const localWords = wordingKind && locale !== 'en' ? standardEmergencyWording(wordingKind, locale) : null;
 
   return (
     <div data-alert-content-card={kind} data-alert-content-mode={mode} className="min-w-0 p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors flex flex-col gap-2">
@@ -164,20 +182,48 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
             <span aria-hidden className={`w-2.5 h-2.5 shrink-0 rounded-full ${dot}`} />
             <h3 className="text-sm font-bold text-slate-800">{label}</h3>
           </div>
-          <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${anyConfigured ? 'text-emerald-600' : 'text-amber-600'}`}>
-            {anyConfigured ? <ShieldCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-            {anyConfigured ? `${landscapeCount}L · ${portraitCount}P` : (mode === 'drill' ? 'Uses live content' : 'No content')}
+          <span
+            data-testid={`alert-status-${kind}`}
+            className={`text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 ${anyConfigured || showStandard ? 'text-emerald-600' : 'text-slate-500'}`}
+          >
+            <ShieldCheck className="w-3 h-3" aria-hidden />
+            {anyConfigured
+              ? t('ownCount', { landscape: landscapeCount, portrait: portraitCount })
+              : mode === 'drill'
+                ? t('usesLive')
+                : t('standardMessage')}
           </span>
         </div>
         {hint && <p className="text-[11px] text-slate-500 mt-0.5 ml-[18px]">{hint}</p>}
       </div>
+
+      {/* The standard board, exactly as a live alert of this type shows it
+          when there is no picture or video of its own. */}
+      {showStandard && boardWords && (
+        <figure className="m-0" data-testid={`standard-wording-${kind}`}>
+          <div className="rounded-lg bg-[#dc2626] text-white text-center px-3 py-3 aspect-[16/7] flex flex-col items-center justify-center" aria-label={t('previewLabel', { label })}>
+            <div className="text-[13px] font-black tracking-wide leading-tight">{boardWords.headline}</div>
+            {boardWords.lines.map((line) => (
+              <div key={line} className="text-[11px] font-semibold leading-snug mt-0.5">{line}</div>
+            ))}
+          </div>
+          <figcaption className="mt-1 text-[11px] leading-[15px] text-slate-500">
+            {t('standardCaption')}
+            {localWords && (
+              <span className="block mt-0.5 text-slate-600" lang={locale}>
+                {t('meaning')}: {localWords.headline} — {localWords.lines.join(' ')}
+              </span>
+            )}
+          </figcaption>
+        </figure>
+      )}
 
       {/* Orientation toggle — which variant the drop zone + list below
           is showing. Each screen auto-picks the matching variant at
           emergency trigger time (and falls back to the other if
           only one is configured), so this toggle is just an authoring
           switch; operators don't choose "which one to send." */}
-      <div className="grid grid-cols-2 w-full min-w-0 bg-white border border-slate-200 rounded-lg p-0.5 text-[10px]" role="tablist" aria-label="Emergency content orientation">
+      <div className="grid grid-cols-2 w-full min-w-0 bg-white border border-slate-200 rounded-lg p-0.5 text-[10px]" role="tablist" aria-label={t('orientationLabel')}>
         <button
           type="button"
           role="tab"
@@ -189,7 +235,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Monitor className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">Landscape</span>
+          <Monitor className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">{t('landscape')}</span>
           <span className={`shrink-0 px-1 rounded ${landscapeCount > 0 ? (orientation === 'landscape' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{landscapeCount}</span>
         </button>
         <button
@@ -203,7 +249,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Smartphone className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">Portrait</span>
+          <Smartphone className="w-3 h-3 shrink-0" /><span className="min-w-0 truncate">{t('portrait')}</span>
           <span className={`shrink-0 px-1 rounded ${portraitCount > 0 ? (orientation === 'portrait' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700') : 'bg-slate-100 text-slate-400'}`}>{portraitCount}</span>
         </button>
       </div>
@@ -227,7 +273,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
         }}
       >
         <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-        <span className="text-[11px] font-bold text-slate-600 truncate">Drop or click to upload</span>
+        <span className="text-[11px] font-bold text-slate-600 truncate">{t('addOwn')}</span>
         <input
           ref={fileInputRef}
           type="file"
@@ -257,7 +303,8 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
               {u.phase === 'error' && (
                 <button
                   onClick={() => setUploads(prev => prev.filter(x => x.id !== u.id))}
-                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 px-1"
+                  aria-label={t('dismiss')}
                 >
                   ×
                 </button>
@@ -271,7 +318,7 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
       {isLoading ? (
         <Loader2 className="w-4 h-4 animate-spin text-slate-400 mx-auto" />
       ) : items.length === 0 ? (
-        <p className="text-[11px] text-slate-400 text-center py-0.5 italic">No content yet</p>
+        <p className="text-[11px] text-slate-400 text-center py-0.5">{mode === 'drill' ? t('emptyDrill') : t('emptyLive')}</p>
       ) : (
         <ul className="space-y-1">
           {items.map(item => {
@@ -294,11 +341,12 @@ export function PanicContentEditor({ kind, label, accent, hint, mode = 'live' }:
                   <div className="text-[11px] font-bold text-slate-700 truncate">{item.asset.originalName || item.asset.fileUrl?.split('/').pop()}</div>
                   <div className="text-[10px] text-slate-400">{(item.durationMs / 1000).toFixed(0)}s · {item.asset.mimeType?.split('/')[0]}</div>
                 </div>
+                {/* Always visible: a hover-only control cannot be reached on a phone. */}
                 <button
                   onClick={() => handleRemove(item)}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all"
-                  title="Remove from this bucket"
-                  aria-label={`Remove ${item.asset.originalName || 'asset'}`}
+                  className="p-2 -m-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                  title={t('removeHint')}
+                  aria-label={t('removeAria', { name: item.asset.originalName || t('thisFile') })}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

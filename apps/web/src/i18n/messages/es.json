@@ -982,10 +982,10 @@
         "title": "Emergencias",
         "description": "Configura y verifica que las alertas estén listas. Esta no es la pantalla para activarlas.",
         "editorTitle": "Alertas de emergencia",
-        "editorDescription": "Lo que muestran tus pantallas cuando se activa una alerta, y si eso funcionaría ahora mismo.",
+        "editorDescription": "Lo que muestran tus pantallas cuando se envía una alerta y si eso funcionaría ahora mismo.",
         "readiness": {
-          "title": "Estado de preparación",
-          "desc": "Si una alerta llegaría hoy a tus pantallas y qué falta exactamente si no fuera así.",
+          "title": "¿Funciona todo?",
+          "desc": "Si una alerta llegaría hoy a tus pantallas y qué arreglar si no.",
           "disabled": "Las alertas de emergencia están desactivadas en esta organización, así que no hay nada que evaluar. Actívalas abajo para ver la comprobación."
         },
         "enablement": {
@@ -1024,7 +1024,7 @@
           "unchanged": "No cambió nada. Sigue vigente la última configuración confirmada por el servidor."
         },
         "delivery": {
-          "title": "Modelo de entrega",
+          "title": "La misma alerta en todas partes o por pantalla",
           "desc": "Si todas las pantallas muestran la misma alerta o cada una muestra la suya.",
           "loading": "Leyendo el modelo de entrega…",
           "loadFailed": "No se pudo leer el modelo de entrega. Vuelve a cargar la página antes de cambiar nada: sigue vigente la última configuración confirmada por el servidor.",
@@ -1039,8 +1039,8 @@
           "saveFailedFallback": "El servidor no confirmó el cambio."
         },
         "content": {
-          "title": "Tipos de alerta y contenido",
-          "desc": "El material que cada tipo de alerta pone en pantalla. Un tipo de alerta sin contenido no envía nada.",
+          "title": "Mensajes de alerta",
+          "desc": "Cada tipo de alerta está lista con un mensaje estándar en una pantalla roja. Si quieres, agrega tu propia imagen o video a cualquiera.",
           "criticalGroup": "Críticas",
           "awarenessGroup": "Mayor vigilancia"
         },
@@ -1083,14 +1083,14 @@
         "history": {
           "title": "Historial",
           "desc": "Cada cambio de esta página y cada alerta enviada quedan registrados de forma permanente, con su autor y su fecha.",
-          "link": "Abrir el registro de auditoría"
+          "link": "Ver quién hizo qué"
         },
         "rail": {
           "capability": "Función",
           "capabilityOffBody": "Mientras la función esté desactivada no se evalúa nada ni se puede enviar ninguna alerta.",
           "byType": "Contenido de alerta",
-          "typeConfigured": "Configurado",
-          "typeNotConfigured": "Sin contenido",
+          "typeConfigured": "Tu contenido",
+          "typeNotConfigured": "Mensaje estándar",
           "typeChecking": "Comprobando",
           "coverage": "Cobertura",
           "coverageOrg": "Todas las pantallas muestran el mismo contenido de alerta.",
@@ -1147,6 +1147,28 @@
             "screen": "Pantalla",
             "unknownUser": "Desconocido"
           }
+        },
+        "setup": {
+          "title": "Lista en dos pasos",
+          "step1Title": "Mensajes de alerta",
+          "step1Done": "Cada tipo de alerta tiene un mensaje claro listo. Tu propia imagen o video es opcional.",
+          "step1OffTitle": "Activa las alertas de seguridad",
+          "step1OffBody": "Usa el botón que está justo abajo. Después, cada tipo de alerta tendrá un mensaje claro listo.",
+          "step2Title": "Quién puede enviar alertas",
+          "step2Ok": "{count, plural, one {# persona puede} other {# personas pueden}} enviar una alerta.",
+          "step2One": "Solo una persona puede enviar una alerta. Agrega una segunda, para que una alerta nunca dependa de una sola persona.",
+          "step2None": "Todavía nadie puede enviar una alerta.",
+          "step2Checking": "Comprobando quién puede enviar…",
+          "step2Action": "Elegir personas",
+          "ready": "Tus alertas están listas.",
+          "readyHint": "Las alertas se envían desde el botón Emergencia, nunca desde esta página.",
+          "stepDone": "Listo",
+          "stepTodo": "Pendiente"
+        },
+        "practice": {
+          "title": "Practica con un simulacro",
+          "desc": "Abre la página de Emergencia, cámbiala a SIMULACRO y envía. Cada pantalla muestra SIMULACRO, para que nadie lo confunda con una emergencia real.",
+          "action": "Abrir la página de Emergencia"
         }
       },
       "brand": {
@@ -6935,5 +6957,94 @@
     "tooShort": "La contraseña debe tener al menos 8 caracteres.",
     "mismatch": "Las contraseñas no coinciden.",
     "acceptFailed": "No se pudo aceptar la invitación."
+  },
+  "panicContent": {
+    "standardMessage": "Mensaje estándar",
+    "usesLive": "Usa el contenido real",
+    "ownCount": "Tu contenido · {landscape} horizontal · {portrait} vertical",
+    "previewLabel": "Lo que muestran las pantallas para {label}",
+    "standardCaption": "Las pantallas muestran esto hasta que agregues tu propia imagen o video.",
+    "meaning": "En las pantallas aparece en inglés. Significa",
+    "orientationLabel": "Forma de la pantalla",
+    "landscape": "Horizontal",
+    "portrait": "Vertical",
+    "addOwn": "Agrega tu propia imagen o video (opcional)",
+    "emptyLive": "No hay imagen ni video propio para esta forma de pantalla.",
+    "emptyDrill": "No hay contenido de simulacro: un simulacro muestra el contenido real, marcado como SIMULACRO.",
+    "tooLarge": "Demasiado grande ({size} MB). El límite es de 500 MB.",
+    "bindFailed": "Se subió, pero no se pudo agregar a esta alerta. Inténtalo de nuevo.",
+    "badResponse": "El servidor envió una respuesta que no pudimos leer. Inténtalo de nuevo.",
+    "uploadFailed": "La subida falló ({status}).",
+    "networkError": "Sin conexión. Revisa la red e inténtalo de nuevo.",
+    "removeTitle": "¿Quitar de {label}?",
+    "removeMessage": "¿Quitar «{name}» de {label}? El archivo se queda en tu biblioteca de medios.",
+    "remove": "Quitar",
+    "removeHint": "Quitar de esta alerta",
+    "removeAria": "Quitar {name}",
+    "thisFile": "este archivo",
+    "dismiss": "Descartar"
+  },
+  "emergencyReadiness": {
+    "verdict": {
+      "READY": {
+        "title": "Listas",
+        "blurb": "Los mensajes, la entrega, las pantallas y las personas están bien."
+      },
+      "NEEDS_ATTENTION": {
+        "title": "Listas, con pendientes",
+        "blurb": "Una alerta se entregaría hoy. Resuelve los pendientes de abajo antes de necesitarlos."
+      },
+      "NOT_CONFIGURED": {
+        "title": "No están listas",
+        "blurb": "Falta algo crítico: una alerta no llegaría correctamente a tus pantallas."
+      },
+      "DISABLED": {
+        "title": "Las alertas de emergencia están desactivadas",
+        "blurb": "No se comprueba nada mientras las alertas están desactivadas. Actívalas para dejar lista cada alerta."
+      }
+    },
+    "loading": "Comprobando si las alertas están listas…",
+    "loadFailed": "No se pudo comprobar. La comprobación falló, lo que suele significar que no se puede acceder al servicio.",
+    "retry": "Intentar de nuevo",
+    "recheck": "Volver a comprobar",
+    "scoreLabel": "Preparación",
+    "drillLine": "Contenido de simulacro (no se califica)",
+    "statusOk": "Bien",
+    "statusWarn": "Requiere atención",
+    "statusMissing": "Falta",
+    "labels": {
+      "content": "Mensajes de alerta",
+      "delivery": "Entrega a las pantallas",
+      "screens": "Pantallas en línea",
+      "staff": "Personas que pueden enviar alertas",
+      "exercise": "Última práctica"
+    },
+    "detail": {
+      "content_allOwn": "Los {total} tipos de alerta usan tu propia imagen o video.",
+      "content_someStandard": "{own} de {total} tipos de alerta usan tu propia imagen o video; los demás muestran su mensaje estándar.",
+      "content_allStandard": "Los {total} tipos de alerta están listos con su mensaje estándar.",
+      "delivery_ok": "La entrega instantánea, la comprobación de respaldo y la firma de mensajes funcionan.",
+      "delivery_fallback": "La entrega instantánea está en modo de respaldo: las alertas siguen llegando, en unos 20 segundos en lugar de al instante.",
+      "delivery_down": "Las alertas no se pueden entregar ahora. Es un problema de VenueOS, no de tu configuración: contacta al soporte.",
+      "screens_none": "Todavía no hay pantallas emparejadas.",
+      "screens_allOffline": "Ninguna de tus {total, plural, one {# pantalla está} other {# pantallas están}} en línea.",
+      "screens_someOffline": "{online} de {total} pantallas están en línea; {fresh} de ellas informaron en los últimos 5 minutos.",
+      "screens_ok": "Las {total} pantallas están en línea e informando.",
+      "staff_ok": "{count, plural, one {# persona puede} other {# personas pueden}} enviar una alerta.",
+      "staff_one": "Solo una persona puede enviar una alerta.",
+      "staff_none": "Todavía nadie puede enviar una alerta.",
+      "exercise_never": "Aquí nunca se han enviado alertas, ni siquiera como simulacro.",
+      "exercise_today": "Última vez: hoy.",
+      "exercise_recent": "Última vez hace {days, plural, one {# día} other {# días}}.",
+      "exercise_stale": "Última vez hace {days, plural, one {# día} other {# días}}."
+    },
+    "fix": {
+      "screens_none": "Empareja una pantalla: una alerta sin pantallas no llega a nadie.",
+      "screens_offline": "Revisa las pantallas sin conexión en la página Pantallas; una pantalla sin conexión no recibe una alerta nueva hasta que vuelve a estar en línea.",
+      "staff_one": "Permite que una segunda persona de confianza envíe alertas en Ajustes → Equipo.",
+      "staff_none": "Elige quién puede enviar alertas en Ajustes → Equipo.",
+      "exercise": "Haz un simulacro para que la primera alerta real nunca sea la primera vez.",
+      "delivery_fallback": "No tienes que hacer nada: VenueOS está vigilando el canal instantáneo."
+    }
   }
 }

@@ -35,9 +35,10 @@ jest.mock('@/components/settings/PanicContentEditor', () => ({
 jest.mock('@/components/floor-plans/EmbeddedFloorPlanView', () => ({
   EmbeddedFloorPlanView: () => <div>floor-plan-view</div>,
 }));
+let mockReadiness: unknown = undefined;
 jest.mock('@/components/emergency/EmergencyReadinessCard', () => ({
   EmergencyReadinessCard: () => <div>readiness-card</div>,
-  useEmergencyReadiness: () => ({ data: undefined, isLoading: false }),
+  useEmergencyReadiness: () => ({ data: mockReadiness, isLoading: false }),
 }));
 
 const mutateAsync = jest.fn<Promise<{ ok: boolean; next?: boolean | { enabled: boolean; applyToAllLocations?: boolean }; locationsEnabled?: number; locationsInitialized?: number; defaultBucketsLoaded?: number }>, [boolean | { enabled: boolean; applyToAllLocations?: boolean }]>(async (next: boolean | { enabled: boolean; applyToAllLocations?: boolean }) => ({ ok: true, next }));
@@ -76,7 +77,60 @@ beforeEach(() => {
   jest.clearAllMocks();
   mutateAsync.mockImplementation(async (next: boolean | { enabled: boolean; applyToAllLocations?: boolean }) => ({ ok: true, next }));
   enablement = { enabled: true, stored: true, locked: false, isLoading: false, isError: false };
+  mockReadiness = undefined;
   window.localStorage.clear();
+});
+
+// 2026-10-26 — owner decision 2: every alert type is ready on day 1 with its
+// standard message, so setup is two steps, each graded by the server.
+describe('Ready in two steps', () => {
+  const report = (staff: { status: string; count: number }) => ({
+    verdict: 'NEEDS_ATTENTION',
+    items: [
+      { key: 'content', status: 'ok', code: 'content.allStandard', params: { own: 0, total: 6, standard: 6 } },
+      { key: 'staff', status: staff.status, params: { count: staff.count } },
+    ],
+  });
+
+  it('messages are done the moment alerts are on; two senders makes it ready', () => {
+    mockReadiness = report({ status: 'ok', count: 3 });
+    renderPage();
+    const setup = screen.getByTestId('emergency-setup');
+    expect(within(setup).getByText('Your alerts are ready.')).toBeInTheDocument();
+    expect(screen.getByTestId('emergency-setup-step-messages')).toHaveAttribute('data-done', 'true');
+    expect(screen.getByTestId('emergency-setup-step-senders')).toHaveAttribute('data-done', 'true');
+    expect(within(setup).getByText('3 people can send an alert.')).toBeInTheDocument();
+    expect(within(setup).queryByRole('link', { name: /Choose people/ })).toBeNull();
+  });
+
+  it('one sender is the step left, with the fix as the button', () => {
+    mockReadiness = report({ status: 'warn', count: 1 });
+    renderPage();
+    const step = screen.getByTestId('emergency-setup-step-senders');
+    expect(step).toHaveAttribute('data-done', 'false');
+    expect(within(step).getByText(/Only one person can send an alert/)).toBeInTheDocument();
+    expect(within(step).getByRole('link', { name: /Choose people/ })).toHaveAttribute('href', '/springfield/settings/people');
+  });
+
+  it('alerts off: step 1 is turning them on, with the real switch just below', () => {
+    enablement = { enabled: false, stored: null, locked: false, isLoading: false, isError: false };
+    renderPage();
+    const step = screen.getByTestId('emergency-setup-step-messages');
+    expect(step).toHaveAttribute('data-done', 'false');
+    expect(within(step).getByText('Turn on safety alerts')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /turn on emergency alerts/i })).toBeInTheDocument();
+  });
+
+  it('a drill is practised from the Emergency page — this page only links there', () => {
+    renderPage();
+    expect(screen.getByTestId('emergency-practice-link')).toHaveAttribute('href', '/panic?schoolId=springfield');
+  });
+
+  it('never claims an alert type with no content "sends nothing"', () => {
+    renderPage();
+    expect(screen.queryByText(/sends nothing/i)).toBeNull();
+    expect(screen.getByText(/ready with a standard message on a red screen/i)).toBeInTheDocument();
+  });
 });
 
 describe('Emergency settings page', () => {

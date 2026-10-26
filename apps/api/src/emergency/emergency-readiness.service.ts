@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { withTimeout } from '../health/with-timeout';
+import { DRILL_TRIGGER_ACTION } from './emergency-drill';
 import {
   VERTICAL_EMERGENCY_TYPES,
   effectiveEmergencyEnabled,
@@ -375,7 +376,10 @@ export class EmergencyReadinessService {
       : 0;
     const triggerCapableStaff = triggerCapableHere + triggerCapableFromParent;
     const lastTrigger = await this.prisma.client.auditLog.findFirst({
-      where: { tenantId, action: 'TRIGGER_EMERGENCY' },
+      // "Drill or real" (the item's own contract): since 2026-10-10 a drill
+      // is audited under its own action, so it must be counted explicitly —
+      // otherwise a school that drills every month is told it never has.
+      where: { tenantId, action: { in: ['TRIGGER_EMERGENCY', DRILL_TRIGGER_ACTION] } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
@@ -505,14 +509,14 @@ export class EmergencyReadinessService {
       label: 'Last exercised',
       detail:
         daysSince === null
-          ? 'This system has never been triggered — not even as a test.'
+          ? 'Alerts have never been sent here — not even as a drill.'
           : daysSince === 0
             ? 'Triggered today.'
             : `Last triggered ${daysSince} day${daysSince === 1 ? '' : 's'} ago.`,
       fixHint:
         daysSince !== null && daysSince <= EXERCISE_WARN_AFTER_DAYS
           ? ''
-          : 'Run a test alert during a maintenance window so the first real use is never the first use.',
+          : 'Run a drill so the first real alert is never the first time.',
     });
 
     // Verdict: content + delivery are the life-safety-critical pair.
