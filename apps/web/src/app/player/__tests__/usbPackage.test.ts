@@ -1,6 +1,7 @@
 import {
   adoptUsbPackage,
   applyUsbOverlay,
+  parseImportedAt,
   parseUsbPackage,
   readUsbMemo,
   serverPlaylistSig,
@@ -76,6 +77,35 @@ describe('applyUsbOverlay', () => {
     expect(fresh.memo?.baseSig).toBe('a,b');
   });
 
+  it('a person bringing the SAME package in again (a new import time) plays it again over a newer publish', () => {
+    const first = { ...pkg, importedAt: 1_000 };
+    let s = adoptUsbPackage({ ...empty, lastLiveSig: 'a' }, first);
+    expect(s.memo?.importedAt).toBe(1_000);
+    s = applyUsbOverlay(server(['a', 'b']), s, false).state; // the server published → retired
+    expect(usbOverlayActive(s)).toBe(false);
+    // The stick left in (reboot / the minute scan): same import time — stays retired.
+    s = adoptUsbPackage(s, { ...pkg, importedAt: 1_000 });
+    expect(usbOverlayActive(s)).toBe(false);
+    // Re-inserted, or "Import from USB": the APK stamped a new import time.
+    s = adoptUsbPackage(s, { ...pkg, importedAt: 2_000 });
+    expect(usbOverlayActive(s)).toBe(true);
+    expect(s.memo).toEqual({ bundleVersion: '1000', baseSig: 'a,b', retired: false, importedAt: 2_000 });
+    // …and it now beats that publish until the NEXT one.
+    expect((applyUsbOverlay(server(['a', 'b']), s, false).manifest as any).playlists).toEqual(pkg.playlists);
+    expect(usbOverlayActive(applyUsbOverlay(server(['c']), s, false).state)).toBe(false);
+  });
+
+  it('a memo from before import times adopts the first one without reviving anything', () => {
+    const legacy: UsbOverlayState = { pkg: null, memo: { bundleVersion: '1000', baseSig: 'a', retired: true }, lastLiveSig: 'a,b' };
+    const s = adoptUsbPackage(legacy, { ...pkg, importedAt: 5_000 });
+    expect(usbOverlayActive(s)).toBe(false);
+    expect(s.memo).toEqual({ bundleVersion: '1000', baseSig: 'a', retired: true, importedAt: 5_000 });
+    // An APK that sends no import time changes nothing either.
+    expect(adoptUsbPackage(legacy, { ...pkg, importedAt: null }).memo).toBe(legacy.memo);
+    // The next real re-import is recognised.
+    expect(usbOverlayActive(adoptUsbPackage(s, { ...pkg, importedAt: 6_000 }))).toBe(true);
+  });
+
   it('imported while offline: the first live manifest becomes the baseline, not a retirement', () => {
     let s = adoptUsbPackage(empty, pkg);
     expect(s.memo?.baseSig).toBeNull();
@@ -127,6 +157,12 @@ describe('page wiring (source guard)', () => {
     const loader = PAGE.slice(PAGE.indexOf('const loadUsbPackage = useCallback('));
     expect(loader.indexOf('if (!hasNativeBridge()) return;')).toBeLessThan(loader.indexOf('fetch(USB_PACKAGE_PATH'));
   });
+
+  it('the loader reads the import time and re-applies when a person brought the stick in again', () => {
+    const loader = PAGE.slice(PAGE.indexOf('const loadUsbPackage = useCallback('), PAGE.indexOf('const loadUsbPackage = useCallback(') + 2000);
+    expect(loader).toContain('parseImportedAt(res.headers.get(USB_IMPORTED_AT_HEADER))');
+    expect(loader).toMatch(/prev\.pkg\?\.bundleVersion !== pkg\.bundleVersion \|\| broughtInAgain/);
+  });
 });
 
 describe('helpers', () => {
@@ -146,5 +182,18 @@ describe('helpers', () => {
     writeUsbMemo(ls, null);
     expect(readUsbMemo(ls)).toBeNull();
     expect(readUsbMemo({ getItem: () => { throw new Error('blocked'); } })).toBeNull();
+    writeUsbMemo(ls, { bundleVersion: '2', baseSig: null, retired: false, importedAt: 42 });
+    expect(readUsbMemo(ls)).toEqual({ bundleVersion: '2', baseSig: null, retired: false, importedAt: 42 });
+  });
+  it('the import-time header is a positive epoch-ms or nothing', () => {
+    expect(parseImportedAt('1761495599000')).toBe(1761495599000);
+    expect(parseImportedAt(' 12 ')).toBe(12);
+    expect(parseImportedAt(null)).toBeNull();
+    expect(parseImportedAt('')).toBeNull();
+    expect(parseImportedAt('0')).toBeNull();
+    expect(parseImportedAt('-5')).toBeNull();
+    expect(parseImportedAt('soon')).toBeNull();
+    expect(parseUsbPackage(pkgJson, 77)?.importedAt).toBe(77);
+    expect(parseUsbPackage(pkgJson)?.importedAt).toBeNull();
   });
 });
