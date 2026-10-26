@@ -77,12 +77,12 @@ const ROWS = {
   supportAsk: {
     kind: 'INFO',
     title: 'VenueOS is asking for support access',
-    body: 'VenueOS support asked for access to Springfield USD for 2 hours: "Fix the lobby playlist". Approve or deny it in Settings → Support access.',
+    body: 'VenueOS support asked for access to Springfield USD for 2 hours: "Fix the lobby playlist". Approve or deny it in Settings → Advanced → VenueOS support.',
   },
   breakGlass: {
     kind: 'INFO',
     title: 'VenueOS used emergency support access',
-    body: 'ops@venue-os.app opened emergency access to Springfield USD until 2026-10-24 17:30 UTC: "Alert stuck". You can end it now in Settings → Support access.',
+    body: 'ops@venue-os.app opened emergency access to Springfield USD until 2026-10-24 17:30 UTC: "Alert stuck". You can end it now in Settings → Advanced → VenueOS support.',
   },
   stutter: {
     kind: 'INFO',
@@ -160,8 +160,8 @@ describe('contract — every sentence recognised here is still what the API writ
         "'VenueOS is asking for support access'",
         "'VenueOS used emergency support access'",
         "'VenueOS support access has ended'",
-        'asked for access to ${org.name} for ${describeMinutes(grant.requestedDurationMinutes)}: "${grant.reason}". Approve or deny it in Settings → Support access.`',
-        'opened emergency access to ${org.name} until ${fmt(grant.expiresAt)}: "${grant.reason}". You can end it now in Settings → Support access.`',
+        'asked for access to ${org.name} for ${describeMinutes(grant.requestedDurationMinutes)}: "${grant.reason}". Approve or deny it in Settings → Advanced → VenueOS support.`',
+        'opened emergency access to ${org.name} until ${fmt(grant.expiresAt)}: "${grant.reason}". You can end it now in Settings → Advanced → VenueOS support.`',
         '`VenueOS ended its support access to ${org.name}.`',
         "${grant.requestedByEmail ?? 'VenueOS support'}",
         "`${orgRow?.name ?? 'A customer'} approved support access`",
@@ -227,7 +227,7 @@ describe('English reads exactly as the server wrote it', () => {
     expect(localizeNotification(ROWS.submission, EN).body).toBe('3 items submitted for approval.');
     expect(localizeNotification({ ...ROWS.submission, body: '1 item(s) submitted for approval.' }, EN).body).toBe('1 item submitted for approval.');
     expect(localizeNotification(ROWS.breakGlass, EN).body).toBe(
-      'ops@venue-os.app opened emergency access to Springfield USD until <2026-10-24T17:30>: "Alert stuck". You can end it now in Settings → Support access.',
+      'ops@venue-os.app opened emergency access to Springfield USD until <2026-10-24T17:30>: "Alert stuck". You can end it now in Settings → Advanced → VenueOS support.',
     );
   });
 });
@@ -250,10 +250,25 @@ describe('Spanish and Chinese readers get their own language', () => {
 
   it('support access names the duration and the time in the reader’s words', () => {
     expect(localizeNotification(ROWS.supportAsk, ES).body).toBe(
-      'El soporte de VenueOS solicitó acceso a Springfield USD durante 2 horas: "Fix the lobby playlist". Apruébalo o recházalo en Ajustes → Acceso de soporte de VenueOS.',
+      'El soporte de VenueOS solicitó acceso a Springfield USD durante 2 horas: "Fix the lobby playlist". Apruébalo o recházalo en Ajustes → Avanzado → Soporte de VenueOS.',
     );
     expect(localizeNotification(ROWS.supportAsk, ZH).body).toContain('时长 2 小时');
     expect(localizeNotification(ROWS.breakGlass, ZH).body).toContain('有效期至 <2026-10-24T17:30>');
+  });
+
+  it('a support-access row stored before the 2026-10-26 rename still reads, and names where support access lives now', () => {
+    const storedAsk = { ...ROWS.supportAsk, body: ROWS.supportAsk.body!.replace('Settings → Advanced → VenueOS support.', 'Settings → Support access.') };
+    const storedBreakGlass = { ...ROWS.breakGlass, body: ROWS.breakGlass.body!.replace('Settings → Advanced → VenueOS support.', 'Settings → Support access.') };
+    expect(storedAsk.body).toContain('Settings → Support access.');
+    expect(localizeNotification(storedAsk, EN)).toMatchObject({
+      body: ROWS.supportAsk.body,
+      bodyLocalized: true,
+    });
+    expect(localizeNotification(storedBreakGlass, EN).body).toBe(
+      'ops@venue-os.app opened emergency access to Springfield USD until <2026-10-24T17:30>: "Alert stuck". You can end it now in Settings → Advanced → VenueOS support.',
+    );
+    expect(localizeNotification(storedAsk, ES).body).toContain('Ajustes → Avanzado → Soporte de VenueOS.');
+    expect(localizeNotification(storedBreakGlass, ZH).body).toContain('设置 → 高级 → VenueOS 支持');
   });
 
   it('plurals follow the language', () => {

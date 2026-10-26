@@ -197,13 +197,16 @@ export const BODY_RULES: readonly Rule[] = [
   },
   {
     kinds: INFO,
-    re: /^(.+) asked for access to (.+) for (.+): "([\s\S]*)"\. Approve or deny it in Settings → Support access\.$/,
+    // Rows stored before 2026-10-26 name "Settings → Support access"; the
+    // API now names the tab where support access lives (Advanced → VenueOS
+    // support). Both are recognised, and both read the current place.
+    re: /^(.+) asked for access to (.+) for (.+): "([\s\S]*)"\. Approve or deny it in Settings → (?:Support access|Advanced → VenueOS support)\.$/,
     key: 'supportRequestedBody',
     params: (m, o) => ({ who: who(m[1], o), org: m[2], duration: duration(m[3], o), reason: m[4] }),
   },
   {
     kinds: INFO,
-    re: /^(.+) opened emergency access to (.+) until (.+): "([\s\S]*)"\. You can end it now in Settings → Support access\.$/,
+    re: /^(.+) opened emergency access to (.+) until (.+): "([\s\S]*)"\. You can end it now in Settings → (?:Support access|Advanced → VenueOS support)\.$/,
     key: 'supportBreakGlassBody',
     params: (m, o) => ({ who: who(m[1], o), org: m[2], until: utcStamp(m[3], o), reason: m[4] }),
   },
