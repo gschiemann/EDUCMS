@@ -114,7 +114,7 @@ describe('DistrictCommandCenter — THE MORNING WALKTHROUGH', () => {
     setup();
     expect(rtl.getByText('1 school can’t run a lockdown')).toBeInTheDocument();
     expect(
-      rtl.getByText(/School C has no alert content wired/),
+      rtl.getByText(/Alerts can’t reach School C’s screens right now/),
     ).toBeInTheDocument();
   });
 
@@ -165,8 +165,8 @@ describe('DistrictCommandCenter — THE MORNING WALKTHROUGH', () => {
     expect(switchToTenant).toHaveBeenCalledWith({ id: 'school-b', slug: 'school-b' }, '/school-b/screens');
 
     const rowC = rtl.getAllByRole('listitem')[0];
-    expect(within(rowC).getByText('No lockdown content')).toBeInTheDocument();
-    expect(within(rowC).getByRole('button', { name: 'School C: Wire alerts' })).toBeInTheDocument();
+    expect(within(rowC).getByText('Alerts can’t send')).toBeInTheDocument();
+    expect(within(rowC).getByRole('button', { name: 'School C: Open alerts' })).toBeInTheDocument();
   });
 
   it('labels the district office row so it is never mistaken for a school', () => {

@@ -40,6 +40,14 @@ export interface ReadinessItem {
   detail: string;
   /** One plain-English sentence of what to do about it (empty when ok). */
   fixHint: string;
+  /**
+   * 2026-10-26 — a stable code for the observed state (`screens.none`,
+   * `staff.one`, …) plus its numbers, so the dashboard can say the same thing
+   * in Spanish or Chinese instead of printing this English (audit P11).
+   * Additive: a client that does not know a code shows `detail` as before.
+   */
+  code?: string;
+  params?: Record<string, number>;
 }
 
 /**
@@ -125,8 +133,14 @@ export interface DistrictSchoolReadiness {
   anchorWired: boolean;
   /** Back-compat alias of anchorWired (older bundles read this name). */
   lockdownWired: boolean;
-  /** Alert types with no content, by label — the fix list, verbatim. */
+  /**
+   * Alert types with NOTHING to show, by label — the fix list, verbatim.
+   * Since 2026-10-26 every known type shows its standard wording when it has
+   * no content of its own, so this is empty; kept for older bundles.
+   */
   missingTypes: string[];
+  /** Required types that show the standard wording (no content of their own), by label. */
+  standardTypes?: string[];
   screensTotal: number;
   screensOnline: number;
 }
@@ -383,11 +397,9 @@ export class EmergencyReadinessService {
       [tenantId],
     );
     // Graded against THIS vertical's required set — never K12's six.
-    const { required, anchor } = requiredTypesFor(tenantRow['vertical']);
+    const { required } = requiredTypesFor(tenantRow['vertical']);
     const hasLive = (field: string) => liveItemsForField(tenantRow, field, itemCounts) > 0;
     const wired = required.filter((t) => hasLive(t.field));
-    const missingTypes = required.filter((t) => !hasLive(t.field)).map((t) => t.label);
-    const anchorWired = hasLive(anchor.field);
     const requiredFields = new Set(required.map((t) => t.field));
     const contentByType: ReadinessTypeContent[] = KIND_COLUMNS.map((k) => ({
       kind: k.kind,
@@ -405,26 +417,29 @@ export class EmergencyReadinessService {
           ? 'No alert type has drill content of its own — a drill shows the live content, marked DRILL.'
           : `${typesWithDrillContent} of ${contentByType.length} alert types have their own drill content; the rest drill with their live content, marked DRILL.`,
     };
+    // 2026-10-26 — STANDARD WORDING (owner decision: "default emergency
+    // wording for every alert type, so each alert is ready on day 1"). A type
+    // with no content of its own is no longer "missing": the manifest's
+    // fallback board (screens.controller.ts, `DEFAULT_EMERGENCY`) shows that
+    // type's standard words on the red board ("LOCKDOWN / Locks, lights, out
+    // of sight."), from @cms/api-types emergency-wording.ts. So content is
+    // ready the moment alerts are on, and own pictures or videos are an
+    // optional upgrade. (2026-09-21 history: this used to say a trigger
+    // "would push nothing" — false; it was then a generic red board.)
+    const standardCount = required.length - wired.length;
     items.push({
       key: 'content',
-      status: wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing',
-      label: 'Alert content wired',
-      // 2026-09-21 (launch re-audit B1): this used to say a trigger "would push
-      // nothing to your screens". False, in the direction that makes an
-      // operator UNDER-estimate a panic press: the manifest's bulletproof
-      // fallback (screens.controller.ts, `DEFAULT_EMERGENCY`) locks every
-      // screen to a plain red full-canvas board carrying a generic
-      // "<TYPE> PROTOCOL ACTIVE" message whenever no content is wired.
+      status: 'ok',
+      label: 'Alert messages',
       detail:
-        wired.length === 0
-          ? 'No alert type has content yet — a trigger still locks every screen to a plain red alert with a generic message, not one of yours.'
-          : `${wired.length} of ${required.length} alert types have content.`,
-      fixHint:
-        wired.length === required.length
-          ? ''
-          : anchorWired
-            ? `Assign content below for: ${missingTypes.join(', ')}.`
-            : `Start with ${anchor.label} — assign its playlist or asset below.`,
+        standardCount === 0
+          ? `All ${required.length} alert types use your own picture or video.`
+          : wired.length === 0
+            ? `All ${required.length} alert types are ready with their standard message.`
+            : `${wired.length} of ${required.length} alert types use your own picture or video; the others show their standard message.`,
+      fixHint: '',
+      code: standardCount === 0 ? 'content.allOwn' : wired.length === 0 ? 'content.allStandard' : 'content.someStandard',
+      params: { own: wired.length, total: required.length, standard: standardCount },
     });
 
     // 2. DELIVERY — db + realtime + signer (probed above, once).
@@ -439,6 +454,12 @@ export class EmergencyReadinessService {
     items.push({
       key: 'screens',
       status: screensStatus,
+      code:
+        totalScreens === 0 ? 'screens.none'
+        : onlineScreens === 0 ? 'screens.allOffline'
+        : screensStatus === 'ok' ? 'screens.ok'
+        : 'screens.someOffline',
+      params: { total: totalScreens, online: onlineScreens, fresh: cacheFreshScreens },
       // Muse beta DEV-002: "ready to display" claimed more than this measures.
       // It counts screens that checked in, and of those the ones that sent
       // playback or cache proof recently — it does NOT prove a screen holds
@@ -451,13 +472,15 @@ export class EmergencyReadinessService {
       fixHint:
         screensStatus === 'ok' ? ''
         : totalScreens === 0 ? 'Pair a screen — an alert with no screens reaches no one.'
-        : 'Check the offline screens on the Screens page; an offline screen shows its cached alert content only.',
+        : 'Check the offline screens on the Screens page; an offline screen cannot receive a new alert until it is back online.',
     });
 
     // 4. STAFF — someone must be able to pull the trigger.
     items.push({
       key: 'staff',
       status: triggerCapableStaff >= 2 ? 'ok' : triggerCapableStaff === 1 ? 'warn' : 'missing',
+      code: triggerCapableStaff >= 2 ? 'staff.ok' : triggerCapableStaff === 1 ? 'staff.one' : 'staff.none',
+      params: { count: triggerCapableStaff, here: triggerCapableHere, parent: triggerCapableFromParent },
       label: 'People who can trigger',
       detail:
         `${triggerCapableStaff} ${triggerCapableStaff === 1 ? 'person' : 'people'} can trigger an alert` +
@@ -466,8 +489,8 @@ export class EmergencyReadinessService {
           : '.'),
       fixHint:
         triggerCapableStaff >= 2 ? ''
-        : triggerCapableStaff === 1 ? 'One person is a single point of failure — grant a second trusted staff member panic access in Team settings.'
-        : 'Nobody can trigger an alert — grant panic access in Team settings.',
+        : triggerCapableStaff === 1 ? 'One person is a single point of failure — let a second trusted person send alerts in Settings → Team.'
+        : 'Nobody can send an alert — choose who can in Settings → Team.',
     });
 
     // 5. EXERCISE — when the system last actually fired (drill or real).
@@ -477,6 +500,8 @@ export class EmergencyReadinessService {
     items.push({
       key: 'exercise',
       status: daysSince === null ? 'warn' : daysSince <= EXERCISE_WARN_AFTER_DAYS ? 'ok' : 'warn',
+      code: daysSince === null ? 'exercise.never' : daysSince === 0 ? 'exercise.today' : daysSince <= EXERCISE_WARN_AFTER_DAYS ? 'exercise.recent' : 'exercise.stale',
+      params: daysSince === null ? {} : { days: daysSince },
       label: 'Last exercised',
       detail:
         daysSince === null
@@ -649,8 +674,9 @@ export class EmergencyReadinessService {
       const wired = required.filter((t) => hasLive(t.field));
       const missingTypes = required.filter((t) => !hasLive(t.field)).map((t) => t.label);
       const anchorWired = hasLive(anchor.field);
-      const contentStatus: ReadinessStatus =
-        wired.length === required.length ? 'ok' : anchorWired ? 'warn' : 'missing';
+      // 2026-10-26 — standard wording: a type with no content of its own shows
+      // its standard message (see compute()), so content never blocks a school.
+      const standardTypes = missingTypes;
 
       const screensTotal = totalByTenant.get(row.id as string) ?? 0;
       const screensOnline = onlineByTenant.get(row.id as string) ?? 0;
@@ -662,7 +688,7 @@ export class EmergencyReadinessService {
         : 'ok';
 
       // Verdict precedence, mirroring compute():
-      //   - content missing (no lockdown content at all) is NOT_CONFIGURED;
+      //   - content is never missing since 2026-10-26 (standard wording);
       //   - a BROKEN delivery chain (db/signer down) is a platform fault that
       //     makes every school genuinely un-alertable, so it forces
       //     NOT_CONFIGURED district-wide;
@@ -677,9 +703,9 @@ export class EmergencyReadinessService {
       //     because there is nothing to fix until someone turns alerts on.
       const verdict: EmergencyReadinessVerdict = !enablement.enabled
         ? 'DISABLED'
-        : contentStatus === 'missing' || delivery.status === 'missing'
+        : delivery.status === 'missing'
           ? 'NOT_CONFIGURED'
-          : contentStatus !== 'ok' || screensStatus !== 'ok'
+          : screensStatus !== 'ok'
             ? 'NEEDS_ATTENTION'
             : 'READY';
 
@@ -695,9 +721,11 @@ export class EmergencyReadinessService {
         contentWired: wired.length,
         contentTotal: required.length,
         anchorLabel: anchor.label,
-        anchorWired,
-        lockdownWired: anchorWired,
-        missingTypes: verdict === 'DISABLED' ? [] : missingTypes,
+        // Every known type has at least its standard message (2026-10-26).
+        anchorWired: enablement.enabled ? true : anchorWired,
+        lockdownWired: enablement.enabled ? true : anchorWired,
+        missingTypes: [],
+        standardTypes: verdict === 'DISABLED' ? [] : standardTypes,
         screensTotal,
         screensOnline,
       };
@@ -745,6 +773,7 @@ export class EmergencyReadinessService {
     return {
       key: 'delivery',
       status: deliveryStatus,
+      code: deliveryStatus === 'ok' ? 'delivery.ok' : deliveryStatus === 'warn' ? 'delivery.fallback' : 'delivery.down',
       label: 'Delivery chain',
       detail: !dbOk
         ? 'Database unreachable — triggers cannot be recorded or fanned out.'

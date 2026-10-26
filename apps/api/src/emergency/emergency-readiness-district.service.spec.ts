@@ -141,7 +141,11 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     expect(r.schools.filter((s) => !s.isSelf)).toHaveLength(3);
   });
 
-  it('a school missing lockdown content → NOT_CONFIGURED, others untouched', async () => {
+  // 2026-10-26 — standard wording (owner decision 2): a school with no content
+  // of its own is READY with the standard message on every type. The facts
+  // still ride along — `contentWired` counts own content, `standardTypes`
+  // names the rest — but nothing is "missing" any more.
+  it('a school with no content of its own → ready with the standard message, the facts still reported', async () => {
     const m = makeDistrictMocks({
       wiring: {
         'school-2': {
@@ -152,13 +156,15 @@ describe('EmergencyReadinessService.computeDistrict', () => {
       },
     });
     const r = await svcFor(m).computeDistrict('district');
-    const bad = r.schools.find((s) => s.tenantId === 'school-2')!;
-    expect(bad.verdict).toBe('NOT_CONFIGURED');
-    expect(bad.lockdownWired).toBe(false);
-    expect(bad.contentWired).toBe(0);
-    expect(bad.missingTypes).toContain('Lockdown');
-    expect(r.notReadyCount).toBe(1);
-    expect(r.schools.filter((s) => s.tenantId !== 'school-2').every((s) => s.verdict === 'READY')).toBe(true);
+    const bare = r.schools.find((s) => s.tenantId === 'school-2')!;
+    expect(bare.verdict).toBe('READY');
+    expect(bare.lockdownWired).toBe(true);
+    expect(bare.contentWired).toBe(0);
+    expect(bare.missingTypes).toEqual([]);
+    expect(bare.standardTypes).toContain('Lockdown');
+    expect(bare.standardTypes).toHaveLength(6);
+    expect(r.notReadyCount).toBe(0);
+    expect(r.schools.every((s) => s.verdict === 'READY')).toBe(true);
   });
 
   // ── Enablement (2026-09-24) ─────────────────────────────────────────
@@ -205,9 +211,10 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     const bar = r.schools.find((s) => s.tenantId === 'school-2')!;
     expect(bar.enabled).toBe(true);
     expect(bar.locked).toBe(false);
-    expect(bar.verdict).toBe('NOT_CONFIGURED');
-    expect(bar.missingTypes).toEqual(['Fire / Evacuate', 'Weather', 'Medical']);
-    expect(r.notReadyCount).toBe(1);
+    expect(bar.verdict).toBe('READY');
+    expect(bar.missingTypes).toEqual([]);
+    expect(bar.standardTypes).toEqual(['Fire / Evacuate', 'Weather', 'Medical']);
+    expect(r.notReadyCount).toBe(0);
     expect(r.disabledCount).toBe(0);
   });
 
@@ -238,16 +245,17 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     expect(r.disabledCount).toBe(0);
   });
 
-  it('lockdown wired but other types missing → NEEDS_ATTENTION naming the gaps', async () => {
+  it('lockdown wired, two types without own content → READY, those two named as standard', async () => {
     const m = makeDistrictMocks({
       wiring: { 'school-1': { panicEvacuatePlaylistId: null, panicMedicalPlaylistId: null } },
     });
     const r = await svcFor(m).computeDistrict('district');
     const s1 = r.schools.find((s) => s.tenantId === 'school-1')!;
-    expect(s1.verdict).toBe('NEEDS_ATTENTION');
+    expect(s1.verdict).toBe('READY');
     expect(s1.contentWired).toBe(4);
     expect(s1.contentTotal).toBe(6);
-    expect(s1.missingTypes).toEqual(['Fire / Evacuate', 'Medical']);
+    expect(s1.missingTypes).toEqual([]);
+    expect(s1.standardTypes).toEqual(['Fire / Evacuate', 'Medical']);
   });
 
   it('partly-offline school → NEEDS_ATTENTION with honest online/total', async () => {
@@ -331,6 +339,6 @@ describe('EmergencyReadinessService.computeDistrict', () => {
     const r = await svcFor(m).computeDistrict('district');
     const s1 = r.schools.find((s) => s.tenantId === 'school-1')!;
     expect(s1.contentWired).toBe(5);
-    expect(s1.missingTypes).toContain('Fire / Evacuate');
+    expect(s1.standardTypes).toContain('Fire / Evacuate');
   });
 });

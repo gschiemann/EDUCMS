@@ -56,7 +56,7 @@ type Focus = 'offline' | 'notPainting' | 'noLockdown' | 'alertGaps' | 'approvals
 
 /** Where a school's WORST problem is actually fixed. */
 function destinationFor(s: SchoolScorecard): { path: string; label: string } {
-  if (s.readiness === 'NOT_CONFIGURED') return { path: 'settings/emergency', label: 'Wire alerts' };
+  if (s.readiness === 'NOT_CONFIGURED') return { path: 'settings/emergency', label: 'Open alerts' };
   if (s.notPainting > 0 || s.screensOffline > 0) return { path: 'screens', label: 'Fix screens' };
   if (s.readiness === 'NEEDS_ATTENTION') return { path: 'settings/emergency', label: 'Finish setup' };
   if (s.pendingApprovals > 0) return { path: 'reviews', label: 'Review' };
@@ -117,7 +117,6 @@ export function DistrictCommandCenter({
   const anchorVerb = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown')
     ? 'run a lockdown'
     : 'display an emergency alert';
-  const anchorName = VERTICAL_EMERGENCY_TYPES[vertical].includes('lockdown') ? 'Lockdown' : 'Fire / Evacuate';
   const searchable = schoolCount > 8;
 
   const enter = (s: SchoolScorecard, path: string) =>
@@ -140,12 +139,13 @@ export function DistrictCommandCenter({
     actionRows.push({
       key: 'noLockdown', Icon: ShieldAlert, tone: 'red',
       headline: `${hit.length} ${n(hit.length)} can’t ${anchorVerb}`,
-      // 2026-09-21 — "would push nothing" was false: the manifest's bulletproof
-      // fallback locks every screen to a plain red board with a generic
-      // message when no content is wired. Say what actually happens.
+      // 2026-10-26 — standard wording: every alert type now has a standard
+      // message when a school has no content of its own, so content can no
+      // longer make a school NOT_CONFIGURED. Only a broken delivery chain
+      // (database / message signer — a platform fault) still does.
       detail: hit.length === 1
-        ? `${hit[0].name} has no alert content wired — a trigger falls back to a plain red alert with a generic message, not theirs.`
-        : 'No alert content wired — a trigger falls back to a plain red alert with a generic message, not theirs.',
+        ? `Alerts can’t reach ${hit[0].name}’s screens right now. This is a VenueOS problem, not your setup — contact support.`
+        : 'Alerts can’t reach these screens right now. This is a VenueOS problem, not your setup — contact support.',
       schools: hit, path: 'settings/emergency',
     });
   }
@@ -180,9 +180,11 @@ export function DistrictCommandCenter({
     actionRows.push({
       key: 'alertGaps', Icon: Siren, tone: 'amber',
       headline: `${emergencyWarnOnly} ${n(emergencyWarnOnly)} ${emergencyWarnOnly === 1 ? 'has' : 'have'} gaps in emergency setup`,
-      detail: hit.length === 1 && hit[0].missingTypes.length > 0
-        ? `${hit[0].name} is missing content for: ${hit[0].missingTypes.join(', ')}.`
-        : `${anchorName} is wired, but other alert types or part of the fleet are not ready.`,
+      // Content is never the gap since 2026-10-26 (standard wording): what
+      // is left is screens that are offline or have not reported in.
+      detail: hit.length === 1
+        ? `Some of ${hit[0].name}’s screens are offline, so they could miss an alert.`
+        : 'Some screens are offline, so they could miss an alert.',
       schools: hit, path: 'settings/emergency',
     });
   }
@@ -439,10 +441,10 @@ function SchoolRow({
               {s.notPainting} not painting
             </Chip>
           )}
-          {s.readiness === 'NOT_CONFIGURED' && <Chip tone="rose" Icon={ShieldAlert}>No lockdown content</Chip>}
+          {s.readiness === 'NOT_CONFIGURED' && <Chip tone="rose" Icon={ShieldAlert}>Alerts can’t send</Chip>}
           {s.readiness === 'NEEDS_ATTENTION' && (
             <Chip tone="amber" Icon={Siren}>
-              {s.missingTypes.length > 0 ? `Missing ${s.missingTypes.length} alert ${s.missingTypes.length === 1 ? 'type' : 'types'}` : 'Alerts need setup'}
+              Screens may miss alerts
             </Chip>
           )}
           {/* The readiness verdict is ALWAYS shown when we have one, even on a

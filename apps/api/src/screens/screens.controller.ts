@@ -124,6 +124,9 @@ import { resolvePlaybackConfig } from './playback-config';
 // the drawer all read the same resolver, so they cannot disagree.
 import { manifestTimeZone, screenTimeZoneFields } from './screen-time-zone';
 import { isValidIanaTimeZone, normalizeTimeZoneInput } from '@cms/api-types';
+// 2026-10-26 — the standard words a live alert shows when this organization has
+// no content of its own for the type (owner-approved, Settings simplification).
+import { emergencyWordingKind, standardEmergencyText } from '@cms/api-types';
 // 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
 // the unified telemetry cadence and lives in ONE place that documents the
 // relationship. It was three inline `35 * 1000` literals sized for a 30 s
@@ -6746,6 +6749,16 @@ export class ScreensController {
           // 2026-10-10 — a DRILL says so in the words themselves, on top of
           // the player's banner, so an old cached bundle still shows it.
           const drillMark = isDrill ? 'DRILL — THIS IS A DRILL\n\n' : '';
+          // 2026-10-26 — STANDARD WORDING (owner-approved; @cms/api-types
+          // emergency-wording.ts). A LIVE alert of one of the six known types,
+          // with no content of its own, no operator-typed message and no scope
+          // note, shows that type's standard words ("LOCKDOWN / Locks, lights,
+          // out of sight.") instead of the generic "PROTOCOL ACTIVE" board —
+          // the same red board, the same layout, only the words differ. The
+          // operator's own text and scope note still win, a drill keeps its
+          // own DRILL board, and an unknown type keeps the generic message.
+          // Display-only: nothing is written and no transmitted field changes.
+          const standardKind = emergencyWordingKind(effectiveType);
           const fallbackContent =
             activeScreenOverride?.textBlob
               ? `${drillMark}${activeScreenOverride.textBlob}`
@@ -6753,7 +6766,9 @@ export class ScreensController {
                 ? `${drillMark}${effectiveTypeLabel} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
                 : isDrill
                   ? `DRILL — THIS IS A DRILL\n\n${effectiveTypeLabel} DRILL\n\nFollow standard procedures. This is not a real emergency.`
-                  : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
+                  : standardKind
+                    ? standardEmergencyText(standardKind)
+                    : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
           const fallbackBg =
             // A drill's system-default board is indigo, never the red of a
             // live alert — the same colour the player banner and the dashboard
