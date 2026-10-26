@@ -335,8 +335,22 @@ for (const source of ['native-v1', 'native-v2', 'websocket'] as const) {
       const d = (window as any).__dualTest;
       d.reason = 'emergency-held'; d.fail = true;
     });
+    // The protective surface is up and nothing regular is on the glass.
     await expect(page.locator('[data-edu-emergency-transition]')).toBeVisible();
-    await expect(page.locator('[data-edu-emergency-pending]')).toBeVisible();
+    if (source === 'websocket') {
+      // A signed OVERRIDE whose payload names no alert opens the confirmation
+      // window: the pending surface (red, "EMERGENCY") until the manifest lands.
+      await expect(page.locator('[data-edu-emergency-pending]')).toBeVisible();
+    } else {
+      // 2026-10-26 — the native watch raised the hold and the page has no
+      // alert to name yet: a BLACK hold, never a red claim the page cannot
+      // back (rule 10) — least of all during a drill. No pending text.
+      await expect(page.locator('[data-edu-emergency-hold="true"]')).toBeVisible();
+      await expect(page.locator('[data-edu-emergency-hold="true"]')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+      await expect(page.locator('[data-edu-emergency-pending]')).toHaveCount(0);
+    }
+    await expect(page.locator('[data-edu-player-root]')).toHaveCount(0);
+    // Still graded as an emergency hold by the render-proof lane.
     await expect.poll(() => page.evaluate(() => (window as any).__eduRenderProof?.().sig ?? '')).toMatch(/^pending\|em:/);
     await expect(page.locator('video')).toHaveCount(0);
     // Native watch can win the race against the page's independent alert lane.
