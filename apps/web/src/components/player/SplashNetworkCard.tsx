@@ -132,7 +132,9 @@ const NETWORK_CARD_CSS = `
   --net-tone-glow: rgba(244, 63, 94, 0.30);
   position: relative;
   box-sizing: border-box;
-  width: 100%;
+  /* 92%: a gutter on a portrait panel, where the flattened preflight zeroes
+     the stage's own padding; 92vh caps it on landscape. */
+  width: 92%;
   max-width: 92vh;
   margin: 10px auto 0 auto;
   margin: clamp(4px, 1vh, 24px) auto 0 auto;
@@ -359,6 +361,7 @@ const NETWORK_CARD_CSS = `
    Anchored on html, so sceneCss leaves these alone; !important does the
    work the booster does above. */
 html[data-led-narrow] .kiosk-net-card {
+  width: 100% !important;
   max-width: 100% !important;
   padding: 7% 6% 6% !important;
   border-radius: calc(var(--led-w, 320px) * 0.05) !important;
