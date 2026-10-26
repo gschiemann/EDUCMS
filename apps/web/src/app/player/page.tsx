@@ -3486,7 +3486,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // an alert reaches the glass (CLAUDE.md player rule 15).
   /** The control that opened the question — the remote is parked back on it. */
   const remoteDialogOpenerRef = useRef<HTMLElement | null>(null);
-  /** Runs an answer (exactly once per question). Re-assigned every render below `handleUnpair`. */
+  /** Runs an answer (exactly once per question). Set by a layout effect below `handleUnpair`, re-armed after every commit. */
   const remoteDialogAnswerRef = useRef<(outcome: RemoteDialogOutcome) => void>(() => {});
   const {
     state: remoteDialog,
