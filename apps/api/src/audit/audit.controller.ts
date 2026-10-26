@@ -5,8 +5,39 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import {
+  ACTIVITY_ROW_SELECT,
+  customerActivityWhere,
+  toActivityItems,
+  type ActivityRow,
+} from './customer-activity-feed';
 
 const ADMIN_ROLES = [AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] as const;
+
+/** How many rows the dashboard card reads (it groups a publish into one line). */
+const RECENT_ACTIVITY_TAKE = 40;
+
+/**
+ * Which log a request reads (2026-10-24, owner: "keep the dashboard to only
+ * app activity, not backend activity").
+ *
+ *   'activity' — the customer-facing allowlist (`@cms/api-types`
+ *                CUSTOMER_ACTIVITY), written by a person. What every customer
+ *                role reads, whatever it asks for.
+ *   'all'      — the raw trail: every action, every machine row. SUPER_ADMIN
+ *                only, and only when asked for (`?view=all`) — or, for the
+ *                owner's existing callers that never pass a view, by default,
+ *                so nothing they read today changes.
+ *
+ * Nothing is deleted either way; the raw rows stay in the table.
+ */
+export type AuditView = 'activity' | 'all';
+
+export function resolveAuditView(req: any, requested?: string): AuditView {
+  const isSuper = req?.user?.role === AppRole.SUPER_ADMIN;
+  if (!isSuper) return 'activity';
+  return requested === 'activity' ? 'activity' : 'all';
+}
 
 function parseDate(value: string | undefined): Date | undefined {
   if (!value) return undefined;
@@ -46,54 +77,32 @@ function csvEscape(v: unknown): string {
 export class AuditController {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * The dashboard's "Recent activity" card — customer activity only, for
+   * EVERY role including SUPER_ADMIN (it is a customer-facing surface; the
+   * owner reads the raw trail on the Activity page's "All events" view).
+   *
+   * 2026-10-24 — was a BLOCKLIST of device noise that two sweeps (2026-08-31)
+   * kept extending and that still leaked every new backend action the day it
+   * shipped: the owner's phone showed "Field Build Window Expire ·
+   * field_build_window", "Ota Push Held · screen", "Player Field Apk Offer ·
+   * screen". It is now the shared ALLOWLIST plus "a person did it"
+   * (`customerActivityWhere`), and each row comes back with names resolved
+   * (`toActivityItems`) so the card can say "Greg published “Lobby loop” to
+   * Lobby TV" instead of "Schedule Created · schedule".
+   */
   @Get('recent')
   @RequireRoles(...ADMIN_ROLES)
   async getRecentActivity(@Request() req: any) {
     const tenantId = req.user.tenantId;
-    // Hide high-frequency device-polling actions from the dashboard's
-    // "Recent Activity" card — they were drowning the genuinely
-    // interesting events (admin logged in, playlist created, emergency
-    // triggered). Each paired screen re-fetches its emergency-asset
-    // manifest every ~5 minutes, so 50 screens generate 600
-    // 'DEVICE_FETCH_EMERGENCY_ASSETS' entries an hour; the operator
-    // cares about none of them in normal operation. The full record
-    // still lives in /audit (and /audit/export) for forensics.
-    // 2026-08-31 — operator: "recent activity should be real user changes,
-    // not every detail". Evidence from 48h of prod audit rows: the
-    // credential lifecycle re-registers every screen on a timer, so
-    // SCREEN_TOKEN_DOWNGRADED (252 rows) + RENEWED (90) drowned everything;
-    // AUTO_* are the wedge detector's machine recoveries; logins and tenant
-    // switches are sessions, not changes. All of it stays in /audit +
-    // /audit/export for forensics — this list only shapes the dashboard card.
-    const DEVICE_NOISE = [
-      'DEVICE_FETCH_EMERGENCY_ASSETS',
-      'SCREEN_TOKEN_RENEWED',
-      'SCREEN_TOKEN_DOWNGRADED',
-      'AUTO_REFRESH_WEB',
-      'AUTO_RECOVERY_PUSH_DEAD',
-      'AUTH_LOGIN_SUCCESS',
-      'AUTH_LOGIN_FAILED',
-      'TENANT_SWITCH',
-      // Second sweep (2026-08-31 — operator: "this is not just user activity
-      // in the list", 7-day prod census). These are MACHINE outcomes even
-      // though several carry the user id of the request that spawned them:
-      // alt-text generation is a background job, the branding scrape is a
-      // fetch step (the ADOPT that follows IS the user's change and stays),
-      // token refresh is session machinery, capabilities-changed is
-      // device-reported, geocode backfill is the auto-heal cron.
-      'AI_ALT_TEXT_GENERATED',
-      'AI_ALT_TEXT_SKIPPED',
-      'BRANDING_SCRAPE',
-      'AUTH_TOKEN_REFRESH',
-      'SCREEN_DISPLAY_CAPABILITIES_CHANGED',
-      'GEOCODE_BACKFILL',
-    ];
-    return this.prisma.client.auditLog.findMany({
-      where: { tenantId, action: { notIn: DEVICE_NOISE } },
-      take: 20,
+    const where = customerActivityWhere({ tenantId });
+    const rows = (await this.prisma.client.auditLog.findMany({
+      where: where as any,
+      take: RECENT_ACTIVITY_TAKE,
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, role: true } } },
-    });
+      select: ACTIVITY_ROW_SELECT,
+    })) as ActivityRow[];
+    return toActivityItems(this.prisma, rows);
   }
 
   @Get()
@@ -109,25 +118,49 @@ export class AuditController {
     // ACC-06 follow-up (2026-08-03) — "everything this key ever did". Declared
     // last so the existing positional call sites keep working.
     @Query('apiKeyId') apiKeyId?: string,
+    // 2026-10-24 — 'activity' | 'all'; see `resolveAuditView`. Last, again,
+    // so every positional caller keeps working.
+    @Query('view') viewRaw?: string,
+    // 2026-10-24 — one shelf of the customer allowlist (content, screens,
+    // emergency, team, security, settings, …): the Activity page's chips.
+    @Query('category') category?: string,
   ) {
     const tenantId = req.user.tenantId;
     const limit = clampInt(limitStr, 50, 1, 200);
     const offset = clampInt(offsetStr, 0, 0, 100000);
+    const view = resolveAuditView(req, viewRaw);
 
-    const where = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
+    const base = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
+    const where = view === 'activity' ? customerActivityWhere(base, action, category) : base;
+    // An action customers never see: an empty page, not a query.
+    if (!where) return { items: [], total: 0, limit, offset, view };
 
-    const [items, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.client.auditLog.findMany({
-        where,
+        where: where as any,
         take: limit,
         skip: offset,
         orderBy: { createdAt: 'desc' },
-        include: { user: { select: { email: true, role: true } } },
+        include: { user: { select: { email: true, role: true, firstName: true, lastName: true, tenantId: true } } },
       }),
-      this.prisma.client.auditLog.count({ where }),
+      this.prisma.client.auditLog.count({ where: where as any }),
     ]);
 
-    return { items, total, limit, offset };
+    if (view === 'all') return { items: rows, total, limit, offset, view };
+    // Customer rows keep every column they always had (the Settings pages read
+    // `details` and `user` off them) and gain the names and facts the Activity
+    // page writes its sentences from. Additive: no existing reader changes.
+    const activity = await toActivityItems(this.prisma, rows as unknown as ActivityRow[]);
+    const items = (rows as any[]).map((row, i) => ({
+      ...row,
+      category: activity[i]?.category,
+      actor: activity[i]?.actor,
+      subject: activity[i]?.subject ?? null,
+      target: activity[i]?.target ?? null,
+      targetKey: activity[i]?.targetKey ?? null,
+      facts: activity[i]?.facts ?? {},
+    }));
+    return { items, total, limit, offset, view };
   }
 
   @Get('export')
@@ -140,17 +173,24 @@ export class AuditController {
     @Query('actorId') actorId?: string,
     @Query('action') action?: string,
     @Query('apiKeyId') apiKeyId?: string,
+    @Query('view') viewRaw?: string,
+    @Query('category') category?: string,
   ) {
     const tenantId = req.user.tenantId;
-    const where = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
+    const base = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
+    // The export is the same log the page shows: a customer exports their
+    // activity, the owner exports the raw trail.
+    const where = resolveAuditView(req, viewRaw) === 'activity' ? customerActivityWhere(base, action, category) : base;
 
     // Hard cap to protect memory in case the caller omits filters.
-    const items = await this.prisma.client.auditLog.findMany({
-      where,
-      take: 10000,
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, role: true } } },
-    });
+    const items = where
+      ? await this.prisma.client.auditLog.findMany({
+          where: where as any,
+          take: 10000,
+          orderBy: { createdAt: 'desc' },
+          include: { user: { select: { email: true, role: true } } },
+        })
+      : [];
 
     // `apiKeyId` is appended rather than slotted next to the actor columns so
     // an existing consumer parsing this CSV by position keeps working.

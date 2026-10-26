@@ -8,6 +8,12 @@ If you have found a vulnerability, we want to hear from you, and we will not
 take legal action against you for reporting it in good faith. See
 **[Safe harbor](#safe-harbor)** below.
 
+**The same policy, written for everyone (in English, Spanish and Chinese):**
+**[Report a security issue](https://venue-os.app/security)** —
+<https://venue-os.app/security>. Its machine-readable form (RFC 9116) is
+<https://venue-os.app/.well-known/security.txt>. The page and this file make
+the same commitments; change them together.
+
 ---
 
 ## Reporting a vulnerability
@@ -37,7 +43,7 @@ everyone, including anyone who could exploit the issue before a fix ships.
 
 | Stage | Our commitment |
 |---|---|
-| Acknowledgement | Within **3 business days** |
+| Acknowledgement | Within **2 business days** |
 | Initial assessment + severity | Within **10 business days** |
 | Fix for Critical / High | Target **30 days** from triage |
 | Fix for Medium / Low | Target **90 days** from triage |
@@ -244,4 +250,4 @@ claims and only the first is answerable from source code.
 
 ---
 
-*Last reviewed: 2026-10-22*
+*Last reviewed: 2026-10-24*

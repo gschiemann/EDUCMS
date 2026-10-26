@@ -4,10 +4,13 @@ import { useMemo, useRef, useState } from 'react';
 import {
   Bell, CheckCheck, WifiOff, FileCheck2, Info, ChevronRight, Loader2, RefreshCw,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
-  buildInbox, relativeAge, humanizeTimestamps, CATEGORY_BLURB,
+  buildInbox,
   type InboxCategory, type InboxNotification,
 } from './notificationInbox';
+import { useNotificationText } from './useNotificationText';
+import { NotificationHealthChip } from './NotificationHealthChip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -54,6 +57,9 @@ export interface NotificationsInboxProps {
 export function NotificationsInbox({
   items, isPending, isError, isFetching, onOpen, onMarkAllRead, onRetry,
 }: NotificationsInboxProps) {
+  const tr = useTranslations('notifications.inbox');
+  const tn = useTranslations('notifications');
+  const { text, age } = useNotificationText();
   const [tab, setTab] = useState<InboxCategory | 'all'>('all');
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -102,13 +108,13 @@ export function NotificationsInbox({
     <div className="max-w-3xl mx-auto pb-4">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-[24px] leading-[30px] font-black text-slate-900">Notifications</h1>
+          <h1 className="text-[24px] leading-[30px] font-black text-slate-900">{tr('title')}</h1>
           <p className="mt-0.5 text-[13px] text-slate-500">
             {!countsKnown
-              ? 'Checking for new messages…'
+              ? tr('checking')
               : inbox.unreadTotal > 0
-                ? `${inbox.unreadTotal} unread of ${inbox.rows.length}`
-                : `${inbox.rows.length} ${inbox.rows.length === 1 ? 'message' : 'messages'}`}
+                ? tr('unreadOf', { unread: inbox.unreadTotal, total: inbox.rows.length })
+                : tr('messages', { count: inbox.rows.length })}
           </p>
         </div>
         <button
@@ -118,7 +124,7 @@ export function NotificationsInbox({
           className="shrink-0 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-slate-200 bg-white text-[13px] font-bold text-slate-700 disabled:text-slate-300 disabled:bg-slate-50 active:bg-slate-50"
         >
           <CheckCheck className="w-4 h-4" aria-hidden />
-          Mark all read
+          {tr('markAllRead')}
         </button>
       </header>
 
@@ -126,7 +132,7 @@ export function NotificationsInbox({
           without wrapping the header (§7 / §M21). */}
       <div
         role="tablist"
-        aria-label="Notification categories"
+        aria-label={tr('categoriesLabel')}
         className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
       >
         {inbox.tabs.map((t, i) => {
@@ -147,7 +153,7 @@ export function NotificationsInbox({
                   : 'bg-white border-slate-200 text-slate-600 active:bg-slate-50',
               )}
             >
-              {t.label}
+              {tn(`categories.${t.key}`)}
               {countsKnown && (
                 <span
                   className={cn(
@@ -161,7 +167,7 @@ export function NotificationsInbox({
               {countsKnown && t.unread > 0 && (
                 <span
                   className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-white' : 'bg-indigo-500')}
-                  aria-label={`${t.unread} unread`}
+                  aria-label={tr('unreadCount', { count: t.unread })}
                 />
               )}
             </button>
@@ -179,17 +185,14 @@ export function NotificationsInbox({
           className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5"
         >
           <RefreshCw className="mt-0.5 w-4 h-4 shrink-0 text-amber-600" aria-hidden />
-          <p className="text-[12px] leading-snug text-amber-900">
-            Couldn’t refresh just now — showing the last list this device
-            received. Anything newer isn’t here yet.
-          </p>
+          <p className="text-[12px] leading-snug text-amber-900">{tr('stale')}</p>
           <button
             type="button"
             onClick={onRetry}
             disabled={!!isFetching}
             className="ml-auto shrink-0 self-center min-h-[44px] px-2 text-[12px] font-bold text-amber-900 underline underline-offset-2 disabled:opacity-50"
           >
-            Retry
+            {tr('retry')}
           </button>
         </div>
       )}
@@ -203,7 +206,9 @@ export function NotificationsInbox({
           <Empty tab={tab} onClear={() => setTab('all')} anyAtAll={inbox.rows.length > 0} />
         ) : (
           <ul className="rounded-2xl bg-white border border-slate-200 overflow-hidden divide-y divide-slate-100">
-            {visible.map((n) => (
+            {visible.map((n) => {
+              const shown = text(n);
+              return (
               <li key={n.id}>
                 <button
                   type="button"
@@ -225,22 +230,23 @@ export function NotificationsInbox({
                           n.isRead ? 'font-semibold text-slate-700' : 'font-bold text-slate-900',
                         )}
                       >
-                        {n.title}
+                        {shown.title}
                       </span>
                       {!n.isRead && (
                         <span
                           className="mt-1.5 shrink-0 w-2 h-2 rounded-full bg-indigo-500"
-                          aria-label="Unread"
+                          aria-label={tr('unread')}
                         />
                       )}
                     </span>
-                    {n.body && (
+                    {shown.body && (
                       <span className="mt-0.5 block text-[12px] leading-snug text-slate-500 line-clamp-2">
-                        {humanizeTimestamps(n.body)}
+                        {shown.body}
                       </span>
                     )}
+                    <NotificationHealthChip n={n} />
                     <span className="mt-1 block text-[11px] text-slate-400">
-                      {[relativeAge(n.createdAt), CATEGORY_LABEL_SHORT[n.category]]
+                      {[age(n.createdAt), tn(`categoriesShort.${n.category}`)]
                         .filter(Boolean)
                         .join(' · ')}
                     </span>
@@ -248,27 +254,17 @@ export function NotificationsInbox({
                   {n.link && <ChevronRight className="w-4 h-4 shrink-0 mt-1 text-slate-300" aria-hidden />}
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
 
       {/* §16 — the honest footnote. Nothing here promises a buzzing phone. */}
-      <p className="mt-4 px-1 text-[11.5px] leading-snug text-slate-400">
-        These arrive while VenueOS is open. Your phone won’t alert you when the
-        app is closed — during an active emergency, watch the alert banner at
-        the top of the app.
-      </p>
+      <p className="mt-4 px-1 text-[11.5px] leading-snug text-slate-400">{tr('footnote')}</p>
     </div>
   );
 }
-
-/** Short forms for the row's metadata line, where the full label is too long. */
-const CATEGORY_LABEL_SHORT: Record<InboxCategory, string> = {
-  exceptions: 'Delivery',
-  reviews: 'Review',
-  system: 'System',
-};
 
 function categoryIcon(c: InboxCategory) {
   if (c === 'exceptions') return <WifiOff className="w-4 h-4 text-amber-500" aria-hidden />;
@@ -308,6 +304,8 @@ function Empty({
   onClear: () => void;
   anyAtAll: boolean;
 }) {
+  const tr = useTranslations('notifications.inbox');
+  const tn = useTranslations('notifications');
   const filtered = tab !== 'all' && anyAtAll;
   return (
     <div
@@ -316,12 +314,10 @@ function Empty({
     >
       <Bell className="w-6 h-6 mx-auto text-slate-300" aria-hidden />
       <p className="mt-3 text-[15px] font-bold text-slate-900">
-        {filtered ? 'Nothing in this category' : 'No notifications yet'}
+        {filtered ? tr('emptyFiltered') : tr('empty')}
       </p>
       <p className="mt-1 text-[12.5px] leading-snug text-slate-500 max-w-sm mx-auto">
-        {tab === 'all'
-          ? 'VenueOS writes here when a screen stops answering, when work needs a review, and when something changes on your account.'
-          : CATEGORY_BLURB[tab]}
+        {tab === 'all' ? tr('emptyAll') : tn(`blurbs.${tab}`)}
       </p>
       {filtered && (
         <button
@@ -329,7 +325,7 @@ function Empty({
           onClick={onClear}
           className="mt-4 inline-flex items-center min-h-[44px] px-4 rounded-xl bg-slate-900 text-white text-[13px] font-bold active:bg-slate-800"
         >
-          Show all notifications
+          {tr('showAll')}
         </button>
       )}
     </div>
@@ -338,16 +334,14 @@ function Empty({
 
 /** §13 API unavailable — say so, keep the retry, claim nothing about the data. */
 function Unavailable({ onRetry, busy }: { onRetry: () => void; busy: boolean }) {
+  const tr = useTranslations('notifications.inbox');
   return (
     <div
       className="rounded-2xl bg-white border border-amber-200 px-5 py-8 text-center"
       data-testid="notifications-error"
     >
-      <p className="text-[15px] font-bold text-slate-900">Can’t load notifications</p>
-      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">
-        VenueOS could not reach the server, so this list may be incomplete or
-        out of date.
-      </p>
+      <p className="text-[15px] font-bold text-slate-900">{tr('errorTitle')}</p>
+      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{tr('errorBody')}</p>
       <button
         type="button"
         onClick={onRetry}
@@ -355,7 +349,7 @@ function Unavailable({ onRetry, busy }: { onRetry: () => void; busy: boolean }) 
         className="mt-4 inline-flex items-center gap-2 min-h-[44px] px-4 rounded-xl bg-slate-900 text-white text-[13px] font-bold disabled:opacity-60 active:bg-slate-800"
       >
         {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <RefreshCw className="w-4 h-4" aria-hidden />}
-        Try again
+        {tr('tryAgain')}
       </button>
     </div>
   );

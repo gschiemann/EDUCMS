@@ -423,7 +423,8 @@
     "phoneSetupTurnOnButton": "{device, select, iphone {Turn on Face ID or Touch ID} ipad {Turn on Face ID or Touch ID} android {Turn on fingerprint sign-in} other {Turn on passkey sign-in}}",
     "phoneSetupSignedInTitle": "You're signed in",
     "phoneSetupLater": "You can add a passkey for this device later in Settings → My security.",
-    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password."
+    "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
+    "security": "Security"
   },
   "account": {
     "title": "Account",
@@ -1840,6 +1841,30 @@
       "fix": "Fix",
       "placesAria": "Where to fix it",
       "morePlaces": "+{count} more — show them on the map"
+    },
+    "attention": {
+      "lastSeen": "Last seen {when}",
+      "neverSeen": "Never connected",
+      "notSeen30": "{count, plural, one {# screen not seen in 30+ days} other {# screens not seen in 30+ days}}",
+      "neverConnected": "{count, plural, one {# never connected} other {# never connected}}",
+      "testScreens": "{count, plural, one {# test screen} other {# test screens}}",
+      "quietHint": "Not counted as down. Remove a screen you no longer use on the Screens page.",
+      "manage": "Manage screens",
+      "restingTitle": "{count, plural, one {# screen off on purpose} other {# screens off on purpose}}",
+      "restingHint": "Off on schedule, turned off from the dashboard, or restarting — not counted as down.",
+      "quietSub": "{count, plural, one {# inactive or off on purpose} other {# inactive or off on purpose}}",
+      "downCheck": "Check power and internet",
+      "reason": {
+        "remote-power-off": "Turned off from the dashboard",
+        "standby": "In standby",
+        "display-schedule-off": "Off on its on/off schedule",
+        "update-window": "In its update window",
+        "maintenance": "Restarting or updating",
+        "not-seen-30-days": "Not seen in 30+ days",
+        "never-connected": "Never connected",
+        "test-screen": "Test screen in a phone or computer browser"
+      },
+      "downCheckFull": "Check the power and internet at each screen."
     }
   },
   "screens": {
@@ -4881,7 +4906,49 @@
     "viaSwim": "swim timing",
     "ageSeconds": "{seconds} s ago",
     "ageMinutes": "{minutes} min ago",
-    "developerDesc": "Where scores come from: the console, a phone link, or a signed feed your system sends."
+    "developerDesc": "Where scores come from: the console, a phone link, or a signed feed your system sends.",
+    "vendorOther": "Anything else",
+    "steps": {
+      "sportzcast": {
+        "step1": "In your Sportzcast cloud portal (ScoreHub / ScoreLink), open the data-output settings for the Scorebot at this venue.",
+        "step2": "Add an HTTP push (webhook) output and paste the ingest URL below as the destination.",
+        "step3": "Add a request header named x-feed-token with the token below.",
+        "step4": "Map the output to the JSON fields listed below (any subset works). If your plan only pushes a fixed format, run their bridge/relay — or any small script — that reposts to this URL; the curl line is a working packet."
+      },
+      "scorebird": {
+        "step1": "In your Scorebird dashboard (MyScorebird), open the integrations / data-feed settings for this scoreboard’s nest.",
+        "step2": "Add an HTTP push (webhook) pointing at the ingest URL below.",
+        "step3": "Add a request header named x-feed-token with the token below.",
+        "step4": "Map the push to the JSON fields listed below (any subset works). If the portal can’t shape the JSON, a tiny relay script that reposts works — the curl line is a working packet."
+      },
+      "generic": {
+        "step1": "Anything that can POST JSON works: a console-reader bridge, Node-RED, a stats app, or a 5-line script.",
+        "step2": "POST to the ingest URL below with the x-feed-token header set to the token.",
+        "step3": "Send any subset of the JSON fields listed below — omitted fields are left unchanged.",
+        "step4": "The curl line below is a complete working packet you can adapt."
+      }
+    },
+    "creating": "Creating credentials…",
+    "loadFailed": "Couldn’t load the feed credentials.",
+    "retry": "Retry",
+    "revoked": "All feed credentials for this game are revoked.",
+    "createNew": "Create new credentials",
+    "rotated": "<b>Rotated</b> — tokens issued before the last regenerate (including the original one) no longer work. Make sure your vendor has the token below.",
+    "postTo": "POST to",
+    "header": "Header",
+    "fieldsLabel": "Fields",
+    "anySubset": "any subset",
+    "testPacket": "Test packet:",
+    "tokenExpires": "Token expires {date} — reopen this card any time for a current one.",
+    "copied": "Copied setup details",
+    "copy": "Copy URL + token",
+    "copyPrompt": "Copy the score-feed details:",
+    "confirmRegenerate": "Yes — revoke & replace",
+    "keep": "Keep",
+    "regenerate": "Regenerate…",
+    "regenerateTitle": "Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued",
+    "confirmWarning": "This kills every credential already deployed for this game (including the original token) the moment you confirm — your vendor stops syncing until you paste in the new one.",
+    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token."
   },
   "sportsConsoleSetup": {
     "title": "Scoreboard console",
@@ -5680,7 +5747,8 @@
     "limit": {
       "images": "You've used all your AI images this month. Add your own AI key in Settings → AI provider to keep going, or contact us for more.",
       "imagesTrial": "You've used all the AI images in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
-      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing."
+      "boardsTrial": "You've used all the AI board designs in your free trial. Add your own AI key in Settings → AI provider, or choose VenueOS + AI in Settings → Billing.",
+      "month": "This month’s included AI is used up. Add your own AI key in Settings → AI provider to keep going, or wait for it to reset next month."
     }
   },
   "billingAi": {
@@ -6411,7 +6479,6 @@
       "trust": "Security",
       "itSecurity": "Security overview",
       "networkRequirements": "Network requirements",
-      "reportVulnerability": "Report a vulnerability",
       "legal": "Legal",
       "privacy": "Privacy policy",
       "terms": "Terms of service",
@@ -6420,7 +6487,8 @@
       "ferpa": "FERPA",
       "coppa": "COPPA",
       "copyright": "© {year} VenueOS — one platform for every venue.",
-      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts"
+      "strapline": "Digital signage · interactive kiosks · live scoreboards · emergency alerts",
+      "reportSecurityIssue": "Report a security issue"
     },
     "help": {
       "back": "Back to help center",
@@ -6508,6 +6576,14 @@
       "apiBuild": "API build {version}",
       "firstCheck": "Running first check…",
       "offlineNote": "If a screen loses its connection it keeps playing its stored content, and an emergency alert already on screen stays up until an all-clear — see the <help>emergency system overview</help>."
+    },
+    "header": {
+      "industries": "Industries",
+      "templates": "Templates",
+      "pricing": "Pricing",
+      "help": "Help",
+      "signIn": "Sign in",
+      "startTrial": "Start free trial"
     }
   },
   "usbDelivery": {
@@ -6664,5 +6740,644 @@
     "tooShort": "Password must be at least 8 characters.",
     "mismatch": "Passwords do not match.",
     "acceptFailed": "Could not accept the invitation."
+  },
+  "addressSearch": {
+    "clear": "Clear address",
+    "resultsFrom": "Results from",
+    "noMatchApprox": "No match yet — this address search is approximate. Try adding the city and state, or double-check the street number."
+  },
+  "signup": {
+    "haveWorkspace": "Have a workspace?",
+    "signIn": "Sign in",
+    "trialBadge": "Free 14-day trial — up to 3 screens, no card",
+    "title": "Start your free workspace.",
+    "lead": "Set up VenueOS for your {where} in under three minutes — then schedule every screen, and trigger an emergency alert across all of them in seconds.",
+    "industryLabel": "What are you running?",
+    "industryPlaceholder": "Choose your industry…",
+    "workspaceUrl": "Workspace URL",
+    "workspaceUrlHint": "Letters, numbers, and dashes only.",
+    "firstName": "First name",
+    "firstNamePlaceholder": "Alex",
+    "lastName": "Last name",
+    "lastNamePlaceholder": "Garcia",
+    "adminEmail": "Admin email",
+    "phone": "Phone (optional)",
+    "phoneHint": "Used for two-factor recovery if you ever lose access to your authenticator app. We’ll never text you marketing.",
+    "address": "Address (optional)",
+    "addressPlaceholder": "Start typing — 1000 Vin Scully Ave…",
+    "addressHint": "Start typing to pick from a list. We’ll plot your locations on a fleet map.",
+    "password": "Password",
+    "passwordPlaceholder": "8+ characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Type it again",
+    "creating": "Creating your workspace…",
+    "create": "Create workspace",
+    "agree": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>.",
+    "agreeK12": "By creating a workspace you agree to our <terms>terms</terms> and <privacy>privacy policy</privacy>, including our <ferpa>FERPA</ferpa> / <coppa>COPPA</coppa> data commitments.",
+    "footer": {
+      "label": "Legal",
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "security": "Security",
+      "dpa": "DPA"
+    },
+    "errors": {
+      "industry": "Please choose your industry.",
+      "passwordLength": "Password must be at least 8 characters.",
+      "passwordMismatch": "Passwords do not match.",
+      "nameRequired": "Enter your organization’s name.",
+      "slugRequired": "Choose a workspace URL.",
+      "slugTaken": "That workspace URL is already taken — try another one.",
+      "emailInvalid": "Enter a valid admin email address.",
+      "emailTaken": "An account with that email already exists. Sign in instead, or use a different email.",
+      "checkFields": "Some details aren’t valid. Check the form and try again.",
+      "tooMany": "Too many attempts. Wait a minute, then try again.",
+      "generic": "Signup failed. Please try again.",
+      "unreachable": "Can’t reach the server at {url}."
+    },
+    "panel": {
+      "eyebrow": "Why teams choose VenueOS",
+      "title": "Every screen you run, in one place.",
+      "lead": "One dashboard for signage, kiosks, scoreboards, and the life-safety alert that overrides them all.",
+      "alertsTitle": "Emergency alerts in a tap",
+      "alertsDesc": "Lockdown, fire / evacuate, and weather messages flip every screen in seconds.",
+      "scheduleTitle": "Schedule once, everywhere",
+      "scheduleDesc": "Content by day, time block, or one-off event — one screen or ten thousand.",
+      "templatesTitle": "170+ templates, every industry",
+      "templatesDesc": "Fully editable, recolored to your brand, ready to drop on a screen.",
+      "screensTitle": "Runs on any screen",
+      "screensDesc": "Smart TVs, Android players, LED controllers, kiosks — no special hardware."
+    },
+    "defaults": {
+      "nameLabel": "Organization name",
+      "namePlaceholder": "Your venue or organization",
+      "where": "whole venue"
+    },
+    "verticals": {
+      "K12": {
+        "picker": "K-12 school or district",
+        "nameLabel": "District or school name",
+        "namePlaceholder": "Springfield Unified School District",
+        "where": "whole district"
+      },
+      "GYM": {
+        "picker": "Gym, fitness club, or athletic facility",
+        "nameLabel": "Gym or club name",
+        "namePlaceholder": "Iron Peak Fitness",
+        "where": "whole gym"
+      },
+      "RETAIL": {
+        "picker": "Retail store or chain",
+        "nameLabel": "Store or chain name",
+        "namePlaceholder": "Northside Outfitters",
+        "where": "whole store"
+      },
+      "CORPORATE": {
+        "picker": "Corporate office or enterprise",
+        "nameLabel": "Company name",
+        "namePlaceholder": "Acme Corp",
+        "where": "whole office"
+      },
+      "QSR": {
+        "picker": "Restaurant / QSR (quick-service)",
+        "nameLabel": "Restaurant or brand name",
+        "namePlaceholder": "Burger Junction",
+        "where": "whole brand"
+      },
+      "FASHION": {
+        "picker": "Fashion boutique or apparel",
+        "nameLabel": "Boutique or brand name",
+        "namePlaceholder": "Studio 5 Boutique",
+        "where": "whole boutique"
+      },
+      "BAR": {
+        "picker": "Bar, taproom, or nightclub",
+        "nameLabel": "Bar or venue name",
+        "namePlaceholder": "The Tap Room",
+        "where": "whole bar"
+      },
+      "HEALTHCARE": {
+        "picker": "Clinic, practice, or hospital",
+        "nameLabel": "Practice or network name",
+        "namePlaceholder": "Harbor Health",
+        "where": "whole practice"
+      },
+      "HOSPITALITY": {
+        "picker": "Hotel, resort, or property",
+        "nameLabel": "Property or group name",
+        "namePlaceholder": "Summit Hotels",
+        "where": "whole property"
+      },
+      "RESTAURANT": {
+        "picker": "Full-service restaurant",
+        "nameLabel": "Restaurant or group name",
+        "namePlaceholder": "The Copper Table",
+        "where": "whole restaurant"
+      },
+      "SPORTS": {
+        "picker": "Sports venue, stadium, or athletic program",
+        "nameLabel": "Venue, team, or league name",
+        "namePlaceholder": "Riverside Arena",
+        "where": "whole venue"
+      },
+      "WORSHIP": {
+        "picker": "Church, ministry, or house of worship",
+        "nameLabel": "Church or ministry name",
+        "namePlaceholder": "Grace Community Church",
+        "where": "whole ministry"
+      }
+    }
+  },
+  "notifications": {
+    "inbox": {
+      "title": "Notifications",
+      "checking": "Checking for new messages…",
+      "unreadOf": "{unread} unread of {total}",
+      "messages": "{count, plural, one {# message} other {# messages}}",
+      "markAllRead": "Mark all read",
+      "categoriesLabel": "Notification categories",
+      "unreadCount": "{count} unread",
+      "unread": "Unread",
+      "stale": "Couldn’t refresh just now — showing the last list this device received. Anything newer isn’t here yet.",
+      "retry": "Retry",
+      "emptyFiltered": "Nothing in this category",
+      "empty": "No notifications yet",
+      "emptyAll": "VenueOS writes here when a screen stops answering, when work needs a review, and when something changes on your account.",
+      "showAll": "Show all notifications",
+      "errorTitle": "Can’t load notifications",
+      "errorBody": "VenueOS could not reach the server, so this list may be incomplete or out of date.",
+      "tryAgain": "Try again",
+      "footnote": "These arrive while VenueOS is open. Your phone won’t alert you when the app is closed — during an active emergency, watch the alert banner at the top of the app."
+    },
+    "bell": {
+      "labelUnread": "Notifications ({count} unread)",
+      "caughtUp": "You’re all caught up."
+    },
+    "categories": {
+      "all": "All",
+      "exceptions": "Delivery exceptions",
+      "reviews": "Reviews",
+      "system": "System updates"
+    },
+    "categoriesShort": {
+      "exceptions": "Delivery",
+      "reviews": "Review",
+      "system": "System"
+    },
+    "blurbs": {
+      "exceptions": "Screens that stopped answering, and other delivery problems we noticed.",
+      "reviews": "Work submitted for approval, and decisions on work you submitted.",
+      "system": "Account, license and platform messages."
+    },
+    "age": {
+      "justNow": "just now",
+      "minutes": "{count}m ago",
+      "hours": "{count}h ago",
+      "days": "{count}d ago"
+    },
+    "server": {
+      "screenOffline": "Screen offline: {screen}",
+      "screenOfflineAt": "{site} · Screen offline: {screen}",
+      "infraEvent": "Possible infrastructure event — {count}/{total} screens dropped",
+      "infraEventAt": "{site} · Possible infrastructure event — {count}/{total} screens dropped",
+      "pushDeadPolling": "{screen}: realtime channel down — running on polling",
+      "pushDeadUnproven": "{screen}: realtime down AND content unproven — needs attention now",
+      "assetPending": "New asset pending review",
+      "assetApproved": "Your asset was approved",
+      "assetRejected": "Your asset was rejected",
+      "submissionAwaiting": "New submission awaiting your review",
+      "submissionApproved": "Your submission was approved",
+      "submissionRejected": "Your submission was rejected",
+      "ownerLink": "VenueOS support created an owner sign-in link",
+      "supportRequested": "VenueOS is asking for support access",
+      "supportBreakGlass": "VenueOS used emergency support access",
+      "supportEnded": "VenueOS support access has ended",
+      "supportApproved": "{org} approved support access",
+      "supportDenied": "{org} denied support access",
+      "supportInvited": "{org} gave VenueOS support access",
+      "kioskHelp": "Visitor needs assistance — {screen}",
+      "videoStutter": "Video stutters on {screen}",
+      "noHeartbeat": "No heartbeat since {time}.",
+      "noHeartbeatUnknown": "No heartbeat on record yet.",
+      "noHeartbeatAt": "{site}: no heartbeat from \"{screen}\" since {time}.",
+      "unknownTime": "an unknown time",
+      "infraBody": "{count} screens went offline within {seconds} s (>{pct}% of fleet). Likely WAN, ISP, or local power event — per-screen alerts suppressed. Affected: {names}.",
+      "infraBodyAt": "{site}: {count} screens went offline within {seconds} s (>{pct}% of that location's fleet). Likely WAN, ISP, or power.",
+      "pushDeadPollingBody": "This screen cannot receive instant commands (refresh, immediate emergency delivery). Its render proof is current, so it is still playing and updates via its regular polling (5–10s), including emergencies. Usual cause: the venue network blocks WebSocket/streaming connections.",
+      "pushDeadUnprovenBody": "This screen cannot receive instant commands AND has not proven a painted frame recently — what it is showing right now is unverified. A durable refresh command has been queued via its manifest; if it does not recover within minutes, it needs on-site or network attention today, not a daily reminder.",
+      "assetPendingBody": "{email} uploaded \"{asset}\" — review needed before it can be scheduled.",
+      "assetApprovedBody": "\"{asset}\" is now published and can be added to playlists.",
+      "assetRejectedBody": "\"{asset}\" was rejected by {reviewer}.",
+      "assetRejectedReasonBody": "\"{asset}\" was rejected by {reviewer} — \"{reason}\".",
+      "submissionScheduleBody": "A schedule was submitted for approval before it can go live.",
+      "submissionItemsBody": "{count, plural, one {# item} other {# items}} submitted for approval.",
+      "submissionLiveBody": "Content is now live.",
+      "submissionNoFeedbackBody": "Reviewer left no feedback. Edit and resubmit when ready.",
+      "ownerLinkBody": "A one-time sign-in link for a new organization owner was issued under your support access approval. If you did not expect this, revoke support access in Settings.",
+      "supportRequestedBody": "{who} asked for access to {org} for {duration}: \"{reason}\". Approve or deny it in Settings → Support access.",
+      "supportBreakGlassBody": "{who} opened emergency access to {org} until {until}: \"{reason}\". You can end it now in Settings → Support access.",
+      "supportEndedBody": "VenueOS ended its support access to {org}.",
+      "accessUntil": "Access until {until}.",
+      "venueosSupport": "VenueOS support",
+      "aCustomer": "A customer",
+      "kioskHelpBody": "A kiosk visitor tapped “request help.”",
+      "videoStutterConcurrencyBody": "“{screen}” stutters on “{file}” while it plays more than one video at once. It keeps playing; a lighter copy would not fix this.",
+      "videoStutterNoCopyBody": "“{screen}” stutters on “{file}” and there is no lighter copy to switch it to. It keeps playing.",
+      "duration": {
+        "days": "{count, plural, one {# day} other {# days}}",
+        "hours": "{count, plural, one {# hour} other {# hours}}",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "unspecified": "an unspecified time"
+      }
+    },
+    "health": {
+      "offline": "Still offline",
+      "back-online": "Back online",
+      "removed": "Screen removed",
+      "dormant": "Not seen in 30+ days",
+      "resting": "Off on purpose",
+      "siteOffline": "Screens still offline",
+      "siteBackOnline": "All back online"
+    }
+  },
+  "menuConnect": {
+    "connectPos": "Connect your POS",
+    "pasteMenu": "Paste your menu",
+    "templateName": "Menu Board",
+    "templateDescription": "Auto-created from your pasted menu — pulls live prices from your POS.",
+    "zoneName": "Menu",
+    "boardTitle": "OUR MENU",
+    "nothingTitle": "Nothing to import",
+    "nothingBody": "Paste a few menu lines first — one item per line, price at the end (e.g. “Cheeseburger  $8.99”).",
+    "imported": "{count, plural, one {Imported # item.} other {Imported # items.}}",
+    "capturedNote": "Your menu is captured. Connect a POS (or the custom webhook) to push these live to your screens.",
+    "importFailed": "Import failed",
+    "readyTitle": "Menu ready",
+    "readySeeded": "A “{name}” template is in your Templates — drop it on any screen.",
+    "modalBody": "One item per line, price at the end. We’ll create a Menu Board template for you and wire it to your live prices.",
+    "placeholder": "Classic Cheeseburger   $8.99\nSea Salt Fries   $3.49\nFountain Soda   $2.79",
+    "preview": "{count, plural, one {Preview — # item} other {Preview — # items}}",
+    "more": "+ {count} more…",
+    "close": "Close",
+    "cancel": "Cancel",
+    "create": "Create my menu board"
+  },
+  "activityFeed": {
+    "viewAll": "View all activity",
+    "empty": "Changes you and your team make show up here — playlists, screens, alerts and people.",
+    "actor": {
+      "you": "You",
+      "support": "VenueOS support",
+      "apiKey": "An API key",
+      "system": "VenueOS",
+      "someone": "Someone"
+    },
+    "quote": "“{name}”",
+    "subj": {
+      "playlist": "the playlist “{name}”",
+      "screen": "the screen “{name}”",
+      "file": "the file “{name}”",
+      "template": "the template “{name}”",
+      "location": "the location “{name}”",
+      "group": "the group “{name}”",
+      "folder": "the folder “{name}”",
+      "apiKey": "the API key “{name}”",
+      "webhook": "the webhook “{name}”",
+      "sponsor": "the sponsor “{name}”",
+      "game": "the game “{name}”"
+    },
+    "noun": {
+      "playlist": "a playlist",
+      "screen": "a screen",
+      "file": "a file",
+      "template": "a template",
+      "person": "a team member",
+      "location": "a location",
+      "group": "a group",
+      "folder": "a folder",
+      "apiKey": "an API key",
+      "webhook": "a webhook",
+      "sponsor": "a sponsor",
+      "game": "a game",
+      "passkey": "a passkey",
+      "thing": "an item"
+    },
+    "alert": {
+      "lockdown": "Lockdown",
+      "evacuate": "Fire / Evacuate",
+      "weather": "Shelter",
+      "hold": "Hold",
+      "secure": "Secure",
+      "medical": "Medical",
+      "other": "general"
+    },
+    "role": {
+      "SUPER_ADMIN": "VenueOS admin",
+      "DISTRICT_ADMIN": "Organization admin",
+      "SCHOOL_ADMIN": "Location admin",
+      "CONTRIBUTOR": "Editor",
+      "RESTRICTED_VIEWER": "Viewer"
+    },
+    "device": {
+      "iphone": "an iPhone",
+      "ipad": "an iPad",
+      "android": "an Android phone",
+      "mac": "a Mac",
+      "windows": "a Windows PC",
+      "chromebook": "a Chromebook",
+      "linux": "a Linux computer",
+      "browser": "a web browser"
+    },
+    "day": {
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "category": {
+      "all": "All",
+      "content": "Content",
+      "screens": "Screens",
+      "emergency": "Alerts",
+      "team": "People",
+      "security": "Sign-in & security",
+      "settings": "Settings",
+      "integrations": "Connections",
+      "billing": "Plan & billing",
+      "sports": "Sports",
+      "menus": "Menus"
+    },
+    "a": {
+      "PLAYLIST_CREATED": "{actor} created {subject}",
+      "PLAYLIST_UPDATED": "{actor} edited {subject}",
+      "PLAYLIST_ITEMS_REPLACED": "{actor} changed what plays in {subject}",
+      "PLAYLIST_DELETED": "{actor} deleted {subject}",
+      "PLAYLIST_SCHEDULES_TOGGLED": {
+        "on": "{actor} resumed {subject}",
+        "off": "{actor} paused {subject}",
+        "changed": "{actor} changed whether {subject} plays"
+      },
+      "PLAYLIST_SCREEN_REMOVED": "{actor} took {subject} off {target}",
+      "PLAYLIST_SCREEN_TOGGLED": {
+        "on": "{actor} turned {subject} back on for {target}",
+        "off": "{actor} paused {subject} on {target}",
+        "changed": "{actor} changed {subject} on {target}"
+      },
+      "PLAYLIST_SYNC_PLAYBACK_CHANGED": {
+        "on": "{actor} turned on synced playback for {subject}",
+        "off": "{actor} turned off synced playback for {subject}",
+        "changed": "{actor} changed synced playback for {subject}"
+      },
+      "PLAYLIST_PUBLISHED_TO_FLEET": "{actor} published {subject} to your locations",
+      "SCHEDULE_CREATED": {
+        "one": "{actor} published {subject} to {target}",
+        "many": "{actor} published {subject} to {count, plural, one {# screen} other {# screens}}",
+        "none": "{actor} published {subject}",
+        "createdOne": "{actor} created {subject} and published it to {target}",
+        "createdMany": "{actor} created {subject} and published it to {count, plural, one {# screen} other {# screens}}",
+        "createdNone": "{actor} created and published {subject}"
+      },
+      "SCHEDULE_UPDATED": "{actor} changed when {subject} plays",
+      "SCHEDULE_DELETED": {
+        "one": "{actor} took {subject} off {target}",
+        "none": "{actor} stopped publishing {subject}"
+      },
+      "SCHEDULE_TOGGLED": {
+        "on": "{actor} turned {subject} back on for {target}",
+        "off": "{actor} paused {subject} on {target}",
+        "changed": "{actor} changed {subject} on {target}"
+      },
+      "ASSET_UPLOADED": {
+        "one": "{actor} uploaded {subject}",
+        "many": "{actor} uploaded {count, plural, one {# file} other {# files}}"
+      },
+      "ASSET_DELETED": {
+        "one": "{actor} deleted {subject}",
+        "many": "{actor} deleted {count, plural, one {# file} other {# files}}"
+      },
+      "ASSET_APPROVED": {
+        "one": "{actor} approved {subject}",
+        "many": "{actor} approved {count, plural, one {# file} other {# files}}"
+      },
+      "ASSET_REJECTED": {
+        "one": "{actor} declined {subject}",
+        "many": "{actor} declined {count, plural, one {# file} other {# files}}"
+      },
+      "ASSET_FOLDER_DELETED": "{actor} deleted {subject}",
+      "AI_IMAGE_GENERATED": "{actor} created an image with AI",
+      "TEMPLATE_CREATED": "{actor} created {subject}",
+      "TEMPLATE_UPDATED": "{actor} saved changes to {subject}",
+      "TEMPLATE_DELETED": "{actor} deleted {subject}",
+      "TEMPLATE_IMPORTED": "{actor} imported a template",
+      "IMPORT_DESIGN": "{actor} imported a design",
+      "SUBMISSION_CREATED": "{actor} sent content for approval",
+      "USB_BUNDLE_EXPORTED": "{actor} copied content to a USB drive",
+      "SCREEN_PAIRED": "{actor} paired {subject}",
+      "SCREEN_RENAMED": {
+        "from": "{actor} renamed {from} to {subject}",
+        "plain": "{actor} renamed a screen to {subject}"
+      },
+      "SCREEN_MOVED": {
+        "group": "{actor} moved {subject} to {target}",
+        "ungrouped": "{actor} took {subject} out of its group"
+      },
+      "SCREEN_DELETED": "{actor} removed {subject}",
+      "SCREEN_ORIENTATION_CHANGED": {
+        "portrait": "{actor} turned {subject} to portrait",
+        "landscape": "{actor} turned {subject} to landscape",
+        "auto": "{actor} set {subject} to rotate automatically"
+      },
+      "SCREEN_DISPLAY_CONTROL": {
+        "off": "{actor} turned off {subject}",
+        "offMany": "{actor} turned off {count, plural, one {# screen} other {# screens}}",
+        "on": "{actor} turned on {subject}",
+        "onMany": "{actor} turned on {count, plural, one {# screen} other {# screens}}",
+        "blank": "{actor} blanked {subject}",
+        "blankMany": "{actor} blanked {count, plural, one {# screen} other {# screens}}",
+        "wake": "{actor} woke {subject}",
+        "wakeMany": "{actor} woke {count, plural, one {# screen} other {# screens}}",
+        "restart": "{actor} restarted {subject}",
+        "restartMany": "{actor} restarted {count, plural, one {# screen} other {# screens}}",
+        "brightness": "{actor} changed the brightness of {subject}",
+        "brightnessMany": "{actor} changed the brightness of {count, plural, one {# screen} other {# screens}}",
+        "volume": "{actor} changed the volume of {subject}",
+        "volumeMany": "{actor} changed the volume of {count, plural, one {# screen} other {# screens}}",
+        "other": "{actor} used a screen control on {subject}",
+        "otherMany": "{actor} used a screen control on {count, plural, one {# screen} other {# screens}}"
+      },
+      "SCREEN_DEVICE_SETTINGS_CHANGED": "{actor} changed the device settings of {subject}",
+      "SCREEN_FACE_ADDED": "{actor} set up the second side {subject}",
+      "SCREEN_GROUP_DELETED": "{actor} deleted {subject}",
+      "REFRESH_WEB": {
+        "one": "{actor} resynced {subject}",
+        "many": "{actor} resynced {count, plural, one {# screen} other {# screens}}"
+      },
+      "DISPLAY_SCHEDULE_CREATED": {
+        "target": "{actor} set an on/off schedule for {target}",
+        "all": "{actor} set an on/off schedule for every screen"
+      },
+      "DISPLAY_SCHEDULE_UPDATED": "{actor} changed an on/off schedule",
+      "DISPLAY_SCHEDULE_DELETED": "{actor} removed an on/off schedule",
+      "CREATE_FLOOR_PLAN": "{actor} added a floor plan",
+      "DELETE_FLOOR_PLAN": "{actor} removed a floor plan",
+      "REPLACE_FLOOR_PLAN_IMAGE": "{actor} updated a floor plan",
+      "TRIGGER_EMERGENCY": {
+        "all": "{actor} sent a {alert} alert to every screen",
+        "target": "{actor} sent a {alert} alert to {target}"
+      },
+      "CLEAR_EMERGENCY": {
+        "all": "{actor} sent the all-clear",
+        "target": "{actor} sent the all-clear to {target}"
+      },
+      "TRIGGER_EMERGENCY_DRILL": {
+        "all": "{actor} started a {alert} drill on every screen",
+        "target": "{actor} started a {alert} drill on {target}"
+      },
+      "CLEAR_EMERGENCY_DRILL": {
+        "all": "{actor} ended the drill",
+        "target": "{actor} ended the drill on {target}"
+      },
+      "DRILL_ENDED_BY_LIVE_ALERT": "A real alert ended the drill",
+      "TRIGGER_SCREEN_EMERGENCY": "{actor} sent a {alert} alert to {subject}",
+      "CLEAR_SCREEN_EMERGENCY": "{actor} cleared the alert on {subject}",
+      "BROADCAST_TEXT": "{actor} sent a message to screens",
+      "MEDIA_ALERT": "{actor} sent an alert to screens",
+      "CLEAR_EMERGENCY_MESSAGE": "{actor} cleared a message from screens",
+      "SOS_TRIGGER": "{actor} pressed SOS",
+      "EMERGENCY_ENABLED_CHANGED": {
+        "on": "{actor} turned emergency alerts on",
+        "off": "{actor} turned emergency alerts off",
+        "changed": "{actor} changed emergency alerts"
+      },
+      "LOCATION_BASED_EMERGENCY_TOGGLED": {
+        "on": "{actor} turned on location-based alerts",
+        "off": "{actor} turned off location-based alerts",
+        "changed": "{actor} changed location-based alerts"
+      },
+      "PANIC_SETTINGS_UPDATED": {
+        "live": "{actor} updated the emergency alert content",
+        "drill": "{actor} updated the drill content"
+      },
+      "PANIC_CONTENT_ASSET_ADDED": {
+        "live": "{actor} updated the emergency alert content",
+        "drill": "{actor} updated the drill content"
+      },
+      "PANIC_CONTENT_ASSET_REMOVED": {
+        "live": "{actor} updated the emergency alert content",
+        "drill": "{actor} updated the drill content"
+      },
+      "UPDATE_SCREEN_EMERGENCY_CONTENT": "{actor} updated the alert content for {subject}",
+      "UPLOAD_SCREEN_EMERGENCY_ASSET": "{actor} added alert content for a screen",
+      "USER_CAN_TRIGGER_PANIC_CHANGED": "{actor} changed who can send alerts",
+      "USER_INVITED": "{actor} invited {subject}",
+      "INVITE_ACCEPTED": "{actor} joined the team",
+      "USER_CREDENTIAL_SETUP_COMPLETED": "{actor} finished setting up their account",
+      "USER_CREATED": "{actor} added {subject} to the team",
+      "USER_CREATED_DIRECT": "{actor} added {subject} to the team",
+      "USER_ROLE_CHANGED": {
+        "to": "{actor} changed {subject}’s role to {role}",
+        "plain": "{actor} changed {subject}’s role"
+      },
+      "USER_DISABLED": "{actor} paused {subject}’s access",
+      "USER_ENABLED": "{actor} restored {subject}’s access",
+      "USER_DELETED": "{actor} removed {subject} from the team",
+      "USER_ACCESS_UPDATED": "{actor} changed what {subject} can manage",
+      "USER_MFA_REQUIRED_CHANGED": "{actor} changed two-step sign-in for {subject}",
+      "USER_MFA_RESET": "{actor} reset two-step sign-in for {subject}",
+      "USER_EMAIL_CHANGED": "{actor} changed an email address",
+      "MFA_EMAIL_CODE_SUCCESS": {
+        "device": "New sign-in: {actor} on {device}",
+        "plain": "New sign-in: {actor}"
+      },
+      "PASSKEY_REGISTERED": {
+        "label": "{actor} added a passkey for {label}",
+        "plain": "{actor} added a passkey"
+      },
+      "PASSKEY_REMOVED": "{actor} removed a passkey",
+      "PASSWORD_CHANGED": "{actor} changed their password",
+      "PASSWORD_RESET_COMPLETED": "{actor} reset their password",
+      "mfa": {
+        "enabled": "{actor} turned on two-step sign-in",
+        "disabled": "{actor} turned off two-step sign-in"
+      },
+      "TENANT_MFA_POLICY_CHANGED": "{actor} changed the two-step sign-in rule for the team",
+      "SUPPORT_ACCESS_INVITED": "{actor} gave VenueOS support access",
+      "SUPPORT_ACCESS_REQUESTED": "VenueOS support asked for access",
+      "SUPPORT_ACCESS_APPROVED": "{actor} approved VenueOS support access",
+      "SUPPORT_ACCESS_DENIED": "{actor} declined VenueOS support access",
+      "SUPPORT_ACCESS_REVOKED": {
+        "byPerson": "{actor} ended VenueOS support access",
+        "ended": "VenueOS support access was ended"
+      },
+      "SUPPORT_ACCESS_WITHDRAWN": "VenueOS support withdrew its access request",
+      "SUPPORT_ACCESS_EXPIRED": "VenueOS support access ended",
+      "SUPPORT_ACCESS_BREAK_GLASS": "VenueOS support opened emergency access",
+      "TENANT_SIGNUP": "{actor} created the account",
+      "TENANT_UPDATED": "{actor} updated the organization details",
+      "TENANT_POSTER_STANDARD_CHANGED": "{actor} changed the poster size",
+      "CHILD_TENANT_CREATED": "{actor} added {subject}",
+      "CHILD_TENANT_DELETED": "{actor} removed {subject}",
+      "ADOPT_BRANDING": "{actor} updated the brand",
+      "ADOPT_BRANDING_MANUAL": "{actor} updated the brand",
+      "REVERT_BRANDING": "{actor} went back to the previous brand",
+      "BRANDING_VOICE_UPDATED": "{actor} updated the brand voice",
+      "BRANDING_APPLY_TO_TEMPLATES": "{actor} applied the brand to templates",
+      "BRANDING_APPEARANCE_MODE_CHANGED": "{actor} changed the dashboard appearance",
+      "SSO_CONFIG_UPSERT": "{actor} updated single sign-on",
+      "SSO_CONFIG_DELETE": "{actor} turned off single sign-on",
+      "AI_KEY_SET": "{actor} connected an AI key",
+      "AI_KEY_CLEARED": "{actor} removed the AI key",
+      "AI_KEY_MODEL_CHANGED": "{actor} changed the AI model",
+      "API_KEY_CREATED": "{actor} created {subject}",
+      "API_KEY_REVOKED": "{actor} revoked an API key",
+      "WEBHOOK_CREATED": "{actor} added {subject}",
+      "WEBHOOK_DELETED": "{actor} removed a webhook",
+      "USB_INGEST_TOGGLED": {
+        "on": "{actor} turned on updates from USB drives",
+        "off": "{actor} turned off updates from USB drives",
+        "changed": "{actor} changed updates from USB drives"
+      },
+      "STUDENT_PRIVACY_SERVES_MINORS_SET": "{actor} changed student privacy settings",
+      "POS_CONNECTION_CREATED": "{actor} connected a point-of-sale system",
+      "POS_CONNECTION_DELETED": "{actor} disconnected a point-of-sale system",
+      "SOCIAL_CONNECTION_CREATED": "{actor} connected a social account",
+      "SOCIAL_CONNECTION_REVOKED": "{actor} disconnected a social account",
+      "STREAM_CONNECTION_DELETED": "{actor} removed a streaming connection",
+      "AD_CONNECTION_DELETED": "{actor} removed an ad network",
+      "CLEVER_DISCONNECTED": "{actor} disconnected Clever",
+      "BILLING_SEATS_CHANGED": "{actor} changed the number of screens on the plan",
+      "BILLING_AI_PLAN_CHANGED": "{actor} changed the AI plan",
+      "BILLING_TRIAL_STARTED": "The free trial started",
+      "LICENSE_UPSERT": "The plan was updated",
+      "LICENSE_STATUS_CHANGED": "The plan status changed",
+      "AI_BOARD_PACK_PURCHASED": "{actor} bought an AI board pack",
+      "SPORTS_GAME_CREATED": "{actor} set up {subject}",
+      "SPORTS_SCREENS_SHOWN": "{actor} showed the game on screens",
+      "SPONSOR_CREATED": "{actor} added {subject}",
+      "SPONSOR_UPDATED": "{actor} updated {subject}",
+      "SPONSOR_DELETED": "{actor} removed {subject}",
+      "SPORTS_ROSTER_PRIVACY_SET": "{actor} changed student privacy for rosters",
+      "SPORTS_STUDENT_PRIVACY_FLAGS_SET": "{actor} changed student privacy for rosters",
+      "MENU_OVERRIDE_SET": "{actor} changed menu prices or availability",
+      "MENU_OVERRIDE_BULK": "{actor} changed menu prices or availability",
+      "MENU_OVERRIDE_REVERT": "{actor} reset menu changes",
+      "MENU_IMPORT_OPERATOR": "{actor} imported the menu"
+    }
+  },
+  "activityPage": {
+    "title": "Activity",
+    "subtitle": "Everything you and your team changed — content, screens, alerts, people and settings.",
+    "person": "Person",
+    "everyone": "Everyone",
+    "kind": "What",
+    "empty": "No activity in this range.",
+    "emptyAll": "Changes you and your team make will show up here.",
+    "ownerToggle": "All events (VenueOS staff)",
+    "ownerNote": "Includes system, device and update events customers never see.",
+    "customerView": "Customer view",
+    "loadError": "Couldn’t load activity. Check your connection and try again.",
+    "retry": "Try again",
+    "previous": "Previous page",
+    "next": "Next page",
+    "filters": "Filters",
+    "filtersOn": "Filters on"
   }
 }

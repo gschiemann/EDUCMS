@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw, Zap, Languages, Pencil, Check, MoreHorizontal } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { AI_PLAN_REQUIRED_EN } from '@/lib/ai-plan';
+import { useAiBillingMessages, type AiBillingMessages } from './useAiBillingMessages';
 import { getTextFieldDescriptor } from '@cms/api-types';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 
@@ -49,13 +49,13 @@ const LANGS: Array<[string, string]> = [
 ];
 
 /** Compact, structured-code-first friendly error mapping (mirrors AiGenerateButton). */
-function friendlyRewriteError(e: any): string {
+function friendlyRewriteError(e: any, billing: AiBillingMessages): string {
   const code = String(e?.code || '');
   const status = Number(e?.status || 0);
   const raw = (e?.message || '').toLowerCase();
   if (code === 'AI_PROVIDER_OUT_OF_CREDIT') return e?.body?.message || e?.message || 'Your AI provider is out of credit.';
-  if (code === 'AI_PLAN_REQUIRED') return AI_PLAN_REQUIRED_EN;
-  if (code === 'AI_CAP_REACHED' || status === 402) return "This month's included AI is used up — add your own AI key in Settings → AI.";
+  if (code === 'AI_PLAN_REQUIRED') return billing.planRequired;
+  if (code === 'AI_CAP_REACHED' || status === 402) return billing.capReached;
   if (code === 'AI_FAILURE_CAP_REACHED') return 'Too many failed AI requests this hour. Try again later.';
   if (raw.includes('not configured')) return 'AI isn’t enabled — ask your admin to add a provider key.';
   if (raw.includes('rejected') || raw.includes('re-enter')) return e.message;
@@ -91,6 +91,7 @@ export function InlineRewriteChips({
   /** Apply the chosen rewrite to the field (must commit via the store). */
   onPick: (text: string) => void;
 }) {
+  const billing = useAiBillingMessages();
   const [aiSource, setAiSource] = useState<'platform' | 'tenant' | 'none' | null>(null);
   const [busyOp, setBusyOp] = useState<RewriteOp | null>(null);
   const [openOp, setOpenOp] = useState<RewriteOp | null>(null);
@@ -148,7 +149,7 @@ export function InlineRewriteChips({
       if (!opts.length) setError('No suggestion — try again.');
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
-      setError(friendlyRewriteError(e));
+      setError(friendlyRewriteError(e, billing));
       setOpenOp(null);
     } finally {
       setBusyOp(null);

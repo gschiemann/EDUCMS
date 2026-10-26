@@ -1,6 +1,8 @@
+# VenueOS security contact (RFC 9116).
+# How to report, what to send and what we commit to: https://venue-os.app/security
 Contact: mailto:security@venue-os.app
 Contact: https://github.com/gschiemann/EDUCMS/security/advisories/new
-Expires: 2027-10-01T00:00:00.000Z
+Expires: 2027-10-24T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://venue-os.app/.well-known/security.txt
 Policy: https://venue-os.app/security

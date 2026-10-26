@@ -3915,6 +3915,15 @@ export function useSetAlertEmailPrefs() {
 export function useAuditLog(params: {
   from?: string; to?: string; actorId?: string; action?: string; limit?: number; offset?: number;
   /**
+   * 2026-10-24 — 'activity' = the customer allowlist with names resolved
+   * (what every customer role reads regardless); 'all' = the raw trail,
+   * honoured for a SUPER_ADMIN only. Omitted = the API's default (raw for the
+   * owner, activity for everyone else) — every existing caller unchanged.
+   */
+  view?: 'activity' | 'all';
+  /** One shelf of the allowlist (content, screens, emergency, team, …). */
+  category?: string;
+  /**
    * The route is @RequireRoles(...ADMIN_ROLES). Callers that can be mounted by
    * a CONTRIBUTOR / RESTRICTED_VIEWER must gate on the role rather than fire a
    * request that can only 403 — and present the refusal as "not available to
@@ -3928,9 +3937,11 @@ export function useAuditLog(params: {
   if (params.to) qs.set('to', params.to);
   if (params.actorId) qs.set('actorId', params.actorId);
   if (params.action) qs.set('action', params.action);
+  if (params.view) qs.set('view', params.view);
+  if (params.category) qs.set('category', params.category);
   qs.set('limit', String(params.limit ?? 50));
   qs.set('offset', String(params.offset ?? 0));
-  return useQuery<{ items: any[]; total: number; limit: number; offset: number }>({
+  return useQuery<{ items: any[]; total: number; limit: number; offset: number; view?: 'activity' | 'all' }>({
     queryKey: ['audit', params],
     queryFn: () => apiFetch(`/audit?${qs.toString()}`),
     enabled: params.enabled ?? true,

@@ -147,6 +147,7 @@ import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { FleetPulseSamplerCron } from './screens/fleet-pulse.cron';
 import { FleetPulseController } from './screens/fleet-pulse.controller';
+import { ScreenAttentionController } from './notifications/screen-attention/screen-attention.controller';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { RedisThrottlerStorage } from './realtime/redis-throttler-storage';
 import { ClientIpThrottlerGuard } from './security/client-ip-throttler.guard';
@@ -288,6 +289,9 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   ],
   controllers: [
     FleetPulseController,
+    // 2026-10-24 — `GET /screens/attention` (the dashboard's Screens down card).
+    // A literal path under /screens: registered ahead of ScreensController.
+    ScreenAttentionController,
     AppController,
     ScreensController,
     DevicesController,
