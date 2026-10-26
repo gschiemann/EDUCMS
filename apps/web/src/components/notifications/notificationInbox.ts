@@ -46,6 +46,24 @@ export interface InboxNotification {
   link?: string | null;
   isRead: boolean;
   createdAt: string;
+  /**
+   * 2026-10-24 — for a screen-offline or site-wide-drop row, what that screen
+   * (or site) is doing NOW, from the API's customer inbox
+   * (`apps/api/src/notifications/customer-inbox.ts`). A row whose screen came
+   * back, is off on purpose, or has been silent 30+ days arrives with
+   * `isRead: true` (nothing left to act on) and this note saying why.
+   */
+  health?: NotificationHealth;
+}
+
+export type NotificationHealthState = 'offline' | 'back-online' | 'resting' | 'dormant' | 'removed';
+
+export interface NotificationHealth {
+  state: NotificationHealthState;
+  reason?: string | null;
+  screenId?: string | null;
+  screenName?: string | null;
+  lastSeenAt?: string | null;
 }
 
 export type InboxCategory = 'exceptions' | 'reviews' | 'system';

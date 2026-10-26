@@ -27,7 +27,11 @@ import {
   AlertTriangle, Calendar, Zap, Users as UsersIcon, Building2,
   TrendingUp, TrendingDown, Activity, X, RefreshCw, ChevronDown,
 } from 'lucide-react';
-import { useRecentActivity } from '@/hooks/use-dashboard-data';
+import { useRecentActivity, useScreenAttention } from '@/hooks/use-dashboard-data';
+import { activityLines, type ActivityTranslate } from '@/lib/activity/activityFeed';
+import { offlineKey, sortOfflineScreens, type ScreenRowLike } from '@/lib/activity/screenAttention';
+import { RecentActivityCard } from '@/components/activity/RecentActivityCard';
+import { ScreensAttention } from '@/components/dashboard/ScreensAttention';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
@@ -90,88 +94,25 @@ export default function DashboardPage() {
   const fleetPulse = useFleetPulse({ enabled: canFleet && commandEligible });
 
   // One data model and content tree for every viewport; only layout adapts.
-  const { data: activity } = useRecentActivity({ enabled: canFleet });
+  const activityQuery = useRecentActivity({ enabled: canFleet });
+  const activity = activityQuery.data;
   const displaySchedules = useAllDisplaySchedules(commandEligible);
-  // Fleet Command's activity card reads the SAME audit rows the classic
-  // Recent Activity section below renders — one query, two presentations, so
-  // the two can never disagree about what just happened.
-  const fleetActivity = useMemo(() => {
-    // Human copy for the common actions (2026-08-31 operator feedback —
-    // "Ai Alt Text Skipped · asset" is machine-speak). Unmapped actions
-    // fall back to the generic title-case rather than hiding.
-    const COPY: Record<string, string> = {
-      ADOPT_BRANDING: 'Branding applied',
-      ADOPT_BRANDING_MANUAL: 'Branding applied',
-      TENANT_UPDATED: 'Location settings updated',
-      TENANT_CREATED: 'Location added',
-      SCREEN_DISPLAY_CONTROL: 'Display control used',
-      SCREEN_ORIENTATION_CHANGED: 'Screen orientation changed',
-      UPDATE_SCREEN_EMERGENCY_CONTENT: 'Emergency content updated',
-      UPLOAD_SCREEN_EMERGENCY_ASSET: 'Emergency content stored',
-      TRIGGER_EMERGENCY: 'Emergency alert started',
-      CLEAR_EMERGENCY: 'Emergency all-clear sent',
-      TRIGGER_EMERGENCY_DRILL: 'Emergency drill started',
-      CLEAR_EMERGENCY_DRILL: 'Emergency drill ended',
-      DRILL_ENDED_BY_LIVE_ALERT: 'Emergency drill ended by a live alert',
-      REFRESH_WEB: 'Screens told to resync',
-      FORCE_APK_UPDATE: 'Player update pushed',
-      SCHEDULE_CREATED: 'Schedule created',
-      SCHEDULE_UPDATED: 'Schedule updated',
-      SCHEDULE_DELETED: 'Schedule removed',
-      PLAYLIST_CREATED: 'Playlist created',
-      PLAYLIST_UPDATED: 'Playlist updated',
-      PLAYLIST_DELETED: 'Playlist removed',
-      PLAYLIST_ITEMS_REPLACED: 'Playlist content replaced',
-      TEMPLATE_CREATED: 'Template created',
-      TEMPLATE_UPDATED: 'Template updated',
-      ASSET_DELETED: 'Asset removed',
-      SCREEN_PAIRED: 'Screen paired',
-      SCREEN_UNPAIRED_BY_DEVICE: 'Screen unpaired itself',
-      SET_BRIGHTNESS: 'Screen brightness changed',
-      SET_VOLUME: 'Screen volume changed',
-      BLANK: 'Screen blanked',
-      WAKE: 'Screen woken',
-      REBOOT: 'Screen rebooted',
-      POWER_ON: 'Screen powered on',
-      POWER_OFF: 'Screen powered off',
-      BROADCAST_TEXT: 'Message sent to screens',
-      TRIGGER_SCREEN_EMERGENCY: 'Emergency alert started on a screen',
-      CLEAR_EMERGENCY_MESSAGE: 'Emergency message cleared',
-      SOS_TRIGGER: 'SOS triggered',
-      SCHEDULE_TOGGLED: 'Schedule switched on or off',
-      SUBMISSION_CREATED: 'Content submitted for approval',
-      TEMPLATE_DELETED: 'Template removed',
-      ASSET_UPLOADED: 'Asset uploaded',
-      ASSET_APPROVED: 'Asset approved',
-      MENU_OVERRIDE_REVERT: 'Menu override reverted',
-      SPORTS_CUE_FIRED: 'Game cue fired',
-      USER_INVITED: 'Team member invited',
-      USER_CREATED: 'Team member added',
-      USER_CREATED_DIRECT: 'Team member added',
-      USER_ROLE_CHANGED: 'Team member role changed',
-      USER_DISABLED: 'Team member disabled',
-      USER_DELETED: 'Team member removed',
-      USB_BUNDLE_EXPORTED: 'USB bundle exported',
-      EMERGENCY_ENABLED_CHANGED: 'Emergency alerts setting changed',
-      LOCATION_BASED_EMERGENCY_TOGGLED: 'Location-based alerts changed',
-      BRANDING_APPEARANCE_MODE_CHANGED: 'Appearance changed',
-      TENANT_POSTER_STANDARD_CHANGED: 'Poster standard changed',
-    };
-    // 2026-09-14 (Greg: "this does not seem like user app activity") — the card
-    // shows ONLY actions an operator would recognise as something they or their
-    // team did. Everything else — MFA challenges, token refreshes, auto-recovery
-    // internals, AI skips, reconciliation crons — is still in "View all activity"
-    // (the audit log under Settings); it just no longer masquerades as activity.
-    // Unmapped actions are therefore HIDDEN here, not title-cased.
-    return ((activity as any[]) ?? [])
-      .filter((log: any) => COPY[String(log.action || '')] !== undefined)
-      .slice(0, 6)
-      .map((log: any) => ({
-        title: COPY[String(log.action || '')],
-        detail: log.user?.email ? `by ${String(log.user.email).split('@')[0]}` : (log.targetType ? String(log.targetType).toLowerCase() : undefined),
-        at: log.createdAt,
-      }));
-  }, [activity]);
+  // Fleet Command's activity card and the classic card below read the SAME
+  // rows, worded by the same code, so the two can never disagree about what
+  // just happened. 2026-10-24 (owner: "keep the dashboard to only app
+  // activity, not backend activity") — the rows are the API's customer
+  // allowlist and every one becomes a sentence ("You published “Lobby loop”
+  // to 3 screens"); the hand-kept COPY map this replaced still carried
+  // "Player update pushed" and title-cased nothing for the classic card.
+  const tFeed = useTranslations('activityFeed');
+  const viewerId = useAppStore((s) => (s.user as { id?: string } | null)?.id ?? null);
+  const fleetActivity = useMemo(
+    () =>
+      activityLines(activity, { t: tFeed as unknown as ActivityTranslate, viewerId })
+        .slice(0, 6)
+        .map((line) => ({ title: line.text, detail: undefined, at: line.at })),
+    [activity, tFeed, viewerId],
+  );
   const screensQuery = useScreens();
   const { data: screens } = screensQuery;
   const { data: screenGroups } = useScreenGroups();
@@ -248,19 +189,26 @@ export default function DashboardPage() {
     return { total, online, offline, pending, stale, onlinePct };
   }, [allScreens]);
 
-  // Screens that are DOWN right now — sorted by how long they've been
-  // silent (worst first). Capped at 5 for the card; link to /screens
-  // for full list. This is the actionable exception list — no admin
-  // needs to see every screen at scale, they need to see the BROKEN ones.
-  const downScreens = useMemo(() => {
-    return allScreens
-      .filter((s: any) => s.status && s.status !== 'ONLINE' && s.status !== 'PENDING')
-      .sort((a: any, b: any) => {
-        const la = a.lastPingAt ? new Date(a.lastPingAt).getTime() : 0;
-        const lb = b.lastPingAt ? new Date(b.lastPingAt).getTime() : 0;
-        return la - lb; // Oldest ping first
-      });
-  }, [allScreens]);
+  // Screens that are DOWN right now — a real, recent outage — and the quiet
+  // ones beside them (2026-10-24). The owner's red card listed a phone-browser
+  // test screen silent since Aug 6 next to a real outage, and screens dark on
+  // their on/off schedule read as down every night. The server sorts offline
+  // screens with the alert emails' own intended-downtime facts (on/off
+  // schedule, remote power-off, standby, restarting); until it answers, a
+  // screen's own row still decides "not seen in 30+ days" / "never connected"
+  // / "test screen", and anything else offline is DOWN — never hidden.
+  const offlineIds = useMemo(() => offlineKey(allScreens as ScreenRowLike[]), [allScreens]);
+  const attentionQuery = useScreenAttention(offlineIds);
+  const attention = useMemo(
+    () => sortOfflineScreens(allScreens as ScreenRowLike[], attentionQuery.data, now ? now.getTime() : Date.now()),
+    [allScreens, attentionQuery.data, now],
+  );
+  const downScreens = attention.down;
+  // What the headline numbers count: screens that are on, or should be.
+  // A screen off on purpose or long gone is neither healthy nor down.
+  const quietCount = attention.dormant.length + attention.resting.length;
+  const activeTotal = fleet.online + downScreens.length;
+  const activePct = activeTotal > 0 ? (fleet.online / activeTotal) * 100 : 0;
 
   // Site / group rollup — KEY for district dashboards. Group screens by
   // screenGroup, compute online ratio, sort by "worst health" first so
@@ -272,7 +220,11 @@ export default function DashboardPage() {
     for (const g of allGroups) {
       byGroupId[g.id] = { id: g.id, name: g.name, total: 0, online: 0, offline: 0, pct: 0 };
     }
+    // A screen off on purpose or silent 30+ days makes no site unhealthy
+    // (2026-10-24): a group holding only a long-gone test screen drops out.
+    const quiet = new Set([...attention.dormant, ...attention.resting].map((e) => e.id));
     for (const s of allScreens as any[]) {
+      if (quiet.has(s.id)) continue;
       const bucket = s.screenGroupId && byGroupId[s.screenGroupId] ? byGroupId[s.screenGroupId] : unassigned;
       bucket.total += 1;
       if (s.status === 'ONLINE') bucket.online += 1;
@@ -295,7 +247,7 @@ export default function DashboardPage() {
       return b.total - a.total;
     });
     return rows;
-  }, [allGroups, allScreens]);
+  }, [allGroups, allScreens, attention]);
 
   // Today's schedule — filter by DOW, sort by start time. Aggregate
   // count is what scales; we only surface the first few rows as a
@@ -479,8 +431,9 @@ export default function DashboardPage() {
   })();
 
   // Incident count rolls up everything actionable into one number —
-  // admin knows at a glance whether today needs attention.
-  const incidentCount = fleet.offline + pendingAssets.length;
+  // admin knows at a glance whether today needs attention. A screen off on
+  // purpose or silent for a month is not an incident (2026-10-24).
+  const incidentCount = downScreens.length + pendingAssets.length;
 
   return (
     <div className="min-w-0 max-w-full space-y-4 sm:space-y-6 pb-12" data-testid="dashboard-content">
@@ -754,7 +707,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs text-slate-600">
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="font-semibold">{fleet.online.toLocaleString()}</span>
-            <span className="text-slate-400">{t('dashboard.fleetOnlineOf', { total: fleet.total.toLocaleString() })}</span>
+            <span className="text-slate-400">{t('dashboard.fleetOnlineOf', { total: activeTotal.toLocaleString() })}</span>
           </div>
           {liveNowCount > 0 && (
             <>
@@ -831,21 +784,36 @@ export default function DashboardPage() {
           Command's assurance rail + location table replace both. ─── */}
       {showClassic && (<>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 min-w-0" data-testid="dashboard-health">
+        {/* Health and Down count the screens that are on, or should be
+            (2026-10-24): a screen off on purpose or silent for a month is
+            neither healthy nor down — it is listed, calmly, under the red card. */}
         <KpiCard
           href={`${tenantBase}/screens`}
           label={t('dashboard.fleetHealth')}
-          bigValue={`${fleet.onlinePct.toFixed(fleet.onlinePct === 100 ? 0 : 1)}%`}
-          sub={`${fleet.online.toLocaleString()} / ${fleet.total.toLocaleString()} online`}
-          tone={fleet.onlinePct >= 99 ? 'emerald' : fleet.onlinePct >= 90 ? 'amber' : 'rose'}
+          bigValue={activeTotal > 0 ? `${activePct.toFixed(activePct === 100 ? 0 : 1)}%` : '—'}
+          sub={`${fleet.online.toLocaleString()} ${t('dashboard.fleetOnlineOf', { total: activeTotal.toLocaleString() })}`}
+          tone={activeTotal === 0 ? 'slate' : activePct >= 99 ? 'emerald' : activePct >= 90 ? 'amber' : 'rose'}
           Icon={MonitorCheck}
-          emptyText={fleet.total === 0 ? t('dashboard.noScreensPaired') : undefined}
+          emptyText={
+            fleet.total === 0
+              ? t('dashboard.noScreensPaired')
+              : activeTotal === 0 && quietCount > 0
+                ? t('dashboard.attention.quietSub', { count: quietCount })
+                : undefined
+          }
         />
         <KpiCard
-          href={`${tenantBase}/screens`}
+          href={`${tenantBase}/screens?filter=offline`}
           label={t('dashboard.down')}
-          bigValue={fleet.offline.toLocaleString()}
-          sub={fleet.offline > 0 ? t('dashboard.stalePings', { count: fleet.stale }) : t('dashboard.allReportingIn')}
-          tone={fleet.offline > 0 ? 'rose' : 'slate'}
+          bigValue={downScreens.length.toLocaleString()}
+          sub={
+            downScreens.length > 0
+              ? t('dashboard.attention.downCheck')
+              : quietCount > 0
+                ? t('dashboard.attention.quietSub', { count: quietCount })
+                : t('dashboard.allReportingIn')
+          }
+          tone={downScreens.length > 0 ? 'rose' : 'slate'}
           Icon={CloudOff}
           mutedWhenZero
         />
@@ -966,7 +934,7 @@ export default function DashboardPage() {
           what gives the operator back the bottom of the page. */}
       {showClassic && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className={`${canFleet ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-2xl border border-slate-200 overflow-hidden`}>
           <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
@@ -1034,34 +1002,20 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div id="recent-activity" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-700">{t('dashboard.recentActivity')}</h2>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {activity && activity.length > 0 ? (
-              activity.slice(0, 8).map((log: any) => (
-                <div key={log.id} className="px-5 py-3 flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: 'var(--brand-primary, #818cf8)' }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">
-                      {String(log.action || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}
-                    </p>
-                    <p className="text-[10px] text-slate-400 truncate">
-                      {log.targetType?.toLowerCase()} · {new Date(log.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-8 text-center">
-                <p className="text-xs text-slate-400">{t('dashboard.activityAppearHere')}</p>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Recent activity — what people did, in sentences (2026-10-24):
+            the customer allowlist only, never OTA / field-build / token rows.
+            Admins only: the feed is an admin read, so an Editor's page does
+            not promise activity it can never show. */}
+        {canFleet && (
+          <RecentActivityCard
+            items={activity}
+            isPending={activityQuery.isPending}
+            isError={activityQuery.isError}
+            viewerId={viewerId}
+            viewAllHref={`${tenantBase}/audit`}
+            limit={7}
+          />
+        )}
       </div>
       )}
 
@@ -1116,36 +1070,10 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {downScreens.length > 0 && (
-            <div className="bg-white rounded-2xl border border-red-200 overflow-hidden">
-              <div className="px-5 py-4 border-b border-red-100 flex items-center justify-between bg-red-50/50">
-                <div className="flex items-center gap-2">
-                  <CloudOff className="w-4 h-4 text-red-600" />
-                  <h2 className="text-sm font-bold text-slate-800">{t('dashboard.screensDown')}</h2>
-                  <span className="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
-                    {downScreens.length}
-                  </span>
-                </div>
-                <Link href={`${tenantBase}/screens`} className="text-[11px] font-semibold text-red-700 hover:text-red-800">
-                  {t('dashboard.viewAll')}
-                </Link>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {downScreens.slice(0, 5).map((screen: any) => (
-                  <div key={screen.id} className="px-5 py-3 flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 truncate">{screen.name}</div>
-                      <div className="text-[11px] text-slate-500 truncate">
-                        {screen.location || screen.screenGroup?.name || 'Unknown location'}
-                        {screen.lastPingAt && ` · last seen ${new Date(screen.lastPingAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Screens down — real, recent outages only; the quiet ones (30+
+              days silent, never connected, test screens, off on purpose) sit
+              collapsed beneath it (2026-10-24). */}
+          <ScreensAttention sorted={attention} tenantBase={tenantBase} />
 
           {isContributor && (mySubmissions || []).length > 0 && (
             <div className="bg-white rounded-2xl border border-indigo-200 overflow-hidden">

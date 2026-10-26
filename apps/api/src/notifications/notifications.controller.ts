@@ -1,5 +1,6 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Optional, Param, Post, Put, Query, Req, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Logger, Optional, Param, Post, Put, Query, Req, Request, UseGuards } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
+import { isCustomerNotificationKind } from '@cms/api-types';
 import { verifyDeviceForScreen } from '../screens/device-auth';
 import { RedisService } from '../realtime/redis.service';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
@@ -7,6 +8,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { requireTenantIdStrict } from '../auth/require-tenant';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildCustomerInbox } from './customer-inbox';
+import { ScreenAttentionService } from './screen-attention/screen-attention.service';
 
 const ALERT_EMAIL_ROLES: ReadonlySet<string> = new Set(['DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
 const ALERT_EMAIL_LOCALES: ReadonlySet<string> = new Set(['en', 'es', 'zh']);
@@ -14,24 +17,54 @@ const ALERT_EMAIL_LOCALES: ReadonlySet<string> = new Set(['en', 'es', 'zh']);
 @Controller('api/v1/notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
+  private readonly logger = new Logger(NotificationsController.name);
+
   constructor(
     private readonly service: NotificationsService,
     private readonly prisma: PrismaService,
+    // 2026-10-24 — down / resting / dormant for screen-health rows. Optional
+    // so a context without it still answers (every offline row reads as down).
+    @Optional() private readonly attention?: ScreenAttentionService,
   ) {}
 
+  /**
+   * The bell. Everyone — the owner included, on a customer's dashboard —
+   * gets the CUSTOMER inbox (`customer-inbox.ts`): no owner-only kinds, one
+   * row per screen, unread only while there is still something to do. A
+   * SUPER_ADMIN reads the raw table with `?audience=owner`.
+   */
   @Get()
-  async list(@Request() req: any, @Query('limit') limit?: string) {
+  async list(@Request() req: any, @Query('limit') limit?: string, @Query('audience') audience?: string) {
     const userId = req.user.id;
     // 2026-07-25 — a tenant-less token (device JWT) used to reach Prisma as
     // `tenantId: undefined`, which DROPS the filter and returns EVERY tenant's
     // notifications. Reject it before any DB call.
     const tenantId = requireTenantIdStrict(req);
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
-    const [items, unreadCount] = await Promise.all([
-      this.service.listForUser({ tenantId, userId, limit: parsedLimit }),
-      this.service.unreadCount(tenantId, userId),
-    ]);
-    return { items, unreadCount };
+    const raw = async () => {
+      const [items, unreadCount] = await Promise.all([
+        this.service.listForUser({ tenantId, userId, limit: parsedLimit }),
+        this.service.unreadCount(tenantId, userId),
+      ]);
+      return { items, unreadCount };
+    };
+    if (audience === 'owner' && req.user?.role === 'SUPER_ADMIN') return raw();
+    try {
+      return await buildCustomerInbox(
+        { prisma: this.prisma, attention: this.attention ?? null },
+        { tenantId, userId, limit: Number.isFinite(parsedLimit) ? parsedLimit : 20 },
+      );
+    } catch (e) {
+      // The bell must never 500. Fall back to the raw rows minus the
+      // owner-only kinds — noisier, but nothing a customer must see is lost.
+      this.logger.warn(`[notifications] customer inbox failed, raw fallback: ${(e as Error)?.message ?? e}`);
+      const { items, unreadCount } = await raw();
+      const kept = (items as Array<{ kind: string; isRead: boolean }>).filter((n) => isCustomerNotificationKind(n.kind));
+      const hiddenUnread = (items as Array<{ kind: string; isRead: boolean }>).filter(
+        (n) => !isCustomerNotificationKind(n.kind) && !n.isRead,
+      ).length;
+      return { items: kept, unreadCount: Math.max(0, unreadCount - hiddenUnread) };
+    }
   }
 
   @Post(':id/read')

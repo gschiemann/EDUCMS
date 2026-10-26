@@ -466,6 +466,39 @@ export class AssetsController {
   }
 
   /**
+   * 2026-10-24 — an upload is a person's action and now leaves an audit row
+   * (`ASSET_UPLOADED`), so the dashboard's Recent activity can say "Greg
+   * uploaded “lobby.mp4”" (it had no record of uploads at all; deletes,
+   * approvals and rejections were already audited). Written AFTER the asset
+   * row exists and best-effort: a failed audit write never fails an upload.
+   * File name, type and size only — no URL, no storage path.
+   */
+  private async auditUpload(
+    req: any,
+    asset: { id: string; originalName?: string | null; mimeType?: string | null; fileSize?: number | null; status?: string | null },
+  ): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'ASSET_UPLOADED',
+          targetType: 'Asset',
+          targetId: asset.id,
+          details: JSON.stringify({
+            originalName: asset.originalName ?? null,
+            mimeType: asset.mimeType ?? null,
+            fileSize: asset.fileSize ?? null,
+            status: asset.status ?? null,
+          }),
+        },
+      });
+    } catch (e: any) {
+      this.logger.warn(`[assets] upload audit row failed for ${asset.id}: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
    * Role-gated initial asset status. CONTRIBUTOR uploads must pass
    * through the review queue before content can be scheduled; admins
    * are trusted and auto-publish.
@@ -1623,6 +1656,7 @@ export class AssetsController {
         ...(Object.keys(createMeta).length ? { processingMeta: createMeta as any } : {}),
       },
     });
+    await this.auditUpload(req, asset);
     if (pdfPagesRecord) this.kickOffPdfPages(asset.id, req.user.tenantId);
 
     // SUPABASE EGRESS / QUALITY FIX (2026-05-23, tightened 2026-05-27 P0-5).
@@ -1976,6 +2010,7 @@ export class AssetsController {
           : {}),
       },
     });
+    await this.auditUpload(req, asset);
     // 2026-10-05 — a PDF's pages, rendered after this request answers.
     if (multipartPdfPages) this.kickOffPdfPages(asset.id, req.user.tenantId);
 
@@ -2760,6 +2795,7 @@ export class AssetsController {
         folderId,
       },
     });
+    await this.auditUpload(req, asset);
 
     if (asset.status === 'PENDING_APPROVAL') {
       this.notifyAdminsOfPendingReview(req.user.tenantId, asset);
