@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { clientIpFromRequest } from '../security/client-ip';
 import { AppRole } from '@cms/database';
 
 @Controller('api/v1')
@@ -102,7 +103,19 @@ export class OnboardingController {
   @Post('invites/:token/accept')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  async acceptInvite(@Param('token') token: string, @Body(new ZodValidationPipe(AcceptInviteInputSchema)) body: AcceptInviteInput) {
-    return this.onboarding.acceptInvite({ token, password: body.password });
+  async acceptInvite(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(AcceptInviteInputSchema)) body: AcceptInviteInput,
+    @Request() req: any,
+  ) {
+    return this.onboarding.acceptInvite({
+      token,
+      password: body.password,
+      // Launch QA S2 — the EULA ticked on the accept-invite form, recorded on
+      // the account (with where it came from) in the same request.
+      termsVersion: body.termsVersion,
+      ip: clientIpFromRequest(req),
+      userAgent: (req?.headers?.['user-agent'] as string | undefined) ?? null,
+    });
   }
 }

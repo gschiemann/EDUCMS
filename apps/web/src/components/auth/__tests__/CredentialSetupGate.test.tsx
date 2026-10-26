@@ -4,7 +4,9 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CredentialSetupGate } from '../CredentialSetupGate';
 
 jest.mock('@/store/ui-store', () => {
-  const state = { user: { email: 'riot-houston@riotcolor.com' }, token: 't', setToken: jest.fn(), setUser: jest.fn(), logout: jest.fn() };
+  // `setupPasswordOnly: false` — what the sign-in answer says for a provisioned
+  // (placeholder-email) account; the password-only cases below flip it.
+  const state: any = { user: { email: 'riot-houston@riotcolor.com', setupPasswordOnly: false }, token: 't', setToken: jest.fn(), setUser: jest.fn(), logout: jest.fn() };
   const useUIStore: any = (sel: (s: typeof state) => unknown) => sel(state);
   useUIStore.getState = () => state;
   return { useUIStore };
@@ -183,5 +185,83 @@ describe('when the role needs two-step sign-in', () => {
     render(<CredentialSetupGate />);
     await fillAndSubmit();
     expect(replace).toHaveBeenCalledWith('/login?reason=setup-done');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// PASSWORD-ONLY (2026-10-24, launch QA S1) — an admin set this person's
+// password ("Set password now"), so it is temporary; the email is their own.
+// ───────────────────────────────────────────────────────────────────────
+describe('password-only setup (an admin-set temporary password)', () => {
+  const ownEmail = 'pat@school.example';
+  let saved: any;
+  beforeEach(() => {
+    saved = store().user;
+    store().user = { email: ownEmail, setupPasswordOnly: true };
+    store().setToken.mockClear();
+    store().setUser.mockClear();
+  });
+  afterEach(() => { store().user = saved; });
+
+  it('asks for a new password only, shows the email they sign in with, and never asks for an email', () => {
+    render(<CredentialSetupGate />);
+    expect(screen.getByRole('heading', { name: 'Choose your own password' })).toBeInTheDocument();
+    expect(screen.getByTestId('setup-signin-email')).toHaveTextContent(`You sign in as ${ownEmail}`);
+    expect(screen.queryByLabelText(/^Your work email/i)).toBeNull();
+    expect(screen.queryByLabelText(/Type your email again/i)).toBeNull();
+    expect(screen.getByLabelText(/^New password/i)).toBe(document.activeElement);
+  });
+
+  it('sends only the password — no email, no code — and swaps the session', async () => {
+    route({
+      '/auth/complete-setup': (b) => {
+        expect(b).toEqual({ password: 'my-own-password-1' });
+        return { ok: true, body: { access_token: 'tok-own', user: { id: 'u1', email: ownEmail, mustSetupCredentials: false } } };
+      },
+    });
+    render(<CredentialSetupGate />);
+    fill(/^New password/i, 'my-own-password-1');
+    fill(/Confirm (new )?password/i, 'my-own-password-1');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /save and continue/i })); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/auth\/complete-setup$/);
+    expect(store().setToken).toHaveBeenCalledWith('tok-own');
+  });
+
+  it('keeping the temporary password is refused in its own words', async () => {
+    route({ '/auth/complete-setup': () => ({ ok: false, status: 400, body: { code: 'SETUP_PASSWORD_UNCHANGED' } }) });
+    render(<CredentialSetupGate />);
+    fill(/^New password/i, 'the-temp-password');
+    fill(/Confirm (new )?password/i, 'the-temp-password');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /save and continue/i })); });
+    expect(screen.getByText('Choose a new password — this is the temporary password you were given.')).toBeInTheDocument();
+  });
+
+  it('a cached session that does not say asks GET /users/me first', async () => {
+    store().user = { email: ownEmail };
+    route({ '/users/me': () => ({ ok: true, body: { setupPasswordOnly: true } }) });
+    render(<CredentialSetupGate />);
+    expect(await screen.findByRole('heading', { name: 'Choose your own password' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Your work email/i)).toBeNull();
+  });
+
+  it('a GET /users/me that never answers does not leave the screen on a spinner', async () => {
+    jest.useFakeTimers();
+    try {
+      store().user = { email: ownEmail };
+      // Answers only by being aborted — a stalled connection.
+      fetchMock.mockImplementation((_url: string, init: any) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }));
+      render(<CredentialSetupGate />);
+      expect(screen.queryByLabelText(/^New password/i)).toBeNull();
+      await act(async () => { jest.advanceTimersByTime(8_000); });
+      // The full form, as before this existed: the server keeps an
+      // admin-entered email whatever the screen sends.
+      expect(screen.getByLabelText(/^New password/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Your work email/i)).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

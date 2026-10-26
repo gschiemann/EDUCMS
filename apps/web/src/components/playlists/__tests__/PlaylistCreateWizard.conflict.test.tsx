@@ -35,6 +35,7 @@ const PLAYLISTS = [{ id: 'p2', name: 'Kings Portrait' }];
 
 const noopMutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'new' }), isPending: false });
 const createScheduleSpy = jest.fn().mockResolvedValue({ id: 'sched-new' });
+const createPlaylistSpy = jest.fn().mockResolvedValue({ id: 'p-new', name: 'Dinner Board' });
 
 jest.mock('@/hooks/use-api', () => ({
   useFleetOperations: () => ({ data: undefined, isLoading: false }),
@@ -44,7 +45,7 @@ jest.mock('@/hooks/use-api', () => ({
   useTemplates: () => ({ data: [] }),
   useScreens: () => ({ data: SCREENS }),
   useScreenGroups: () => ({ data: GROUPS }),
-  useCreatePlaylist: () => ({ mutateAsync: jest.fn().mockResolvedValue({ id: 'p-new', name: 'Dinner Board' }), isPending: false }),
+  useCreatePlaylist: () => ({ mutateAsync: createPlaylistSpy, isPending: false }),
   useReorderPlaylistItems: noopMutation,
   useCreateSchedule: () => ({ mutateAsync: createScheduleSpy, isPending: false }),
   useCreateSubmission: noopMutation,
@@ -60,8 +61,10 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 const appConfirmMock = jest.fn().mockResolvedValue(true);
+const appChooseMock = jest.fn().mockResolvedValue('confirm');
 jest.mock('@/components/ui/app-dialog', () => ({
   appConfirm: (...a: unknown[]) => appConfirmMock(...a),
+  appChoose: (...a: unknown[]) => appChooseMock(...a),
   appAlert: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
@@ -85,12 +88,15 @@ const occupying = (daysOfWeek: string | null, timeStart: string | null, timeEnd:
  * screenConflicts.test.ts, where breakfast-vs-lunch is proven without having
  * to drive five wizard steps to assert one boolean.)
  */
-async function createTakingCafeteria(schedules: ReturnType<typeof occupying>) {
+async function createTakingCafeteria(
+  schedules: ReturnType<typeof occupying>,
+  opts: { window?: boolean; onCreated?: (p: unknown) => void } = {},
+) {
   render(
     <PlaylistCreateWizard
       open
       onClose={() => {}}
-      onCreated={() => {}}
+      onCreated={opts.onCreated ?? (() => {})}
       playlists={PLAYLISTS}
       allSchedules={schedules}
     />,
@@ -107,7 +113,9 @@ async function createTakingCafeteria(schedules: ReturnType<typeof occupying>) {
   fireEvent.click(rtl.getByText('Cafeteria'));
   fireEvent.click(rtl.getByRole('button', { name: /^Next/ }));
 
-  // Step 4 — publish window, left on "Activate immediately".
+  // Step 4 — publish window: "Activate immediately" by default, or the
+  // default "Schedule a window" (Mon–Fri 08:00–15:00 — the QA case).
+  if (opts.window) fireEvent.click(rtl.getByText('Schedule a window'));
   fireEvent.click(rtl.getByRole('button', { name: /^Next/ }));
 
   // Step 5 — Create.
@@ -116,8 +124,11 @@ async function createTakingCafeteria(schedules: ReturnType<typeof occupying>) {
 
 beforeEach(() => {
   createScheduleSpy.mockClear();
+  createPlaylistSpy.mockClear();
   appConfirmMock.mockClear();
   appConfirmMock.mockResolvedValue(true);
+  appChooseMock.mockClear();
+  appChooseMock.mockResolvedValue('confirm');
 });
 
 describe('new-playlist wizard — the fourth door', () => {
@@ -134,15 +145,49 @@ describe('new-playlist wizard — the fourth door', () => {
     expect(arg.tone).toBe('warn');
   });
 
-  it('REFUSING creates the playlist but assigns no screen', async () => {
+  // Launch QA U14 (2026-10-24): Cancel used to leave an unassigned playlist
+  // behind — three cancels, three orphan playlists. The question is now asked
+  // BEFORE anything is written, so Cancel means nothing was created.
+  it('CANCEL creates nothing — no playlist, no schedule — and stays on Review to try again', async () => {
     appConfirmMock.mockResolvedValue(false);
+    const onCreated = jest.fn();
+    await createTakingCafeteria(occupying(null, null, null), { onCreated });
+
+    await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
+    // Let any (wrong) follow-up writes land before asserting their absence.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createPlaylistSpy).not.toHaveBeenCalled();
+    expect(createScheduleSpy).not.toHaveBeenCalled();
+    expect(onCreated).not.toHaveBeenCalled();
+    // Still on Review, with Create enabled again — the operator can change a
+    // screen or try again; nothing is half-written.
+    const create = rtl.getByRole('button', { name: /Create Playlist|Create \(won't display yet\)/ });
+    expect(create).not.toBeDisabled();
+  });
+
+  it('while the question is open the Create button does not say "Creating…" — nothing is being created yet', async () => {
+    let answer!: (proceed: boolean) => void;
+    appConfirmMock.mockImplementation(() => new Promise<boolean>((resolve) => { answer = resolve; }));
     await createTakingCafeteria(occupying(null, null, null));
 
     await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
-    // The playlist itself is already created by this point; declining leaves it
-    // unassigned, the same state as "Skip" on the screen step. What must NOT
-    // happen is the schedule that takes the screen.
-    expect(createScheduleSpy).not.toHaveBeenCalled();
+    // Busy (nothing behind the question can be clicked), but in its own words.
+    await waitFor(() => expect(rtl.getByRole('button', { name: /Create Playlist/ })).toBeDisabled());
+    expect(rtl.queryByText('Creating…')).toBeNull();
+
+    answer(false);
+    await waitFor(() => expect(rtl.getByRole('button', { name: /Create Playlist/ })).not.toBeDisabled());
+    expect(createPlaylistSpy).not.toHaveBeenCalled();
+  });
+
+  it('the question is asked before the playlist exists', async () => {
+    appConfirmMock.mockImplementation(async () => {
+      expect(createPlaylistSpy).not.toHaveBeenCalled();
+      return true;
+    });
+    await createTakingCafeteria(occupying(null, null, null));
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    expect(createPlaylistSpy).toHaveBeenCalledTimes(1);
   });
 
   it('agreeing creates the schedule', async () => {
@@ -190,6 +235,68 @@ describe('new-playlist wizard — the fourth door', () => {
 
     await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
     expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+});
+
+// Launch QA U15 (2026-10-24): a TIME-LIMITED playlist (Mon–Fri 08:00–15:00)
+// onto a screen that plays an ALWAYS-ON one must not switch that one off —
+// it keeps playing outside school hours, so the screen is never blank.
+// Only an explicit "Replace everything" removes it.
+describe('new-playlist wizard — a windowed playlist onto an always-on one', () => {
+  it('asks "Keep both" (the default) / "Replace everything" / Cancel, saying what happens outside the hours', async () => {
+    await createTakingCafeteria(occupying(null, null, null), { window: true });
+
+    await waitFor(() => expect(appChooseMock).toHaveBeenCalled());
+    expect(appConfirmMock).not.toHaveBeenCalled();
+    const arg = appChooseMock.mock.calls[0][0] as {
+      title: string; message: string; confirmLabel: string; alternateLabel: string; cancelLabel: string;
+    };
+    expect(arg.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+    expect(arg.message).toContain('“Dinner Board” plays only at its scheduled times.');
+    expect(arg.message).toContain('“Kings Portrait” keeps playing on Cafeteria, so that screen is never blank.');
+    expect(arg.message).toContain('Replace everything stops “Kings Portrait” on Cafeteria instead.');
+    expect(arg.confirmLabel).toBe('Keep both');
+    expect(arg.alternateLabel).toBe('Replace everything');
+    expect(arg.cancelLabel).toBe('Cancel');
+  });
+
+  it('"Keep both" publishes the window WITHOUT replaceAlwaysOn (the server keeps the other as the fallback)', async () => {
+    appChooseMock.mockResolvedValue('confirm');
+    await createTakingCafeteria(occupying(null, null, null), { window: true });
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    const body = createScheduleSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(body).toMatchObject({ screenId: 's3', mode: 'replace', daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' });
+    expect(body).not.toHaveProperty('replaceAlwaysOn');
+  });
+
+  it('"Replace everything" sends replaceAlwaysOn: true', async () => {
+    appChooseMock.mockResolvedValue('alternate');
+    await createTakingCafeteria(occupying(null, null, null), { window: true });
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    expect(createScheduleSpy.mock.calls[0][0]).toMatchObject({ screenId: 's3', replaceAlwaysOn: true });
+  });
+
+  it('Cancel creates nothing', async () => {
+    appChooseMock.mockResolvedValue('cancel');
+    await createTakingCafeteria(occupying(null, null, null), { window: true });
+    await waitFor(() => expect(appChooseMock).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createPlaylistSpy).not.toHaveBeenCalled();
+    expect(createScheduleSpy).not.toHaveBeenCalled();
+  });
+
+  it('a windowed playlist over an OVERLAPPING windowed one is still a plain replace', async () => {
+    // p2 holds Cafeteria Mon–Fri 12:00–13:00 — inside our 08:00–15:00.
+    await createTakingCafeteria(occupying('Mon,Tue,Wed,Thu,Fri', '12:00', '13:00'), { window: true });
+    await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
+    expect(appChooseMock).not.toHaveBeenCalled();
+    expect((appConfirmMock.mock.calls[0][0] as { title: string }).title).toBe('Replace on 1 screen?');
+  });
+
+  it('an ALWAYS-ON playlist over an always-on one is still a plain replace', async () => {
+    await createTakingCafeteria(occupying(null, null, null));
+    await waitFor(() => expect(appConfirmMock).toHaveBeenCalled());
+    expect(appChooseMock).not.toHaveBeenCalled();
   });
 });
 

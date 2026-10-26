@@ -32,8 +32,10 @@ jest.mock('@/hooks/use-api', () => ({
 // The conflict warning asks through appConfirm. Mocked so a case can make the
 // operator say yes or no, and assert what happened either way.
 const appConfirmMock = jest.fn().mockResolvedValue(true);
+const appChooseMock = jest.fn().mockResolvedValue('confirm');
 jest.mock('@/components/ui/app-dialog', () => ({
   appConfirm: (...args: unknown[]) => appConfirmMock(...args),
+  appChoose: (...args: unknown[]) => appChooseMock(...args),
   appAlert: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -206,6 +208,54 @@ describe('AddScreensDialog — the conflict warning', () => {
     fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
     await waitFor(() => expect(createSpy).toHaveBeenCalled());
     expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+
+  // Launch QA U15 (2026-10-24): a WINDOWED playlist (its rules inherit Mon–Fri
+  // 08:00–15:00) onto a screen running an ALWAYS-ON one keeps that one for the
+  // other hours by default; "Replace everything" is the explicit alternative.
+  describe('a windowed playlist onto an always-on one', () => {
+    const OWN_WINDOW = [
+      { id: 'own', playlistId: 'p1', screenId: 's9', isActive: true, daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00' },
+    ] as unknown as OpsScheduleRef[];
+
+    beforeEach(() => {
+      appChooseMock.mockClear();
+      appChooseMock.mockResolvedValue('confirm');
+    });
+
+    it('asks Keep both / Replace everything, and KEEP adds without replaceAlwaysOn', async () => {
+      renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE, schedules: OWN_WINDOW });
+      fireEvent.click(rtl.getByText('LED Poster 1'));
+      fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(createSpy).toHaveBeenCalled());
+      expect(appConfirmMock).not.toHaveBeenCalled();
+      const arg = appChooseMock.mock.calls[0][0] as { title: string; confirmLabel: string; alternateLabel: string; message: string };
+      expect(arg.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+      expect(arg.message).toContain('keeps playing on LED Poster 1');
+      expect(arg.confirmLabel).toBe('Keep both');
+      expect(arg.alternateLabel).toBe('Replace everything');
+      expect(createSpy.mock.calls[0][0]).toMatchObject({ screenId: 's1', timeStart: '08:00', timeEnd: '15:00' });
+      expect(createSpy.mock.calls[0][0]).not.toHaveProperty('replaceAlwaysOn');
+    });
+
+    it('REPLACE EVERYTHING sends replaceAlwaysOn: true', async () => {
+      appChooseMock.mockResolvedValue('alternate');
+      renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE, schedules: OWN_WINDOW });
+      fireEvent.click(rtl.getByText('LED Poster 1'));
+      fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(createSpy).toHaveBeenCalled());
+      expect(createSpy.mock.calls[0][0]).toMatchObject({ screenId: 's1', replaceAlwaysOn: true });
+    });
+
+    it('Cancel adds nothing', async () => {
+      appChooseMock.mockResolvedValue('cancel');
+      createSpy.mockClear();
+      renderDialog({ playlists: OTHER_PLAYLISTS, allSchedules: LIVE_ELSEWHERE, schedules: OWN_WINDOW });
+      fireEvent.click(rtl.getByText('LED Poster 1'));
+      fireEvent.click(rtl.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(appChooseMock).toHaveBeenCalled());
+      expect(createSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

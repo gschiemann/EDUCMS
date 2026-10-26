@@ -32,6 +32,7 @@
  */
 
 import { isWindowOpen, type WindowFields } from '@/app/player/scheduleWindow';
+import enMessages from '@/i18n/messages/en.json';
 import { deriveRenderTrustGrade, RENDER_STALE_AFTER_MS } from '@/components/screens/renderTrust';
 import { deriveVideoPlayback, type OpsScreen } from '@/components/screens/v3/screenOps';
 import {
@@ -1198,6 +1199,16 @@ export interface ScreenConflict {
   scheduleIds: string[];
   /** The overlapping screens, named, in the order encountered. */
   screenNames: string[];
+  /**
+   * 2026-10-24 (launch QA U15) — the subset of `scheduleIds` that play ALL
+   * the time, when the incoming publish is time-limited (`limited: true`).
+   * The server KEEPS these as the fallback outside the incoming hours instead
+   * of switching them off (schedule-displacement.ts `keepAlwaysOnAsFallback`),
+   * unless the operator picks "Replace everything". Empty otherwise.
+   */
+  fallbackScheduleIds: string[];
+  /** The screens those always-on rules reach, named. */
+  fallbackScreenNames: string[];
 }
 
 /* ── window overlap ───────────────────────────────────────────────────
@@ -1238,6 +1249,47 @@ export function windowsCollide(
   return as < be && bs < ae;
 }
 
+/** True when a window places no restriction at all — on 24/7. */
+export function isAlwaysOnWindow(w: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }): boolean {
+  return !w.daysOfWeek && !w.timeStart && !w.timeEnd;
+}
+
+/**
+ * The fallback tier — always-on at a NEGATIVE priority (2026-10-24). Mirrors
+ * `isFallbackRule` in apps/api/src/schedules/schedule-window-overlap.ts. The
+ * server never stands such a rule down (it is the base playlist that fills
+ * the hours nothing else covers), so it is never listed as a conflict either.
+ */
+export function isFallbackTierRule(r: { priority?: number | null; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }): boolean {
+  return (r.priority ?? 0) < 0 && isAlwaysOnWindow(r);
+}
+
+/** The fallback tier's priority — the server's FALLBACK_PRIORITY. */
+export const FALLBACK_TIER_PRIORITY = -1;
+
+/** A minute of slack on "starts later" — same as the server's START_SLACK_MS. */
+const START_SLACK_MS = 60_000;
+
+/**
+ * Does a publish cover only PART of the time? (2026-10-24, launch QA U15)
+ *
+ * A byte-for-byte port of `isTimeLimited` in
+ * apps/api/src/schedules/schedule-window-overlap.ts — a day/time window, an
+ * end date, or a start still ahead. The conflict prompt promises "the other
+ * playlist keeps playing outside these hours" exactly when the server will
+ * keep it, so the two must never disagree.
+ */
+export function isTimeLimited(
+  rule: { daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; startTime?: string | Date | null; endTime?: string | Date | null },
+  nowMs: number = Date.now(),
+): boolean {
+  if (!isAlwaysOnWindow(rule)) return true;
+  if (rule.endTime != null && rule.endTime !== '') return true;
+  if (rule.startTime == null || rule.startTime === '') return false;
+  const start = new Date(rule.startTime).getTime();
+  return Number.isFinite(start) && start > nowMs + START_SLACK_MS;
+}
+
 /**
  * Which other playlists are currently playing on the screens we are about to
  * take? Pure: no clock, no React, no network.
@@ -1274,6 +1326,13 @@ export function findScreenConflicts(input: {
   windows?: Array<{ daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null }>;
   /** The playlist doing the taking — never conflicts with itself. */
   excludePlaylistId: string;
+  /**
+   * 2026-10-24 (launch QA U15) — the incoming publish covers only part of the
+   * time (`isTimeLimited`). Then an always-on competitor is KEPT as the
+   * fallback outside those hours, and is reported in `fallbackScheduleIds`
+   * rather than as a plain replacement. Omitted = false (the old behaviour).
+   */
+  limited?: boolean;
   playlists: OpsPlaylistRef[];
   /** EVERY playlist's schedules, not just this one's. */
   schedules: OpsScheduleRef[];
@@ -1289,7 +1348,9 @@ export function findScreenConflicts(input: {
   const groupById = new Map(groups.map((g) => [g.id, g]));
   // Only ACTIVE rules can be playing on anything. A paused or draft rule is a
   // plan, not an occupant, and warning about one would be a false positive.
-  const live = schedules.filter((s) => s.isActive);
+  // The fallback tier is never stood down by the server, so it is not an
+  // occupant to warn about either (2026-10-24).
+  const live = schedules.filter((s) => s.isActive && !isFallbackTierRule(s));
 
   const out: ScreenConflict[] = [];
   for (const other of playlists) {
@@ -1299,6 +1360,8 @@ export function findScreenConflicts(input: {
 
     const scheduleIds: string[] = [];
     const names = new Set<string>();
+    const fallbackScheduleIds: string[] = [];
+    const fallbackNames = new Set<string>();
     for (const sched of otherLive) {
       // Different hours on the same screen is the SUPPORTED setup, not a
       // clash. Skip before resolving screens — a rule that can never be on at
@@ -1327,6 +1390,12 @@ export function findScreenConflicts(input: {
       if (hits.length === 0) continue;
       scheduleIds.push(sched.id);
       for (const h of hits) names.add(h.name);
+      // Kept, not replaced: an always-on, replace-mode rule under a
+      // time-limited publish (the server's `keepsAsFallback`).
+      if (input.limited && isAlwaysOnWindow(sched) && (sched.mode ?? 'replace') !== 'append') {
+        fallbackScheduleIds.push(sched.id);
+        for (const h of hits) fallbackNames.add(h.name);
+      }
     }
 
     if (scheduleIds.length > 0) {
@@ -1335,6 +1404,8 @@ export function findScreenConflicts(input: {
         playlistName: other.name || other.id,
         scheduleIds,
         screenNames: Array.from(names),
+        fallbackScheduleIds,
+        fallbackScreenNames: Array.from(fallbackNames),
       });
     }
   }
@@ -1353,6 +1424,30 @@ export interface ConflictPrompt {
   message: string;
   confirmLabel: string;
   screenCount: number;
+  /**
+   * 2026-10-24 (launch QA U15) — present when an always-on playlist is KEPT
+   * as the fallback outside the incoming hours. The prompt then has three
+   * answers: `confirmLabel` ("Keep both", the default), this one ("Replace
+   * everything" — the caller sends `replaceAlwaysOn: true`), and Cancel.
+   */
+  alternateLabel?: string;
+}
+
+/**
+ * The translator the dialog copy is read through — next-intl's
+ * `useTranslations('playlistConflict')`. Loose on purpose (next-intl types its
+ * keys per namespace); omitted, the English catalog is read directly, which is
+ * what the pure unit tests and any caller not yet translated get.
+ */
+export type ConflictTranslator = (key: any, values?: any) => string;
+
+const EN_CONFLICT = (enMessages as unknown as { playlistConflict: Record<string, string> }).playlistConflict;
+
+function englishConflict(key: string, values?: Record<string, string | number>): string {
+  const template = EN_CONFLICT[key] ?? key;
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    values && values[name] !== undefined ? String(values[name]) : whole,
+  );
 }
 
 /**
@@ -1363,30 +1458,99 @@ export interface ConflictPrompt {
  * `verb` differs only because the two entry points are different sentences:
  * turning a playlist on ("Switching X on"), versus adding screens to one
  * ("Adding these screens").
+ *
+ * 2026-10-24 (launch QA U15): when the publish is time-limited and a
+ * competitor plays ALL the time (`fallbackScheduleIds`), that competitor is
+ * KEPT for the other hours — the prompt says so, and offers "Replace
+ * everything" as the explicit alternative. Copy is read through `opts.t`
+ * (en/es/zh, `playlistConflict.*`); the English it produces is unchanged.
  */
 export function describeScreenConflicts(
   conflicts: ScreenConflict[],
   playlistName: string,
   verb: 'switch-on' | 'add-screens' = 'switch-on',
+  opts: { t?: ConflictTranslator } = {},
 ): ConflictPrompt | null {
   if (conflicts.length === 0) return null;
+  const t: ConflictTranslator = opts.t ?? englishConflict;
   const screenCount = conflictScreenCount(conflicts);
   const lead =
     verb === 'add-screens'
-      ? `Adding ${screenCount === 1 ? 'that screen' : 'those screens'} to “${playlistName}”`
-      : `Switching “${playlistName}” on`;
+      ? t(screenCount === 1 ? 'leadAddOne' : 'leadAddMany', { name: playlistName })
+      : t('leadSwitchOn', { name: playlistName });
+
+  const kept = conflicts.filter((c) => (c.fallbackScheduleIds ?? []).length > 0);
+  if (kept.length > 0) {
+    // What is REPLACED alongside: a competitor's windowed rules that overlap
+    // the incoming hours (its always-on rules are the ones kept).
+    const replaced = conflicts.filter((c) =>
+      c.scheduleIds.some((id) => !(c.fallbackScheduleIds ?? []).includes(id)),
+    );
+    const keptNames = (c: ScreenConflict) =>
+      c.fallbackScreenNames?.length ? c.fallbackScreenNames : c.screenNames;
+    const paragraphs: string[] = [];
+    if (kept.length === 1) {
+      const names = keptNames(kept[0]);
+      paragraphs.push(
+        t(names.length === 1 ? 'keepOneScreen' : 'keepManyScreens', {
+          name: playlistName,
+          other: kept[0].playlistName,
+          screens: names.join(', '),
+        }),
+      );
+    } else {
+      paragraphs.push(
+        t('keepMany', {
+          name: playlistName,
+          list: kept
+            .map((c) => t('listItem', { other: c.playlistName, screens: keptNames(c).join(', ') }))
+            .join('\n'),
+        }),
+      );
+    }
+    for (const c of replaced) {
+      paragraphs.push(t('alsoReplaces', { other: c.playlistName, screens: c.screenNames.join(', ') }));
+    }
+    if (kept.length === 1) {
+      const names = keptNames(kept[0]);
+      paragraphs.push(
+        t(names.length === 1 ? 'hintOneScreen' : 'hintManyScreens', {
+          name: playlistName,
+          other: kept[0].playlistName,
+          screens: names.join(', '),
+        }),
+      );
+    } else {
+      paragraphs.push(t('hintMany', { name: playlistName }));
+    }
+    return {
+      title: kept.length === 1 ? t('keepTitleOne', { other: kept[0].playlistName }) : t('keepTitleMany'),
+      message: paragraphs.join('\n\n'),
+      confirmLabel: t(kept.length === 1 ? 'confirmKeepOne' : 'confirmKeepMany'),
+      alternateLabel: t('replaceEverything'),
+      screenCount,
+    };
+  }
 
   const message =
     conflicts.length === 1
-      ? `“${conflicts[0].playlistName}” is currently playing on ${conflicts[0].screenNames.join(', ')}. ${lead} will replace it on ${conflicts[0].screenNames.length === 1 ? 'that screen' : 'those screens'} only — its other screens stay untouched.`
-      : `These playlists overlap “${playlistName}” on the listed screens:\n\n${conflicts
-          .map((c) => `• “${c.playlistName}” on ${c.screenNames.join(', ')}`)
-          .join('\n')}\n\n${lead} will replace them on those screens only.`;
+      ? t(conflicts[0].screenNames.length === 1 ? 'replaceOneScreen' : 'replaceManyScreens', {
+          other: conflicts[0].playlistName,
+          screens: conflicts[0].screenNames.join(', '),
+          lead,
+        })
+      : t('replaceMany', {
+          name: playlistName,
+          list: conflicts
+            .map((c) => t('listItem', { other: c.playlistName, screens: c.screenNames.join(', ') }))
+            .join('\n'),
+          lead,
+        });
 
   return {
-    title: `Replace on ${screenCount} screen${screenCount === 1 ? '' : 's'}?`,
+    title: screenCount === 1 ? t('replaceTitleOne') : t('replaceTitleMany', { count: screenCount }),
     message,
-    confirmLabel: 'Replace',
+    confirmLabel: t('confirmReplace'),
     screenCount,
   };
 }

@@ -79,8 +79,10 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 const appConfirmMock = jest.fn().mockResolvedValue(true);
+const appChooseMock = jest.fn().mockResolvedValue('confirm');
 jest.mock('@/components/ui/app-dialog', () => ({
   appConfirm: (...a: unknown[]) => appConfirmMock(...a),
+  appChoose: (...a: unknown[]) => appChooseMock(...a),
   appAlert: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@/hooks/use-overlay-lock', () => ({ useOverlayLock: () => {} }));
@@ -118,6 +120,8 @@ beforeEach(() => {
   createScheduleSpy.mockClear();
   appConfirmMock.mockClear();
   appConfirmMock.mockResolvedValue(true);
+  appChooseMock.mockClear();
+  appChooseMock.mockResolvedValue('confirm');
 });
 
 describe('Publish to Screens — taking a screen another playlist is on', () => {
@@ -163,5 +167,44 @@ describe('Publish to Screens — taking a screen another playlist is on', () => 
 
     await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
     expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+});
+
+// Launch QA U15 (2026-10-24): a SCHEDULED publish (a day/time window) onto a
+// screen whose other playlist plays ALL the time keeps that one for the other
+// hours unless the operator says "Replace everything".
+describe('Publish to Screens — a scheduled publish onto an always-on playlist', () => {
+  async function publishScheduledTo(screenName: string) {
+    const sheet = await openPublishSheet();
+    await act(async () => {
+      fireEvent.click(sheet.getByRole('button', { name: 'Scheduled' }));
+    });
+    await publishTo(sheet, screenName);
+  }
+
+  it('asks Keep both / Replace everything; KEEP publishes without replaceAlwaysOn', async () => {
+    await publishScheduledTo('Cafeteria');
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    expect(appConfirmMock).not.toHaveBeenCalled();
+    const arg = appChooseMock.mock.calls[0][0] as { title: string; confirmLabel: string; alternateLabel: string };
+    expect(arg.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+    expect(arg.confirmLabel).toBe('Keep both');
+    expect(arg.alternateLabel).toBe('Replace everything');
+    expect(createScheduleSpy.mock.calls[0][0]).toMatchObject({ screenId: 's3', mode: 'replace' });
+    expect(createScheduleSpy.mock.calls[0][0]).not.toHaveProperty('replaceAlwaysOn');
+  });
+
+  it('REPLACE EVERYTHING publishes with replaceAlwaysOn: true', async () => {
+    appChooseMock.mockResolvedValue('alternate');
+    await publishScheduledTo('Cafeteria');
+    await waitFor(() => expect(createScheduleSpy).toHaveBeenCalled());
+    expect(createScheduleSpy.mock.calls[0][0]).toMatchObject({ screenId: 's3', replaceAlwaysOn: true });
+  });
+
+  it('Cancel publishes nothing', async () => {
+    appChooseMock.mockResolvedValue('cancel');
+    await publishScheduledTo('Cafeteria');
+    await waitFor(() => expect(appChooseMock).toHaveBeenCalled());
+    expect(createScheduleSpy).not.toHaveBeenCalled();
   });
 });

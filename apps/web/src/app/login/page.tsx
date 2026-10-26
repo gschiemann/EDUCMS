@@ -72,6 +72,7 @@ import {
   clearPendingEulaAcceptance,
   eulaAcceptedOnThisDevice,
   EULA_VERSION,
+  parkServerTermsAcceptance,
   recordEulaAcceptance,
   stashPendingEulaAcceptance,
 } from '@/lib/eula-acceptance';
@@ -571,6 +572,12 @@ function LoginContent() {
     sessionStartedRef.current = true;
     // Recorded only now, on a FULLY successful sign-in.
     recordEulaAcceptance(email);
+    // Launch QA S2 (2026-10-24): the record that counts is the ACCOUNT's. A
+    // box ticked in THIS sign-in is parked for this account and recorded on
+    // the server by the dashboard (TermsGate) once it is past first-login
+    // setup — so the person is not asked twice. A browser that accepted
+    // earlier (no box shown) parks nothing: the dashboard asks that person.
+    if (eulaChecked && data.user?.id) parkServerTermsAcceptance(String(data.user.id));
     clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
     // The checkbox, unless this sign-in was a passkey used on step 1 (see
     // `signInKeepRef`). Remembered per account so that account's NEXT passkey

@@ -43,6 +43,8 @@ const mutation = () => ({ mutateAsync: jest.fn().mockResolvedValue({}), mutate: 
 
 const setActiveSpy = jest.fn().mockResolvedValue({});
 const removeSpy = jest.fn().mockResolvedValue({});
+const updateScheduleSpy = jest.fn().mockResolvedValue({});
+const toggleScheduleSpy = jest.fn().mockResolvedValue({});
 
 jest.mock('@/hooks/use-api', () => ({
   usePlaylists: query(() => PLAYLISTS),
@@ -55,7 +57,8 @@ jest.mock('@/hooks/use-api', () => ({
   useSetPlaylistSync: mutation,
   useRefreshWeb: mutation,
   useCreateSchedule: mutation,
-  useUpdateSchedule: mutation,
+  useUpdateSchedule: () => ({ mutateAsync: updateScheduleSpy, isPending: false }),
+  useToggleSchedule: () => ({ mutateAsync: toggleScheduleSpy, mutate: jest.fn(), isPending: false }),
   useSetScreenFaceMode: () => ({ mutate: jest.fn(), isPending: false }),
   useSetPlaylistScreenActive: () => ({ mutateAsync: setActiveSpy, isPending: false }),
   useRemovePlaylistScreen: () => ({ mutateAsync: removeSpy, isPending: false }),
@@ -68,8 +71,10 @@ jest.mock('@/store/ui-store', () => ({
   useUIStore: (sel: (s: unknown) => unknown) => sel({ user: { role: 'SCHOOL_ADMIN', id: 'u1' }, token: 't' }),
 }));
 const appConfirmMock = jest.fn().mockResolvedValue(true);
+const appChooseMock = jest.fn().mockResolvedValue('confirm');
 jest.mock('@/components/ui/app-dialog', () => ({
   appConfirm: (...a: unknown[]) => appConfirmMock(...a),
+  appChoose: (...a: unknown[]) => appChooseMock(...a),
   appAlert: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('next/dynamic', () => () => {
@@ -95,8 +100,12 @@ function open() {
 beforeEach(() => {
   setActiveSpy.mockClear();
   removeSpy.mockClear();
+  updateScheduleSpy.mockClear();
+  toggleScheduleSpy.mockClear();
   appConfirmMock.mockClear();
   appConfirmMock.mockResolvedValue(true);
+  appChooseMock.mockClear();
+  appChooseMock.mockResolvedValue('confirm');
 });
 
 describe('a screen on the playlist through a GROUP rule', () => {
@@ -188,6 +197,65 @@ describe('switching ONE screen on — the fifth door', () => {
     fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Play this playlist on L55VEC' }));
     await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3', active: true }));
     expect(appConfirmMock).not.toHaveBeenCalled();
+  });
+});
+
+// Launch QA U15 (2026-10-24): switching on a TIME-LIMITED playlist on a screen
+// that plays an ALWAYS-ON one keeps the always-on one for the other hours.
+describe('switching ONE screen on — a windowed playlist over an always-on one (U15)', () => {
+  const windowedOwn = {
+    id: 'mine', playlistId: 'p1', screenId: 's3', screenGroupId: null, isActive: false, startTime: start,
+    daysOfWeek: 'Mon,Tue,Wed,Thu,Fri', timeStart: '08:00', timeEnd: '15:00',
+  };
+
+  it('asks Keep both / Replace everything; KEEP demotes their pin to the fallback tier and never switches them off', async () => {
+    SCHEDULES = [windowedOwn, { id: 'theirs', playlistId: 'p2', screenId: 's3', screenGroupId: null, isActive: true, startTime: start }];
+    open();
+    fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Play this playlist on L55VEC' }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's3', active: true }));
+    expect(appConfirmMock).not.toHaveBeenCalled();
+    const arg = appChooseMock.mock.calls[0][0] as { title: string; confirmLabel: string; alternateLabel: string };
+    expect(arg.title).toBe('Keep “Kings Portrait” playing the rest of the time?');
+    expect(arg.confirmLabel).toBe('Keep both');
+    expect(arg.alternateLabel).toBe('Replace everything');
+    expect(updateScheduleSpy).toHaveBeenCalledWith({ id: 'theirs', priority: -1 });
+    // Kings Portrait is never switched off on that screen.
+    expect(setActiveSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('REPLACE EVERYTHING switches the always-on one off on that screen, as before', async () => {
+    appChooseMock.mockResolvedValue('alternate');
+    SCHEDULES = [windowedOwn, { id: 'theirs', playlistId: 'p2', screenId: 's3', screenGroupId: null, isActive: true, startTime: start }];
+    open();
+    fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Play this playlist on L55VEC' }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledTimes(2));
+    expect(setActiveSpy.mock.calls.map((c) => c[0])).toEqual([
+      { playlistId: 'p2', screenId: 's3', active: false },
+      { playlistId: 'p1', screenId: 's3', active: true },
+    ]);
+    expect(updateScheduleSpy).not.toHaveBeenCalled();
+  });
+
+  it('their GROUP rule is left alone — our pin already outranks it, and their other screens keep playing', async () => {
+    SCHEDULES = [
+      { ...windowedOwn, screenId: 's2' },
+      { id: 'theirs-g', playlistId: 'p2', screenId: null, screenGroupId: 'g1', isActive: true, startTime: start },
+    ];
+    open();
+    fireEvent.click(within(rowFor('GUQ55')).getByRole('button', { name: 'Play this playlist on GUQ55' }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith({ playlistId: 'p1', screenId: 's2', active: true }));
+    expect(updateScheduleSpy).not.toHaveBeenCalled();
+    expect(setActiveSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('Cancel changes nothing at all', async () => {
+    appChooseMock.mockResolvedValue('cancel');
+    SCHEDULES = [windowedOwn, { id: 'theirs', playlistId: 'p2', screenId: 's3', screenGroupId: null, isActive: true, startTime: start }];
+    open();
+    fireEvent.click(within(rowFor('L55VEC')).getByRole('button', { name: 'Play this playlist on L55VEC' }));
+    await waitFor(() => expect(appChooseMock).toHaveBeenCalled());
+    expect(setActiveSpy).not.toHaveBeenCalled();
+    expect(updateScheduleSpy).not.toHaveBeenCalled();
   });
 });
 

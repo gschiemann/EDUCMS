@@ -57,6 +57,11 @@ import SchoolLayout from '../layout';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 
+// The shape the sign-in answer has carried since launch QA S1/S2
+// (2026-10-24): which setup this is (`setupPasswordOnly`) and the EULA
+// version the account accepted (`termsAcceptedVersion`, null = never). A
+// session cached before those existed asks GET /users/me instead — covered
+// in CredentialSetupGate.test.tsx / TermsGate.test.tsx.
 const GATED_USER = {
   id: 'u1',
   email: 'riot-jacksonville@riotcolor.com',
@@ -64,6 +69,8 @@ const GATED_USER = {
   tenantId: 'tenant-riot-jax',
   tenantSlug: 'riot-jax',
   mustSetupCredentials: true,
+  setupPasswordOnly: false,
+  termsAcceptedVersion: null,
 };
 
 function mockSetupFetch(
@@ -127,6 +134,8 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     // The chrome and the page underneath it never mounted.
     expect(screen.queryByTestId('dashboard-chrome')).not.toBeInTheDocument();
     expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
+    // The EULA is asked AFTER setup (launch QA S2): never over this screen.
+    expect(screen.queryByTestId('terms-gate')).not.toBeInTheDocument();
   });
 
   it('renders the dashboard normally for an account that is NOT flagged', async () => {
@@ -177,6 +186,11 @@ describe('SchoolLayout — first-login credential setup gate', () => {
     expect(state.token).toBe('fresh.jwt.token');
     expect(state.user?.email).toBe('dana@riotcolor.com');
     expect(state.user?.mustSetupCredentials).toBe(false);
+    // Then — and only then — the account is asked for the EULA, over the
+    // dashboard it lands on (launch QA S2). The session said "never
+    // accepted", so it asks without another round trip.
+    expect(await screen.findByTestId('terms-gate')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces a duplicate email inline on the email field and keeps the gate up', async () => {

@@ -23,7 +23,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   usePlaylistDelivery, usePlaylists, useRefreshWeb, useSchedules,
   useScreenGroups, useScreens, useSetPlaylistActive, useSetPlaylistSync,
-  useSetPlaylistScreenActive, useRemovePlaylistScreen,
+  useSetPlaylistScreenActive, useRemovePlaylistScreen, useToggleSchedule, useUpdateSchedule,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { appAlert, appConfirm } from '@/components/ui/app-dialog';
@@ -33,9 +33,10 @@ import {
   PlaylistWorkspace, resolveWorkspaceTab, type WorkspaceTab,
 } from '@/components/playlists/v1/PlaylistWorkspace';
 import { AddScreensDialog } from '@/components/playlists/v1/PlaylistDialogs';
+import { askScreenConflicts } from '@/components/playlists/v1/conflictPrompt';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, derivePlaybackCopyStates, describeScreenConflicts, findScreenConflicts,
-  pauseEverywhereCopy, resolveTargetScreenIds,
+  isTimeLimited, pauseEverywhereCopy, resolveTargetScreenIds, FALLBACK_TIER_PRIORITY,
   summarizeDelivery, summarizeDeliveryPayload, overlayCurrentScreenHealth, DELIVERY_UNAVAILABLE, PUSH_GRACE_MS,
   type OpsGroupRef, type OpsScheduleRef, type OpsScreenRef,
 } from '@/components/playlists/v1/playlistOps';
@@ -103,6 +104,9 @@ export default function PlaylistWorkspacePage() {
   const setPlaylistActive = useSetPlaylistActive();
   const refreshWeb = useRefreshWeb();
   const setScreenActive = useSetPlaylistScreenActive();
+  // Launch QA U15 — "Keep both" demotes an always-on pin to the fallback tier.
+  const updateSchedule = useUpdateSchedule();
+  const toggleSchedule = useToggleSchedule();
   const removeScreen = useRemovePlaylistScreen();
 
   /**
@@ -318,20 +322,40 @@ export default function PlaylistWorkspacePage() {
         const conflicts = findScreenConflicts({
           targetScreenIds: [screenId],
           windows: reaches.map((sc) => ({ daysOfWeek: sc.daysOfWeek, timeStart: sc.timeStart, timeEnd: sc.timeEnd })),
+          // Launch QA U15 — when every rule of this playlist on that screen
+          // covers only part of the time, an always-on playlist there is kept
+          // as the fallback for the other hours rather than switched off.
+          limited: reaches.length > 0 && reaches.every((sc) => isTimeLimited(sc)),
           excludePlaylistId: playlistId,
           playlists: playlists as any,
           schedules,
           screens,
           groups,
         });
-        const prompt = describeScreenConflicts(conflicts, playlist?.name || 'this playlist', 'switch-on');
-        if (prompt) {
-          const ok = await appConfirm({
-            title: prompt.title, message: prompt.message, tone: 'warn', confirmLabel: prompt.confirmLabel,
-          });
-          if (!ok) return;
-          for (const c of conflicts) {
+        const prompt = describeScreenConflicts(conflicts, playlist?.name || 'this playlist', 'switch-on', {
+          t: (key: string, values?: Record<string, string | number>) => t(`playlistConflict.${key}`, values as never),
+        });
+        const answer = await askScreenConflicts(prompt, { cancelLabel: t('playlistConflict.cancel') });
+        if (!answer.proceed) return;
+        for (const c of conflicts) {
+          const kept = answer.replaceAlwaysOn ? [] : (c.fallbackScheduleIds ?? []);
+          if (kept.length === 0) {
             await setScreenActive.mutateAsync({ playlistId: c.playlistId, screenId, active: false });
+            continue;
+          }
+          // "Keep both": the always-on playlist stays on this screen for the
+          // other hours. This playlist's rule here is a per-screen pin after
+          // the switch below, which already outranks any GROUP rule — so a
+          // group rule is left exactly as it is and its other screens keep
+          // what they show. A pin of the always-on one is demoted to the
+          // fallback tier (it rides after this one, effective-schedule.ts key
+          // 0, and only fills the gaps); a pin of an overlapping WINDOWED rule
+          // of the same playlist is switched off here, as it always was.
+          for (const id of c.scheduleIds) {
+            const rule = schedules.find((sc) => sc.id === id);
+            if (!rule || rule.screenId !== screenId) continue;
+            if (kept.includes(id)) await updateSchedule.mutateAsync({ id, priority: FALLBACK_TIER_PRIORITY });
+            else await toggleSchedule.mutateAsync(id);
           }
         }
       }
@@ -343,7 +367,7 @@ export default function PlaylistWorkspacePage() {
         tone: 'danger',
       });
     }
-  }, [setScreenActive, playlistId, playlist, playlists, schedules, screens, groups, mySchedules, playbackByScreen, t]);
+  }, [setScreenActive, updateSchedule, toggleSchedule, playlistId, playlist, playlists, schedules, screens, groups, mySchedules, playbackByScreen, t]);
 
   /**
    * Which delivery source is answering?

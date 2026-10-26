@@ -7,8 +7,14 @@
  * where the People page calls the same person an "Editor". It now uses the
  * /login card (AuthCardShell), the en/es/zh catalogue and the localized role
  * label every other surface uses. Behaviour unchanged.
+ *
+ * 2026-10-24 (launch QA S2): an invited teammate was signed straight in and
+ * never saw the End User License Agreement. The form now carries the same
+ * required checkbox as the sign-in page, and the acceptance is recorded on
+ * their account by the same request that sets their password.
  */
 import { useState, useEffect, use } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -17,6 +23,7 @@ import { useUIStore } from '@/store/ui-store';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
 import { localizedRoleLabel } from '@/i18n/vertical-copy';
 import { ResetShell as AuthCardShell, RESET_INPUT_CLS, RESET_BUTTON_CLS } from '@/components/auth/AuthCardShell';
+import { EULA_VERSION, recordEulaAcceptance } from '@/lib/eula-acceptance';
 
 interface InvitePreview {
   email: string;
@@ -32,6 +39,7 @@ export default function AcceptInvitePage({
 }) {
   const { token } = use(params);
   const t = useTranslations('acceptInvite');
+  const tAuth = useTranslations('auth');
   const { locale } = useLocaleSwitch();
   const router = useRouter();
   const login = useUIStore((s) => s.login);
@@ -40,6 +48,8 @@ export default function AcceptInvitePage({
   const [previewError, setPreviewError] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  /** The End User License Agreement — required, never pre-ticked (S2). */
+  const [eulaChecked, setEulaChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -64,15 +74,19 @@ export default function AcceptInvitePage({
     setError('');
     if (password.length < 8) { setError(t('tooShort')); return; }
     if (password !== confirm) { setError(t('mismatch')); return; }
+    if (!eulaChecked) { setError(tAuth('eulaRequired')); return; }
 
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/invites/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, termsVersion: EULA_VERSION }),
       });
       const data = await res.json();
+      // The invite is accepted (with or without a session): this browser's
+      // own record of the tick, as the sign-in page keeps it.
+      if (res.ok && preview?.email) recordEulaAcceptance(preview.email);
       if (res.ok && data.access_token) {
         login(data.access_token, data.user);
         router.push(`/${data.user.tenantSlug || data.user.tenantId}/dashboard`);
@@ -141,6 +155,29 @@ export default function AcceptInvitePage({
               className={RESET_INPUT_CLS}
             />
           </div>
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={eulaChecked}
+              onChange={(e) => { setEulaChecked(e.target.checked); setError(''); }}
+              aria-describedby="invite-eula-text"
+              data-testid="invite-eula-checkbox"
+              className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0"
+            />
+            <span id="invite-eula-text" className="text-[11px] leading-snug text-slate-600">
+              {tAuth.rich('eulaAgree', {
+                link: (chunks) => (
+                  <Link
+                    href="/terms/eula"
+                    target="_blank"
+                    className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
+                  >
+                    {chunks}
+                  </Link>
+                ),
+              })}
+            </span>
+          </label>
           {error && (
             <div role="alert" className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" aria-hidden />

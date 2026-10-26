@@ -22,7 +22,7 @@ import { reactivateFallbackIfDark as reactivateFallbackIfDarkShared } from './go
 // Go-live displacement — shared with submissions.controller (approval path,
 // 2026-07-03): flipping a staged draft to active must displace competing live
 // schedules for the same target exactly as a direct publish does.
-import { displaceCompetingActiveSchedules } from './schedule-displacement';
+import { displaceCompetingActiveSchedules, keepAlwaysOnAsFallback } from './schedule-displacement';
 // 2026-09-16 — the shared overlap rule, ported from the web side so the server
 // stops promising one thing in the UI and doing another. See the file header.
 import { shouldDisplace } from './schedule-window-overlap';
@@ -246,6 +246,36 @@ export class SchedulesController {
       routeThroughReview = !!t?.requireContentApproval;
     }
 
+    // KEEP THE ALWAYS-ON PLAYLIST AS THE FALLBACK (2026-10-24, launch QA U15).
+    // A time-limited publish (a day/time window, an end date, or a start still
+    // ahead) going live in replace mode no longer switches off another
+    // playlist that plays ALL the time on these screens: that one is demoted
+    // to the fallback tier, so it fills the hours outside the new window and
+    // the screen is never blank evenings and weekends. Only an explicit
+    // "Replace everything" (`replaceAlwaysOn: true`) skips this — the
+    // displacement below then stands it down exactly as before.
+    //
+    // Runs for a publish held for a playback copy too (`pendingMedia`): the
+    // operator's choice is made NOW, and the sweep that activates the rule
+    // later exempts the fallback tier, so a held publish keeps it as well.
+    // A draft (Editor) decides nothing here — its approval does.
+    const scheduleWindow = {
+      daysOfWeek: body.daysOfWeek ?? null,
+      timeStart: body.timeStart ?? null,
+      timeEnd: body.timeEnd ?? null,
+      priority: body.priority ?? 0,
+    };
+    let keptAsFallback: string[] = [];
+    if ((activateNow || pendingMedia) && body.mode !== 'append' && body.replaceAlwaysOn !== true) {
+      keptAsFallback = await keepAlwaysOnAsFallback(this.prisma.client, {
+        tenantId: req.user.tenantId,
+        screenId: body.screenId || null,
+        screenGroupId: body.screenGroupId || null,
+        incomingPlaylistId: body.playlistId,
+        incoming: { ...scheduleWindow, startTime: body.startTime, endTime: body.endTime ?? null },
+      });
+    }
+
     // Only displace other active schedules when THIS schedule is going
     // live. A saved-draft schedule should not knock the currently-
     // running one off the screen; it's a plan, not a go-live.
@@ -409,6 +439,11 @@ export class SchedulesController {
       timeStart: res.timeStart,
       timeEnd: res.timeEnd,
       priority: res.priority,
+      // U15 — the always-on rules kept as the fallback outside this rule's
+      // hours (demoted to the fallback tier), and whether the operator chose
+      // "Replace everything" instead.
+      ...(keptAsFallback.length ? { keptAlwaysOnAsFallback: keptAsFallback } : {}),
+      ...(body.replaceAlwaysOn === true ? { replaceAlwaysOn: true } : {}),
     });
 
     // Only nudge players when the new schedule is actually live.

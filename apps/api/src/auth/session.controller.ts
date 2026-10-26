@@ -363,6 +363,9 @@ export class SessionController {
         canTriggerPanic: u.canTriggerPanic,
         mustSetupCredentials: !!u.mustSetupCredentials,
         emailVerificationPending: !!(u as any).emailVerificationPending,
+        // Launch QA S1 / S2 — see AuthService.login.
+        ...(typeof (u as any).setupPasswordOnly === 'boolean' ? { setupPasswordOnly: (u as any).setupPasswordOnly } : {}),
+        ...((u as any).termsAcceptedVersion !== undefined ? { termsAcceptedVersion: (u as any).termsAcceptedVersion ?? null } : {}),
       },
     };
   }

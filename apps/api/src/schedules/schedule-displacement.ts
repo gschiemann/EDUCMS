@@ -39,7 +39,93 @@
  *
  * Returns the number of rows deactivated.
  */
-import { shouldDisplace, type WindowFields } from './schedule-window-overlap';
+import {
+  FALLBACK_PRIORITY,
+  keepsAsFallback,
+  shouldDisplace,
+  type WindowFields,
+} from './schedule-window-overlap';
+
+/** The target's own pin/group plus, for a group, every member screen's pins. */
+async function competingTargetOr(
+  tx: any,
+  tenantId: string,
+  screenId: string | null,
+  screenGroupId: string | null,
+): Promise<any[]> {
+  const replaceOr: any[] = [];
+  if (screenId) replaceOr.push({ screenId });
+  if (screenGroupId) {
+    replaceOr.push({ screenGroupId });
+    const memberScreens = await tx.screen.findMany({
+      where: { tenantId, screenGroupId },
+      select: { id: true },
+    });
+    const memberIds = memberScreens.map((m: { id: string }) => m.id);
+    if (memberIds.length) replaceOr.push({ screenId: { in: memberIds } });
+  }
+  return replaceOr;
+}
+
+/**
+ * KEEP THE ALWAYS-ON PLAYLIST AS THE FALLBACK (2026-10-24, launch QA U15).
+ *
+ * Run BEFORE `displaceCompetingActiveSchedules` when a TIME-LIMITED rule
+ * (a day/time window, an end date, or a start still ahead) goes live in
+ * replace mode — unless the operator explicitly chose "Replace everything".
+ * Every ACTIVE, replace-mode, ALWAYS-ON rule of ANOTHER playlist on the same
+ * screens is demoted to FALLBACK_PRIORITY instead of being switched off; the
+ * displacement that follows exempts the fallback tier, and the manifest ranks
+ * it after every other replace rule. So the new playlist plays inside its
+ * hours and the old one fills the rest: the screen is never blank evenings and
+ * weekends.
+ *
+ * Same target set and same transaction contract as the displacement below
+ * (`tx` = the client or a `$transaction` handle). Filters in memory — the
+ * spec fakes' `where` supports only OR / `in` / equality, and a `not` would
+ * silently match nothing there. Idempotent: an already-fallback rule is not
+ * touched again. Returns the ids it kept (for the publish's audit row).
+ */
+export async function keepAlwaysOnAsFallback(
+  tx: any,
+  opts: {
+    tenantId: string;
+    screenId: string | null;
+    screenGroupId: string | null;
+    /** The playlist going live — its own rules are never kept as a fallback for itself. */
+    incomingPlaylistId: string;
+    incoming: WindowFields & {
+      priority?: number | null;
+      startTime?: Date | string | null;
+      endTime?: Date | string | null;
+    };
+    nowMs?: number;
+  },
+): Promise<string[]> {
+  const { tenantId, screenId, screenGroupId, incomingPlaylistId, incoming } = opts;
+  const nowMs = opts.nowMs ?? Date.now();
+  // Cheap exit before any read: an always-on, current publish keeps nothing.
+  if (!keepsAsFallback({}, incoming, nowMs)) return [];
+  const replaceOr = await competingTargetOr(tx, tenantId, screenId, screenGroupId);
+  if (!replaceOr.length) return [];
+  const candidates = await tx.schedule.findMany({
+    where: { tenantId, isActive: true, OR: replaceOr },
+    select: {
+      id: true, playlistId: true, mode: true,
+      daysOfWeek: true, timeStart: true, timeEnd: true, priority: true,
+    },
+  });
+  const kept = (candidates ?? [])
+    .filter((c: any) => c.playlistId !== incomingPlaylistId)
+    .filter((c: any) => keepsAsFallback(c, incoming, nowMs))
+    .map((c: any) => c.id);
+  if (!kept.length) return [];
+  await tx.schedule.updateMany({
+    where: { id: { in: kept } },
+    data: { priority: FALLBACK_PRIORITY },
+  });
+  return kept;
+}
 
 export async function displaceCompetingActiveSchedules(
   tx: any,
@@ -66,17 +152,7 @@ export async function displaceCompetingActiveSchedules(
 
   // Build the same OR set create() built: the target's own pin/group, plus —
   // for a group target — the per-screen pins on every member screen.
-  const replaceOr: any[] = [];
-  if (screenId) replaceOr.push({ screenId });
-  if (screenGroupId) {
-    replaceOr.push({ screenGroupId });
-    const memberScreens = await tx.screen.findMany({
-      where: { tenantId, screenGroupId },
-      select: { id: true },
-    });
-    const memberIds = memberScreens.map((m: { id: string }) => m.id);
-    if (memberIds.length) replaceOr.push({ screenId: { in: memberIds } });
-  }
+  const replaceOr = await competingTargetOr(tx, tenantId, screenId, screenGroupId);
 
   if (!replaceOr.length) return 0;
 

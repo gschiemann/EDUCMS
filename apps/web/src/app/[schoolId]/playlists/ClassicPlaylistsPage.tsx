@@ -8,9 +8,10 @@ import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEn
 import { PlaylistCreateWizard, ScheduleWindowFields } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import {
-  describeDays, describeScreenConflicts, findScreenConflicts, formatClock, retryPublishPayload,
+  describeDays, describeScreenConflicts, findScreenConflicts, formatClock, isTimeLimited, retryPublishPayload,
 } from '@/components/playlists/v1/playlistOps';
 import { ScheduleDialog } from '@/components/playlists/v1/PlaylistDialogs';
+import { askScreenConflicts } from '@/components/playlists/v1/conflictPrompt';
 import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -1820,6 +1821,9 @@ export default function ClassicPlaylistsPage({
         : true,
     }));
     const needsSave = hasChanges;
+    // Launch QA U15 — set only when the operator answers "Replace everything"
+    // below; the default keeps an always-on playlist as the fallback.
+    let replaceAlwaysOn = false;
     const scheduleParamsFor = (target: string) => {
       const isGroup = target.startsWith('group-');
       const targetId = target.replace(/^(group-|screen-)/, '');
@@ -1852,6 +1856,7 @@ export default function ClassicPlaylistsPage({
         mode: publishMode,
         mutedOverride: schedMuted,
         isActive: activate,
+        ...(replaceAlwaysOn ? { replaceAlwaysOn: true } : {}),
       } as const;
     };
 
@@ -1885,6 +1890,9 @@ export default function ClassicPlaylistsPage({
           wanted.add(t.slice('screen-'.length));
         }
       }
+      // Every target carries the same window and dates; read them from the
+      // rule the publish will actually write.
+      const probe = scheduleParamsFor(targets[0] ?? 'screen-');
       const conflicts = findScreenConflicts({
         // The window this publish will carry. Non-overlapping hours on one
         // screen are the supported setup (breakfast/lunch/dinner), so only a
@@ -1894,6 +1902,15 @@ export default function ClassicPlaylistsPage({
             ? { daysOfWeek: schedDays.join(','), timeStart: schedTimeStart, timeEnd: schedTimeEnd }
             : {},
         ],
+        // Launch QA U15 — a time-limited publish keeps an always-on playlist
+        // there as the fallback outside its hours (the server's default).
+        limited: isTimeLimited({
+          daysOfWeek: probe.daysOfWeek ?? null,
+          timeStart: probe.timeStart ?? null,
+          timeEnd: probe.timeEnd ?? null,
+          startTime: probe.startTime,
+          endTime: probe.endTime ?? null,
+        }),
         targetScreenIds: wanted,
         excludePlaylistId: playlistId,
         playlists: (playlists || []) as any,
@@ -1905,18 +1922,13 @@ export default function ClassicPlaylistsPage({
         conflicts,
         selectedPlaylist?.name || 'this playlist',
         'add-screens',
+        { t: (key: string, values?: Record<string, string | number>) => t(`playlistConflict.${key}`, values as never) },
       );
-      if (prompt) {
-        const ok = await appConfirm({
-          title: prompt.title,
-          message: prompt.message,
-          tone: 'warn',
-          confirmLabel: prompt.confirmLabel,
-        });
-        // Refusing leaves the sheet open with the picks intact, so the operator
-        // can deselect the screens they did not mean to take over.
-        if (!ok) return;
-      }
+      const answer = await askScreenConflicts(prompt, { cancelLabel: t('playlistConflict.cancel') });
+      // Refusing leaves the sheet open with the picks intact, so the operator
+      // can deselect the screens they did not mean to take over.
+      if (!answer.proceed) return;
+      replaceAlwaysOn = answer.replaceAlwaysOn;
     }
 
     // OPTIMISTIC CLOSE: operator's modal disappears within the React

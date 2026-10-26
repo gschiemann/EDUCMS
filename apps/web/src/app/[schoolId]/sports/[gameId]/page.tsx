@@ -68,6 +68,7 @@ import { useShortLandscape } from '@/hooks/use-short-landscape';
 // on Escape (Escape used to save: the blur it caused committed the draft).
 import { useDraftField } from '@/hooks/use-draft-field';
 import { useAppStore } from '@/lib/store';
+import { useEmergencyDrillOnly } from '@/hooks/use-emergency-drill';
 import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -278,6 +279,8 @@ function GameControl() {
   useOverlayLock(immersive);
   const sessionUser = useAppStore((s) => s.user);
   const emergencyActive = useAppStore((s) => s.isEmergencyActive);
+  // A practice drill is worded as one (launch QA U16) — no query of its own.
+  const emergencyDrill = useEmergencyDrillOnly();
   const [showCues, setShowCues] = useState(false);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showPenalties, setShowPenalties] = useState(false);
@@ -559,10 +562,11 @@ function GameControl() {
       emergencyActive ? (
         <span
           data-testid="console-emergency"
-          className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse shrink-0"
+          data-drill={emergencyDrill ? 'true' : 'false'}
+          className={`inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl ${emergencyDrill ? 'bg-indigo-600' : 'bg-red-600'} text-white text-xs font-bold animate-pulse shrink-0`}
         >
           <ShieldAlert className="w-4 h-4" aria-hidden />
-          {tRoot('emergency.active')}
+          {emergencyDrill ? tRoot('emergency.drill.inProgress') : tRoot('emergency.active')}
         </span>
       ) : (
         <Link

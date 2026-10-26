@@ -119,6 +119,11 @@ export class AccountSetupLinkController {
         status: true,
         deletedAt: true,
         mustSetupCredentials: true,
+        // Launch QA S1 / S2 — carried into the session's user so the setup
+        // screen knows to ask for the password only, and the EULA step knows
+        // whether this person already accepted.
+        setupPasswordOnly: true,
+        termsAcceptedVersion: true,
         mfaRequired: true,
         mfaTotpVerifiedAt: true,
         mfaBackupCodes: true,

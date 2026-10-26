@@ -533,6 +533,41 @@ describe('deriveExpectedContent — mirrors the API winner rule', () => {
     expect(out.viaGroup).toBe(true);
   });
 
+  // Launch QA U15 (2026-10-24) — the fallback tier (an always-on playlist kept
+  // at a negative priority by a time-limited publish) rides after every other
+  // replace rule, exactly as effective-schedule.ts key 0 orders the manifest.
+  it('a pinned FALLBACK never outranks a group rule whose window is open', () => {
+    const screen = scr({ screenGroupId: 'grp-1' });
+    const openAllDay = { daysOfWeek: null, timeStart: '00:00', timeEnd: '23:59' };
+    const out = deriveExpectedContent(
+      screen,
+      [
+        sched({ id: 's-fallback', screenId: screen.id, priority: -1, playlistId: 'pl-b', playlist: { id: 'pl-b', name: 'Lobby Loop' } }),
+        sched({ id: 's-group', screenGroupId: 'grp-1', ...openAllDay }),
+      ],
+      byId,
+      NOW,
+    );
+    expect(out.name).toBe('Summer Strength');
+    expect(out.viaGroup).toBe(true);
+  });
+
+  it('...and fills in when that window is closed', () => {
+    const screen = scr({ screenGroupId: 'grp-1' });
+    const neverOpen = { daysOfWeek: 'Mon', timeStart: '00:00', timeEnd: '00:01' };
+    const out = deriveExpectedContent(
+      screen,
+      [
+        sched({ id: 's-fallback', screenId: screen.id, priority: -1, playlistId: 'pl-b', playlist: { id: 'pl-b', name: 'Lobby Loop' } }),
+        sched({ id: 's-group', screenGroupId: 'grp-1', ...neverOpen }),
+      ],
+      byId,
+      // A Sunday noon: the Monday-midnight window cannot be open.
+      Date.parse('2026-10-25T12:00:00'),
+    );
+    expect(out.name).toBe('Lobby Loop');
+  });
+
   // Superseded 2026-09-01. This used to assert a video-only playlist yielded
   // NOTHING — the point being that it must never borrow some other item's
   // still. That intent is intact: it now yields the VIDEO'S OWN first frame,

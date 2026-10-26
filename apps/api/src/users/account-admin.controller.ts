@@ -207,9 +207,13 @@ export class AccountAdminController {
     // ten-ok: the target was just resolved and scope-checked by loadManageableTarget
     const live = await this.prisma.client.user.findFirst({
       where: { id: target.id, tenantId: target.tenantId, deletedAt: null } as any,
-      select: { mustSetupCredentials: true },
-    });
-    if (live?.mustSetupCredentials) {
+      select: { mustSetupCredentials: true, setupPasswordOnly: true } as any,
+    }) as any;
+    // Launch QA S1 (2026-10-24): an account whose TEMPORARY password an admin
+    // set keeps the email that admin typed — its owner chooses only a password
+    // at first sign-in — so the admin can still correct a typo in it. Only a
+    // provisioned account, whose owner picks their own email, is refused.
+    if (live?.mustSetupCredentials && !live?.setupPasswordOnly) {
       throw new ConflictException({
         code: 'USER_EMAIL_CHANGE_SETUP_PENDING',
         message:

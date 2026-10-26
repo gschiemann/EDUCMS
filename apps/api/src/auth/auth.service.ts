@@ -631,6 +631,13 @@ export class AuthService {
         // response, or the app paints for a frame before the gate appears.
         mustSetupCredentials: !!user.mustSetupCredentials,
         emailVerificationPending: !!(user as any).emailVerificationPending,
+        // Launch QA S1 — that setup screen asks for the password only.
+        // Launch QA S2 — the EULA version this person accepted on the server.
+        // Both read from the row this sign-in already loaded (no extra query);
+        // a caller that passed a narrower object reads as "unknown" and the
+        // dashboard confirms with GET /users/me instead of guessing.
+        ...(typeof (user as any).setupPasswordOnly === 'boolean' ? { setupPasswordOnly: (user as any).setupPasswordOnly } : {}),
+        ...((user as any).termsAcceptedVersion !== undefined ? { termsAcceptedVersion: (user as any).termsAcceptedVersion ?? null } : {}),
       }
     };
   }
@@ -864,6 +871,8 @@ export class AuthService {
         canTriggerPanic: u.canTriggerPanic,
         mustSetupCredentials: !!u.mustSetupCredentials,
         emailVerificationPending: !!(u as any).emailVerificationPending,
+        ...(typeof (u as any).setupPasswordOnly === 'boolean' ? { setupPasswordOnly: (u as any).setupPasswordOnly } : {}),
+        ...((u as any).termsAcceptedVersion !== undefined ? { termsAcceptedVersion: (u as any).termsAcceptedVersion ?? null } : {}),
       },
     };
   }

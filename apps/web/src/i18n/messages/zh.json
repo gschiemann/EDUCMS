@@ -277,7 +277,10 @@
       "overlaySr": "紧急演习进行中。屏幕正在显示演习内容。要结束演习，请输入 CLEAR 并授权解除警报。",
       "terminate": "结束演习（解除警报）",
       "playerBanner": "演习 — 这是演习",
-      "playerBannerSub": "演练 · 并非真实紧急情况"
+      "playerBannerSub": "演练 · 并非真实紧急情况",
+      "inProgress": "演习进行中",
+      "viewDrill": "查看演习",
+      "dashboardDesc": "屏幕正在显示带有“演习”横幅的演习内容。仅为演练，不是真实紧急情况。"
     }
   },
   "auth": {
@@ -1112,16 +1115,16 @@
         "inviteUser": "邀请用户",
         "acceptLinkLabel": "邀请接受链接",
         "copyLink": "复制链接",
-        "modePasswordHelp": "立即用你设置的密码创建账户。当面或通过聊天交给对方——他们首次登录后可以自行更改。",
+        "modePasswordHelp": "立即用你设置的临时密码创建账户。当面或通过聊天交给对方——对方首次登录时会设置自己的密码。",
         "modeEmailHelp": "我们会生成一个邀请链接。对方通过该链接自行设置密码，你永远看不到密码。",
         "firstName": "名字（可选）",
         "lastName": "姓氏（可选）",
         "emailAddress": "电子邮件地址",
         "role": "角色",
         "temporaryPassword": "临时密码",
-        "passwordHelp": "至少 8 个字符。对方首次登录后可自行更改。",
+        "passwordHelp": "至少 8 个字符。仅用于对方首次登录，之后由对方设置自己的密码。",
         "passwordTooShort": "密码至少需要 8 个字符。",
-        "createdOk": "已添加 {email}。他们可以使用你设置的密码登录。",
+        "createdOk": "已添加 {email}。对方先用临时密码登录一次，然后设置自己的密码。",
         "inviteSent": "邀请已发送至 {email}。",
         "inviteEmailNotConfigured": "已为 {email} 创建邀请。邮件功能尚未设置，请复制此链接并自行发送给对方：",
         "inviteFailed": "无法发送邀请。",
@@ -5498,7 +5501,11 @@
     "notYou": "不是你的账户？退出登录",
     "temporaryEmailLabel": "临时邮箱：",
     "codeSentLead": "我们已发送 6 位验证码至",
-    "codeSentHint": "可能需要一分钟才能收到。"
+    "codeSentHint": "可能需要一分钟才能收到。",
+    "passwordOnlyTitle": "设置你自己的密码",
+    "passwordOnlyIntro": "管理员为你设置了临时密码。现在请设置你自己的密码——只有你知道它，你的所有操作都会记录在你的名下。",
+    "signingInAsLabel": "你的登录邮箱：",
+    "passwordOnlyUnchanged": "请设置新密码——这是你收到的临时密码。"
   },
   "accountSetupLink": {
     "title": "设置你的账户",
@@ -6740,6 +6747,40 @@
     "tooShort": "密码至少需要 8 个字符。",
     "mismatch": "两次输入的密码不一致。",
     "acceptFailed": "无法接受邀请。"
+  },
+  "playlistConflict": {
+    "replaceTitleOne": "在 1 个屏幕上替换？",
+    "replaceTitleMany": "在 {count} 个屏幕上替换？",
+    "confirmReplace": "替换",
+    "leadSwitchOn": "开启“{name}”",
+    "leadAddOne": "将该屏幕添加到“{name}”",
+    "leadAddMany": "将这些屏幕添加到“{name}”",
+    "replaceOneScreen": "“{other}”正在{screens}上播放。{lead}后，只会在该屏幕上替换它，它的其他屏幕保持不变。",
+    "replaceManyScreens": "“{other}”正在{screens}上播放。{lead}后，只会在这些屏幕上替换它，它的其他屏幕保持不变。",
+    "replaceMany": "以下播放列表与“{name}”在所列屏幕上重叠：\n\n{list}\n\n{lead}后，只会在这些屏幕上替换它们。",
+    "listItem": "• {screens}上的“{other}”",
+    "keepTitleOne": "其余时间继续播放“{other}”？",
+    "keepTitleMany": "其余时间继续播放其他播放列表？",
+    "keepOneScreen": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，该屏幕不会出现空白。",
+    "keepManyScreens": "“{name}”只在设定的时间播放。其余时间，“{other}”会继续在{screens}上播放，这些屏幕不会出现空白。",
+    "keepMany": "“{name}”只在设定的时间播放。其余时间，以下播放列表会继续播放，屏幕不会出现空白：\n\n{list}",
+    "alsoReplaces": "{screens}上的“{other}”与这些时间重叠，将在那里被替换。",
+    "hintOneScreen": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，该屏幕将没有内容可播放。",
+    "hintManyScreens": "选择“全部替换”会停止{screens}上的“{other}”。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
+    "hintMany": "选择“全部替换”会停止这些屏幕上的它们。在“{name}”的时间之外，这些屏幕将没有内容可播放。",
+    "confirmKeepOne": "两者都保留",
+    "confirmKeepMany": "全部保留",
+    "replaceEverything": "全部替换",
+    "cancel": "取消"
+  },
+  "termsGate": {
+    "title": "继续之前",
+    "intro": "请阅读并接受 {brand} 最终用户许可协议。协议说明了本产品的功能（包括紧急警报的工作方式）以及它无法保证的事项。只需操作一次。",
+    "accept": "接受并继续",
+    "saving": "正在保存…",
+    "failed": "无法保存。请检查网络连接后重试。",
+    "version": "版本 {version}",
+    "signOut": "不是你？退出登录"
   },
   "addressSearch": {
     "clear": "清除地址",

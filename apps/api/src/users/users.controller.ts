@@ -23,6 +23,8 @@ import { clientIpFromRequest } from '../security/client-ip';
 import { loadManageableTarget as loadManageableTargetShared } from './manageable-target';
 import { workspaceConfigVersion } from './workspace-config-version';
 import { assertSupportReach } from '../support-access/support-access.context';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { AcceptTermsInputSchema, EULA_VERSION, type AcceptTermsInput } from '@cms/api-types';
 
 function isValidEmail(email: string): boolean {
   // 254 is the longest valid address; the bound keeps this pattern linear
@@ -212,6 +214,9 @@ export class UsersController {
         // 2026-10-10 — still on its provisioning starter credentials? The
         // People page offers "Setup link" (one-time invite) for exactly these.
         mustSetupCredentials: true,
+        // 2026-10-24 (launch QA S1) — set up with an admin's temporary
+        // password: the email is the person's own and stays correctable.
+        setupPasswordOnly: true,
         // 2026-10-11 — the People page's "Can trigger emergency alerts"
         // toggle (PUT /:id/can-trigger-panic). Without it the control would
         // have no state to render, and the capability stays invisible.
@@ -262,6 +267,13 @@ export class UsersController {
         // SELF-SIGNUP EMAIL VERIFICATION (2026-10-11) — same idea: how the shell
         // learns to render the verify-email screen instead of the app.
         emailVerificationPending: true,
+        // Launch QA S1 (2026-10-24) — the setup screen asks for a password
+        // only when an admin set this account's (temporary) password.
+        setupPasswordOnly: true,
+        // Launch QA S2 (2026-10-24) — the EULA acceptance on the SERVER; the
+        // dashboard asks once when this is not the current version.
+        termsAcceptedVersion: true,
+        termsAcceptedAt: true,
       } as any,
     });
     if (!me) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
@@ -300,7 +312,88 @@ export class UsersController {
       tenantName: (tenant as any)?.name ?? null,
       tenantSlug: (tenant as any)?.slug ?? activeTenantId,
       workspaceConfigVersion: tenant ? workspaceConfigVersion(tenant as any) : null,
+      /** The EULA version the dashboard asks for (S2). */
+      termsCurrentVersion: EULA_VERSION,
     };
+  }
+
+  /**
+   * "I accept the End User License Agreement" — launch QA S2 (2026-10-24).
+   *
+   * Acceptance used to live only in one browser's localStorage: the API had no
+   * record of who accepted which version when, and an invited teammate was
+   * signed straight in without ever seeing it. This records it on the
+   * person's OWN account (`termsAcceptedVersion` / `termsAcceptedAt`) and in
+   * an immutable TERMS_ACCEPTED audit row — version, time, client address,
+   * user agent, and how it was given (`sign-in`: ticked on the sign-in form;
+   * `prompt`: the in-app screen).
+   *
+   * Only the CURRENT version can be accepted (`EULA_VERSION`, shared with the
+   * dashboard) — an acceptance of a version nobody shows is not evidence of
+   * anything. IDEMPOTENT: accepting the version already on file changes
+   * nothing and writes no second row; the first acceptance stands.
+   *
+   * Any signed-in person (every role) may accept for THEMSELVES and only for
+   * themselves — there is no id in the route. Not reachable by an account
+   * still in first-login setup or email verification (JwtAuthGuard): the
+   * dashboard asks for this AFTER those screens, so the person who accepts is
+   * the person who now owns the account.
+   */
+  @Post('me/terms')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async acceptTerms(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AcceptTermsInputSchema)) body: AcceptTermsInput,
+  ) {
+    const userId: string | undefined = req?.user?.id ?? req?.user?.userId;
+    if (!userId || req?.user?.kind === 'api-key' || req?.user?.kind === 'device') {
+      throw new ForbiddenException({ code: 'TERMS_NOT_APPLICABLE', message: 'Only a person can accept the terms.' });
+    }
+    if (body.version !== EULA_VERSION) {
+      throw new BadRequestException({
+        code: 'TERMS_VERSION_UNKNOWN',
+        message: 'Those are not the current terms. Reload the page and try again.',
+        currentVersion: EULA_VERSION,
+      });
+    }
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const me = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, tenantId: true, termsAcceptedVersion: true, termsAcceptedAt: true } as any,
+    }) as any;
+    if (!me) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+    if (me.termsAcceptedVersion === EULA_VERSION && me.termsAcceptedAt) {
+      return { version: EULA_VERSION, acceptedAt: me.termsAcceptedAt, recorded: false };
+    }
+    const acceptedAt = new Date();
+    const method = body.method ?? 'prompt';
+    // The acceptance and its forensic row land together, or neither does.
+    await this.prisma.client.$transaction(async (tx: any) => {
+      // ten-ok: identity SELF-update — only the authenticated principal's own row
+      await tx.user.update({
+        where: { id: me.id },
+        data: { termsAcceptedVersion: EULA_VERSION, termsAcceptedAt: acceptedAt },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: me.tenantId,
+          userId: me.id,
+          action: 'TERMS_ACCEPTED',
+          targetType: 'User',
+          targetId: me.id,
+          details: JSON.stringify({
+            document: 'eula',
+            version: EULA_VERSION,
+            method,
+            previousVersion: me.termsAcceptedVersion ?? null,
+            ip: clientIpFromRequest(req),
+            ua: ((req?.headers?.['user-agent'] as string | undefined) || '').slice(0, 256),
+          }),
+        },
+      });
+    });
+    return { version: EULA_VERSION, acceptedAt, recorded: true };
   }
 
   @Put('me')
@@ -383,6 +476,13 @@ export class UsersController {
           role: body.role,
           firstName: trim(body.firstName),
           lastName: trim(body.lastName),
+          // Launch QA S1 (2026-10-24) — a password an admin chose for someone
+          // else is TEMPORARY: first sign-in goes through first-login setup,
+          // password only (the email is the person's own). Same rule as
+          // OnboardingService.createUserDirect, which serves this route in the
+          // running app (its controller registers POST /api/v1/users first).
+          mustSetupCredentials: true,
+          setupPasswordOnly: true,
         } as any,
         select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
       });

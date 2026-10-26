@@ -739,11 +739,12 @@ export class JwtAuthGuard implements CanActivate {
       `Refused ${method} ${path} for user ${userId} — first-login credential setup is ` +
         `not complete.`,
     );
+    // One wording for both setups: since launch QA S1 (2026-10-24) an account
+    // given a temporary password by an admin sets up its password only — it
+    // is never asked for an email.
     throw new ForbiddenException({
       code: 'SETUP_REQUIRED',
-      message:
-        'Finish setting up your account — add your work email and a new password — before ' +
-        'using VenueOS.',
+      message: 'Finish setting up your account before using VenueOS.',
     });
   }
 

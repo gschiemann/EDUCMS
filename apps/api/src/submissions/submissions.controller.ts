@@ -39,7 +39,7 @@ import {
 // staged draft flips it isActive=true; it must displace the competing LIVE
 // schedule for the same target exactly as a direct publish does, or the player
 // interleaves the old + new playlists. (P1, 2026-07-03.)
-import { displaceCompetingActiveSchedules } from '../schedules/schedule-displacement';
+import { displaceCompetingActiveSchedules, keepAlwaysOnAsFallback } from '../schedules/schedule-displacement';
 import { MediaPublicationService } from '../schedules/media-publication.service';
 
 /** Comma-separated CSV → string[] (filtered to non-empty). */
@@ -347,6 +347,8 @@ export class SubmissionsController {
             select: {
               id: true, playlistId: true, screenId: true, screenGroupId: true, mode: true,
               daysOfWeek: true, timeStart: true, timeEnd: true, priority: true,
+              // 2026-10-24 (U15) — dates decide whether the rule is time-limited.
+              startTime: true, endTime: true,
             },
           })
         : [];
@@ -370,6 +372,28 @@ export class SubmissionsController {
           // gate). excludeScheduleId guards the row itself (it's still a draft
           // here, but be defensive about ordering).
           for (const s of scheduleRows) {
+            // KEEP THE ALWAYS-ON PLAYLIST AS THE FALLBACK (2026-10-24, launch
+            // QA U15) — the same default a direct publish applies: approving a
+            // time-limited draft never switches off an always-on playlist on
+            // those screens; it fills the hours outside the draft's window.
+            // Decided now for a draft held for a playback copy too, so the
+            // sweep that activates it later finds the fallback tier exempt.
+            if (s.mode !== 'append') {
+              await keepAlwaysOnAsFallback(tx, {
+                tenantId,
+                screenId: s.screenId,
+                screenGroupId: s.screenGroupId,
+                incomingPlaylistId: s.playlistId,
+                incoming: {
+                  daysOfWeek: (s as any).daysOfWeek ?? null,
+                  timeStart: (s as any).timeStart ?? null,
+                  timeEnd: (s as any).timeEnd ?? null,
+                  priority: (s as any).priority ?? 0,
+                  startTime: (s as any).startTime ?? null,
+                  endTime: (s as any).endTime ?? null,
+                },
+              });
+            }
             if (pendingScheduleIds.has(s.id)) continue;
             if (s.mode !== 'append') {
               await displaceCompetingActiveSchedules(tx, {

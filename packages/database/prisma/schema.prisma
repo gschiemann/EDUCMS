@@ -616,6 +616,22 @@ model User {
   //     cannot outlive the handover.
   // Defaulted false so every existing row is untouched (V1 additive-only rule).
   mustSetupCredentials Boolean              @default(false) @map("must_setup_credentials")
+  // 2026-10-24 (launch QA S1) — an ADMIN set this account's password for
+  // someone else ("Set password now" in People). That password is TEMPORARY:
+  // `mustSetupCredentials` is set too, so the first sign-in is forced through
+  // first-login setup — and this flag narrows that setup to the PASSWORD only,
+  // because the email the admin typed is the person's own (unlike a
+  // provisioned placeholder address). Cleared with `mustSetupCredentials` by
+  // POST /auth/complete-setup. Default false: every existing row is untouched.
+  setupPasswordOnly    Boolean              @default(false) @map("setup_password_only")
+  // 2026-10-24 (launch QA S2) — the End User License Agreement, accepted on
+  // the SERVER per person (it used to live only in one browser's
+  // localStorage). The version and time of this person's latest acceptance;
+  // every acceptance also writes an immutable TERMS_ACCEPTED audit row (who,
+  // when, which version, from where, and how). NULL = never accepted on the
+  // server — the dashboard then asks once.
+  termsAcceptedVersion String?              @map("terms_accepted_version")
+  termsAcceptedAt      DateTime?            @map("terms_accepted_at")
   // 2026-10-11 (launch security re-audit, self-signup hardening): a PUBLIC
   // self-signup admin has typed an email nobody has proven. While this is true
   // JwtAuthGuard admits only the verify-email / logout / me routes (the `evv`

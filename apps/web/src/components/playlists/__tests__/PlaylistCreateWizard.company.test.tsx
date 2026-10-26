@@ -151,16 +151,22 @@ it('selects a child display without attempting to edit its face settings', () =>
   expect(setFaceMode).not.toHaveBeenCalled();
 });
 
-it('honors a declined conflict before publishing and opens the saved unassigned playlist', async () => {
+// Launch QA U14 (2026-10-24): Cancel on "Replace on N screens?" used to leave
+// the playlist behind, unassigned. The question is now asked BEFORE anything
+// is written, so a declined conflict creates nothing at all.
+it('a declined conflict creates NOTHING — no playlist, no publish — and stays on Review', async () => {
   schedules = [{ id: 'occupied', playlistId: 'existing', screenId: FRONT.id, isActive: true }];
   confirm.mockResolvedValue(false);
   const onCreated = openToScreens();
   fireEvent.click(screen.getByRole('button', { name: 'Play this on both sides' }));
   review();
   fireEvent.click(screen.getByRole('button', { name: 'Create & Publish' }));
-  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-playlist' })));
-  expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Existing welcome') }));
+  await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Existing welcome') })));
+  await new Promise((r) => setTimeout(r, 0));
+  expect(createPlaylist).not.toHaveBeenCalled();
+  expect(onCreated).not.toHaveBeenCalled();
   expect(publish).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Create & Publish' })).not.toBeDisabled();
 });
 
 it('reports held playback copies and partial screen failures honestly', async () => {
