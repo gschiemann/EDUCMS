@@ -2926,7 +2926,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       const brand: Record<string, string> =
         (cfg.brand && typeof cfg.brand === 'object') ? cfg.brand : {};
       const setBrand = (patch: Record<string, string>) =>
-        setField({ brand: { ...brand, ...patch } });
+        setField({ brand: { ...brand, ...patch }, ...(cfg.directoryDocument?.format === 'arc-riot.directory' ? { contentChanged: true } : {}) });
       const SH = (key: string, label: string) => (
         <div
           key={`sh-${key}`}
@@ -3126,7 +3126,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       if (cfg.touchDocument?.format === 'arc-riot.touch-property') {
         fields.push(<TouchPropertyEditor key="touch-property-editor" cfg={cfg} setField={setField} />);
       } else if (cfg.directoryDocument?.format === 'arc-riot.directory') {
-        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} />);
+        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
       } else if (cfg.url || cfg.html) {
         fields.push(SH('ext-text', 'Edit text'));
         fields.push(
@@ -3136,6 +3136,26 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             setField={setField}
           />,
         );
+      }
+
+      if (cfg.directoryDocument?.format === 'arc-riot.directory') {
+        const document = cfg.directoryDocument;
+        const image = (key: string, value: string) => {
+          const images = { ...(cfg.imageOverrides || {}) }; delete images[key === 'image' ? 'property.hero' : 'property.logo'];
+          setField({ directoryDocument: { ...document, theme: { ...document.theme, [key]: value } }, imageOverrides: images, contentChanged: true });
+        };
+        const currentImage = (key: string) => { const value = cfg.imageOverrides?.[key === 'image' ? 'property.hero' : 'property.logo']; return (Array.isArray(value) ? value[0] : value) || document.theme?.[key] || ''; };
+        fields.push(<details key="directory-appearance" className="rounded-lg border border-slate-200 bg-white p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">Appearance</summary>
+          <div className="mt-3 space-y-3">
+            <AssetPickerField label="Building photo" kind="image" value={currentImage('image')} onChange={v => image('image', v)} />
+            <AssetPickerField label="Logo" kind="image" value={currentImage('logo')} onChange={v => image('logo', v)} />
+            <ColorPickerField label="Background" value={brand.background || document.theme?.bg || ''} onChange={v => setBrand({ background: v })} />
+            <ColorPickerField label="Text" value={brand.text || document.theme?.ink || ''} onChange={v => setBrand({ text: v })} />
+            <ColorPickerField label="Accent" value={brand.accent || document.theme?.accent || ''} onChange={v => setBrand({ accent: v })} />
+          </div>
+        </details>);
+        break;
       }
 
       fields.push(SH('brand-colors', 'Brand colors'));
@@ -13130,6 +13150,7 @@ export interface ListItemFieldSpec {
   type?: ListItemFieldType; // default 'text'
   placeholder?: string;
   options?: [string, string][]; // for 'select'
+  maxLength?: number;
 }
 
 export function ListItemsEditor({
@@ -13141,6 +13162,8 @@ export function ListItemsEditor({
   newItem,
   makeNewItem,
   itemNoun = 'item',
+  compact = false,
+  onItemFocus,
 }: {
   label: string;
   help?: string;
@@ -13156,7 +13179,11 @@ export function ListItemsEditor({
    */
   makeNewItem?: () => Record<string, unknown>;
   itemNoun?: string;
+  compact?: boolean;
+  onItemFocus?: (id: string) => void;
 }) {
+  const beginEdit = useBuilderStore(s => s.beginTransaction);
+  const endEdit = useBuilderStore(s => s.endTransaction);
   // Normalize: accept a parsed array OR a JSON string OR null/undefined.
   let items: Record<string, unknown>[] = [];
   if (Array.isArray(value)) {
@@ -13194,6 +13221,19 @@ export function ListItemsEditor({
     [next[idx], next[j]] = [next[j], next[idx]];
     onChange(next);
   };
+
+  if (compact) return (
+    <div className="space-y-2">
+      <label className="block text-[10px] font-semibold text-slate-500">{label}</label>
+      <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1">
+        {items.map((item, idx) => <div key={typeof item.id === 'string' ? item.id : idx} data-list-id={String(item.id || '')} className="flex items-center gap-1.5">
+          {fields.map(f => <input key={f.key} data-list-field={f.key} onFocus={() => { beginEdit(); onItemFocus?.(String(item.id || '')); }} onBlur={endEdit} aria-label={`${itemNoun} ${idx + 1} ${f.label}`} value={String(item[f.key] ?? '')} maxLength={f.maxLength} placeholder={f.label} onChange={e => update(idx, { [f.key]: e.target.value })} className={`min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 ${f.key === 'suite' ? 'w-24' : 'flex-1'}`} />)}
+          <button type="button" onClick={() => remove(idx)} aria-label={`Remove ${itemNoun} ${idx + 1}`} className="h-8 w-7 shrink-0 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600">×</button>
+        </div>)}
+      </div>
+      <button type="button" onClick={add} className="w-full rounded-lg border border-dashed border-indigo-200 bg-indigo-50 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100">+ Add {itemNoun}</button>
+    </div>
+  );
 
   const primaryKey = fields[0]?.key;
 
