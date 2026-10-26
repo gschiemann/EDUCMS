@@ -452,7 +452,6 @@
     "subtitle": "Tu perfil, cómo inicias sesión y tu idioma.",
     "securityTitle": "Inicio de sesión y seguridad",
     "securityDesc": "Solo tú puedes cambiar esto, y se aplica dondequiera que inicies sesión.",
-    "passwordDesc": "Cambia tu contraseña. Se cerrará la sesión en todos tus demás dispositivos.",
     "mfaTitle": "Verificación en dos pasos",
     "mfaDesc": "Un código de una aplicación de autenticación, además de tu contraseña.",
     "languageTitle": "Idioma",

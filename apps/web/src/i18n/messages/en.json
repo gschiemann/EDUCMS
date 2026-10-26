@@ -452,7 +452,6 @@
     "subtitle": "Your profile, how you sign in, and your language.",
     "securityTitle": "Sign-in and security",
     "securityDesc": "Only you can change these, and they apply wherever you sign in.",
-    "passwordDesc": "Change your password. Every other device you are signed in on is signed out.",
     "mfaTitle": "Two-step sign-in",
     "mfaDesc": "A code from an authenticator app, on top of your password.",
     "languageTitle": "Language",
@@ -4333,7 +4332,7 @@
   },
   "changePassword": {
     "title": "Change password",
-    "subtitle": "Rotate your password and sign out every other device.",
+    "subtitle": "Change your password. Every other device you are signed in on is signed out.",
     "currentLabel": "Current password",
     "newLabel": "New password",
     "confirmLabel": "Confirm new password",

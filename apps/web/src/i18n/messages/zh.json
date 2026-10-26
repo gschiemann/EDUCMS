@@ -452,7 +452,6 @@
     "subtitle": "您的个人资料、登录方式和语言。",
     "securityTitle": "登录与安全",
     "securityDesc": "只有您可以更改这些设置，它们适用于您登录的所有地方。",
-    "passwordDesc": "更改您的密码。您登录的所有其他设备都将退出登录。",
     "mfaTitle": "两步验证登录",
     "mfaDesc": "除密码外，再输入身份验证器应用中的验证码。",
     "languageTitle": "语言",
