@@ -201,6 +201,12 @@ export function parseNativeRuntime(value: unknown): NativeRuntimeReport | null {
   }
 }
 
+/** The STORED report (`screens.native_runtime_report`, already an object), read with the same schema; null when malformed. */
+export function storedNativeRuntime(value: unknown): NativeRuntimeReport | null {
+  const result = runtimeSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
 /**
  * Has the power / wake state changed since the report the row already holds?
  * (2026-10-10, review P2 on 78a41305.) Every native heartbeat used to force a

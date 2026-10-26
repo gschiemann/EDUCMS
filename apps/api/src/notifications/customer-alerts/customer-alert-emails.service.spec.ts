@@ -100,7 +100,12 @@ function makeWorld() {
       }),
     },
     displaySchedule: { findMany: jest.fn(async () => displaySchedules) },
-    auditLog: { findMany: jest.fn(async ({ where }: any) => auditLogs.filter((a) => where.targetId.in.includes(a.targetId))) },
+    auditLog: {
+      // Newest first, like the real `orderBy: { createdAt: 'desc' }`.
+      findMany: jest.fn(async ({ where }: any) =>
+        auditLogs.filter((a) => where.targetId.in.includes(a.targetId)).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      ),
+    },
     screenEvent: { findMany: jest.fn(async ({ where }: any) => screenEvents.filter((e) => where.screenId.in.includes(e.screenId))) },
   };
   const clock = { now: T0 };
@@ -179,7 +184,7 @@ const comeBack = (w: World, id: string) =>
 function scanOf(w: World) {
   const offline = [...w.screens.values()]
     .filter((s) => s.tenantId && s.status !== 'REVOKED' && s.lastPingAt && w.clock.now - s.lastPingAt.getTime() > 5 * MIN)
-    .map((s) => ({ id: s.id, name: s.name, tenantId: s.tenantId, lastPingAt: s.lastPingAt }));
+    .map((s) => ({ id: s.id, name: s.name, tenantId: s.tenantId, lastPingAt: s.lastPingAt, screenGroupId: s.screenGroupId, faceOfScreenId: s.faceOfScreenId }));
   return { found: offline.length, notified: 0, infraEvents: 0, crossings: 0, recovered: 0, seeded: false, offline, truncated: false, infraEventTenantIds: [] };
 }
 
@@ -439,7 +444,9 @@ describe('false-positive rails', () => {
 
   it('an on/off schedule that switches 3 organisations off at the same minute is NOT a platform incident (and nobody is emailed)', async () => {
     const { svc, email, mailer } = build(w);
-    w.displaySchedules.push({ id: 'ds', screenId: null, screenGroupId: null, daysOfWeek: [1, 2, 3, 4, 5], onTime: '07:00', offTime: '09:00', timezone: 'America/Chicago', isActive: true });
+    for (const tenantId of ['lincoln', 'acme', 'globex']) {
+      w.displaySchedules.push({ id: `ds-${tenantId}`, tenantId, screenId: null, screenGroupId: null, daysOfWeek: [1, 2, 3, 4, 5], onTime: '07:00', offTime: '09:00', timezone: 'America/Chicago', isActive: true });
+    }
     for (const [id, t] of [['lobby', 'lincoln'], ['acme-tv', 'acme'], ['globex-tv', 'globex']]) {
       screen(w, id, t);
       goOffline(w, id, w.clock.now);
@@ -464,7 +471,7 @@ describe('false-positive rails', () => {
 
   it('on/off schedule OFF window: deferred', async () => {
     const { svc, email } = build(w);
-    w.displaySchedules.push({ id: 'ds', screenId: null, screenGroupId: null, daysOfWeek: [1, 2, 3, 4, 5], onTime: '07:00', offTime: '09:00', timezone: 'America/Chicago', isActive: true });
+    w.displaySchedules.push({ id: 'ds', tenantId: 'lincoln', screenId: null, screenGroupId: null, daysOfWeek: [1, 2, 3, 4, 5], onTime: '07:00', offTime: '09:00', timezone: 'America/Chicago', isActive: true });
     const res = await dropAndScan(svc);
     expect(res.deferred).toEqual({ 'display-schedule-off': 1 });
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
@@ -656,6 +663,7 @@ describe('2026-10-24 production replay — why the first day produced no email, 
   const LIVE = Date.parse('2026-10-23T18:05:00Z');
   const weekdaySchedule = {
     id: 'brookfield-weekday',
+    tenantId: 'acme',
     screenId: null,
     screenGroupId: 'grp-weekday',
     daysOfWeek: [1, 2, 3, 4, 5],
@@ -681,7 +689,7 @@ describe('2026-10-24 production replay — why the first day produced no email, 
     expect(w.sends).toHaveLength(0);
   });
 
-  it('G24: dark at 01:32 on a Saturday, inside its own schedule’s OFF window → due, deferred on every scan, never emailed', async () => {
+  it('G24: dark at 01:32 on a Saturday, inside its own schedule’s OFF window → due, deferred on every scan, never emailed that Saturday', async () => {
     const { svc, mailer } = build(w);
     w.displaySchedules.push(weekdaySchedule);
     const dark = Date.parse('2026-10-24T08:32:59Z');
@@ -731,5 +739,216 @@ describe('emergency record copy', () => {
     expect(p.subject).toBe('VenueOS: Lockdown alert sent to Lincoln Elementary');
     expect(p.body).toContain('A Lockdown alert was sent to Lincoln Elementary (12 screens).');
     expect(p.kind).toBe('ALERT_EMERGENCY');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// 2026-10-25 — the owner's two new rules, end to end (shadow: owner only).
+// ═════════════════════════════════════════════════════════════════════════
+
+const PDT = (iso: string) => Date.parse(`${iso}-07:00`);
+/** An on/off schedule row as production stores it (Brookfield's groups: 07:00–18:00 Los Angeles). */
+const onOff = (tenantId: string, screenGroupId: string, daysOfWeek: number[]) => ({
+  id: `ds-${screenGroupId}`,
+  tenantId,
+  screenId: null,
+  screenGroupId,
+  daysOfWeek,
+  onTime: '07:00',
+  offTime: '18:00',
+  timezone: 'America/Los_Angeles',
+  isActive: true,
+});
+const WEEKDAYS = [1, 2, 3, 4, 5];
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+/** Scan at an exact moment (the clock is set, not advanced). */
+async function scanAt(w: World, svc: CustomerAlertEmailsService, atMs: number) {
+  w.clock.now = atMs;
+  return svc.onOfflineScan(scanOf(w) as any);
+}
+
+describe('Rule 1 — "didn’t come back on at its scheduled on time" (2026-10-25)', () => {
+  beforeEach(() => {
+    delete process.env.CUSTOMER_ALERT_EMAILS_MODE; // shadow, as in production
+  });
+
+  it('G24 (production replay): dark Saturday 01:32 → nothing all weekend → ONE shadow email at Monday 07:16, never repeated', async () => {
+    const { svc, mailer } = build(w);
+    w.displaySchedules.push(onOff('acme', 'grp-weekday', WEEKDAYS));
+    const dark = PDT('2026-10-24T01:32:59');
+    w.clock.now = dark - 10 * MIN;
+    screen(w, 'g24', 'acme', { screenGroupId: 'grp-weekday' });
+    goOffline(w, 'g24', dark);
+    // Saturday, Sunday and early Monday, every 30 minutes: meant to be off.
+    for (let t = dark + 15 * MIN; t < PDT('2026-10-26T06:30:00'); t += 30 * MIN) await scanAt(w, svc, t);
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+
+    expect(await scanAt(w, svc, PDT('2026-10-26T07:14:00'))).toMatchObject({ offlineDue: 0 });
+    expect(await scanAt(w, svc, PDT('2026-10-26T07:15:00'))).toMatchObject({ offlineDue: 1, offlineMissedOnTime: 1, sends: 0 });
+    const res = await scanAt(w, svc, PDT('2026-10-26T07:16:00'));
+    expect(res).toMatchObject({ offlineMissedOnTime: 1, opened: 1, sends: 1 });
+    expect(res.deferred).toEqual({});
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+    const [subject, body, kind] = mailer.sendAlert.mock.calls[0] as unknown as [string, string, string];
+    expect(subject).toBe("[shadow] would have sent to 1 admins at Acme Corp: VenueOS: g24 at Acme Corp didn't come back on at 7:00 AM");
+    expect(body).toContain("g24 — didn't come back on at 7:00 AM, its scheduled on time");
+    expect(kind).toBe('ALERT_SHADOW_OFFLINE');
+    expect(w.incidents).toEqual([
+      expect.objectContaining({
+        screenId: 'g24',
+        kind: 'OFFLINE',
+        state: 'EMAILED',
+        reason: 'missed-on-time',
+        startedAt: new Date(PDT('2026-10-26T07:00:00')),
+      }),
+    ]);
+
+    // Still dark: not later on Monday, not at Tuesday's switch-on.
+    for (let t = PDT('2026-10-26T07:17:00'); t < PDT('2026-10-26T09:00:00'); t += 10 * MIN) await scanAt(w, svc, t);
+    for (let t = PDT('2026-10-27T07:10:00'); t < PDT('2026-10-27T07:40:00'); t += MIN) await scanAt(w, svc, t);
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('…and it comes back: "back online" once the recovery has held 5 minutes', async () => {
+    const { svc, mailer } = build(w);
+    w.displaySchedules.push(onOff('acme', 'grp-daily', EVERY_DAY));
+    w.clock.now = PDT('2026-10-25T22:00:00');
+    screen(w, 'lobby-tv', 'acme', { screenGroupId: 'grp-daily' });
+    goOffline(w, 'lobby-tv', PDT('2026-10-25T23:00:00'));
+    for (const hhmm of ['07:15', '07:16']) await scanAt(w, svc, PDT(`2026-10-26T${hhmm}:00`));
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+    for (let t = PDT('2026-10-26T07:40:00'); t <= PDT('2026-10-26T07:47:00'); t += MIN) {
+      w.clock.now = t;
+      comeBack(w, 'lobby-tv');
+      await scanAt(w, svc, t);
+    }
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(2);
+    expect((mailer.sendAlert.mock.calls[1] as unknown as string[])[0]).toBe(
+      '[shadow] would have sent to 1 admins at Acme Corp: VenueOS: lobby-tv is back online at Acme Corp',
+    );
+  });
+
+  it('a screen dark for a WEEK in a scheduled group → never, morning after morning', async () => {
+    const { svc, mailer } = build(w);
+    w.displaySchedules.push(onOff('acme', 'grp-daily', EVERY_DAY));
+    w.clock.now = PDT('2026-10-19T09:00:00');
+    screen(w, 'old-tv', 'acme', { screenGroupId: 'grp-daily' });
+    goOffline(w, 'old-tv', PDT('2026-10-19T10:00:00'));
+    let res!: CustomerAlertTickResult;
+    for (const day of ['2026-10-26', '2026-10-27', '2026-10-28']) {
+      for (let t = PDT(`${day}T06:50:00`); t < PDT(`${day}T07:40:00`); t += MIN) res = await scanAt(w, svc, t);
+    }
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ offlineDue: 0, offlineMissedOnTime: 0, offlineTooOld: 1 });
+  });
+
+  it('three organisations each with ONE screen that did not come on at 7:00 → three emails, not a "platform incident"', async () => {
+    const { svc, mailer } = build(w);
+    for (const [t, g] of [['acme', 'grp-a'], ['globex', 'grp-g'], ['initech', 'grp-i']]) {
+      w.displaySchedules.push(onOff(t, g, EVERY_DAY));
+      w.clock.now = PDT('2026-10-25T20:00:00');
+      screen(w, `${t}-tv`, t, { screenGroupId: g });
+      goOffline(w, `${t}-tv`, PDT('2026-10-26T02:00:00'));
+    }
+    await scanAt(w, svc, PDT('2026-10-26T07:15:00'));
+    const res = await scanAt(w, svc, PDT('2026-10-26T07:16:00'));
+    expect(res.platformIncident).toBe(false);
+    expect(res.sends).toBe(3);
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(3);
+  });
+
+  it('…but if always-on screens really DROPPED at that minute too, it is still our incident (silenced, one owner alert)', async () => {
+    const { svc, mailer } = build(w);
+    for (const [t, g] of [['acme', 'grp-a'], ['globex', 'grp-g']]) {
+      w.displaySchedules.push(onOff(t, g, EVERY_DAY));
+      w.clock.now = PDT('2026-10-25T20:00:00');
+      screen(w, `${t}-tv`, t, { screenGroupId: g });
+      goOffline(w, `${t}-tv`, PDT('2026-10-26T02:00:00'));
+    }
+    w.clock.now = PDT('2026-10-26T06:00:00');
+    screen(w, 'initech-tv', 'initech'); // no schedule: it really went quiet at 06:59
+    goOffline(w, 'initech-tv', PDT('2026-10-26T06:59:00'));
+    await scanAt(w, svc, PDT('2026-10-26T07:15:00'));
+    const res = await scanAt(w, svc, PDT('2026-10-26T07:16:00'));
+    expect(res.platformIncident).toBe(true);
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+    expect((mailer.sendAlert.mock.calls[0] as unknown as string[])[0]).toMatch(/Possible platform incident/);
+  });
+});
+
+describe('Rule 2 — a remote power-off excuses only while the screen is really off by it (2026-10-25)', () => {
+  beforeEach(() => {
+    delete process.env.CUSTOMER_ALERT_EMAILS_MODE;
+  });
+  /** An audit row exactly as `DisplayService` writes it. */
+  const control = (targetId: string, requested: string, at: string, outcome = 'dispatched') =>
+    w.auditLogs.push({
+      targetId,
+      action: 'SCREEN_DISPLAY_CONTROL',
+      details: JSON.stringify({ requested, outcome, delivered: outcome === 'dispatched', actionId: `${targetId}-${at}` }),
+      createdAt: new Date(at),
+    });
+
+  it('M43 + L55VEC (production replay): their 10-11/12 POWER_OFF rows, awake and painting since → NOT excused; a drop is emailed', async () => {
+    const { svc, mailer } = build(w);
+    w.displaySchedules.push(onOff('acme', 'grp-m43', EVERY_DAY), onOff('acme', 'grp-l55', EVERY_DAY));
+    w.clock.now = PDT('2026-10-22T09:00:00');
+    screen(w, 'M43', 'acme', { screenGroupId: 'grp-m43' });
+    screen(w, 'L55VEC', 'acme', { screenGroupId: 'grp-l55' });
+    control('M43', 'POWER_OFF', '2026-10-11T18:31:00Z');
+    control('L55VEC', 'POWER_OFF', '2026-10-11T18:14:00Z', 'refused');
+    for (const at of ['2026-10-11T18:23:00Z', '2026-10-11T18:58:00Z', '2026-10-12T00:08:00Z', '2026-10-12T00:38:00Z']) control('L55VEC', 'POWER_OFF', at);
+
+    const tenants = await svc.loadTenants(['acme']);
+    const facts = await svc.loadFacts([{ screenId: 'M43', tenantId: 'acme' }, { screenId: 'L55VEC', tenantId: 'acme' }], tenants, w.clock.now);
+    expect(facts.get('M43')!.facts.lastPowerCommand).toBeNull();
+    expect(facts.get('L55VEC')!.facts.lastPowerCommand).toBeNull();
+
+    // Both drop at 10:00 on a Thursday (schedule ON): the owner hears about both.
+    goOffline(w, 'M43', PDT('2026-10-22T10:00:00'));
+    goOffline(w, 'L55VEC', PDT('2026-10-22T10:00:00'));
+    await scanAt(w, svc, PDT('2026-10-22T10:15:00'));
+    const res = await scanAt(w, svc, PDT('2026-10-22T10:16:00'));
+    expect(res.deferred).toEqual({});
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+    expect((mailer.sendAlert.mock.calls[0] as unknown as string[])[0]).toBe(
+      '[shadow] would have sent to 1 admins at Acme Corp: VenueOS: 2 screens offline at Acme Corp',
+    );
+  });
+
+  it('a REFUSED power-off never excuses', async () => {
+    const { svc, mailer } = build(w);
+    w.clock.now = PDT('2026-10-22T09:00:00');
+    screen(w, 'lobby', 'lincoln');
+    control('lobby', 'POWER_OFF', new Date(PDT('2026-10-22T09:30:00')).toISOString(), 'refused');
+    goOffline(w, 'lobby', PDT('2026-10-22T09:31:00'));
+    await scanAt(w, svc, PDT('2026-10-22T09:46:00'));
+    const res = await scanAt(w, svc, PDT('2026-10-22T09:47:00'));
+    expect(res.deferred).toEqual({});
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('a real, ACCEPTED power-off with no wake since → still excused (the panel’s own record says it is dark)', async () => {
+    const { svc, mailer } = build(w);
+    w.clock.now = PDT('2026-10-22T09:00:00');
+    const at = PDT('2026-10-22T09:30:00');
+    screen(w, 'lobby', 'lincoln', {
+      nativeRuntimeReportAt: new Date(at + 20 * MIN),
+      nativeRuntimeReport: {
+        schema: 1,
+        interactive: true,
+        foreground: true,
+        standbySinceMs: null,
+        elapsedRealtimeMs: 1000,
+        powerOnAck: null,
+        sleep: { blank: 'vendor-backlight', last: { m: 'vendor-backlight', o: 'off', at: at + 4_000 } },
+      },
+    });
+    control('lobby', 'POWER_OFF', new Date(at).toISOString());
+    goOffline(w, 'lobby', at + 40 * MIN); // the mains went off later that evening
+    await scanAt(w, svc, at + 55 * MIN);
+    const res = await scanAt(w, svc, at + 56 * MIN);
+    expect(res.deferred).toEqual({ 'remote-power-off': 1 });
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
   });
 });

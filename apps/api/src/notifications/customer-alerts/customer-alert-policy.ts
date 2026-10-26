@@ -14,8 +14,8 @@
  *   SILENT — this incident is never emailed, and so never gets a recovery
  *            note either (a flapping screen, a platform incident's victims).
  */
-import { nativeReportsAsleep } from '../../screens/native-runtime';
-import { desiredOnAt, type OnWindow } from './schedule-windows';
+import { nativeReportsAsleep, storedNativeRuntime } from '../../screens/native-runtime';
+import { desiredOnAt, lastOnTransitionAtOrBefore, type OnWindow } from './schedule-windows';
 import type { RenderTrustGrade } from './render-trust-grade';
 
 // ─── Mode ─────────────────────────────────────────────────────────────────
@@ -81,6 +81,14 @@ export const ALERT_RULES = {
   PLATFORM_QUIET_MS: 30 * MIN,
   /** Problem + recovery emails per organisation per rolling hour, then one digest. */
   ORG_HOURLY_LIMIT: 6,
+  /** A remote power-off excuses a screen for at most this long (the audit read's own window). */
+  POWER_OFF_MAX_MS: 14 * 24 * 60 * MIN,
+  /** The page's proof must come this long after a power-off to say the screen never went dark. */
+  POWER_RENDER_GRACE_MS: 3 * MIN,
+  /** A native report this long after a power-off has had time to say what the panel did. */
+  POWER_NATIVE_APPLY_MS: 2 * MIN,
+  /** Tolerance between the panel's own clock and ours when tying its blank record to our command. */
+  POWER_CLOCK_SLACK_MS: 10 * MIN,
 } as const;
 
 export function orgHourlyLimit(env: NodeJS.ProcessEnv = process.env): number {
@@ -126,7 +134,11 @@ export interface ScreenFacts {
   displayWindows: readonly OnWindow[];
   /** The tenant's player-update window, when configured. */
   otaWindow: OnWindow | null;
-  /** Latest remote power command for this screen (POWER_OFF / BLANK = 'off'; POWER_ON / WAKE = 'on'). */
+  /**
+   * Latest remote power command for this screen that went out (POWER_OFF /
+   * BLANK = 'off'; POWER_ON / WAKE = 'on') — and an 'off' only while it still
+   * holds on the glass (`effectivePowerCommand`, 2026-10-25).
+   */
   lastPowerCommand: { state: 'off' | 'on'; at: Date } | null;
   /** Newest reboot / update / relaunch evidence (ledger rows, remote REBOOT). */
   lastMaintenanceAt: Date | null;
@@ -157,23 +169,42 @@ function sampleInstants(nowMs: number, problemStartMs: number): number[] {
 }
 
 /**
+ * The shape of a problem whose clock does not start at the last check-in
+ * (2026-10-25). `missed-on-time`: the screen went dark while its on/off
+ * schedule had it off and did not check in when the schedule switched it on
+ * again (`missedOnTime`) — `problemStartMs` is that switch-on moment.
+ */
+export type ProblemShape = 'missed-on-time';
+
+/**
  * Why this screen's problem is (probably) INTENDED and must not be emailed
  * now — or null. Never decides "send"; only "not now".
+ *
+ * A `missed-on-time` problem is judged from the switch-on moment: "unused
+ * > 24 h" does not apply (being alive after the schedule's previous
+ * switch-on, which `missedOnTime` requires, is its freshness test — a weekend
+ * off is ~60 h), Android's standby from before the switch-on does not excuse
+ * it (the schedule's switch-on overrides a remote or standby sleep — owner
+ * rule 2026-10-03), and only instants since the switch-on are asked whether
+ * the screen was meant to be off.
  */
 export function intendedDowntime(
   f: ScreenFacts,
   kind: ProblemKind,
   problemStartMs: number,
   nowMs: number,
+  shape?: ProblemShape,
 ): DeferReason | null {
+  const missedOn = shape === 'missed-on-time' && kind === 'OFFLINE';
   if (!f.tenantId || f.status === 'REVOKED' || f.status === 'PENDING') return 'unpaired';
-  if (!f.lastPingAt || nowMs - f.lastPingAt.getTime() > ALERT_RULES.UNUSED_MS) return 'not-recently-used';
+  if (!f.lastPingAt) return 'not-recently-used';
+  if (!missedOn && nowMs - f.lastPingAt.getTime() > ALERT_RULES.UNUSED_MS) return 'not-recently-used';
   if (f.pairedAt && problemStartMs - f.pairedAt.getTime() < ALERT_RULES.NEW_INSTALL_MS) return 'just-installed';
   if (f.lastPowerCommand?.state === 'off') return 'remote-power-off';
 
   // Standby / panel off. OFFLINE: what the Android side said in its LAST
   // report before the screen went quiet. NO_CONTENT: what it says now.
-  if (f.nativeRuntimeReportAt) {
+  if (f.nativeRuntimeReportAt && !missedOn) {
     const at = f.nativeRuntimeReportAt.getTime();
     if (kind === 'OFFLINE') {
       const nearSilence = !f.lastPingAt || at >= f.lastPingAt.getTime() - 5 * MIN;
@@ -183,7 +214,7 @@ export function intendedDowntime(
     }
   }
 
-  const samples = sampleInstants(nowMs, problemStartMs);
+  const samples = sampleInstants(nowMs, problemStartMs).filter((t) => !missedOn || t >= problemStartMs);
   if (f.displayWindows.length > 0 && samples.some((t) => desiredOnAt(f.displayWindows, t) === false)) {
     return 'display-schedule-off';
   }
@@ -199,6 +230,48 @@ export function intendedDowntime(
   // A page that just booted has not posted its first proof yet.
   if (kind === 'NO_CONTENT' && recent(f.credentialEpochRotatedAt)) return 'maintenance';
   return null;
+}
+
+// ─── "Didn't come back on at its scheduled on time" (2026-10-25) ──────────
+
+export interface MissedOnTime {
+  /** When the schedule switched the screen on — the problem's start. */
+  onAtMs: number;
+  /** The zone of the window that opened, for "7:00 AM" in the email. */
+  timeZone: string;
+  /** The schedule's previous switch-on; the screen was last seen after it. */
+  previousOnAtMs: number;
+}
+
+/**
+ * Owner, 2026-10-25: a screen that went dark while its on/off schedule had it
+ * OFF, and has not checked in since the schedule switched it back ON, is an
+ * outage — from that switch-on moment, not from its last check-in. Without
+ * this a screen that died at 1 AM on a Saturday was never emailed: inside the
+ * OFF window it was "meant to be off", and by Monday's switch-on it was
+ * silent far past the 6-hour window.
+ *
+ * Only for a screen last seen AFTER the schedule's previous switch-on (inside
+ * the latest OFF period, or the ON period before it): a screen dark for days
+ * or weeks never emails each morning. Null when the screen checked in since
+ * the switch-on, when the schedule has switched it off again since, or when
+ * either switch-on cannot be found. Same `desiredOnAt` evaluator and the
+ * schedule's own zone as `display-schedule-off`. The 15-minute due time, the
+ * 6-hour cap (from `onAtMs`), the two scans and every other rail stay with
+ * the caller, unchanged.
+ */
+export function missedOnTime(
+  windows: readonly OnWindow[],
+  lastPingAtMs: number | null,
+  nowMs: number,
+): MissedOnTime | null {
+  if (windows.length === 0 || lastPingAtMs === null) return null;
+  const on = lastOnTransitionAtOrBefore(windows, nowMs);
+  if (!on || on.atMs <= lastPingAtMs) return null;
+  if (desiredOnAt(windows, nowMs) !== true) return null;
+  const previous = lastOnTransitionAtOrBefore(windows, on.atMs - 1);
+  if (!previous || lastPingAtMs < previous.atMs) return null;
+  return { onAtMs: on.atMs, timeZone: on.timeZone, previousOnAtMs: previous.atMs };
 }
 
 // ─── "Online but not showing content" ─────────────────────────────────────
@@ -235,6 +308,11 @@ export interface ProblemEvent {
   screenId: string;
   orgId: string;
   startedAtMs: number;
+  /**
+   * 2026-10-25: the start is a schedule's switch-on moment (`missedOnTime`),
+   * not an observed drop. Many organisations share "on at 7:00" in one zone.
+   */
+  scheduled?: boolean;
 }
 
 /**
@@ -244,6 +322,13 @@ export interface ProblemEvent {
  *   - ≥ 2 organisations and ≥ PLATFORM_FLEET_SHARE of the recently-active fleet.
  * A single organisation's outage — however large — is THEIR incident (a site's
  * internet or power) and is never classified as ours.
+ *
+ * And it needs at least one screen that actually DROPPED in the window
+ * (2026-10-25): screens that merely did not come on at the same scheduled
+ * minute share a clock setting, not a cause, so they cannot make an incident
+ * on their own — three districts each with one dead screen at 7:00 would
+ * otherwise read as ours and silence all three. Our own outage at that
+ * minute drops the always-on screens too, and they still make it one.
  */
 export function platformClusterAround(
   startedAtMs: number,
@@ -256,7 +341,8 @@ export function platformClusterAround(
   const orgs = new Set(near.map((e) => e.orgId)).size;
   const share = recentlyActiveFleet > 0 ? screens / recentlyActiveFleet : 0;
   const incident =
-    orgs >= ALERT_RULES.PLATFORM_MIN_ORGS || (orgs >= 2 && share >= ALERT_RULES.PLATFORM_FLEET_SHARE);
+    near.some((e) => !e.scheduled) &&
+    (orgs >= ALERT_RULES.PLATFORM_MIN_ORGS || (orgs >= 2 && share >= ALERT_RULES.PLATFORM_FLEET_SHARE));
   return { incident, orgs, screens };
 }
 
@@ -308,23 +394,111 @@ export function isFlapping(lastEmailedAt: Date | null | undefined, nowMs: number
 
 // ─── Remote power command (from the display-control audit rows) ───────────
 
+/** A remote power command as the audit trail recorded it. `verb` is the operator's own (BLANK is the page's black overlay). */
+export type PowerCommand = { state: 'off' | 'on'; at: Date; verb?: 'POWER_OFF' | 'BLANK' | 'POWER_ON' | 'WAKE' };
+
 /**
  * The newest power-relevant command among a screen's `SCREEN_DISPLAY_CONTROL`
- * audit rows (`details.requested`). POWER_OFF / BLANK → off; POWER_ON / WAKE
- * → on. Rows are newest-first.
+ * audit rows (`details.requested`) that actually WENT OUT. POWER_OFF / BLANK →
+ * off; POWER_ON / WAKE → on. Rows are newest-first.
+ *
+ * 2026-10-25 (owner): a command that never reached the screen changes nothing
+ * on it, so it is skipped and the one before it still stands — `outcome`
+ * `refused` (the server said no) and `undelivered` (no live channel, or the
+ * publish failed: there is no backstop for an immediate action), and a
+ * `dispatched` row whose `actionId` a later `undelivered` correction row
+ * voids. A row with no `outcome` predates it and counts as sent.
  */
 export function lastPowerCommandOf(
   rows: ReadonlyArray<{ details: string | null; createdAt: Date }>,
-): { state: 'off' | 'on'; at: Date } | null {
-  for (const r of rows) {
-    let requested: unknown;
+): PowerCommand | null {
+  const parsed = rows.map((r) => {
     try {
-      requested = r.details ? (JSON.parse(r.details) as { requested?: unknown }).requested : undefined;
+      const d = r.details ? (JSON.parse(r.details) as { requested?: unknown; outcome?: unknown; actionId?: unknown }) : null;
+      return d && typeof d === 'object' ? { d, at: r.createdAt } : null;
     } catch {
-      continue;
+      return null;
     }
-    if (requested === 'POWER_OFF' || requested === 'BLANK') return { state: 'off', at: r.createdAt };
-    if (requested === 'POWER_ON' || requested === 'WAKE') return { state: 'on', at: r.createdAt };
+  });
+  const voided = new Set(
+    parsed.filter((p) => p?.d.outcome === 'undelivered' && typeof p.d.actionId === 'string').map((p) => p!.d.actionId as string),
+  );
+  for (const p of parsed) {
+    if (!p) continue;
+    const { requested, outcome, actionId } = p.d;
+    if (outcome !== undefined && outcome !== 'dispatched') continue;
+    if (typeof actionId === 'string' && voided.has(actionId)) continue;
+    if (requested === 'POWER_OFF' || requested === 'BLANK') return { state: 'off', at: p.at, verb: requested };
+    if (requested === 'POWER_ON' || requested === 'WAKE') return { state: 'on', at: p.at, verb: requested };
   }
   return null;
+}
+
+/** What says whether a power-off still holds on the glass. */
+export interface PowerEvidence {
+  nowMs: number;
+  displayWindows: readonly OnWindow[];
+  lastRenderedAt: Date | null;
+  credentialEpochRotatedAt: Date | null;
+  nativeRuntimeReport: unknown;
+  nativeRuntimeReportAt: Date | null;
+}
+
+/** Last-blank outcomes that mean the panel went (or is going) dark. */
+const BLANK_TOOK = new Set(['off', 'dream', 'black', 'pending', 'unknown']);
+/** …and the ones that mean it did not. */
+const BLANK_FAILED = new Set(['failed', 'kept-on', 'on']);
+
+/**
+ * Owner, 2026-10-25: a remote power-off excuses a screen only while the screen
+ * is REALLY off by that command. Returns the command when it still holds (or
+ * is an "on"), null when it no longer does — so `ScreenFacts.lastPowerCommand`
+ * (and every reader of `state === 'off'`: the alert emails, the post-restart
+ * fleet check, the dashboard's resting bucket) agrees. It ends at the first of:
+ *   - 14 days (the upper bound — also the audit read's own window);
+ *   - an on/off schedule switch-on after it (the schedule overrides a remote
+ *     power-off at each switch-on — owner rule 2026-10-03);
+ *   - a BLANK (the page's black overlay): a page boot after it — the overlay
+ *     lives for one page session and a reload fails bright;
+ *   - a POWER_OFF, by the Android side's own report received since it: its
+ *     last blank did not take, or it woke after that blank (any wake but an
+ *     emergency's, which re-blanks after the all-clear), or it is awake with
+ *     no blank recorded since the command. While its last blank still holds,
+ *     or Android is asleep, nothing else can end it — the vendor backlight
+ *     keeps the page painting in the dark, so page proof is not evidence then;
+ *   - with no native word since it: the page's own proof long after it — a
+ *     power-off that worked stops the page painting.
+ * Device clocks only ever compare with each other, except tying the last blank
+ * to this command, which tolerates POWER_CLOCK_SLACK_MS of skew.
+ */
+export function effectivePowerCommand(cmd: PowerCommand | null, e: PowerEvidence): PowerCommand | null {
+  if (!cmd || cmd.state !== 'off') return cmd;
+  const at = cmd.at.getTime();
+  if (e.nowMs - at > ALERT_RULES.POWER_OFF_MAX_MS) return null;
+  const on = lastOnTransitionAtOrBefore(e.displayWindows, e.nowMs);
+  if (on && on.atMs > at) return null;
+
+  if (cmd.verb === 'BLANK') {
+    const boot = e.credentialEpochRotatedAt?.getTime();
+    return boot !== undefined && boot > at + MIN ? null : cmd;
+  }
+
+  const report = e.nativeRuntimeReportAt && e.nativeRuntimeReportAt.getTime() > at + ALERT_RULES.POWER_NATIVE_APPLY_MS
+    ? storedNativeRuntime(e.nativeRuntimeReport)
+    : null;
+  if (report) {
+    const last = report.sleep?.last;
+    const wake = report.wake;
+    const wokeAfterLast = !!wake && (!last || wake.reqAt > last.at);
+    if (last && BLANK_TOOK.has(last.o) && !wokeAfterLast) return cmd;
+    if (report.interactive === false) return cmd;
+    const lastIsOurs = !!last && last.at >= at - ALERT_RULES.POWER_CLOCK_SLACK_MS;
+    if (lastIsOurs && BLANK_FAILED.has(last.o) && !wokeAfterLast) return null;
+    if (lastIsOurs && wokeAfterLast) return wake!.src === 'emergency' ? cmd : null;
+    if (!lastIsOurs && wake && wake.src !== 'emergency' && wake.reqAt >= at + ALERT_RULES.POWER_CLOCK_SLACK_MS) return null;
+    if (!lastIsOurs && report.interactive === true) return null;
+  }
+  const rendered = e.lastRenderedAt?.getTime();
+  if (!report && rendered !== undefined && rendered > at + ALERT_RULES.POWER_RENDER_GRACE_MS) return null;
+  return cmd;
 }
