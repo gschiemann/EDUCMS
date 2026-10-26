@@ -3416,6 +3416,41 @@ export class ScreensController {
   // (screens/events/screen-events.ts). Without `hours` the timeline answers
   // exactly as before: ledger rows are left out of it, so they can never
   // crowd its newest-N window (the History tab reads its refresh ack there).
+  // GET /screens/:id/usb-events (2026-10-26, M43 on site: "inserted a USB …
+  // nothing happens"). The newest USB-drive states this screen reported —
+  // DETECTED, NEEDS_ACCESS, NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED (older
+  // APKs: ACCEPTED, REJECTED_*) — for the drawer's Technical details. Before
+  // 1.1.55 a screen reported only after verification, so "nothing happened"
+  // left no row at all. Admins only; ownership is proven against the SCREEN
+  // row exactly like `:id/events`; read-only and never polled.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get(':id/usb-events')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async screenUsbEvents(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const rootId = req.user.tenantId as string;
+    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 5, 1), 20);
+    const tenantIds = await this.readableTenantIds(rootId);
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: tenantIds } },
+      select: { id: true, tenantId: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    const events = await this.prisma.client.usbIngestEvent.findMany({
+      // tenantId first: it is the table's index ([tenantId, createdAt]). Never
+      // null here — the screen matched a readable tenant above.
+      where: { tenantId: screen.tenantId as string, screenId: id },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, outcome: true, reason: true, bundleVersion: true, assetCount: true, createdAt: true },
+    });
+    return { events };
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get(':id/events')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

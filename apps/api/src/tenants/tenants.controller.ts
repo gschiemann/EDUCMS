@@ -34,6 +34,17 @@ import { assertSupportReach, currentSupportAccessFrame } from '../support-access
 /** Transaction attempts for a rename that loses a race for its new URL. */
 const ORGANIZATION_RENAME_ATTEMPTS = 3;
 
+/** A USB ingest outcome: a short UPPER_SNAKE code (DETECTED, NEEDS_ACCESS, REJECTED_HASH …). */
+export const USB_INGEST_OUTCOME = /^[A-Z][A-Z_]{0,39}$/;
+
+/** Device-supplied text for the USB ingest trail: a string, trimmed and capped, or null. */
+export function clipText(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  if (!t) return null;
+  return t.length <= max ? t : t.slice(0, max);
+}
+
 /**
  * A LOCATION's time zone as the dashboard shows it (2026-10-24): the stored
  * setting when there is one, else the automatic zone from the location's own
@@ -1936,6 +1947,15 @@ export class TenantsController {
     if (!screenId || !body.outcome) {
       throw new HttpException({ code: 'TENANT_USB_INGEST_FIELDS_REQUIRED', message: 'screenId and outcome required' }, HttpStatus.BAD_REQUEST);
     }
+    // 2026-10-26 — the APK now reports every state a stick reaches (DETECTED,
+    // NEEDS_ACCESS, NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED; older APKs
+    // ACCEPTED / REJECTED_*). The column stays free text — the vocabulary
+    // grows without a migration — but a device's words land in a forensic
+    // table, so an outcome must be an UPPER_SNAKE code and every text field is
+    // capped (the APK caps its reason at 300 too).
+    if (typeof body.outcome !== 'string' || !USB_INGEST_OUTCOME.test(body.outcome)) {
+      throw new HttpException({ code: 'TENANT_USB_INGEST_OUTCOME_INVALID', message: 'outcome must be an UPPER_SNAKE code' }, HttpStatus.BAD_REQUEST);
+    }
 
     // ── DT-07 (2026-08-03) — the screen must be the CALLER, not a path param.
     // This route has no @RequireRoles, so RbacGuard short-circuits and a
@@ -2024,13 +2044,14 @@ export class TenantsController {
       data: {
         tenantId: screen.tenantId,           // trusted, derived from Screen lookup
         screenId,
-        deviceSerial: body.deviceSerial || null,
-        bundleVersion: body.bundleVersion || null,
-        assetCount: body.assetCount || 0,
-        totalBytes: BigInt(body.totalBytes || '0'),
+        deviceSerial: clipText(body.deviceSerial, 128),
+        bundleVersion: clipText(body.bundleVersion, 64),
+        assetCount: Number.isInteger(body.assetCount) && (body.assetCount as number) >= 0 ? Math.min(body.assetCount as number, 1_000_000) : 0,
+        // A non-numeric string used to throw inside BigInt() and 500 the report.
+        totalBytes: BigInt(typeof body.totalBytes === 'string' && /^\d{1,18}$/.test(body.totalBytes) ? body.totalBytes : '0'),
         emergencyAssets: !!body.emergencyAssets,
         outcome: body.outcome,
-        reason: body.reason || null,
+        reason: clipText(body.reason, 300),
         operatorPin: pinHash,                // SHA-256 hex of the raw PIN
       },
     });
