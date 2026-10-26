@@ -80,6 +80,12 @@ export interface CcChildTenant {
   name: string;
   slug: string;
   createdAt: string;
+  /** 2026-10-24 — address + the location's time zone (setting, or automatic from the address). Optional: an older API omits them. */
+  address?: string | null;
+  timezone?: string | null;
+  timeZone?: string | null;
+  timeZoneSource?: 'location' | 'auto' | 'device';
+  timeZoneAuto?: string | null;
   _count: { screens: number; users: number };
 }
 export interface CcChildrenResponse {

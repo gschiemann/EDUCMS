@@ -246,6 +246,14 @@ model Tenant {
   address                         String?            @map("address")
   latitude                        Float?             @map("latitude")
   longitude                       Float?             @map("longitude")
+  // 2026-10-24 — the LOCATION's time zone, as an operator setting (IANA,
+  // e.g. "America/Los_Angeles"). NULL = automatic: the zone is derived at
+  // read time from the coordinates above (apps/api/src/screens/
+  // screen-time-zone.ts, offline lookup), so a location with an address
+  // needs no setting at all. Per screen: Screen.timezone wins over this,
+  // this wins over the automatic zone, and the device's own clock setting
+  // is only the last resort. Never written by a device.
+  timezone                        String?            @map("timezone")
   // BYOK AI integration (2026-05-04) — operator's own provider
   // credentials, so cost shifts to them. ai_provider null means use
   // platform default key (process.env.ANTHROPIC_API_KEY) — current
@@ -1390,6 +1398,19 @@ model Screen {
   address                             String?
   latitude                            Float?
   longitude                           Float?
+  // 2026-10-24 — per-screen time zone OVERRIDE (IANA). NULL = inherit:
+  // the location's setting, else the automatic zone from the nearest
+  // coordinates (screen > group > location), else the device's own zone.
+  // Carried in the manifest as `timeZone` (static, hashed) and used by the
+  // player as the default for every clock/date widget and the update window.
+  timezone                            String?
+  // 2026-10-24 — TELEMETRY: the zone the device itself is set to, as the
+  // player reports it on register (`Intl.DateTimeFormat().resolvedOptions()
+  // .timeZone`). Read by the dashboard to say "the screen itself is set to
+  // Asia/Shanghai" next to the effective zone. Never read by any manifest
+  // branch — it is in SCREEN_TELEMETRY_ONLY_FIELDS (manifest-hot-cache.ts),
+  // so a boot-wave re-register cannot bust the fleet's manifest cache.
+  deviceTimeZone                      String?      @map("device_time_zone")
   photoUrl                            String?      @map("photo_url")
   // Sprint 8b — indoor positioning. Operator drops the screen pin on
   // a FloorPlan; floorX / floorY are px coords on the plan image.

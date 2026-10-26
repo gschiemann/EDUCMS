@@ -1472,8 +1472,11 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
   const color = config.color || '#1e293b';
   const bg = config.bgColor || 'transparent';
 
-  // Show timezone abbreviation if explicitly set
-  const tzLabel = tz ? fmt({ timeZoneName: 'short' }).split(', ').pop() : null;
+  // Show timezone abbreviation if explicitly set. A zone the PLAYER filled in
+  // as the screen's default (2026-10-24, `_timeZoneDefaulted` — see
+  // app/player/screenTimeZone.ts) is applied to the time but not labelled, so
+  // a clock that never showed "PDT" before keeps its look.
+  const tzLabel = tz && config._timeZoneDefaulted !== true ? fmt({ timeZoneName: 'short' }).split(', ').pop() : null;
 
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center overflow-hidden" style={{ backgroundColor: bg }}>

@@ -482,6 +482,13 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'browserInfo',
     'userAgent',
     'ipAddress',
+    // 2026-10-24 — the zone the DEVICE says it is set to (register telemetry,
+    // `Intl.DateTimeFormat().resolvedOptions().timeZone`). Read only by the
+    // dashboard ("the screen itself is set to Asia/Shanghai"); the manifest's
+    // `timeZone` is built from `Screen.timezone` / coordinates / the tenant's
+    // setting and never from this column. Off this list a boot wave of
+    // re-registers would clear every cached manifest process-wide.
+    'deviceTimeZone',
     // ── Player/Manager APK crash report (2026-08-03) ─────────────────────
     // `POST /screens/status/:fingerprint/crash-report` writes these five and
     // nothing else. A single crash-LOOPING kiosk can hit that endpoint up to

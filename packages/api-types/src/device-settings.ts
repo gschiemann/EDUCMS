@@ -83,6 +83,11 @@ export const DEVICE_SETTING_WHY_CODES = [
   'needs-secret',
   'already-set',
   'unverified',
+  // 2026-10-24 — "never fight the vendor app": a value VenueOS applied that
+  // something else on the screen (Goodview's own app, a person at the panel)
+  // has since changed. Recorded, never re-applied; the row keeps saying
+  // `applied` and the observed value sits beside it.
+  'changed-elsewhere',
   'wifi-rejected',
   'wifi-limit',
   'wifi-invalid',
