@@ -1,6 +1,7 @@
 package com.educms.player.usb
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -55,6 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * path: the card never opens over an alert and leaves the moment one starts;
  * the page's overlay leaves emergency manifests alone.
  */
+@SuppressLint("StaticFieldLeak") // holds the APPLICATION context only (start() takes applicationContext)
 object UsbAutoImport {
     private const val TAG = "UsbAutoImport"
     private const val PREFS = "venueos_usb"
@@ -67,10 +69,12 @@ object UsbAutoImport {
     private const val SCAN_EVERY_MS = 60_000L
     private const val KEY_REFRESH_MS = 6 * 60 * 60_000L
     private const val PROGRESS_EVERY_MS = 250L
+    private const val FIRST_SCAN_DELAY_MS = 8_000L
 
     /** Where the card is drawn. Main thread only. */
     interface Host {
-        fun show(state: UsbCardState)
+        /** True when [state] is on the glass now (false: an alert is held, or no window to draw in). */
+        fun show(state: UsbCardState): Boolean
         fun driveRemoved()
     }
 
@@ -82,6 +86,9 @@ object UsbAutoImport {
 
     private val started = AtomicBoolean(false)
     private val mountSignal = AtomicBoolean(false)
+
+    // The APPLICATION context (start() takes applicationContext), never an Activity.
+    @SuppressLint("StaticFieldLeak")
     private lateinit var app: Context
     private lateinit var worker: Handler
     private val reporter = Executors.newSingleThreadExecutor { r -> Thread(r, "venueos-usb-report").apply { isDaemon = true } }
@@ -136,12 +143,15 @@ object UsbAutoImport {
                 app.registerReceiver(receiver, usb)
             }
         }.onFailure { PlayerLogger.w(TAG, "receiver registration failed: ${it.message}") }
-        worker.post(object : Runnable {
+        // The first scan waits for the player's window: at process start the
+        // Activity is not up yet, and a card drawn into nothing says nothing.
+        // (MainActivity.onResume asks for a scan one second after it attaches.)
+        worker.postDelayed(object : Runnable {
             override fun run() {
                 runCatching { scan(null) }.onFailure { PlayerLogger.w(TAG, "scan failed: ${it.message}") }
                 worker.postDelayed(this, SCAN_EVERY_MS)
             }
-        })
+        }, FIRST_SCAN_DELAY_MS)
     }
 
     fun scanSoon(delayMs: Long = 0) {
@@ -426,8 +436,12 @@ object UsbAutoImport {
         val shownBefore = memo?.takeIf { it.substringBeforeLast('|') == drive }
             ?.substringAfterLast('|')?.let { s -> runCatching { UsbStage.valueOf(s) }.getOrNull() }
         if (!UsbImportPolicy.shows(trigger, state.stage, shownBefore)) return
-        if (!state.stage.working) prefs.edit().putString(KEY_SHOWN, "$drive|${state.stage.name}").apply()
-        main.post { runCatching { host?.show(state) } }
+        main.post {
+            val shown = runCatching { host?.show(state) ?: false }.getOrDefault(false)
+            // Remembered only once it was really on the glass: a scan that ran
+            // before the Activity attached (or under an alert) said nothing yet.
+            if (shown && !state.stage.working) prefs.edit().putString(KEY_SHOWN, "$drive|${state.stage.name}").apply()
+        }
     }
 
     // ─── the stick ───────────────────────────────────────────────────────

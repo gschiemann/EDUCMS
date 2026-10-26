@@ -14,6 +14,7 @@ import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.Layout
 import android.view.FocusFinder
 import android.view.Gravity
 import android.view.KeyEvent
@@ -336,13 +337,17 @@ internal class UsbCardView(
             ui.lp(NetUi.MATCH, NetUi.WRAP, t = ui.px(34)),
         )
         panel.addView(
-            ui.text(title(state), if (ui.wide) 52f else 46f, NetTheme.TEXT, ui.bold, lines = 3).apply { gravity = Gravity.CENTER },
+            ui.text(title(state), if (ui.wide) 52f else 46f, NetTheme.TEXT, ui.bold, lines = 3).apply {
+                gravity = Gravity.CENTER
+                balanced()
+            },
             ui.lp(NetUi.MATCH, NetUi.WRAP, t = ui.px(12)),
         )
         panel.addView(
             ui.text(body(state), 29f, NetTheme.TEXT_2, lines = 4).apply {
                 gravity = Gravity.CENTER
                 setLineSpacing(0f, 1.12f)
+                balanced()
             },
             ui.lp(NetUi.MATCH, NetUi.WRAP, t = ui.px(16)),
         )
@@ -414,6 +419,12 @@ internal class UsbCardView(
 
     private data class Look(val top: Int, val bottom: Int, val icon: Int, val tint: Int)
 
+    /** Even lines, no hyphens: a two-line title never leaves one word alone on the second line. */
+    private fun TextView.balanced() {
+        breakStrategy = Layout.BREAK_STRATEGY_BALANCED
+        hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+    }
+
     private fun name(state: UsbCardState): String = state.playlist ?: s(R.string.usb_this_playlist)
 
     private fun title(state: UsbCardState): String = when (state.stage) {
@@ -455,7 +466,12 @@ internal class UsbCardView(
             else -> 0f
         }
         progressBar?.fraction = fraction.coerceIn(0f, 1f)
-        progressText?.text = s(R.string.usb_copying_progress, state.filesDone, state.filesTotal, size(state.bytesDone), size(state.bytesTotal))
+        progressText?.text = runCatching {
+            activity.resources.getQuantityString(
+                R.plurals.usb_copying_progress, state.filesTotal,
+                state.filesDone, state.filesTotal, size(state.bytesDone), size(state.bytesTotal),
+            )
+        }.getOrDefault("")
     }
 
     /** "12.4 MB" — one decimal under 100, none above. */

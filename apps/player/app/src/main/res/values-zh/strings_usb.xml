@@ -12,7 +12,9 @@
     <string name="usb_reading_body">正在 U 盘中查找 VenueOS 播放列表。</string>
     <string name="usb_copying_title">正在从 U 盘复制“%1$s”</string>
     <string name="usb_copying_body">复制完成前请不要拔出 U 盘。</string>
-    <string name="usb_copying_progress">%1$d / %2$d 个文件 · %3$s / %4$s</string>
+    <plurals name="usb_copying_progress">
+        <item quantity="other">%1$d / %2$d 个文件 · %3$s / %4$s</item>
+    </plurals>
 
     <!-- 完成 -->
     <string name="usb_imported_title">正在从 U 盘播放“%1$s”</string>
@@ -29,7 +31,7 @@
     <string name="usb_no_package_title">此 U 盘中没有 VenueOS 播放列表</string>
     <string name="usb_no_package_body">在 VenueOS 中打开播放列表，选择“下载到 U 盘”，然后把下载的文件复制到此 U 盘。</string>
     <string name="usb_waiting_key_title">请先将此屏幕连接一次互联网，才能使用 U 盘播放列表</string>
-    <string name="usb_waiting_key_body">屏幕需要先连接 VenueOS 一次，才能检查 U 盘中的播放列表。</string>
+    <string name="usb_waiting_key_body">此屏幕需要先完成配对并连接 VenueOS 一次，才能检查 U 盘中的播放列表。</string>
     <string name="usb_other_org_title">此播放列表属于其他组织</string>
     <string name="usb_other_org_body">请从此屏幕所配对的 VenueOS 账户下载播放列表。</string>
     <string name="usb_unverified_title">无法验证此 U 盘中的文件</string>

@@ -3511,9 +3511,8 @@ class MainActivity : ComponentActivity() {
         val ref = java.lang.ref.WeakReference(this)
         com.educms.player.usb.UsbAutoImport.onImported = { ref.get()?.notifyPageUsbImported() }
         val host = usbHost ?: object : com.educms.player.usb.UsbAutoImport.Host {
-            override fun show(state: com.educms.player.usb.UsbCardState) {
-                ref.get()?.showUsbCard(state)
-            }
+            override fun show(state: com.educms.player.usb.UsbCardState): Boolean =
+                ref.get()?.showUsbCard(state) ?: false
 
             override fun driveRemoved() {
                 com.educms.player.usb.UsbImportCard.driveRemoved()
@@ -3527,13 +3526,10 @@ class MainActivity : ComponentActivity() {
     /** This Activity's USB card host (so a destroyed instance only ever clears its own). */
     private var usbHost: com.educms.player.usb.UsbAutoImport.Host? = null
 
-    private fun showUsbCard(state: com.educms.player.usb.UsbCardState) {
-        if (isFinishing || isDestroyed) return
+    private fun showUsbCard(state: com.educms.player.usb.UsbCardState): Boolean {
+        if (isFinishing || isDestroyed) return false
         sharedVideoHost?.yieldToUi()
-        val shown = com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
-        if (shown) {
-            PlayerLogger.i("UsbImportCard", "on the glass: ${state.stage}")
-        }
+        return com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
     }
 
     /** A press on the USB card. Main thread. */

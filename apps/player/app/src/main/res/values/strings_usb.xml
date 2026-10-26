@@ -21,7 +21,10 @@
     <string name="usb_reading_body">Looking for a VenueOS playlist on the drive.</string>
     <string name="usb_copying_title">Copying %1$s from USB</string>
     <string name="usb_copying_body">Keep the drive in until this finishes.</string>
-    <string name="usb_copying_progress">%1$d of %2$d files · %3$s of %4$s</string>
+    <plurals name="usb_copying_progress">
+        <item quantity="one">%1$d of %2$d file · %3$s of %4$s</item>
+        <item quantity="other">%1$d of %2$d files · %3$s of %4$s</item>
+    </plurals>
 
     <!-- Done -->
     <string name="usb_imported_title">Playing %1$s from USB</string>
@@ -38,7 +41,7 @@
     <string name="usb_no_package_title">No VenueOS playlist on this drive</string>
     <string name="usb_no_package_body">In VenueOS, open the playlist, choose Download to USB, and copy the download onto this drive.</string>
     <string name="usb_waiting_key_title">Connect this screen to the internet once to enable USB playlists</string>
-    <string name="usb_waiting_key_body">The screen needs to reach VenueOS one time before it can check a playlist from a drive.</string>
+    <string name="usb_waiting_key_body">This screen has to be paired and reach VenueOS one time before it can check a playlist from a drive.</string>
     <string name="usb_other_org_title">This playlist belongs to a different organization</string>
     <string name="usb_other_org_body">Download the playlist from the VenueOS account this screen is paired with.</string>
     <string name="usb_unverified_title">Couldn’t verify the files on this drive</string>

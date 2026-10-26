@@ -12,7 +12,11 @@
     <string name="usb_reading_body">Buscando una lista de VenueOS en la unidad.</string>
     <string name="usb_copying_title">Copiando %1$s desde el USB</string>
     <string name="usb_copying_body">Deje la unidad conectada hasta que termine.</string>
-    <string name="usb_copying_progress">%1$d de %2$d archivos · %3$s de %4$s</string>
+    <plurals name="usb_copying_progress">
+        <item quantity="one">%1$d de %2$d archivo · %3$s de %4$s</item>
+        <item quantity="many">%1$d de %2$d archivos · %3$s de %4$s</item>
+        <item quantity="other">%1$d de %2$d archivos · %3$s de %4$s</item>
+    </plurals>
 
     <!-- Listo -->
     <string name="usb_imported_title">Reproduciendo %1$s desde el USB</string>
@@ -29,7 +33,7 @@
     <string name="usb_no_package_title">No hay ninguna lista de VenueOS en esta unidad</string>
     <string name="usb_no_package_body">En VenueOS, abra la lista, elija Descargar a USB y copie la descarga en esta unidad.</string>
     <string name="usb_waiting_key_title">Conecte esta pantalla a internet una vez para usar listas desde USB</string>
-    <string name="usb_waiting_key_body">La pantalla debe conectarse a VenueOS una vez antes de poder comprobar una lista desde una unidad.</string>
+    <string name="usb_waiting_key_body">Esta pantalla debe estar vinculada y conectarse a VenueOS una vez antes de poder comprobar una lista desde una unidad.</string>
     <string name="usb_other_org_title">Esta lista pertenece a otra organización</string>
     <string name="usb_other_org_body">Descargue la lista desde la cuenta de VenueOS con la que está vinculada esta pantalla.</string>
     <string name="usb_unverified_title">No se pudieron verificar los archivos de esta unidad</string>
