@@ -30,7 +30,7 @@ const HOUR = 60 * 60 * 1000;
 // A feed is cached for 5-15 min (see feeds.service.ts), so any single host
 // should almost never see more than a handful of ORIGIN fetches per hour
 // even across many tenants/screens — cache hits never reach this limiter's
-// caller (feeds.controller.ts only calls .check() on a cache MISS). 60/hr
+// caller (feeds.service.ts only calls .check() on a cache MISS). 60/hr
 // per host gives generous headroom for cache churn/thundering-herd on a
 // freshly-added feed while still capping runaway/abusive polling.
 const PER_HOST = 60;

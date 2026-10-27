@@ -21,6 +21,7 @@ import { lazyWidget } from './lazy-widget';
 // those are neither.
 // ════════════════════════════════════════════════════════════════════════
 import {
+  ForecastWeatherWidget as OutlookTile, HeadlinesWidget as HeadlinesTile,
   // → ./variant-tiles/basic-content-tiles
   VideoBasicTile, VideoCarouselTile, WebpageTile, ImageBasicTile, ImageCarouselBasicTile,
   ExternalHtmlTile, WebsiteTabsTile,
@@ -2183,3 +2184,6 @@ registerVariant({
   vertical: 'GYM',
   defaultConfig: {},
 });
+
+registerVariant({ id: 'weather-outlook', widgetType: 'WEATHER', name: 'Multi-day Forecast', description: 'Choose 2–5 days. Cards automatically fit wide or tall spaces.', category: 'MODERN', render: OutlookTile, defaultConfig: { forecastDays: 5, units: 'imperial' } });
+registerVariant({ id: 'rss-headlines', widgetType: 'RSS_FEED', name: 'Rotating Headlines', description: 'Select multiple included news sources. Fresh attributed headlines rotate automatically.', category: 'MODERN', render: HeadlinesTile, defaultConfig: { sources: ['global-voices','nasa'], intervalSec: 12, title: 'Headlines' } });

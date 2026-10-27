@@ -5050,7 +5050,7 @@ export function GoogleReviewsWidgetTile({ config }: { config?: GoogleReviewsConf
 
 export function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
   const maxItems = config.maxItems || 5;
-  const feedUrl = (config.feedUrl || '').trim();
+  const feedUrl = (config.feedUrl || config.url || '').trim();
   const live = useLiveRssFeed(feedUrl, maxItems);
   const realScreen = useRenderSurface() === 'player';
 
