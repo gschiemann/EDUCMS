@@ -54,3 +54,23 @@ export function provisionalAlertSurvivesPreCommitManifest(input: {
 }): boolean {
   return !input.fromCache && !input.manifestHasEmergency && input.provisionalAlertOnGlass && input.confirmWindowOpen;
 }
+
+/**
+ * The third interlock (2026-10-26, staged boards): when either interlock above
+ * keeps the ALERT on the glass, the emergency BOARD on the glass stays too.
+ *
+ * A manifest that may not release the alert (a cached normal manifest during
+ * an outage, the trigger's own pre-commit read inside the confirm window)
+ * used to be allowed to swap the emergency playlist for the normal one while
+ * the alert object stayed — board → typed surface → board, the flap this
+ * module exists to prevent, now on the content layer. Never a release path:
+ * once the alert may be released, the playlist follows the manifest as before.
+ */
+export function emergencyBoardStaysOnGlass(input: {
+  /** One of the two interlocks above decided the alert stays. */
+  alertStaysOnGlass: boolean;
+  /** The content on the glass is emergency content (`contentIsEmergencyRef`). */
+  boardOnGlass: boolean;
+}): boolean {
+  return input.alertStaysOnGlass && input.boardOnGlass;
+}
