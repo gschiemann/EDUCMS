@@ -34,3 +34,13 @@ it('shows exactly the selected number of actual forecast days and preserves a mi
   const view = render(<ForecastWeatherWidget config={{location:'21,-157',forecastDays:2}}/>); await waitFor(()=>expect(screen.getByText('Honolulu, HI')).toBeInTheDocument()); expect(document.querySelectorAll('[data-forecast-day]')).toHaveLength(2); expect(screen.getByText('—')).toBeInTheDocument();
   view.rerender(<ForecastWeatherWidget config={{location:'21,-157',forecastDays:5}}/>); expect(document.querySelectorAll('[data-forecast-day]')).toHaveLength(5);
 });
+
+it('renders malformed feed markup as inert text without creating executable elements', async () => {
+  const title = '<script>alert(1)</script><img src=x onerror=alert(2)> <script';
+  const author = '<img src=x onerror=alert(3)>';
+  global.fetch = jest.fn(async () => ({ok:true,json:async()=>({title:'Feed',items:[{...story(title,'https://example.org/story'),author}]})})) as unknown as typeof fetch;
+  const view = render(<HeadlinesWidget config={{sources:[],feedUrl:'https://example.org/feed'}} />);
+  await waitFor(()=>expect(screen.getByRole('link',{name:title})).toBeInTheDocument());
+  expect(screen.getByText(new RegExp('alert\\(3\\)'))).toBeInTheDocument();
+  expect(view.container.querySelector('script, img')).toBeNull();
+});

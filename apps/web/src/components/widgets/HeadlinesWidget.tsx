@@ -5,12 +5,13 @@ import { useLiveRssFeed } from './use-live-feed';
 import { NEWS_SOURCES, newsSourceIds } from './news-sources';
 import type { FeedItem } from './feed-types';
 
-const clean = (value: string) => value.replace(/<[^>]*>/g, '').trim();
+// Feed values stay React text nodes (automatically escaped), never HTML.
+// Regex tag removal is not an HTML sanitizer and can corrupt malformed headlines.
 export function mixHeadlines(feeds: { items: FeedItem[] | null; sourceId: string }[], now = Date.now()) {
   const seen = new Set<string>(); const groups = feeds.map(feed => (feed.items || []).filter(item => {
     const source = NEWS_SOURCES.find(s => s.id === feed.sourceId);
     const date = item.publishedAt ? Date.parse(item.publishedAt) : NaN;
-    return /^https?:\/\//i.test(item.link) && !!clean(item.title) && Number.isFinite(date) && date >= now - 7 * 86400000 && date <= now + 3600000 && (!source?.needsAuthor || !!item.author?.trim());
+    return /^https?:\/\//i.test(item.link) && !!item.title.trim() && Number.isFinite(date) && date >= now - 7 * 86400000 && date <= now + 3600000 && (!source?.needsAuthor || !!item.author?.trim());
   }).slice(0, 12).map(item => ({ ...item, sourceId: feed.sourceId })));
   const result: (FeedItem & { sourceId: string })[] = [];
   for (let i = 0; i < 12; i++) for (const group of groups) { const item = group[i]; if (item && !seen.has(item.link)) { seen.add(item.link); result.push(item); } }
@@ -40,12 +41,12 @@ export function HeadlinesWidget({ config = {} }: { config?: Record<string, any> 
   return <div ref={root} data-headlines-widget style={{ width: '100%', height: '100%', boxSizing: 'border-box', padding: '1.2em', background: config.style?.bgColor || config.bgColor || '#f5f2ea', color: config.style?.textColor || config.textColor || '#162d37', fontFamily: config.style?.fontFamily || 'Inter, sans-serif', fontSize: font, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
     <header style={{ display: 'flex', alignItems: 'center', fontSize: '.6em', letterSpacing: '.14em', textTransform: 'uppercase', borderBottom: '1px solid #84929a55', paddingBottom: '.8em', flexShrink: 0 }}><Rss aria-hidden style={{ width: '1em', height: '1em', marginRight: '.6em' }} /><span>{config.title ?? 'Headlines'}</span><span style={{ marginLeft: 'auto', letterSpacing: 0, opacity: .6 }}>{item ? `${index % items.length + 1} / ${items.length}` : ''}</span></header>
     {item ? <article key={item.link} data-headline-story style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '.7em 0' }}>
-      <div style={{ textTransform: 'uppercase', letterSpacing: '.1em', fontSize: '.5em', opacity: .65, marginBottom: '.8em' }}>{source?.name || clean(item.source)}</div>
-      <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', fontSize: '1em', fontWeight: 600, lineHeight: 1.16, overflowWrap: 'anywhere', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 4, overflow: 'hidden' }}>{clean(item.title)}</a>
-      <div style={{ fontSize: '.45em', opacity: .7, marginTop: '1em' }}>{item.author ? clean(item.author) + ' · ' : ''}{new Date(item.publishedAt!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+      <div style={{ textTransform: 'uppercase', letterSpacing: '.1em', fontSize: '.5em', opacity: .65, marginBottom: '.8em' }}>{source?.name || item.source.trim()}</div>
+      <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', fontSize: '1em', fontWeight: 600, lineHeight: 1.16, overflowWrap: 'anywhere', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 4, overflow: 'hidden' }}>{item.title.trim()}</a>
+      <div style={{ fontSize: '.45em', opacity: .7, marginTop: '1em' }}>{item.author ? item.author.trim() + ' · ' : ''}{new Date(item.publishedAt!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
     </article> : <div role="status" style={{ flex: 1, display: 'flex', alignItems: 'center', fontSize: '.75em' }}>{!selected.length && !custom ? 'Select news sources in Properties' : loading ? 'Loading headlines…' : 'Headlines temporarily unavailable'}</div>}
     <footer style={{ fontSize: '.4em', opacity: .65, flexShrink: 0, borderTop: '1px solid #84929a55', paddingTop: '.8em' }}>
-      {source?.license ? <a href={source.licenseUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{source.license} · Original headline</a> : <span>{item ? `Source: ${source?.name || clean(item.source)}` : 'Headlines refresh automatically'}</span>}
+      {source?.license ? <a href={source.licenseUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{source.license} · Original headline</a> : <span>{item ? `Source: ${source?.name || item.source.trim()}` : 'Headlines refresh automatically'}</span>}
       <span style={{ float: 'right' }}>{anyError ? 'Some feeds delayed' : 'Refreshes every 5 minutes'}</span>
     </footer>
   </div>;
