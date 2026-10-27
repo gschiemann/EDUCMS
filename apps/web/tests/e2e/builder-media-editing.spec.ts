@@ -499,3 +499,49 @@ test('Care Atlas photo replacement and two-page rotation survive shared controls
   await expect(playing.locator('.display-controls')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('directory-page-two-preview.png') });
 });
+
+
+test('adapted portrait directory fills the screen and saves numeric suite sorting', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const board = '/templates/signage/corporate/directory/building-index-landscape.html';
+  const html = fs.readFileSync(path.join(__dirname, '../../public', board), 'utf8');
+  const doc = JSON.parse(html.match(/<script[^>]*id="arc-directory-document"[^>]*>([\s\S]*?)<\/script>/)![1]);
+  doc.dataset.title = 'Meridian Business Center';
+  doc.dataset.tenants = Array.from({ length: 100 }, (_, i) => ({ id: `office-${i}`, name: `Company ${String(100 - i).padStart(3, '0')}`, suite: String(i + 1) }));
+  doc.playback = { ...doc.playback, displayMode: 'single', pageDurationMs: 8000, transitionMode: 'slide-right' };
+  doc.theme = { image: media[0].fileUrl };
+  // Adapt keeps a custom copy's saved landscape source and content; the board must reflow.
+  const state = await openEditor(page, true, [{ id: 'directory', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: board, directoryDocument: doc } }]);
+  const frame = page.locator('[data-zone-id] iframe').contentFrame();
+  await expect(frame.locator('.canvas')).toHaveClass(/portrait/);
+  const fillsScreen = () => frame.locator('.canvas').evaluate(node => { const b = node.getBoundingClientRect(); return Math.abs(b.left) < 1 && Math.abs(b.top) < 1 && Math.abs(b.width - innerWidth) < 1 && Math.abs(b.height - innerHeight) < 1; });
+  await expect.poll(fillsScreen).toBe(true);
+  await frame.locator('.directory-heading').click();
+  await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
+  await expect(frame.locator('.tenant-entry').first().locator('.entry-suite b')).toHaveText('1');
+  await expect(frame.locator('.tenant-entry').nth(1).locator('.entry-suite b')).toHaveText('2');
+  await expect(frame.locator('.tenant-entry').nth(9).locator('.entry-suite b')).toHaveText('10');
+  await expect(frame.locator('.tenant-entry')).toHaveCount(100);
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('suite');
+  await reloadEditor(page);
+  await expect.poll(fillsScreen).toBe(true);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('suite');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('8');
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('slide-right');
+  await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[0].fileUrl);
+  await page.screenshot({ path: testInfo.outputPath('dense-portrait-numeric-suites.png') });
+  await page.getByLabel('Sort by', { exact: true }).selectOption('name');
+  await expect(frame.locator('.tenant-entry').first().locator('.tenant-name')).toHaveText('Company 001');
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('name');
+  await reloadEditor(page);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('name');
+  await expect.poll(fillsScreen).toBe(true);
+  await page.getByRole('button', { name: 'Open fullscreen preview at native resolution', exact: true }).click();
+  const playing = page.getByRole('dialog', { name: /^Preview:/ }).locator('iframe').contentFrame();
+  await expect(playing.locator('.canvas')).toHaveClass(/portrait/);
+  await expect(playing.locator('.tenant-entry')).toHaveCount(100);
+});

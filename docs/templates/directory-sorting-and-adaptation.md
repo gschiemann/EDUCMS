@@ -1,0 +1,7 @@
+# Corporate directory sorting and adaptation
+
+The existing native Properties panel offers **Sort by** with **Company name** and **Suite number**. Suite sorting uses natural numeric comparison before pagination: 2, 10, 100 and B2, B10. Empty suites follow numbered locations. Both choices persist in `directoryDocument.playback.sort` without reordering or rewriting the saved location records. Existing `design`, `manual`, `floor` and `category` data values remain supported by the portable renderer.
+
+An embedded directory reflows to the actual host viewport, selecting its authored portrait/landscape CSS composition and 4K design dimensions, then recalculating columns and text fit. This also repairs existing adapted copies whose saved URL and document orientation still say landscape. Resizing preserves all saved text, images, field styles and rotation settings. Top-level orientation-specific prototypes retain their authored orientation.
+
+Validation: 10 native unit tests; four real CMS browser flows (Chromium and WebKit) covering a 100-location portrait board, full-screen bounds, both sort choices saved/reopened, retained image/timing and fullscreen Preview; 44 runtime adaptation cases across all designs and orientations in both engines; the existing 44 photo and 32 motion cases; portable-editor save/open of suite ordering in both engines. CMS API calls are intercepted in the authoring fixture. No API behavior, schema, customer documents, screen assignments or schedules are changed by this release.

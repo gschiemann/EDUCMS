@@ -36,8 +36,22 @@ try{
   else await p.waitForFunction(()=>ARCPlayer.getState().index===1&&!ARCPlayer.getState().transitioning);
   results.push({browser:name,file,mode,directionFrames:true,moves:true});
  }
+ // A gallery-adapted custom copy retains its source URL. Every design must reflow in its host.
+ const suites=['10','2','100','B10','B2','','001','1A','1'];
+ const dense={...doc,dataset:{...doc.dataset,tenants:Array.from({length:100},(_,i)=>({id:'room-'+i,name:'Office '+String(100-i).padStart(3,'0')+' and professional services',suite:i<suites.length?suites[i]:String(i+200)}))},theme:{image:picked},playback:{displayMode:'single',sort:'suite',transitionMode:'slide-right',pageDurationMs:8000}};
+ await p.route(origin+'/__directory_test_host__',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><body></body>'}));await p.goto(origin+'/__directory_test_host__');await p.setContent(`<iframe style="border:0;width:540px;height:960px" src="${origin+dir+file}"></iframe>`);
+ const frame=await p.locator('iframe').elementHandle().then(h=>h.contentFrame());
+ await frame.waitForFunction(()=>window.ARCPlayer?.getState().ready);
+ await p.evaluate(d=>document.querySelector('iframe').contentWindow.postMessage({type:'educms-overrides',text:{'directory.payload':JSON.stringify(d)}},'*'),dense);
+ await frame.waitForFunction(()=>ARCPlayer.getState().rows===100&&ARCPlayer.getState().config.sort==='suite'&&document.querySelector('.art-direction-image').src.startsWith('data:'));
+ const check=async expected=>{await frame.waitForFunction(o=>ARCPlayer.getState().orientation===o&&!ARCPlayer.getState().transitioning,expected);await frame.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));const state=await frame.evaluate(()=>{const c=document.querySelector('.canvas'),b=c.getBoundingClientRect();return {state:ARCPlayer.getState(),x:b.x,y:b.y,w:b.width,h:b.height,iw:innerWidth,ih:innerHeight,overflow:[...document.querySelectorAll('.tenant-name')].some(n=>n.scrollWidth>n.clientWidth+1)};});assert(Math.abs(state.x)<1&&Math.abs(state.y)<1&&Math.abs(state.w-state.iw)<1&&Math.abs(state.h-state.ih)<1);assert.equal(state.state.rows,100);assert.equal(state.state.config.pageDurationMs,8000);assert.equal(state.state.config.transitionMode,'slide-right');assert.equal(state.overflow,false);assert.equal(await frame.locator('.art-direction-image').getAttribute('src'),picked);};
+ await check('portrait');
+ let values=await frame.locator('.entry-suite b').allTextContents();assert(values.indexOf('2')<values.indexOf('10')&&values.indexOf('10')<values.indexOf('100'));assert(values.indexOf('B2')<values.indexOf('B10'));assert.equal(values.at(-1),'');
+ await p.locator('iframe').evaluate(n=>{n.style.width='960px';n.style.height='540px';});await check('landscape');
+ await frame.evaluate(()=>ARCPlayer.setConfig({sort:'name'}));assert.equal(await frame.locator('.tenant-name').first().textContent(),'Office 001 and professional services');
+ results.push({browser:name,file,adaptivePortrait:true,adaptiveLandscape:true,numericSuiteSort:true,nameSort:true,denseRows:100,fullBleed:true,savedRotationPreserved:true});
  assert.deepEqual(errors,[]);results.push({browser:name,file,themeReplacement:true,sharedReplacement:true,sourceSwitch:true,undoReference:true,captionProvenance:true,saveReopen:true});await p.close();
  }
  }finally{await browser.close();}}
- if(process.env.DIRECTORY_PHOTO_REPORT)fs.writeFileSync(process.env.DIRECTORY_PHOTO_REPORT,JSON.stringify(results,null,2));console.log({photoVariants:results.filter(r=>r.themeReplacement).length,motionCases:results.filter(r=>r.directionFrames).length,pass:true});
+ if(process.env.DIRECTORY_PHOTO_REPORT)fs.writeFileSync(process.env.DIRECTORY_PHOTO_REPORT,JSON.stringify(results,null,2));console.log({photoVariants:results.filter(r=>r.themeReplacement).length,motionCases:results.filter(r=>r.directionFrames).length,adaptedCases:results.filter(r=>r.adaptivePortrait).length,pass:true});
 }finally{if(server)await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exitCode=1});
