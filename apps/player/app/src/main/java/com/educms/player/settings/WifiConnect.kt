@@ -59,7 +59,17 @@ object WifiConnect {
      * same `why` the dashboard shows (`wifi-joined`, `wifi-switching`, …).
      * A `pending` / `waiting` result is followed by another when it settles.
      */
-    data class Result(val id: String, val status: String, val code: String?) {
+    data class Result(
+        val id: String,
+        val status: String,
+        val code: String?,
+        /**
+         * Android's save dialog found the network ALREADY saved (2026-10-26):
+         * Settings connected to nothing, so the screen hands over to Android's
+         * Wi-Fi list instead of waiting for a switch that is not coming.
+         */
+        val alreadySaved: Boolean = false,
+    ) {
         val settled: Boolean get() = status == "applied" || status == "failed" || status == "unsupported"
     }
 
@@ -129,7 +139,8 @@ object WifiConnect {
     fun isLocal(id: String): Boolean = id.startsWith("m")
 
     /** A switch proved or undone, or a dialog answered, for a person's identity. */
-    internal fun complete(ctx: Context, id: String, outcome: DeviceSettingsPolicy.Outcome) = deliver(id, outcome)
+    internal fun complete(ctx: Context, id: String, outcome: DeviceSettingsPolicy.Outcome, alreadySaved: Boolean = false) =
+        deliver(id, outcome, alreadySaved)
 
     /** The engine wants Android's save dialog raised for a person's identity. */
     internal fun raiseDialog(ctx: Context, id: String, request: Intent) {
@@ -144,9 +155,12 @@ object WifiConnect {
         }
     }
 
-    private fun deliver(id: String, outcome: DeviceSettingsPolicy.Outcome) {
-        val result = Result(id, statusOf(outcome), whyOf(outcome))
-        PlayerLogger.i(TAG, "wifi $id: ${result.status}${result.code?.let { " ($it)" } ?: ""}")
+    private fun deliver(id: String, outcome: DeviceSettingsPolicy.Outcome, alreadySaved: Boolean = false) {
+        val result = Result(id, statusOf(outcome), whyOf(outcome), alreadySaved)
+        PlayerLogger.i(
+            TAG,
+            "wifi $id: ${result.status}${result.code?.let { " ($it)" } ?: ""}${if (alreadySaved) " (already saved)" else ""}",
+        )
         val listener = if (result.settled) listeners.remove(id) else listeners[id]
         listener ?: return
         main.post { runCatching { listener.onResult(result) } }
