@@ -149,6 +149,9 @@ import {
   resolveScreenAlertContent,
   tenantAlertPlaysDrillContent,
 } from '../emergency/emergency-drill';
+// 2026-10-26 — the ONE builder of the emergency playlist payload, shared with
+// the staged boards `emergency-assets` pre-delivers (see emergency-boards.ts).
+import { emergencyBoardPayload, resolveEmergencyBoardSelection, type EmergencyBoard } from '../emergency/emergency-boards';
 import { sanitizeCacheReport } from '../telemetry/cache-report';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
@@ -6536,7 +6539,10 @@ export class ScreensController {
         // strictly greater than width. If resolution is null or
         // unparseable we default to landscape (safe: the original
         // emergencyPlaylistId is what every tenant already has wired up).
-        const isPortrait = emergencyLayoutIsPortrait(screen);
+        // 2026-10-26 — poster-aware: an LED poster's OS canvas is landscape while
+        // the LED itself is a portrait module (emergency-layout.ts). The same
+        // rule writes the trigger's override rows and the staged boards.
+        const isPortrait = emergencyLayoutIsPortrait(screen, manifestPosterStandard((screen as any).tenant));
 
         // Sprint 8b — per-screen emergency content config takes
         // priority over the tenant defaults. FOUR tiers, in order:
@@ -6713,20 +6719,10 @@ export class ScreensController {
           });
 
           if (emergencyPlaylist && emergencyPlaylist.items.length > 0) {
-            playlists = [{
-              id: emergencyPlaylist.id,
-              name: emergencyPlaylist.name,
-              items: emergencyPlaylist.items.map(item => ({
-                item_id: item.id,
-                asset_id: item.assetId,
-                asset_hash: item.asset.fileHash ?? null,
-                url: item.asset.fileUrl,
-                duration_ms: item.durationMs,
-                sequence: item.sequenceOrder,
-                mime_type: item.asset.mimeType ?? null,
-                transition_type: item.transitionType ?? null,
-              }))
-            }];
+            // THE builder (emergency-boards.ts): the staged boards the player
+            // pre-fetches are built by this same function, so a board raised
+            // from the signed push is byte-identical to this payload.
+            playlists = [emergencyBoardPayload(emergencyPlaylist as any)];
           }
         }
 
@@ -8291,6 +8287,14 @@ export class ScreensController {
       where: { id },
       select: {
         tenantId: true,
+        // 2026-10-26 — the staged-board selection reads the screen's emergency
+        // orientation with the manifest's own rule (emergency-layout.ts).
+        canvasW: true,
+        canvasH: true,
+        orientation: true,
+        resolution: true,
+        faceOfScreenId: true,
+        hardwareModel: true,
         emergencyLockdownPlaylistId: true,
         emergencyEvacuatePlaylistId: true,
         emergencyWeatherPlaylistId: true,
@@ -8325,6 +8329,9 @@ export class ScreensController {
             // (NovaStar TB posters; see manifest `posterStandard`).
             posterStandardW: true,
             posterStandardH: true,
+            // 2026-10-26 — per-screen columns count for the staged-board
+            // selection only in location mode (the trigger's own gate).
+            locationBasedEmergencyEnabled: true,
             emergencyPlaylistId: true,
             emergencyPortraitPlaylistId: true,
             panicLockdownPlaylistId: true,
@@ -8400,6 +8407,8 @@ export class ScreensController {
 
     const assets: Array<{ url: string; sha256: string | null; size: number; kind: string }> = [];
     const seen = new Set<string>();
+    const boards: Record<string, EmergencyBoard> = {};
+    let loadedPlaylists: any[] = [];
 
     if (playlistIds.length > 0) {
       const playlists = await this.prisma.client.playlist.findMany({
@@ -8407,11 +8416,28 @@ export class ScreensController {
         include: {
           items: {
             include: {
-              asset: { select: { fileUrl: true, fileSize: true, mimeType: true, fileHash: true } },
+              asset: { select: { fileUrl: true, fileSize: true, mimeType: true, fileHash: true, status: true } },
             },
           },
         },
       });
+      // ── STAGED BOARDS (2026-10-26) ──────────────────────────────────────
+      // Every emergency playlist a trigger could select for this screen, in
+      // EXACTLY the manifest's shape (one builder), so the player can put the
+      // location's board on the glass the instant the signed push lands
+      // instead of ~8 s later with the committed manifest. Same filter and
+      // order as the manifest branch (PUBLISHED assets, sequence asc), only
+      // this tenant's own rows, only boards with content (the manifest falls
+      // back to media / the system board for an empty one).
+      for (const pl of playlists as any[]) {
+        if (pl.tenantId !== tenant.id) continue;
+        const items = (pl.items as any[])
+          .filter((item) => item.asset?.fileUrl && item.asset.status === 'PUBLISHED')
+          .sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+        if (items.length === 0) continue;
+        boards[pl.id] = emergencyBoardPayload({ id: pl.id, name: pl.name, items });
+      }
+      loadedPlaylists = playlists as any[];
       for (const pl of playlists) {
         for (const item of pl.items) {
           if (!item.asset?.fileUrl) continue;
@@ -8441,6 +8467,16 @@ export class ScreensController {
         }
       }
     }
+
+    // Which staged board each incident type resolves to for THIS screen — the
+    // trigger's own precedence over the same columns (emergency-boards.ts).
+    const boardFor = resolveEmergencyBoardSelection({
+      screen,
+      tenant,
+      isPortrait: emergencyLayoutIsPortrait(screen as any, manifestPosterStandard(tenant)),
+      locationModeOn: tenant.locationBasedEmergencyEnabled === true,
+      drillPairHasItems: (ids) => ids.some((pid) => (loadedPlaylists.find((pl) => pl.id === pid)?.items?.length ?? 0) > 0),
+    });
 
     const screenAssetUrls = [
       (screen as any).emergencyLockdownAssetUrl,
@@ -8513,9 +8549,18 @@ export class ScreensController {
     // pre-cache when nothing has changed. A null body-hash contributes the
     // literal token "null" — deterministic, so the set-change short-circuit
     // still works for null-hash (unhashed) assets.
+    // 2026-10-26 — the boards and the per-type selection are part of the set:
+    // an edited board, a re-pointed panic column or a flipped location mode
+    // re-delivers. Sorted keys so the hash is deterministic.
+    const boardsDigest = JSON.stringify({
+      boards: Object.keys(boards).sort().map((id) => boards[id]),
+      boardFor,
+    });
     const setHash = crypto
       .createHash('sha256')
       .update(assets.map(a => `${a.url}:${a.sha256 ?? 'null'}`).sort().join('|'))
+      .update('|boards:')
+      .update(boardsDigest)
       .digest('hex');
 
     // sec-fix(wave1) #4: audit every emergency-asset fetch. Forensically
@@ -8554,6 +8599,10 @@ export class ScreensController {
       assets,
       assetCount: assets.length,
       totalBytes: assets.reduce((sum, a) => sum + a.size, 0),
+      // The staged boards (manifest shape) + which one each type resolves to
+      // for THIS screen. Additive: an older player ignores both.
+      boards,
+      boardFor,
       setHash,
     };
   }

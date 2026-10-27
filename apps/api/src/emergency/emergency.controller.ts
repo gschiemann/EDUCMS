@@ -12,6 +12,14 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { invalidateTenantState } from '../screens/manifest-hot-cache';
+import { emergencyLayoutIsPortrait, type PosterStandard } from '../screens/emergency-layout';
+import { pickScreenLiveContent, pickTenantPanicPlaylists } from './emergency-boards';
+
+/** Tenant.posterStandardW/H when both are set; the fleet default otherwise (manifestPosterStandard). */
+function tenantPosterStandard(tenant: any): PosterStandard | null {
+  const w = Number(tenant?.posterStandardW), h = Number(tenant?.posterStandardH);
+  return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? { w, h } : null;
+}
 // 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the
 // player polls INSTEAD of re-fetching the whole manifest every 10 s. Every
 // bump below sits in the same synchronous block as `invalidateTenantState`,
@@ -256,52 +264,22 @@ export class EmergencyController {
     return value || null;
   }
 
-  private isPortraitScreen(screen: any): boolean {
-    const resolution = String(screen?.resolution || '').trim();
-    const match = resolution.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
-    if (!match) return false;
-    return Number.parseInt(match[2], 10) > Number.parseInt(match[1], 10);
+  /**
+   * The screen's emergency orientation — the MANIFEST's rule (emergency-layout.ts),
+   * not the OS resolution alone (2026-10-26). Reading the resolution wrote the
+   * LANDSCAPE board into the override row of a double-sided unit's portrait
+   * back face (its panel reports 960×540) and of an LED poster (OS canvas
+   * 1920×1080, LED module 320×1080); the manifest then served that row.
+   */
+  private isPortraitScreen(screen: any, tenant?: any): boolean {
+    return emergencyLayoutIsPortrait(screen || {}, tenantPosterStandard(tenant));
   }
 
   private pickTenantPanicPlaylists(tenantInfo: any, type?: string | null): {
     landscape: string | null;
     portrait: string | null;
   } {
-    const t = tenantInfo || {};
-    switch (type) {
-      case 'lockdown':
-        return {
-          landscape: t.panicLockdownPlaylistId ?? null,
-          portrait: t.panicLockdownPortraitPlaylistId ?? null,
-        };
-      case 'weather':
-        return {
-          landscape: t.panicWeatherPlaylistId ?? null,
-          portrait: t.panicWeatherPortraitPlaylistId ?? null,
-        };
-      case 'evacuate':
-        return {
-          landscape: t.panicEvacuatePlaylistId ?? null,
-          portrait: t.panicEvacuatePortraitPlaylistId ?? null,
-        };
-      case 'hold':
-        return {
-          landscape: t.panicHoldPlaylistId ?? null,
-          portrait: t.panicHoldPortraitPlaylistId ?? null,
-        };
-      case 'secure':
-        return {
-          landscape: t.panicSecurePlaylistId ?? null,
-          portrait: t.panicSecurePortraitPlaylistId ?? null,
-        };
-      case 'medical':
-        return {
-          landscape: t.panicMedicalPlaylistId ?? null,
-          portrait: t.panicMedicalPortraitPlaylistId ?? null,
-        };
-      default:
-        return { landscape: null, portrait: null };
-    }
+    return pickTenantPanicPlaylists(tenantInfo, type);
   }
 
   /**
@@ -533,71 +511,12 @@ export class EmergencyController {
     }
   }
 
-  private pickScreenEmergencyContent(screen: any, typeKey: string | null): {
+  private pickScreenEmergencyContent(screen: any, typeKey: string | null, isPortrait: boolean): {
     playlistId: string | null;
     mediaUrl: string | null;
   } {
-    const isPortrait = this.isPortraitScreen(screen);
-    const pick = (
-      landscapePlaylist?: string | null,
-      portraitPlaylist?: string | null,
-      landscapeAsset?: string | null,
-      portraitAsset?: string | null,
-    ) => ({
-      playlistId: isPortrait
-        ? (portraitPlaylist || landscapePlaylist || null)
-        : (landscapePlaylist || portraitPlaylist || null),
-      mediaUrl: isPortrait
-        ? (portraitAsset || landscapeAsset || null)
-        : (landscapeAsset || portraitAsset || null),
-    });
-
-    switch (typeKey) {
-      case 'LOCKDOWN':
-        return pick(
-          screen.emergencyLockdownPlaylistId,
-          screen.emergencyLockdownPortraitPlaylistId,
-          screen.emergencyLockdownAssetUrl,
-          screen.emergencyLockdownPortraitAssetUrl,
-        );
-      case 'EVACUATE':
-        return pick(
-          screen.emergencyEvacuatePlaylistId,
-          screen.emergencyEvacuatePortraitPlaylistId,
-          screen.emergencyEvacuateAssetUrl,
-          screen.emergencyEvacuatePortraitAssetUrl,
-        );
-      case 'WEATHER':
-        return pick(
-          screen.emergencyWeatherPlaylistId,
-          screen.emergencyWeatherPortraitPlaylistId,
-          screen.emergencyWeatherAssetUrl,
-          screen.emergencyWeatherPortraitAssetUrl,
-        );
-      case 'HOLD':
-        return pick(
-          screen.emergencyHoldPlaylistId,
-          screen.emergencyHoldPortraitPlaylistId,
-          screen.emergencyHoldAssetUrl,
-          screen.emergencyHoldPortraitAssetUrl,
-        );
-      case 'SECURE':
-        return pick(
-          screen.emergencySecurePlaylistId,
-          screen.emergencySecurePortraitPlaylistId,
-          screen.emergencySecureAssetUrl,
-          screen.emergencySecurePortraitAssetUrl,
-        );
-      case 'MEDICAL':
-        return pick(
-          screen.emergencyMedicalPlaylistId,
-          screen.emergencyMedicalPortraitPlaylistId,
-          screen.emergencyMedicalAssetUrl,
-          screen.emergencyMedicalPortraitAssetUrl,
-        );
-      default:
-        return { playlistId: null, mediaUrl: null };
-    }
+    // One picker for the trigger and the staged boards (emergency-boards.ts).
+    return pickScreenLiveContent(screen, typeKey, isPortrait);
   }
 
   private emergencyExpiresAt(value?: string | number | null): Date | null {
@@ -645,6 +564,8 @@ export class EmergencyController {
       // DRILL content → the exact live precedence; 'live' IS that precedence.
       isDrill?: boolean;
       panicSource?: 'live' | 'drill';
+      /** The tenant row when the caller has it (its poster standard sizes an LED poster's canvas). */
+      tenant?: any;
     },
   ): { ops: any[]; replacedAlertIds: string[] } {
     const typeKey = this.emergencyTypeKey(opts.overridePayload.type);
@@ -654,8 +575,8 @@ export class EmergencyController {
     const expiresAt = this.emergencyExpiresAt(opts.overridePayload.expiresAt);
     const replacedAlertIds = new Set<string>();
     const ops = screens.map((screen) => {
-      const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
-      const isPortrait = this.isPortraitScreen(screen);
+      const isPortrait = this.isPortraitScreen(screen, opts.tenant);
+      const screenContent = this.pickScreenEmergencyContent(screen, typeKey, isPortrait);
       const tenantFallbackPlaylistId = isPortrait
         ? (opts.panicPortrait || opts.panicLandscape || null)
         : (opts.panicLandscape || opts.panicPortrait || null);
@@ -1271,8 +1192,8 @@ export class EmergencyController {
           locationScreenCount = screens.length;
 
           for (const screen of screens) {
-            const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
-            const isPortrait = this.isPortraitScreen(screen);
+            const isPortrait = this.isPortraitScreen(screen, tenantInfo);
+            const screenContent = this.pickScreenEmergencyContent(screen, typeKey, isPortrait);
             const tenantFallbackPlaylistId = isPortrait
               ? (activePortraitPlaylistId || activePlaylistId || null)
               : (activePlaylistId || activePortraitPlaylistId || null);
