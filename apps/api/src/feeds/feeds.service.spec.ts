@@ -122,3 +122,16 @@ describe('FeedsService.getIcsFeed', () => {
     expect(mockedFetch).toHaveBeenCalledTimes(2); // different cache keys, both cold
   });
 });
+
+describe('shared RSS fetch budget', () => {
+  it('coalesces a simultaneous screen burst and does not rate-count cached views', async () => {
+    const check = jest.fn(); const redis = { publisher: null } as RedisService;
+    const service = new FeedsService(redis, { check } as any);
+    mockedFetch.mockResolvedValue(asResponse(SAMPLE_RSS));
+    const url = 'https://example.org/fleet-coalescing-test.xml';
+    const batch = await Promise.all(Array.from({length:100},()=>service.getRssFeed(url)));
+    expect(batch).toHaveLength(100); expect(check).toHaveBeenCalledTimes(1);
+    for(let i=0;i<100;i++) await service.getRssFeed(url);
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+});

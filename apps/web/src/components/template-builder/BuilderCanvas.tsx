@@ -609,7 +609,17 @@ export function BuilderCanvas() {
     ? meta.screenWidth / meta.screenHeight
     : 16 / 9;
 
+  const gesturePointer = useRef<number | null>(null);
+  const captureGesture = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || e.isPrimary === false) return false;
+    gesturePointer.current = e.pointerId;
+    // Capture on the stable canvas: crossing a directory iframe must not swallow release.
+    try { canvasRef.current?.setPointerCapture?.(e.pointerId); } catch { /* detached pointer */ }
+    return true;
+  }, []);
+
   const onZonePointerDown = useCallback((e: React.PointerEvent, zoneId: string) => {
+    if (!captureGesture(e)) return;
     e.preventDefault();
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
     const alreadySelected = selectedIds.includes(zoneId);
@@ -654,9 +664,10 @@ export function BuilderCanvas() {
       if (z && !z.locked) origs[id] = { ...z };
     }
     setDragState({ mode: 'move', zoneId, startX: e.clientX, startY: e.clientY, origs });
-  }, [zones, selectedIds, select, beginTransaction]);
+  }, [zones, selectedIds, select, beginTransaction, captureGesture]);
 
   const onResizePointerDown = useCallback((e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => {
+    if (!captureGesture(e)) return;
     e.preventDefault();
     e.stopPropagation();
     // A3 — single-zone handles come from SelectionChrome, which BuilderCanvas
@@ -671,9 +682,10 @@ export function BuilderCanvas() {
     if (!orig) return;
     beginTransaction();
     setDragState({ mode: 'resize', zoneId, handle, startX: e.clientX, startY: e.clientY, orig: { ...orig } });
-  }, [zones, selectedIds, select, beginTransaction]);
+  }, [zones, selectedIds, select, beginTransaction, captureGesture]);
 
   const onRotatePointerDown = useCallback((e: React.PointerEvent, zoneId: string) => {
+    if (!captureGesture(e)) return;
     e.preventDefault(); e.stopPropagation();
     const zone = zones.find(z => z.id === zoneId);
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -683,7 +695,7 @@ export function BuilderCanvas() {
     const rotation = Number(zone.defaultConfig?._zoneRotation) || 0;
     beginTransaction();
     setDragState({ mode: 'rotate', zoneId, centerX, centerY, rotation, startAngle: Math.atan2(e.clientY - centerY, e.clientX - centerX) });
-  }, [zones, beginTransaction]);
+  }, [zones, beginTransaction, captureGesture]);
 
   // A3 — group resize. Fired from the ONE shared bounding-box handle
   // set BuilderCanvas renders when selectedIds.length > 1 (see the
@@ -691,6 +703,7 @@ export function BuilderCanvas() {
   // at drag start plus the box itself so pointermove can scale each
   // zone proportionally relative to the box's anchor corner/edge.
   const onGroupResizePointerDown = useCallback((e: React.PointerEvent, handle: ResizeHandle) => {
+    if (!captureGesture(e)) return;
     e.preventDefault();
     e.stopPropagation();
     const selected = zones.filter((z) => selectedIds.includes(z.id) && !z.locked);
@@ -700,7 +713,7 @@ export function BuilderCanvas() {
     for (const z of selected) origs[z.id] = { ...z };
     beginTransaction();
     setDragState({ mode: 'group-resize', handle, startX: e.clientX, startY: e.clientY, box, origs });
-  }, [zones, selectedIds, beginTransaction]);
+  }, [zones, selectedIds, beginTransaction, captureGesture]);
 
   const onZoneSelect = useCallback((e: React.MouseEvent, zoneId: string) => {
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
@@ -709,7 +722,18 @@ export function BuilderCanvas() {
 
   useEffect(() => {
     if (!dragState) return;
+    const finish = () => {
+      const pointer = gesturePointer.current;
+      gesturePointer.current = null;
+      setDragState(null);
+      setActiveSnapLines([]);
+      endTransaction();
+      try { if (pointer != null && canvasRef.current?.hasPointerCapture?.(pointer)) canvasRef.current.releasePointerCapture(pointer); } catch { /* browser already released */ }
+    };
     const onMove = (e: PointerEvent) => {
+      if (e.pointerId !== gesturePointer.current) return;
+      // A release outside the window (or inside an iframe) may never deliver pointerup.
+      if (e.pointerType !== 'touch' && !(e.buttons & 1)) { finish(); return; }
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
@@ -829,18 +853,24 @@ export function BuilderCanvas() {
         });
       }
     };
-    const onUp = () => {
-      setDragState(null);
-      setActiveSnapLines([]);
-      endTransaction();
-    };
+    const onUp = (e: PointerEvent) => { if (e.pointerId === gesturePointer.current) finish(); };
+    const onHidden = () => { if (document.hidden) finish(); };
+    const onEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') finish(); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+    window.addEventListener('lostpointercapture', onUp);
+    window.addEventListener('blur', finish);
+    window.addEventListener('keydown', onEscape);
+    document.addEventListener('visibilitychange', onHidden);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('lostpointercapture', onUp);
+      window.removeEventListener('blur', finish);
+      window.removeEventListener('keydown', onEscape);
+      document.removeEventListener('visibilitychange', onHidden);
     };
   }, [dragState, zones, gridSize, snapEnabled, showGrid, showGuides, updateZone, updateZones, endTransaction]);
 

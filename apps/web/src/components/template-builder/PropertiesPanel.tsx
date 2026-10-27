@@ -1,4 +1,5 @@
 "use client";
+import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
@@ -3509,6 +3510,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         />,
       );
       fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
+      fields.push(<SelectField key="forecastDays" label="Forecast days" value={String(cfg.forecastDays || (cfg.variant === 'weather-outlook' ? 5 : 1))} options={[["1","Current weather"],["2","2 days"],["3","3 days"],["4","4 days"],["5","5 days"]]} onChange={v => setField({ forecastDays: Number(v), variant: Number(v) > 1 ? 'weather-outlook' : undefined, theme: undefined })} />);
+      if (Number(cfg.forecastDays) >= 2 || cfg.variant === 'weather-outlook') { fields.push(<p key="forecast-note" className="text-[10px] text-slate-500">U.S. forecast · National Weather Service. Cards fit this widget automatically.</p>); break; }
       fields.push(
         <WeatherOverrideAdvanced
           key="overrides"
@@ -4661,10 +4664,18 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'PLAYLIST':
       fields.push(<PlaylistPickerField key="playlistId" label="Playlist" value={cfg.playlistId || ''} onChange={(v) => setField({ playlistId: v })} />);
       break;
-    case 'RSS_FEED':
-      fields.push(<TextField key="url" label="RSS feed URL" value={cfg.url || ''} placeholder="https://example.com/rss.xml" onChange={(v) => setField({ url: v })} />);
-      fields.push(<TextField key="maxItems" label="Max items" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
+    case 'RSS_FEED': {
+      const rotating = cfg.variant === 'rss-headlines' || Array.isArray(cfg.sources);
+      if (rotating) {
+        const selected = newsSourceIds(cfg.sources);
+        for (const source of NEWS_SOURCES) fields.push(<ToggleField key={source.id} label={source.name} value={selected.includes(source.id)} onChange={enabled => setField({ sources: enabled ? [...selected, source.id] : selected.filter(id => id !== source.id) })} />);
+        fields.push(<TextField key="title" label="Heading" value={cfg.title ?? 'Headlines'} onChange={v => setField({ title: v })} />);
+        fields.push(<NumField key="intervalSec" id="headline-interval" label="Seconds per headline" value={cfg.intervalSec || 12} min={5} max={120} onChange={v => setField({ intervalSec: v })} />);
+      }
+      fields.push(<TextField key="feedUrl" label={rotating ? 'Additional RSS feed (optional)' : 'RSS feed URL'} value={cfg.feedUrl || cfg.url || ''} placeholder="https://example.com/rss.xml" onChange={v => setField({ feedUrl: v, url: undefined })} />);
+      if (!rotating) fields.push(<NumField key="maxItems" id="feed-max-items" label="Max items" value={cfg.maxItems || 5} min={1} max={20} onChange={v => setField({ maxItems: v })} />);
       break;
+    }
     // SOCIAL_FEED (rebuilt 2026-09-12). The old editor offered a "Profile /
     // feed URL" text box — which was never wired to anything, because a
     // public profile URL cannot authorise reading posts. Instagram and

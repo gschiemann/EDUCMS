@@ -111,6 +111,7 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
       link: clamp(str(it.link), MAX_LINK_LEN),
       publishedAt: toIso(it.pubDate ?? it['dc:date']),
       source: feedTitle,
+      ...(str(it['dc:creator'] ?? it.author) ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) } : {}),
     }));
     return { title: feedTitle, items };
   }
@@ -126,6 +127,7 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
       link: clamp(str(it.link), MAX_LINK_LEN),
       publishedAt: toIso(it['dc:date']),
       source: feedTitle,
+      ...(str(it['dc:creator'] ?? it.author) ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) } : {}),
     }));
     return { title: feedTitle, items };
   }
@@ -140,6 +142,7 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
       link: clamp(atomLinkHref(entry.link), MAX_LINK_LEN),
       publishedAt: toIso(entry.updated ?? entry.published),
       source: feedTitle,
+      ...(str(entry.author?.name ?? feed.author?.name) ? { author: clamp(str(entry.author?.name ?? feed.author?.name), 160) } : {}),
     }));
     return { title: feedTitle, items };
   }

@@ -67,17 +67,21 @@ interface IcsApiResponse {
 
 /** Generic visibility-gated, stale-while-error poll loop shared by both
  *  hooks below — the only difference between RSS and ICS is the URL/shape. */
-function usePolledFeed<T>(
+export function usePolledFeed<T>(
   active: boolean,
   buildUrl: () => string,
   intervalMs: number,
+  holdMs = Infinity,
 ): { data: T | null; loading: boolean; error: boolean } {
-  const [data, setData] = useState<T | null>(null);
+  const requestUrl = buildUrl();
+  const [data, setData] = useState<{ url: string; value: T } | null>(null);
+  const goodAt = useRef(0);
   const [loading, setLoading] = useState(active);
   const [error, setError] = useState(false);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    hasLoadedRef.current = false; goodAt.current = 0; setData(null); setError(false); setLoading(active);
     if (!active) {
       setData(null);
       setLoading(false);
@@ -87,11 +91,14 @@ function usePolledFeed<T>(
     }
 
     let cancelled = false;
+    let retrySoon = false;
+    let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleNext = () => {
       if (cancelled) return;
-      timer = setTimeout(tick, intervalMs);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(tick, retrySoon ? Math.min(intervalMs, 60_000) : intervalMs);
     };
 
     const tick = async () => {
@@ -102,16 +109,20 @@ function usePolledFeed<T>(
         scheduleNext();
         return;
       }
+      if (inFlight) return;
+      inFlight = true;
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(buildUrl(), { signal: controller.signal });
+        const res = await fetch(requestUrl, { signal: controller.signal });
         clearTimeout(timeout);
         if (cancelled) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as T;
         hasLoadedRef.current = true;
-        setData(json);
+        goodAt.current = Date.now();
+        setData({ url: requestUrl, value: json });
+        retrySoon = false;
         setError(false);
         setLoading(false);
       } catch {
@@ -119,10 +130,12 @@ function usePolledFeed<T>(
         // First load failed → surface the error so the caller falls back
         // to its static/sample content. Once loaded once, keep the last
         // good data on screen (stale-while-error) rather than blanking.
+        retrySoon = true;
         setError(true);
         setLoading(false);
-        if (!hasLoadedRef.current) setData(null);
+        if (!hasLoadedRef.current || Date.now() - goodAt.current > holdMs) setData(null);
       } finally {
+        inFlight = false;
         scheduleNext();
       }
     };
@@ -142,9 +155,9 @@ function usePolledFeed<T>(
       document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, intervalMs]);
+  }, [active, intervalMs, requestUrl, holdMs]);
 
-  return { data, loading, error };
+  return { data: data?.url === requestUrl ? data.value : null, loading, error };
 }
 
 export interface LiveRssResult {
@@ -154,12 +167,12 @@ export interface LiveRssResult {
   error: boolean;
 }
 
-export function useLiveRssFeed(feedUrl: string | undefined, maxItems: number): LiveRssResult {
+export function useLiveRssFeed(feedUrl: string | undefined, maxItems: number, holdMs = Infinity): LiveRssResult {
   const trimmed = (feedUrl || '').trim();
   const active = trimmed.length > 0;
   const url = `${API_BASE}/api/v1/feeds/rss?url=${encodeURIComponent(trimmed)}`;
 
-  const { data, loading, error } = usePolledFeed<RssApiResponse>(active, () => url, RSS_POLL_INTERVAL_MS);
+  const { data, loading, error } = usePolledFeed<RssApiResponse>(active, () => url, RSS_POLL_INTERVAL_MS, holdMs);
 
   return {
     title: data?.title ?? null,
