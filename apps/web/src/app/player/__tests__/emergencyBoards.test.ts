@@ -120,11 +120,14 @@ describe('selecting the board for an alert', () => {
     expect(selectStagedBoard(null, { type: 'MEDICAL' })).toBeNull();
     expect(selectStagedBoard(staged, null)).toBeNull();
   });
-  it("an explicit trigger playlist replaces the tenant pair, but never this screen's own (perScreen) content", () => {
-    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, 'pl-land')?.id).toBe('pl-land');
+  it("never takes the push's playlist id: a drill never gets the live board, a portrait screen keeps its own", () => {
+    const own = selectStagedBoard(staged, { type: 'MEDICAL' });
+    expect(own).not.toBeNull();
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, 'pl-land')).toBe(own);
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, 'pl-unknown')).toBe(own);
     expect(selectStagedBoard(staged, { type: 'LOCKDOWN' }, 'pl-land')?.id).toBe('pl-own');
-    // An explicit playlist that is not staged is not guessed at.
-    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, 'pl-unknown')).toBeNull();
+    const drill = selectStagedBoard(staged, { type: 'MEDICAL', isDrill: true }, 'pl-land');
+    expect(drill === null || drill.id !== 'pl-land').toBe(true);
   });
   it('never selects for anything but an alert the page already holds (raise-only: no alert → nothing)', () => {
     expect(selectStagedBoard(staged, undefined)).toBeNull();
