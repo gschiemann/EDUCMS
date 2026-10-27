@@ -3134,7 +3134,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         fields.push(<div key="directory-photo" data-edit-img="property.hero" data-field-section="property.hero" className="rounded-lg border border-slate-200 bg-white p-3">
           <AssetPickerField label="Building photo" kind="image" emptyLabel="Template photo" clearLabel="Restore template photo" value={currentImage('image')} onChange={v => image('image', v)} />
         </div>);
-        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
+        fields.push(<DirectoryBoardEditor key="directory-editor" zoneId={zone.id} cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
         fields.push(<details key="directory-appearance" className="rounded-lg border border-slate-200 bg-white p-3">
           <summary className="cursor-pointer text-xs font-semibold text-slate-600">Appearance</summary>
           <div className="mt-3 space-y-3">

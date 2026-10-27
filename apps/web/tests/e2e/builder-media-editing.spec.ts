@@ -655,3 +655,49 @@ for (const portrait of [false, true]) test(`live information ${portrait ? 'portr
   expect(state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); expect(state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5});
   await page.screenshot({path:testInfo.outputPath('live-info-'+(portrait?'portrait':'landscape')+'.png')});
 });
+
+for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
+  test(`directory copy ${privateCopy ? 'Brookfield custom' : 'standard'} ${portrait ? 'portrait' : 'landscape'} edits header and inline text with saved toolbar font sizes`, async ({page}, testInfo) => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../../docs/templates/corporate-directory-touch-install-manifest.json'), 'utf8'));
+    const record = manifest.records.find((record: any) => record.collection === (privateCopy ? 'custom' : 'standard') && record.defaultConfig?.directoryDocument?.designId === 'pacific-editorial' && record.defaultConfig.directoryDocument.orientation === (portrait ? 'portrait' : 'landscape'));
+    expect(record).toBeTruthy();
+    const cfg = JSON.parse(JSON.stringify(record.defaultConfig));
+    // The customer's existing Adapt-to-portrait copy retains its landscape source URL/document.
+    if (privateCopy && portrait) { cfg.url = cfg.url.replace('-portrait.html','-landscape.html'); cfg.directoryDocument.orientation = 'landscape'; }
+    const state = await openEditor(page, portrait, [{id:'directory',name:'Directory',widgetType:'EXTERNAL_HTML',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:cfg}], {width:portrait?(privateCopy?1080:2160):3840,height:portrait?(privateCopy?1920:3840):2160});
+    const frame = page.locator('[data-zone-id="directory"] iframe').contentFrame();
+    const brand = frame.locator('.brand');
+    await expect(page.getByLabel('Text area', {exact:true})).toBeVisible();
+    await brand.click();
+    await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible();
+    await expect(brand).toHaveAttribute('contenteditable','true');
+    await brand.fill('Welcome to our building'); await brand.press('Enter');
+    await expect(brand).toHaveText('Welcome to our building');
+    await expect(page.getByLabel('Top left label',{exact:true})).toHaveValue('Welcome to our building');
+    await page.getByLabel('Text area',{exact:true}).selectOption('locationLabel');
+    await expect(page.getByLabel('Top right label',{exact:true})).toHaveValue(cfg.directoryDocument.dataset.locationLabel);
+    await page.getByLabel('Top right label',{exact:true}).fill('Visitor reception');
+    await page.getByLabel('Top right label',{exact:true}).blur();
+    await expect(frame.locator('.site-type')).toHaveText('Visitor reception');
+    await brand.click(); await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible(); await page.getByLabel('Font size',{exact:true}).fill('42');
+    await expect.poll(()=>brand.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    const tenant = frame.locator('.tenant-name').first();
+    const tenantKey = await tenant.getAttribute('data-field');
+    expect(tenantKey).toMatch(/^tenant\..+\.name$/);
+    await tenant.click();
+    await expect(page.getByTitle(`Editing field: ${tenantKey}`, {exact:true})).toBeVisible();
+    await expect(page.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+    await page.getByLabel('Font size',{exact:true}).fill('40');
+    await expect.poll(()=>tenant.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.getByLabel('Font family',{exact:true}).selectOption('Arial');
+    await expect.poll(()=>tenant.evaluate(node=>getComputedStyle(node).fontFamily)).toContain('Arial');
+    await page.getByRole('button',{name:/^Save$/}).click();
+    await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({directoryDocument:{dataset:{brandLabel:'Welcome to our building',locationLabel:'Visitor reception'}},_styles:{'property.brandLabel':{fontSize:42},[tenantKey!]:{fontSize:40}}});
+    await reloadEditor(page);
+    const restored = page.locator('[data-zone-id] iframe').contentFrame();
+    await expect(restored.locator('.brand')).toHaveText('Welcome to our building');
+    await expect.poll(()=>restored.locator('.brand').evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    await expect.poll(()=>restored.locator('.tenant-name').first().evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.screenshot({path:testInfo.outputPath('directory-copy-and-font.png')});
+  });
+}

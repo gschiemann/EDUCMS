@@ -1770,6 +1770,12 @@ function BuilderBottomBar() {
     return () => clearTimeout(t);
   }, [selectedZone?.id]);
 
+  const [, refreshFieldMetrics] = useState(0);
+  useEffect(() => {
+    const update = () => refreshFieldMetrics(value => value + 1);
+    window.addEventListener('educms-field-metrics', update);
+    return () => window.removeEventListener('educms-field-metrics', update);
+  }, []);
   const activeFieldName = storeActiveFieldName;
   const activeMediaField = ['EXTERNAL_HTML', 'HOLIDAY'].includes(wt) && storeActiveMediaField?.zoneId === selectedZone?.id ? storeActiveMediaField : null;
   // Per-field UX is offered for any selected widget that already
@@ -1828,11 +1834,16 @@ function BuilderBottomBar() {
   // back to the global 16.
   const measureFieldFontSize = (): number | null => {
     if (!activeFieldName || typeof document === 'undefined') return null;
-    const els = document.querySelectorAll<HTMLElement>(`[data-field="${activeFieldName}"]`);
+    const els = document.querySelectorAll<HTMLElement>('[data-field]');
     for (const el of Array.from(els)) {
+      if (el.getAttribute('data-field') !== activeFieldName) continue;
       if (el.closest('[data-properties-panel]')) continue;
       const fs = parseFloat(getComputedStyle(el).fontSize);
       if (Number.isFinite(fs)) return Math.round(fs);
+    }
+    if (selectedZone) for (const frame of Array.from(document.querySelectorAll<HTMLIFrameElement>('[data-canvas-text-sizes]'))) {
+      if (frame.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId !== selectedZone.id) continue;
+      try { const size = JSON.parse(frame.dataset.canvasTextSizes || '{}')[activeFieldName]; if (typeof size === 'number' && size > 0 && Number.isFinite(size)) return Math.round(size); } catch { /* frame is still loading */ }
     }
     return null;
   };
