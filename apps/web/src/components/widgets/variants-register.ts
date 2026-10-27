@@ -7,9 +7,6 @@
  */
 import { registerVariant } from './variants';
 import { lazyWidget } from './lazy-widget';
-const loadLiveInfo = () => import('./LiveInfoWidgets');
-const OutlookTile = lazyWidget<ThemeWidgetProps>(loadLiveInfo, 'ForecastWeatherWidget');
-const HeadlinesTile = lazyWidget<ThemeWidgetProps>(loadLiveInfo, 'HeadlinesWidget');
 // ════════════════════════════════════════════════════════════════════════
 // LAZY PICKER TILES (P1-1, 2026-09-03).
 //
@@ -24,6 +21,7 @@ const HeadlinesTile = lazyWidget<ThemeWidgetProps>(loadLiveInfo, 'HeadlinesWidge
 // those are neither.
 // ════════════════════════════════════════════════════════════════════════
 import {
+  ForecastWeatherWidget as OutlookTile, HeadlinesWidget as HeadlinesTile,
   // → ./variant-tiles/basic-content-tiles
   VideoBasicTile, VideoCarouselTile, WebpageTile, ImageBasicTile, ImageCarouselBasicTile,
   ExternalHtmlTile, WebsiteTabsTile,

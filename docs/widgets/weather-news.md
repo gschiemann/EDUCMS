@@ -30,3 +30,5 @@ All canvas move/resize/rotate gestures use primary-button pointer capture on the
 ## Verification
 
 Local: 97 backend feed/forecast/security/cache tests; 24 widget/editor/registry unit tests; six Chromium/WebKit builder flows (including missed pointer release and save/reopen in portrait/landscape); 20 native-4K actual-provider render checks (2–5 days and rotating headlines in both orientations/engines). A real Honolulu city-name request returned five metric days through the new controller/provider boundary. Type/build, Taurus and inset checks pass. Provider fixtures and browser fixtures are separate from the actual-provider evidence. Production verification is recorded in the release report after deployment.
+
+Bundle verification: production gates the developer-only widget lab on the server before importing its client renderer. The feature build totals 19.34 MB versus the previous 19.65 MB; the existing bundle ceiling is unchanged. Widget variants share the existing family loader/dispatcher.

@@ -1,4 +1,3 @@
-'use client';
 import { useEffect, useState } from 'react';
 import { useElementSize } from './v2/_shared/useElementSize';
 import { Rss } from 'lucide-react';

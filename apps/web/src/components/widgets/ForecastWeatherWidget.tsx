@@ -1,4 +1,3 @@
-'use client';
 import { useElementSize } from './v2/_shared/useElementSize';
 import { Cloud, CloudRain, CloudSnow, CloudSun, CloudLightning, Sun, Wind } from 'lucide-react';
 import { usePolledFeed } from './use-live-feed';

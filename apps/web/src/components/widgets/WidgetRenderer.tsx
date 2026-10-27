@@ -1,10 +1,5 @@
 "use client";
 
-import { lazyWidget } from './lazy-widget';
-const loadLiveInfoWidgets = () => import('./LiveInfoWidgets');
-const ForecastWeatherWidget = lazyWidget(loadLiveInfoWidgets, 'ForecastWeatherWidget');
-const HeadlinesWidget = lazyWidget(loadLiveInfoWidgets, 'HeadlinesWidget');
-
 import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
 // 2026-09-12 — the real Instagram / Facebook Page feed. Static import (not a
 // lazy chunk) because SOCIAL_FEED is dispatched from the player's own type
@@ -1051,7 +1046,7 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     // zone is captured by the zone's onClick handler in the player.
     case 'TOUCH_POINT':  return <TouchPointWidget config={cfg} />;
     case 'CLOCK':        return <ClockWidget config={cfg} compact={compact} />;
-    case 'WEATHER':      return Number(cfg.forecastDays) >= 2 ? <ForecastWeatherWidget config={cfg} /> : <WeatherWidget config={cfg} compact={compact} />;
+    case 'WEATHER':      return <WeatherWidget config={cfg} compact={compact} />;
     case 'COUNTDOWN':    return <CountdownWidget config={cfg} compact={compact} onConfigChange={onConfigChange} />;
     case 'TEXT':         return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
     case 'RICH_TEXT':    return <TextWidget config={cfg} onConfigChange={onConfigChange} />;
@@ -1100,7 +1095,7 @@ function WidgetTypeDispatch({ widgetType, config, width, height, live, freeze, o
     // dashboard down before — a preset whose widgetType had no
     // renderer / a component that threw at import time).
     case 'EXTERNAL_HTML': return <ExternalHtmlWidget config={cfg} freeze={freeze} />;
-    case 'RSS_FEED':     return Array.isArray(cfg.sources) ? <HeadlinesWidget config={cfg} /> : <RSSWidget config={cfg} compact={compact} />;
+    case 'RSS_FEED':     return <RSSWidget config={cfg} compact={compact} />;
     case 'SOCIAL_FEED':  return <SocialFeedWidget config={cfg} live={live} />;
     case 'PLAYLIST':     return <PlaylistWidget config={cfg} />;
     // Sprint 11h — drag-drop decorations (confetti, ribbon, balloons,
@@ -3064,7 +3059,7 @@ function CalendarWidget({ config, compact }: { config: any; compact: boolean }) 
   const title = config.title || 'Upcoming Events';
   const parsedMaxEvents = Number(config.maxEvents || 5);
   const maxEvents = Number.isFinite(parsedMaxEvents) && parsedMaxEvents > 0 ? parsedMaxEvents : 5;
-  const feedUrl = (config.feedUrl || config.url || '').trim();
+  const feedUrl = (config.feedUrl || '').trim();
   const live = useLiveIcsFeed(feedUrl);
   const events = feedUrl
     ? mergeCalendarEvents(config.events, live.events, maxEvents)
