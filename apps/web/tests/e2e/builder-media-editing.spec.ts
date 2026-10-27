@@ -26,10 +26,10 @@ type TestZone = Record<string, unknown> & { defaultConfig: Record<string, unknow
   imageOverrides?: Record<string, string | string[]>;
 } };
 
-async function openEditor(page: Page, portrait = false, initialZones?: TestZone[]) {
+async function openEditor(page: Page, portrait = false, initialZones?: TestZone[], canvas?: { width: number; height: number }) {
   let template: Record<string, unknown> & { zones: TestZone[] } = {
     id: 'media-editor', name: 'Media design', tenantId: 'e2e-school', isSystem: false,
-    screenWidth: portrait ? 1080 : 1920, screenHeight: portrait ? 1920 : 1080, bgColor: '#ffffff', scenes: [],
+    screenWidth: canvas?.width ?? (portrait ? 1080 : 1920), screenHeight: canvas?.height ?? (portrait ? 1920 : 1080), bgColor: '#ffffff', scenes: [],
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -545,3 +545,58 @@ test('adapted portrait directory fills the screen and saves numeric suite sortin
   await expect(playing.locator('.canvas')).toHaveClass(/portrait/);
   await expect(playing.locator('.tenant-entry')).toHaveCount(100);
 });
+
+
+for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-register', 'night-exchange', 'foundry-atlas'].entries()) {
+  for (const portrait of [false, true]) {
+    test(`large-location directory ${design} ${portrait ? 'portrait' : 'landscape'} keeps native editing and saved rotation`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const orientation = portrait ? 'portrait' : 'landscape';
+      const board = `/templates/signage/corporate/directory/${design}-${orientation}.html`;
+      const html = fs.readFileSync(path.join(__dirname, '../../public', board), 'utf8');
+      const doc = JSON.parse(html.match(/<script[^>]*id="arc-directory-document"[^>]*>([\s\S]*?)<\/script>/)![1]);
+      const state = await openEditor(page, portrait, [{ id: 'directory', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: board, directoryDocument: doc } }], portrait ? { width: 2160, height: 3840 } : { width: 3840, height: 2160 });
+      const frame = page.locator('[data-zone-id] iframe').contentFrame();
+      await expect(frame.locator('.canvas')).toHaveClass(new RegExp(orientation));
+      await frame.locator('.directory-heading').click();
+      await page.getByLabel('Building name', { exact: true }).fill('Example International Headquarters');
+      await frame.locator('.display-footer .footer-location').click();
+      await page.getByLabel('Footer text', { exact: true }).fill('Welcome to Example HQ');
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      const photo = page.locator('[data-edit-img="property.hero"]');
+      await photo.getByRole('button', { name: 'Browse library' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[1].fileUrl);
+      await photo.getByRole('button', { name: 'Restore template photo', exact: true }).click();
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', new RegExp(`/art-direction/${design}\\.jpg$`));
+      await photo.getByRole('button', { name: 'Browse library' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'square.png', exact: true }).click();
+      await frame.locator('.art-direction-caption').click();
+      await page.getByLabel('Photo caption', { exact: true }).fill('Main entrance');
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
+      await page.getByRole('button', { name: 'Make 2 pages', exact: true }).click();
+      const mode = ['flip', 'slide-right', 'vertical-scroll-down', 'continuous-scroll-down', 'crossfade'][index];
+      await page.getByLabel('Transition', { exact: true }).selectOption(mode);
+      await page.getByLabel('Seconds per page', { exact: true }).fill('3');
+      await page.getByLabel('Seconds per page', { exact: true }).blur();
+      await page.getByRole('button', { name: /^Save$/ }).click();
+      await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('suite');
+      await reloadEditor(page);
+      await frame.locator('.directory-heading').click();
+      await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('suite');
+      await expect(page.getByLabel('Transition', { exact: true })).toHaveValue(mode);
+      await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('3');
+      await expect(frame.locator('.property-name')).toHaveText('Example International Headquarters');
+      await expect.poll(() => frame.locator('.property-subtitle').evaluate(node => node.getBoundingClientRect().bottom < document.querySelector('.content')!.getBoundingClientRect().top - 10)).toBe(true);
+      await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
+      await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[2].fileUrl);
+      await expect(frame.locator('.display-controls')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Open fullscreen preview at native resolution', exact: true }).click();
+      const playing = page.getByRole('dialog', { name: /^Preview:/ }).locator('iframe').contentFrame();
+      await expect(playing.locator('.page-counter')).toHaveText(/02\s*\/\s*02/, { timeout: 12_000 });
+      await expect(playing.locator('.canvas')).toHaveClass(new RegExp(orientation));
+    });
+  }
+}
