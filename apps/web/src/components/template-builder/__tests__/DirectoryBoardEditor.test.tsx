@@ -131,3 +131,31 @@ describe('directory configuration in the existing Properties panel', () => {
     expect(() => parseDirectoryLocations('"unclosed,101')).toThrow();
   });
 });
+
+it('updates the same structured text from inline commits and selects it for the native toolbar', () => {
+  mount();
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'educms-field-click',key:'property.brandLabel',text:'DIRECTORY',inline:true}})));
+  expect(useBuilderStore.getState().activeFieldName).toBe('property.brandLabel');
+  expect(screen.getByLabelText('Top left label')).toHaveValue('DIRECTORY');
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'property.brandLabel',value:'Visitor directory'}})));
+  expect(saved().directoryDocument.dataset.brandLabel).toBe('Visitor directory');
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'tenant.row-0.name',value:'Updated company'}})));
+  expect(saved().directoryDocument.dataset.tenants[0].name).toBe('Updated company');
+  fireEvent.focus(screen.getByLabelText('location 1 Suite / room'));
+  expect(useBuilderStore.getState().activeFieldName).toBe('tenant.row-0.suite');
+});
+it('offers visible header text directly in the left panel without requiring a canvas click', () => {
+  mount();
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-status',designId:'pacific-editorial',copy:{brandLabel:'DIRECTORY',locationLabel:'Main lobby'}}})));
+  expect(screen.getByLabelText('Text area')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Text area'),{target:{value:'locationLabel'}});
+  fireEvent.change(screen.getByLabelText('Top right label'),{target:{value:'Reception'}});
+  expect(saved().directoryDocument.dataset.locationLabel).toBe('Reception');
+});
+it('refuses edits from another board frame and from player preview', () => {
+  mount(); const parent=document.createElement('div');parent.dataset.zoneId='another-zone'; const frame=document.createElement('iframe');parent.append(frame);document.body.append(parent);
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:frame.contentWindow,data:{type:'arc-directory-text-change',key:'property.title',value:'Wrong board'}})));
+  expect(saved().directoryDocument.dataset.title).toBe('Example Centre'); parent.remove();
+  act(()=>{useBuilderStore.setState({previewMode:true});window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'property.title',value:'Preview write'}}));});
+  expect(saved().directoryDocument.dataset.title).toBe('Example Centre');
+});

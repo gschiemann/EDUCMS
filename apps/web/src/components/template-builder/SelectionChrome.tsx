@@ -107,7 +107,7 @@ export function SelectionChrome({ zone, onResizePointerDown, onRotatePointerDown
           type="button"
           aria-label={`Resize ${h}`}
           className="absolute w-3 h-3 rounded-sm bg-white border-2 shadow-sm hover:scale-125 transition-transform"
-          style={{ ...HANDLE_STYLES[h], borderColor: getZoneColor(zone.widgetType).accent, pointerEvents: 'auto' }}
+          style={{ ...HANDLE_STYLES[h], borderColor: getZoneColor(zone.widgetType).accent, pointerEvents: 'auto', touchAction: 'none' }}
           onPointerDown={(e) => { e.stopPropagation(); onResizePointerDown(e, zone.id, h); }}
         />
       ))}

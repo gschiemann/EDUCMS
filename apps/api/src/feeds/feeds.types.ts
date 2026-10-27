@@ -14,6 +14,7 @@ export interface FeedItem {
   /** Feed-level title (channel/feed name), repeated on every item so a
    *  widget can show "via <source>" without a second lookup. */
   source: string;
+  author?: string;
 }
 
 export interface RssFeedResult {

@@ -59,6 +59,11 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/templates/media-editor' && route.request().method() === 'PUT') template = { ...template, ...route.request().postDataJSON() };
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
+    if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/rss') {
+      const world = new URL(route.request().url()).searchParams.get('url')?.includes('globalvoices');
+      return json(route, { title: world ? 'Global Voices' : 'NASA', items: [{ title: world ? 'World community opens new cultural center' : 'NASA announces a new science mission', link: world ? 'https://globalvoices.org/example' : 'https://www.nasa.gov/example', publishedAt: new Date().toISOString(), source: world ? 'Global Voices' : 'NASA', author: 'Original Author' }] });
+    }
     if (endpoint === '/assets/presign') {
       const filename = route.request().postDataJSON().filename;
       return json(route, { uploadUrl: `${ORIGIN}/test-media/upload`, storagePath: filename, fileUrl: media[0].fileUrl, mimeType: 'image/png', maxFileSize: 50 * 1024 * 1024 });
@@ -604,4 +609,95 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await expect(playing.locator('.canvas')).toHaveClass(new RegExp(orientation));
     });
   }
+}
+
+
+test('weather resize requires a press and stops after a missed release, iframe crossing and focus loss', async ({ page }) => {
+  const state = await openEditor(page, false, [
+    { id: 'board', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/directory/building-index-landscape.html' } },
+    { id: 'weather', name: 'Weather', widgetType: 'WEATHER', x: 10, y: 10, width: 40, height: 30, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'weather-outlook', forecastDays: 5, location: '21.3,-157.8' } },
+  ]);
+  const zone = page.locator('[data-zone-id="weather"]');
+  await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
+  await zone.click({ position: { x: 20, y: 20 } });
+  const handle = page.getByRole('button', { name: 'Resize se', exact: true });
+  const bounds = async () => zone.evaluate(el => ({ w: (el as HTMLElement).style.width, h: (el as HTMLElement).style.height }));
+  const before = await bounds();
+  await handle.hover(); await page.mouse.move(1100, 700); expect(await bounds()).toEqual(before);
+  await handle.dispatchEvent('pointerdown', { button: 2, buttons: 2, pointerType: 'mouse', pointerId: 1, isPrimary: true });
+  await page.mouse.move(900, 650); expect(await bounds()).toEqual(before);
+  const box = (await handle.boundingBox())!; await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + 80, box.y + 50);
+  await expect.poll(bounds).not.toEqual(before);
+  // Simulate an OS/iframe swallowing the release. Captured-pointer loss and the
+  // no-buttons move must both prevent the old "hover keeps resizing" behavior.
+  await page.evaluate(() => window.addEventListener('pointerup', e => e.stopImmediatePropagation(), { capture: true, once: true }));
+  await page.mouse.up(); const released = await bounds(); await page.mouse.move(1250, 780); expect(await bounds()).toEqual(released);
+  const next = (await handle.boundingBox())!; await page.mouse.move(next.x + 3, next.y + 3); await page.mouse.down(); await page.mouse.move(next.x + 30, next.y + 25); await page.evaluate(() => window.dispatchEvent(new Event('blur'))); const blurred = await bounds(); await page.mouse.move(900, 650); await page.mouse.up(); expect(await bounds()).toEqual(blurred);
+  await page.getByRole('button', { name: /^Save$/ }).click(); await expect.poll(() => state.saved().zones.length).toBe(2);
+});
+
+for (const portrait of [false, true]) test(`live information ${portrait ? 'portrait' : 'landscape'} reuses native controls and saves days, multiple sources and timing`, async ({ page }, testInfo) => {
+  const state = await openEditor(page, portrait, [
+    { id: 'weather', name: 'Forecast', widgetType: 'WEATHER', x: 4, y: 4, width: 92, height: 42, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'weather-outlook', forecastDays: 5, location: '21.3,-157.8' } },
+    { id: 'news', name: 'Headlines', widgetType: 'RSS_FEED', x: 4, y: 50, width: 92, height: 46, zIndex: 1, sortOrder: 1, defaultConfig: { variant: 'rss-headlines', sources: ['global-voices','nasa'], intervalSec: 5 } },
+  ], portrait ? { width: 2160, height: 3840 } : { width: 3840, height: 2160 });
+  const weather = page.locator('[data-zone-id="weather"]'); await expect(weather.locator('[data-forecast-day]')).toHaveCount(5); await weather.click({ position: { x: 12, y: 12 } });
+  for (const count of [2,3,4,5]) { await page.getByLabel('Forecast days', { exact: true }).selectOption(String(count)); await expect(weather.locator('[data-forecast-day]')).toHaveCount(count); }
+  await page.getByLabel('Units', { exact: true }).selectOption('metric'); await expect(weather.getByText('°C', {exact:true})).toBeVisible();
+  await page.getByLabel('Forecast days', { exact: true }).selectOption('3');
+  const news = page.locator('[data-zone-id="news"]'); await news.click({ position: { x: 12, y: 12 } });
+  await page.getByRole('switch', { name: 'Global Voices · World', exact: true }).click(); await expect(news.getByText('NASA announces a new science mission')).toBeVisible();
+  await page.getByRole('switch', { name: 'Global Voices · World', exact: true }).click(); await expect(news.getByText('World community opens new cultural center')).toBeVisible();
+  await page.getByLabel('Seconds per headline', {exact:true}).fill('5'); await page.getByLabel('Seconds per headline', {exact:true}).blur();
+  await expect(news.getByText('NASA announces a new science mission')).toBeVisible({timeout:12_000});
+  await page.getByRole('button', {name:/^Save$/}).click(); await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); await expect.poll(()=>state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5}); await reloadEditor(page);
+  await expect(page.locator('[data-zone-id] [data-forecast-day]')).toHaveCount(3);
+  expect(state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); expect(state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5});
+  await page.screenshot({path:testInfo.outputPath('live-info-'+(portrait?'portrait':'landscape')+'.png')});
+});
+
+for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
+  test(`directory copy ${privateCopy ? 'Brookfield custom' : 'standard'} ${portrait ? 'portrait' : 'landscape'} edits header and inline text with saved toolbar font sizes`, async ({page}, testInfo) => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../../docs/templates/corporate-directory-touch-install-manifest.json'), 'utf8'));
+    const record = manifest.records.find((record: any) => record.collection === (privateCopy ? 'custom' : 'standard') && record.defaultConfig?.directoryDocument?.designId === 'pacific-editorial' && record.defaultConfig.directoryDocument.orientation === (portrait ? 'portrait' : 'landscape'));
+    expect(record).toBeTruthy();
+    const cfg = JSON.parse(JSON.stringify(record.defaultConfig));
+    // The customer's existing Adapt-to-portrait copy retains its landscape source URL/document.
+    if (privateCopy && portrait) { cfg.url = cfg.url.replace('-portrait.html','-landscape.html'); cfg.directoryDocument.orientation = 'landscape'; }
+    const state = await openEditor(page, portrait, [{id:'directory',name:'Directory',widgetType:'EXTERNAL_HTML',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:cfg}], {width:portrait?(privateCopy?1080:2160):3840,height:portrait?(privateCopy?1920:3840):2160});
+    const frame = page.locator('[data-zone-id="directory"] iframe').contentFrame();
+    const brand = frame.locator('.brand');
+    await expect(page.getByLabel('Text area', {exact:true})).toBeVisible();
+    await brand.click();
+    await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible();
+    await expect(brand).toHaveAttribute('contenteditable','true');
+    await brand.fill('Welcome to our building'); await brand.press('Enter');
+    await expect(brand).toHaveText('Welcome to our building');
+    await expect(page.getByLabel('Top left label',{exact:true})).toHaveValue('Welcome to our building');
+    await page.getByLabel('Text area',{exact:true}).selectOption('locationLabel');
+    await expect(page.getByLabel('Top right label',{exact:true})).toHaveValue(cfg.directoryDocument.dataset.locationLabel);
+    await page.getByLabel('Top right label',{exact:true}).fill('Visitor reception');
+    await page.getByLabel('Top right label',{exact:true}).blur();
+    await expect(frame.locator('.site-type')).toHaveText('Visitor reception');
+    await brand.click(); await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible(); await page.getByLabel('Font size',{exact:true}).fill('42');
+    await expect.poll(()=>brand.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    const tenant = frame.locator('.tenant-name').first();
+    const tenantKey = await tenant.getAttribute('data-field');
+    expect(tenantKey).toMatch(/^tenant\..+\.name$/);
+    await tenant.click();
+    await expect(page.getByTitle(`Editing field: ${tenantKey}`, {exact:true})).toBeVisible();
+    await expect(page.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+    await page.getByLabel('Font size',{exact:true}).fill('40');
+    await expect.poll(()=>tenant.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.getByLabel('Font family',{exact:true}).selectOption('Arial');
+    await expect.poll(()=>tenant.evaluate(node=>getComputedStyle(node).fontFamily)).toContain('Arial');
+    await page.getByRole('button',{name:/^Save$/}).click();
+    await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({directoryDocument:{dataset:{brandLabel:'Welcome to our building',locationLabel:'Visitor reception'}},_styles:{'property.brandLabel':{fontSize:42},[tenantKey!]:{fontSize:40}}});
+    await reloadEditor(page);
+    const restored = page.locator('[data-zone-id] iframe').contentFrame();
+    await expect(restored.locator('.brand')).toHaveText('Welcome to our building');
+    await expect.poll(()=>restored.locator('.brand').evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    await expect.poll(()=>restored.locator('.tenant-name').first().evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.screenshot({path:testInfo.outputPath('directory-copy-and-font.png')});
+  });
 }

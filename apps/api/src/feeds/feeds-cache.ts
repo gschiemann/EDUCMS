@@ -80,7 +80,10 @@ class MemoryLru {
 const rssMemory = new MemoryLru();
 const icsMemory = new MemoryLru();
 
-export type FeedKind = 'rss' | 'ics';
+const weatherMemory = new MemoryLru();
+const geocodeMemory = new MemoryLru();
+export type FeedKind = 'rss' | 'ics' | 'weather' | 'geocode';
+const memories = { rss: rssMemory, ics: icsMemory, weather: weatherMemory, geocode: geocodeMemory };
 
 function keyFor(kind: FeedKind, url: string): string {
   return `feeds:${kind}:${url}`;
@@ -100,7 +103,7 @@ export async function getCachedFeed(
       logger.debug(`Redis GET failed, falling back to memory: ${e?.message || e}`);
     }
   }
-  const memory = kind === 'rss' ? rssMemory : icsMemory;
+  const memory = memories[kind];
   return memory.get(key);
 }
 
@@ -114,7 +117,7 @@ export async function setCachedFeed(
   const key = keyFor(kind, url);
   // Always write the in-memory fallback too — cheap, and it means a Redis
   // outage mid-flight doesn't suddenly cost every replica a cold cache.
-  const memory = kind === 'rss' ? rssMemory : icsMemory;
+  const memory = memories[kind];
   memory.set(key, payload, ttlSeconds);
   if (redis) {
     try {
