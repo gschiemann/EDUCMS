@@ -152,9 +152,12 @@ export function selectStagedBoard(
   const type = alert.type.trim().toUpperCase() as EmergencyBoardType;
   const entry = staged.boardFor[type];
   const selection = entry ? (alert.isDrill === true ? entry.drill : entry.live) : null;
-  const id = selection?.perScreen ? selection.playlistId : (pushPlaylistId || selection?.playlistId || null);
-  if (!id) return null;
-  return staged.boards[id] ?? null;
+  // ONLY this screen's own staged board for (type, drill|live, orientation)
+  // (2026-10-27, on-site test). The push's playlistId is the landscape LIVE
+  // board: using it put the live board on a drill and missed every portrait
+  // screen. An explicitly chosen non-default board arrives with the manifest.
+  void pushPlaylistId;
+  return selection?.playlistId ? staged.boards[selection.playlistId] ?? null : null;
 }
 
 interface StoreLike {
