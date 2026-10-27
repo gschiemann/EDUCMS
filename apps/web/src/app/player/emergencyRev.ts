@@ -183,7 +183,9 @@ export function alertFromRevEnvelope(env: RevAlertEnvelope | null | undefined): 
   const p = env.payload;
   if (!p || typeof p !== 'object') return null;
   const row = p as Record<string, unknown>;
-  const type = typeof row.type === 'string' && row.type.length > 0 ? row.type : null;
+  // Same canonical UPPER-case type as `alertFromOverridePush` (the rev
+  // descriptor copies the dashboard's `overridePayload.type` as sent).
+  const type = typeof row.type === 'string' && row.type.trim().length > 0 ? row.type.trim().toUpperCase() : null;
   const severity =
     typeof row.severity === 'string' && row.severity.length > 0 ? row.severity : null;
   const scope = typeof row.scope === 'string' && row.scope.length > 0 ? row.scope : null;
@@ -230,7 +232,10 @@ export function alertFromRevEnvelope(env: RevAlertEnvelope | null | undefined): 
 export function alertFromOverridePush(payload: unknown): RevAlertPayload | null {
   if (!payload || typeof payload !== 'object') return null;
   const row = payload as Record<string, unknown>;
-  const type = typeof row.type === 'string' && row.type.length > 0 ? row.type : null;
+  // The dashboard sends the type as it names it (`medical`); the server keys
+  // and the manifest emit it UPPER case (`emergencyTypeKey`). Raise the
+  // canonical shape so the alert the manifest re-asserts is the same object.
+  const type = typeof row.type === 'string' && row.type.trim().length > 0 ? row.type.trim().toUpperCase() : null;
   const severity =
     typeof row.severity === 'string' && row.severity.length > 0 ? row.severity : null;
   if (!type || !severity) return null;
@@ -380,4 +385,16 @@ export function reconcileCadenceMs(state: { pushDegraded: boolean }): number {
 /** Path of the revision endpoint for one screen. */
 export function emergencyRevPath(screenId: string): string {
   return `/api/v1/screens/${encodeURIComponent(screenId)}/emergency-rev`;
+}
+
+/**
+ * The EXPLICIT playlist an operator chose on the trigger, as carried by the
+ * signed OVERRIDE payload (`playlistId`), or `null` for the ordinary button
+ * trigger. Read alongside the alert so the page can pick the staged board the
+ * server will deliver (`emergencyBoards.ts`); never part of the alert object.
+ */
+export function overridePushPlaylistId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const v = (payload as Record<string, unknown>).playlistId;
+  return typeof v === 'string' && v.length > 0 ? v : null;
 }

@@ -44,7 +44,7 @@ import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
 import { decideEmergencySurface } from './emergencySurface';
-import { cachedManifestWouldClearLiveAlert, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
+import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
   readUsbMemo, usbOnlyManifest, usbOverlayActive, writeUsbMemo, type UsbOverlayState,
@@ -161,6 +161,7 @@ import {
   emergencyRevPath,
   alertFromRevEnvelope,
   alertFromOverridePush,
+  overridePushPlaylistId,
   type RevAlertPayload,
   type RevPollOutcome,
 } from './emergencyRev';
@@ -294,6 +295,7 @@ import {
   refreshAckToReport,
 } from './refreshAckReport';
 import { itemContentSigInput } from './contentSig';
+import { persistStagedBoards, readPersistedStagedBoards, readStagedBoardsResponse, selectStagedBoard, type StagedBoards } from './emergencyBoards';
 import { nativeWebsiteTarget, publishDisplayBlank } from './displayBlankSignal';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 // Seamless file swaps under the same items (2026-10-12, video guarantee):
@@ -1536,6 +1538,97 @@ function ScaledWebFrame({
 // Frame-locked sync — compact stable hash of the playlist signature so the
 // dashboard can compare "are these group screens even showing the same
 // content?" without shipping the (long) per-item signature. djb2/hex.
+/**
+ * The playable items of a manifest's media playlists — ONE transform for the
+ * manifest apply AND the staged emergency boards (emergencyBoards.ts,
+ * 2026-10-26): a board raised from the signed push must be the SAME items,
+ * with the SAME apply signature, as the committed manifest will carry, or the
+ * manifest would re-mount what is already on the glass.
+ */
+function combinedItemsFromSources(mediaSources: any[]): any[] {
+  const combinedItems: any[] = [];
+  mediaSources.forEach((mp: any) => {
+    (mp.items || []).forEach((item: any, itemIndex: number) => {
+      const itemIdentity =
+        item.item_id ||
+        item.asset_id ||
+        item.asset_hash ||
+        stableManifestUrlKey(item.url) ||
+        `${itemIndex}`;
+      combinedItems.push({
+        // Stable deterministic id. Prefer server-side row ids; only
+        // fall back to a normalized URL for legacy manifests.
+        id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${itemIdentity}`,
+        manifestKey: itemIdentity,
+        // The server's PlaylistItem id: the protocol-3 native slot
+        // `item:<id>` (nativeZones.ts) is keyed on it.
+        itemId: typeof item.item_id === 'string' ? item.item_id : null,
+        // The same PlaylistItem can point at a newly optimized file.
+        // Fold in the served bytes' identity so a changed URL/hash
+        // actually remounts the video instead of returning "same
+        // playlist" with the old URL for up to an entire session.
+        // ...and the TRANSITION: a transition-only edit used to leave this
+        // (and so newSig) unchanged and was discarded as "same playlist".
+        contentVersion: hashContentSig(
+          itemContentSigInput(item, stableManifestUrlKey(item.url)),
+        ),
+        durationMs: item.duration_ms,
+        sequenceOrder: item.sequence ?? itemIndex,
+        transitionType: item.transition_type ?? undefined,
+        // 2026-05-05 — operator: "your player isnt playing the
+        // fucking sound and the video has sound it plays when i
+        // preview it in the app with sound". This was the bug:
+        // the manifest emits `muted` on every item (resolved
+        // from schedule.mutedOverride > item.muted > true), but
+        // the transform that builds `combinedItems` from the
+        // manifest dropped the field. PlayerVideoSlide read
+        // undefined, defaulted to muted=true, video played
+        // silent. Carry it through.
+        muted: item.muted,
+        // The file's own pixel shape (2026-10-12): playlistItemFit reads
+        // these to fill only when the shapes are close and show the whole
+        // file otherwise. The mapping used to drop them, so every screen
+        // got 'cover' and a portrait clip on a landscape panel zoomed.
+        ...(Number.isInteger(item.media_w) && item.media_w > 0 && Number.isInteger(item.media_h) && item.media_h > 0
+          ? { media_w: item.media_w, media_h: item.media_h }
+          : {}),
+        asset: {
+          id: item.asset_id ?? null,
+          fileUrl: item.url,
+          // Use the manifest's mime_type when available (always set
+          // by the API now). Fall back to URL-extension guessing
+          // only for legacy manifests / older payloads, which is
+          // what the player was doing exclusively before — that's
+          // why URL assets (text/html) and PDF assets (application/
+          // pdf) silently rendered as broken <img>s and the screen
+          // froze on the splash. (manifestItemMime — shared with the
+          // precache list so the two agree on the playback URL.)
+          mimeType: manifestItemMime(item),
+          // The file's byte size, when the manifest knows it: the
+          // readiness gate uses it to tell a large file (staged by the
+          // worker, held until on disk) from a small one.
+          fileHash: typeof item.asset_hash === 'string' ? item.asset_hash : null,
+          sizeBytes: Number.isSafeInteger(item.asset_size) && item.asset_size > 0 ? item.asset_size as number : null,
+        },
+      });
+    });
+  });
+  return combinedItems;
+}
+
+/** The apply signature of a playlist's items (see the Fix #1 / Fix #2 notes at the call site). */
+function playlistSigOf(combinedItems: any[]): string {
+  return combinedItems
+    .map((i: any) => {
+      // Prefer asset_id (most stable). The DB row id of the
+      // playlist item itself. Only one DB write per item ever
+      // produces this value, so it's bedrock-stable.
+      const stable = i.manifestKey || i.asset?.fileUrl?.split('?')[0] || '';
+      return `${i.sequenceOrder}|${i.durationMs}|${stable}|${i.contentVersion}`;
+    })
+    .join('||');
+}
+
 function hashContentSig(sig: string): string {
   let h = 5381;
   for (let i = 0; i < sig.length; i++) {
@@ -4700,6 +4793,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // protective pending surface's colour only; it is read nowhere else and
   // only matters while the confirmation window is open.
   const [pendingOverrideDrill, setPendingOverrideDrill] = useState(false);
+  // 2026-10-26 — STAGED BOARDS (emergencyBoards.ts): the location's emergency
+  // playlists, pre-delivered by `emergency-assets` in the manifest's own
+  // shape, and the commit function defined after `commitMediaPlaylist`
+  // (a ref, because this callback is declared first).
+  const stagedBoardsRef = useRef<StagedBoards | null>(null);
+  const raiseStagedBoardRef = useRef<(alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null) => void>(() => {});
   const raiseFromSignedPush = useCallback((payload: unknown, via: 'ws' | 'sse' | 'rev', raised: RevAlertPayload | null = alertFromOverridePush(payload)) => {
     setPendingOverrideDrill(raised?.isDrill === true || (!!payload && typeof payload === 'object' && (payload as { isDrill?: unknown }).isDrill === true));
     if (!raised || activeEmergencyRef.current) return;
@@ -4707,6 +4806,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     setActiveEmergency(raised);
     activeEmergencyRef.current = raised;
     cacheEmergency(raised);
+    // The location's board, if it is staged, goes on the glass in this same
+    // tick through the manifest's own playlist state (no typed surface first,
+    // no re-mount when the committed manifest lands with the same board).
+    raiseStagedBoardRef.current(raised, overridePushPlaylistId(payload));
   }, []);
   // 2026-05-26 P0-3 — Sprint 5 emergency-message overlay state.
   // SOS / TEXT_BROADCAST / MEDIA_ALERT pushed via WS land here; the
@@ -6448,7 +6551,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // runs alongside (not instead of) the periodic manifest sync — the
   // emergency tier is sacred and we keep it hot proactively.
   const refreshEmergencyCache = useCallback(async () => {
-    if (!screenId || !isSwSupported()) return;
+    if (!screenId) return;
     try {
       const headers: Record<string, string> = {};
       const tok = getDeviceToken();
@@ -6456,6 +6559,17 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const res = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/emergency-assets`, { headers });
       if (!res.ok) return;
       const data = await res.json();
+      // 2026-10-26 — STAGED BOARDS. Written only from this authenticated
+      // response; memory + per-screen storage (a reload under a native hold
+      // reads it back). A response with no usable boards keeps what is staged
+      // — never a wipe (the never-evict rule, F5). Independent of the worker:
+      // a player with no service worker still raises its board from the push.
+      const staged = readStagedBoardsResponse(data);
+      if (staged) {
+        stagedBoardsRef.current = staged;
+        persistStagedBoards(typeof localStorage !== 'undefined' ? localStorage : null, screenId, staged);
+      }
+      if (!isSwSupported()) return;
       // Short-circuit if the asset set is unchanged since last push.
       if (data.setHash && data.setHash === lastEmergencySetHashRef.current) return;
       // FIX (player-014): do NOT commit the page-side ref yet. The SW
@@ -6888,6 +7002,50 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // readiness gate re-aims the counter at the first ready one.)
     setCurrentIndex((prev) => (!oldHasItems ? 0 : prev % commit.items.length));
   }, []);
+  // 2026-10-26 — put a STAGED emergency board on the glass for an alert the
+  // page already holds (raised from the signed push, or restored from the
+  // cache at boot). RAISE ONLY: it never decides that an alert exists and it
+  // never releases one; with no staged board for the type nothing changes
+  // and the typed surface shows as before. It commits through the SAME
+  // function and the SAME item transform + signature as the manifest apply,
+  // so the committed manifest carrying this board is "identical content".
+  const raiseStagedBoard = useCallback((alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null) => {
+    const board = selectStagedBoard(stagedBoardsRef.current, alert, pushPlaylistId);
+    if (!board) return;
+    const items = combinedItemsFromSources([board]);
+    if (items.length === 0) return;
+    const sig = playlistSigOf(items);
+    if (sig === currentPlaylistSigRef.current) return; // already on the glass
+    const base = playbackManifestRef.current ?? { m: {}, fromCache: true };
+    // A deferred normal playlist is no longer wanted under an alert (the
+    // manifest path drops it the same way before an emergency commit).
+    pendingPlaylistCommitRef.current = null;
+    commitMediaPlaylist({
+      sig,
+      manifest: { m: base.m, fromCache: true },
+      name: board.name,
+      items,
+      isEmergency: true,
+      readiness: items.map((it: any) => ({
+        id: String(it.id),
+        large: isLargeMedia({ url: playbackUrlFor(it.asset.fileUrl, it.asset.mimeType), sizeBytes: it.asset.sizeBytes }),
+        cacheKey: stableManifestUrlKey(playbackUrlFor(it.asset.fileUrl, it.asset.mimeType)),
+      })),
+    }, true);
+    console.warn(`[Player] ${alert.type}${alert.isDrill ? ' (DRILL)' : ''}: staged board "${board.name}" on glass from the signed push — manifest confirm in flight`);
+  }, [commitMediaPlaylist]);
+  raiseStagedBoardRef.current = raiseStagedBoard;
+  // Boot: the boards staged in a previous document, and — under a cached
+  // alert (a reload by the APK's paint ladder mid-alert, a reboot) — its board
+  // straight away, before the live manifest round trip. Raise-only, like the
+  // cached alert itself; the live manifest decides as before.
+  useEffect(() => {
+    if (!screenId) return;
+    const persisted = readPersistedStagedBoards(typeof localStorage !== 'undefined' ? localStorage : null, screenId);
+    if (persisted && !stagedBoardsRef.current) stagedBoardsRef.current = persisted;
+    const cached = activeEmergencyRef.current;
+    if (cached && currentPlaylistSigRef.current === '') raiseStagedBoard(cached, null);
+  }, [screenId, raiseStagedBoard]);
 
   const fetchContentInner = useCallback(async () => {
     if (!screenId || serverUnpairedRef.current) return;
@@ -7500,6 +7658,15 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       //     (never-give-up offline posture) but never RELEASE — and since
       //     F8 that includes the overlay itself, not just the native hold.
       if (manifest.playlists && manifest.playlists.length > 0) {
+        // 2026-10-26 — a manifest that may not RELEASE the alert (cached
+        // normal during an outage; the trigger's own pre-commit read inside
+        // the confirm window) may not take the emergency BOARD down either:
+        // the staged board stays until the manifest that decides arrives
+        // (emergencyInterlock.ts, tested). Never a release path.
+        if (emergencyBoardStaysOnGlass({ alertStaysOnGlass, boardOnGlass: contentIsEmergencyRef.current })) {
+          pendingPlaylistCommitRef.current = null;
+          return true;
+        }
         // B-P2-10 (2026-08-30): the empty-streak reset moved DOWN into the
         // branches that actually APPLY content. Resetting here — on
         // playlists merely EXISTING — while the increment fires on
@@ -7627,73 +7794,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           pendingPlaylistCommitRef.current = null;
           return true;
         }
-        const combinedItems: any[] = [];
-        mediaSources.forEach((mp: any) => {
-          (mp.items || []).forEach((item: any, itemIndex: number) => {
-            const itemIdentity =
-              item.item_id ||
-              item.asset_id ||
-              item.asset_hash ||
-              stableManifestUrlKey(item.url) ||
-              `${itemIndex}`;
-            combinedItems.push({
-              // Stable deterministic id. Prefer server-side row ids; only
-              // fall back to a normalized URL for legacy manifests.
-              id: `${mp.id || mp.name || 'pl'}:${item.sequence ?? itemIndex}:${itemIdentity}`,
-              manifestKey: itemIdentity,
-              // The server's PlaylistItem id: the protocol-3 native slot
-              // `item:<id>` (nativeZones.ts) is keyed on it.
-              itemId: typeof item.item_id === 'string' ? item.item_id : null,
-              // The same PlaylistItem can point at a newly optimized file.
-              // Fold in the served bytes' identity so a changed URL/hash
-              // actually remounts the video instead of returning "same
-              // playlist" with the old URL for up to an entire session.
-              // ...and the TRANSITION: a transition-only edit used to leave this
-              // (and so newSig) unchanged and was discarded as "same playlist".
-              contentVersion: hashContentSig(
-                itemContentSigInput(item, stableManifestUrlKey(item.url)),
-              ),
-              durationMs: item.duration_ms,
-              sequenceOrder: item.sequence ?? itemIndex,
-              transitionType: item.transition_type ?? undefined,
-              // 2026-05-05 — operator: "your player isnt playing the
-              // fucking sound and the video has sound it plays when i
-              // preview it in the app with sound". This was the bug:
-              // the manifest emits `muted` on every item (resolved
-              // from schedule.mutedOverride > item.muted > true), but
-              // the transform that builds `combinedItems` from the
-              // manifest dropped the field. PlayerVideoSlide read
-              // undefined, defaulted to muted=true, video played
-              // silent. Carry it through.
-              muted: item.muted,
-              // The file's own pixel shape (2026-10-12): playlistItemFit reads
-              // these to fill only when the shapes are close and show the whole
-              // file otherwise. The mapping used to drop them, so every screen
-              // got 'cover' and a portrait clip on a landscape panel zoomed.
-              ...(Number.isInteger(item.media_w) && item.media_w > 0 && Number.isInteger(item.media_h) && item.media_h > 0
-                ? { media_w: item.media_w, media_h: item.media_h }
-                : {}),
-              asset: {
-                id: item.asset_id ?? null,
-                fileUrl: item.url,
-                // Use the manifest's mime_type when available (always set
-                // by the API now). Fall back to URL-extension guessing
-                // only for legacy manifests / older payloads, which is
-                // what the player was doing exclusively before — that's
-                // why URL assets (text/html) and PDF assets (application/
-                // pdf) silently rendered as broken <img>s and the screen
-                // froze on the splash. (manifestItemMime — shared with the
-                // precache list so the two agree on the playback URL.)
-                mimeType: manifestItemMime(item),
-                // The file's byte size, when the manifest knows it: the
-                // readiness gate uses it to tell a large file (staged by the
-                // worker, held until on disk) from a small one.
-                fileHash: typeof item.asset_hash === 'string' ? item.asset_hash : null,
-                sizeBytes: Number.isSafeInteger(item.asset_size) && item.asset_size > 0 ? item.asset_size as number : null,
-              },
-            });
-          });
-        });
+        const combinedItems: any[] = combinedItemsFromSources(mediaSources);
         if (combinedItems.length > 0) {
           emptyManifestStreakRef.current = 0; // real content applied (B-P2-10)
           // 2026-05-04 — operator (Goodview Chromium 95 install):
@@ -7724,15 +7825,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // one — clamp into the new bounds instead of resetting to
           // 0. Operators editing a playlist at runtime shouldn't see
           // every paired screen jolt back to slide 1.
-          const newSig = combinedItems
-            .map((i: any) => {
-              // Prefer asset_id (most stable). The DB row id of the
-              // playlist item itself. Only one DB write per item ever
-              // produces this value, so it's bedrock-stable.
-              const stable = i.manifestKey || i.asset?.fileUrl?.split('?')[0] || '';
-              return `${i.sequenceOrder}|${i.durationMs}|${stable}|${i.contentVersion}`;
-            })
-            .join('||');
+          const newSig = playlistSigOf(combinedItems);
           const isEmergencyContent = manifest.isEmergency === true;
           if (newSig === currentPlaylistSigRef.current) {
             setNativeVideoDescriptor(committedNativeVideo(manifest.nativeVideo, combinedItems,
@@ -8087,6 +8180,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 cacheEmergency(null);
                 const stillHeld = !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current;
                 signalDisplayEmergencyHold(stillHeld, stillHeld);
+                // A staged board raised for that alert was kept through the
+                // window by the board interlock; re-apply the live manifest
+                // now that nothing holds it, so the content follows the alert.
+                if (contentIsEmergencyRef.current) setTimeout(() => fetchContent(), 0);
               }
             } else {
               // Chase the commit on a rapid ladder (~2.5/5/10/20s) instead
@@ -13455,6 +13552,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       data-edu-player-root="media"
       data-edu-emergency-root={activeEmergency && playlist?.isEmergency ? 'media' : undefined}
       data-edu-emergency-identity={activeEmergency && playlist?.isEmergency ? emergencyPaintIdentity(activeEmergency) : undefined}
+      data-edu-emergency-drill={activeEmergency && playlist?.isEmergency && activeEmergency.isDrill === true ? 'true' : undefined}
       className={`fixed top-0 right-0 bottom-0 left-0 bg-black overflow-hidden ${isPlaylistInteractive ? '' : 'cursor-none'}`}
       // 2026-05-13 — inline-style fallback. Same reasoning as
       // /player/layout.tsx: if Tailwind doesn't apply (CDN reach,

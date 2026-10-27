@@ -35,16 +35,26 @@ export function emergencyRenderHash(proof: EmergencyPaintProof, manifestOkAtMs: 
  *
  * A pushed message (SOS / broadcast / media alert) carries its own row `id`
  * and is hashed whole, exactly as before.
+ *
+ * CASE (2026-10-26, the live alerts at a launch site): the signed OVERRIDE
+ * push carries the type as the dashboard sent it (`medical`); the manifest
+ * keys it upper case (`MEDICAL`). Hashed as written, the alert raised from
+ * the push and the same alert re-asserted by the manifest ~8 s later were
+ * TWO identities (126c2f1f → 431df93f, measured on every screen), and the APK
+ * restarted its paint ladder for a "new" alert. Type and severity are
+ * compared case-insensitively here, so one alert is one identity whichever
+ * wire it arrived on.
  */
 export function emergencyPaintIdentityInput(alert: unknown): unknown {
   if (!alert || typeof alert !== 'object' || Array.isArray(alert)) return alert;
   const a = alert as Record<string, unknown>;
-  if (typeof a.id === 'string' || typeof a.type !== 'string' || a.type.length === 0) return alert;
+  if (typeof a.id === 'string' || typeof a.type !== 'string' || a.type.trim().length === 0) return alert;
   const text = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  const upper = (v: unknown): string | null => (typeof v === 'string' && v.trim().length > 0 ? v.trim().toUpperCase() : null);
   return {
     kind: 'override',
-    type: a.type,
-    severity: text(a.severity),
+    type: upper(a.type),
+    severity: upper(a.severity),
     isDrill: a.isDrill === true,
     scopeNote: text(a.scopeNote),
     textBlob: text(a.textBlob),
