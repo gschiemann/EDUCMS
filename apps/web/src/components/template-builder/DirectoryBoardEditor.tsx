@@ -153,6 +153,7 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
     <section ref={root} className="space-y-4" aria-label="Directory settings">
       <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3" role="group" aria-label="Pages and rotation">
       <h3 className="text-xs font-semibold text-slate-700">Pages &amp; rotation</h3>
+      <Select label="Sort by" value={playback.sort === 'suite' ? 'suite' : 'name'} options={[['name', 'Company name'], ['suite', 'Suite number']]} onChange={sort => updatePlayback({ sort })} />
       <Select label="Display" value={mode} options={[[ 'single', 'Fit everything on one screen' ], [ 'pages', 'Create pages automatically' ]]} onChange={v => updatePlayback({ displayMode: v })} />
       {mode === 'single' && count > 1 && <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => updatePlayback({ displayMode: 'pages', locationsPerPage: Math.ceil(count / 2) })}>Make 2 pages</button>}
       <div className="space-y-3">

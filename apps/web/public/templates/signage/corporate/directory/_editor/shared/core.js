@@ -17,6 +17,7 @@
  function sortTenants(tenants,sort){
   if(sort==='manual')return tenants.filter(t=>t.active!==false).slice();
   return tenants.filter(t=>t.active!==false).slice().sort((a,b)=>{
+   if(sort==='suite')return (a.suite.trim()?0:1)-(b.suite.trim()?0:1)||collator.compare(a.suite.trim(),b.suite.trim())||collator.compare(a.name,b.name)||collator.compare(a.id,b.id);
    if(sort==='floor')return collator.compare(a.floor||'',b.floor||'')||collator.compare(a.suite,b.suite)||collator.compare(a.name,b.name)||collator.compare(a.id,b.id);
    if(sort==='category')return collator.compare(a.category||'',b.category||'')||collator.compare(a.name,b.name)||collator.compare(a.id,b.id);
    return collator.compare(a.name,b.name)||collator.compare(a.suite,b.suite)||collator.compare(a.id,b.id);
@@ -26,7 +27,7 @@
  function number(value,fallback,min,max){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;}
  function normalizeConfig(raw={}){
   const speed=['slow','normal','fast'].includes(raw.motionSpeed)?raw.motionSpeed:'normal';
-  return {...raw,displayMode:raw.displayMode==='pages'?'pages':'single',locationsPerPage:Math.round(number(raw.locationsPerPage,24,1,500)),motionSpeed:speed,autoplay:raw.autoplay!==false,paused:raw.paused===true,pageDurationMs:number(raw.pageDurationMs,14000,3000,120000),pageDurationsMs:Array.isArray(raw.pageDurationsMs)?raw.pageDurationsMs.map(n=>number(n,14000,3000,120000)):[],transitionMode:MODES.includes(raw.transitionMode)?raw.transitionMode:'crossfade',transitionDurationMs:{slow:1400,normal:800,fast:350}[speed],scrollSpeedPxPerSecond:{slow:28,normal:50,fast:85}[speed],scrollStartHoldMs:number(raw.scrollStartHoldMs,2500,0,30000),sort:['design','manual','name','floor','category'].includes(raw.sort)?raw.sort:'design'};
+  return {...raw,displayMode:raw.displayMode==='pages'?'pages':'single',locationsPerPage:Math.round(number(raw.locationsPerPage,24,1,500)),motionSpeed:speed,autoplay:raw.autoplay!==false,paused:raw.paused===true,pageDurationMs:number(raw.pageDurationMs,14000,3000,120000),pageDurationsMs:Array.isArray(raw.pageDurationsMs)?raw.pageDurationsMs.map(n=>number(n,14000,3000,120000)):[],transitionMode:MODES.includes(raw.transitionMode)?raw.transitionMode:'crossfade',transitionDurationMs:{slow:1400,normal:800,fast:350}[speed],scrollSpeedPxPerSecond:{slow:28,normal:50,fast:85}[speed],scrollStartHoldMs:number(raw.scrollStartHoldMs,2500,0,30000),sort:['design','manual','name','suite','floor','category'].includes(raw.sort)?raw.sort:'design'};
  }
  function dwell(config,index){return config.pageDurationsMs[index]||config.pageDurationMs;}
  return {MODES,validateDataset,sortTenants,paginate,normalizeConfig,dwell};

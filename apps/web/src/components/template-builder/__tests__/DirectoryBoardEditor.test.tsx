@@ -32,6 +32,17 @@ describe('directory configuration in the existing Properties panel', () => {
     expect(screen.getByLabelText('Seconds per page')).toHaveValue(14);
     expect(container.querySelector('select:disabled')).toBeNull();
   });
+  it('saves the simple name or numeric suite sort without changing content or rotation', () => {
+    mount();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('name');
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'suite' } });
+    expect(saved().directoryDocument.playback).toMatchObject({ sort: 'suite' });
+    expect(saved().directoryDocument.dataset.tenants[0]).toMatchObject({ name: 'Company 0', suite: '101' });
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'slide-right' } });
+    expect(saved().directoryDocument.playback).toMatchObject({ sort: 'suite', transitionMode: 'slide-right' });
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'name' } });
+    expect(saved().directoryDocument.playback.sort).toBe('name');
+  });
   it('adds, edits and removes locations through the shared list editor', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: '+ Add location' }));
