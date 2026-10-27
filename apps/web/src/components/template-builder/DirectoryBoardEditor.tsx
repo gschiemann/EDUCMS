@@ -21,7 +21,7 @@ const COPY_LABELS: Record<string, string> = {
   imageCaption: 'Photo caption', pageLabel: 'Page label', rangeLabel: 'List range label', emptyLabel: 'Empty directory message',
   nameColumnLabel: 'Name column label', suiteLabel: 'Suite column label',
 };
-const TRANSITIONS: [string, string][] = [['crossfade', 'Fade'], ['flip', 'Flip'], ['slide', 'Slide'], ['vertical-scroll', 'Scroll up'], ['continuous-scroll', 'Continuous scroll']];
+const TRANSITIONS: [string, string][] = [['crossfade', 'Fade'], ['flip', 'Flip'], ['slide', 'Slide left'], ['slide-right', 'Slide right'], ['vertical-scroll', 'Scroll up'], ['vertical-scroll-down', 'Scroll down'], ['continuous-scroll', 'Continuous scroll up'], ['continuous-scroll-down', 'Continuous scroll down']];
 const SPEEDS: [string, string][] = [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']];
 const LIMIT = 500;
 
@@ -84,6 +84,9 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
   const pages = mode === 'single' ? 1 : Math.max(1, Math.ceil(count / pageSize));
   const transition = String(playback.transitionMode || 'crossfade');
   const speed = String(playback.motionSpeed || 'normal');
+  const continuous = transition.startsWith('continuous-scroll');
+  const seconds = Math.max(3, Math.min(120, Number(playback.pageDurationMs || 14000) / 1000));
+  const transitionLabel = TRANSITIONS.find(([value]) => value === transition)?.[1] || 'Fade';
 
   function commit(document: DirectoryDocument) {
     const previous = latest.current.cfg.textOverrides;
@@ -117,6 +120,10 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
     function select(event: MessageEvent) {
       const message = event.data;
       if (!isFromDocumentFrame(event) || !message) return;
+      if (['educms-media-select', 'educms-field-click'].includes(message.type) && message.key === 'property.hero') {
+        document.querySelector<HTMLElement>('[data-edit-img="property.hero"]')?.scrollIntoView({ block: 'nearest' });
+        return;
+      }
       if (message.type === 'arc-directory-status' && message.designId === (latest.current.cfg.directoryDocument as DirectoryDocument).designId && message.copy && typeof message.copy === 'object') {
         const copy: Record<string, string> = {};
         for (const [key, value] of Object.entries(message.copy)) if (Object.prototype.hasOwnProperty.call(COPY_LABELS, key) && typeof value === 'string') copy[key] = value;
@@ -144,6 +151,19 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
 
   return (
     <section ref={root} className="space-y-4" aria-label="Directory settings">
+      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3" role="group" aria-label="Pages and rotation">
+      <h3 className="text-xs font-semibold text-slate-700">Pages &amp; rotation</h3>
+      <Select label="Display" value={mode} options={[[ 'single', 'Fit everything on one screen' ], [ 'pages', 'Create pages automatically' ]]} onChange={v => updatePlayback({ displayMode: v })} />
+      {mode === 'single' && count > 1 && <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => updatePlayback({ displayMode: 'pages', locationsPerPage: Math.ceil(count / 2) })}>Make 2 pages</button>}
+      <div className="space-y-3">
+        {mode === 'pages' && <NumberField id="directory-page-size" label="Locations per page" value={pageSize} min={1} max={LIMIT} onChange={v => updatePlayback({ locationsPerPage: Math.round(v) })} />}
+        <Select label="Transition" value={transition} options={TRANSITIONS} onChange={v => updatePlayback({ transitionMode: v })} />
+        <NumberField id="directory-page-seconds" label="Seconds per page" value={seconds} min={3} max={120} onChange={v => updatePlayback({ pageDurationMs: v * 1000 })} />
+        {!continuous && <Select label="Transition speed" value={speed} options={SPEEDS} onChange={v => updatePlayback({ motionSpeed: v })} />}
+      </div>
+      <p className="text-[11px] font-medium leading-relaxed text-slate-600" role="status">{count} locations · {mode === 'single' ? '1 screen' : `${pages} ${pages === 1 ? 'page' : 'pages'}`} · {transitionLabel}{` · ${seconds} sec/page`} · text fits automatically</p>
+      <p className="text-[11px] leading-relaxed text-slate-500">{mode === 'single' ? 'Rotation settings are saved now and play when you use multiple pages.' : continuous ? 'Seconds per page sets how long each page takes to scroll. Use Preview to watch it.' : 'More locations create more pages automatically. Use Preview to watch the rotation.'}</p>
+      </div>
       <div data-directory-title><Text label="Building name" value={doc.dataset.title} onChange={v => updateCopy('title', v)} /></div>
       <p className="text-[11px] leading-relaxed text-slate-500">Click any wording on the preview to edit it.</p>
       {!!Object.keys(copyAreas).length && <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => { const key = Object.keys(copyAreas).find(k => k !== 'title') || 'title'; setSelectedCopy({ key, fallback: copyAreas[key] }); }}>Edit other text</button>}
@@ -153,14 +173,6 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
         {['pageLabel', 'rangeLabel'].includes(selectedCopy.key) && typeof doc.dataset[selectedCopy.key] === 'string' && <button type="button" className="mr-3 text-xs font-semibold text-slate-600" onClick={() => { const dataset = { ...doc.dataset }; delete dataset[selectedCopy.key]; commit({ ...doc, dataset }); }}>Use automatic label</button>}
         <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => setSelectedCopy(null)}>Done</button>
       </div>}
-      <Select label="Display" value={mode} options={[[ 'single', 'Fit everything on one screen' ], [ 'pages', 'Create pages automatically' ]]} onChange={v => updatePlayback({ displayMode: v })} />
-      {mode === 'pages' && <div className="space-y-3">
-        <NumberField id="directory-page-size" label="Locations per page" value={pageSize} min={1} max={LIMIT} onChange={v => updatePlayback({ locationsPerPage: Math.round(v) })} />
-        <Select label="Transition" value={transition} options={TRANSITIONS} onChange={v => updatePlayback({ transitionMode: v })} />
-        {transition !== 'continuous-scroll' && <NumberField id="directory-page-seconds" label="Change pages every (seconds)" value={Number(playback.pageDurationMs || 14000) / 1000} min={3} max={120} onChange={v => updatePlayback({ pageDurationMs: v * 1000 })} />}
-        <Select label={transition === 'continuous-scroll' ? 'Scroll speed' : 'Transition speed'} value={speed} options={SPEEDS} onChange={v => updatePlayback({ motionSpeed: v })} />
-      </div>}
-      <p className="text-[11px] font-medium text-slate-600" role="status">{count} locations · {mode === 'single' ? '1 screen' : `${pages} ${pages === 1 ? 'page' : 'pages'}`} · text fits automatically</p>
       <List label="Locations" itemNoun="location" compact onItemFocus={focusLocation} value={doc.dataset.tenants} fields={[{ key: 'name', label: 'Name', maxLength: 180 }, { key: 'suite', label: 'Suite / room', maxLength: 16 }]} makeNewItem={() => ({ id: crypto.randomUUID(), name: '', suite: '' })} onChange={rows => {
         if (rows.length > LIMIT) { setError('Use up to 500 locations in this directory.'); return; }
         commit({ ...doc, dataset: { ...doc.dataset, tenants: rows as DirectoryLocation[] } });

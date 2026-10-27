@@ -3123,21 +3123,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // preview AND every player at runtime.
       // url boards fetch their HTML; AI Designer boards carry it inline in
       // cfg.html (srcdoc). Either way the editor walks the data-field hooks.
-      if (cfg.touchDocument?.format === 'arc-riot.touch-property') {
-        fields.push(<TouchPropertyEditor key="touch-property-editor" cfg={cfg} setField={setField} />);
-      } else if (cfg.directoryDocument?.format === 'arc-riot.directory') {
-        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
-      } else if (cfg.url || cfg.html) {
-        fields.push(SH('ext-text', 'Edit text'));
-        fields.push(
-          <ExternalHtmlTextEditor
-            key="ext-text-editor"
-            cfg={cfg}
-            setField={setField}
-          />,
-        );
-      }
-
       if (cfg.directoryDocument?.format === 'arc-riot.directory') {
         const document = cfg.directoryDocument;
         const image = (key: string, value: string) => {
@@ -3145,10 +3130,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           setField({ directoryDocument: { ...document, theme: { ...document.theme, [key]: value } }, imageOverrides: images, contentChanged: true });
         };
         const currentImage = (key: string) => { const value = cfg.imageOverrides?.[key === 'image' ? 'property.hero' : 'property.logo']; return (Array.isArray(value) ? value[0] : value) || document.theme?.[key] || ''; };
+        fields.push(<div key="directory-photo" data-edit-img="property.hero" data-field-section="property.hero" className="rounded-lg border border-slate-200 bg-white p-3">
+          <AssetPickerField label="Building photo" kind="image" emptyLabel="Template photo" clearLabel="Restore template photo" value={currentImage('image')} onChange={v => image('image', v)} />
+        </div>);
+        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
         fields.push(<details key="directory-appearance" className="rounded-lg border border-slate-200 bg-white p-3">
           <summary className="cursor-pointer text-xs font-semibold text-slate-600">Appearance</summary>
           <div className="mt-3 space-y-3">
-            <AssetPickerField label="Building photo" kind="image" value={currentImage('image')} onChange={v => image('image', v)} />
             <AssetPickerField label="Logo" kind="image" value={currentImage('logo')} onChange={v => image('logo', v)} />
             <ColorPickerField label="Background" value={brand.background || document.theme?.bg || ''} onChange={v => setBrand({ background: v })} />
             <ColorPickerField label="Text" value={brand.text || document.theme?.ink || ''} onChange={v => setBrand({ text: v })} />
@@ -3156,6 +3144,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           </div>
         </details>);
         break;
+      }
+
+      if (cfg.touchDocument?.format === 'arc-riot.touch-property') {
+        fields.push(<TouchPropertyEditor key="touch-property-editor" cfg={cfg} setField={setField} />);
+      } else if (cfg.url || cfg.html) {
+        fields.push(SH('ext-text', 'Edit text'));
+        fields.push(<ExternalHtmlTextEditor key="ext-text-editor" cfg={cfg} setField={setField} />);
       }
 
       fields.push(SH('brand-colors', 'Brand colors'));
@@ -11060,7 +11055,7 @@ function VideoThumb({ posterUrl, url, className }: { posterUrl?: string | null; 
 }
 
 // Single-asset picker — opens an inline modal of uploaded assets
-function AssetPickerField({ label, value, onChange, kind }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video' }) {
+function AssetPickerField({ label, value, onChange, kind, emptyLabel = 'None', clearLabel }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video'; emptyLabel?: string; clearLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -11091,7 +11086,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
           </div>
         ) : (
           <div className="w-14 h-14 rounded border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-600 shrink-0">
-            None
+            {emptyLabel}
           </div>
         )}
         <div className="flex-1 flex flex-col gap-1.5">
@@ -11120,7 +11115,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
                 onClick={() => onChange('')}
                 className="px-2 py-1 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded border border-rose-100"
               >
-                Remove {kind === 'image' ? 'photo' : 'video'}
+                {clearLabel || `Remove ${kind === 'image' ? 'photo' : 'video'}`}
               </button>
             )}
           </div>
