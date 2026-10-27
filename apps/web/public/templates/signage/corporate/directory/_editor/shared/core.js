@@ -1,7 +1,7 @@
 /* ARC RIOT data contract + deterministic pagination. No layout content lives here. */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.ARCCore=api;})(typeof window==='undefined'?globalThis:window,function(){
  'use strict';
- const MODES=['flip','crossfade','slide','vertical-scroll','continuous-scroll'];
+ const MODES=['flip','crossfade','slide','slide-right','vertical-scroll','vertical-scroll-down','continuous-scroll','continuous-scroll-down'];
  const collator=new Intl.Collator('en',{numeric:true,sensitivity:'base'});
  function validateDataset(data){
   if(!data||typeof data.title!=='string'||!Array.isArray(data.tenants))throw new Error('Dataset needs a title and a tenants array.');
