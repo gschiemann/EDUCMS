@@ -14,6 +14,7 @@ import {
   derivePosterCanvas,
   isPosterClassUserAgent,
   normalizePosterStandard,
+  offersLedResize,
 } from '../posterCanvas';
 
 const POSTER_UA =
@@ -82,5 +83,22 @@ describe('derivePosterCanvas — other pitches and explicit values', () => {
     expect(normalizePosterStandard(null)).toEqual(DEFAULT_POSTER_STANDARD);
     expect(normalizePosterStandard({ w: 0, h: 1080 })).toEqual(DEFAULT_POSTER_STANDARD);
     expect(normalizePosterStandard({ w: 360, h: 1200 })).toEqual({ w: 360, h: 1200 });
+  });
+});
+
+describe('offersLedResize — "Resize LED area" only on LED screens (owner, 2026-10-26)', () => {
+  it('offers it on a NovaStar / Taurus controller by hardware class or by WebView', () => {
+    expect(offersLedResize({ hardwareModel: 'novastar-taurus' })).toBe(true);
+    expect(offersLedResize({ hardwareModel: 'NovaStar-TB' })).toBe(true);
+    expect(offersLedResize({ userAgent: POSTER_UA })).toBe(true);
+  });
+  it('hides it on an LCD panel or a plain browser', () => {
+    expect(offersLedResize({ hardwareModel: 'generic-android', userAgent: GUQ_UA })).toBe(false);
+    expect(offersLedResize({ hardwareModel: 'maxhub-l55vec' })).toBe(false);
+    expect(offersLedResize({ hardwareModel: null, userAgent: null })).toBe(false);
+    expect(offersLedResize({})).toBe(false);
+  });
+  it('keeps it where an LED canvas size is already in force, so a mistaken size can be undone', () => {
+    expect(offersLedResize({ hardwareModel: 'generic-android', userAgent: GUQ_UA, canvasOverrideActive: true })).toBe(true);
   });
 });

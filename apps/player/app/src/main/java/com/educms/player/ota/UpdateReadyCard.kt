@@ -73,7 +73,7 @@ object UpdateReadyCard {
                 gravity = Gravity.CENTER
             })
             addView(TextView(activity).apply {
-                text = "VenueOS Player $versionLabel is ready to install.\nPress OK on the remote (or tap Install update), then tap Install."
+                text = "VenueOS Player $versionLabel is ready to install.\nPress OK on the remote (or tap Install update). When Android's Install dialog appears, select Install (OK on the remote, or tap it)."
                 setTextColor(0xFFD1D5DB.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
                 gravity = Gravity.CENTER
