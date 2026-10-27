@@ -301,4 +301,14 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2685205,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40074911097',
   },
+  // Signed CI 40423894913, source 493bab5d (PR #168): USB import asks for
+  // All-files access, finds Safari-unzipped folders, shows every state, and
+  // adds Import from USB. Hardware qualification remains pending.
+  '1.1.55-field.1': {
+    versionName: '1.1.55-field.1',
+    versionCode: 10155,
+    sha256: 'bd19b155b9303522738b4787845a7e1a59ce06a77a3af78bc72da962e3a5c49b', // gitleaks:allow -- verified public APK integrity digest
+    size: 2724530,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40423894913',
+  },
 };
