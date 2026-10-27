@@ -57,6 +57,29 @@ class PendingInstallConfirmationTest {
         assertTrue("a staged commit points at the Back menu", msg.contains("press Back"))
     }
 
+    @Test
+    fun `waiting-for-a-person text is remote-first - most panels have no touch screen`() {
+        // 2026-10-26 (owner, on site): "why do we say update needs a tap when most aren't touch
+        // screens". What is reported to the dashboard and shown on the glass names the action and
+        // the place, and gives the remote first: "select Install (OK on the remote, or tap it)".
+        val receiver = source("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
+        val raisedOrStaged = receiver.substring(receiver.indexOf("internal fun needsTapMessage("), receiver.indexOf("private fun reportOtaError("))
+        val worker = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
+        val reportedWhileOpen = worker.substring(worker.indexOf("private fun needsTapMessage("), worker.indexOf("private fun sha256("))
+        val readyCard = source("src/main/java/com/educms/player/ota/UpdateReadyCard.kt")
+        for ((name, text) in listOf("receiver message" to raisedOrStaged, "worker message" to reportedWhileOpen)) {
+            assertTrue("$name: remote first", text.contains("select Install (OK on the remote, or tap it)"))
+            assertFalse("$name: never a bare tap", text.contains("tap Install."))
+        }
+        assertTrue("the Update ready card gives the remote first", readyCard.contains("Press OK on the remote"))
+        assertTrue("…and for Android's dialog too", readyCard.contains("select Install (OK on the remote, or tap it)"))
+        assertFalse("…and never a bare tap", readyCard.contains("then tap Install"))
+        assertTrue(
+            "the expiry text does not say anybody tapped",
+            worker.contains("Nobody selected Install for") && !worker.contains("Nobody tapped"),
+        )
+    }
+
     private fun source(relative: String): String {
         var dir: java.io.File? = java.io.File("").absoluteFile
         var root: java.io.File? = null

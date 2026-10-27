@@ -27,7 +27,9 @@ import { healPatternCss } from '@/lib/pattern-css';
 // manifest is applied. Re-adding a static renderer import here silently
 // puts the whole catalog back on the pairing path.
 import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
-import { KioskSplash, type LoadProgress } from '@/components/player/KioskSplash';
+import { KioskSplash, type LoadProgress, type SplashNetwork } from '@/components/player/KioskSplash';
+import { useNetworkStatus, noteNetworkAnswer, noteNetworkNoAnswer } from './useNetworkStatus';
+import type { NetworkStatus } from './networkStatus';
 import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay';
 // Sprint 5 SOS / TEXT_BROADCAST / MEDIA_ALERT renderer. Audit P0-3
 // (2026-05-26) — the API persisted + signed + published these events
@@ -62,6 +64,7 @@ import { freshDeviceIdentity } from './deviceIdentity';
 import {
   gatewayApiRoot,
   initialApiOriginState,
+  isNetworkClassFailure,
   onControlPlaneFailure,
   onControlPlaneSuccess,
   readPersistedFallback,
@@ -344,7 +347,7 @@ import {
   reportRegisterFailure,
 } from './bootDiagnostics';
 // 2026-09-01 — LED poster canvas rule (NovaStar TB posters). See posterCanvas.ts.
-import { derivePosterCanvas, isPosterClassUserAgent } from './posterCanvas';
+import { derivePosterCanvas, isPosterClassUserAgent, offersLedResize } from './posterCanvas';
 // Display-capability self-report (2026-08-13). The last mile that makes the
 // fleet self-describing: without it the native probe is reachable only over
 // an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
@@ -1276,6 +1279,10 @@ function publishApiOriginDiagnostic(): void {
 
 /** Record a bounded control-plane transport failure throughout the session. */
 function noteControlPlaneFailure(err: unknown): void {
+  // The splash's network status (2026-10-26) reads the same evidence: a request
+  // that got no answer is a reason to look — never a verdict — and the origin
+  // policy below is untouched by it.
+  if (isNetworkClassFailure(err)) noteNetworkNoAnswer();
   const before = apiOriginState();
   const next = onControlPlaneFailure(before, err);
   apiOriginStateRef = next;
@@ -1292,6 +1299,8 @@ function noteControlPlaneFailure(err: unknown): void {
 
 /** Record a control-plane success. A DIRECT success self-heals the fallback. */
 function noteControlPlaneSuccess(): void {
+  // An HTTP answer of any status proves VenueOS is reachable (splash status).
+  noteNetworkAnswer();
   const before = apiOriginState();
   const next = onControlPlaneSuccess(before);
   apiOriginStateRef = next;
@@ -1355,6 +1364,24 @@ function getApiRoot(): string {
     },
   });
 }
+
+/**
+ * What the splash probes to tell "connected, but VenueOS does not answer" from
+ * "online" (2026-10-26, `networkStatus.ts`). Read at probe time through
+ * `getApiRoot()`, so a gateway switch moves it with the rest of the control
+ * plane; `/health` is on the gateway allowlist. Stable identity on purpose.
+ */
+function healthProbeUrl(): string {
+  return `${getApiRoot()}/api/v1/health`;
+}
+
+/** The paired view's network row, per state (2026-10-26). Full class names: Tailwind scans for them. */
+const PAIRED_NETWORK_ROW: Record<NetworkStatus, { label: string; text: string; dot: string }> = {
+  online: { label: 'Online', text: 'text-emerald-700', dot: 'bg-emerald-500 animate-pulse' },
+  unreachable: { label: 'No internet', text: 'text-amber-700', dot: 'bg-amber-500' },
+  offline: { label: 'Offline', text: 'text-rose-700', dot: 'bg-rose-500' },
+  checking: { label: 'Checking…', text: 'text-slate-500', dot: 'bg-slate-400' },
+};
 
 // 2026-05-04 — PlayerVideoSlide component.
 // Operator: "the new player does not auto play the second video in the
@@ -11988,6 +12015,51 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     emergency: !!activeEmergency || !!pushedEmergencyMessage || phase === 'emergency' || playlist?.isEmergency === true,
     preview: isPreviewMode(),
   });
+
+  // ── The network, told truthfully on the boot surfaces (2026-10-26) ──────
+  // Owner, on site with the Wi-Fi removed: "the splash screen doesnt tell me
+  // the network is disconnected at all until i click into the network page".
+  // Watched only where our chrome is allowed (glass continuity: never on
+  // customer content) and never while ANY alert is up — emergency logic runs
+  // first, and the card must never sit under, over or beside an alert. The
+  // state machine is networkStatus.ts; it reads the control plane's own
+  // answers, so a healthy screen sends no probe at all.
+  const emergencyUp = !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld ||
+    emergencyRenderHold || phase === 'emergency' || playlist?.isEmergency === true;
+  const networkWatched = !glassQuiet && !emergencyUp && !isPreviewMode();
+  const networkStatus: NetworkStatus = useNetworkStatus(networkWatched, healthProbeUrl);
+  // The card replaces "Connecting to your CMS…" — the registering splash, the
+  // pairing block and the post-pair connecting hero. It never replaces
+  // content, "Playback Paused", "Content Unavailable" or a download.
+  const networkCardSurface = phase === 'registering' || phase === 'pairing' ||
+    (phase === 'connecting' && !playbackStopped && !allAssetsFailed && !normalFilesSetAside && !allItemsUnplayable);
+  const networkCardUp = networkWatched && networkCardSurface &&
+    (networkStatus === 'offline' || networkStatus === 'unreachable');
+  const canOpenNetworkScreen = bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen');
+  // The card's button takes the SAME path as the Back menu's Network entry:
+  // the Screen options menu opens under VenueOS's Network screen, so Back from
+  // that screen lands on an actionable menu, and the APK's "joined — close the
+  // menu" toggle after a successful join (MainActivity.returnAfterNetworkJoin,
+  // a plain `edu-show-stop-overlay`) closes THAT menu instead of opening one.
+  // The screen then goes back to connecting by itself; no tap.
+  const openNetworkFromCard = () => {
+    if (nativeFire('openNetworkScreen')) setPlaybackStopped(true);
+  };
+  const splashNetwork: SplashNetwork = {
+    status: networkStatus,
+    card: networkCardUp,
+    onOpenSettings: canOpenNetworkScreen ? openNetworkFromCard : undefined,
+    // An older APK has no Network entry in its Back menu (it is gated on the
+    // same `openNetworkScreen`), so say the path that exists there.
+    hint: !bootMounted
+      ? null
+      : isAndroidWebView()
+        ? 'Press Back, choose Exit to launcher, then open Wi-Fi settings.'
+        : "Check this device's Wi-Fi or network cable.",
+    // The Back menu owns the remote while it is open; when it closes, focus is
+    // parked back on the card's button.
+    parkFocus: !playbackStopped,
+  };
   // Plain black, sized to the canvas — what a quiet screen shows where the
   // splash / a card used to be. Two sides + size only (never four sides:
   // CLAUDE.md #10, the inset-serialization landmine).
@@ -12006,7 +12078,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     />
   );
 
-  const connectivityToast = connectivity.kind === 'reconnecting' && showReconnectToast && !glassQuiet ? (() => {
+  // The network card already says why and how to fix it; a second, technical
+  // "Reconnecting… Failed to fetch" panel under it is noise (2026-10-26).
+  const connectivityToast = connectivity.kind === 'reconnecting' && showReconnectToast && !glassQuiet && !networkCardUp ? (() => {
     const remainMs = Math.max(0, connectivity.nextRetryAt - Date.now());
     const remainSec = Math.ceil(remainMs / 1000);
     // Operator screenshot 2026-04-27 (post-deploy reconnect on M Series):
@@ -12637,6 +12711,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           latestApkVersion={otaTargetVersion(serverOtaState?.message, latestApkVersion)}
           onInstallUpdate={handleInstallUpdate}
           hardwareModel={manifestHardwareModel}
+          network={splashNetwork}
         />
         {otaOverlay}
         {connectivityToast}
@@ -12668,6 +12743,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           latestApkVersion={otaTargetVersion(serverOtaState?.message, latestApkVersion)}
           onInstallUpdate={handleInstallUpdate}
           hardwareModel={manifestHardwareModel}
+          network={splashNetwork}
           pairDeepLinkUrl={
             typeof window !== 'undefined' && pairingCode
               ? `${window.location.origin}/pair?code=${encodeURIComponent(pairingCode)}`
@@ -13989,6 +14065,25 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // black here (the dashboard says which). Failed files that played
         // before never reach this branch (markItemFailed re-mounts them).
         glassHoldNode
+      ) : networkCardUp && phase === 'connecting' ? (
+        // 2026-10-26 — the post-pair "Connecting to your CMS" hero with no
+        // network is the same boot surface as the splash, so it says the same
+        // thing the same way: the dark splash with the network card. When the
+        // network is back the light view returns by itself; Back still reaches
+        // the paused surface (`networkCardUp` is false while it is up).
+        <KioskSplash
+          mode="registering"
+          brandName={brandName}
+          screenName={screenName}
+          resolution={splashResolution}
+          apkVersion={apkVersion}
+          managerVersion={managerVersion}
+          otaProgress={otaProgress}
+          latestApkVersion={otaTargetVersion(serverOtaState?.message, latestApkVersion)}
+          onInstallUpdate={handleInstallUpdate}
+          hardwareModel={manifestHardwareModel}
+          network={splashNetwork}
+        />
       ) : (
         <div
           className="edu-paired-view absolute top-0 right-0 bottom-0 left-0 bg-slate-50 flex items-stretch justify-center overflow-hidden cursor-default"
@@ -14609,8 +14704,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                           )}
                         </div>
                         <div className="text-[11px] font-semibold text-slate-500 mt-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
-                          <span className="flex items-center gap-1.5 text-emerald-700">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Online
+                          {/* 2026-10-26 — the real state, never a hard-coded "Online". */}
+                          <span className={`flex items-center gap-1.5 ${PAIRED_NETWORK_ROW[networkStatus].text}`} data-edu-network-chip={networkStatus}>
+                            <span className={`w-2 h-2 rounded-full ${PAIRED_NETWORK_ROW[networkStatus].dot}`} /> {PAIRED_NETWORK_ROW[networkStatus].label}
                           </span>
                           <span className="text-slate-400">·</span>
                           <span className="truncate" title={host}>
@@ -14906,7 +15002,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       stage = { emoji: '🔍', label: 'Verifying download integrity…' };
                       break;
                     case 'INSTALLING':
-                      stage = { emoji: '⚙️', label: 'Installing… (Android prompt may show — tap Install)' };
+                      stage = { emoji: '⚙️', label: 'Installing… (if Android shows an Install dialog, select Install — OK on the remote, or tap it)' };
                       break;
                     case 'INSTALLED':
                       stage = { emoji: '✅', label: `Update complete${verLabel}. Player will restart.` };
@@ -14927,7 +15023,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     // prompt again on its own: say so, and offer the button
                     // that raises it for the person standing here.
                     case 'NEEDS_TAP':
-                      stage = { emoji: '👆', label: `Android needs someone to confirm the update${verLabel}. Press Install now, then tap Install.` };
+                      // The Back menu's button reads "Install v1.1.54" ("Install now"
+                      // when no build is named — see the button below). Remote first:
+                      // most panels are wall-mounted with no touch screen.
+                      stage = { emoji: '👆', label: `Android needs someone to confirm the update${verLabel}. Choose ${targetV ? `Install v${targetV}` : 'Install now'}, then select Install in Android's dialog (OK on the remote, or tap it).` };
                       break;
                     default:
                       stage = /^FAILED_[A-Z0-9_]+$/.test(realState)
@@ -15011,7 +15110,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       <span className="text-4xl shrink-0">{stage.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-base font-bold ${titleColor}`}>
-                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isNeedsTap ? 'Update needs a tap on this screen' : isError ? 'Update issue' : 'Update in progress'}
+                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isNeedsTap ? 'Update waiting for someone at this screen' : isError ? 'Update issue' : 'Update in progress'}
                         </div>
                         <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
                       </div>
@@ -15099,7 +15198,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       Player <span className="font-mono font-bold">v{otaTargetVersion(serverOtaState?.message, latestApkVersion)}</span> is ready to install (you&rsquo;re on <span className="font-mono">v{apkV}</span>).
                       {/* 2026-10-17 — this screen already said Android needs a
                           person to confirm; the update will not install on its own. */}
-                      {serverOtaState?.state === 'NEEDS_TAP' && ' Android on this screen needs someone to confirm: press Install now, then tap Install.'}
+                      {serverOtaState?.state === 'NEEDS_TAP' && " Android on this screen needs someone to confirm the install: choose Install now, then select Install in Android's dialog (OK on the remote, or tap it)."}
                     </div>
                   </div>
                   <button
@@ -15256,23 +15355,32 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                           ? <><AlertTriangle className="w-4 h-4 text-amber-500" /> Sync failed</>
                           : <><RefreshCw className="w-4 h-4 text-slate-400" /> Sync now</>}
                   </button>
-                  <button
-                    // 2026-10-11 — moved here from the deleted "Screen
-                    // information" card (owner decision: the card is gone;
-                    // the Back menu is the one operator surface). Opens the
-                    // on-screen LED canvas editor (canvasW/canvasH override
-                    // for Taurus-class controllers whose frame buffer is
-                    // larger than the LED). Remote-operable: the action-row
-                    // outline is the visible focus; Back inside the editor
-                    // returns here (onShowStop), and so does Cancel.
-                    ref={resizeLedButtonRef}
-                    data-edu-resize-led
-                    onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
-                    className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
-                    title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
-                  >
-                    <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
-                  </button>
+                  {/* 2026-10-26 (owner: "remove the resize LED button unless its an LED
+                      screen"): LED controllers only, plus any screen that already has an
+                      LED canvas size in force, so a size set by mistake can be undone. */}
+                  {offersLedResize({
+                    hardwareModel: manifestHardwareModel,
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+                    canvasOverrideActive: canvasOverride.w != null || canvasOverride.h != null,
+                  }) && (
+                    <button
+                      // 2026-10-11 — moved here from the deleted "Screen
+                      // information" card (owner decision: the card is gone;
+                      // the Back menu is the one operator surface). Opens the
+                      // on-screen LED canvas editor (canvasW/canvasH override
+                      // for Taurus-class controllers whose frame buffer is
+                      // larger than the LED). Remote-operable: the action-row
+                      // outline is the visible focus; Back inside the editor
+                      // returns here (onShowStop), and so does Cancel.
+                      ref={resizeLedButtonRef}
+                      data-edu-resize-led
+                      onClick={(e) => { e.stopPropagation(); setShowCanvasEditor(true); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                      title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
+                    >
+                      <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
+                    </button>
+                  )}
                   {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
                     <button
                       // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen

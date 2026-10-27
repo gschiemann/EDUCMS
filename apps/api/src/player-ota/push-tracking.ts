@@ -275,13 +275,21 @@ export function holdSentence(
   const running = facts.callerVersion ? `v${facts.callerVersion}` : 'its current build';
   const offered = facts.offeredAt ? ` (offered ${facts.offeredAt.toISOString()})` : '';
   switch (hold) {
-    case 'NEEDS_TAP':
+    case 'NEEDS_TAP': {
+      // 2026-10-26 (owner, on site: "why do we say update needs a tap when most
+      // aren't touch screens"): remote first, the action AND the place. A person
+      // at the panel (player 1.1.46+) presses Back, chooses "Install <version>"
+      // in the player's menu, then selects Install in Android's dialog.
+      const atTheScreen =
+        `At the screen: press Back, choose ${facts.targetVersion ? `Install ${target}` : 'Install'}, ` +
+        'then select Install (OK on the remote, or tap it).';
       return reason === 'device-reported-needs-tap'
-        ? `Android on this screen is waiting for someone to tap Install for ${target}.`
+        ? `Android on this screen is waiting for someone to confirm the install of ${target}. ${atTheScreen}`
         : `${target}${offered} did not install; the screen is still on ${running}. ` +
           (reason === 'did-not-land-needs-tap-class'
-            ? 'Android on this screen needs someone to tap Install.'
-            : 'Most often Android is waiting for someone to tap Install on the screen.');
+            ? `Android on this screen needs someone to confirm the install. ${atTheScreen}`
+            : `Most often Android is waiting for someone to confirm the install. ${atTheScreen}`);
+    }
     case 'STALLED':
       return reason === 'offer-limit-reached'
         ? `${target} was offered ${facts.offerCount ?? PUSH_MAX_OFFERS} times and did not install; the screen is still on ${running}.`
@@ -290,7 +298,7 @@ export function holdSentence(
       return `Installing ${target} failed on the screen (${reason.replace(/^device-reported-/, '')}).`;
     case 'EXPIRED':
       if (reason === 'device-reported-tap-expired') {
-        return `Nobody tapped Install for ${target} within 30 minutes of Android's Install dialog, so the screen ` +
+        return `Nobody selected Install for ${target} within 30 minutes of Android's Install dialog, so the screen ` +
           'abandoned the request and nothing will install later. Send the update again to ask again.';
       }
       return 'The update was not handed to this screen within 24 hours of the push (it may have been offline, ' +

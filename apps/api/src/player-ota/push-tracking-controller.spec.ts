@@ -230,7 +230,10 @@ describe('a push that was offered and did not land is HELD — once, visibly', (
     expect(data.forceApkUpdateHoldReason).toMatch(/^did-not-land-needs-tap-class: /);
     // Server-inferred NEEDS_TAP becomes the status line every surface words.
     expect(data.lastOtaState).toBe('NEEDS_TAP');
-    expect(data.lastOtaMessage).toContain('needs someone to tap Install');
+    // …in remote-first words: the action and the place, never a bare "tap".
+    expect(data.lastOtaMessage).toContain('needs someone to confirm the install');
+    expect(data.lastOtaMessage).toContain('At the screen: press Back, choose Install v1.1.29, then select Install (OK on the remote, or tap it).');
+    expect(data.lastOtaMessage).not.toMatch(/tap Install/i);
     expect(audits(prisma, 'OTA_PUSH_HELD')).toHaveLength(1);
     expect(global.fetch).not.toHaveBeenCalled();
   });
