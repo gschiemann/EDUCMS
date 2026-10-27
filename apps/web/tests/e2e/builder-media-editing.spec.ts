@@ -588,7 +588,12 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await expect(page.getByLabel('Transition', { exact: true })).toHaveValue(mode);
       await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('3');
       await expect(frame.locator('.property-name')).toHaveText('Example International Headquarters');
-      await expect.poll(() => frame.locator('.property-subtitle').evaluate(node => node.getBoundingClientRect().bottom < document.querySelector('.content')!.getBoundingClientRect().top - 10)).toBe(true);
+      // Measure spacing in native canvas units; the editor scales 4K content to its preview pane.
+      await expect.poll(() => frame.locator('.property-subtitle').evaluate(node => {
+        const canvas = document.querySelector('.canvas') as HTMLElement;
+        const scale = canvas.getBoundingClientRect().width / canvas.offsetWidth;
+        return (document.querySelector('.content')!.getBoundingClientRect().top - node.getBoundingClientRect().bottom) / scale;
+      })).toBeGreaterThanOrEqual(20);
       await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
       await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
       await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[2].fileUrl);
