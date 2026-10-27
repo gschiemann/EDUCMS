@@ -1039,6 +1039,7 @@ export const ForecastWeatherWidget = lazyWidget<ThemeWidgetProps>(loadForecast, 
 export const HeadlinesWidget = lazyWidget<ThemeWidgetProps>(loadHeadlines, 'HeadlinesWidget');
 
 export const ALL_WIDGET_FAMILY_LOADERS: readonly WidgetChunkLoader[] = [
+  loadForecast, loadHeadlines,
   loadThemesGymPe,
   loadThemesPrincipalsOffice,
   loadThemesOfficeDashboard,
