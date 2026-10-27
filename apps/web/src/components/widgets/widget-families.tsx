@@ -1032,7 +1032,14 @@ export const ScorebugWidget = lazyWidget<ThemeWidgetProps>(loadSportsRibbonScore
 // ⚠ Never call this from application code. Loading all 169 families is exactly
 // the cost this wave removed.
 // ════════════════════════════════════════════════════════════════════════
+// New variants use the existing family-loader and registry dispatch path.
+const loadForecast = () => import('./ForecastWeatherWidget');
+const loadHeadlines = () => import('./HeadlinesWidget');
+export const ForecastWeatherWidget = lazyWidget<ThemeWidgetProps>(loadForecast, 'ForecastWeatherWidget');
+export const HeadlinesWidget = lazyWidget<ThemeWidgetProps>(loadHeadlines, 'HeadlinesWidget');
+
 export const ALL_WIDGET_FAMILY_LOADERS: readonly WidgetChunkLoader[] = [
+  loadForecast, loadHeadlines,
   loadThemesGymPe,
   loadThemesPrincipalsOffice,
   loadThemesOfficeDashboard,
@@ -1207,3 +1214,4 @@ export const ALL_WIDGET_FAMILY_LOADERS: readonly WidgetChunkLoader[] = [
 export function warmAllWidgetFamilies(): Promise<unknown> {
   return Promise.all(ALL_WIDGET_FAMILY_LOADERS.map((l) => loadWidgetChunk(l)));
 }
+

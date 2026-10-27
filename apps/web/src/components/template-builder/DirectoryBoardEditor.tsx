@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { isFromDocumentFrame } from '@/lib/board-message-source';
+import { useBuilderStore } from './useBuilderStore';
 
 export type DirectoryLocation = { id: string; name: string; suite: string; [key: string]: unknown };
 export type DirectoryDocument = {
@@ -9,14 +10,14 @@ export type DirectoryDocument = {
   dataset: { title: string; tenants: DirectoryLocation[]; [key: string]: unknown };
   playback: Record<string, unknown>; theme: Record<string, unknown>;
 };
-type TextProps = { label: string; value: string; placeholder?: string; onChange: (value: string) => void };
+type TextProps = { label: string; value: string; placeholder?: string; onChange: (value: string) => void; onFocus?: () => void };
 type NumberProps = { id: string; label: string; value: number; min?: number; max?: number; step?: number; onChange: (value: number) => void };
 type SelectProps = { label: string; value: string; options: [string, string][]; onChange: (value: string) => void };
 type ListProps = { label: string; itemNoun?: string; value: unknown; compact?: boolean; onItemFocus?: (id: string) => void; onChange: (rows: Record<string, unknown>[]) => void; fields: Array<{ key: string; label: string; type?: 'text'; maxLength?: number }>; makeNewItem?: () => Record<string, unknown> };
 /** These are the existing PropertiesPanel controls, supplied without a circular import. */
 export type DirectoryControls = { Text: ComponentType<TextProps>; Number: ComponentType<NumberProps>; Select: ComponentType<SelectProps>; List: ComponentType<ListProps> };
 const COPY_LABELS: Record<string, string> = {
-  brandLabel: 'Directory label', locationLabel: 'Location label', title: 'Building name', subtitle: 'Address or subtitle',
+  brandLabel: 'Top left label', locationLabel: 'Top right label', title: 'Building name', subtitle: 'Address or subtitle',
   tagline: 'Welcome message', directoryHeading: 'List heading', footer: 'Footer text', statusLabel: 'Footer note',
   imageCaption: 'Photo caption', pageLabel: 'Page label', rangeLabel: 'List range label', emptyLabel: 'Empty directory message',
   nameColumnLabel: 'Name column label', suiteLabel: 'Suite column label',
@@ -66,12 +67,12 @@ export function parseDirectoryLocations(text: string): DirectoryLocation[] {
   });
 }
 
-export function DirectoryBoardEditor({ cfg, setField, controls }: {
-  cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void; controls: DirectoryControls;
+export function DirectoryBoardEditor({ cfg, setField, controls, zoneId }: {
+  zoneId: string; cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void; controls: DirectoryControls;
 }) {
   const root = useRef<HTMLElement>(null);
-  const latest = useRef({ cfg, setField });
-  useEffect(() => { latest.current = { cfg, setField }; }, [cfg, setField]);
+  const latest = useRef({ cfg, setField, zoneId });
+  useEffect(() => { latest.current = { cfg, setField, zoneId }; }, [cfg, setField, zoneId]);
   const [selectedCopy, setSelectedCopy] = useState<{ key: string; fallback: string } | null>(null);
   const [copyAreas, setCopyAreas] = useState<Record<string, string>>({});
   const [paste, setPaste] = useState(''); const [pasteOpen, setPasteOpen] = useState(false); const [error, setError] = useState('');
@@ -120,6 +121,10 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
     function select(event: MessageEvent) {
       const message = event.data;
       if (!isFromDocumentFrame(event) || !message) return;
+      if (event.source !== window && latest.current.zoneId) {
+        const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>('[data-zone-id] iframe')).find(frame => frame.contentWindow === event.source);
+        if (frame?.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId !== latest.current.zoneId) return;
+      }
       if (['educms-media-select', 'educms-field-click'].includes(message.type) && message.key === 'property.hero') {
         document.querySelector<HTMLElement>('[data-edit-img="property.hero"]')?.scrollIntoView({ block: 'nearest' });
         return;
@@ -130,9 +135,19 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
         setCopyAreas(old => JSON.stringify(old) === JSON.stringify(copy) ? old : copy);
         return;
       }
+      if (message.type === 'arc-directory-text-change' && (useBuilderStore.getState().previewMode || useBuilderStore.getState().zones.find(zone => zone.id === latest.current.zoneId)?.locked)) return;
+      if (message.type === 'arc-directory-text-change' && typeof message.key === 'string' && typeof message.value === 'string') {
+        const current = documentFromConfig(latest.current.cfg);
+        const tenant = /^tenant\.(.+)\.(name|suite)$/.exec(message.key);
+        if (tenant && current.dataset.tenants.some(row => row.id === tenant[1]) && message.value.length <= (tenant[2] === 'suite' ? 16 : 180)) {
+          commit({ ...current, dataset: { ...current.dataset, tenants: current.dataset.tenants.map(row => row.id === tenant[1] ? { ...row, [tenant[2]]: message.value } : row) } });
+        } else if (message.key.startsWith('property.') && Object.prototype.hasOwnProperty.call(COPY_LABELS, message.key.slice(9)) && message.value.length <= 1200) updateCopy(message.key.slice(9), message.value);
+        return;
+      }
       if (!['arc-directory-select', 'educms-field-click'].includes(message.type) || typeof message.key !== 'string') return;
+      if (latest.current.zoneId) { useBuilderStore.getState().select(latest.current.zoneId); useBuilderStore.getState().setActiveFieldName(message.key); }
       const tenant = /^tenant\.(.+)\.(name|suite)$/.exec(message.key);
-      if (tenant) {
+      if (tenant && !message.inline) {
         requestAnimationFrame(() => {
           const row = [...(root.current?.querySelectorAll<HTMLElement>('[data-list-id]') || [])].find(node => node.dataset.listId === tenant[1]);
           const input = [...(row?.querySelectorAll<HTMLInputElement>('[data-list-field]') || [])].find(node => node.dataset.listField === tenant[2]);
@@ -140,7 +155,8 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
         });
       } else if (message.key.startsWith('property.')) {
         const key = message.key.slice(9);
-        if (key === 'title') root.current?.querySelector<HTMLInputElement>('[data-directory-title] input')?.focus();
+        if (Object.prototype.hasOwnProperty.call(COPY_LABELS, key)) setCopyAreas(old => ({ ...old, [key]: typeof message.text === 'string' ? message.text : old[key] || '' }));
+        if (key === 'title' && !message.inline) root.current?.querySelector<HTMLInputElement>('[data-directory-title] input')?.focus();
         else if (Object.prototype.hasOwnProperty.call(COPY_LABELS, key)) setSelectedCopy(old => old && old.key === key && (typeof message.text !== 'string' || old.fallback === message.text) ? old : { key, fallback: typeof message.text === 'string' ? message.text : '' });
       }
     }
@@ -149,8 +165,23 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
     return () => window.removeEventListener('message', select);
   }, []);
 
+  useEffect(() => {
+    setCopyAreas({}); setSelectedCopy(null);
+    document.querySelectorAll<HTMLIFrameElement>('[data-zone-id] iframe').forEach(frame => {
+      if (frame.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId === zoneId) frame.contentWindow?.postMessage({type:'arc-directory-request-status'}, '*');
+    });
+  }, [zoneId]);
+
+  const selectedKey = selectedCopy && Object.prototype.hasOwnProperty.call(copyAreas, selectedCopy.key) ? selectedCopy.key : Object.keys(copyAreas).find(key => key !== 'title') || 'brandLabel';
+  function selectText(key: string) { setSelectedCopy({ key, fallback: copyAreas[key] || '' }); if (zoneId) { useBuilderStore.getState().select(zoneId); useBuilderStore.getState().setActiveFieldName('property.' + key); } }
+
   return (
-    <section ref={root} className="space-y-4" aria-label="Directory settings">
+    <section ref={root} className="space-y-4" aria-label="Directory settings" onFocusCapture={event => {
+      const input = event.target as HTMLElement;
+      const row = input.closest<HTMLElement>('[data-list-id]');
+      const field = input.getAttribute('data-list-field');
+      if (zoneId && row && ['name', 'suite'].includes(field || '')) useBuilderStore.getState().setActiveFieldName(`tenant.${row.dataset.listId}.${field}`);
+    }}>
       <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3" role="group" aria-label="Pages and rotation">
       <h3 className="text-xs font-semibold text-slate-700">Pages &amp; rotation</h3>
       <Select label="Sort by" value={playback.sort === 'suite' ? 'suite' : 'name'} options={[['name', 'Company name'], ['suite', 'Suite number']]} onChange={sort => updatePlayback({ sort })} />
@@ -165,14 +196,12 @@ export function DirectoryBoardEditor({ cfg, setField, controls }: {
       <p className="text-[11px] font-medium leading-relaxed text-slate-600" role="status">{count} locations · {mode === 'single' ? '1 screen' : `${pages} ${pages === 1 ? 'page' : 'pages'}`} · {transitionLabel}{` · ${seconds} sec/page`} · text fits automatically</p>
       <p className="text-[11px] leading-relaxed text-slate-500">{mode === 'single' ? 'Rotation settings are saved now and play when you use multiple pages.' : continuous ? 'Seconds per page sets how long each page takes to scroll. Use Preview to watch it.' : 'More locations create more pages automatically. Use Preview to watch the rotation.'}</p>
       </div>
-      <div data-directory-title><Text label="Building name" value={doc.dataset.title} onChange={v => updateCopy('title', v)} /></div>
-      <p className="text-[11px] leading-relaxed text-slate-500">Click any wording on the preview to edit it.</p>
-      {!!Object.keys(copyAreas).length && <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => { const key = Object.keys(copyAreas).find(k => k !== 'title') || 'title'; setSelectedCopy({ key, fallback: copyAreas[key] }); }}>Edit other text</button>}
-      {selectedCopy && <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
-        {!!Object.keys(copyAreas).length && <Select label="Text area" value={selectedCopy.key} options={Object.keys(copyAreas).filter(key => key !== 'title').map(key => [key, COPY_LABELS[key]] as [string, string])} onChange={key => setSelectedCopy({ key, fallback: copyAreas[key] })} />}
-        <Text label={COPY_LABELS[selectedCopy.key]} value={typeof doc.dataset[selectedCopy.key] === 'string' ? doc.dataset[selectedCopy.key] as string : copyAreas[selectedCopy.key] ?? selectedCopy.fallback} onChange={v => updateCopy(selectedCopy.key, v)} />
-        {['pageLabel', 'rangeLabel'].includes(selectedCopy.key) && typeof doc.dataset[selectedCopy.key] === 'string' && <button type="button" className="mr-3 text-xs font-semibold text-slate-600" onClick={() => { const dataset = { ...doc.dataset }; delete dataset[selectedCopy.key]; commit({ ...doc, dataset }); }}>Use automatic label</button>}
-        <button type="button" className="text-xs font-semibold text-indigo-600" onClick={() => setSelectedCopy(null)}>Done</button>
+      <div data-directory-title><Text label="Building name" value={doc.dataset.title} onFocus={() => { if (zoneId) useBuilderStore.getState().setActiveFieldName('property.title'); }} onChange={v => updateCopy('title', v)} /></div>
+      <p className="text-[11px] leading-relaxed text-slate-500">Click text to type on the canvas, or edit it here. The bottom toolbar changes the selected text's style.</p>
+      {!!Object.keys(copyAreas).length && <div className="space-y-2" data-directory-copy>
+        <Select label="Text area" value={selectedKey} options={Object.keys(copyAreas).filter(key => key !== 'title').map(key => [key, COPY_LABELS[key]] as [string, string])} onChange={selectText} />
+        <Text key={selectedKey} label={COPY_LABELS[selectedKey]} value={typeof doc.dataset[selectedKey] === 'string' ? doc.dataset[selectedKey] as string : copyAreas[selectedKey] ?? selectedCopy?.fallback ?? ''} onFocus={() => selectText(selectedKey)} onChange={v => updateCopy(selectedKey, v)} />
+        {['pageLabel', 'rangeLabel'].includes(selectedKey) && typeof doc.dataset[selectedKey] === 'string' && <button type="button" className="text-xs font-semibold text-slate-600" onClick={() => { const dataset = { ...doc.dataset }; delete dataset[selectedKey]; commit({ ...doc, dataset }); }}>Use automatic label</button>}
       </div>}
       <List label="Locations" itemNoun="location" compact onItemFocus={focusLocation} value={doc.dataset.tenants} fields={[{ key: 'name', label: 'Name', maxLength: 180 }, { key: 'suite', label: 'Suite / room', maxLength: 16 }]} makeNewItem={() => ({ id: crypto.randomUUID(), name: '', suite: '' })} onChange={rows => {
         if (rows.length > LIMIT) { setError('Use up to 500 locations in this directory.'); return; }

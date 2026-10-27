@@ -1,7 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { FeedsController } from './feeds.controller';
 import { FeedsService, SsrfError, FetchTooLargeError, FeedParseError, IcsParseError } from './feeds.service';
-import { FeedsRateLimiter } from './feeds-rate-limiter';
 
 function makeController(overrides?: { getRssFeed?: jest.Mock; getIcsFeed?: jest.Mock }) {
   const service = {
@@ -12,8 +11,7 @@ function makeController(overrides?: { getRssFeed?: jest.Mock; getIcsFeed?: jest.
     getRssFeed: overrides?.getRssFeed ?? jest.fn().mockResolvedValue({ title: 'X', items: [] }),
     getIcsFeed: overrides?.getIcsFeed ?? jest.fn().mockResolvedValue({ events: [], meta: {} }),
   } as unknown as FeedsService;
-  const rateLimiter = { check: jest.fn() } as unknown as FeedsRateLimiter;
-  return new FeedsController(service, rateLimiter);
+  return new FeedsController(service);
 }
 
 describe('FeedsController — input validation', () => {
@@ -132,12 +130,8 @@ describe('FeedsController — error mapping (never leaks internals)', () => {
       getRssFeed: jest.fn(),
     } as unknown as FeedsService;
     const rateLimitException = new HttpException({ code: 'FEEDS_RATE_LIMIT_HOST' }, HttpStatus.TOO_MANY_REQUESTS);
-    const rateLimiter = {
-      check: jest.fn(() => {
-        throw rateLimitException;
-      }),
-    } as unknown as FeedsRateLimiter;
-    const controller = new FeedsController(service, rateLimiter);
+    (service.getRssFeed as jest.Mock).mockRejectedValue(rateLimitException);
+    const controller = new FeedsController(service);
 
     await expect(controller.rss('https://example.com/feed.xml')).rejects.toBe(rateLimitException);
   });

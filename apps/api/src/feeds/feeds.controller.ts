@@ -40,13 +40,11 @@
 import { Controller, Get, Query, HttpException, HttpStatus } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { FeedsService, SsrfError, FetchTooLargeError, FeedParseError, IcsParseError } from './feeds.service';
-import { FeedsRateLimiter } from './feeds-rate-limiter';
 
 @Controller('api/v1/feeds')
 export class FeedsController {
   constructor(
     private readonly feeds: FeedsService,
-    private readonly rateLimiter: FeedsRateLimiter,
   ) {}
 
   @Get('rss')
@@ -57,7 +55,6 @@ export class FeedsController {
   async rss(@Query('url') url?: string) {
     const validated = this.validateUrl(url);
     try {
-      this.rateLimiter.check(validated.host);
       return await this.feeds.getRssFeed(validated.url);
     } catch (err) {
       throw this.mapError(err);
@@ -69,7 +66,6 @@ export class FeedsController {
   async ics(@Query('url') url?: string) {
     const validated = this.validateUrl(url);
     try {
-      this.rateLimiter.check(validated.host);
       return await this.feeds.getIcsFeed(validated.url);
     } catch (err) {
       throw this.mapError(err);

@@ -116,6 +116,16 @@ export function ExternalBoardFieldBridge() {
         const keys = data.keys.filter((k: unknown): k is string => typeof k === "string" && k.length <= 160);
         capabilities.set(window, new Set(keys));
         source.frame.dataset.canvasTextKeys = JSON.stringify(keys);
+        const sizes: Record<string, number> = {};
+        if (data.fontSizes && typeof data.fontSizes === 'object') for (const key of keys) {
+          const size = data.fontSizes[key];
+          if (typeof size === 'number' && Number.isFinite(size) && size > 0 && size <= 4096) sizes[key] = size;
+        }
+        const serialized = JSON.stringify(sizes);
+        if (serialized !== source.frame.dataset.canvasTextSizes) {
+          source.frame.dataset.canvasTextSizes = serialized;
+          globalThis.window.dispatchEvent(new CustomEvent('educms-field-metrics', { detail: { zoneId: source.zone.id } }));
+        }
         arm(source.frame, !!source.zone.locked);
         return;
       }
@@ -140,7 +150,7 @@ export function ExternalBoardFieldBridge() {
     addEventListener("message", onMessage);
     request();
     const retry = setTimeout(request, 500);
-    return () => { removeEventListener("message", onMessage); clearTimeout(retry); frames().forEach(f => { delete f.dataset.canvasTextKeys; delete f.dataset.canvasMediaFields; f.contentWindow?.postMessage({ type: "educms-layout-mode", on: false }, "*"); f.contentWindow?.postMessage({ type: 'educms-edit-mode', on: false }, '*'); }); };
+    return () => { removeEventListener("message", onMessage); clearTimeout(retry); frames().forEach(f => { delete f.dataset.canvasTextKeys; delete f.dataset.canvasTextSizes; delete f.dataset.canvasMediaFields; f.contentWindow?.postMessage({ type: "educms-layout-mode", on: false }, "*"); f.contentWindow?.postMessage({ type: 'educms-edit-mode', on: false }, '*'); }); };
   }, []);
   // Changing a selection must not replace the message listener between a
   // field-select message and the following completed drag message.
