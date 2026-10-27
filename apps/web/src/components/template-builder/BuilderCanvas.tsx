@@ -611,7 +611,11 @@ export function BuilderCanvas() {
 
   const gesturePointer = useRef<number | null>(null);
   const captureGesture = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0 || e.isPrimary === false) return false;
+    // The move drag starts from BuilderZone's 4 px threshold with a POINTERMOVE
+    // event, whose `button` is -1 (only `buttons` carries the held key). Refusing
+    // it left every widget unmovable after #175 (2026-10-27).
+    const primaryHeld = e.button === 0 || (e.button === -1 && (e.buttons & 1) === 1);
+    if (!primaryHeld || e.isPrimary === false) return false;
     gesturePointer.current = e.pointerId;
     // Capture on the stable canvas: crossing a directory iframe must not swallow release.
     try { canvasRef.current?.setPointerCapture?.(e.pointerId); } catch { /* detached pointer */ }
