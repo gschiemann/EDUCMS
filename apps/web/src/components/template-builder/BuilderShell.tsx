@@ -1834,9 +1834,10 @@ function BuilderBottomBar() {
   // back to the global 16.
   const measureFieldFontSize = (): number | null => {
     if (!activeFieldName || typeof document === 'undefined') return null;
-    const els = document.querySelectorAll<HTMLElement>('[data-field]');
+    const els = document.querySelectorAll<HTMLElement>('[data-field],[data-field-jump]');
     for (const el of Array.from(els)) {
-      if (el.getAttribute('data-field') !== activeFieldName) continue;
+      if ((el.getAttribute('data-field') || el.getAttribute('data-field-jump')) !== activeFieldName) continue;
+      if (selectedZone && el.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId !== selectedZone.id) continue;
       if (el.closest('[data-properties-panel]')) continue;
       const fs = parseFloat(getComputedStyle(el).fontSize);
       if (Number.isFinite(fs)) return Math.round(fs);

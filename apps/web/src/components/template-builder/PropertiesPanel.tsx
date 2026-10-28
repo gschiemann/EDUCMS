@@ -1,4 +1,5 @@
 "use client";
+import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
 
 import { useId, useState, useEffect, useRef } from 'react';
@@ -2715,6 +2716,7 @@ function CtsLiveCard({
 // the converted list/schedule editors fire through to a config write.
 export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const tMusic = useTranslations('musicPlayer');
+  const activeForecastTextArea = useBuilderStore(s => s.activeFieldName);
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
@@ -3511,7 +3513,37 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       );
       fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
       fields.push(<SelectField key="forecastDays" label="Forecast days" value={String(cfg.forecastDays || (cfg.variant === 'weather-outlook' ? 5 : 1))} options={[["1","Current weather"],["2","2 days"],["3","3 days"],["4","4 days"],["5","5 days"]]} onChange={v => setField({ forecastDays: Number(v), variant: Number(v) > 1 ? 'weather-outlook' : undefined, theme: undefined })} />);
-      if (Number(cfg.forecastDays) >= 2 || cfg.variant === 'weather-outlook') { fields.push(<p key="forecast-note" className="text-[10px] text-slate-500">U.S. forecast · National Weather Service. Cards fit this widget automatically.</p>); break; }
+      if (Number(cfg.forecastDays) >= 2 || cfg.variant === 'weather-outlook') {
+        const setForecast = (patch: Record<string, unknown>) => {
+          const current = useBuilderStore.getState().zones.find(z => z.id === zone.id)?.defaultConfig || cfg;
+          updateZone(zone.id, { defaultConfig: { ...current, ...patch } }, true);
+        };
+        const transparent = forecastIsTransparent(cfg);
+        fields.push(<SelectField key="forecastLayout" label="Forecast layout" value={cfg.forecastLayout || 'auto'} options={FORECAST_LAYOUTS} onChange={v => setForecast({ forecastLayout: v })} />);
+        fields.push(<ToggleField key="forecastTransparent" label="Transparent background" value={transparent} onChange={v => setForecast({ forecastTransparent: v })} />);
+        fields.push(<details key="forecastAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Colors &amp; fonts</summary><div className="mt-3 space-y-3">
+          <SelectField label="Forecast font" value={cfg.forecastFontFamily || ''} options={V2_FONT_OPTIONS} onChange={v => setForecast({ forecastFontFamily: v })} />
+          <NumField id="forecast-text-scale" label="Overall text size · %" value={Math.round((cfg.forecastTextScale || 1) * 100)} min={60} max={180} onChange={v => setForecast({ forecastTextScale: v / 100 })} />
+          <ColorField label="Forecast text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v })} />
+          <ColorField label="High temperatures" value={cfg.forecastHighColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastHighColor: v })} />
+          <ColorField label="Low temperatures" value={cfg.forecastLowColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastLowColor: v })} />
+          <ColorField label="Weather icons" value={cfg.forecastIconColor || '#b3dcf0'} onChange={v => setForecast({ forecastIconColor: v })} />
+          <ColorField label="Accent & dividers" value={cfg.accentColor || '#8ec9e4'} allowTransparent onChange={v => setForecast({ accentColor: v })} />
+          <ColorField label="Dates, labels & source" value={cfg.forecastDetailColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastDetailColor: v })} />
+          {!transparent && <><ColorField label="Forecast background" value={cfg.bgColor || cfg.style?.bgColor || '#102b3c'} allowTransparent onChange={v => setForecast({ bgColor: v })} />
+          <NumField id="forecast-background-opacity" label="Background opacity · %" value={cfg.forecastBackgroundOpacity ?? 100} min={0} max={100} onChange={v => setForecast({ forecastBackgroundOpacity: v })} />
+          <ColorField label="Day card background" value={cfg.forecastCardColor || '#ffffff'} allowTransparent onChange={v => setForecast({ forecastCardColor: v })} />
+          <NumField id="forecast-card-opacity" label="Day card opacity · %" value={cfg.forecastCardOpacity ?? 5} min={0} max={100} onChange={v => setForecast({ forecastCardOpacity: v })} /></>}
+          <SelectField label="Text area to style" value={FORECAST_TEXT_AREAS.some(([id]) => id === activeForecastTextArea) ? activeForecastTextArea! : 'forecastHigh'} options={FORECAST_TEXT_AREAS} onChange={v => useBuilderStore.getState().setActiveFieldName(v)} />
+          <p className="text-xs text-slate-500">Click weather text or choose an area above, then use the existing floating toolbar for font, size, color, weight and spacing. Live forecast values stay automatic.</p>
+        </div></details>);
+        fields.push(<details key="forecastLabels" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Heading &amp; location label</summary><div className="mt-3 space-y-3">
+          <StyleableField fieldName="forecastHeading" styles={cfg._styles} label="Forecast heading" value={cfg.forecastHeading ?? `${cfg.forecastDays || 5}-day outlook`} onChange={v => setForecast({ forecastHeading: v })} />
+          <StyleableField fieldName="forecastLocationLabel" styles={cfg._styles} label="Location label (optional)" value={cfg.forecastLocationLabel || ''} placeholder="Use live location name" onChange={v => setForecast({ forecastLocationLabel: v })} />
+        </div></details>);
+        fields.push(<p key="forecast-note" className="text-[10px] text-slate-500">U.S. forecast · National Weather Service. Layout adapts to the widget size.</p>);
+        break;
+      }
       fields.push(
         <WeatherOverrideAdvanced
           key="overrides"

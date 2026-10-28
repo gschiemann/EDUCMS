@@ -701,3 +701,54 @@ for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
     await page.screenshot({path:testInfo.outputPath('directory-copy-and-font.png')});
   });
 }
+
+for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'portrait' : 'landscape'} saves layouts, transparency, colors and toolbar fonts`, async ({page}, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'forecast',name:'Forecast',widgetType:'WEATHER',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-outlook',forecastDays:5,location:'94583',units:'imperial'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="forecast"]');
+  await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
+  await zone.click({position:{x:16,y:16}});
+  for (const layout of ['cards','strip','list','clean']) {
+    await page.getByLabel('Forecast layout',{exact:true}).selectOption(layout);
+    await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-layout',layout);
+  }
+  await expect(page.getByRole('switch',{name:'Transparent background',exact:true})).toHaveAttribute('aria-checked','true');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await page.getByLabel('Forecast font',{exact:true}).selectOption("Georgia, 'Times New Roman', serif");
+  const color = async (label: string, hex: string) => {
+    await page.getByRole('button',{name:label,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Color picker',exact:true});
+    await dialog.getByLabel('Hex color code',{exact:true}).fill(hex); await dialog.getByLabel('Hex color code',{exact:true}).blur();
+    await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  };
+  await color('Forecast text','#112233'); await color('High temperatures','#b83322');
+  await color('Low temperatures','#4455aa'); await color('Weather icons','#cc8822');
+  await color('Accent & dividers','#228877'); await color('Dates, labels & source','#334455');
+  await zone.locator('[data-field-jump="forecastHigh"]').first().click();
+  const bar=page.locator('[data-builder-bottom-bar]');
+  await expect(bar.getByTitle('Editing field: forecastHigh',{exact:true})).toBeVisible();
+  await expect(bar.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+  await bar.getByLabel('Font size',{exact:true}).fill('82'); await bar.getByLabel('Font size',{exact:true}).blur();
+  await bar.getByLabel('Font family',{exact:true}).selectOption('Arial');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastLayout:'clean',forecastFontFamily:"Georgia, 'Times New Roman', serif",textColor:'#112233',forecastHighColor:'#b83322',forecastLowColor:'#4455aa',forecastIconColor:'#cc8822',accentColor:'#228877',forecastDetailColor:'#334455',_styles:{forecastHigh:{fontSize:82,fontFamily:'Arial'}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-transparent','true');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await expect.poll(()=>zone.locator('.fw-icon').first().evaluate(n=>getComputedStyle(n).color)).toBe('rgb(204, 136, 34)');
+  await zone.click({position:{x:16,y:16}});
+  await page.getByRole('switch',{name:'Transparent background',exact:true}).click();
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await color('Forecast background','#f4efe3'); await color('Day card background','#88aa99');
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('40'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await page.getByLabel('Day card opacity · %',{exact:true}).fill('25'); await page.getByLabel('Day card opacity · %',{exact:true}).blur();
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastTransparent:false,forecastBackgroundOpacity:40,forecastCardOpacity:25,bgColor:'#f4efe3',forecastCardColor:'#88aa99'});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0.4');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0.25');
+  await page.screenshot({path:testInfo.outputPath('forecast-customization.png')});
+});
