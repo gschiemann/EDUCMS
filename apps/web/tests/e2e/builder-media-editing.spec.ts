@@ -571,7 +571,8 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await page.getByLabel('Building name', { exact: true }).fill('Example International Headquarters');
       await frame.locator('.display-footer .footer-location').click();
       await page.getByLabel('Footer text', { exact: true }).fill('Welcome to Example HQ');
-      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      // The native rail commits on input; switching focus finishes canvas typing.
+      await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
       const photo = page.locator('[data-edit-img="property.hero"]');
       await photo.getByRole('button', { name: 'Browse library' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
@@ -582,7 +583,7 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await page.getByRole('dialog').getByRole('button', { name: 'square.png', exact: true }).click();
       await frame.locator('.art-direction-caption').click();
       await page.getByLabel('Photo caption', { exact: true }).fill('Main entrance');
-      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
       await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
       await page.getByRole('button', { name: 'Make 2 pages', exact: true }).click();
       const mode = ['flip', 'slide-right', 'vertical-scroll-down', 'continuous-scroll-down', 'crossfade'][index];
