@@ -787,6 +787,9 @@ for (const portrait of [false, true]) test(`newsroom ${portrait ? 'portrait' : '
   await page.getByLabel('Look',{exact:true}).selectOption('banner');
   await page.getByLabel('Scroll speed',{exact:true}).selectOption('fast');
   await expect(zone.locator('.nr-scroll-line')).toHaveCount(1);
+  await expect(zone.locator('.nr-scroll-group')).toHaveCount(2);
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => getComputedStyle(n).animationIterationCount)).toBe('infinite');
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => {const line=n.getBoundingClientRect(), view=n.parentElement!.getBoundingClientRect(); return line.left <= view.left + 1 && line.right > view.left;})).toBe(true);
   await page.getByRole('button',{name:/^Save$/}).click();
   await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'banner',scrollSpeed:'fast'});
   await reloadEditor(page);

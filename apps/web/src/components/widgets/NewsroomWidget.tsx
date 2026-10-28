@@ -214,7 +214,7 @@ export function NewsroomWidget({
   const place = data.find((d) => d.scope === "local")?.location || location;
   const scrollWindow = useRef<HTMLDivElement>(null);
   const scrollLine = useRef<HTMLDivElement>(null);
-  const [crawl, setCrawl] = useState({ start: 1000, end: -1000, seconds: 20 });
+  const [crawl, setCrawl] = useState({ start: 0, end: -1000, seconds: 20 });
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
     const update = () => setHidden(document.hidden);
@@ -224,8 +224,8 @@ export function NewsroomWidget({
   }, []);
   useLayoutEffect(() => {
     if (!banner || !scrollWindow.current || !scrollLine.current) return;
-    const start = scrollWindow.current.clientWidth,
-      end = -scrollLine.current.scrollWidth;
+    const start = 0,
+      end = -(scrollLine.current.firstElementChild as HTMLElement)?.scrollWidth;
     const divisor =
       config.scrollSpeed === "slow"
         ? 22
@@ -237,7 +237,7 @@ export function NewsroomWidget({
       end,
       seconds: Math.max(5, (start - end) / Math.max(25, w / divisor)),
     });
-  }, [banner, current?.link, w, h, font, config.scrollSpeed, config._styles]);
+  }, [banner, identity, w, h, font, config.scrollSpeed, config._styles]);
 
   return (
     <div
@@ -301,10 +301,9 @@ export function NewsroomWidget({
           {layout === "banner" ? (
             <div ref={scrollWindow} className="nr-scroll-window">
               <div
-                key={`${current.link}:${index}`}
+                key={identity}
                 ref={scrollLine}
                 className="nr-scroll-line"
-                onAnimationEnd={() => setIndex((i) => i + 1)}
                 style={
                   {
                     "--nr-scroll-start": `${crawl.start}px`,
@@ -314,20 +313,46 @@ export function NewsroomWidget({
                   } as CSSProperties
                 }
               >
-                <span className="nr-scroll-source">
-                  {NEWSROOM_SCOPES.find((s) => s[0] === current.scope)?.[1]} /{" "}
-                  {current.publisher}
-                </span>
-                <a
-                  className="nr-headline"
-                  data-field-jump="headline"
-                  style={fieldStyle(config, "headline")}
-                  href={current.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {current.title}
-                </a>
+                {[0, 1].map((copy) => (
+                  <div
+                    key={copy}
+                    className="nr-scroll-group"
+                    aria-hidden={copy === 1 ? true : undefined}
+                  >
+                    {(items.length >= 3
+                      ? items
+                      : Array.from(
+                          { length: 3 },
+                          (_, i) => items[i % items.length],
+                        )
+                    ).map((item, i) => (
+                      <span
+                        className="nr-scroll-story"
+                        key={`${item.link}:${i}`}
+                      >
+                        <span className="nr-scroll-source">
+                          {
+                            NEWSROOM_SCOPES.find(
+                              (s) => s[0] === item.scope,
+                            )?.[1]
+                          }{" "}
+                          / {item.publisher}
+                        </span>
+                        <a
+                          className="nr-headline"
+                          data-field-jump={copy === 0 ? "headline" : undefined}
+                          style={fieldStyle(config, "headline")}
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          tabIndex={copy === 1 ? -1 : undefined}
+                        >
+                          {item.title}
+                        </a>
+                      </span>
+                    ))}
+                  </div>
+                ))}
               </div>
             </div>
           ) : layout === "briefing" ? (

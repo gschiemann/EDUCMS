@@ -455,6 +455,7 @@
   align-items: center;
   white-space: nowrap;
   animation-name: nr-news-crawl;
+  animation-iteration-count: infinite;
   animation-timing-function: linear;
   animation-fill-mode: both;
 }
@@ -509,4 +510,14 @@
 .newsroom > main,
 .newsroom > footer {
   position: relative;
+}
+
+.nr-scroll-group,
+.nr-scroll-story {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.nr-scroll-story {
+  padding-right: 3em;
 }
