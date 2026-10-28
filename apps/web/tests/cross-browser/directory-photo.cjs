@@ -60,6 +60,8 @@ try{
   await frame.waitForFunction(()=>document.querySelector('.footer-location').textContent==='Customer footer update');assert.equal(await frame.locator('.property-name').evaluate(n=>getComputedStyle(n).fontSize),'64px');
   await p.evaluate(doc=>document.querySelector('iframe').contentWindow.postMessage({type:'educms-overrides',text:{'directory.payload':JSON.stringify(doc)},textStyles:{}},'*'),headingDoc);
   await frame.waitForFunction(()=>parseFloat(getComputedStyle(document.querySelector('.property-name')).fontSize)>64);
+  // Font reset and the directory's fit pass land on separate animation frames.
+  await frame.waitForFunction(()=>document.querySelector('.property-subtitle').getBoundingClientRect().bottom<=document.querySelector('.content').getBoundingClientRect().top+1);
   assert(await frame.evaluate(()=>document.querySelector('.property-subtitle').getBoundingClientRect().bottom<=document.querySelector('.content').getBoundingClientRect().top+1));results.push({browser:name,file,headingAutoFit:true,explicitFontPreserved:true,clearRestoresAutoFit:true});
  }
  results.push({browser:name,file,adaptivePortrait:true,adaptiveLandscape:true,numericSuiteSort:true,nameSort:true,denseRows:100,fullBleed:true,savedRotationPreserved:true});

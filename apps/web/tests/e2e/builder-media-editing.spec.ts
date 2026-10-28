@@ -60,6 +60,10 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
     if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/news') {
+      const scope = new URL(route.request().url()).searchParams.get('scope') || 'local';
+      return json(route, { scope, location: scope === 'local' ? 'San Ramon, CA' : '', provider: 'GDELT', fetchedAt: new Date().toISOString(), items: [0, 1].map(i => ({ scope, title: `${scope} fixture headline ${i + 1}`, link: `https://example.com/${scope}/${i}`, publisher: 'example.com', indexedAt: new Date().toISOString() })) });
+    }
     if (endpoint === '/feeds/rss') {
       const world = new URL(route.request().url()).searchParams.get('url')?.includes('globalvoices');
       return json(route, { title: world ? 'Global Voices' : 'NASA', items: [{ title: world ? 'World community opens new cultural center' : 'NASA announces a new science mission', link: world ? 'https://globalvoices.org/example' : 'https://www.nasa.gov/example', publishedAt: new Date().toISOString(), source: world ? 'Global Voices' : 'NASA', author: 'Original Author' }] });
@@ -751,4 +755,41 @@ for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'po
   await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0.4');
   await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0.25');
   await page.screenshot({path:testInfo.outputPath('forecast-customization.png')});
+});
+
+for (const portrait of [false, true]) test(`newsroom ${portrait ? 'portrait' : 'landscape'} saves native controls and floating-toolbar typography`, async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'newsroom', name:'Newsroom', widgetType:'RSS_FEED', x:0, y:0, width:100, height:100, zIndex:1, sortOrder:0, defaultConfig:{variant:'rss-newsroom',newsLocation:'94583',newsLayout:'front-page',coverage:['local'],intervalSec:12,title:'The Daily Brief'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="newsroom"]');
+  await expect(zone.locator('.nr-headline').first()).toHaveText('local fixture headline 1', {timeout:30000});
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('broadcast');
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByLabel('Heading',{exact:true}).fill('San Ramon briefing'); await page.getByLabel('Heading',{exact:true}).blur();
+  await page.getByLabel('Seconds per headline',{exact:true}).fill('9'); await page.getByLabel('Seconds per headline',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByText(/^News sources ·/).click();
+  await page.getByRole('switch',{name:'BBC',exact:true}).click(); await page.getByRole('switch',{name:'Reuters',exact:true}).click();
+  await page.getByText('Appearance',{exact:true}).click();
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('35'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await zone.locator('.nr-headline').first().click();
+  await expect(page.getByTitle('Editing field: headline',{exact:true})).toBeVisible();
+  await page.getByTitle('Font size in pixels',{exact:true}).fill('90'); await page.getByTitle('Font size in pixels',{exact:true}).blur();
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'broadcast',newsLocation:'94583',title:'San Ramon briefing',intervalSec:9,publishers:['bbc.com','reuters.com'],backgroundOpacity:35,_styles:{headline:{fontSize:90}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('.nr-title')).toHaveText('San Ramon briefing');
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('banner');
+  await page.getByLabel('Scroll speed',{exact:true}).selectOption('fast');
+  await expect(zone.locator('.nr-scroll-line')).toHaveCount(1);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'banner',scrollSpeed:'fast'});
+  await reloadEditor(page);
+  await expect(page.locator('[data-zone-id] [data-newsroom]')).toHaveAttribute('data-layout','banner');
+  await page.screenshot({path:testInfo.outputPath('newsroom-native-editor.png')});
 });

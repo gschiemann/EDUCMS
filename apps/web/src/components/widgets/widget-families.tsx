@@ -1035,11 +1035,13 @@ export const ScorebugWidget = lazyWidget<ThemeWidgetProps>(loadSportsRibbonScore
 // New variants use the existing family-loader and registry dispatch path.
 const loadForecast = () => import('./ForecastWeatherWidget');
 const loadHeadlines = () => import('./HeadlinesWidget');
+const loadNewsroom = () => import('./NewsroomWidget');
+export const NewsroomWidget = lazyWidget<ThemeWidgetProps>(loadNewsroom, 'NewsroomWidget');
 export const ForecastWeatherWidget = lazyWidget<ThemeWidgetProps>(loadForecast, 'ForecastWeatherWidget');
 export const HeadlinesWidget = lazyWidget<ThemeWidgetProps>(loadHeadlines, 'HeadlinesWidget');
 
 export const ALL_WIDGET_FAMILY_LOADERS: readonly WidgetChunkLoader[] = [
-  loadForecast, loadHeadlines,
+  loadForecast, loadHeadlines, loadNewsroom,
   loadThemesGymPe,
   loadThemesPrincipalsOffice,
   loadThemesOfficeDashboard,
