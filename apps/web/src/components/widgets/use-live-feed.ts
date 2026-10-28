@@ -72,6 +72,8 @@ export function usePolledFeed<T>(
   buildUrl: () => string,
   intervalMs: number,
   holdMs = Infinity,
+  timeoutMs = 8000,
+  initialDelayMs = 0,
 ): { data: T | null; loading: boolean; error: boolean } {
   const requestUrl = buildUrl();
   const [data, setData] = useState<{ url: string; value: T } | null>(null);
@@ -94,6 +96,8 @@ export function usePolledFeed<T>(
     let retrySoon = false;
     let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingController: AbortController | null = null;
+    let requestTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleNext = () => {
       if (cancelled) return;
@@ -112,10 +116,10 @@ export function usePolledFeed<T>(
       if (inFlight) return;
       inFlight = true;
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        pendingController = new AbortController();
+        const controller = pendingController;
+        requestTimeout = setTimeout(() => controller.abort(), timeoutMs);
         const res = await fetch(requestUrl, { signal: controller.signal });
-        clearTimeout(timeout);
         if (cancelled) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as T;
@@ -135,6 +139,8 @@ export function usePolledFeed<T>(
         setLoading(false);
         if (!hasLoadedRef.current || Date.now() - goodAt.current > holdMs) setData(null);
       } finally {
+        if (requestTimeout) clearTimeout(requestTimeout);
+        pendingController = null;
         inFlight = false;
         scheduleNext();
       }
@@ -148,14 +154,16 @@ export function usePolledFeed<T>(
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    void tick();
+    timer = setTimeout(tick, initialDelayMs);
     return () => {
       cancelled = true;
+      pendingController?.abort();
+      if (requestTimeout) clearTimeout(requestTimeout);
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, intervalMs, requestUrl, holdMs]);
+  }, [active, intervalMs, requestUrl, holdMs, timeoutMs, initialDelayMs]);
 
   return { data: data?.url === requestUrl ? data.value : null, loading, error };
 }

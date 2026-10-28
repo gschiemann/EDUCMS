@@ -61,7 +61,7 @@ function clamp(s: string, max: number): string {
  *  already. `Date.parse` accepts both natively in V8/Node. */
 function toIso(raw: unknown): string | null {
   const s = str(raw);
-    if (!s) return null;
+  if (!s) return null;
   const t = Date.parse(s);
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
@@ -79,18 +79,34 @@ function toArray<T>(v: T | T[] | undefined | null): T[] {
 function atomLinkHref(link: unknown): string {
   const links = toArray(link as any);
   if (!links.length) return '';
-  const withHref = links.find((l) => l && typeof l === 'object' && (l as any)['@_href']);
+  const withHref = links.find(
+    (l) => l && typeof l === 'object' && (l as any)['@_href'],
+  );
   if (withHref) {
     const alternate = links.find(
-      (l) => l && typeof l === 'object' && (l as any)['@_rel'] === 'alternate' && (l as any)['@_href'],
+      (l) =>
+        l &&
+        typeof l === 'object' &&
+        (l as any)['@_rel'] === 'alternate' &&
+        (l as any)['@_href'],
     );
-    return str((alternate ?? withHref) && ((alternate ?? withHref) as any)['@_href']);
+    return str(
+      (alternate ?? withHref) && ((alternate ?? withHref) as any)['@_href'],
+    );
   }
   // Bare string fallback (non-conformant feeds).
   return str(links[0]);
 }
 
-export function parseRssOrAtom(xml: string): RssFeedResult {
+export function parseRssOrAtom(
+  xml: string,
+  itemLimit = MAX_FEED_ITEMS,
+): RssFeedResult {
+  // The shared GDELT rolling index is larger; ordinary RSS callers retain 50.
+  const limit = Math.max(
+    1,
+    Math.min(10000, Math.floor(itemLimit) || MAX_FEED_ITEMS),
+  );
   let doc: any;
   try {
     doc = parser.parse(xml);
@@ -106,12 +122,14 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
     const channel = doc.rss.channel;
     const feedTitle = clamp(str(channel.title) || 'RSS Feed', MAX_TITLE_LEN);
     const rawItems = toArray(channel.item);
-    const items: FeedItem[] = rawItems.slice(0, MAX_FEED_ITEMS).map((it: any) => ({
+    const items: FeedItem[] = rawItems.slice(0, limit).map((it: any) => ({
       title: clamp(str(it.title) || '(untitled)', MAX_TITLE_LEN),
       link: clamp(str(it.link), MAX_LINK_LEN),
       publishedAt: toIso(it.pubDate ?? it['dc:date']),
       source: feedTitle,
-      ...(str(it['dc:creator'] ?? it.author) ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) } : {}),
+      ...(str(it['dc:creator'] ?? it.author)
+        ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) }
+        : {}),
     }));
     return { title: feedTitle, items };
   }
@@ -120,14 +138,19 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
   // (items are siblings of <channel>, not children — different shape.)
   const rdfRoot = doc['rdf:RDF'];
   if (rdfRoot?.channel) {
-    const feedTitle = clamp(str(rdfRoot.channel.title) || 'RSS Feed', MAX_TITLE_LEN);
+    const feedTitle = clamp(
+      str(rdfRoot.channel.title) || 'RSS Feed',
+      MAX_TITLE_LEN,
+    );
     const rawItems = toArray(rdfRoot.item);
-    const items: FeedItem[] = rawItems.slice(0, MAX_FEED_ITEMS).map((it: any) => ({
+    const items: FeedItem[] = rawItems.slice(0, limit).map((it: any) => ({
       title: clamp(str(it.title) || '(untitled)', MAX_TITLE_LEN),
       link: clamp(str(it.link), MAX_LINK_LEN),
       publishedAt: toIso(it['dc:date']),
       source: feedTitle,
-      ...(str(it['dc:creator'] ?? it.author) ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) } : {}),
+      ...(str(it['dc:creator'] ?? it.author)
+        ? { author: clamp(str(it['dc:creator'] ?? it.author), 160) }
+        : {}),
     }));
     return { title: feedTitle, items };
   }
@@ -137,12 +160,14 @@ export function parseRssOrAtom(xml: string): RssFeedResult {
     const feed = doc.feed;
     const feedTitle = clamp(str(feed.title) || 'Atom Feed', MAX_TITLE_LEN);
     const rawEntries = toArray(feed.entry);
-    const items: FeedItem[] = rawEntries.slice(0, MAX_FEED_ITEMS).map((entry: any) => ({
+    const items: FeedItem[] = rawEntries.slice(0, limit).map((entry: any) => ({
       title: clamp(str(entry.title) || '(untitled)', MAX_TITLE_LEN),
       link: clamp(atomLinkHref(entry.link), MAX_LINK_LEN),
       publishedAt: toIso(entry.updated ?? entry.published),
       source: feedTitle,
-      ...(str(entry.author?.name ?? feed.author?.name) ? { author: clamp(str(entry.author?.name ?? feed.author?.name), 160) } : {}),
+      ...(str(entry.author?.name ?? feed.author?.name)
+        ? { author: clamp(str(entry.author?.name ?? feed.author?.name), 160) }
+        : {}),
     }));
     return { title: feedTitle, items };
   }

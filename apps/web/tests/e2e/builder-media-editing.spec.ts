@@ -60,6 +60,10 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
     if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/news') {
+      const scope = new URL(route.request().url()).searchParams.get('scope') || 'local';
+      return json(route, { scope, location: scope === 'local' ? 'San Ramon, CA' : '', provider: 'GDELT', fetchedAt: new Date().toISOString(), items: [0, 1].map(i => ({ scope, title: `${scope} fixture headline ${i + 1}`, link: `https://example.com/${scope}/${i}`, publisher: 'example.com', indexedAt: new Date().toISOString() })) });
+    }
     if (endpoint === '/feeds/rss') {
       const world = new URL(route.request().url()).searchParams.get('url')?.includes('globalvoices');
       return json(route, { title: world ? 'Global Voices' : 'NASA', items: [{ title: world ? 'World community opens new cultural center' : 'NASA announces a new science mission', link: world ? 'https://globalvoices.org/example' : 'https://www.nasa.gov/example', publishedAt: new Date().toISOString(), source: world ? 'Global Voices' : 'NASA', author: 'Original Author' }] });
@@ -567,7 +571,8 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await page.getByLabel('Building name', { exact: true }).fill('Example International Headquarters');
       await frame.locator('.display-footer .footer-location').click();
       await page.getByLabel('Footer text', { exact: true }).fill('Welcome to Example HQ');
-      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      // The native rail commits on input; switching focus finishes canvas typing.
+      await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
       const photo = page.locator('[data-edit-img="property.hero"]');
       await photo.getByRole('button', { name: 'Browse library' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
@@ -578,7 +583,7 @@ for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-reg
       await page.getByRole('dialog').getByRole('button', { name: 'square.png', exact: true }).click();
       await frame.locator('.art-direction-caption').click();
       await page.getByLabel('Photo caption', { exact: true }).fill('Main entrance');
-      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
       await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
       await page.getByRole('button', { name: 'Make 2 pages', exact: true }).click();
       const mode = ['flip', 'slide-right', 'vertical-scroll-down', 'continuous-scroll-down', 'crossfade'][index];
@@ -701,3 +706,94 @@ for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
     await page.screenshot({path:testInfo.outputPath('directory-copy-and-font.png')});
   });
 }
+
+for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'portrait' : 'landscape'} saves layouts, transparency, colors and toolbar fonts`, async ({page}, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'forecast',name:'Forecast',widgetType:'WEATHER',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-outlook',forecastDays:5,location:'94583',units:'imperial'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="forecast"]');
+  await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
+  await zone.click({position:{x:16,y:16}});
+  for (const layout of ['cards','strip','list','clean']) {
+    await page.getByLabel('Forecast layout',{exact:true}).selectOption(layout);
+    await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-layout',layout);
+  }
+  await expect(page.getByRole('switch',{name:'Transparent background',exact:true})).toHaveAttribute('aria-checked','true');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await page.getByLabel('Forecast font',{exact:true}).selectOption("Georgia, 'Times New Roman', serif");
+  const color = async (label: string, hex: string) => {
+    await page.getByRole('button',{name:label,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Color picker',exact:true});
+    await dialog.getByLabel('Hex color code',{exact:true}).fill(hex); await dialog.getByLabel('Hex color code',{exact:true}).blur();
+    await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  };
+  await color('Forecast text','#112233'); await color('High temperatures','#b83322');
+  await color('Low temperatures','#4455aa'); await color('Weather icons','#cc8822');
+  await color('Accent & dividers','#228877'); await color('Dates, labels & source','#334455');
+  await zone.locator('[data-field-jump="forecastHigh"]').first().click();
+  const bar=page.locator('[data-builder-bottom-bar]');
+  await expect(bar.getByTitle('Editing field: forecastHigh',{exact:true})).toBeVisible();
+  await expect(bar.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+  await bar.getByLabel('Font size',{exact:true}).fill('82'); await bar.getByLabel('Font size',{exact:true}).blur();
+  await bar.getByLabel('Font family',{exact:true}).selectOption('Arial');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastLayout:'clean',forecastFontFamily:"Georgia, 'Times New Roman', serif",textColor:'#112233',forecastHighColor:'#b83322',forecastLowColor:'#4455aa',forecastIconColor:'#cc8822',accentColor:'#228877',forecastDetailColor:'#334455',_styles:{forecastHigh:{fontSize:82,fontFamily:'Arial'}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-transparent','true');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await expect.poll(()=>zone.locator('.fw-icon').first().evaluate(n=>getComputedStyle(n).color)).toBe('rgb(204, 136, 34)');
+  await zone.click({position:{x:16,y:16}});
+  await page.getByRole('switch',{name:'Transparent background',exact:true}).click();
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await color('Forecast background','#f4efe3'); await color('Day card background','#88aa99');
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('40'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await page.getByLabel('Day card opacity · %',{exact:true}).fill('25'); await page.getByLabel('Day card opacity · %',{exact:true}).blur();
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastTransparent:false,forecastBackgroundOpacity:40,forecastCardOpacity:25,bgColor:'#f4efe3',forecastCardColor:'#88aa99'});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0.4');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0.25');
+  await page.screenshot({path:testInfo.outputPath('forecast-customization.png')});
+});
+
+for (const portrait of [false, true]) test(`newsroom ${portrait ? 'portrait' : 'landscape'} saves native controls and floating-toolbar typography`, async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'newsroom', name:'Newsroom', widgetType:'RSS_FEED', x:0, y:0, width:100, height:100, zIndex:1, sortOrder:0, defaultConfig:{variant:'rss-newsroom',newsLocation:'94583',newsLayout:'front-page',coverage:['local'],intervalSec:12,title:'The Daily Brief'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="newsroom"]');
+  await expect(zone.locator('.nr-headline').first()).toHaveText('local fixture headline 1', {timeout:30000});
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('broadcast');
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByLabel('Heading',{exact:true}).fill('San Ramon briefing'); await page.getByLabel('Heading',{exact:true}).blur();
+  await page.getByLabel('Seconds per headline',{exact:true}).fill('9'); await page.getByLabel('Seconds per headline',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByText(/^News sources ·/).click();
+  await page.getByRole('switch',{name:'BBC',exact:true}).click(); await page.getByRole('switch',{name:'Reuters',exact:true}).click();
+  await page.getByText('Appearance',{exact:true}).click();
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('35'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await zone.locator('.nr-headline').first().click();
+  await expect(page.getByTitle('Editing field: headline',{exact:true})).toBeVisible();
+  await page.getByTitle('Font size in pixels',{exact:true}).fill('90'); await page.getByTitle('Font size in pixels',{exact:true}).blur();
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'broadcast',newsLocation:'94583',title:'San Ramon briefing',intervalSec:9,publishers:['bbc.com','reuters.com'],backgroundOpacity:35,_styles:{headline:{fontSize:90}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('.nr-title')).toHaveText('San Ramon briefing');
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('banner');
+  await page.getByLabel('Scroll speed',{exact:true}).selectOption('fast');
+  await expect(zone.locator('.nr-scroll-line')).toHaveCount(1);
+  await expect(zone.locator('.nr-scroll-group')).toHaveCount(2);
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => getComputedStyle(n).animationIterationCount)).toBe('infinite');
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => {const line=n.getBoundingClientRect(), view=n.parentElement!.getBoundingClientRect(); return line.left <= view.left + 1 && line.right > view.left;})).toBe(true);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'banner',scrollSpeed:'fast'});
+  await reloadEditor(page);
+  await expect(page.locator('[data-zone-id] [data-newsroom]')).toHaveAttribute('data-layout','banner');
+  await page.screenshot({path:testInfo.outputPath('newsroom-native-editor.png')});
+});

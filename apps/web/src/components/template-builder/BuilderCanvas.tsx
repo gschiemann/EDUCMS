@@ -1148,7 +1148,7 @@ export function BuilderCanvas() {
               // short-circuits to read-only when onConfigChange is
               // undefined.
               onConfigChange={(zoneId, patch) => {
-                const z = zones.find(z => z.id === zoneId);
+                const z = useBuilderStore.getState().zones.find(z => z.id === zoneId);
                 if (!z) return;
                 updateZone(zoneId, {
                   defaultConfig: mergeInlineConfigPatch(z.widgetType, (z.defaultConfig || {}) as Record<string, unknown>, patch),
