@@ -340,7 +340,7 @@ export function NewsroomWidget({
                         </span>
                         <a
                           className="nr-headline"
-                          data-field-jump={copy === 0 ? "headline" : undefined}
+                          data-field-jump="headline"
                           style={fieldStyle(config, "headline")}
                           href={item.link}
                           target="_blank"
