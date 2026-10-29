@@ -502,6 +502,7 @@ internal object FaceVideoBox {
                 BroadcastBanner.set(host.face, message.active, message.inset, DisplayEmergency.holdingFaces(host.ctx), message.rotation)
         }
         if (!accepted) return
+        BroadcastContentViews.refresh()
         if (DisplayEmergency.isPlaybackHeld(host.ctx)) {
             SharedVideoHost.suppressForEmergency()
             return
@@ -517,9 +518,7 @@ internal object FaceVideoBox {
                     val surface = session.surface ?: return@forEach
                     val descriptor = session.descriptor ?: return@forEach
                     val rect = boxRect(session, parent.width, parent.height)
-                    box.layoutParams = FrameLayout.LayoutParams(rect[2], rect[3]).apply { leftMargin = rect[0]; topMargin = rect[1] }
-                    val frame = FaceVideoPolicy.frame(descriptor.fit, descriptor.width, descriptor.height, session.degrees, rect[2], rect[3])
-                    surface.layoutParams = FrameLayout.LayoutParams(frame[2], frame[3]).apply { leftMargin = frame[0]; topMargin = frame[1] }
+                    BroadcastVideoLayout.apply(box, surface, descriptor.fit, descriptor.width, descriptor.height, session.degrees, rect)
                 }
             }
         }

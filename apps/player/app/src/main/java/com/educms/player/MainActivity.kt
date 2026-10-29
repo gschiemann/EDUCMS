@@ -3584,6 +3584,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureUrlOverlay(wv: WebView) {
         wv.visibility = View.GONE
+        com.educms.player.media.BroadcastContentViews.register(0, wv) { webTabsActive || urlOverlayCurrentUrl != null }
         // 2026-05-20 — D-pad navigation needs the overlay WebView to hold
         // Android view focus, otherwise super.onKeyDown routes remote keys
         // to whatever else has focus (the main player WebView) and the
@@ -3963,6 +3964,7 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("showUrlOverlay")
+        com.educms.player.media.BroadcastContentViews.refresh()
         // 2026-05-19 (v1.0.71) — was: binding.recoveryOverlay.bringToFront()
         // Removed. Intent was to keep the recovery overlay on top of the
         // URL iframe, but Taurus's WebView hardware-accel layer punches
@@ -4057,6 +4059,7 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("webTabsShow")
+        com.educms.player.media.BroadcastContentViews.refresh()
         if (binding.recoveryOverlay.visibility == View.VISIBLE) {
             PlayerLogger.i("MainActivity", "Suppressing recovery overlay — a Website Tabs site is in front")
         }
@@ -4675,6 +4678,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)
         sharedVideoHost?.detach()
         sharedVideoHost = null
         liveInstances.decrementAndGet()

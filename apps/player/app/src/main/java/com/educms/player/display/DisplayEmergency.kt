@@ -536,6 +536,7 @@ object DisplayEmergency {
             // leave the screen exactly as it is.
             val persisted = if (next.isNotEmpty()) narrowHold(app, next, face) else release(app, wasHeld, face)
             if (persisted) EmergencyPaintRecovery.released(app, face)
+            if (persisted) com.educms.player.media.BroadcastContentViews.refresh()
             return persisted
         }
     }
@@ -726,6 +727,7 @@ object DisplayEmergency {
      *        needs to see.
      */
     fun enforceNow(ctx: Context, quiet: Boolean = false) {
+        com.educms.player.media.BroadcastContentViews.refresh()
         val app = ctx.applicationContext
         // 2026-10-12 — FORENSICS FIRST. Is the panel asleep right now (so this
         // enforce is a WAKE)? Recorded before anything is driven, and the

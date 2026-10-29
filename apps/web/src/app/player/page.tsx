@@ -11643,7 +11643,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const url = nativeWebsiteTarget({
       playing: phase === 'playing',
       playbackStopped,
-      emergency: !!activeEmergency,
+      emergency: nativeFirstHoldRaised,
       blanked: softBlank,
       item: current,
       itemValid: !!current && isItemValid(current),
@@ -11662,7 +11662,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // load back yet, so this is "requested", exactly as `pl:` was before the
     // readiness flag existed.
     if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
-  }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
+  }, [nativeFirstHoldRaised, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
 
   // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
   // WebView laid over this page, so an alert or the operator's Stop surface
@@ -11672,10 +11672,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // player rule 11: the alert never waits on a widget lifecycle. Fire-and-
   // forget; `nativeHas` keeps it off APKs that predate the method.
   useEffect(() => {
-    if (!activeEmergency && !playbackStopped && !softBlank) return;
+    if (!nativeFirstHoldRaised && !playbackStopped && !softBlank) return;
     if (!nativeHas('webTabsHide')) return;
     nativeFire('webTabsHide', JSON.stringify({ v: 1, wipe: false }));
-  }, [activeEmergency, playbackStopped, softBlank]);
+  }, [nativeFirstHoldRaised, playbackStopped, softBlank]);
   // …and unlike an alert or Stop, a blank does not unmount the widget, so
   // nothing would put the site back on wake. Website Tabs listens for this
   // (displayBlankSignal.ts): hidden while blanked, shown again when it lifts.
@@ -13283,6 +13283,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 <NativeZoneVideo
                   descriptor={nativeVideoItems}
                   item={zoneItem}
+                  canvasLayout={broadcastLayout}
                   active
                   prerollOnly={false}
                   measure={(el) => {
@@ -13840,6 +13841,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
+                    canvasLayout={broadcastLayout}
                     active={isActive} prerollOnly
                     measure={(el) => {
                       if (!el) return null;
