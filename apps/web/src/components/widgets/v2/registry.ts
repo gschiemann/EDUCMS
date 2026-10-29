@@ -646,8 +646,8 @@ export const LIVE_DATA_WIDGETS: RegisteredWidget[] = [
   W('NEWS_HEADLINES',    CAT_LIVE_DATA, 'News Headlines',   'Headline list — not a news feed (News Feed reads RSS)', 'universal', Newspaper,   withMeasuredHeight(NewsHeadlinesWidget),       { source: 'AP · Reuters · BBC', accent: '#e7142b' }),
   W('AIR_QUALITY',       CAT_LIVE_DATA, 'Air Quality',      'Air-quality gauge for a reading you enter — no sensor feed', 'universal', Wind,        withMeasuredHeight(AirQualityWidget),          { location: 'Springfield, IL', aqi: 62, pm25: 14, pm10: 28, o3: 52, no2: 12 }),
   W('WORLD_CLOCKS',      CAT_LIVE_DATA, 'World Clocks',     'Live multi-timezone clock cards',                     'universal', Globe,       withMeasuredHeight(WorldClocksWidget),         { hour12: false }),
-  W('FX_RATES',          CAT_LIVE_DATA, 'FX Rates',         'Exchange-rate board — not a live rates feed',        'universal', DollarSign,  withMeasuredHeight(FxRatesWidget),             { base: 'USD' }),
-  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Traffic Cameras',  'Traffic tiles with congestion labels — no camera feed', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { city: 'I-5 Corridor' }),
+  W('FX_RATES',          CAT_LIVE_DATA, 'Daily Exchange Rates',         'Automatic ECB daily reference rates (free source data), or rates you enter',        'universal', DollarSign,  withMeasuredHeight(FxRatesWidget),             { base: 'USD' }),
+  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Road Conditions Board',  'Traffic tiles with congestion labels — no camera feed', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { city: 'I-5 Corridor' }),
 ];
 
 /* ─── TOUCH & ENGAGE — interactive kiosk surfaces (EDU CMS-7) ────────
@@ -678,8 +678,8 @@ const CAT_TRANSIT = 'Transit';
 
 export const TRANSIT_WIDGETS: RegisteredWidget[] = [
   W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Split-flap departures board — not a flight feed',  'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardWidget),     { airport: 'SFO · TERMINAL 2' }),
-  W('FLIGHT_STATUS_HERO',   CAT_TRANSIT, 'Flight Status Hero',   'Single-flight status hero for a flight you enter',  'universal', Plane,         withMeasuredHeight(FlightStatusHeroWidget),    { flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York', depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50', terminal: '2', aircraft: 'Boeing 737-900' }),
-  W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Departures',   'Next-trains board — not a transit feed',            'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   { station: 'EMBARCADERO' }),
+  W('FLIGHT_STATUS_HERO',   CAT_TRANSIT, 'Flight Information Board',   'Single-flight status hero for a flight you enter',  'universal', Plane,         withMeasuredHeight(FlightStatusHeroWidget),    { flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York', depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50', terminal: '2', aircraft: 'Boeing 737-900' }),
+  W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Schedule Board',   'Next-trains board — not a transit feed',            'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   { station: 'EMBARCADERO' }),
   W('PARKING_AVAILABILITY', CAT_TRANSIT, 'Parking Availability', 'Parking availability bars — not a live occupancy feed', 'universal', SquareParking, withMeasuredHeight(ParkingAvailabilityWidget), { facility: 'SFO TERMINAL 2' }),
 ];
 

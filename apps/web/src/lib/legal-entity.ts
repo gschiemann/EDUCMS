@@ -63,9 +63,8 @@ export interface Subprocessor {
 /**
  * The providers that process Customer Data on our behalf. Each entry was
  * checked against the code / env names on 2026-10-11, and re-checked on
- * 2026-10-22 (Census geocoder fallback in `apps/api/src/geocoding`; Open-Meteo
- * and ipapi.co are called by weather widgets on the screen itself, see
- * `components/widgets/lib/useLiveTemplateData.ts`) (see
+ * 2026-10-29 (weather requests are proxied through our API to MET Norway /
+ * the U.S. National Weather Service; no screen IP geolocation) (see
  * docs/research/2026-10-11-greg-decisions/02-legal-api-docs.md for the
  * evidence). Add a provider here BEFORE it receives customer data.
  */
@@ -133,9 +132,9 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   },
   {
     name: 'OpenStreetMap Foundation (Nominatim)',
-    purpose: 'Fallback address lookup',
+    purpose: 'Address lookup and weather location lookup',
     location: 'European Union / United Kingdom',
-    when: 'Only when the primary address lookup is unavailable',
+    when: 'When a weather location is resolved, or the primary address lookup is unavailable',
   },
   {
     name: 'U.S. Census Bureau Geocoder',
@@ -144,18 +143,16 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     when: 'Only when the primary address lookup cannot find an address',
   },
   {
-    name: 'Open-Meteo',
-    purpose:
-      'Weather forecasts for weather widgets, requested by the screen itself (the screen\'s network address and the widget\'s location)',
-    location: 'Europe',
-    when: 'Only on screens that show a weather widget',
+    name: 'Norwegian Meteorological Institute (MET Norway)',
+    purpose: 'Current-hour weather forecasts using the configured coordinates, requested through our API',
+    location: 'Norway',
+    when: 'When a widget has a weather location configured',
   },
   {
-    name: 'ipapi.co (Kloudend)',
-    purpose:
-      'Approximate city from a screen\'s network address, so a weather widget with no location set can show local weather',
+    name: 'U.S. National Weather Service',
+    purpose: 'U.S. multi-day weather outlook using the configured coordinates, requested through our API',
     location: 'United States',
-    when: 'Only when a weather widget has no location set',
+    when: 'When a U.S. forecast outlook widget is configured',
   },
   {
     name: 'Pexels',

@@ -246,7 +246,8 @@ export function MsStudioPortraitWidget({
     if (v !== undefined && v !== '') return v as string;
     if (live) {
       if (key === 'clock.time') return fmt.time12NoSuffix(now);
-      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+      if (key === 'weather.temp' && weather) return `${weather.temperature}°`;
+      if (key === 'weather.temp') return '—';
     }
     return DEFAULTS[key] as string;
   };

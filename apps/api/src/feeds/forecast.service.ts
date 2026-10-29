@@ -29,14 +29,14 @@ export class ForecastService {
     }).catch(() => { throw new ServiceUnavailableException('Forecast unavailable. Use a U.S. city, ZIP code or coordinates.'); }).finally(() => this.pending.delete(key));
     this.pending.set(key, promise); return promise;
   }
-  private async coordinates(location: string): Promise<[number, number, boolean]> {
+  async coordinates(location: string, usOnly = true): Promise<[number, number, boolean]> {
     const pair = /^(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(location);
     if (pair) {
       const lat = Number(pair[1]), lon = Number(pair[2]);
       if (Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error('Invalid coordinates');
       return [lat, lon, false];
     }
-    const key = location.toLowerCase();
+    const key = (usOnly ? '' : 'global:') + location.toLowerCase();
     const cached = await getCachedFeed(this.redis.publisher, 'geocode', key);
     if (cached) { try { const p = JSON.parse(cached); if (Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) return [p[0], p[1], true]; } catch { /* refresh */ } }
     // Nominatim's application-wide 1 request/second ceiling. No distributed fallback
@@ -48,7 +48,7 @@ export class ForecastService {
       throw new Error('Location lookup temporarily unavailable');
     }
     const base = process.env.WEATHER_GEOCODER_URL || 'https://nominatim.openstreetmap.org/search';
-    const url = new URL(base); url.searchParams.set('format', 'jsonv2'); url.searchParams.set('countrycodes', 'us'); url.searchParams.set('limit', '1'); url.searchParams.set('q', location);
+    const url = new URL(base); url.searchParams.set('format', 'jsonv2'); if (usOnly) url.searchParams.set('countrycodes', 'us'); url.searchParams.set('limit', '1'); url.searchParams.set('q', location);
     const data = await this.json(url.href); const lat = Number(data?.[0]?.lat), lon = Number(data?.[0]?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error('Location not found');
     await setCachedFeed(this.redis.publisher, 'geocode', key, JSON.stringify([lat, lon]), 30 * 86400);

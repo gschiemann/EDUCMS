@@ -30,6 +30,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useLiveTemplateData } from './lib/useLiveTemplateData';
 import { sceneCss } from './scene-css';
 import { handleHotspotKeyDown, replayHotspotClickOnField } from './hotspot-clickthrough';
 
@@ -121,7 +122,7 @@ export function AnimatedWelcomePortraitWidget({
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   const [now, setNow] = useState<Date>(() => new Date());
-  const [weather, setWeather] = useState<{ tempF: number; wmoCode: number } | null>(null);
+  const { weather } = useLiveTemplateData({live: isLive, clock: false, weatherLocation: c.weatherLocation, weatherUnits: c.weatherUnits, weatherOverride: c.weatherTemp});
 
   // Scale 1080×1920 canvas to fit container. offsetWidth/Height (not
   // getBoundingClientRect) so parent transforms don't break us —
@@ -151,63 +152,8 @@ export function AnimatedWelcomePortraitWidget({
     return () => clearInterval(id);
   }, [isLive]);
 
-  // Live weather — same 3-tier resolution as landscape.
-  useEffect(() => {
-    if (!isLive) return;
-    if (c.weatherTemp) return;
-    let cancelled = false;
-    const isCelsius = c.weatherUnits === 'metric';
-    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
-      const zip = (c.weatherLocation || '').trim();
-      if (zip) {
-        try {
-          const m = zip.match(/^([a-z]{2})\s+(\S+)/i);
-          const country = m ? m[1].toLowerCase() : 'us';
-          const code = m ? m[2] : zip;
-          const r = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(code)}`);
-          if (r.ok) {
-            const j = await r.json();
-            const p = j?.places?.[0];
-            const lat = parseFloat(p?.latitude);
-            const lng = parseFloat(p?.longitude);
-            if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-          }
-        } catch { /* fall through */ }
-      }
-      try {
-        const r = await fetch('https://ipapi.co/json/');
-        if (r.ok) {
-          const j = await r.json();
-          const lat = parseFloat(j?.latitude);
-          const lng = parseFloat(j?.longitude);
-          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-        }
-      } catch { /* noop */ }
-      return null;
-    };
-    const fetchWx = async () => {
-      const coords = await resolveCoords();
-      if (cancelled || !coords) return;
-      try {
-        const tempUnit = isCelsius ? 'celsius' : 'fahrenheit';
-        const r = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}` +
-          `&current=temperature_2m,weather_code&temperature_unit=${tempUnit}`
-        );
-        if (!r.ok) return;
-        const wx = await r.json();
-        const t = wx?.current?.temperature_2m;
-        const code = wx?.current?.weather_code;
-        if (cancelled || t == null || code == null) return;
-        const tempRound = Math.round(t);
-        const tempF = isCelsius ? Math.round(tempRound * 9 / 5 + 32) : tempRound;
-        setWeather({ tempF, wmoCode: code });
-      } catch { /* noop */ }
-    };
-    fetchWx();
-    const id = setInterval(fetchWx, 15 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [isLive, c.weatherLocation, c.weatherUnits, c.weatherTemp]);
+  // Weather uses the shared free current-hour forecast service.
+
 
   // Spawn confetti pieces — same pattern as landscape. Skipped in
   // thumbnail mode because 80 continuously-animated elements × N
@@ -337,11 +283,11 @@ export function AnimatedWelcomePortraitWidget({
         <div className="awp-weather">
           <div className="awp-sunDisc">
             <div className="awp-sunFace">
-              {c.weatherTemp || (weather ? `${weather.tempF}°` : '68°')}
+              {c.weatherTemp || (weather ? `${weather.temperature}°` : isLive ? '—' : '68°')}
             </div>
           </div>
           <div className="awp-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>
-            {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : '~ sunny + crisp ~')}
+            {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : isLive ? '' : '~ sunny + crisp ~')}
           </div>
         </div>
 
