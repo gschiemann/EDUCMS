@@ -117,6 +117,19 @@ class UsbConnectionStateTest {
         assertFalse(screen.visible)
     }
 
+    @Test fun `an empty OEM mount directory cannot make a slow mount reopen the menu`() {
+        val screen = Screen()
+        screen.connection.observe("usb_storage", "")
+        screen.connection.inserted()
+        screen.show(screen.connection.ticket())
+        screen.visible = false
+        screen.connection.observe("usb_storage", "")
+        assertFalse(screen.connection.observe("PLAYLIST,usb_storage", "PLAYLIST").inserted)
+        screen.show(screen.connection.ticket())
+        assertFalse(screen.visible)
+        assertEquals(1, screen.openings)
+    }
+
     @Test fun `stale directories cannot lift removal but a remounted volume can`() {
         val screen = Screen()
         screen.connection.observe("PLAYLIST,usb_storage", "PLAYLIST")

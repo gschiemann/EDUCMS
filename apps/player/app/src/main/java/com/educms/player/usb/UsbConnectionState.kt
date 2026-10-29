@@ -54,7 +54,9 @@ internal class UsbConnectionState {
             requested = false
             change = Change(inserted = true)
         } else if (connected == null) connected = now.isNotEmpty()
-        if (now.isNotEmpty()) awaitingVolume = false
+        // A leftover /mnt directory is not the volume finishing its mount.
+        // Keep attach + its later real mount in the same connection.
+        if (mountedNow.isNotEmpty()) awaitingVolume = false
         drives = now
         mounted = mountedNow
         return change
