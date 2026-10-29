@@ -60,6 +60,8 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
     if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/reference-rates') return json(route, {base:new URL(route.request().url()).searchParams.get('base')||'USD',date:new Date().toISOString().slice(0,10),source:'European Central Bank',fetchedAt:new Date().toISOString(),rates:[{code:'EUR',rate:0.9},{code:'USD',rate:1.1},{code:'GBP',rate:0.8}]});
+    if (endpoint === '/feeds/ics') return json(route, {events:[{title:'Connected calendar fixture meeting',start:new Date(Date.now()+86400000).toISOString(),end:null,location:'Suite 201',allDay:false}],meta:{recurringEventCount:0,recurrenceExpansionDays:30,hasUnexpandedRecurrence:false}});
     if (endpoint === '/feeds/news') {
       const scope = new URL(route.request().url()).searchParams.get('scope') || 'local';
       return json(route, { scope, location: scope === 'local' ? 'San Ramon, CA' : '', provider: 'GDELT', fetchedAt: new Date().toISOString(), items: [0, 1].map(i => ({ scope, title: `${scope} fixture headline ${i + 1}`, link: `https://example.com/${scope}/${i}`, publisher: 'example.com', indexedAt: new Date().toISOString() })) });
@@ -709,7 +711,7 @@ for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
 
 for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'portrait' : 'landscape'} saves layouts, transparency, colors and toolbar fonts`, async ({page}, testInfo) => {
   test.setTimeout(120000);
-  const state = await openEditor(page, portrait, [{id:'forecast',name:'Forecast',widgetType:'WEATHER',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-outlook',forecastDays:5,location:'94583',units:'imperial'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  const state = await openEditor(page, portrait, [{id:'forecast',name:'Forecast',widgetType:'WEATHER',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-outlook',forecastDays:5,location:'94583',units:'imperial',fontSize:48}}], {width:portrait?2160:3840,height:portrait?3840:2160});
   let zone = page.locator('[data-zone-id="forecast"]');
   await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
   await zone.click({position:{x:16,y:16}});
@@ -720,17 +722,18 @@ for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'po
   await expect(page.getByRole('switch',{name:'Transparent background',exact:true})).toHaveAttribute('aria-checked','true');
   await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
   await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
-  await page.getByText('Colors & fonts',{exact:true}).click();
-  await page.getByLabel('Forecast font',{exact:true}).selectOption("Georgia, 'Times New Roman', serif");
+  await page.getByText('Appearance',{exact:true}).click();
   const color = async (label: string, hex: string) => {
     await page.getByRole('button',{name:label,exact:true}).click();
     const dialog=page.getByRole('dialog',{name:'Color picker',exact:true});
     await dialog.getByLabel('Hex color code',{exact:true}).fill(hex); await dialog.getByLabel('Hex color code',{exact:true}).blur();
     await dialog.getByRole('button',{name:'Done',exact:true}).click();
   };
-  await color('Forecast text','#112233'); await color('High temperatures','#b83322');
+  await color('Text','#112233'); await color('Accent','#228877');
+  await page.getByText('More colors & opacity',{exact:true}).click();
+  await color('High temperatures','#b83322');
   await color('Low temperatures','#4455aa'); await color('Weather icons','#cc8822');
-  await color('Accent & dividers','#228877'); await color('Dates, labels & source','#334455');
+  await color('Dates, labels & source','#334455');
   await zone.locator('[data-field-jump="forecastHigh"]').first().click();
   const bar=page.locator('[data-builder-bottom-bar]');
   await expect(bar.getByTitle('Editing field: forecastHigh',{exact:true})).toBeVisible();
@@ -739,15 +742,18 @@ for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'po
   await bar.getByLabel('Font family',{exact:true}).selectOption('Arial');
   await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
   await page.getByRole('button',{name:/^Save$/}).click();
-  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastLayout:'clean',forecastFontFamily:"Georgia, 'Times New Roman', serif",textColor:'#112233',forecastHighColor:'#b83322',forecastLowColor:'#4455aa',forecastIconColor:'#cc8822',accentColor:'#228877',forecastDetailColor:'#334455',_styles:{forecastHigh:{fontSize:82,fontFamily:'Arial'}}});
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastLayout:'clean',textColor:'#112233',forecastHighColor:'#b83322',forecastLowColor:'#4455aa',forecastIconColor:'#cc8822',accentColor:'#228877',forecastDetailColor:'#334455',_styles:{forecastHigh:{fontSize:82,fontFamily:'Arial'}}});
+  expect(state.saved().zones[0].defaultConfig.fontSize).toBeUndefined();
   await reloadEditor(page); zone=page.locator('[data-zone-id]');
   await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-transparent','true');
   await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
   await expect.poll(()=>zone.locator('.fw-icon').first().evaluate(n=>getComputedStyle(n).color)).toBe('rgb(204, 136, 34)');
   await zone.click({position:{x:16,y:16}});
   await page.getByRole('switch',{name:'Transparent background',exact:true}).click();
-  await page.getByText('Colors & fonts',{exact:true}).click();
-  await color('Forecast background','#f4efe3'); await color('Day card background','#88aa99');
+  await page.getByText('Appearance',{exact:true}).click();
+  await color('Background','#f4efe3');
+  await page.getByText('More colors & opacity',{exact:true}).click();
+  await color('Day cards','#88aa99');
   await page.getByLabel('Background opacity · %',{exact:true}).fill('40'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
   await page.getByLabel('Day card opacity · %',{exact:true}).fill('25'); await page.getByLabel('Day card opacity · %',{exact:true}).blur();
   await page.getByRole('button',{name:/^Save$/}).click();
@@ -796,4 +802,35 @@ for (const portrait of [false, true]) test(`newsroom ${portrait ? 'portrait' : '
   await reloadEditor(page);
   await expect(page.locator('[data-zone-id] [data-newsroom]')).toHaveAttribute('data-layout','banner');
   await page.screenshot({path:testInfo.outputPath('newsroom-native-editor.png')});
+});
+
+for (const variant of ['cal-neon','calendar-modern-list']) test(`calendar source reaches ${variant} and persists`, async ({page})=>{
+ test.setTimeout(120000);
+ const state=await openEditor(page,false,[{id:'calendar',name:'Calendar',widgetType:'CALENDAR',x:5,y:5,width:90,height:90,zIndex:1,sortOrder:0,defaultConfig:{variant,feedUrl:'https://calendar.example/owned.ics'}}]);
+ let zone=page.locator('[data-zone-id="calendar"]');
+ await expect(zone).toContainText('Connected calendar fixture meeting');
+ await expect(zone).not.toContainText('Spring Concert');
+ await zone.click({position:{x:12,y:12}});
+ await page.getByLabel('Title',{exact:true}).fill('Connected calendar');
+ await page.getByLabel('Title',{exact:true}).blur();
+ await page.getByRole('button',{name:/^Save$/}).click();
+ await expect.poll(()=>state.saved().zones[0].defaultConfig.feedUrl).toBe('https://calendar.example/owned.ics');
+ await reloadEditor(page);await expect(page.locator('[data-zone-id]')).toContainText('Connected calendar fixture meeting');
+});
+test('daily reference rates use a real source shape and preserve manual editing',async({page})=>{
+ test.setTimeout(120000);
+ const state=await openEditor(page,false,[{id:'rates',name:'Exchange rates',widgetType:'LIVE_DATA',x:5,y:5,width:90,height:90,zIndex:1,sortOrder:0,defaultConfig:{variant:'fx-rates',base:'USD'}}]);
+ const zone=page.locator('[data-zone-id="rates"]');
+ await expect(zone).toContainText('Free source: ECB');await expect(zone).toContainText('0.9000');
+ await zone.click({position:{x:12,y:12}});
+ await page.getByLabel('Base currency',{exact:true}).selectOption('EUR');
+ await page.getByRole('button',{name:/^Save$/}).click();await expect.poll(()=>state.saved().zones[0].defaultConfig.base).toBe('EUR');
+ await reloadEditor(page);await page.locator('[data-zone-id]').click({position:{x:12,y:12}});
+ await page.getByLabel('Rates',{exact:true}).selectOption('manual');
+ await page.getByRole('button',{name:/Add row/}).click();
+ await page.getByLabel('row 1 Code',{exact:true}).fill('CAD');
+ await page.getByLabel('row 1 Rate',{exact:true}).fill('1.37');
+ await page.getByRole('button',{name:/^Save$/}).click();
+ await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({base:'EUR',dataMode:'manual',pairs:[{code:'CAD',rate:1.37}]});
+ await reloadEditor(page);await expect(page.locator('[data-zone-id]')).toContainText('1.3700');await expect(page.locator('[data-zone-id]')).toContainText('Manually updated');
 });

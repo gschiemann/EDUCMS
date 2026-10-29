@@ -11,12 +11,13 @@
  * in the builder, stamped SAMPLE — see `_shared/live-data-truth.tsx`.
  */
 import React from 'react';
+import { useReferenceRates, DISPLAY_CURRENCIES } from '../use-reference-rates';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { sceneCss } from '../scene-css';
 import { useRenderSurface } from '../render-surface';
 import { asOfLabel } from './sports-venue-data';
-import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
+import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, ManualDataStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
 
 function px(z: number, f: number, min = 8): number { return Math.max(min, Math.round(z * f)); }
 /**
@@ -91,14 +92,14 @@ export function SportsScoreboardWidget({ config, height = 480 }: WidgetProps<Spo
   const asOf = asOfLabel(c.asOf);
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0b0f15' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0b0f15' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, borderBottom: '1px solid #1f2630' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div data-field="title" style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: 'Plus Jakarta Sans', letterSpacing: '-0.02em', marginRight: px(height, 0.022) }}>{title}</div>
-            {league && <div data-field="league" style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{league.toUpperCase()}</div>}
+            <div data-field="title" style={{ color: c.style?.textColor || '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', letterSpacing: '-0.02em', marginRight: px(height, 0.022) }}>{title}</div>
+            {league && <div data-field="league" style={{ color: c.style?.textColor || '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{league.toUpperCase()}</div>}
           </div>
-          {asOf && <div style={{ color: '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono' }}>{asOf}</div>}
+          {asOf && <div style={{ color: c.style?.textColor || '#8aa', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: c.style?.fontFamily || 'JetBrains Mono' }}>{asOf}</div>}
         </div>
         <div data-field-jump="games" style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', padding: px(height, 0.056) }}>
           {games.slice(0, 4).map((g, i) => {
@@ -110,10 +111,10 @@ export function SportsScoreboardWidget({ config, height = 480 }: WidgetProps<Spo
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     {/* The school's own status text, as typed. This board has
                         no feed, so it never decorates a row as live. */}
-                    <span style={{ color: '#8aa', fontWeight: 700, fontSize: fpx(height, 0.0185), letterSpacing: '0.06em' }}>{String(g.status || '').toUpperCase()}</span>
-                    <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185), marginLeft: px(height, 0.0056) }}>{g.clock || g.kickoff || ''}</span>
+                    <span style={{ color: c.style?.textColor || '#8aa', fontWeight: 700, fontSize: fpx(height, 0.0185), letterSpacing: '0.06em' }}>{String(g.status || '').toUpperCase()}</span>
+                    <span style={{ color: c.style?.textColor || '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185), marginLeft: px(height, 0.0056) }}>{g.clock || g.kickoff || ''}</span>
                   </div>
-                  <span style={{ color: '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185) }}>{g.venue || ''}</span>
+                  <span style={{ color: c.style?.textColor || '#8aa', fontWeight: 600, fontSize: fpx(height, 0.0185) }}>{g.venue || ''}</span>
                 </div>
                 <ScoreboardTeam name={String(g.away.name || '')} score={g.away.score} logo={g.away.logo} accent={accent} winning={as > hs} height={height} />
                 <ScoreboardTeam name={String(g.home.name || '')} score={g.home.score} logo={g.home.logo} accent={accent} winning={hs > as} height={height} />
@@ -123,7 +124,7 @@ export function SportsScoreboardWidget({ config, height = 480 }: WidgetProps<Spo
         </div>
       </div>
       {demo && (
-        <div data-venue-sample="" style={{ position: 'absolute', bottom: px(height, 0.02), right: px(height, 0.025), background: 'rgba(0,0,0,0.62)', color: '#facc15', fontWeight: 800, fontSize: fpx(height, 0.026), letterSpacing: '0.2em', padding: `${px(height, 0.006)}px ${px(height, 0.014)}px`, borderRadius: px(height, 0.008), border: '1px solid rgba(250,204,21,0.45)', pointerEvents: 'none' }}>SAMPLE</div>
+        <div data-venue-sample="" style={{ position: 'absolute', bottom: px(height, 0.02), right: px(height, 0.025), background: 'rgba(0,0,0,0.62)', color: c.style?.textColor || '#facc15', fontWeight: 800, fontSize: fpx(height, 0.026), letterSpacing: '0.2em', padding: `${px(height, 0.006)}px ${px(height, 0.014)}px`, borderRadius: px(height, 0.008), border: '1px solid rgba(250,204,21,0.45)', pointerEvents: 'none' }}>SAMPLE</div>
       )}
     </div>
   );
@@ -167,13 +168,13 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
   const scrollDur = animDurationSec(r.anim.speed, 30);
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0a0d12' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0a0d12' }}>
       <style>{sceneCss(`@keyframes ldw_tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: `${px(height, 0.044)}px ${px(height, 0.056)}px ${px(height, 0.022)}px` }}>
-          <div style={{ fontFamily: 'Plus Jakarta Sans', color: '#fff', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Markets</div>
+          <div style={{ fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', color: c.style?.textColor || '#fff', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Markets</div>
           {/* Was "{exchange} · delayed 15 min" — nothing fetches a quote. */}
-          <div style={{ color: '#7d8a98', fontSize: fpx(height, 0.022), fontWeight: 600, marginTop: px(height, 0.0074) }}>{exchange}</div>
+          <div style={{ color: c.style?.textColor || '#7d8a98', fontSize: fpx(height, 0.022), fontWeight: 600, marginTop: px(height, 0.0074) }}>{exchange}</div>
         </div>
         {symbols.length === 0 ? <NothingTyped color="#7d8a98" height={height} /> : (
           <div style={{ flex: 1, padding: `${px(height, 0.028)}px ${px(height, 0.056)}px ${px(height, 0.037)}px`, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
@@ -181,8 +182,8 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
               const up = s.change >= 0;
               return (
                 <div key={i} style={{ background: '#11161e', border: '1px solid #1d2530', borderRadius: px(height, 0.013), padding: `${px(height, 0.02)}px ${px(height, 0.022)}px`, margin: px(height, 0.011) }}>
-                  <div style={{ color: '#7d8a98', fontWeight: 600, fontSize: fpx(height, 0.0167), letterSpacing: '0.08em' }}>{s.symbol}</div>
-                  <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.039), fontFamily: 'JetBrains Mono', marginTop: px(height, 0.0056) }}>{s.price.toFixed(2)}</div>
+                  <div style={{ color: c.style?.textColor || '#7d8a98', fontWeight: 600, fontSize: fpx(height, 0.0167), letterSpacing: '0.08em' }}>{s.symbol}</div>
+                  <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: fpx(height, 0.039), fontFamily: c.style?.fontFamily || 'JetBrains Mono', marginTop: px(height, 0.0056) }}>{s.price.toFixed(2)}</div>
                   <div style={{ display: 'flex', alignItems: 'center', marginTop: px(height, 0.0056), color: up ? '#22d39b' : '#ff5664', fontWeight: 700, fontSize: fpx(height, 0.0204) }}>
                     <span style={{ marginRight: px(height, 0.0074) }}>{up ? '▲' : '▼'}</span>
                     <span style={{ marginRight: px(height, 0.0074) }}>{up ? '+' : ''}{s.change.toFixed(2)}</span>
@@ -198,7 +199,7 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
           <div style={{ height: px(height, 0.074), borderTop: '1px solid #1d2530', background: '#0f141c', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
             <div style={{ display: 'flex', whiteSpace: 'nowrap', willChange: 'transform', animation: live ? `ldw_tickerScroll ${scrollDur}s linear infinite` : 'none' }}>
               {[...symbols, ...symbols].map((s, i) => (
-                <span key={i} style={{ color: '#cfd8e3', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: 'JetBrains Mono', marginRight: px(height, 0.056) }}>
+                <span key={i} style={{ color: c.style?.textColor || '#cfd8e3', fontSize: fpx(height, 0.022), fontWeight: 600, fontFamily: c.style?.fontFamily || 'JetBrains Mono', marginRight: px(height, 0.056) }}>
                   <span>{s.symbol} </span><span style={{ marginLeft: px(height, 0.0074), marginRight: px(height, 0.0074) }}>{s.price.toFixed(2)}</span>
                   <span style={{ color: s.change >= 0 ? '#22d39b' : '#ff5664' }}>{s.change >= 0 ? '+' : ''}{s.pct.toFixed(2)}%</span>
                 </span>
@@ -207,7 +208,7 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
           </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -245,10 +246,10 @@ export function CryptoTickerWidget({ config, live = true, height = 480 }: Widget
   const coins = typed.length ? typed : demo ? DEFAULT_COINS : [];
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#08090c' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#08090c' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>Crypto · 24h</div>
+          <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>Crypto · 24h</div>
           {/* A "via CoinGecko" credit stood here — nothing calls CoinGecko. */}
         </div>
         {coins.length === 0 ? <NothingTyped color="#9aa3b2" height={height} /> : (
@@ -258,14 +259,14 @@ export function CryptoTickerWidget({ config, live = true, height = 480 }: Widget
             return (
               <div key={i} style={{ background: 'linear-gradient(180deg,#11141c,#0c1018)', border: '1px solid #1e2231', borderRadius: px(height, 0.017), padding: `${px(height, 0.022)}px ${px(height, 0.026)}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: px(height, 0.01) }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div style={{ width: px(height, 0.056), height: px(height, 0.056), borderRadius: '50%', background: coin.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b0c0e', fontWeight: 800, fontSize: fpx(height, 0.022), marginRight: px(height, 0.0185) }}>{coin.symbol.slice(0, 1)}</div>
+                  <div style={{ width: px(height, 0.056), height: px(height, 0.056), borderRadius: '50%', background: coin.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.style?.textColor || '#0b0c0e', fontWeight: 800, fontSize: fpx(height, 0.022), marginRight: px(height, 0.0185) }}>{coin.symbol.slice(0, 1)}</div>
                   <div>
-                    <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.028) }}>{coin.name}</div>
-                    <div style={{ color: '#9aa3b2', fontSize: fpx(height, 0.0167), fontWeight: 600, letterSpacing: '0.06em' }}>{coin.symbol}</div>
+                    <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: fpx(height, 0.028) }}>{coin.name}</div>
+                    <div style={{ color: c.style?.textColor || '#9aa3b2', fontSize: fpx(height, 0.0167), fontWeight: 600, letterSpacing: '0.06em' }}>{coin.symbol}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.037), fontFamily: 'JetBrains Mono' }}>${coin.price.toLocaleString(undefined, { maximumFractionDigits: coin.price > 100 ? 0 : 2 })}</div>
+                  <div style={{ color: c.style?.textColor || '#fff', fontWeight: 800, fontSize: fpx(height, 0.037), fontFamily: c.style?.fontFamily || 'JetBrains Mono' }}>${coin.price.toLocaleString(undefined, { maximumFractionDigits: coin.price > 100 ? 0 : 2 })}</div>
                   <div style={{ color: up ? '#22d39b' : '#ff5664', fontSize: fpx(height, 0.0204), fontWeight: 700 }}>{up ? '+' : ''}{coin.pct.toFixed(2)}%</div>
                 </div>
               </div>
@@ -274,7 +275,7 @@ export function CryptoTickerWidget({ config, live = true, height = 480 }: Widget
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -319,14 +320,14 @@ export function NewsHeadlinesWidget({ config, live = true, height = 480 }: Widge
   const source = typedSource ?? (realScreen ? '' : LIVE_DATA_SEEDED_LABELS.newsSource);
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0d1018' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0d1018' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, borderBottom: '2px solid #1c2230' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            {items.length > 0 && <div style={{ background: accent, color: '#fff', padding: `${px(height, 0.0093)}px ${px(height, 0.0167)}px`, borderRadius: px(height, 0.0056), fontWeight: 800, fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.028), letterSpacing: '0.04em', marginRight: px(height, 0.022) }}>BREAKING</div>}
-            <div style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: 'Plus Jakarta Sans', letterSpacing: '-0.02em' }}>Top Headlines</div>
+            {items.length > 0 && <div style={{ background: accent, color: c.style?.textColor || '#fff', padding: `${px(height, 0.0093)}px ${px(height, 0.0167)}px`, borderRadius: px(height, 0.0056), fontWeight: 800, fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontSize: fpx(height, 0.028), letterSpacing: '0.04em', marginRight: px(height, 0.022) }}>HEADLINES</div>}
+            <div style={{ color: c.style?.textColor || '#fff', fontWeight: 800, fontSize: fpx(height, 0.043), fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', letterSpacing: '-0.02em' }}>Top Headlines</div>
           </div>
-          <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{source}</div>
+          <div style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{source}</div>
         </div>
         {items.length === 0 ? <NothingTyped color="#8a93a4" height={height} /> : (
         <div style={{ flex: 1, padding: `${px(height, 0.037)}px ${px(height, 0.056)}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly' }}>
@@ -336,17 +337,17 @@ export function NewsHeadlinesWidget({ config, live = true, height = 480 }: Widge
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: px(height, 0.0056) }}>
                   <span style={{ color: accent, fontWeight: 700, fontSize: fpx(height, 0.0167), letterSpacing: '0.06em', marginRight: px(height, 0.013) }}>{n.cat}</span>
-                  <span style={{ color: '#5d6678', fontSize: fpx(height, 0.0167), marginRight: px(height, 0.013) }}>·</span>
-                  <span style={{ color: '#8a93a4', fontSize: fpx(height, 0.0167), fontWeight: 600 }}>{n.time}</span>
+                  <span style={{ color: c.style?.textColor || '#5d6678', fontSize: fpx(height, 0.0167), marginRight: px(height, 0.013) }}>·</span>
+                  <span style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.0167), fontWeight: 600 }}>{n.time}</span>
                 </div>
-                <div style={{ color: '#fff', fontWeight: i === 0 ? 800 : 700, fontSize: i === 0 ? px(height, 0.041) : px(height, 0.031), lineHeight: 1.15, letterSpacing: '-0.01em' }}>{n.headline}</div>
+                <div style={{ color: c.style?.textColor || '#fff', fontWeight: i === 0 ? 800 : 700, fontSize: i === 0 ? px(height, 0.041) : px(height, 0.031), lineHeight: 1.15, letterSpacing: '-0.01em' }}>{n.headline}</div>
               </div>
             </div>
           ))}
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -417,42 +418,42 @@ export function AirQualityWidget({ config, live = true, height = 480 }: WidgetPr
   const location = typed.location ?? (realScreen ? '' : AIR_SAMPLE_LOCATION);
   if (aqi === undefined) {
     return (
-      <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0a0d12' }}>
+      <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0a0d12' }}>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Air Quality</div>
-            <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{location}</div>
+            <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Air Quality</div>
+            <div style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{location}</div>
           </div>
           <NothingTyped color="#8a93a4" height={height} />
         </div>
       </div>
     );
   }
-  const band = aqi <= 50 ? { color: '#22c55e', t: 'Good', sub: 'Air quality is satisfactory' }
-    : aqi <= 100 ? { color: '#eab308', t: 'Moderate', sub: 'Acceptable for most people' }
-      : aqi <= 150 ? { color: '#f97316', t: 'Unhealthy SG', sub: 'Sensitive groups limit exposure' }
-        : aqi <= 200 ? { color: '#ef4444', t: 'Unhealthy', sub: 'Everyone may experience effects' }
-          : aqi <= 300 ? { color: '#a855f7', t: 'Very unhealthy', sub: 'Health alert — limit outdoor activity' }
-            : { color: '#7f1d1d', t: 'Hazardous', sub: 'Health warning — stay indoors' };
+  const band = aqi <= 50 ? { color: c.style?.textColor || '#22c55e', t: 'Good', sub: 'Air quality is satisfactory' }
+    : aqi <= 100 ? { color: c.style?.textColor || '#eab308', t: 'Moderate', sub: 'Acceptable for most people' }
+      : aqi <= 150 ? { color: c.style?.textColor || '#f97316', t: 'Unhealthy SG', sub: 'Sensitive groups limit exposure' }
+        : aqi <= 200 ? { color: c.style?.textColor || '#ef4444', t: 'Unhealthy', sub: 'Everyone may experience effects' }
+          : aqi <= 300 ? { color: c.style?.textColor || '#a855f7', t: 'Very unhealthy', sub: 'Health alert — limit outdoor activity' }
+            : { color: c.style?.textColor || '#7f1d1d', t: 'Hazardous', sub: 'Health warning — stay indoors' };
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0a0d12' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0a0d12' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Air Quality</div>
-          <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{location}</div>
+          <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Air Quality</div>
+          <div style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.022), fontWeight: 600 }}>{location}</div>
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ width: px(height, 0.315), height: px(height, 0.315), borderRadius: '50%', background: `conic-gradient(${band.color} ${aqi / 3.5}%, #1c2230 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: px(height, 0.044), flexShrink: 0 }}>
               <div style={{ width: px(height, 0.259), height: px(height, 0.259), borderRadius: '50%', background: '#0a0d12', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.0204), fontWeight: 600, letterSpacing: '0.06em' }}>AQI</div>
-                <div style={{ color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.13), fontFamily: 'JetBrains Mono', lineHeight: 1 }}>{aqi}</div>
+                <div style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.0204), fontWeight: 600, letterSpacing: '0.06em' }}>AQI</div>
+                <div style={{ color: c.style?.textColor || '#fff', fontWeight: 800, fontSize: fpx(height, 0.13), fontFamily: c.style?.fontFamily || 'JetBrains Mono', lineHeight: 1 }}>{aqi}</div>
                 <div style={{ color: band.color, fontWeight: 700, fontSize: fpx(height, 0.028) }}>{band.t}</div>
               </div>
             </div>
             <div>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.043), lineHeight: 1.1, maxWidth: px(height, 0.556) }}>{band.sub}</div>
+              <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: fpx(height, 0.043), lineHeight: 1.1, maxWidth: px(height, 0.556) }}>{band.sub}</div>
               <div style={{ marginTop: px(height, 0.028), display: 'flex', flexDirection: 'column' }}>
                 {pollutants.map((p) => <Pollutant key={p.label} label={p.label} val={p.val} unit={p.unit} height={height} />)}
               </div>
@@ -460,7 +461,7 @@ export function AirQualityWidget({ config, live = true, height = 480 }: WidgetPr
           </div>
         </div>
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -507,11 +508,11 @@ export function WorldClocksWidget({ config, live = true, height = 480 }: WidgetP
   const cols = Math.min(zones.length, 4);
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0b0c0e' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0b0c0e' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ marginBottom: px(height, 0.037) }}>
-          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>World Clocks</div>
-          <div style={{ color: '#74767d', fontSize: fpx(height, 0.022), fontWeight: 600 }}>Office locations · live</div>
+          <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>World Clocks</div>
+          <div style={{ color: c.style?.textColor || '#74767d', fontSize: fpx(height, 0.022), fontWeight: 600 }}>Office locations · live</div>
         </div>
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {zones.slice(0, 4).map((z, i) => {
@@ -524,7 +525,7 @@ export function WorldClocksWidget({ config, live = true, height = 480 }: WidgetP
                   <div style={{ fontWeight: 700, fontSize: fpx(height, 0.026), opacity: .7 }}>{z.label}</div>
                   <div style={{ fontWeight: 700, fontSize: fpx(height, 0.0204), opacity: .45, marginTop: px(height, 0.0056) }}>{z.tz}</div>
                 </div>
-                <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: fpx(height, 0.089), letterSpacing: '-0.02em', lineHeight: 1 }}>
+                <div style={{ fontFamily: c.style?.fontFamily || 'JetBrains Mono', fontWeight: 700, fontSize: fpx(height, 0.089), letterSpacing: '-0.02em', lineHeight: 1 }}>
                   {fmtTime(now, z.tz, hour12)}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -544,6 +545,7 @@ export function WorldClocksWidget({ config, live = true, height = 480 }: WidgetP
 
 export interface FxPair { code: string; name: string; flag: string; rate: number; delta: number; }
 export interface FxRatesCfg extends BaseCfg {
+  dataMode?: 'automatic' | 'manual';
   base?: string;
   pairs?: FxPair[];
   refreshMin?: number;
@@ -570,18 +572,19 @@ export function FxRatesWidget({ config, live = true, height = 480 }: WidgetProps
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0d1018', textColor: '#22d39b', accentColor: '#22d39b', ...c.style });
   const realScreen = useRealScreen();
-  const base = c.base ?? 'USD';
+  const base = (c.base || 'USD').toUpperCase();
   const typed = fxRows(c.pairs);
-  const demo = typed.length === 0 && !realScreen;
-  const pairs = typed.length ? typed : demo ? DEFAULT_FX : [];
+  const automatic = c.dataMode === 'automatic' || (c.dataMode !== 'manual' && typed.length === 0);
+  const feed = useReferenceRates(automatic, base);
+  const demo = !automatic && typed.length === 0 && !realScreen;
+  const current = feed.data?.rates || [];
+  const pairs: FxPair[] = automatic ? DISPLAY_CURRENCIES.filter(code=>code!==base).map(code=>current.find(p=>p.code===code)).filter((p): p is {code:string;rate:number}=>!!p).slice(0,8).map(p=>({...p,name:'',flag:'',delta:0})) : typed.length ? typed : demo ? DEFAULT_FX : [];
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0d1018' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#0d1018' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
-        {/* "Mid-market · refreshed every 5 min" and "via Wise / OpenExchangeRates"
-            stood in this header. Nothing refreshes a rate and neither service
-            is called: the rates are whatever the template holds. */}
-        <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>FX · 1 {base} =</div>
+
+        <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontSize: fpx(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>FX · 1 {base} =</div>
         {pairs.length === 0 ? <NothingTyped color="#8a93a4" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
           {pairs.slice(0, 8).map((p, i) => {
@@ -591,13 +594,13 @@ export function FxRatesWidget({ config, live = true, height = 480 }: WidgetProps
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <div style={{ fontSize: fpx(height, 0.033), marginRight: px(height, 0.0167) }}>{p.flag}</div>
                   <div>
-                    <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.028) }}>{p.code}</div>
-                    <div style={{ color: '#8a93a4', fontSize: fpx(height, 0.0167), fontWeight: 600 }}>{p.name}</div>
+                    <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: fpx(height, 0.028) }}>{p.code}</div>
+                    <div style={{ color: c.style?.textColor || '#8a93a4', fontSize: fpx(height, 0.0167), fontWeight: 600 }}>{p.name}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: '#fff', fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: fpx(height, 0.035) }}>{p.rate.toFixed(p.rate < 10 ? 4 : 2)}</div>
-                  <div style={{ color: up ? '#22d39b' : '#ff5664', fontSize: fpx(height, 0.0167), fontWeight: 700 }}>{up ? '+' : ''}{p.delta.toFixed(3)}</div>
+                  <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'JetBrains Mono', fontWeight: 700, fontSize: fpx(height, 0.035) }}>{p.rate.toFixed(p.rate < 10 ? 4 : 2)}</div>
+                  {!automatic && <div style={{ color: up ? '#22d39b' : '#ff5664', fontSize: fpx(height, 0.0167), fontWeight: 700 }}>{up ? '+' : ''}{p.delta.toFixed(3)}</div>}
                 </div>
               </div>
             );
@@ -605,7 +608,7 @@ export function FxRatesWidget({ config, live = true, height = 480 }: WidgetProps
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {automatic ? <a data-reference-rates="" href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" target="_blank" rel="noopener noreferrer" style={{position:'absolute',bottom:4,left:8,right:8,textAlign:'center',fontSize:Math.max(10,Math.min(18,height*.022)),color:r.font.color}}>Free source: ECB · Calculated daily reference rates{feed.data ? ` · ${feed.data.date}` : feed.loading ? ' · Loading…' : ' · Temporarily unavailable'}</a> : demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -647,11 +650,11 @@ export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetPr
   const demo = sampleCams || (!realScreen && typedCity === undefined);
 
   return (
-    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#080a0d' }}>
+    <div style={{ ...frameStyle(r), padding: 0, backgroundColor: c.style?.bgColor ?? '#080a0d' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.056), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div style={{ color: '#fff', fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>{city ? `Traffic · ${city}` : 'Traffic'}</div>
-          {demo && <div data-live-data-sample="" style={{ color: '#9aa3b2', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>Sample data</div>}
+          <div style={{ color: c.style?.textColor || '#fff', fontFamily: c.style?.fontFamily || 'Plus Jakarta Sans', fontWeight: 800, fontSize: fpx(height, 0.05), letterSpacing: '-0.02em' }}>{city ? `Traffic · ${city}` : 'Traffic'}</div>
+          {demo && <div data-live-data-sample="" style={{ color: c.style?.textColor || '#9aa3b2', fontSize: fpx(height, 0.0204), fontWeight: 600 }}>Sample data</div>}
         </div>
         {cams.length === 0 ? <NothingTyped color="#9aa3b2" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.033), display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
@@ -660,12 +663,12 @@ export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetPr
               <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: 'repeating-linear-gradient(135deg, #ffffff0a 0, #ffffff0a 2px, transparent 2px, transparent 14px)' }} />
               <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: px(height, 0.0204) }}>
                 <div>
-                  <div style={{ color: '#fff', fontWeight: 700, fontSize: fpx(height, 0.026) }}>{cam.name}</div>
-                  <div style={{ color: '#cfd8e3', fontSize: fpx(height, 0.0185), fontWeight: 600 }}>{cam.note}</div>
+                  <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: fpx(height, 0.026) }}>{cam.name}</div>
+                  <div style={{ color: c.style?.textColor || '#cfd8e3', fontSize: fpx(height, 0.0185), fontWeight: 600 }}>{cam.note}</div>
                 </div>
-                {cam.status && <div style={{ background: cam.status === 'HEAVY' ? '#dc2626' : cam.status === 'SLOW' ? '#f59e0b' : '#22c55e', color: '#fff', fontWeight: 800, fontSize: fpx(height, 0.0167), padding: `${px(height, 0.0074)}px ${px(height, 0.013)}px`, borderRadius: px(height, 0.0074), letterSpacing: '0.04em' }}>{cam.status}</div>}
+                {cam.status && <div style={{ background: cam.status === 'HEAVY' ? '#dc2626' : cam.status === 'SLOW' ? '#f59e0b' : '#22c55e', color: c.style?.textColor || '#fff', fontWeight: 800, fontSize: fpx(height, 0.0167), padding: `${px(height, 0.0074)}px ${px(height, 0.013)}px`, borderRadius: px(height, 0.0074), letterSpacing: '0.04em' }}>{cam.status}</div>}
               </div>
-              {sampleCams && <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: '#cfd8e3', fontWeight: 700, fontSize: fpx(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056), letterSpacing: '0.04em' }}>SAMPLE</div>}
+              {sampleCams && <div style={{ position: 'absolute', top: px(height, 0.0167), left: px(height, 0.0167), color: c.style?.textColor || '#cfd8e3', fontWeight: 700, fontSize: fpx(height, 0.0148), background: '#0006', padding: `${px(height, 0.0037)}px ${px(height, 0.0093)}px`, borderRadius: px(height, 0.0056), letterSpacing: '0.04em' }}>SAMPLE</div>}
             </div>
           ))}
         </div>

@@ -44,6 +44,7 @@
  *   - Everything must be reachable by click and by keyboard. Drag is extra.
  */
 
+import { widgetDataCapability } from '../widgets/widget-data-capabilities';
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw, } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
@@ -813,7 +814,7 @@ function VariantTile({
       <div className="px-2 py-1.5 border-t border-slate-100 bg-white">
         <div className="text-[11px] font-bold text-slate-700 truncate">{name}</div>
         <div className="text-[9px] font-medium text-slate-400 truncate">
-          {friendlyTypeLabel(String(variant.widgetType))}
+          {widgetDataCapability(String(variant.widgetType), variant.id)?.label || friendlyTypeLabel(String(variant.widgetType))}
         </div>
       </div>
       {action === 'replace' && (

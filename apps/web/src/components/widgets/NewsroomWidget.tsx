@@ -23,6 +23,7 @@ import "./newsroom.css";
 const API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"
 ).replace(/\/api\/v1\/?$/, "");
+const retryLimitedEdition = (result: NewsResult) => !result.items.length || !!result.limited;
 function useChannel(
   scope: NewsScope,
   active: boolean,
@@ -38,6 +39,7 @@ function useChannel(
     3600000,
     45000,
     delay,
+    retryLimitedEdition,
   );
 }
 function fieldStyle(config: Record<string, any>, field: string): CSSProperties {
@@ -63,7 +65,7 @@ function Story({
 }) {
   return (
     <article className={`nr-story${lead ? " nr-lead" : ""}`}>
-      <div className="nr-kicker">
+      <div className="nr-kicker" data-field-jump="source" style={fieldStyle(config, "source")}>
         {NEWSROOM_SCOPES.find((s) => s[0] === item.scope)?.[1]}{" "}
         <span> / {item.publisher}</span>
       </div>
@@ -77,7 +79,7 @@ function Story({
       >
         {item.title}
       </a>
-      <div className="nr-indexed">
+      <div className="nr-indexed" data-field-jump="indexed" style={fieldStyle(config, "indexed")}>
         Indexed{" "}
         {new Date(item.indexedAt).toLocaleDateString(undefined, {
           month: "short",
@@ -100,7 +102,12 @@ export function NewsroomWidget({
   /** Local review harness only, never read from saved zone config. */ previewData?: NewsResult[];
 }) {
   const scopes = newsroomScopes(config.coverage);
-  const location = String(config.newsLocation || "94583").trim();
+  const typedLocation = String(config.newsLocation || "94583").trim();
+  const [location, setLocation] = useState(typedLocation);
+  useEffect(() => {
+    const timer = setTimeout(() => setLocation(typedLocation), 600);
+    return () => clearTimeout(timer);
+  }, [typedLocation]);
   const sources = Array.isArray(config.publishers)
     ? config.publishers
         .filter(
@@ -111,7 +118,7 @@ export function NewsroomWidget({
         .sort()
         .join(",")
     : "";
-  // Fixed hook order; stagger cold loads to respect GDELT's shared request pace.
+  // The server shares and paces searches. Edition responses use the cached index.
   const local = useChannel(
     "local",
     !previewData && scopes.includes("local"),
@@ -124,14 +131,14 @@ export function NewsroomWidget({
     !previewData && scopes.includes("national"),
     "",
     sources,
-    7000,
+    0,
   );
   const world = useChannel(
     "world",
     !previewData && scopes.includes("world"),
     "",
     sources,
-    14000,
+    0,
   );
   const feeds = [local, national, world];
   const data = (
@@ -262,7 +269,7 @@ export function NewsroomWidget({
       />
       <header className="nr-masthead">
         <div>
-          <div className="nr-edition">
+          <div className="nr-edition" data-field-jump="edition" style={fieldStyle(config, "edition")}>
             {scopes.includes("local") ? place : "Newsroom"}{" "}
             <span> / {config.strapline ?? "Your world. In focus."}</span>
           </div>
@@ -283,7 +290,7 @@ export function NewsroomWidget({
             {status} · GDELT Project
           </a>
         </div>
-        <div className="nr-status">
+        <div className="nr-status" data-field-jump="status" style={fieldStyle(config, "status")}>
           {status}
           {newestFetch > 0 ? (
             <span>
@@ -330,7 +337,7 @@ export function NewsroomWidget({
                         className="nr-scroll-story"
                         key={`${item.link}:${i}`}
                       >
-                        <span className="nr-scroll-source">
+                        <span className="nr-scroll-source" data-field-jump="source" style={fieldStyle(config, "source")}>
                           {
                             NEWSROOM_SCOPES.find(
                               (s) => s[0] === item.scope,
@@ -362,7 +369,7 @@ export function NewsroomWidget({
                 const start = stories.length ? index % stories.length : 0;
                 return (
                   <section className="nr-channel" key={scope}>
-                    <h2>{NEWSROOM_SCOPES.find((s) => s[0] === scope)?.[1]}</h2>
+                    <h2 data-field-jump="section" style={fieldStyle(config, "section")}>{NEWSROOM_SCOPES.find((s) => s[0] === scope)?.[1]}</h2>
                     {stories.length ? (
                       [
                         stories[start],
@@ -388,7 +395,7 @@ export function NewsroomWidget({
               <Story item={current} lead config={config} />
               {layout !== "ribbon" && following.length > 0 ? (
                 <aside className="nr-secondary">
-                  <div className="nr-section-label">Also in the briefing</div>
+                  <div className="nr-section-label" data-field-jump="section" style={fieldStyle(config, "section")}>Also in the briefing</div>
                   {following.map((a) => (
                     <Story key={a.link} item={a} config={config} />
                   ))}
@@ -404,16 +411,16 @@ export function NewsroomWidget({
               ? "Select local, national or international coverage."
               : loading
                 ? "Gathering your headlines…"
-                : "News temporarily unavailable"}
+                : anyError ? "News temporarily unavailable" : "No matching stories yet"}
           </div>
           <p>
             {loading
               ? "The first edition can take a moment. Headlines refresh automatically."
-              : "We’ll retry automatically. No sample headlines are shown as live news."}
+              : anyError ? "We’ll retry automatically." : sources ? "Try automatic sources or broader coverage. We’ll check again shortly." : "Checking your coverage for recent stories. Retrying shortly."}
           </p>
         </main>
       )}
-      <footer className="nr-footer">
+      <footer className="nr-footer" data-field-jump="footer" style={fieldStyle(config, "footer")}>
         <a
           href="https://www.gdeltproject.org/"
           target="_blank"
@@ -428,7 +435,7 @@ export function NewsroomWidget({
           {items.length
             ? `${(index % items.length) + 1} / ${items.length}`
             : ""}
-          {items.length ? " · " : ""}Refreshes every 10 min
+          {items.length ? " · " : ""}{data.some(d => d.limited) || !items.length ? "Checks again in 1 min" : "Refreshes every 10 min"}
         </span>
       </footer>
     </div>

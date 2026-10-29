@@ -1,7 +1,8 @@
 "use client";
+import { widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
 import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
-import { NEWSROOM_LAYOUTS, NEWSROOM_SCOPES, NEWSROOM_PUBLISHERS, NEWSROOM_PALETTES, newsroomScopes } from '../widgets/newsroom-model';
+import { NEWSROOM_LAYOUTS, NEWSROOM_TEXT_AREAS, NEWSROOM_SCOPES, NEWSROOM_PUBLISHERS, NEWSROOM_PALETTES, newsroomScopes } from '../widgets/newsroom-model';
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
@@ -499,7 +500,10 @@ function buildV2StyleFields(
       onChange={(v) => setStyle({ bgGradient: v })}
     />,
   );
-  return out;
+  const basicKeys = new Set(['v2-bg', 'v2-text', 'v2-accent', 'v2-font']);
+  const basic = out.filter((field: any) => basicKeys.has(field?.key));
+  const more = out.filter((field: any) => !basicKeys.has(field?.key) && !String(field?.key || '').startsWith('shv2-'));
+  return [...basic, <details key="v2-more-appearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">More appearance</summary><div className="mt-3 space-y-3">{more}</div></details>];
 }
 
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
@@ -2720,7 +2724,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   const activeForecastTextArea = useBuilderStore(s => s.activeFieldName);
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
-    updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
+    const current = useBuilderStore.getState().zones.find(z => z.id === zone.id)?.defaultConfig || cfg;
+    updateZone(zone.id, { defaultConfig: { ...current, ...patch } }, true);
   };
   // Phase 1 field-mapping: read template-level data source so the SCOREBOARD
   // isSportEl branch can render the LIVE DATA mapping chip vs the plain
@@ -3522,22 +3527,22 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         const transparent = forecastIsTransparent(cfg);
         fields.push(<SelectField key="forecastLayout" label="Forecast layout" value={cfg.forecastLayout || 'auto'} options={FORECAST_LAYOUTS} onChange={v => setForecast({ forecastLayout: v })} />);
         fields.push(<ToggleField key="forecastTransparent" label="Transparent background" value={transparent} onChange={v => setForecast({ forecastTransparent: v })} />);
-        fields.push(<details key="forecastAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Colors &amp; fonts</summary><div className="mt-3 space-y-3">
-          <SelectField label="Forecast font" value={cfg.forecastFontFamily || ''} options={V2_FONT_OPTIONS} onChange={v => setForecast({ forecastFontFamily: v })} />
-          <NumField id="forecast-text-scale" label="Overall text size · %" value={Math.round((cfg.forecastTextScale || 1) * 100)} min={60} max={180} onChange={v => setForecast({ forecastTextScale: v / 100 })} />
-          <ColorField label="Forecast text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v })} />
-          <ColorField label="High temperatures" value={cfg.forecastHighColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastHighColor: v })} />
-          <ColorField label="Low temperatures" value={cfg.forecastLowColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastLowColor: v })} />
-          <ColorField label="Weather icons" value={cfg.forecastIconColor || '#b3dcf0'} onChange={v => setForecast({ forecastIconColor: v })} />
-          <ColorField label="Accent & dividers" value={cfg.accentColor || '#8ec9e4'} allowTransparent onChange={v => setForecast({ accentColor: v })} />
-          <ColorField label="Dates, labels & source" value={cfg.forecastDetailColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastDetailColor: v })} />
-          {!transparent && <><ColorField label="Forecast background" value={cfg.bgColor || cfg.style?.bgColor || '#102b3c'} allowTransparent onChange={v => setForecast({ bgColor: v })} />
-          <NumField id="forecast-background-opacity" label="Background opacity · %" value={cfg.forecastBackgroundOpacity ?? 100} min={0} max={100} onChange={v => setForecast({ forecastBackgroundOpacity: v })} />
-          <ColorField label="Day card background" value={cfg.forecastCardColor || '#ffffff'} allowTransparent onChange={v => setForecast({ forecastCardColor: v })} />
-          <NumField id="forecast-card-opacity" label="Day card opacity · %" value={cfg.forecastCardOpacity ?? 5} min={0} max={100} onChange={v => setForecast({ forecastCardOpacity: v })} /></>}
-          <SelectField label="Text area to style" value={FORECAST_TEXT_AREAS.some(([id]) => id === activeForecastTextArea) ? activeForecastTextArea! : 'forecastHigh'} options={FORECAST_TEXT_AREAS} onChange={v => useBuilderStore.getState().setActiveFieldName(v)} />
-          <p className="text-xs text-slate-500">Click weather text or choose an area above, then use the existing floating toolbar for font, size, color, weight and spacing. Live forecast values stay automatic.</p>
+        fields.push(<details key="forecastAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Appearance</summary><div className="mt-3 space-y-3">
+          {!transparent && <ColorField label="Background" value={cfg.bgColor || cfg.style?.bgColor || '#102b3c'} onChange={v => setForecast({ bgColor: v })} />}
+          <ColorField label="Text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v })} />
+          <ColorField label="Accent" value={cfg.accentColor || '#8ec9e4'} allowTransparent onChange={v => setForecast({ accentColor: v, forecastIconColor: v })} />
+          <details><summary className="cursor-pointer text-xs font-semibold">More colors &amp; opacity</summary><div className="mt-3 space-y-3">
+            <ColorField label="High temperatures" value={cfg.forecastHighColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastHighColor: v })} />
+            <ColorField label="Low temperatures" value={cfg.forecastLowColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastLowColor: v })} />
+            <ColorField label="Weather icons" value={cfg.forecastIconColor || cfg.accentColor || '#b3dcf0'} onChange={v => setForecast({ forecastIconColor: v })} />
+            <ColorField label="Dates, labels & source" value={cfg.forecastDetailColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastDetailColor: v })} />
+            {!transparent && <><NumField id="forecast-background-opacity" label="Background opacity · %" value={cfg.forecastBackgroundOpacity ?? 100} min={0} max={100} onChange={v => setForecast({ forecastBackgroundOpacity: v })} />
+            <ColorField label="Day cards" value={cfg.forecastCardColor || '#ffffff'} onChange={v => setForecast({ forecastCardColor: v })} />
+            <NumField id="forecast-card-opacity" label="Day card opacity · %" value={cfg.forecastCardOpacity ?? 5} min={0} max={100} onChange={v => setForecast({ forecastCardOpacity: v })} /></>}
+          </div></details>
         </div></details>);
+        fields.push(<SelectField key="forecastTextArea" label="Text to format" value={FORECAST_TEXT_AREAS.some(([id]) => id === activeForecastTextArea) ? activeForecastTextArea! : 'forecastHigh'} options={FORECAST_TEXT_AREAS} onChange={v => useBuilderStore.getState().setActiveFieldName(v)} />);
+        fields.push(<p key="forecast-text-help" className="text-xs text-slate-500">Text fits automatically. To change a font, size or color, select text on the canvas or above and use the floating text toolbar.</p>);
         fields.push(<details key="forecastLabels" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Heading &amp; location label</summary><div className="mt-3 space-y-3">
           <StyleableField fieldName="forecastHeading" styles={cfg._styles} label="Forecast heading" value={cfg.forecastHeading ?? `${cfg.forecastDays || 5}-day outlook`} onChange={v => setForecast({ forecastHeading: v })} />
           <StyleableField fieldName="forecastLocationLabel" styles={cfg._styles} label="Location label (optional)" value={cfg.forecastLocationLabel || ''} placeholder="Use live location name" onChange={v => setForecast({ forecastLocationLabel: v })} />
@@ -4715,12 +4720,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         if (cfg.newsLayout === 'banner') fields.push(<SelectField key="scrollSpeed" label="Scroll speed" value={cfg.scrollSpeed || 'normal'} options={[["slow","Slow"],["normal","Normal"],["fast","Fast"]]} onChange={v => setNewsField({ scrollSpeed: v })} />);
         else fields.push(<NumField key="intervalSec" id="newsroom-interval" label="Seconds per headline" value={cfg.intervalSec || 12} min={5} max={120} onChange={v => setNewsField({ intervalSec: v })} />);
         fields.push(<details key="publishers" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">News sources · {selected.length ? `${selected.length} selected` : 'Automatic variety'}</summary><p className="text-xs text-slate-500 my-3">Choose outlets, or leave all unchecked for automatic variety. Availability depends on current coverage. Publisher selection does not grant rights to their photographs.</p>{NEWSROOM_PUBLISHERS.map(([id, label]) => <ToggleField key={id} label={label} value={selected.includes(id)} onChange={on => setNewsField({ publishers: on ? [...selected, id] : selected.filter(s => s !== id) })} />)}</details>);
+        fields.push(<SelectField key="newsTextArea" label="Text to format" value={NEWSROOM_TEXT_AREAS.some(([id]) => id === activeForecastTextArea) ? activeForecastTextArea! : 'headline'} options={NEWSROOM_TEXT_AREAS} onChange={v => useBuilderStore.getState().setActiveFieldName(v)} />);
         fields.push(<details key="newsAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Appearance</summary><div className="mt-3 space-y-3">
           <ColorField label="Background" value={cfg.bgColor || palette.background} allowTransparent onChange={v => setNewsField({ bgColor: v })} />
           <NumField id="news-opacity" label="Background opacity · %" value={cfg.backgroundOpacity ?? 100} min={0} max={100} onChange={v => setNewsField({ backgroundOpacity: v })} />
           <ColorField label="Text" value={cfg.textColor || palette.text} onChange={v => setNewsField({ textColor: v })} />
           <ColorField label="Accent" value={cfg.accentColor || palette.accent} onChange={v => setNewsField({ accentColor: v })} />
-          <NumField id="news-text-scale" label="Text size · %" value={Math.round((cfg.textScale || 1) * 100)} min={60} max={160} onChange={v => setNewsField({ textScale: v / 100 })} />
           <TextField label="Edition line" value={cfg.strapline ?? 'Your world. In focus.'} onChange={v => setNewsField({ strapline: v })} />
           <p className="text-xs text-slate-500">Use the existing text toolbar for heading and headline typography. Resize the zone normally; layouts adapt automatically. Headline wording comes from the publisher.</p>
         </div></details>);
@@ -6967,9 +6972,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             {label}
           </div>
         );
-        const defs = (v2w.defaults || {}) as Record<string, unknown>;
+        if (cfg.variant === 'fx-rates') fields.push(<SelectField key="fx-data-mode" label="Rates" value={cfg.dataMode || (cfg.pairs?.length ? 'manual' : 'automatic')} options={[["automatic","Automatic · ECB daily reference rates"],["manual","Enter my own rates"]]} onChange={v=>setField({dataMode:v})} />);
+        const defs = { ...(v2w.defaults || {}), ...MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)] } as Record<string, unknown>;
+        const dataCapability = widgetDataCapability(zone.widgetType, cfg.variant, cfg);
+        if (dataCapability) fields.push(<p key="data-behavior" className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600"><strong className="block text-slate-800 mb-1">{dataCapability.label}</strong>{dataCapability.detail}</p>);
         const contentKeys = Object.keys(defs).filter(
-          (k) => k !== 'variant' && k !== 'style' && k !== 'tier',
+          (k) => k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
         );
         // 2026-05-29 — operator: "upload logos when needed or images." An
         // image/logo/photo content field used to render as a plain URL
@@ -6993,7 +7001,10 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             if (notice) fields.push(notice);
             const dv = defs[key];
             const cur = cfg[key];
-            if (Array.isArray(dv) && isImageKey(key)) {
+            if (cfg.variant === 'fx-rates' && key === 'base') {
+              const codes = Array.from(new Set(['USD','EUR','GBP','JPY','CAD','AUD','CHF','CNY','NZD','MXN',String(cfg.base || 'USD')]));
+              fields.push(<SelectField key="fx-base" label="Base currency" value={cfg.base || 'USD'} options={codes.map(code=>[code,code])} onChange={v=>setField({base:v})} />);
+            } else if (Array.isArray(dv) && isImageKey(key)) {
               // Multi-image field (gallery / logos / product photos) → upload
               // + reorder + pick-from-Assets, not a comma-separated URL string.
               const arr = Array.isArray(cur) ? (cur as unknown[]) : (dv as unknown[]);
@@ -7029,7 +7040,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                   key={key}
                   label={prettyFieldLabel(key)}
                   itemNoun="row"
-                  value={Array.isArray(cur) ? cur : dv}
+                  value={Array.isArray(cur) ? cur : MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)] ? [] : dv}
                   onChange={(v) => setField({ [key]: v })}
                   fields={rowSpec}
                   makeNewItem={() => ({ ...blank })}
@@ -7449,7 +7460,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // prevent.
     const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML', 'ANIMATED_BACKGROUND']);
     const isV2Widget = isV2Variant;
-    const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily');
+    const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily') || cfg.variant === 'weather-outlook' || (zone.widgetType === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
     if (!alreadyStyleable && !MEDIA_ONLY.has(zone.widgetType)) {
       fields.push(
         <div key="_uts-hdr" className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
@@ -13185,7 +13196,8 @@ export function rowFieldsFromSample(sample: Record<string, unknown>): ListItemFi
   return Object.keys(sample || {}).map((k) => {
     const val = sample[k];
     const type: ListItemFieldType =
-      typeof val === 'number' ? 'number'
+      Array.isArray(val) ? 'stringList'
+      : typeof val === 'number' ? 'number'
       : typeof val === 'string' && val.length > 48 ? 'textarea'
       : 'text';
     return {
@@ -13206,7 +13218,7 @@ export function blankRowFromSample(sample: Record<string, unknown>): Record<stri
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(sample || {})) {
     const v = sample[k];
-    out[k] = typeof v === 'number' ? 0 : typeof v === 'boolean' ? false : '';
+    out[k] = Array.isArray(v) ? [] : typeof v === 'number' ? 0 : typeof v === 'boolean' ? false : '';
   }
   return out;
 }

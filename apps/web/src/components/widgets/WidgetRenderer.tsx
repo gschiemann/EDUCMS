@@ -1,5 +1,6 @@
 "use client";
 
+import { withCalendarFeed } from './CalendarFeedBoundary';
 import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
 // 2026-09-12 — the real Instagram / Facebook Page feed. Static import (not a
 // lazy chunk) because SOCIAL_FEED is dispatched from the player's own type
@@ -3031,7 +3032,9 @@ function LunchMenuBoard({ config, compact }: { config: any; compact: boolean }) 
 // CALENDAR — Events display
 // ═══════════════════════════════════════════════════════
 
-function CalendarWidget({ config, compact }: { config: any; compact: boolean }) {
+const CalendarWidget = withCalendarFeed(CalendarLayoutWidget);
+
+function CalendarLayoutWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'office-dashboard') return <OfficeDashboardCalendar config={config} compact={compact} />;
   if (config.theme === 'back-to-school') return <BackToSchoolCalendar config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopCalendar config={config} />;

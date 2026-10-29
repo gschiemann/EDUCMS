@@ -1825,9 +1825,12 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
+    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    // An old whole-widget !important size must not defeat the selected field.
+    const sizeReset = automaticWidget && prop === 'fontSize' ? { fontSize: undefined } : {};
     setCfg(wt === 'HOLIDAY'
       ? { _styles: nextStyles, __styles: {} }
-      : { _styles: nextStyles });
+      : { _styles: nextStyles, ...sizeReset });
   };
   // Read the rendered px on the focused field so the size stepper
   // anchors on the design value (280, 180, etc.) instead of falling

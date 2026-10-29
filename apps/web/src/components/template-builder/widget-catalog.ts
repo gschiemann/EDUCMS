@@ -63,7 +63,7 @@ const TYPE_LABELS: Record<string, string> = {
   LOGO: 'Logo',
   STAFF_SPOTLIGHT: 'Staff spotlight',
   LUNCH_MENU: 'Lunch menu',
-  LIVE_DATA: 'Live data',
+  LIVE_DATA: 'Data boards',
   CHART: 'Chart',
   BACKGROUND: 'Background',
   SHAPE: 'Shape',
