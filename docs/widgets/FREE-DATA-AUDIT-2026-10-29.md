@@ -8,6 +8,7 @@ The scope is the existing widget library, not a new set of mock widgets. The reg
 | --- | --- | --- |
 | Newsroom | GDELT headline metadata. Short, shared rolling-index responses while a paced search refreshes the edition. Six-hour metadata retention prevents the upstream 15-minute window from wiping an edition. Search and client reject headlines indexed more than one day ago. Selected publishers and local-city filters remain intact. | Choose coverage and optionally a city/ZIP and publishers. No API key. Empty local coverage is disclosed. |
 | Weather outlook | Existing National Weather Service forecast endpoint. Each day is a centered unit; constrained zones rotate readable groups instead of making text illegible. | City/ZIP, 2–5 days, look, background/text/accent. Native toolbar formats the selected text area. |
+| Current-weather looks / embedded school weather | Free MET Norway current-hour forecast through the shared API. Source expiry and conditional requests are honored; coordinates are rounded to four decimals and origin requests paced across replicas. Each design credits MET Norway / CC BY 4.0 and identifies forecast/rounded values. No automatic screen-IP geolocation or invented failure temperature. | Set city, ZIP or coordinates using the existing location picker; °F/°C. Explicit entered overrides are preserved and labelled. |
 | Daily exchange rates | ECB daily reference XML, fetched server-side, shared for one hour, converted mathematically to the selected base. The published business-day date is shown. No invented intraday changes. Data older than seven days is refused. | Base currency. Existing entered pairs remain manual. Free source credit is visible both in discovery/editor copy and on the board. |
 | Calendar designs | All 31 registered calendar looks use the existing ICS transport. The legacy themed path is covered too. A failed or empty calendar cannot fall through to a design’s sample events. | Paste your authorized ICS URL, or use the existing event editor. Entered events remain available. |
 | RSS / rotating headlines | Existing server-side RSS fetcher, selected free sources or an operator-supplied authorized feed. Last-good RSS content is bounded to one hour; calendar transport to 24 hours. | Select sources or provide a feed URL. |
@@ -35,7 +36,7 @@ No flight data provider, market-data subscription, paid map service, scraping pr
 
 A free public feed is not a guarantee of coverage in every city. GDELT may have no recent local story for a given ZIP. Empty editions retry promptly and remain labelled; national stories are never silently reclassified as local.
 
-Legacy single-day/current-weather and embedded weather headers still use Open-Meteo. Its hosted free API is explicitly non-commercial ([provider pricing](https://open-meteo.com/en/pricing)); those paths require a free commercial-use replacement before this wider audit can be called complete. The NWS outlook in this change does not depend on Open-Meteo. No commercial weather subscription is authorized.
+Legacy single-day/current-weather and embedded school weather have been moved off Open-Meteo’s hosted free API, which is [non-commercial](https://open-meteo.com/en/pricing). The replacement is MET Norway’s free, attributed global forecast service. It is a model forecast for the current hour, not a station observation. The U.S. NWS multi-day outlook remains separate. Configure a location explicitly; a blank location is no longer guessed from a screen’s IP address. No commercial weather subscription or API key was added.
 
 The nationwide traffic requirement remains open. California public incidents/camera snapshots were researched, but they do not cover the whole United States. TomTom advertises monthly free allowances, including 2,500 incident-detail requests and 20,000 flow-segment requests, but it still needs a free account/key and verified display terms. No paid fallback or automatic overage is authorized. A national traffic widget must enforce that constraint, disclose unavailable roads/expired data, and never fill gaps with made-up congestion or ETAs. No traffic data connection is claimed in this release.
 
@@ -49,13 +50,15 @@ The existing widget-truth ratchet still contains 136 findings in 106 baseline en
 - Native editor: landscape/portrait weather and Newsroom control changes, toolbar typography, Save and reload verified in both browser engines.
 - Backend: input validation, request coalescing, shared caches, throttling recovery, source retention/expiry, selected-domain/local-city filtering, entity decoding and date freshness tests.
 - Exchange rates: source parser, stale/malformed table rejection, conversion and coalescing tests; rendered automatic/manual/unavailable cases.
-- Calendars: source propagation, loading/error/empty states, sample isolation, manually entered content and all-day labels.
+- Calendars: source propagation, loading/error/empty states, sample isolation, manually entered content and all-day labels. Manual titles replace matching feed rows while repeated incoming dates survive.
+- Current weather: actual unmocked MET source capture, freshness rejection, unit conversion, absent optional fields, current-hour re-evaluation, expiry/304 reuse and concurrent-request coalescing. School templates preserve entered values and stop substituting sample weather on live boards.
 - Production build and CI are required before a release is reported as shipped. Real data captures in the review package identify the source and capture time; visual fixtures are identified separately.
 - No player loader, Android APK, screen assignment, cache-clearing command, forced screen refresh, or G24/FUH activation policy is changed. Browser checks do not qualify the physical controllers.
 
 ## Primary sources
 
 - [GDELT](https://www.gdeltproject.org/) and [rolling metadata feed](https://data.gdeltproject.org/gdeltv3/gal/feed.rss)
+- [MET Norway API terms and attribution](https://api.met.no/doc/TermsOfService)
 - [National Weather Service API](https://www.weather.gov/documentation/services-web-api)
 - [ECB daily reference data](https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml), [reference-rate explanation](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html), and [reuse conditions](https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html)
 - [AirNow API](https://docs.airnowapi.org/) and [forecast feed directory](https://feeds.airnowapi.org/)

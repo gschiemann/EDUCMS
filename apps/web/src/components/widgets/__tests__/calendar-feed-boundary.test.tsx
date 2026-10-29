@@ -100,3 +100,13 @@ it('attaches the calendar transport to every registered calendar design',()=>{
  expect(calendars.length).toBeGreaterThanOrEqual(31);
  for(const variant of calendars) if(!variant.previewOnly) expect(variant.render.displayName).toMatch(/^CalendarFeed\(/);
 });
+
+it('manual titles replace feed rows while repeated incoming dates survive',()=>{
+ feed.mockReturnValue({events:[fixture,{...fixture,start:'2026-10-30T16:00:00Z'}],loading:false,error:false});
+ const first = render(<Calendar config={{feedUrl:'https://school.example/calendar.ics'}}/>);
+ expect(screen.getAllByText(/Tenant briefing/)).toHaveLength(2);
+ first.unmount();
+ render(<Calendar config={{feedUrl:'https://school.example/calendar.ics',events:[{title:'Tenant briefing',date:'Entered date'}]}}/>);
+ expect(screen.getAllByText(/Tenant briefing/)).toHaveLength(1);
+ expect(screen.getByText(/Entered date/)).toBeInTheDocument();
+});

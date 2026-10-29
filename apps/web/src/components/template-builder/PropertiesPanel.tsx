@@ -3498,7 +3498,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // set it but its a bunch of free text fields i can type."
       //
       // The renderer ALREADY fetches live data via fetchWeather()
-      // (Open-Meteo / Zippopotam, no API key, no cost). The editor
+      // (MET Norway / cached location lookup, no API key, no cost). The editor
       // was presenting tempF/high/low/condition/icon as if they
       // were required inputs — they're optional manual overrides,
       // shown front-and-center which made the operator think they
@@ -3507,7 +3507,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // New layout:
       //   - Smart location input (zip OR city OR "Use my location")
       //   - Units toggle (°F / °C)
-      //   - Live status: "Fetching from Open-Meteo / OK"
+      //   - Live status: "Fetching forecast / OK"
       //   - Manual overrides collapsed under "Advanced (override
       //     live data)" — only opens if operator wants to fake it
       fields.push(
@@ -5142,8 +5142,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         </div>
       );
 
-      fields.push(SH('weather', 'Weather — auto-detected from the player'));
-      fields.push(<TextField key="weatherLocation" label="ZIP code override (leave blank to auto-detect)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
+      fields.push(SH('weather', 'Weather'));
+      fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
 
       fields.push(SH('announcement', 'Big announcement (center cloud)'));
@@ -5371,7 +5371,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<SelectField key="clockTimezone" label="Clock timezone" value={cfg.clockTimezone || ''} options={US_TIMEZONE_OPTIONS as unknown as Array<[string, string]>} onChange={(v) => setField({ clockTimezone: v })} />);
       fields.push(<StyleableField key="clockTime" fieldName="clockTime" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock time (manual override)" value={cfg.clockTime || ''} placeholder={D.clockTime} onChange={(v) => setField({ clockTime: v })} />);
       fields.push(<StyleableField key="clockCaption" fieldName="clockCaption" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption (manual override)" value={cfg.clockCaption || ''} placeholder={D.clockCaption} onChange={(v) => setField({ clockCaption: v })} />);
-      // 2026-05-07 — live weather (Open-Meteo). Manual overrides below.
+      // 2026-05-07 — current-hour forecast (MET Norway). Manual overrides below.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
       fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Weather temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
@@ -5627,7 +5627,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<StyleableField key="greetingEyebrow" fieldName="greetingEyebrow" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Eyebrow" value={cfg.greetingEyebrow || ''} placeholder={D.greetingEyebrow} onChange={(v) => setField({ greetingEyebrow: v })} />);
       fields.push(<StyleableField key="greetingHeadline" fieldName="greetingHeadline" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Headline" value={cfg.greetingHeadline || ''} placeholder={D.greetingHeadline} onChange={(v) => setField({ greetingHeadline: v })} />);
       fields.push(<StyleableAreaField key="greetingSubtitle" fieldName="greetingSubtitle" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Subtitle" value={cfg.greetingSubtitle || ''} placeholder={D.greetingSubtitle} rows={2} onChange={(v) => setField({ greetingSubtitle: v })} />);
-      // Live weather (Open-Meteo). Manual overrides below.
+      // Current-hour forecast (MET Norway). Manual overrides below.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
       fields.push(<StyleableField key="weatherTemp" fieldName="weatherTemp" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Outside temp (manual override)" value={cfg.weatherTemp || ''} placeholder={D.weatherTemp} onChange={(v) => setField({ weatherTemp: v })} />);
@@ -5772,7 +5772,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<StyleableField key="clockbigVal" fieldName="clockbigVal" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock value" value={cfg.clockbigVal || ''} placeholder={D.clockbigVal} onChange={(v) => setField({ clockbigVal: v })} />);
       fields.push(<StyleableField key="clockbigCap" fieldName="clockbigCap" styles={cfg.__styles} onStylesChange={(s) => setField({ __styles: s })} label="Clock caption" value={cfg.clockbigCap || ''} placeholder={D.clockbigCap} onChange={(v) => setField({ clockbigCap: v })} />);
       // 2026-05-07 — live weather. Operator picks location (zip/auto)
-      // and units; renderer fetches from Open-Meteo every 15 min.
+      // and units; renderer uses the shared MET Norway forecast.
       // Manual overrides below win if operator types into them.
       fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({ weatherLocation: v })} />);
       fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
@@ -7140,6 +7140,8 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // 80-100 fields long — over 1000 lines of boilerplate).
       const msDefaults = MS_DEFAULTS_BY_TYPE[zone.widgetType];
       if (msDefaults) {
+        fields.push(<SmartLocationField key="weatherLocation" value={cfg.weatherLocation || ''} onChange={(v) => setField({weatherLocation: v})} />);
+        fields.push(<SelectField key="weatherUnits" label="Weather units" value={cfg.weatherUnits || 'imperial'} options={[[ 'imperial', '°F'], ['metric', '°C']]} onChange={(v) => setField({weatherUnits: v})} />);
         const SH = (key: string, label: string) => (
           <div
             key={`sh-${key}`}
@@ -12372,7 +12374,7 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
         </button>
       </div>
       <div className="text-[10px] text-slate-500 leading-relaxed">
-        Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Live weather pulls from Open-Meteo (free, no key) and refreshes every 15 minutes on each screen.
+        Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Weather uses free, automatically refreshed forecasts: National Weather Service for the U.S. multi-day outlook; MET Norway for current-hour forecasts. Set the location once for each widget.
       </div>
       {geoError && (
         <div className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">

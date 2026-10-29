@@ -1,6 +1,6 @@
 "use client";
 /**
- * WEATHER pack — 5 widgets. Live data via Open-Meteo (no API key).
+ * WEATHER pack — 5 widgets. Current-hour forecast via the shared free MET Norway source (no API key).
  * WEATHER_NEON_FORECAST, WEATHER_PAPER_BULLETIN, WEATHER_CRAYON_SUN, WEATHER_GLASS_CARD, WEATHER_OPS_TELEMETRY
  */
 import { useEffect, useRef, useState } from 'react';
@@ -10,68 +10,36 @@ import type { WidgetProps } from './_shared/types';
 import { useRenderSurface } from '../render-surface';
 import { NO_READING, WEATHER_HOLD_MS } from '../use-live-weather';
 import { SampleStamp } from './_shared/live-data-truth';
+import { fetchWeather, getWMO } from '../weather-api';
 
 interface WCfg { style?: WidgetStyle; location?: string; units?: 'imperial' | 'metric'; staticTemp?: number; staticDesc?: string; staticIcon?: string; feedUrl?: string; }
-function emojiFor(code: number | null): string { if (code == null) return ''; if (code === 0) return '☀️'; if (code <= 3) return '⛅'; if (code <= 48) return '🌫️'; if (code <= 67) return '🌧️'; if (code <= 77) return '❄️'; if (code <= 82) return '🌦️'; if (code <= 86) return '🌨️'; if (code >= 95) return '⛈️'; return '🌤️'; }
-function descFor(code: number | null): string { if (code == null) return ''; if (code === 0) return 'Clear'; if (code <= 3) return 'Partly cloudy'; if (code <= 48) return 'Foggy'; if (code <= 67) return 'Rainy'; if (code <= 77) return 'Snowy'; if (code <= 82) return 'Showers'; if (code >= 95) return 'Storms'; return 'Fair'; }
+function emojiFor(code: number | null): string {
+  if (code == null || code < 0) return '';
+  if (code === 0 || code === 1) return '☀️';
+  if (code === 2) return '⛅';
+  if (code === 3) return '☁️';
+  if (code <= 48) return '🌫️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '❄️';
+  if (code <= 82) return '🌦️';
+  if (code <= 86) return '🌨️';
+  if (code >= 95) return '⛈️';
+  return '';
+}
+function descFor(code: number | null): string {
+  return code == null ? '' : getWMO(code).label;
+}
 /** "72°F" for a reading; the bare dash for none. */
 function withUnit(v: number | string, u: string): string { return typeof v === 'number' ? `${v}${u}` : v; }
 
 interface WxReading { temp: number; code: number; hi: number | null; lo: number | null }
 
-/** One Open-Meteo reading for a place (lat,lng · US zip · city), or null. */
+/** One shared current-hour forecast for a place (lat,lng · US zip · city), or null. */
 async function fetchReading(place: string, units: 'imperial' | 'metric'): Promise<WxReading | null> {
-  try {
-    let lat: number | null = null;
-    let lng: number | null = null;
-    // lat,lng from the geolocation auto-detect button
-    const m = place.match(/^(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/);
-    if (m) { lat = parseFloat(m[1]); lng = parseFloat(m[2]); }
-    // 5-digit US zip
-    if (lat == null && /^\d{5}$/.test(place)) {
-      try {
-        const z = await fetch(`https://api.zippopotam.us/us/${place}`).then(r => r.ok ? r.json() : null);
-        const p = z?.places?.[0];
-        if (p) { lat = parseFloat(p.latitude); lng = parseFloat(p.longitude); }
-      } catch { /* ignore */ }
-    }
-    // City name
-    if (lat == null) {
-      const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1`).then(r => r.json());
-      const g = geo?.results?.[0]; if (!g) return null;
-      lat = g.latitude; lng = g.longitude;
-    }
-    if (lat == null || lng == null) return null;
-    const u = units === 'imperial' ? '&temperature_unit=fahrenheit' : '';
-    const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto${u}`).then(r => r.json());
-    // A reply without a current temperature is no reading — it used to become 70°.
-    const t = w?.current_weather?.temperature;
-    if (typeof t !== 'number' || !Number.isFinite(t)) return null;
-    const hi = w?.daily?.temperature_2m_max?.[0];
-    const lo = w?.daily?.temperature_2m_min?.[0];
-    return {
-      temp: Math.round(t),
-      code: typeof w?.current_weather?.weathercode === 'number' ? w.current_weather.weathercode : 1,
-      hi: typeof hi === 'number' ? Math.round(hi) : null,
-      lo: typeof lo === 'number' ? Math.round(lo) : null,
-    };
-  } catch { return null; }
+  const reading = await fetchWeather(place, units === 'metric');
+  return reading ? {temp:reading.temp,code:reading.weatherCode,hi:reading.high,lo:reading.low} : null;
 }
 
-// 2026-05-04 — operator: weather widgets show static placeholder
-// values in editor because the v2 hook gated fetches behind a `live`
-// prop that's only true on the player. Now fetches in BOTH editor
-// and player so the operator sees the real weather they'll get.
-// Also handles 5-digit US zip codes via Zippopotam.us (mirrors the
-// legacy fetchWeather change).
-//
-// Lane B4 (2026-09-27) — this hook STARTED at 72° / partly cloudy / 78 / 60
-// and stayed there whenever no location was set or the fetch failed; it also
-// fetched once and never again, so a screen that ran for a week showed the
-// temperature from the morning it booted. Now it refreshes every 15 minutes,
-// keeps a reading through failed refreshes for at most an hour, and a REAL
-// screen with no reading shows a dash. The builder keeps the 72° sample so a
-// tile is never blank — stamped SAMPLE.
 function useWeather(loc: string | undefined, units: 'imperial' | 'metric' = 'imperial', _live?: boolean) {
   const realScreen = useRenderSurface() === 'player';
   const place = (loc || '').trim();
@@ -196,7 +164,7 @@ export function WeatherOpsTelemetryWidget({ config, live }: WidgetProps<WCfg>) {
   const temp = c.staticTemp ?? w.temp; const u = c.units === 'metric' ? '°C' : '°F';
   // The footer used to read "cached_data" whenever no reading had arrived —
   // there was no cache, only the 72° sample. It now says what is on show.
-  const feed = w.loaded ? 'live_feed_ok' : w.sample ? 'sample_data' : 'no_data';
+  const feed = w.loaded ? 'forecast_feed_ok' : w.sample ? 'sample_data' : 'no_data';
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 6 }}>

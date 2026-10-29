@@ -47,8 +47,11 @@ export function withCalendarFeed<P extends { config?: any }>(
       : [];
     const incoming =
       url && feed.events ? calendarDisplayEvents(feed.events) : [];
+    // A manual row intentionally replaces the feed row with this title.
+    // Repeated feed occurrences on different dates must still survive.
+    const manualTitles = new Set(manual.map((e: any) => String(e.title).trim().toLowerCase()));
     const seen = new Set<string>();
-    const events = [...manual, ...incoming].filter((e: any) => {
+    const events = [...manual, ...incoming.filter(e => !manualTitles.has(e.title.trim().toLowerCase()))].filter((e: any) => {
       const key = [e.title, e.start || e.date, e.time].join("|");
       if (seen.has(key)) return false;
       seen.add(key);

@@ -60,6 +60,7 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
     if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/current-weather') return json(route, {temp:new URL(route.request().url()).searchParams.get('units')==='metric'?10:50,high:55,low:40,weatherCode:3,locationName:'San Ramon, CA',humidity:60,wind:3,feelsLike:null,source:'MET Norway',kind:'forecast',forecastAt:new Date().toISOString(),updatedAt:new Date().toISOString(),fetchedAt:new Date().toISOString(),geocoded:true});
     if (endpoint === '/feeds/reference-rates') return json(route, {base:new URL(route.request().url()).searchParams.get('base')||'USD',date:new Date().toISOString().slice(0,10),source:'European Central Bank',fetchedAt:new Date().toISOString(),rates:[{code:'EUR',rate:0.9},{code:'USD',rate:1.1},{code:'GBP',rate:0.8}]});
     if (endpoint === '/feeds/ics') return json(route, {events:[{title:'Connected calendar fixture meeting',start:new Date(Date.now()+86400000).toISOString(),end:null,location:'Suite 201',allDay:false}],meta:{recurringEventCount:0,recurrenceExpansionDays:30,hasUnexpandedRecurrence:false}});
     if (endpoint === '/feeds/news') {
@@ -648,8 +649,16 @@ for (const portrait of [false, true]) test(`live information ${portrait ? 'portr
     { id: 'weather', name: 'Forecast', widgetType: 'WEATHER', x: 4, y: 4, width: 92, height: 42, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'weather-outlook', forecastDays: 5, location: '21.3,-157.8' } },
     { id: 'news', name: 'Headlines', widgetType: 'RSS_FEED', x: 4, y: 50, width: 92, height: 46, zIndex: 1, sortOrder: 1, defaultConfig: { variant: 'rss-headlines', sources: ['global-voices','nasa'], intervalSec: 5 } },
   ], portrait ? { width: 2160, height: 3840 } : { width: 3840, height: 2160 });
-  const weather = page.locator('[data-zone-id="weather"]'); await expect(weather.locator('[data-forecast-day]')).toHaveCount(5); await weather.click({ position: { x: 12, y: 12 } });
-  for (const count of [2,3,4,5]) { await page.getByLabel('Forecast days', { exact: true }).selectOption(String(count)); await expect(weather.locator('[data-forecast-day]')).toHaveCount(count); }
+  const weather = page.locator('[data-zone-id="weather"], [data-zone-id="saved-0"]');
+  const expectForecast = async (count: number) => {
+    await expect(weather.locator('[data-weather-outlook]')).toHaveAttribute('data-days', String(count));
+    await expect.poll(() => weather.locator('[data-forecast-day]').count()).toBeGreaterThan(0);
+    expect(await weather.locator('[data-forecast-day]').count()).toBeLessThanOrEqual(count);
+    const groups = Number(await weather.locator('[data-weather-outlook]').getAttribute('data-page-count'));
+    expect(groups).toBeGreaterThanOrEqual(1);
+  };
+  await expectForecast(5); await weather.click({ position: { x: 12, y: 12 } });
+  for (const count of [2,3,4,5]) { await page.getByLabel('Forecast days', { exact: true }).selectOption(String(count)); await expectForecast(count); }
   await page.getByLabel('Units', { exact: true }).selectOption('metric'); await expect(weather.getByText('°C', {exact:true})).toBeVisible();
   await page.getByLabel('Forecast days', { exact: true }).selectOption('3');
   const news = page.locator('[data-zone-id="news"]'); await news.click({ position: { x: 12, y: 12 } });
@@ -658,7 +667,7 @@ for (const portrait of [false, true]) test(`live information ${portrait ? 'portr
   await page.getByLabel('Seconds per headline', {exact:true}).fill('5'); await page.getByLabel('Seconds per headline', {exact:true}).blur();
   await expect(news.getByText('NASA announces a new science mission')).toBeVisible({timeout:12_000});
   await page.getByRole('button', {name:/^Save$/}).click(); await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); await expect.poll(()=>state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5}); await reloadEditor(page);
-  await expect(page.locator('[data-zone-id] [data-forecast-day]')).toHaveCount(3);
+  await expectForecast(3);
   expect(state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); expect(state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5});
   await page.screenshot({path:testInfo.outputPath('live-info-'+(portrait?'portrait':'landscape')+'.png')});
 });
@@ -833,4 +842,21 @@ test('daily reference rates use a real source shape and preserve manual editing'
  await page.getByRole('button',{name:/^Save$/}).click();
  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({base:'EUR',dataMode:'manual',pairs:[{code:'CAD',rate:1.37}]});
  await reloadEditor(page);await expect(page.locator('[data-zone-id]')).toContainText('1.3700');await expect(page.locator('[data-zone-id]')).toContainText('Manually updated');
+});
+
+for (const portrait of [false,true]) test(`current weather ${portrait?'portrait':'landscape'} reads the free source and saves location and units`, async({page})=>{
+ const state = await openEditor(page,portrait,[{id:'current-weather',name:'Current forecast',widgetType:'WEATHER',x:5,y:5,width:90,height:90,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-hero',location:'94583',units:'imperial'}}],portrait?{width:2160,height:3840}:{width:3840,height:2160});
+ const zone=page.locator('[data-zone-id="current-weather"], [data-zone-id="saved-0"]');
+ await expect(zone.getByRole('link',{name:'MET Norway'})).toBeVisible();
+ await expect(zone.getByText(/^50°/)).toBeVisible();
+ await zone.click({position:{x:10,y:10}});
+ await page.getByLabel('Location',{exact:true}).fill('San Ramon, CA');
+ await page.getByLabel('Location',{exact:true}).blur();
+ await page.getByLabel('Units',{exact:true}).selectOption('metric');
+ await expect(zone.getByText(/^10°/)).toBeVisible();
+ await page.getByRole('button',{name:/^Save$/}).click();
+ await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({location:'San Ramon, CA',units:'metric'});
+ await reloadEditor(page);
+ await expect(zone.getByRole('link',{name:'MET Norway'})).toBeVisible();
+ await expect(zone.getByText(/^10°/)).toBeVisible();
 });

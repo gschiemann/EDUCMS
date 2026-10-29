@@ -8,13 +8,12 @@
  * Extracted so every MS-pack template (Arcade, Atlas, Fieldnotes,
  * Greenhouse, Homeroom, Paper, Playlist, Studio × landscape+portrait)
  * can drop in a live clock + weather without re-implementing the
- * three-tier ZIP→IP→fallback fetch chain.
+ * shared, cached MET Norway current-hour forecast.
  *
  * Returns:
  *   - `now: Date` — refreshes every 30s while `live` is true
  *   - `weather: { tempF, wmoCode } | null` — null until first
- *     successful fetch; updates every 15 minutes; falls back to the
- *     `weatherOverride` config if any tier fails
+ *     successful fetch; updates every 15 minutes; returns null when the source is unavailable
  *
  * Usage in a widget:
  *   const { now, weather } = useLiveTemplateData({
@@ -31,107 +30,88 @@
  *   - Thumbnail-mode short-circuit (`if (!live) return null`) is centralized.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
+import { fetchWeather, getWMO } from "../weather-api";
 
 export interface LiveWeather {
-  /** Rounded temp in °F (we always normalize to °F for display, regardless of weatherUnits). */
+  /** Fahrenheit retained for weather phrase thresholds in older designs. */
   tempF: number;
-  /** Open-Meteo WMO code, see https://open-meteo.com/en/docs */
+  temperature: number;
+  high: number | null;
+  low: number | null;
+  condition: string;
   wmoCode: number;
 }
-
 export interface UseLiveTemplateDataOpts {
-  /** Pass `live` from the parent widget — false in gallery thumbs, true in player + preview. */
   live?: boolean;
-  /** Optional ZIP / "country zip" string. Empty → IP geolocation. */
+  clock?: boolean;
   weatherLocation?: string;
-  /** "metric" → °C, otherwise °F. */
   weatherUnits?: string;
-  /** If set, skip weather fetch entirely. Caller will render this string instead. */
+  /** Explicit entered temperature always wins; no network is needed. */
   weatherOverride?: string;
 }
-
-export interface UseLiveTemplateDataResult {
-  now: Date;
-  weather: LiveWeather | null;
-}
-
-export function useLiveTemplateData(opts: UseLiveTemplateDataOpts): UseLiveTemplateDataResult {
-  const { live, weatherLocation, weatherUnits, weatherOverride } = opts;
-  const isLive = !!live;
-  const [now, setNow] = useState<Date>(() => new Date());
-  const [weather, setWeather] = useState<LiveWeather | null>(null);
-
-  // Live clock — re-render every 30s. Skipped in thumbnail mode so the
-  // 60-tile /templates gallery doesn't burn 60 setIntervals.
+export function useLiveTemplateData(opts: UseLiveTemplateDataOpts) {
+  const {
+    live,
+    clock = true,
+    weatherLocation,
+    weatherUnits,
+    weatherOverride,
+  } = opts;
+  const [now, setNow] = useState(() => new Date());
+  const [held, setHeld] = useState<{ key: string; data: LiveWeather } | null>(
+    null,
+  );
+  const place = String(weatherLocation || "").trim();
+  const metric = weatherUnits === "metric";
+  const key = `${place}|${metric}`;
   useEffect(() => {
-    if (!isLive) return;
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, [isLive]);
-
-  // Live weather — three-tier resolution:
-  //   1. weatherLocation set → ZIP-code lookup via zippopotam.us
-  //   2. weatherLocation empty → IP geolocation via ipapi.co
-  //   3. Both fail → null (caller falls back to `weatherOverride` or default)
+    if (!live || !clock) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) setNow(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [live, clock]);
   useEffect(() => {
-    if (!isLive) return;
-    if (weatherOverride) return; // Caller is providing a fixed temp.
+    setHeld(null);
+    if (!live || !place || weatherOverride) return;
     let cancelled = false;
-    const isCelsius = weatherUnits === 'metric';
-
-    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
-      const zip = (weatherLocation || '').trim();
-      if (zip) {
-        try {
-          const m = zip.match(/^([a-z]{2})\s+(\S+)/i);
-          const country = m ? m[1].toLowerCase() : 'us';
-          const code = m ? m[2] : zip;
-          const r = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(code)}`);
-          if (r.ok) {
-            const j = await r.json();
-            const p = j?.places?.[0];
-            const lat = parseFloat(p?.latitude); const lng = parseFloat(p?.longitude);
-            if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-          }
-        } catch { /* fall through */ }
+    let timer: ReturnType<typeof setTimeout>;
+    let goodAt = 0;
+    const refresh = async () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        timer = setTimeout(refresh, 60000);
+        return;
       }
-      try {
-        const r = await fetch('https://ipapi.co/json/');
-        if (r.ok) {
-          const j = await r.json();
-          const lat = parseFloat(j?.latitude); const lng = parseFloat(j?.longitude);
-          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-        }
-      } catch { /* noop */ }
-      return null;
+      const data = await fetchWeather(place, metric);
+      if (cancelled) return;
+      if (data) {
+        goodAt = Date.now();
+        setHeld({
+          key,
+          data: {
+            temperature: data.temp,
+            tempF: metric ? Math.round((data.temp * 9) / 5 + 32) : data.temp,
+            high: data.high,
+            low: data.low,
+            wmoCode: data.weatherCode,
+            condition: getWMO(data.weatherCode).label,
+          },
+        });
+      } else if (Date.now() - goodAt > 3600000) setHeld(null);
+      timer = setTimeout(refresh, data ? 900000 : 60000);
     };
-
-    const fetchWx = async () => {
-      const coords = await resolveCoords();
-      if (cancelled || !coords) return;
-      try {
-        const tempUnit = isCelsius ? 'celsius' : 'fahrenheit';
-        const wxRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}` +
-          `&current=temperature_2m,weather_code&temperature_unit=${tempUnit}`
-        );
-        if (!wxRes.ok) return;
-        const wx = await wxRes.json();
-        const tempVal = wx?.current?.temperature_2m;
-        const code = wx?.current?.weather_code;
-        if (cancelled || tempVal == null || code == null) return;
-        const tempRound = Math.round(tempVal);
-        const tempF = isCelsius ? Math.round(tempRound * 9/5 + 32) : tempRound;
-        setWeather({ tempF, wmoCode: code });
-      } catch { /* falls back to override / default */ }
+    timer = setTimeout(refresh, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
-    fetchWx();
-    const id = setInterval(fetchWx, 15 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [isLive, weatherLocation, weatherUnits, weatherOverride]);
-
-  return { now, weather };
+  }, [live, place, metric, key, weatherOverride]);
+  return {
+    now,
+    weather: live && !weatherOverride && held?.key === key ? held.data : null,
+  };
 }
 
 /**
@@ -141,31 +121,56 @@ export function useLiveTemplateData(opts: UseLiveTemplateDataOpts): UseLiveTempl
 export const fmt = {
   /** "TUE APR 21" — short weekday + month + day, ALL-CAPS for displays. */
   shortDateUpper: (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-      .format(d).toUpperCase(),
+    new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+      .format(d)
+      .toUpperCase(),
   /** "Tuesday" */
   weekdayLong: (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d),
+    new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(d),
   /** "TUESDAY" */
   weekdayLongUpper: (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d).toUpperCase(),
+    new Intl.DateTimeFormat("en-US", { weekday: "long" })
+      .format(d)
+      .toUpperCase(),
   /** "April 21" */
   monthDay: (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(d),
+    new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(
+      d,
+    ),
   /** "Apr 21, 2026" */
   shortDate: (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d),
+    new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d),
   /** "7:53 AM" — 12-hour with AM/PM. */
   time12: (d: Date) =>
-    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+    d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
   /** "7:53" — 12-hour without AM/PM, for displays that show AM/PM separately. */
   time12NoSuffix: (d: Date) => {
-    const s = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return s.replace(/\s?(AM|PM)$/i, '');
+    const s = d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return s.replace(/\s?(AM|PM)$/i, "");
   },
   /** "AM" / "PM" */
-  amPm: (d: Date) => (d.getHours() >= 12 ? 'PM' : 'AM'),
+  amPm: (d: Date) => (d.getHours() >= 12 ? "PM" : "AM"),
   /** "07:53" — 24-hour. */
   time24: (d: Date) =>
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
 };

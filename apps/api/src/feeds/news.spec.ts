@@ -87,7 +87,7 @@ describe('Newsroom metadata boundary', () => {
     await s.get('national', '10001');
     expect(mock).toHaveBeenCalledTimes(2);
     expect(check).toHaveBeenCalledTimes(2);
-    expect(mock.mock.calls.filter(([url]) => String(url).includes('api.gdeltproject.org'))).toHaveLength(1);
+    expect(mock.mock.calls.filter(([url]) => new URL(String(url)).hostname === 'api.gdeltproject.org')).toHaveLength(1);
     expect(one.provider).toBe('GDELT');
   });
   it('refuses uncached fetches when shared pacing is unavailable', async () => {
