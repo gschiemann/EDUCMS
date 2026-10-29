@@ -134,8 +134,7 @@ object UsbImportCard {
 
     /** The drive was pulled out: a problem about it is no longer on the screen's mind. */
     fun driveRemoved() {
-        val s = stage() ?: return
-        if (s.problem && s != UsbStage.NO_DRIVE && s != UsbStage.READ_FAILED) hide("the drive was removed")
+        hide("the drive was removed")
     }
 }
 

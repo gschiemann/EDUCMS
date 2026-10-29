@@ -3511,8 +3511,8 @@ class MainActivity : ComponentActivity() {
         val ref = java.lang.ref.WeakReference(this)
         com.educms.player.usb.UsbAutoImport.onImported = { ref.get()?.notifyPageUsbImported() }
         val host = usbHost ?: object : com.educms.player.usb.UsbAutoImport.Host {
-            override fun show(state: com.educms.player.usb.UsbCardState): Boolean =
-                ref.get()?.showUsbCard(state) ?: false
+            override fun show(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean =
+                ref.get()?.showUsbCard(state, allowOpening) ?: false
 
             override fun driveRemoved() {
                 com.educms.player.usb.UsbImportCard.driveRemoved()
@@ -3526,8 +3526,9 @@ class MainActivity : ComponentActivity() {
     /** This Activity's USB card host (so a destroyed instance only ever clears its own). */
     private var usbHost: com.educms.player.usb.UsbAutoImport.Host? = null
 
-    private fun showUsbCard(state: com.educms.player.usb.UsbCardState): Boolean {
+    private fun showUsbCard(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean {
         if (isFinishing || isDestroyed) return false
+        if (!allowOpening && !com.educms.player.usb.UsbImportCard.isShowing()) return false
         sharedVideoHost?.yieldToUi()
         return com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
     }

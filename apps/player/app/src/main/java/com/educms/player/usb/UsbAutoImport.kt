@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbManager
+import android.hardware.usb.UsbDevice
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -74,7 +75,7 @@ object UsbAutoImport {
     /** Where the card is drawn. Main thread only. */
     interface Host {
         /** True when [state] is on the glass now (false: an alert is held, or no window to draw in). */
-        fun show(state: UsbCardState): Boolean
+        fun show(state: UsbCardState, allowOpening: Boolean): Boolean
         fun driveRemoved()
     }
 
@@ -86,6 +87,10 @@ object UsbAutoImport {
 
     private val started = AtomicBoolean(false)
     private val mountSignal = AtomicBoolean(false)
+    private val connection = UsbConnectionState()
+    // Only the single scan worker writes this. Each queued UI callback keeps
+    // the ticket of the scan that produced it, even across a slow key fetch.
+    private var scanTicket = connection.ticket()
 
     // The APPLICATION context (start() takes applicationContext), never an Activity.
     @SuppressLint("StaticFieldLeak")
@@ -112,11 +117,23 @@ object UsbAutoImport {
                 // can do no more than trigger a scan, which verifies everything.
                 when (intent.action) {
                     Intent.ACTION_MEDIA_MOUNTED, UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                        mountSignal.set(true)
+                        if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED && !storageDevice(intent)) return
+                        // A sticky mount delivered when the APK starts is a
+                        // snapshot of an already connected drive, not a plug.
+                        if (!isInitialStickyBroadcast && connection.inserted()) mountSignal.set(true)
                         scanSoon(3_000)
                     }
                     Intent.ACTION_MEDIA_EJECT, Intent.ACTION_MEDIA_UNMOUNTED, Intent.ACTION_MEDIA_REMOVED,
-                    Intent.ACTION_MEDIA_BAD_REMOVAL, UsbManager.ACTION_USB_DEVICE_DETACHED -> scanSoon(1_000)
+                    Intent.ACTION_MEDIA_BAD_REMOVAL, UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                        if (intent.action == UsbManager.ACTION_USB_DEVICE_DETACHED && !storageDevice(intent)) return
+                        connection.removed()
+                        mountSignal.set(false)
+                        awaitingAccessSinceMs = 0L
+                        // onReceive runs on the main thread. Dismiss now,
+                        // before a delayed mount scan or old result can show.
+                        runCatching { host?.driveRemoved() }
+                        scanSoon(1_000)
+                    }
                 }
             }
         }
@@ -172,7 +189,8 @@ object UsbAutoImport {
         }
         PlayerLogger.i(TAG, "USB_IMPORT_REQUESTED ($why)")
         synchronized(processed) { processed.clear() }
-        host?.show(UsbCardState(UsbStage.LOOKING))
+        val ticket = connection.request()
+        if (host?.show(UsbCardState(UsbStage.LOOKING), connection.mayOpen(ticket)) == true) connection.shown(ticket)
         worker.post { runCatching { scan(UsbTrigger.MANUAL) }.onFailure { PlayerLogger.w(TAG, "scan failed: ${it.message}") } }
     }
 
@@ -185,7 +203,10 @@ object UsbAutoImport {
     fun noAccessPage() {
         if (!started.get()) return
         awaitingAccessSinceMs = 0L
+        val ticket = connection.ticket()
         worker.post {
+            if (!connection.current(ticket)) return@post
+            scanTicket = ticket
             val drive = UsbImportPolicy.driveKey(volumeRoots().map { it.name })
             stage(UsbTrigger.MANUAL, drive, UsbCardState(UsbStage.NO_ACCESS_PAGE))
         }
@@ -202,7 +223,8 @@ object UsbAutoImport {
         awaitingAccessSinceMs = 0L
         PlayerLogger.i(TAG, "back from Android's file-access page — reading the drive again (access=${hasFileAccess()})")
         synchronized(processed) { processed.clear() }
-        host?.show(UsbCardState(UsbStage.LOOKING))
+        val ticket = connection.request()
+        if (host?.show(UsbCardState(UsbStage.LOOKING), connection.mayOpen(ticket)) == true) connection.shown(ticket)
         worker.post { runCatching { scan(UsbTrigger.RETURNED) }.onFailure { PlayerLogger.w(TAG, "scan failed: ${it.message}") } }
         return true
     }
@@ -228,11 +250,23 @@ object UsbAutoImport {
     // ─── one scan (worker thread) ────────────────────────────────────────
 
     private fun scan(requested: UsbTrigger?) {
-        val roots = volumeRoots()
+        val mounted = mountedVolumeRoots()
+        val roots = volumeRoots(mounted)
         val drive = UsbImportPolicy.driveKey(roots.map { it.name })
+        val change = connection.observe(drive, UsbImportPolicy.driveKey(mounted.map { it.name }))
+        if (change.inserted) mountSignal.set(true)
+        if (change.removed) {
+            mountSignal.set(false)
+            awaitingAccessSinceMs = 0L
+            notifyDriveRemoved()
+        }
+        scanTicket = connection.ticket()
+        // Consume the insertion hint even when a manual/permission-return
+        // scan owns this pass; it must not become a second insertion later.
+        val insertionSignal = mountSignal.getAndSet(false)
         val trigger = requested ?: UsbImportPolicy.classify(
             firstScan = firstScan,
-            mountSignal = mountSignal.getAndSet(false),
+            mountSignal = insertionSignal,
             newDrive = UsbImportPolicy.newDrive(lastDrive, drive),
             elapsedSinceBootMs = SystemClock.elapsedRealtime(),
         )
@@ -246,7 +280,7 @@ object UsbAutoImport {
                 UsbNext.NO_DRIVE -> stage(trigger, drive, UsbCardState(UsbStage.NO_DRIVE))
                 else -> if (hadDrive) {
                     PlayerLogger.i(TAG, "USB drive removed")
-                    main.post { runCatching { host?.driveRemoved() } }
+                    notifyDriveRemoved()
                 }
             }
             // Keep the key fresh while online, so an offline screen can still verify a stick later.
@@ -429,6 +463,8 @@ object UsbAutoImport {
     }
 
     private fun present(trigger: UsbTrigger, drive: String, state: UsbCardState) {
+        val ticket = scanTicket
+        if (!connection.current(ticket)) return
         // ⚠️ Never over an alert — and not remembered as shown, so it can still be said afterwards.
         if (!UsbImportPolicy.mayShow(runCatching { DisplayEmergency.isHeld(app) }.getOrDefault(true))) return
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -437,10 +473,19 @@ object UsbAutoImport {
             ?.substringAfterLast('|')?.let { s -> runCatching { UsbStage.valueOf(s) }.getOrNull() }
         if (!UsbImportPolicy.shows(trigger, state.stage, shownBefore)) return
         main.post {
-            val shown = runCatching { host?.show(state) ?: false }.getOrDefault(false)
+            if (!connection.current(ticket)) return@post
+            val shown = runCatching { host?.show(state, connection.mayOpen(ticket)) ?: false }.getOrDefault(false)
+            if (shown) connection.shown(ticket)
             // Remembered only once it was really on the glass: a scan that ran
             // before the Activity attached (or under an alert) said nothing yet.
             if (shown && !state.stage.working) prefs.edit().putString(KEY_SHOWN, "$drive|${state.stage.name}").apply()
+        }
+    }
+
+    private fun notifyDriveRemoved() {
+        val ticket = connection.ticket()
+        main.post {
+            if (connection.unchanged(ticket)) runCatching { host?.driveRemoved() }
         }
     }
 
@@ -456,7 +501,7 @@ object UsbAutoImport {
     }.getOrDefault(false)
 
     /** Mounted removable volumes. Several routes: OEM ROMs disagree. */
-    private fun volumeRoots(): List<File> {
+    private fun mountedVolumeRoots(): List<File> {
         val out = LinkedHashSet<File>()
         runCatching {
             val sm = app.getSystemService(Context.STORAGE_SERVICE) as StorageManager
@@ -467,6 +512,11 @@ object UsbAutoImport {
                 if (dir != null) out.add(dir)
             }
         }
+        return out.filter { it.exists() }
+    }
+
+    private fun volumeRoots(mounted: List<File> = mountedVolumeRoots()): List<File> {
+        val out = LinkedHashSet<File>(mounted)
         // Fallbacks for ROMs whose StorageManager does not list USB disks.
         for (parent in listOf("/storage", "/mnt/media_rw", "/mnt/usb_storage", "/mnt/usbhost", "/mnt/udisk")) {
             val dirs = File(parent).listFiles() ?: continue
@@ -480,6 +530,14 @@ object UsbAutoImport {
         // The same drive reached by two routes (/storage/X and /mnt/media_rw/X) is one drive.
         return out.filter { it.exists() }.distinctBy { it.name }
     }
+
+    private fun storageDevice(intent: Intent): Boolean = runCatching {
+        @Suppress("DEPRECATION")
+        val device = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+            else intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+        device != null && UsbConnectionState.storageDevice(device.deviceClass,
+            (0 until device.interfaceCount).map { device.getInterface(it).interfaceClass })
+    }.getOrDefault(false)
 
     /** What Android's settings call this app — the card names it on the file-access step. */
     private fun appLabel(): String? = runCatching {
