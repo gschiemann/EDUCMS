@@ -120,7 +120,7 @@ class UsbConnectionStateTest {
     @Test fun `an empty OEM mount directory cannot make a slow mount reopen the menu`() {
         val screen = Screen()
         screen.connection.observe("usb_storage", "")
-        screen.connection.inserted()
+        screen.connection.inserted(physicalAttach = true)
         screen.show(screen.connection.ticket())
         screen.visible = false
         screen.connection.observe("usb_storage", "")

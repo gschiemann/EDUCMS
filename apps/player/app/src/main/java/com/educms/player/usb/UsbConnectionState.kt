@@ -14,8 +14,10 @@ internal class UsbConnectionState {
     private var drives: String? = null
     private var mounted: String? = null
 
-    @Synchronized fun inserted(): Boolean {
-        if (connected == true) return false // attach + mount describe one connection
+    @Synchronized fun inserted(physicalAttach: Boolean = false): Boolean {
+        // A real USB-device attach outranks an old placeholder directory.
+        // A later media-mounted notification belongs to that same attach.
+        if (connected == true && !physicalAttach) return false
         generation++
         connected = true
         opening = true

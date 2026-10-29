@@ -120,7 +120,9 @@ object UsbAutoImport {
                         if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED && !storageDevice(intent)) return
                         // A sticky mount delivered when the APK starts is a
                         // snapshot of an already connected drive, not a plug.
-                        if (!isInitialStickyBroadcast && connection.inserted()) mountSignal.set(true)
+                        if (!isInitialStickyBroadcast && connection.inserted(
+                                physicalAttach = intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED,
+                            )) mountSignal.set(true)
                         scanSoon(3_000)
                     }
                     Intent.ACTION_MEDIA_EJECT, Intent.ACTION_MEDIA_UNMOUNTED, Intent.ACTION_MEDIA_REMOVED,
