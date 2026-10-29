@@ -227,7 +227,9 @@ export function reassertDisplayEmergencyHold(): HoldOutcome {
 }
 
 function sendBannerGeometry(active: boolean): void {
-  try { nativeFireChecked('sharedVideoPrepare', JSON.stringify({ version: 4, op: 'banner', active, inset: bannerInset, rotation: bannerRotation })); }
+  // Native wire geometry uses a reserved fraction, rather than a CSS style.
+  const inset = bannerInset;
+  try { nativeFireChecked('sharedVideoPrepare', JSON.stringify({ version: 4, op: 'banner', active, inset, rotation: bannerRotation })); }
   catch { /* the display hold below still raises on any media-channel failure */ }
 }
 
