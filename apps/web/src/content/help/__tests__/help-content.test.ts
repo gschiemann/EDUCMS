@@ -301,19 +301,21 @@ describe('signing-in and emergency-broadcast articles match the product', () => 
     // Hold-to-send, the duration range and its default.
     expect(constant(page, 'HOLD_MS')).toBe(3000);
     expect(page).toMatch(/min=\{1\}\s+max=\{120\}/);
-    expect(page).toMatch(/\[durationMin, setDurationMin\] = useState\(5\)/);
+    expect(page).toMatch(/\[durationMin, setDurationMin\] = useState\('5'\)/);
     expect(en).toContain('from 1 to 120 minutes. The default is 5');
-    // Built-in lifetimes: text 5 min unless set, media 1 hour, SOS 30 minutes.
+    // Media uses the selected duration; the API's one-hour fallback still
+    // exists for other callers. Staff SOS retains its thirty-minute default.
     expect(api).toMatch(/new Date\(Date\.now\(\) \+ 60 \* 60 \* 1000\); \/\/ 1 hr default/);
     expect(api).toMatch(/new Date\(Date\.now\(\) \+ 30 \* 60 \* 1000\); \/\/ 30 min/);
-    expect(en).toMatch(/\| Media alert \| 1 hour \|/);
+    expect(page).toMatch(/expiresAt: Math\.floor\(Date\.now\(\) \/ 1000\) \+ Number\(durationMin\) \* 60/);
+    expect(en).toMatch(/\| Media alert \| Your selected duration \(1–120 minutes; default 5\) \|/);
     expect(en).toMatch(/\| Staff SOS \| 30 minutes \|/);
     // "Clear" follows the API's own rule since 2026-10-22 (admins + the
     // delegated panic flag, never a viewer) — the same capability that gates
     // sending — and the article says so.
-    expect(page).toMatch(/const canClear = canSendAllClear\(user\) && !isViewer;/);
-    expect(page).toMatch(/const canSend = hasPanicAuthority\(user\) && !isViewer;/);
-    expect(en).toContain('**Clear** on this page is shown to everyone who can send');
+    expect(page).toMatch(/const canClear = canSendAllClear\(user\) && user\?\.role !== 'RESTRICTED_VIEWER';/);
+    expect(page).toMatch(/const canSend = hasPanicAuthority\(user\) && user\?\.role !== 'RESTRICTED_VIEWER';/);
+    expect(en).toContain('**End broadcast** on this page is shown to everyone who can send');
     // A broadcast from an organization reaches the locations under it (the
     // poll and the clear fan out — emergency.district-propagation.spec.ts).
     expect(api).toMatch(/deviceMessagesWhere\(/);

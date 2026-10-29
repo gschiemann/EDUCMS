@@ -63,7 +63,7 @@ class HostileFrameBridgeTest {
         // ⚠️ LIFE SAFETY — wired so the non-brick test below can assert that
         // an emergency hold still reaches the native display layer on a
         // device whose nonce delivery never lands.
-        displayEmergencyHoldImpl = { active, _ ->
+        displayEmergencyHoldImpl = { active, _, _ ->
             effects.record("displayEmergencyHold($active)")
             """{"ok":true}"""
         },

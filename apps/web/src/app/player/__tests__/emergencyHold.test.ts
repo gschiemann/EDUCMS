@@ -15,6 +15,9 @@
 import {
   signalDisplayEmergencyHold,
   displayEmergencyHoldRaised,
+  displayEmergencyPlaybackHeld,
+  reassertDisplayEmergencyHold,
+  updateBroadcastBannerInset,
   subscribeDisplayEmergencyHold,
   DISPLAY_EMERGENCY_HOLD_METHOD,
   __resetDisplayEmergencyHoldForTests,
@@ -54,6 +57,27 @@ afterEach(() => {
 });
 
 describe('signalDisplayEmergencyHold', () => {
+  it('a known banner holds wake/brightness while playback and paint reassertions stay continuous', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    expect(displayEmergencyHoldRaised()).toBe(true);
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+    reassertDisplayEmergencyHold();
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+    updateBroadcastBannerInset(0.1);
+    updateBroadcastBannerInset(0);
+    expect(displayEmergencyHoldRaised()).toBe(true);
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+    signalDisplayEmergencyHold(false);
+    expect(displayEmergencyHoldRaised()).toBe(false);
+  });
+
+  it('a full takeover immediately restores playback suppression, including paint reassertions', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    signalDisplayEmergencyHold(true, true);
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+    reassertDisplayEmergencyHold();
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+  });
   it('sends the hold under the exact method name the APK exposes', () => {
     expect(signalDisplayEmergencyHold(true)).toBe('applied');
     expect(fireMock).toHaveBeenCalledWith(DISPLAY_EMERGENCY_HOLD_METHOD, true);

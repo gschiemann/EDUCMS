@@ -20,7 +20,7 @@
  * receives the asset's stored `fileUrl` so callers store it exactly as before.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { X, Upload, Loader2, ImageIcon, FolderOpen, Music } from 'lucide-react';
@@ -88,6 +88,15 @@ export function AssetPicker({
   onPick: (url: string) => void;
   onClose: () => void;
 }) {
+  const tp = useTranslations('assetPicker');
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, []);
   // Hide the mobile tab bar while this picker is up (footer Upload/select).
   useOverlayLock();
   // Escape closes the picker — the visible Close button (below) is the
@@ -113,7 +122,8 @@ export function AssetPicker({
   const uploadErrorText = useUploadErrorText();
   const tooLargeText = useUploadTooLargeText();
   const problemText = useUploadProblemText();
-  // Closing the picker stops the wait (the conversion itself carries on).
+  // Closing the picker aborts the upload/wait, so it cannot attach a file
+  // after the operator has dismissed this dialog. Server conversion carries on.
   const waitAbort = useRef<AbortController | null>(null);
   useEffect(() => () => waitAbort.current?.abort(), []);
 
@@ -147,14 +157,19 @@ export function AssetPicker({
     }
     setUploading(true);
     setUploadPct(0);
+    const ctl = new AbortController();
+    waitAbort.current = ctl;
     try {
       // Upload straight into the folder the operator is browsing.
       const targetFolder = folderId === 'all' || folderId === 'none' ? null : folderId;
       const done = await uploadAssetDirect(file, {
         folderId: targetFolder,
+        signal: ctl.signal,
         onProgress: (p) => setUploadPct(Math.round(p.fraction * 100)),
       });
+      if (ctl.signal.aborted) return;
       await qc.invalidateQueries({ queryKey: ['assets'] });
+      if (ctl.signal.aborted) return;
       if (!done.fileUrl) throw new Error('Upload completed but no file URL came back.');
       if (!isConvertedAfterUpload(file)) {
         onPick(done.fileUrl);
@@ -164,15 +179,13 @@ export function AssetPicker({
       // original's (lib/screen-version.ts) — wait for the conversion.
       setUploadPct(null);
       setConvertPct(null);
-      waitAbort.current?.abort();
-      const ctl = new AbortController();
-      waitAbort.current = ctl;
       try {
         const ready = await waitForScreenVersion(done.id, {
           signal: ctl.signal,
           onProgress: (pct) => setConvertPct(pct),
         });
         await qc.invalidateQueries({ queryKey: ['assets'] });
+        if (ctl.signal.aborted) return;
         onPick(ready.fileUrl);
       } catch (e) {
         if (e instanceof ScreenVersionError) {
@@ -193,7 +206,9 @@ export function AssetPicker({
   };
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Dialog key handling contains Tab focus within this modal.
     <div
+      ref={dialogRef}
       // top/right/bottom/left longhand (NOT inset-0) — this picker can mount on
       // the player-adjacent template builder; keep it Taurus-safe. The modal is
       // z-[10001] so it paints OVER the TopToolbar (z-20) and the mobile tab bar
@@ -207,6 +222,16 @@ export function AssetPicker({
       }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab') return;
+        const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') || [])
+          .filter((node) => node.getClientRects().length > 0);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }}
     >
       {/* Backdrop — mouse-only "click outside to close" convenience.
           Escape (handled above) and the visible Close button below are the
@@ -218,11 +243,12 @@ export function AssetPicker({
       <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 w-full max-w-2xl max-h-[82vh] flex flex-col overflow-hidden">
         {/* header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-800">{title || 'Choose content'}</h2>
+          <h2 id={titleId} className="text-sm font-bold text-slate-800">{title || tp('title')}</h2>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={tp('close')}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -236,10 +262,10 @@ export function AssetPicker({
             value={folderId}
             onChange={(e) => setFolderId(e.target.value)}
             className="text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400 min-w-0 max-w-[40vw] sm:max-w-none truncate"
-            aria-label="Filter by folder"
+            aria-label={tp('folders')}
           >
-            <option value="all">All folders</option>
-            <option value="none">Unfiled</option>
+            <option value="all">{tp('allFolders')}</option>
+            <option value="none">{tp('unfiled')}</option>
             {folderList.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
@@ -274,7 +300,7 @@ export function AssetPicker({
                 : tf('convertingPct', { pct: convertPct })
               : uploading && uploadPct !== null
                 ? tu('uploadingPct', { pct: uploadPct })
-                : 'Upload new'}
+                : tp('upload')}
           </button>
         </div>
 
@@ -287,14 +313,11 @@ export function AssetPicker({
         {/* grid */}
         <div className="flex-1 overflow-y-auto p-3">
           {isLoading ? (
-            <div className="py-14 text-center text-xs text-slate-400">Loading library…</div>
+            <div className="py-14 text-center text-xs text-slate-500">{tp('loading')}</div>
           ) : list.length === 0 ? (
             <div className="py-14 text-center">
               <ImageIcon className="h-7 w-7 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">
-                Nothing here yet — use <strong className="font-semibold">Upload new</strong>{' '}
-                above, or add files in the Assets section.
-              </p>
+              <p className="text-xs text-slate-500">{tp('empty')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -329,7 +352,7 @@ export function AssetPicker({
                         <Music className="h-7 w-7 text-indigo-400" />
                       </div>
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
+                      // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- onError handles image decoding.
                       <img
                         // 2026-05-30 — EGRESS FIX: use Supabase 320 px transform
                         // for image picker tiles to avoid full-res fetches.
