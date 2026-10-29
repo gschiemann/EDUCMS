@@ -3530,6 +3530,8 @@ class MainActivity : ComponentActivity() {
     private fun showUsbCard(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean {
         if (isFinishing || isDestroyed) return false
         if (!allowOpening && !com.educms.player.usb.UsbImportCard.isShowing()) return false
+        // A suppressed card must not interrupt video beneath a text banner.
+        if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return false
         sharedVideoHost?.yieldToUi()
         return com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
     }
