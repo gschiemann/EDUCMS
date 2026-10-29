@@ -3529,7 +3529,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         fields.push(<ToggleField key="forecastTransparent" label="Transparent background" value={transparent} onChange={v => setForecast({ forecastTransparent: v })} />);
         fields.push(<details key="forecastAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Appearance</summary><div className="mt-3 space-y-3">
           {!transparent && <ColorField label="Background" value={cfg.bgColor || cfg.style?.bgColor || '#102b3c'} onChange={v => setForecast({ bgColor: v })} />}
-          <ColorField label="Text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v })} />
+          <ColorField label="Text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v, color: undefined })} />
           <ColorField label="Accent" value={cfg.accentColor || '#8ec9e4'} allowTransparent onChange={v => setForecast({ accentColor: v, forecastIconColor: v })} />
           <details><summary className="cursor-pointer text-xs font-semibold">More colors &amp; opacity</summary><div className="mt-3 space-y-3">
             <ColorField label="High temperatures" value={cfg.forecastHighColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastHighColor: v })} />
@@ -4724,7 +4724,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         fields.push(<details key="newsAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Appearance</summary><div className="mt-3 space-y-3">
           <ColorField label="Background" value={cfg.bgColor || palette.background} allowTransparent onChange={v => setNewsField({ bgColor: v })} />
           <NumField id="news-opacity" label="Background opacity · %" value={cfg.backgroundOpacity ?? 100} min={0} max={100} onChange={v => setNewsField({ backgroundOpacity: v })} />
-          <ColorField label="Text" value={cfg.textColor || palette.text} onChange={v => setNewsField({ textColor: v })} />
+          <ColorField label="Text" value={cfg.textColor || palette.text} onChange={v => setNewsField({ textColor: v, color: undefined })} />
           <ColorField label="Accent" value={cfg.accentColor || palette.accent} onChange={v => setNewsField({ accentColor: v })} />
           <TextField label="Edition line" value={cfg.strapline ?? 'Your world. In focus.'} onChange={v => setNewsField({ strapline: v })} />
           <p className="text-xs text-slate-500">Use the existing text toolbar for heading and headline typography. Resize the zone normally; layouts adapt automatically. Headline wording comes from the publisher.</p>
