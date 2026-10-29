@@ -86,4 +86,10 @@ describe('decideEmergencySurface', () => {
   it('a stale polledTakeover flag without an active poll never takes the glass', () => {
     expect(decideEmergencySurface({ ...base, polledActive: false, polledTakeover: true })).toBe('content');
   });
+
+  it('a cleared banner keeps content mounted while the display hold awaits manifest confirmation', () => {
+    expect(decideEmergencySurface({ ...base, renderHold: true, playbackHeld: false })).toBe('content');
+    expect(decideEmergencySurface({ ...base, renderHold: true, playbackHeld: false, activeEmergency: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, renderHold: true, playbackHeld: false, pushed: critical })).toBe('takeover');
+  });
 });

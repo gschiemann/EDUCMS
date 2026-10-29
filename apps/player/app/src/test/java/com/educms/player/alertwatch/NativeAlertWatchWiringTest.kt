@@ -84,7 +84,7 @@ class NativeAlertWatchWiringTest {
         // Exactly two callers of the shared body: the page's and the watch's.
         assertEquals(2, Regex("setHoldFrom\\(").findAll(emergency).count() - 1)
         // The page's own entry is untouched in meaning: both directions, as before.
-        assertTrue(emergency.contains("setHoldFrom(ctx, faceIndex, active, fromPage = true)"))
+        assertTrue(emergency.contains("setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly)"))
     }
 
     @Test

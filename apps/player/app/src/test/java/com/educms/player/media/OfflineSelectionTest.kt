@@ -112,7 +112,7 @@ class OfflineSelectionTest {
         val select = box.substring(at, box.indexOf("private fun fetch(", at))
         assertTrue("live read first", select.indexOf("SharedVideoSource(host.ctx).manifest(host.face, s.screenId)") < select.indexOf("OfflineSelection.unreachable(e)"))
         assertTrue("a positioned slot never starts from disk", select.contains("if (s.zone != null || !OfflineSelection.unreachable(e)) throw e"))
-        assertTrue("the hold is asked at the decision", select.contains("DisplayEmergency.isHeld(host.ctx)"))
+        assertTrue("the hold is asked at the decision", select.contains("DisplayEmergency.isPlaybackHeld(host.ctx)"))
         assertTrue("the credential is re-read, never the page's", select.contains("FaceTokenStore.read(host.ctx, host.face)"))
         assertTrue("every live selection is remembered", select.contains("OfflineSelection.encode(host.face, s.screenId, raw"))
         val fallback = select.substring(select.indexOf("catch (e: Exception)"), select.indexOf("val zone = s.zone"))

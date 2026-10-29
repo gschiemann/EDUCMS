@@ -1,7 +1,7 @@
 ---
 title: Emergency broadcasts and staff SOS
 category: Emergency System
-updated: 2026-10-26
+updated: 2026-10-28
 excerpt: Put an urgent message over whatever your screens are showing — text, or pictures, video and sound — and learn who can send and end it, what screens show and what the audit log records.
 ---
 
@@ -15,9 +15,9 @@ Open **Broadcast** in the sidebar (on a phone, under **More**) — it is shown t
 
 ## Send a text broadcast
 
-1. Choose a **Severity**: **Info**, **Warn** or **Critical** (what each looks like is below).
+1. Choose a **Severity**: **Information**, **Warning** or **Critical** (what each looks like is below).
 2. Type the **Message**, up to 2,000 characters. **Preview** shows it in that severity's colors.
-3. Set **Duration (min)** — how long screens show it, from 1 to 120 minutes. The default is 5.
+3. Set **Display duration** — how long screens show it, from 1 to 120 minutes. The default is 5.
 4. Press and hold **Hold 3s to Broadcast** until it fills. Letting go early cancels it and nothing is sent. On a keyboard, hold Space or Enter.
 
 **Broadcast dispatched.** confirms that it went out, and the message appears under **Active broadcasts**. If sending fails, a red message says so: nothing went out, so try again.
@@ -26,20 +26,20 @@ A broadcast goes to every screen at the location you are working in — and, whe
 
 ## Add pictures, video or sound
 
-Tick **Include media (image/video/audio)** to send a **media alert** instead:
+Tick **Add images, video or audio** to send a **media alert**:
 
-1. In **Assets**, open the picture or video and press **Copy link**.
-2. Paste the link into the Broadcast page and press **Add**. Screens show up to four pictures or videos.
-3. To add sound, paste an audio file's link into **Optional audio URL**.
-4. Type your message, then press and hold **Hold 3s to Broadcast**.
+1. Press **Add image**, **Add video** or **Add audio**.
+2. Choose a file from your media library, or press **Upload new** to upload from your device. Upload progress and any errors appear in the picker. Videos finish converting before you can attach them.
+3. Review the attached files and the display preview. You can include up to four images or videos and one audio track; remove an attachment with its **×** button.
+4. Set **Display duration** (1–120 minutes), type your message, then hold **Hold 3s to Broadcast**.
 
-A media alert always fills the whole screen and stays up for one hour; there is no duration to set. Links must start with `https://` and point to files stored in VenueOS — links to other websites are refused, so nobody can put an outside page on your screens.
+A media alert fills the whole screen for the duration you choose. Files use the same upload and storage checks as the media library.
 
 ## What screens show
 
 | You sent | Screens show |
 |---|---|
-| **Info** text | A yellow banner across the top with your message. Whatever was playing keeps playing beneath it. |
+| **Info** text | A yellow banner across the top with your message. The current content scales to fit below the banner and keeps playing without restarting. |
 | **Warn** text | The same banner in orange. |
 | **Critical** text | The whole screen turns red with a flashing border, the word **Broadcast** and your message. |
 | A media alert | The whole screen, in the severity's color: **Emergency Alert**, your message, your pictures or videos (videos play muted, on a loop) and an audio player if you added sound. |
@@ -58,10 +58,10 @@ The **Voice on** / **Silent** switch at the top of `/panic` only makes your phon
 | Message | Stays on screen for |
 |---|---|
 | Text broadcast | The duration you chose: 1 to 120 minutes (5 if you don't change it) |
-| Media alert | 1 hour |
+| Media alert | Your selected duration (1–120 minutes; default 5) |
 | Staff SOS | 30 minutes |
 
-Screens take a message down on their own when its time runs out. To end one sooner, press **Clear** next to it under **Active broadcasts** — anyone who can send can clear. Clearing a broadcast you sent from an organization also clears it at every location under it. If the page then says the clear failed, the message may still be on screens — press **Clear** again.
+Screens take a message down on their own when its time runs out. To end one sooner, press **End broadcast** next to it under **Active broadcasts** — anyone who can send can clear. Clearing a broadcast you sent from an organization also clears it at every location under it. If the page then says the clear failed, the message may still be on screens — press **End broadcast** again.
 
 A full alert (Lockdown, Evacuate and the rest) ends differently: type **CLEAR** and press **Terminate Emergency (All Clear)** on the dashboard, or use **Hold to send all-clear** on `/panic`.
 
@@ -74,7 +74,7 @@ The Broadcast page has no **LIVE | DRILL** switch: every broadcast is real, and 
 - **Super Admins** and **Admins** can send text broadcasts and media alerts.
 - **Editors** can send them only when an administrator has turned on their **Emergency alerts** permission — see [delegating panic access](/help/panic-delegation). Without it, sending is refused.
 - **Viewers** can see **Active broadcasts** but can't send.
-- **Clear** on this page is shown to everyone who can send — the same rule the server applies.
+- **End broadcast** on this page is shown to everyone who can send — the same rule the server applies.
 - **API keys** can never send or clear a broadcast.
 
 ## What the audit log records

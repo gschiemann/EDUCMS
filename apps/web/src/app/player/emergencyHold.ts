@@ -105,6 +105,11 @@ let refusedReleases = 0;
 // Rendering follows the requested hold immediately, even if the native
 // transport refuses it. Only an accepted live clear may reopen content.
 let renderHold = false;
+// A known text banner protects wake/brightness without interrupting playback.
+// Volatile only: a reload under an unattributed persisted hold stays protective.
+let bannerOnly = false;
+let bannerInset = 0;
+let bannerRotation: 0 | 90 = 0;
 const holdListeners = new Set<() => void>();
 function publishRenderHold(active: boolean): void {
   if (renderHold === active) return;
@@ -145,18 +150,30 @@ function isRefusal(result: unknown): boolean {
  * @returns       what the device did with it. `'no-native'` is a normal,
  *                expected outcome in a browser player.
  */
-export function signalDisplayEmergencyHold(active: boolean, force = false): HoldOutcome {
+export function signalDisplayEmergencyHold(active: boolean, force = false, isBanner = false): HoldOutcome {
+  if (active && bannerOnly !== isBanner) {
+    // Reserve space before the first measured banner frame can reach native.
+    if (isBanner && bannerInset === 0) bannerInset = 0.1;
+    bannerOnly = isBanner;
+    // Uses the existing origin/nonce-gated media channel. Older APKs ignore
+    // the additive op and retain their protective takeover behaviour.
+    sendBannerGeometry(isBanner);
+    holdListeners.forEach(listener => { try { listener(); } catch { /* observers cannot block alerting */ } });
+  }
   if (active) publishRenderHold(true);
   try {
     if (!force && lastSent === active) { publishRenderHold(active); return 'skipped'; }
 
-    const outcome = nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
+    const outcome = active && isBanner
+      ? nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, true, true)
+      : nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
 
     if (!outcome.delivered) {
       // No transport, or the method does not exist on this APK. There is no
       // native display layer to hold, so record the state and stay quiet.
       lastSent = active;
       publishRenderHold(active);
+      if (!active) clearBannerMode();
       return 'no-native';
     }
 
@@ -178,6 +195,7 @@ export function signalDisplayEmergencyHold(active: boolean, force = false): Hold
 
     lastSent = active;
     publishRenderHold(active);
+    if (!active) clearBannerMode();
     if (active) refusedReleases = 0;
     return 'applied';
   } catch {
@@ -197,9 +215,42 @@ export function displayEmergencyHoldRaised(): boolean {
   return renderHold;
 }
 
+/** Playback suppression is separate from the unchanged display interlock. */
+export function displayEmergencyPlaybackHeld(): boolean {
+  return renderHold && !bannerOnly;
+}
+
+/** Paint validation reinforces the existing alert's posture; it must not
+ * silently turn a known banner into a playback takeover. */
+export function reassertDisplayEmergencyHold(): HoldOutcome {
+  return signalDisplayEmergencyHold(true, true, renderHold && bannerOnly);
+}
+
+function sendBannerGeometry(active: boolean): void {
+  try { nativeFireChecked('sharedVideoPrepare', JSON.stringify({ version: 4, op: 'banner', active, inset: bannerInset, rotation: bannerRotation })); }
+  catch { /* the display hold below still raises on any media-channel failure */ }
+}
+
+function clearBannerMode(): void {
+  if (!bannerOnly) return;
+  bannerOnly = false;
+  sendBannerGeometry(false);
+}
+
+export function updateBroadcastBannerInset(fraction: number, rotation: 0 | 90 = 0): void {
+  const next = Number.isFinite(fraction) ? Math.max(0, Math.min(0.4, fraction)) : 0;
+  if (next === bannerInset && rotation === bannerRotation) return;
+  bannerInset = next;
+  bannerRotation = rotation;
+  if (bannerOnly) sendBannerGeometry(true);
+}
+
 /** Test seam: forget what we last sent. Not used by production code. */
 export function __resetDisplayEmergencyHoldForTests(): void {
   lastSent = null;
   refusedReleases = 0;
+  bannerOnly = false;
+  bannerInset = 0;
+  bannerRotation = 0;
   publishRenderHold(false);
 }

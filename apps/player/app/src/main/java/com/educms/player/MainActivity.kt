@@ -3292,12 +3292,13 @@ class MainActivity : ComponentActivity() {
                 // a frame on the primary could call (false, 1) and lift face 1's
                 // live hold, and (true, 7) pinned the box forever. No page gets
                 // to name a face.
-                displayEmergencyHoldImpl = { active, trusted ->
+                displayEmergencyHoldImpl = { active, trusted, bannerOnly ->
                     DisplayControlApi.emergencyHoldJson(
                         applicationContext,
                         active,
                         trusted,
                         com.educms.player.display.DisplayEmergency.PRIMARY_FACE,
+                        bannerOnly,
                     )
                 },
                 // 2026-08-14 — one-tap device-ADMIN enrolment, the tier

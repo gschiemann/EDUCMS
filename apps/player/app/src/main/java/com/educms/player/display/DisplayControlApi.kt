@@ -247,6 +247,7 @@ object DisplayControlApi {
         active: Boolean,
         trusted: Boolean,
         faceIndex: Int = DisplayEmergency.PRIMARY_FACE,
+        bannerOnly: Boolean = false,
     ): String = try {
         val app = ctx.applicationContext
         if (!active && !trusted) {
@@ -258,7 +259,7 @@ object DisplayControlApi {
                     "refusing it is what pinned Chromium-83 boxes lit forever",
             )
         }
-        val persisted = DisplayEmergency.setHold(app, faceIndex, active)
+        val persisted = DisplayEmergency.setHold(app, faceIndex, active, bannerOnly && trusted)
         JSONObject()
             .put("ok", true)
             .put("emergencyHold", DisplayEmergency.isHeld(app))
