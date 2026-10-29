@@ -6,7 +6,7 @@ import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../eme
 import { apkVersionFromUserAgent, hasNativeBridge } from '../nativeBridge';
 
 jest.mock('../nativeBridge', () => ({ nativeHas: () => false, hasNativeBridge: jest.fn(() => false), apkVersionFromUserAgent: jest.fn(() => null), nativeCall: jest.fn(), nativeFire: jest.fn() }));
-jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn() }));
+jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn(), reassertDisplayEmergencyHold: jest.fn(), updateBroadcastBannerInset: jest.fn() }));
 
 const alert: EmergencyMessageView = { id: 'test-alert', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Move to the designated safe area', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-01T00:00:00Z' };
 const rect = { top: 0, left: 0, right: 1280, bottom: 720, width: 1280, height: 720, x: 0, y: 0, toJSON: () => ({}) };

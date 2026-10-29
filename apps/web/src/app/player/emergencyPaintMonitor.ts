@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof, type NativeEmergencyPaintState } from './emergencyPaintProof';
-import { signalDisplayEmergencyHold } from './emergencyHold';
+import { reassertDisplayEmergencyHold } from './emergencyHold';
 import { apkVersionFromUserAgent, hasNativeBridge, nativeCall, nativeFire, nativeHas } from './nativeBridge';
 
 type ValueRef<T> = { current: T };
@@ -48,7 +48,7 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
     const watcher = new EmergencyPaintWatcher({
       document, documentId,
       expectedIdentity: () => refs.expectedIdentity.current,
-      raiseHold: () => { signalDisplayEmergencyHold(true, true); },
+      raiseHold: () => { reassertDisplayEmergencyHold(); },
       requiresNativeValidation: () => hasNativeBridge() || apkVersionFromUserAgent(navigator.userAgent) !== null,
       readChallenge: async () => {
         if (!nativeHas('sharedVideoState')) return undefined;

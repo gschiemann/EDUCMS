@@ -21,8 +21,11 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 jest.mock('next-intl', () => ({
-  useTranslations: () => (key: string, vars?: Record<string, unknown>) =>
-    vars ? `${key} ${JSON.stringify(vars)}` : key,
+  useLocale: () => 'en',
+  useTranslations: (namespace?: string) => (key: string, vars?: Record<string, unknown>) => {
+    const fullKey = namespace ? `${namespace}.${key}` : key;
+    return vars ? `${fullKey} ${JSON.stringify(vars)}` : fullKey;
+  },
 }));
 const storeState = {
   token: 'tok',
@@ -41,6 +44,15 @@ jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
 jest.mock('@/components/emergency/EmergencyLiveRegion', () => ({
   useEmergencyAnnouncer: () => ({ announce: jest.fn(), region: null }),
 }));
+const STORED_IMAGE = 'https://media.example.test/storage/evacuation-map.png';
+jest.mock('@/components/assets/AssetPicker', () => ({
+  AssetPicker: ({ kind, onPick, onClose }: { kind: string; onPick: (url: string) => void; onClose: () => void }) => (
+    <div role="dialog" aria-label="Media picker">
+      <button onClick={() => onPick(kind === 'audio' ? 'https://media.example.test/instructions.mp3' : STORED_IMAGE)}>Pick stored asset</button>
+      <button onClick={onClose}>Close picker</button>
+    </div>
+  ),
+}));
 const fetchWithTimeout = jest.fn();
 jest.mock('@/lib/fetch-timeout', () => ({
   fetchWithTimeout: (...args: unknown[]) => fetchWithTimeout(...args),
@@ -53,6 +65,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 
 beforeEach(() => {
   jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   fetchWithTimeout.mockReset();
   fetchWithTimeout.mockImplementation(async (url: string) =>
     url.includes('/emergency/status') ? jsonResponse({ active: [] }) : jsonResponse({ success: true, messageId: 'bcast_1' }, 201),
@@ -91,5 +104,102 @@ describe('Emergency Broadcast console — request scope (B1)', () => {
       expect.objectContaining({ scopeType: 'tenant', scopeId: TENANT_UUID, text: 'All staff to the main office' }),
     );
     expect(JSON.stringify(body)).not.toContain(SLUG);
+  });
+});
+
+describe('Broadcast composer safeguards and media', () => {
+  const sendButton = () => screen.getByRole('button', { name: 'emergency.broadcast.sendAria' });
+  const writeMessage = () => fireEvent.change(screen.getByLabelText('emergency.broadcast.message'), { target: { value: 'Use the north exit' } });
+  const hold = async () => { fireEvent.pointerDown(sendButton()); await act(async () => { jest.advanceTimersByTime(3100); }); };
+
+  it.each(['pointerUp', 'pointerCancel', 'pointerLeave', 'blur'] as const)('cancels an interrupted hold on %s', async (event) => {
+    await act(async () => { render(<BroadcastPage />); });
+    writeMessage();
+    fireEvent.pointerDown(sendButton());
+    await act(async () => { jest.advanceTimersByTime(1500); });
+    fireEvent[event](sendButton());
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    expect(sendCalls()).toHaveLength(0);
+  });
+
+  it('cancels timers when navigating away during a hold', async () => {
+    let view: ReturnType<typeof render>;
+    await act(async () => { view = render(<BroadcastPage />); });
+    writeMessage();
+    fireEvent.pointerDown(sendButton());
+    view!.unmount();
+    await act(async () => { jest.advanceTimersByTime(4000); });
+    expect(sendCalls()).toHaveLength(0);
+  });
+
+  it('requires a continuous three-second keyboard hold and ignores repeats', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    writeMessage();
+    fireEvent.keyDown(sendButton(), { key: 'Enter' });
+    await act(async () => { jest.advanceTimersByTime(500); });
+    fireEvent.keyUp(sendButton(), { key: 'Enter' });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    expect(sendCalls()).toHaveLength(0);
+    fireEvent.keyDown(sendButton(), { key: ' ' });
+    fireEvent.keyDown(sendButton(), { key: ' ', repeat: true });
+    await act(async () => { jest.advanceTimersByTime(3100); });
+    expect(sendCalls()).toHaveLength(1);
+  });
+
+  it('validates duration and empty media alerts before starting a hold', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    writeMessage();
+    fireEvent.change(screen.getByLabelText('emergency.broadcast.duration'), { target: { value: '121' } });
+    await hold();
+    expect(screen.getByRole('alert')).toHaveTextContent('emergency.broadcast.errDuration');
+    fireEvent.change(screen.getByLabelText('emergency.broadcast.duration'), { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    await hold();
+    expect(screen.getByRole('alert')).toHaveTextContent('emergency.broadcast.errMediaRequired');
+    expect(sendCalls()).toHaveLength(0);
+  });
+
+  it('sends picked image and audio URLs, with the selected expiry and tenant ID', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    writeMessage();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'emergency.broadcast.addImage' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pick stored asset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'emergency.broadcast.addAudio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pick stored asset' }));
+    fireEvent.change(screen.getByLabelText('emergency.broadcast.duration'), { target: { value: '12' } });
+    await hold();
+    const [url, init] = sendCalls()[0];
+    expect(url).toContain('/emergency/media-alert');
+    expect(JSON.parse(init.body)).toEqual({ scopeType: 'tenant', scopeId: TENANT_UUID,
+      textBlob: 'Use the north exit', severity: 'WARN', mediaUrls: [STORED_IMAGE],
+      audioUrl: 'https://media.example.test/instructions.mp3', expiresAt: Math.floor(Date.now() / 1000) + 720 });
+  });
+
+  it('preserves the message when a send fails', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) => url.includes('/emergency/status') ? jsonResponse({ active: [] }) : jsonResponse({}, 503));
+    await act(async () => { render(<BroadcastPage />); });
+    writeMessage();
+    await hold();
+    expect(screen.getByLabelText('emergency.broadcast.message')).toHaveValue('Use the north exit');
+    expect(screen.getByRole('alert')).toHaveTextContent('503');
+  });
+
+  it('shows a status failure instead of claiming there are no active alerts', async () => {
+    fetchWithTimeout.mockResolvedValue(jsonResponse({}, 503));
+    await act(async () => { render(<BroadcastPage />); });
+    expect(screen.getByRole('alert')).toHaveTextContent('emergency.broadcast.statusError');
+    expect(screen.queryByText('emergency.broadcast.noneActive')).not.toBeInTheDocument();
+  });
+
+  it('keeps a broadcast visible when all-clear fails', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) => url.includes('/emergency/status') ? jsonResponse({ active: [{
+      id: 'broadcast-one', type: 'TEXT_BROADCAST', severity: 'WARN', textBlob: 'Use the north exit', mediaUrls: [], audioUrl: null,
+      expiresAt: null, createdAt: new Date().toISOString(),
+    }] }) : jsonResponse({}, 503));
+    await act(async () => { render(<BroadcastPage />); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'emergency.broadcast.clear' })); });
+    expect(screen.getByText('Use the north exit')).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('emergency.broadcast.errClearFailedBanner');
   });
 });

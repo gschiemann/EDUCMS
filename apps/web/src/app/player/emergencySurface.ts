@@ -67,6 +67,8 @@ export interface EmergencySurfaceInput {
   polledTakeover: boolean;
   /** `displayEmergencyHoldRaised()` — the eager hold (also persisted natively). */
   renderHold: boolean;
+  /** Known banner awaiting the same server-confirmed hold release. */
+  playbackHeld?: boolean;
   /** A signed OVERRIDE is still being confirmed by the manifest. */
   pendingOverrideConfirm: boolean;
   /** The current playlist IS the emergency content. */
@@ -82,6 +84,6 @@ export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurfa
   if (bannerShown) return 'overlay';
   // Hold engaged with nothing identified yet: protective, but unattributed —
   // black, never a red claim the page cannot back (see `hold` above).
-  if (i.renderHold) return 'hold';
+  if (i.renderHold && i.playbackHeld !== false) return 'hold';
   return 'content';
 }

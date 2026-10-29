@@ -43,7 +43,8 @@ import { useEmergencyFaceStage, readEmergencyFaceStage } from '@/components/play
 import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
-import { decideEmergencySurface } from './emergencySurface';
+import { decideEmergencySurface, isBannerEmergencyMessage } from './emergencySurface';
+import { broadcastContentStyle, type BroadcastLayout } from './broadcastLayout';
 import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
@@ -371,7 +372,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyHoldRaised, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -2934,6 +2935,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const emergencyFaceStage = useEmergencyFaceStage();
   const tEmergency = useTranslations('emergency');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
+  const emergencyPlaybackHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyPlaybackHeld, () => false);
+  const [broadcastLayout, setBroadcastLayout] = useState<BroadcastLayout | null>(null);
+  const onBannerLayoutChange = useCallback((next: BroadcastLayout | null) => {
+    setBroadcastLayout(previous => previous?.width === next?.width && previous?.height === next?.height && previous?.bannerHeight === next?.bannerHeight ? previous : next);
+  }, []);
   const emergencyPaintWatcherRef = emergencyMonitor.watcher;
   const emergencyExpectedIdentityRef = emergencyMonitor.expectedIdentity;
   // Preserve the last authenticated reconcile across the error boundary so
@@ -4828,6 +4834,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // media / CRITICAL text) rather than a banner? Only a full-screen message
   // takes the content down; see `emergencySurface.ts`.
   const [polledEmergencyTakeover, setPolledEmergencyTakeover] = useState(false);
+  const polledEmergencyTakeoverRef = useRef(false);
+  const bannerHoldFor = (manifestEmergency: boolean) => !manifestEmergency && !pendingOverrideConfirmRef.current
+    && (!pushedEmergencyMessageRef.current || isBannerEmergencyMessage(pushedEmergencyMessageRef.current))
+    && !polledEmergencyTakeoverRef.current
+    && (isBannerEmergencyMessage(pushedEmergencyMessageRef.current) || polledEmergencyHeldRef.current);
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
@@ -5032,7 +5043,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // Effects run after commit, i.e. in the same frame the alert paints, and
   // the call is a no-op on a browser player or an APK without the method.
   useEffect(() => {
-    if (activeEmergency || pushedEmergencyMessage) signalDisplayEmergencyHold(true);
+    if (activeEmergency) signalDisplayEmergencyHold(true);
+    else if (pushedEmergencyMessage) signalDisplayEmergencyHold(true, false, isBannerEmergencyMessage(pushedEmergencyMessage));
   }, [activeEmergency, pushedEmergencyMessage]);
 
   // SECURITY (2026-07-31, operator): "the remote shouldn't allow anyone to
@@ -5531,7 +5543,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // ── NATIVE-FIRST: the engine decision BEFORE the mount (design §3.1) ────
   // The raised hold, read the way applyManifest's emergency step reads it:
   // decideFaceEngine answers `web` for it first (§7 E2).
-  const nativeFirstHoldRaised = emergencyRenderHold || !!activeEmergency || !!pushedEmergencyMessage || polledEmergencyHeld || !!pendingOverrideConfirmRef.current;
+  const nativeFirstHoldRaised = emergencyPlaybackHold || !!activeEmergency || (!!pushedEmergencyMessage && !isBannerEmergencyMessage(pushedEmergencyMessage)) || polledEmergencyTakeover || !!pendingOverrideConfirmRef.current;
   // Operator overlays are YIELDS (native steps aside, the same content resumes natively).
   const nativeFirstOverlay: FaceYield | null = showUpdatePrompt ? 'update-prompt'
     : softBlank ? 'soft-blank'
@@ -5607,7 +5619,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // — the app re-binds it, nothing on glass changes. Never under the hold.
   const adoptPresentingNative = useCallback(() => {
     const face = nativeFirstFaceRef.current;
-    if (!face || !face.supportsV4() || displayEmergencyHoldRaised()) return;
+    if (!face || !face.supportsV4() || displayEmergencyPlaybackHeld()) return;
     const f = face.facts;
     const held = f?.intent;
     if (held && f?.session?.state === 'presenting' && f.session.sha256 === held.sha256 && f.session.revision === held.revision) {
@@ -5641,7 +5653,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // the hold itself is untouched, it is raised before any of this runs).
   useEffect(() => {
     const face = nativeFirstFaceRef.current;
-    if (!face || !face.supportsV4() || nativeFirstHoldRaised || displayEmergencyHoldRaised() || !nativeFirstDecidedRef.current) return;
+    if (!face || !face.supportsV4() || nativeFirstHoldRaised || displayEmergencyPlaybackHeld() || !nativeFirstDecidedRef.current) return;
     if (nativeFirstOverlay && nativeFirstEngine !== 'web') {
       if (face.presenting()) face.release('now');
       return;
@@ -5654,7 +5666,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        const action = reconcileFace(face.facts, { kind: 'web' }, displayEmergencyHoldRaised());
+        const action = reconcileFace(face.facts, { kind: 'web' }, displayEmergencyPlaybackHeld());
         if (action.kind === 'release') face.release(action.at);
       });
     });
@@ -7153,7 +7165,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // self-closes (confirm or 30s timeout) in the fetch path.
       const holdNow =
         !!em || !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current || !!pendingOverrideConfirmRef.current;
-      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
+      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!em));
       // F8 — ENFORCED overlay interlock: a cached normal manifest replayed
       // during an outage cannot clear a live alert. Previously this was
       // safe only because both stores shared one writer path; now it is a
@@ -8084,7 +8096,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             !!pushedEmergencyMessageRef.current ||
             polledEmergencyHeldRef.current ||
             !!pendingOverrideConfirmRef.current;
-          signalDisplayEmergencyHold(holdNow, holdNow);
+          signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!activeEmergencyRef.current));
         }
         return;
       }
@@ -8179,7 +8191,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 activeEmergencyRef.current = null;
                 cacheEmergency(null);
                 const stillHeld = !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current;
-                signalDisplayEmergencyHold(stillHeld, stillHeld);
+                signalDisplayEmergencyHold(stillHeld, stillHeld, bannerHoldFor(false));
                 // A staged board raised for that alert was kept through the
                 // window by the board interlock; re-apply the live manifest
                 // now that nothing holds it, so the content follows the alert.
@@ -8409,10 +8421,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const onPolledEmergencyActiveChange = useCallback((active: boolean, takeover = true) => {
     // 2026-10-23 (B3): `takeover` says whether the polled message is a
     // full-screen one; it may flip (banner → CRITICAL) while `active` stays.
+    polledEmergencyTakeoverRef.current = active && takeover;
     setPolledEmergencyTakeover(active && takeover);
+    if (active) signalDisplayEmergencyHold(true, false, !takeover && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
     if (polledEmergencyHeldRef.current === active) return;
     polledEmergencyHeldRef.current = active;
-    if (active) signalDisplayEmergencyHold(true);
     setPolledEmergencyHeld(active);
     // Two empty overlay polls still do not release the device hold. Ask the
     // authenticated manifest to confirm clear through its existing lane.
@@ -9648,12 +9661,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // EventSource opened (device JWT) and at the Redis fan-out gate;
       // the SSE `handle()` wrapper hands us the inner signed payload.
       const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
-        signalDisplayEmergencyHold(true, true);
+        const message = pushedEmergencyFromPayload(type, p, undefined);
+        signalDisplayEmergencyHold(true, true, isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
         // The DB row id arrives as `messageId` in the signed payload (a
         // literal `id` is accepted too). Shared with the WS branch since
         // 2026-10-22 — see `pushedEmergencyMessage.ts`. The SSE `handle()`
         // wrapper hands us only the inner payload, so there is no eventId.
-        setPushedEmergencyMessage(pushedEmergencyFromPayload(type, p, undefined));
+        pushedEmergencyMessageRef.current = message;
+        setPushedEmergencyMessage(message);
       };
       handle('SOS', onEmergencyMessage('SOS'));
       handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
@@ -9999,16 +10014,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {
               // Interlock: a pushed alert takes the glass exactly like a
               // tenant override, so the display hold goes up with it.
-              signalDisplayEmergencyHold(true, true);
+              const message = pushedEmergencyFromPayload(msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT', msg.payload, msg.eventId);
+              signalDisplayEmergencyHold(true, true, isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
               // 2026-10-22 — id = the signed `messageId`, never the eventId
               // (the 12 s reconcile must find it). See pushedEmergencyMessage.ts.
-              setPushedEmergencyMessage(
-                pushedEmergencyFromPayload(
-                  msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT',
-                  msg.payload,
-                  msg.eventId,
-                ),
-              );
+              pushedEmergencyMessageRef.current = message;
+              setPushedEmergencyMessage(message);
             } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
               setPushedEmergencyMessage(null);
             }
@@ -11632,7 +11643,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const url = nativeWebsiteTarget({
       playing: phase === 'playing',
       playbackStopped,
-      emergency: !!activeEmergency,
+      emergency: nativeFirstHoldRaised,
       blanked: softBlank,
       item: current,
       itemValid: !!current && isItemValid(current),
@@ -11651,7 +11662,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // load back yet, so this is "requested", exactly as `pl:` was before the
     // readiness flag existed.
     if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
-  }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
+  }, [nativeFirstHoldRaised, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
 
   // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
   // WebView laid over this page, so an alert or the operator's Stop surface
@@ -11661,10 +11672,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // player rule 11: the alert never waits on a widget lifecycle. Fire-and-
   // forget; `nativeHas` keeps it off APKs that predate the method.
   useEffect(() => {
-    if (!activeEmergency && !playbackStopped && !softBlank) return;
+    if (!nativeFirstHoldRaised && !playbackStopped && !softBlank) return;
     if (!nativeHas('webTabsHide')) return;
     nativeFire('webTabsHide', JSON.stringify({ v: 1, wipe: false }));
-  }, [activeEmergency, playbackStopped, softBlank]);
+  }, [nativeFirstHoldRaised, playbackStopped, softBlank]);
   // …and unlike an alert or Stop, a blank does not unmount the widget, so
   // nothing would put the site back on wake. Website Tabs listens for this
   // (displayBlankSignal.ts): hidden while blanked, shown again when it lifts.
@@ -12629,6 +12640,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // Stable useCallback — see its definition for why.
           onTenantEmergencyHint={onTenantEmergencyHint}
           onPolledActiveChange={onPolledEmergencyActiveChange}
+          onBannerLayoutChange={onBannerLayoutChange}
         />
       ) : null;
 
@@ -12652,6 +12664,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     polledActive: polledEmergencyHeld,
     polledTakeover: polledEmergencyTakeover,
     renderHold: emergencyRenderHold,
+    playbackHeld: emergencyPlaybackHold,
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
   });
@@ -13006,6 +13019,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // exactly why the ROW has to state the answer rather than leave
           // it to whichever surface draws it. Do NOT "align" these two.
           ...(templateHoleOpen ? { backgroundColor: 'transparent', background: 'transparent' } : templateBg),
+          ...broadcastContentStyle(broadcastLayout),
         }}>
         {templateHoleOpen ? (
           <>
@@ -13269,6 +13283,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 <NativeZoneVideo
                   descriptor={nativeVideoItems}
                   item={zoneItem}
+                  canvasLayout={broadcastLayout}
                   active
                   prerollOnly={false}
                   measure={(el) => {
@@ -13516,6 +13531,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'row',
+            ...broadcastContentStyle(broadcastLayout),
           }}
         >
           {Array.from({ length: effectiveTiles }).map((_, idx) => (
@@ -13593,6 +13609,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // is the hole — the hardware surface below the WebView shows through;
         // every other slide paints opaque over it (NativeZoneVideo.tsx).
         background: nativeHoleOpen ? 'transparent' : '#000',
+        ...broadcastContentStyle(broadcastLayout),
         overflow: 'hidden',
         cursor: isPlaylistInteractive ? undefined : 'none',
       }}
@@ -13622,7 +13639,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         >
           {useVideoPlaylistDeck && currentItem ? (
             <PlaylistVideoDeck key={playlist?.id ?? 'video-playlist'} active={playlistVideoSource(currentItem)}
-              fit={playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || !!pushedEmergencyMessage, currentItem as { media_w?: number; media_h?: number })}
+              fit={playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || (!!pushedEmergencyMessage && !isBannerEmergencyMessage(pushedEmergencyMessage)), currentItem as { media_w?: number; media_h?: number })}
               next={activeSlot.nextIndex !== null ? playlistVideoSource(sorted[activeSlot.nextIndex]) : null}
               onPlaying={markItemSucceeded}
               onEnded={() => { if (!syncActiveRef.current) advanceSlide(); }}
@@ -13699,7 +13716,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             const trans = conservativeNormalPlayback || (isVid && !playlist?.isEmergency && !syncLocked) ? 'NONE' : item.transitionType || 'FADE';
             // Normal playlist media fills the full screen; emergency media
             // is forced to contain by playlistItemFit.
-            const slideFit = playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || !!pushedEmergencyMessage, item as { media_w?: number; media_h?: number });
+            const slideFit = playlistItemFit(playlist?.isEmergency === true || !!activeEmergency || (!!pushedEmergencyMessage && !isBannerEmergencyMessage(pushedEmergencyMessage)), item as { media_w?: number; media_h?: number });
             let classes = `absolute top-0 right-0 bottom-0 left-0 w-full h-full ${mediaFitClass(slideFit)} transition-all duration-[1000ms] ease-in-out `;
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
@@ -13824,6 +13841,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
+                    canvasLayout={broadcastLayout}
                     active={isActive} prerollOnly
                     measure={(el) => {
                       if (!el) return null;

@@ -449,7 +449,7 @@ class FacePlayerHost(
         // Contract §4: an alert on either face takes both faces. This carries
         // THIS face's index into the refcount, which is what stops the other
         // pane's routine all-clear from releasing a live lockdown.
-        displayEmergencyHoldImpl = { active, trusted ->
+        displayEmergencyHoldImpl = { active, trusted, bannerOnly ->
             // THIS host's index, supplied by native. The page has no way to
             // name a face at all — the bridge carries no face argument — so a
             // face's document cannot release a hold belonging to another pane
@@ -460,6 +460,7 @@ class FacePlayerHost(
                 active,
                 trusted,
                 faceIndex,
+                bannerOnly,
             )
         },
         bridgeNonce = faceNonce,
