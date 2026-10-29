@@ -131,3 +131,11 @@ it("keeps the NWS outlook on its own source while covering older current-weather
   expect(hasCurrentWeather("ANIMATED_WELCOME_HS", {})).toBe(true);
   expect(hasCurrentWeather("RSS_FEED", {})).toBe(false);
 });
+
+it('keeps the source credit readable on the chosen light or transparent surface',()=>{
+ const view=render(<CurrentWeatherBoundary config={{style:{bgColor:'#ffffff',textColor:'#102b3c'},staticDesc:'Entered description'}}><div>Content</div></CurrentWeatherBoundary>);
+ expect(view.container.querySelector('[data-current-weather-credit]')).toHaveStyle({background:'#ffffff',color:'#102b3c'});
+ expect(screen.getByText('Manually entered weather')).toBeInTheDocument();
+ view.rerender(<CurrentWeatherBoundary config={{style:{bgColor:'transparent',textColor:'#ffffff'}}}><div>Content</div></CurrentWeatherBoundary>);
+ expect(view.container.querySelector('[data-current-weather-credit]')).toHaveStyle({background:'transparent',color:'#ffffff'});
+});

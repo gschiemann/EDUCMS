@@ -28,6 +28,11 @@ export function CurrentWeatherBoundary({
   const entered = [
     "tempF",
     "staticTemp",
+    "staticDesc",
+    "staticIcon",
+    "condition",
+    "high",
+    "low",
     "weatherTemp",
     "weather.temp",
     "weather.high",
@@ -92,8 +97,8 @@ export function CurrentWeatherBoundary({
           font: "12px/1.35 Arial, sans-serif",
           padding: "2px 5px",
           textAlign: "center",
-          background: config.style?.bgColor === 'transparent' || config.bgColor === 'transparent' ? 'transparent' : 'rgba(0,0,0,.72)',
-          color: config.textColor || config.style?.textColor || '#fff',
+          background: config.bgColor ?? config.style?.bgColor ?? 'rgba(0,0,0,.72)',
+          color: config.bgColor != null || config.style?.bgColor != null ? config.textColor || config.style?.textColor || '#fff' : '#fff',
         }}
       >
         {source ? (
