@@ -895,6 +895,7 @@ function HardwareIdentityBlock({ screen }: { screen: any }) {
  * the device fingerprint. Operators only come here when support asks.
  */
 function DeviceDetails({ screen }: { screen: any }) {
+  const t = useTranslations();
   // Lazy by construction: DeviceDetails only mounts while the drawer is
   // open, so this fetch fires exactly when an operator actually looks.
   const inventoryQ = useScreenDeviceInventory(screen?.id ?? '', true);
@@ -917,7 +918,17 @@ function DeviceDetails({ screen }: { screen: any }) {
     : 'no emergency report';
 
   const otaState: string | null = screen?.lastOtaState ?? null;
-  const otaMsg: string | null = screen?.lastOtaMessage ?? null;
+  // NEEDS_TAP is worded here, in the reader's language — never by the player's
+  // own English line (an older player still says "tap Install", on panels that
+  // mostly have no touch screen). Same two sentences the update card uses; the
+  // hedged one when the server only INFERRED the wait.
+  const needsTapInferred = (() => {
+    const p = deriveTrackedPush(screen);
+    return p?.kind === 'needs-tap' && p.reason === 'did-not-land-unknown-class';
+  })();
+  const otaMsg: string | null = otaState === 'NEEDS_TAP'
+    ? t(needsTapInferred ? 'screens.apk.push.sublineNeedsTapLikely' : 'screens.apk.sublineNeedsTap')
+    : (screen?.lastOtaMessage ?? null);
   const otaAt: string | null = screen?.lastOtaAt ?? null;
   const otaProg: number | null = screen?.lastOtaProgress ?? null;
 

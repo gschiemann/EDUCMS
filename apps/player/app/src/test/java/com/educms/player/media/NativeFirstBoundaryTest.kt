@@ -122,7 +122,7 @@ class NativeFirstBoundaryTest {
     @Test
     fun `the swap pass reads the hold before it touches anything, and runs the decided steps`() {
         val swap = body(box, "private fun swap(")
-        val held = swap.indexOf("val held = DisplayEmergency.isHeld(b.host.ctx)")
+        val held = swap.indexOf("val held = DisplayEmergency.isPlaybackHeld(b.host.ctx)")
         assertTrue("the hold is the first thing the pass reads", held >= 0)
         for (later in listOf("synchronized(this)", "promoteKey(", "renderer?.release()", "renderer?.stop()", "continueSwap(")) {
             val at = swap.indexOf(later)
@@ -131,10 +131,10 @@ class NativeFirstBoundaryTest {
         assertTrue(swap.contains("NativeFirstBoundary.swapSteps(held, path)"))
         assertTrue("an aborted swap ends both", swap.contains("NativeFirstBoundary.Step.ABORT_HELD -> {"))
         val cont = body(box, "private fun continueSwap(")
-        assertTrue("the second half reads the hold again first", cont.indexOf("DisplayEmergency.isHeld(b.host.ctx)") in 0 until cont.indexOf("startNow(host, b)"))
+        assertTrue("the second half reads the hold again first", cont.indexOf("DisplayEmergency.isPlaybackHeld(b.host.ctx)") in 0 until cont.indexOf("startNow(host, b)"))
         val start = body(box, "private fun startNow(")
         assertTrue("startNow refuses under a hold before it starts a decoder",
-            start.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
+            start.indexOf("DisplayEmergency.isPlaybackHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
     }
 
     @Test

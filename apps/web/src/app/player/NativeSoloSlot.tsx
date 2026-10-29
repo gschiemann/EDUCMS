@@ -7,7 +7,7 @@ import { nativeFirstEndNext, NativeTransientEnds } from "./nativeEndReasons";
 import { reconcileFace, sessionHasFreshFrame, sessionMatches, type NativeFirstFacts, type NativeIntentIdentity } from "./nativeFirst";
 import type { NativeFirstFace } from "./nativeFirstFace";
 import { blockNativeVideo, nativeSharedVideoEvidence } from "./nativeSharedVideo";
-import { displayEmergencyHoldRaised } from "./emergencyHold";
+import { displayEmergencyPlaybackHeld } from "./emergencyHold";
 
 /**
  * NATIVE-FIRST SLOT (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.2) —
@@ -76,7 +76,7 @@ export function NativeSoloSlot({
   classes,
   onPlaying,
   onEngineChange,
-  holdRaised = displayEmergencyHoldRaised,
+  holdRaised = displayEmergencyPlaybackHeld,
   log = (line: string) => console.warn(line),
 }: {
   face: NativeFirstFace;

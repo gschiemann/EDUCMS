@@ -132,7 +132,8 @@ object EmergencyPaintRecovery {
                         drawableAlpha = bg?.alpha,
                         colorAlpha = (bg as? android.graphics.drawable.ColorDrawable)?.let { Color.alpha(it.color) },
                     )
-                val nativeClear = com.educms.player.media.FaceVideoBox.emergencyOutputClear(face)
+                val nativeClear = com.educms.player.media.FaceVideoBox.emergencyOutputClear(face) &&
+                    com.educms.player.media.BroadcastContentViews.emergencyOutputClear(face)
                 val interactive = (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
                 synchronized(lock) {
                     load(ctx)

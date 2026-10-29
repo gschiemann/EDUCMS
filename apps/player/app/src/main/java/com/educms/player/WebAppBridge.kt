@@ -262,9 +262,9 @@ class WebAppBridge(
      */
     private val displayApplyImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
     private val displaySetScheduleImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
-    /** `(active, trusted)` — the ⚠️ life-safety emergency interlock. */
-    private val displayEmergencyHoldImpl: (Boolean, Boolean) -> String =
-        { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    /** `(active, trusted, bannerOnly)` — banner posture requires the secure channel. */
+    private val displayEmergencyHoldImpl: (Boolean, Boolean, Boolean) -> String =
+        { _, _, _ -> """{"ok":false,"code":"unavailable"}""" },
     /**
      * 2026-08-14 — raises the one-time device-ADMIN enrolment dialog.
      * Backed by `MainActivity.requestDeviceAdminEnrollment`, which owns
@@ -807,7 +807,7 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun displayEmergencyHold(active: Boolean): String = try {
-        displayEmergencyHoldImpl(active, false)
+        displayEmergencyHoldImpl(active, false, false)
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
         """{"ok":false,"code":"exception"}"""
@@ -889,8 +889,8 @@ class WebAppBridge(
         """{"ok":false,"code":"exception"}"""
     }
 
-    internal fun displayEmergencyHoldViaSecureChannel(active: Boolean): String = try {
-        displayEmergencyHoldImpl(active, true)
+    internal fun displayEmergencyHoldViaSecureChannel(active: Boolean, bannerOnly: Boolean = false): String = try {
+        displayEmergencyHoldImpl(active, true, bannerOnly)
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure) FAILED", ex)
         """{"ok":false,"code":"exception"}"""

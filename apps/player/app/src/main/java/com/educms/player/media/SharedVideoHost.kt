@@ -82,6 +82,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
      * protocol-1 pair engine, unchanged. No bridge method was added (rule 9).
      */
     fun prepare(json: String) {
+        BroadcastBanner.parse(json)?.let { FaceVideoBox.banner(this, it); return }
         NativeFirstMessage.parse(json)?.let { FaceVideoBox.onV4(this, it); return }
         // A malformed version-4 message is dropped, never handed to the pair engine.
         if (runCatching { json.length <= 1024 && JSONObject(json).optInt("version") == NativeFirstMessage.VERSION }.getOrDefault(false)) return
@@ -110,6 +111,7 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         val j = if (engine == ENGINE_FACE) FaceVideoBox.state(this) else JSONObject(SharedVideoBox.state(this)).put("protocolMax", max)
         // 1.1.41: the resolved device class and what it does (DeviceClassPolicy), bounded, on every reply.
         j.put("device", policy.toJson())
+        j.put("broadcastBannerVersion", 1)
         // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
         DeviceClassPolicy.displayFacts(ctx)?.writeTo(j.getJSONObject("device"))
         // 1.1.43: plus what the panel firmware itself lists (sysfs, read-only, bounded, refreshed every 30 s).
@@ -126,8 +128,9 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         // The page refuses a reply over 16 384 characters: trim history before it could ever get there.
         return ReplyBudget.fit(j.put("protocol",2)).toString()
     }
-    fun invalidate() { SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
+    fun invalidate() { BroadcastBanner.clear(face); SharedVideoBox.invalidate(this,"document-retired"); FaceVideoBox.invalidate(this,"document-retired") }
     fun detach() {
+        BroadcastBanner.clear(face)
         com.educms.player.display.EmergencyPaintRecovery.unregister(face, web)
         if (web.viewTreeObserver.isAlive) web.viewTreeObserver.removeOnPreDrawListener(windowGuard)
         SharedVideoBox.invalidate(this,"host-detached")

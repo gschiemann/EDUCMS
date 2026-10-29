@@ -26,10 +26,10 @@ type TestZone = Record<string, unknown> & { defaultConfig: Record<string, unknow
   imageOverrides?: Record<string, string | string[]>;
 } };
 
-async function openEditor(page: Page, portrait = false, initialZones?: TestZone[]) {
+async function openEditor(page: Page, portrait = false, initialZones?: TestZone[], canvas?: { width: number; height: number }) {
   let template: Record<string, unknown> & { zones: TestZone[] } = {
     id: 'media-editor', name: 'Media design', tenantId: 'e2e-school', isSystem: false,
-    screenWidth: portrait ? 1080 : 1920, screenHeight: portrait ? 1920 : 1080, bgColor: '#ffffff', scenes: [],
+    screenWidth: canvas?.width ?? (portrait ? 1080 : 1920), screenHeight: canvas?.height ?? (portrait ? 1920 : 1080), bgColor: '#ffffff', scenes: [],
     zones: initialZones || [{ id: 'blank', name: 'Full Screen', widgetType: 'EMPTY', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: {} }],
   };
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -59,6 +59,15 @@ async function openEditor(page: Page, portrait = false, initialZones?: TestZone[
     if (endpoint === '/templates/media-editor' && route.request().method() === 'PUT') template = { ...template, ...route.request().postDataJSON() };
     if (endpoint === '/auth/me') return json(route, { id: 'editor-user', email: 'editor@example.com', role: 'SCHOOL_ADMIN', tenantId: 'e2e-school', canTriggerPanic: false });
     if (endpoint === '/auth/csrf') return json(route, { token: 'e2e-csrf' });
+    if (endpoint === '/feeds/forecast') return json(route, { location: 'Honolulu, HI', fetchedAt: new Date().toISOString(), source: 'National Weather Service', geocoded: false, days: Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-${20 + i}`, high: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 27 : 80) + i, low: (new URL(route.request().url()).searchParams.get('units') === 'metric' ? 18 : 65) + i, condition: i % 2 ? 'Partly Cloudy' : 'Sunny', rain: 10 })) });
+    if (endpoint === '/feeds/news') {
+      const scope = new URL(route.request().url()).searchParams.get('scope') || 'local';
+      return json(route, { scope, location: scope === 'local' ? 'San Ramon, CA' : '', provider: 'GDELT', fetchedAt: new Date().toISOString(), items: [0, 1].map(i => ({ scope, title: `${scope} fixture headline ${i + 1}`, link: `https://example.com/${scope}/${i}`, publisher: 'example.com', indexedAt: new Date().toISOString() })) });
+    }
+    if (endpoint === '/feeds/rss') {
+      const world = new URL(route.request().url()).searchParams.get('url')?.includes('globalvoices');
+      return json(route, { title: world ? 'Global Voices' : 'NASA', items: [{ title: world ? 'World community opens new cultural center' : 'NASA announces a new science mission', link: world ? 'https://globalvoices.org/example' : 'https://www.nasa.gov/example', publishedAt: new Date().toISOString(), source: world ? 'Global Voices' : 'NASA', author: 'Original Author' }] });
+    }
     if (endpoint === '/assets/presign') {
       const filename = route.request().postDataJSON().filename;
       return json(route, { uploadUrl: `${ORIGIN}/test-media/upload`, storagePath: filename, fileUrl: media[0].fileUrl, mimeType: 'image/png', maxFileSize: 50 * 1024 * 1024 });
@@ -425,4 +434,366 @@ test('holiday saved media applies when its companion initializes after the field
       imageOverrides: { 'hero.media': media[0].fileUrl } } }]);
   const slot = page.locator('[data-zone-id="holiday"] iframe').contentFrame().locator('[data-imgslot="hero.media"]');
   await expect.poll(() => slot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage)).toContain('/landscape.png');
+});
+
+test('Care Atlas photo replacement and two-page rotation survive shared controls, Undo and reopening', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const board = '/templates/signage/corporate/directory/care-atlas-landscape.html';
+  const html = fs.readFileSync(path.join(__dirname, '../../public', board), 'utf8');
+  const doc = JSON.parse(html.match(/<script[^>]*id="arc-directory-document"[^>]*>([\s\S]*?)<\/script>/)![1]);
+  doc.dataset = { ...doc.dataset, title: 'Private example centre', image: media[0].fileUrl,
+    tenants: Array.from({ length: 10 }, (_, i) => ({ id: `office-${i}`, name: `Example company ${i + 1}`, suite: `${100 + i}` })) };
+  doc.playback = { ...doc.playback, displayMode: 'single' };
+  const state = await openEditor(page, false, [{ id: 'directory', name: 'Care Atlas', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+    defaultConfig: { url: board, directoryDocument: doc } }]);
+  const frame = page.locator('[data-zone-id] iframe').contentFrame();
+  const image = frame.locator('.art-direction-image');
+  await expect(image).toHaveAttribute('src', media[0].fileUrl);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('crossfade');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('14');
+  await page.getByLabel('Transition', { exact: true }).selectOption('slide-right');
+  await page.getByLabel('Seconds per page', { exact: true }).fill('8');
+  await page.getByLabel('Seconds per page', { exact: true }).blur();
+  await page.getByLabel('location 10 Name', { exact: true }).focus();
+  await frame.locator('.art-direction-media').click();
+  await expect(page.locator('[data-edit-img="property.hero"]')).toBeInViewport();
+  const bar = page.locator('[data-builder-bottom-bar]');
+  await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
+  await bar.getByRole('button', { name: 'Replace image', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
+  await expect(image).toHaveAttribute('src', media[1].fileUrl);
+  await bar.getByRole('button', { name: /Undo/ }).click();
+  await expect(image).toHaveAttribute('src', media[0].fileUrl);
+  await bar.getByRole('button', { name: /Redo/ }).click();
+  await expect(image).toHaveAttribute('src', media[1].fileUrl);
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => JSON.stringify(state.saved().zones[0].defaultConfig.imageOverrides)).toContain(media[1].fileUrl);
+  await reloadEditor(page);
+  await expect(image).toHaveAttribute('src', media[1].fileUrl);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Display', { exact: true })).toHaveValue('single');
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('slide-right');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('8');
+  const photo = page.locator('[data-edit-img="property.hero"]');
+  await expect(photo.locator('details')).toHaveCount(0);
+  await photo.getByRole('button', { name: 'Browse library' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'square.png', exact: true }).click();
+  await expect(image).toHaveAttribute('src', media[2].fileUrl);
+  await page.getByRole('button', { name: 'Make 2 pages', exact: true }).click();
+  await expect(page.getByLabel('Locations per page', { exact: true })).toHaveValue('5');
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('slide-right');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('8');
+  await page.getByLabel('Transition', { exact: true }).selectOption('flip');
+  await page.getByLabel('Transition speed', { exact: true }).selectOption('fast');
+  await page.getByLabel('Seconds per page', { exact: true }).fill('6');
+  await page.getByLabel('Seconds per page', { exact: true }).blur();
+  await expect(frame.locator('.page-counter')).toHaveText(/02/);
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).theme.image).toBe(media[2].fileUrl);
+  await reloadEditor(page);
+  const restored = page.locator('[data-zone-id] iframe').contentFrame();
+  await expect(restored.locator('.art-direction-image')).toHaveAttribute('src', media[2].fileUrl);
+  await restored.locator('.directory-heading').click();
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('flip');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('6');
+  await expect(page.getByLabel('Locations per page', { exact: true })).toHaveValue('5');
+  await page.screenshot({ path: testInfo.outputPath('directory-photo-and-pages.png') });
+  await expect(restored.locator('.display-controls')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open fullscreen preview at native resolution', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: /^Preview:/ });
+  const playing = preview.locator('iframe').contentFrame();
+  await expect(playing.locator('.page-counter')).toHaveText(/01\s*\/\s*02/);
+  await expect(playing.locator('.page-counter')).toHaveText(/02\s*\/\s*02/, { timeout: 12_000 });
+  await expect(playing.locator('.display-controls')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('directory-page-two-preview.png') });
+});
+
+
+test('adapted portrait directory fills the screen and saves numeric suite sorting', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const board = '/templates/signage/corporate/directory/building-index-landscape.html';
+  const html = fs.readFileSync(path.join(__dirname, '../../public', board), 'utf8');
+  const doc = JSON.parse(html.match(/<script[^>]*id="arc-directory-document"[^>]*>([\s\S]*?)<\/script>/)![1]);
+  doc.dataset.title = 'Meridian Business Center';
+  doc.dataset.tenants = Array.from({ length: 100 }, (_, i) => ({ id: `office-${i}`, name: `Company ${String(100 - i).padStart(3, '0')}`, suite: String(i + 1) }));
+  doc.playback = { ...doc.playback, displayMode: 'single', pageDurationMs: 8000, transitionMode: 'slide-right' };
+  doc.theme = { image: media[0].fileUrl };
+  // Adapt keeps a custom copy's saved landscape source and content; the board must reflow.
+  const state = await openEditor(page, true, [{ id: 'directory', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: board, directoryDocument: doc } }]);
+  const frame = page.locator('[data-zone-id] iframe').contentFrame();
+  await expect(frame.locator('.canvas')).toHaveClass(/portrait/);
+  const fillsScreen = () => frame.locator('.canvas').evaluate(node => { const b = node.getBoundingClientRect(); return Math.abs(b.left) < 1 && Math.abs(b.top) < 1 && Math.abs(b.width - innerWidth) < 1 && Math.abs(b.height - innerHeight) < 1; });
+  await expect.poll(fillsScreen).toBe(true);
+  await frame.locator('.directory-heading').click();
+  await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
+  await expect(frame.locator('.tenant-entry').first().locator('.entry-suite b')).toHaveText('1');
+  await expect(frame.locator('.tenant-entry').nth(1).locator('.entry-suite b')).toHaveText('2');
+  await expect(frame.locator('.tenant-entry').nth(9).locator('.entry-suite b')).toHaveText('10');
+  await expect(frame.locator('.tenant-entry')).toHaveCount(100);
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('suite');
+  await reloadEditor(page);
+  await expect.poll(fillsScreen).toBe(true);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('suite');
+  await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('8');
+  await expect(page.getByLabel('Transition', { exact: true })).toHaveValue('slide-right');
+  await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[0].fileUrl);
+  await page.screenshot({ path: testInfo.outputPath('dense-portrait-numeric-suites.png') });
+  await page.getByLabel('Sort by', { exact: true }).selectOption('name');
+  await expect(frame.locator('.tenant-entry').first().locator('.tenant-name')).toHaveText('Company 001');
+  await page.getByRole('button', { name: /^Save$/ }).click();
+  await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('name');
+  await reloadEditor(page);
+  await frame.locator('.directory-heading').click();
+  await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('name');
+  await expect.poll(fillsScreen).toBe(true);
+  await page.getByRole('button', { name: 'Open fullscreen preview at native resolution', exact: true }).click();
+  const playing = page.getByRole('dialog', { name: /^Preview:/ }).locator('iframe').contentFrame();
+  await expect(playing.locator('.canvas')).toHaveClass(/portrait/);
+  await expect(playing.locator('.tenant-entry')).toHaveCount(100);
+});
+
+
+for (const [index, design] of ['metropolitan-ledger', 'campus-grid', 'atrium-register', 'night-exchange', 'foundry-atlas'].entries()) {
+  for (const portrait of [false, true]) {
+    test(`large-location directory ${design} ${portrait ? 'portrait' : 'landscape'} keeps native editing and saved rotation`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const orientation = portrait ? 'portrait' : 'landscape';
+      const board = `/templates/signage/corporate/directory/${design}-${orientation}.html`;
+      const html = fs.readFileSync(path.join(__dirname, '../../public', board), 'utf8');
+      const doc = JSON.parse(html.match(/<script[^>]*id="arc-directory-document"[^>]*>([\s\S]*?)<\/script>/)![1]);
+      const state = await openEditor(page, portrait, [{ id: 'directory', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: board, directoryDocument: doc } }], portrait ? { width: 2160, height: 3840 } : { width: 3840, height: 2160 });
+      const frame = page.locator('[data-zone-id] iframe').contentFrame();
+      await expect(frame.locator('.canvas')).toHaveClass(new RegExp(orientation));
+      await frame.locator('.directory-heading').click();
+      await page.getByLabel('Building name', { exact: true }).fill('Example International Headquarters');
+      await frame.locator('.display-footer .footer-location').click();
+      await page.getByLabel('Footer text', { exact: true }).fill('Welcome to Example HQ');
+      // The native rail commits on input; switching focus finishes canvas typing.
+      await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
+      const photo = page.locator('[data-edit-img="property.hero"]');
+      await photo.getByRole('button', { name: 'Browse library' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'portrait.png', exact: true }).click();
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[1].fileUrl);
+      await photo.getByRole('button', { name: 'Restore template photo', exact: true }).click();
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', new RegExp(`/art-direction/${design}\\.jpg$`));
+      await photo.getByRole('button', { name: 'Browse library' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'square.png', exact: true }).click();
+      await frame.locator('.art-direction-caption').click();
+      await page.getByLabel('Photo caption', { exact: true }).fill('Main entrance');
+      await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
+      await page.getByLabel('Sort by', { exact: true }).selectOption('suite');
+      await page.getByRole('button', { name: 'Make 2 pages', exact: true }).click();
+      const mode = ['flip', 'slide-right', 'vertical-scroll-down', 'continuous-scroll-down', 'crossfade'][index];
+      await page.getByLabel('Transition', { exact: true }).selectOption(mode);
+      await page.getByLabel('Seconds per page', { exact: true }).fill('3');
+      await page.getByLabel('Seconds per page', { exact: true }).blur();
+      await page.getByRole('button', { name: /^Save$/ }).click();
+      await expect.poll(() => (state.saved().zones[0].defaultConfig.directoryDocument as typeof doc).playback.sort).toBe('suite');
+      await reloadEditor(page);
+      await frame.locator('.directory-heading').click();
+      await expect(page.getByLabel('Sort by', { exact: true })).toHaveValue('suite');
+      await expect(page.getByLabel('Transition', { exact: true })).toHaveValue(mode);
+      await expect(page.getByLabel('Seconds per page', { exact: true })).toHaveValue('3');
+      await expect(frame.locator('.property-name')).toHaveText('Example International Headquarters');
+      // Measure spacing in native canvas units; the editor scales 4K content to its preview pane.
+      await expect.poll(() => frame.locator('.property-subtitle').evaluate(node => {
+        const canvas = document.querySelector('.canvas') as HTMLElement;
+        const scale = canvas.getBoundingClientRect().width / canvas.offsetWidth;
+        return (document.querySelector('.content')!.getBoundingClientRect().top - node.getBoundingClientRect().bottom) / scale;
+      })).toBeGreaterThanOrEqual(20);
+      await expect(frame.locator('.footer-location')).toHaveText('Welcome to Example HQ');
+      await expect(frame.locator('.art-direction-caption')).toHaveText('Main entrance');
+      await expect(frame.locator('.art-direction-image')).toHaveAttribute('src', media[2].fileUrl);
+      await expect(frame.locator('.display-controls')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Open fullscreen preview at native resolution', exact: true }).click();
+      const playing = page.getByRole('dialog', { name: /^Preview:/ }).locator('iframe').contentFrame();
+      await expect(playing.locator('.page-counter')).toHaveText(/02\s*\/\s*02/, { timeout: 12_000 });
+      await expect(playing.locator('.canvas')).toHaveClass(new RegExp(orientation));
+    });
+  }
+}
+
+
+test('weather resize requires a press and stops after a missed release, iframe crossing and focus loss', async ({ page }) => {
+  const state = await openEditor(page, false, [
+    { id: 'board', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 0, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/directory/building-index-landscape.html' } },
+    { id: 'weather', name: 'Weather', widgetType: 'WEATHER', x: 10, y: 10, width: 40, height: 30, zIndex: 2, sortOrder: 1, defaultConfig: { variant: 'weather-outlook', forecastDays: 5, location: '21.3,-157.8' } },
+  ]);
+  const zone = page.locator('[data-zone-id="weather"]');
+  await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
+  await zone.click({ position: { x: 20, y: 20 } });
+  const handle = page.getByRole('button', { name: 'Resize se', exact: true });
+  const bounds = async () => zone.evaluate(el => ({ w: (el as HTMLElement).style.width, h: (el as HTMLElement).style.height }));
+  const before = await bounds();
+  await handle.hover(); await page.mouse.move(1100, 700); expect(await bounds()).toEqual(before);
+  await handle.dispatchEvent('pointerdown', { button: 2, buttons: 2, pointerType: 'mouse', pointerId: 1, isPrimary: true });
+  await page.mouse.move(900, 650); expect(await bounds()).toEqual(before);
+  const box = (await handle.boundingBox())!; await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + 80, box.y + 50);
+  await expect.poll(bounds).not.toEqual(before);
+  // Simulate an OS/iframe swallowing the release. Captured-pointer loss and the
+  // no-buttons move must both prevent the old "hover keeps resizing" behavior.
+  await page.evaluate(() => window.addEventListener('pointerup', e => e.stopImmediatePropagation(), { capture: true, once: true }));
+  await page.mouse.up(); const released = await bounds(); await page.mouse.move(1250, 780); expect(await bounds()).toEqual(released);
+  const next = (await handle.boundingBox())!; await page.mouse.move(next.x + 3, next.y + 3); await page.mouse.down(); await page.mouse.move(next.x + 30, next.y + 25); await page.evaluate(() => window.dispatchEvent(new Event('blur'))); const blurred = await bounds(); await page.mouse.move(900, 650); await page.mouse.up(); expect(await bounds()).toEqual(blurred);
+  await page.getByRole('button', { name: /^Save$/ }).click(); await expect.poll(() => state.saved().zones.length).toBe(2);
+});
+
+for (const portrait of [false, true]) test(`live information ${portrait ? 'portrait' : 'landscape'} reuses native controls and saves days, multiple sources and timing`, async ({ page }, testInfo) => {
+  const state = await openEditor(page, portrait, [
+    { id: 'weather', name: 'Forecast', widgetType: 'WEATHER', x: 4, y: 4, width: 92, height: 42, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'weather-outlook', forecastDays: 5, location: '21.3,-157.8' } },
+    { id: 'news', name: 'Headlines', widgetType: 'RSS_FEED', x: 4, y: 50, width: 92, height: 46, zIndex: 1, sortOrder: 1, defaultConfig: { variant: 'rss-headlines', sources: ['global-voices','nasa'], intervalSec: 5 } },
+  ], portrait ? { width: 2160, height: 3840 } : { width: 3840, height: 2160 });
+  const weather = page.locator('[data-zone-id="weather"]'); await expect(weather.locator('[data-forecast-day]')).toHaveCount(5); await weather.click({ position: { x: 12, y: 12 } });
+  for (const count of [2,3,4,5]) { await page.getByLabel('Forecast days', { exact: true }).selectOption(String(count)); await expect(weather.locator('[data-forecast-day]')).toHaveCount(count); }
+  await page.getByLabel('Units', { exact: true }).selectOption('metric'); await expect(weather.getByText('°C', {exact:true})).toBeVisible();
+  await page.getByLabel('Forecast days', { exact: true }).selectOption('3');
+  const news = page.locator('[data-zone-id="news"]'); await news.click({ position: { x: 12, y: 12 } });
+  await page.getByRole('switch', { name: 'Global Voices · World', exact: true }).click(); await expect(news.getByText('NASA announces a new science mission')).toBeVisible();
+  await page.getByRole('switch', { name: 'Global Voices · World', exact: true }).click(); await expect(news.getByText('World community opens new cultural center')).toBeVisible();
+  await page.getByLabel('Seconds per headline', {exact:true}).fill('5'); await page.getByLabel('Seconds per headline', {exact:true}).blur();
+  await expect(news.getByText('NASA announces a new science mission')).toBeVisible({timeout:12_000});
+  await page.getByRole('button', {name:/^Save$/}).click(); await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); await expect.poll(()=>state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5}); await reloadEditor(page);
+  await expect(page.locator('[data-zone-id] [data-forecast-day]')).toHaveCount(3);
+  expect(state.saved().zones[0].defaultConfig).toMatchObject({forecastDays:3,units:'metric'}); expect(state.saved().zones[1].defaultConfig).toMatchObject({sources:['nasa','global-voices'],intervalSec:5});
+  await page.screenshot({path:testInfo.outputPath('live-info-'+(portrait?'portrait':'landscape')+'.png')});
+});
+
+for (const privateCopy of [false, true]) for (const portrait of [false, true]) {
+  test(`directory copy ${privateCopy ? 'Brookfield custom' : 'standard'} ${portrait ? 'portrait' : 'landscape'} edits header and inline text with saved toolbar font sizes`, async ({page}, testInfo) => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../../docs/templates/corporate-directory-touch-install-manifest.json'), 'utf8'));
+    const record = manifest.records.find((record: any) => record.collection === (privateCopy ? 'custom' : 'standard') && record.defaultConfig?.directoryDocument?.designId === 'pacific-editorial' && record.defaultConfig.directoryDocument.orientation === (portrait ? 'portrait' : 'landscape'));
+    expect(record).toBeTruthy();
+    const cfg = JSON.parse(JSON.stringify(record.defaultConfig));
+    // The customer's existing Adapt-to-portrait copy retains its landscape source URL/document.
+    if (privateCopy && portrait) { cfg.url = cfg.url.replace('-portrait.html','-landscape.html'); cfg.directoryDocument.orientation = 'landscape'; }
+    const state = await openEditor(page, portrait, [{id:'directory',name:'Directory',widgetType:'EXTERNAL_HTML',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:cfg}], {width:portrait?(privateCopy?1080:2160):3840,height:portrait?(privateCopy?1920:3840):2160});
+    const frame = page.locator('[data-zone-id="directory"] iframe').contentFrame();
+    const brand = frame.locator('.brand');
+    await expect(page.getByLabel('Text area', {exact:true})).toBeVisible();
+    await brand.click();
+    await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible();
+    await expect(brand).toHaveAttribute('contenteditable','true');
+    await brand.fill('Welcome to our building'); await brand.press('Enter');
+    await expect(brand).toHaveText('Welcome to our building');
+    await expect(page.getByLabel('Top left label',{exact:true})).toHaveValue('Welcome to our building');
+    await page.getByLabel('Text area',{exact:true}).selectOption('locationLabel');
+    await expect(page.getByLabel('Top right label',{exact:true})).toHaveValue(cfg.directoryDocument.dataset.locationLabel);
+    await page.getByLabel('Top right label',{exact:true}).fill('Visitor reception');
+    await page.getByLabel('Top right label',{exact:true}).blur();
+    await expect(frame.locator('.site-type')).toHaveText('Visitor reception');
+    await brand.click(); await expect(page.getByTitle('Editing field: property.brandLabel', {exact:true})).toBeVisible(); await page.getByLabel('Font size',{exact:true}).fill('42');
+    await expect.poll(()=>brand.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    const tenant = frame.locator('.tenant-name').first();
+    const tenantKey = await tenant.getAttribute('data-field');
+    expect(tenantKey).toMatch(/^tenant\..+\.name$/);
+    await tenant.click();
+    await expect(page.getByTitle(`Editing field: ${tenantKey}`, {exact:true})).toBeVisible();
+    await expect(page.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+    await page.getByLabel('Font size',{exact:true}).fill('40');
+    await expect.poll(()=>tenant.evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.getByLabel('Font family',{exact:true}).selectOption('Arial');
+    await expect.poll(()=>tenant.evaluate(node=>getComputedStyle(node).fontFamily)).toContain('Arial');
+    await page.getByRole('button',{name:/^Save$/}).click();
+    await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({directoryDocument:{dataset:{brandLabel:'Welcome to our building',locationLabel:'Visitor reception'}},_styles:{'property.brandLabel':{fontSize:42},[tenantKey!]:{fontSize:40}}});
+    await reloadEditor(page);
+    const restored = page.locator('[data-zone-id] iframe').contentFrame();
+    await expect(restored.locator('.brand')).toHaveText('Welcome to our building');
+    await expect.poll(()=>restored.locator('.brand').evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(42);
+    await expect.poll(()=>restored.locator('.tenant-name').first().evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBe(40);
+    await page.screenshot({path:testInfo.outputPath('directory-copy-and-font.png')});
+  });
+}
+
+for (const portrait of [false, true]) test(`forecast appearance ${portrait ? 'portrait' : 'landscape'} saves layouts, transparency, colors and toolbar fonts`, async ({page}, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'forecast',name:'Forecast',widgetType:'WEATHER',x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{variant:'weather-outlook',forecastDays:5,location:'94583',units:'imperial'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="forecast"]');
+  await expect(zone.locator('[data-forecast-day]')).toHaveCount(5);
+  await zone.click({position:{x:16,y:16}});
+  for (const layout of ['cards','strip','list','clean']) {
+    await page.getByLabel('Forecast layout',{exact:true}).selectOption(layout);
+    await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-layout',layout);
+  }
+  await expect(page.getByRole('switch',{name:'Transparent background',exact:true})).toHaveAttribute('aria-checked','true');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0');
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await page.getByLabel('Forecast font',{exact:true}).selectOption("Georgia, 'Times New Roman', serif");
+  const color = async (label: string, hex: string) => {
+    await page.getByRole('button',{name:label,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Color picker',exact:true});
+    await dialog.getByLabel('Hex color code',{exact:true}).fill(hex); await dialog.getByLabel('Hex color code',{exact:true}).blur();
+    await dialog.getByRole('button',{name:'Done',exact:true}).click();
+  };
+  await color('Forecast text','#112233'); await color('High temperatures','#b83322');
+  await color('Low temperatures','#4455aa'); await color('Weather icons','#cc8822');
+  await color('Accent & dividers','#228877'); await color('Dates, labels & source','#334455');
+  await zone.locator('[data-field-jump="forecastHigh"]').first().click();
+  const bar=page.locator('[data-builder-bottom-bar]');
+  await expect(bar.getByTitle('Editing field: forecastHigh',{exact:true})).toBeVisible();
+  await expect(bar.getByLabel('Font size',{exact:true})).not.toHaveValue('16');
+  await bar.getByLabel('Font size',{exact:true}).fill('82'); await bar.getByLabel('Font size',{exact:true}).blur();
+  await bar.getByLabel('Font family',{exact:true}).selectOption('Arial');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastLayout:'clean',forecastFontFamily:"Georgia, 'Times New Roman', serif",textColor:'#112233',forecastHighColor:'#b83322',forecastLowColor:'#4455aa',forecastIconColor:'#cc8822',accentColor:'#228877',forecastDetailColor:'#334455',_styles:{forecastHigh:{fontSize:82,fontFamily:'Arial'}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('[data-weather-outlook]')).toHaveAttribute('data-transparent','true');
+  await expect.poll(()=>zone.locator('.fw-high').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(82);
+  await expect.poll(()=>zone.locator('.fw-icon').first().evaluate(n=>getComputedStyle(n).color)).toBe('rgb(204, 136, 34)');
+  await zone.click({position:{x:16,y:16}});
+  await page.getByRole('switch',{name:'Transparent background',exact:true}).click();
+  await page.getByText('Colors & fonts',{exact:true}).click();
+  await color('Forecast background','#f4efe3'); await color('Day card background','#88aa99');
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('40'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await page.getByLabel('Day card opacity · %',{exact:true}).fill('25'); await page.getByLabel('Day card opacity · %',{exact:true}).blur();
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({forecastTransparent:false,forecastBackgroundOpacity:40,forecastCardOpacity:25,bgColor:'#f4efe3',forecastCardColor:'#88aa99'});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect.poll(()=>zone.locator('.fw-surface').evaluate(n=>getComputedStyle(n).opacity)).toBe('0.4');
+  await expect.poll(()=>zone.locator('.fw-card-surface').first().evaluate(n=>getComputedStyle(n).opacity)).toBe('0.25');
+  await page.screenshot({path:testInfo.outputPath('forecast-customization.png')});
+});
+
+for (const portrait of [false, true]) test(`newsroom ${portrait ? 'portrait' : 'landscape'} saves native controls and floating-toolbar typography`, async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  const state = await openEditor(page, portrait, [{id:'newsroom', name:'Newsroom', widgetType:'RSS_FEED', x:0, y:0, width:100, height:100, zIndex:1, sortOrder:0, defaultConfig:{variant:'rss-newsroom',newsLocation:'94583',newsLayout:'front-page',coverage:['local'],intervalSec:12,title:'The Daily Brief'}}], {width:portrait?2160:3840,height:portrait?3840:2160});
+  let zone = page.locator('[data-zone-id="newsroom"]');
+  await expect(zone.locator('.nr-headline').first()).toHaveText('local fixture headline 1', {timeout:30000});
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('broadcast');
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByLabel('Heading',{exact:true}).fill('San Ramon briefing'); await page.getByLabel('Heading',{exact:true}).blur();
+  await page.getByLabel('Seconds per headline',{exact:true}).fill('9'); await page.getByLabel('Seconds per headline',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByText(/^News sources ·/).click();
+  await page.getByRole('switch',{name:'BBC',exact:true}).click(); await page.getByRole('switch',{name:'Reuters',exact:true}).click();
+  await page.getByText('Appearance',{exact:true}).click();
+  await page.getByLabel('Background opacity · %',{exact:true}).fill('35'); await page.getByLabel('Background opacity · %',{exact:true}).blur();
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await zone.locator('.nr-headline').first().click();
+  await expect(page.getByTitle('Editing field: headline',{exact:true})).toBeVisible();
+  await page.getByTitle('Font size in pixels',{exact:true}).fill('90'); await page.getByTitle('Font size in pixels',{exact:true}).blur();
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await expect(zone.locator('[data-newsroom]')).toHaveAttribute('data-layout','broadcast');
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'broadcast',newsLocation:'94583',title:'San Ramon briefing',intervalSec:9,publishers:['bbc.com','reuters.com'],backgroundOpacity:35,_styles:{headline:{fontSize:90}}});
+  await reloadEditor(page); zone=page.locator('[data-zone-id]');
+  await expect(zone.locator('.nr-title')).toHaveText('San Ramon briefing');
+  await expect.poll(()=>zone.locator('.nr-headline').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize))).toBe(90);
+  await zone.click({position:{x:12,y:12}});
+  await page.getByLabel('Look',{exact:true}).selectOption('banner');
+  await page.getByLabel('Scroll speed',{exact:true}).selectOption('fast');
+  await expect(zone.locator('.nr-scroll-line')).toHaveCount(1);
+  await expect(zone.locator('.nr-scroll-group')).toHaveCount(2);
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => getComputedStyle(n).animationIterationCount)).toBe('infinite');
+  expect(await zone.locator('.nr-scroll-line').evaluate(n => {const line=n.getBoundingClientRect(), view=n.parentElement!.getBoundingClientRect(); return line.left <= view.left + 1 && line.right > view.left;})).toBe(true);
+  await page.getByRole('button',{name:/^Save$/}).click();
+  await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({newsLayout:'banner',scrollSpeed:'fast'});
+  await reloadEditor(page);
+  await expect(page.locator('[data-zone-id] [data-newsroom]')).toHaveAttribute('data-layout','banner');
+  await page.screenshot({path:testInfo.outputPath('newsroom-native-editor.png')});
 });

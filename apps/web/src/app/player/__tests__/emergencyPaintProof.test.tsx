@@ -6,7 +6,7 @@ import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../eme
 import { apkVersionFromUserAgent, hasNativeBridge } from '../nativeBridge';
 
 jest.mock('../nativeBridge', () => ({ nativeHas: () => false, hasNativeBridge: jest.fn(() => false), apkVersionFromUserAgent: jest.fn(() => null), nativeCall: jest.fn(), nativeFire: jest.fn() }));
-jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn() }));
+jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn(), reassertDisplayEmergencyHold: jest.fn(), updateBroadcastBannerInset: jest.fn() }));
 
 const alert: EmergencyMessageView = { id: 'test-alert', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Move to the designated safe area', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-01T00:00:00Z' };
 const rect = { top: 0, left: 0, right: 1280, bottom: 720, width: 1280, height: 720, x: 0, y: 0, toJSON: () => ({}) };
@@ -250,6 +250,48 @@ it.each(['bridge', 'APK user agent'])('the monitor requires native validation fr
   expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ nativeRequired: true, painted: false }), 'pending|em:cached-alert');
   expect(post.mock.calls.some(([proof]) => proof.painted)).toBe(false);
   mounted.unmount();
+});
+
+describe('emergencyPaintIdentity — one identity per alert, not per read path (2026-10-26)', () => {
+  // The MEDICAL drill at a launch site: a location-mode tenant writes a
+  // per-screen override row, so the drill was on the glass as the first
+  // shape; the all-clear's stale-cache manifest served the second for the
+  // same alert; the signed push raises the third. ONE alert, ONE identity.
+  const viaOverrideRow = { active: true, type: 'MEDICAL', severity: 'CRITICAL', scopeNote: null, scope: 'screen', expiresAt: 1_761_497_040, isDrill: true };
+  const viaTenantRow = { active: true, type: 'MEDICAL', severity: 'CRITICAL', scopeNote: null, scope: 'tenant', expiresAt: null, isDrill: true };
+  const viaSignedPush = { ...viaTenantRow, scope: 'push', provisional: true };
+  // The hash the player shipped with: the WHOLE object, scope and expiry included.
+  const legacyIdentity = (value: unknown) => {
+    const text = JSON.stringify(value) || '';
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  };
+
+  it('forensic pin: the old hash of the tenant-row shape IS the identity the clear-time rows carried (36383558), and differed from the override-row shape', () => {
+    expect(legacyIdentity(viaTenantRow)).toBe('36383558');
+    expect(legacyIdentity(viaOverrideRow)).not.toBe(legacyIdentity(viaTenantRow));
+  });
+
+  it('the same alert read through the override row, the tenant row and the signed push is ONE identity', () => {
+    expect(emergencyPaintIdentity(viaOverrideRow)).toBe(emergencyPaintIdentity(viaTenantRow));
+    expect(emergencyPaintIdentity(viaSignedPush)).toBe(emergencyPaintIdentity(viaTenantRow));
+    expect(emergencyPaintIdentity({ ...viaOverrideRow, expiresAt: 1_761_500_000, scopeNote: '' })).toBe(emergencyPaintIdentity(viaTenantRow));
+  });
+
+  it('what changes the picture changes the identity: type, severity, drill, the words', () => {
+    const base = emergencyPaintIdentity(viaTenantRow);
+    expect(emergencyPaintIdentity({ ...viaTenantRow, isDrill: false })).not.toBe(base);
+    expect(emergencyPaintIdentity({ ...viaTenantRow, type: 'LOCKDOWN' })).not.toBe(base);
+    expect(emergencyPaintIdentity({ ...viaTenantRow, severity: 'HIGH' })).not.toBe(base);
+    expect(emergencyPaintIdentity({ ...viaTenantRow, scopeNote: 'Gym wing' })).not.toBe(base);
+    expect(emergencyPaintIdentity({ ...viaTenantRow, textBlob: 'Clear the hallways' })).not.toBe(base);
+  });
+
+  it('a pushed message keeps its own per-row identity, byte for byte as before', () => {
+    expect(emergencyPaintIdentity(alert)).toBe(legacyIdentity(alert));
+    expect(emergencyPaintIdentity({ ...alert, id: 'another-row' })).not.toBe(emergencyPaintIdentity(alert));
+  });
 });
 
 it('keeps no-paint and stale server confirmation as independent signatures', () => {

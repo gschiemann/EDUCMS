@@ -118,8 +118,8 @@ test('a held push shows why, when it was sent and how often — and Cancel ends 
   const state = await openScreens(page, [NEEDS_TAP]);
   const drawer = await openSettings(page, 'M24');
   const row = drawer.getByTestId('apk-update-status');
-  await expect(row.getByText('Needs an Install tap on the screen')).toBeVisible();
-  await expect(row.getByText(/Press Install now on the screen, then tap Install/)).toBeVisible();
+  await expect(row.getByText('Waiting for someone at the screen')).toBeVisible();
+  await expect(row.getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog \(OK on the remote, or tap it\)/)).toBeVisible();
   await expect(row.getByTestId('apk-push-facts')).toHaveText('Sent 2 hours ago · offered 2 times · v1.1.41');
   await expect(row.getByText(/Updating/)).toHaveCount(0);
   await row.scrollIntoViewIfNeeded();
@@ -134,7 +134,7 @@ test('a held push shows why, when it was sent and how often — and Cancel ends 
   // The list re-reads: no push, so the row offers a fresh one again.
   await expect(row.getByTestId('apk-push-tracked')).toHaveCount(0);
   await expect(drawer.getByTestId('apk-push')).toHaveText('Push update');
-  await expect(row.getByText('Needs an Install tap on the screen')).toHaveCount(0);
+  await expect(row.getByText('Waiting for someone at the screen')).toHaveCount(0);
 });
 
 test('stalled and expired pushes say what happened and offer Retry', async ({ page }, info) => {

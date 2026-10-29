@@ -60,6 +60,20 @@ function loadBridge(): BridgeModule {
   return jest.requireActual('../nativeBridge') as BridgeModule;
 }
 
+it('sends banner posture only over the origin-checked channel and retains the legacy one-boolean interlock', () => {
+  clearGlobals();
+  const legacy = { displayEmergencyHold: jest.fn(() => '{"ok":true}') };
+  w().EduCmsNative = legacy;
+  const b = loadBridge();
+  b.nativeFireChecked('displayEmergencyHold', true, true);
+  expect(legacy.displayEmergencyHold).toHaveBeenCalledWith(true);
+  const channel = new FakeChannel();
+  w().EduCmsNativeChannel = channel;
+  b.nativeFireChecked('displayEmergencyHold', true, true);
+  expect(channel.parsed().args).toEqual([true, true]);
+  clearGlobals();
+});
+
 const w = () => window as unknown as Record<string, unknown>;
 
 function clearGlobals() {

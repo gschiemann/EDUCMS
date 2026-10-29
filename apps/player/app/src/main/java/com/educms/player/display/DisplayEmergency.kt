@@ -142,6 +142,11 @@ object DisplayEmergency {
 
     fun heldSinceMs(ctx: Context): Long = DisplayPrefs.emergencyHoldSince(ctx.applicationContext)
 
+    /** A known banner leaves playback running. All display safety gates
+     * continue to consult isHeld, including blanking, dimming and wake. */
+    fun isPlaybackHeld(ctx: Context): Boolean = isHeld(ctx) &&
+        !com.educms.player.media.BroadcastBanner.allowsPlayback(holdingFaces(ctx))
+
     /** Which faces are holding right now. Empty when nothing is. */
     fun holdingFaces(ctx: Context): Set<Int> {
         val app = ctx.applicationContext
@@ -438,8 +443,8 @@ object DisplayEmergency {
      * must not make a RAISE disappear, and must not create a member nothing
      * can ever release.
      */
-    fun setHold(ctx: Context, faceIndex: Int, active: Boolean): Boolean =
-        setHoldFrom(ctx, faceIndex, active, fromPage = true)
+    fun setHold(ctx: Context, faceIndex: Int, active: Boolean, bannerOnly: Boolean = false): Boolean =
+        setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly)
 
     // ─── the native alert watch (2026-10-05, player 1.1.22) ──────────
     //
@@ -477,6 +482,8 @@ object DisplayEmergency {
      *        per poll while the panel is still off) are a quiet re-assert.
      */
     fun raiseFromNativeWatch(ctx: Context, faceIndex: Int, firstForThisAlert: Boolean): Boolean {
+        // The native watch identifies a takeover, never an ordinary text banner.
+        com.educms.player.media.BroadcastBanner.clear(faceIndex)
         val app = ctx.applicationContext
         if (firstForThisAlert) {
             PlayerLogger.e(
@@ -495,7 +502,7 @@ object DisplayEmergency {
         return setHoldFrom(app, faceIndex, active = true, fromPage = false)
     }
 
-    private fun setHoldFrom(ctx: Context, faceIndex: Int, active: Boolean, fromPage: Boolean): Boolean {
+    private fun setHoldFrom(ctx: Context, faceIndex: Int, active: Boolean, fromPage: Boolean, bannerOnly: Boolean = false): Boolean {
         val app = ctx.applicationContext
         synchronized(holdLock) {
             val live = liveFaces
@@ -518,6 +525,7 @@ object DisplayEmergency {
             )
             val next = nextHoldFaces(current, face, active)
             val wasHeld = current.isNotEmpty()
+            com.educms.player.media.BroadcastBanner.hold(face, active, fromPage && bannerOnly, face in current)
 
             if (active) {
                 // Arm the independent proof deadline BEFORE any OEM wake/brightness code can fail.
@@ -528,6 +536,7 @@ object DisplayEmergency {
             // leave the screen exactly as it is.
             val persisted = if (next.isNotEmpty()) narrowHold(app, next, face) else release(app, wasHeld, face)
             if (persisted) EmergencyPaintRecovery.released(app, face)
+            if (persisted) com.educms.player.media.BroadcastContentViews.refresh()
             return persisted
         }
     }
@@ -718,6 +727,7 @@ object DisplayEmergency {
      *        needs to see.
      */
     fun enforceNow(ctx: Context, quiet: Boolean = false) {
+        com.educms.player.media.BroadcastContentViews.refresh()
         val app = ctx.applicationContext
         // 2026-10-12 — FORENSICS FIRST. Is the panel asleep right now (so this
         // enforce is a WAKE)? Recorded before anything is driven, and the
@@ -749,7 +759,7 @@ object DisplayEmergency {
         runCatching { VendorBacklightProvider.emergencyOn(app, quiet) }
             .onFailure { PlayerLogger.e(TAG, "vendor backlight ON could not be queued; alert drawing continues", it) }
         // Normal video yields; this observer never acquires/releases a hold.
-        if (isHeld(ctx)) {
+        if (isPlaybackHeld(ctx)) {
             if (steps) EmergencyBrightness.step("shared-video-suppress")
             runCatching { com.educms.player.media.SharedVideoHost.suppressForEmergency() }
         }

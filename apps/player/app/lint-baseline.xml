@@ -586,8 +586,8 @@
     <issue
         id="SetTextI18n"
         message="String literal in `setText` can not be translated. Use Android resources instead."
-        errorLine1="                binding.managerGateHint.text = &quot;When you see the system Install dialog, tap Install.&quot;"
-        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="                binding.managerGateHint.text = &quot;When you see the system Install dialog, select Install (OK on the remote, or tap it).&quot;"
+        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/educms/player/MainActivity.kt"
             line="2389"
@@ -619,8 +619,8 @@
     <issue
         id="SetTextI18n"
         message="String literal in `setText` can not be translated. Use Android resources instead."
-        errorLine1="            binding.managerGateStatus.text = &quot;Tap Allow on the next screen to grant install permission&quot;"
-        errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="            binding.managerGateStatus.text = &quot;On the next screen, select Allow (OK on the remote, or tap it) to grant install permission&quot;"
+        errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/educms/player/MainActivity.kt"
             line="2680"
@@ -652,8 +652,8 @@
     <issue
         id="SetTextI18n"
         message="String literal in `setText` can not be translated. Use Android resources instead."
-        errorLine1="                binding.managerGateHint.text = &quot;Tap Retry install once permission is granted.&quot;"
-        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="                binding.managerGateHint.text = &quot;Select Retry install (OK on the remote, or tap it) once permission is granted.&quot;"
+        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/educms/player/MainActivity.kt"
             line="2693"
@@ -674,8 +674,8 @@
     <issue
         id="SetTextI18n"
         message="String literal in `setText` can not be translated. Use Android resources instead."
-        errorLine1="        binding.managerGateHint.text = &quot;When you see the system Install dialog, tap Install.&quot;"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="        binding.managerGateHint.text = &quot;When you see the system Install dialog, select Install (OK on the remote, or tap it).&quot;"
+        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/educms/player/MainActivity.kt"
             line="2701"
@@ -717,9 +717,9 @@
 
     <issue
         id="HardcodedText"
-        message="Hardcoded string &quot;When you see the system Install dialog, tap Install.&quot;, should use `@string` resource"
-        errorLine1="                    android:text=&quot;When you see the system Install dialog, tap Install.&quot;"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        message="Hardcoded string &quot;When you see the system Install dialog, select Install (OK on the remote, or tap it).&quot;, should use `@string` resource"
+        errorLine1="                    android:text=&quot;When you see the system Install dialog, select Install (OK on the remote, or tap it).&quot;"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/activity_main.xml"
             line="121"

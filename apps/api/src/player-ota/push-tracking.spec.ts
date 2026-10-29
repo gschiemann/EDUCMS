@@ -293,10 +293,30 @@ describe('helpers', () => {
 
   it('holdSentence states what the evidence proves (rule 10)', () => {
     expect(holdSentence('NEEDS_TAP', 'device-reported-needs-tap', { targetVersion: '1.1.29', callerVersion: null, offeredAt: null }))
-      .toBe('Android on this screen is waiting for someone to tap Install for v1.1.29.');
+      .toBe(
+        'Android on this screen is waiting for someone to confirm the install of v1.1.29. ' +
+        'At the screen: press Back, choose Install v1.1.29, then select Install (OK on the remote, or tap it).',
+      );
     const inferred = holdSentence('NEEDS_TAP', 'did-not-land-unknown-class', { targetVersion: '1.1.29', callerVersion: '1.1.23', offeredAt: null });
     expect(inferred).toContain('did not install');
     expect(inferred).toContain('Most often');
+    const knownClass = holdSentence('NEEDS_TAP', 'did-not-land-needs-tap-class', { targetVersion: '1.1.29', callerVersion: '1.1.23', offeredAt: null });
+    expect(knownClass).toContain('Android on this screen needs someone to confirm the install.');
+    // 2026-10-26 (owner: "why do we say update needs a tap when most aren't touch
+    // screens"): every NEEDS_TAP sentence names the action and the place, remote
+    // first — the Back menu's "Install <version>", then Android's own Install.
+    for (const s of [inferred, knownClass]) {
+      expect(s).toContain('At the screen: press Back, choose Install v1.1.29, then select Install (OK on the remote, or tap it).');
+      expect(s).not.toMatch(/tap Install/i);
+    }
+    // No named build → no "Install the update": the menu entry is just "Install".
+    const unnamed = holdSentence('NEEDS_TAP', 'device-reported-needs-tap', { targetVersion: null, callerVersion: null, offeredAt: null });
+    expect(unnamed).toContain('At the screen: press Back, choose Install, then select Install (OK on the remote, or tap it).');
+    expect(unnamed).not.toContain('Install the update');
+    // The Player's own "nobody answered" record does not say anybody tapped, either.
+    const tapExpired = holdSentence('EXPIRED', 'device-reported-tap-expired', { targetVersion: '1.1.29', callerVersion: null, offeredAt: null });
+    expect(tapExpired).toContain('Nobody selected Install for v1.1.29 within 30 minutes');
+    expect(tapExpired).not.toMatch(/tapped/i);
     // An offer limit can be reached without a single download error, so the
     // sentence counts offers — it never claims "could not be downloaded".
     const limit = holdSentence('STALLED', 'offer-limit-reached', { targetVersion: '1.1.29', callerVersion: '1.1.23', offeredAt: null, offerCount: 4 });

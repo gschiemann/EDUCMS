@@ -40,14 +40,19 @@ describe('§7 E1 — the hold ordering is untouched', () => {
     expect(before(sse, 'signalDisplayEmergencyHold(true, true)', 'preemptReconcile()')).toBe(true);
   });
   it('SOS / TEXT_BROADCAST / MEDIA_ALERT: hold, then the pushed-message state (both transports)', () => {
-    const sse = block('const onEmergencyMessage = (type:', 600);
-    expect(before(sse, 'signalDisplayEmergencyHold(true, true)', 'setPushedEmergencyMessage(')).toBe(true);
-    const ws = block("if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {", 600);
-    expect(before(ws, 'signalDisplayEmergencyHold(true, true)', 'setPushedEmergencyMessage(')).toBe(true);
+    const sse = block('const onEmergencyMessage = (type:', 1100);
+    const ws = block("if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {", 1100);
+    for (const transport of [sse, ws]) {
+      expect(before(transport, 'signalDisplayEmergencyHold(true, true,', 'setPushedEmergencyMessage(')).toBe(true);
+      // Only an ordinary banner can preserve playback; a tenant override
+      // or pending signed takeover still raises the full playback hold.
+      expect(transport).toContain('isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current');
+    }
   });
   it('applyManifest decides the alert before native-first marks the page decided', () => {
     const apply = block('const applyManifest = (manifest: any, fromCache = false) => {', 9000);
-    expect(before(apply, 'signalDisplayEmergencyHold(holdNow, holdNow)', 'nativeFirstDecidedRef.current = true')).toBe(true);
+    expect(before(apply, 'signalDisplayEmergencyHold(holdNow, holdNow,', 'nativeFirstDecidedRef.current = true')).toBe(true);
+    expect(apply).toContain('signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!em))');
     expect(before(apply, 'setActiveEmergency(em)', 'nativeFirstDecidedRef.current = true')).toBe(true);
   });
 });
@@ -57,7 +62,7 @@ describe('§7 E2 / §3.1 — the decision before the mount', () => {
     const fn = block('const nativeFirstDecisionFor = (item: any, solo: boolean)', 3000);
     expect(fn).toMatch(/emergencyContent: playlist\?\.isEmergency === true/);
     expect(fn).toMatch(/holdRaised: nativeFirstHoldRaised/);
-    expect(PAGE).toMatch(/const nativeFirstHoldRaised = emergencyRenderHold \|\| !!activeEmergency \|\| !!pushedEmergencyMessage \|\| polledEmergencyHeld \|\| !!pendingOverrideConfirmRef\.current;/);
+    expect(PAGE).toMatch(/const nativeFirstHoldRaised = emergencyPlaybackHold \|\| !!activeEmergency \|\| \(!!pushedEmergencyMessage && !isBannerEmergencyMessage\(pushedEmergencyMessage\)\) \|\| polledEmergencyTakeover \|\| !!pendingOverrideConfirmRef\.current;/);
   });
   it('the slide decides BEFORE the web-first takeover is built, and native / wait mount the slot', () => {
     expect(before(PAGE, 'const nativeFirstSlide = nativeFirstDecisionFor(item', 'const nativeChoice = pickNativeVideo({')).toBe(true);
@@ -81,9 +86,9 @@ describe('§4.3 — re-attach and the page side of the transitions', () => {
   it('decidePlaylistCommit counts a presenting native session as regular content on glass (not under a hold)', () => {
     expect(PAGE).toMatch(/\(!holdNow && !!nativeFirstFaceRef\.current\?\.presenting\(\)\)/);
   });
-  it('nothing native is sent under the hold or before the first manifest apply; web is painted before the release', () => {
+  it('nothing native is sent under a playback hold or before the first manifest apply; web is painted before the release', () => {
     const fx = block('// The PAGE side of §4.3 / §3.2', 3200);
-    expect(fx).toMatch(/nativeFirstHoldRaised \|\| displayEmergencyHoldRaised\(\) \|\| !nativeFirstDecidedRef\.current\) return;/);
+    expect(fx).toMatch(/nativeFirstHoldRaised \|\| displayEmergencyPlaybackHeld\(\) \|\| !nativeFirstDecidedRef\.current\) return;/);
     expect(before(fx, 'requestAnimationFrame(', "face.release(action.at)")).toBe(true);
   });
   it('readiness of the native file reads the store in store mode at every readiness site', () => {

@@ -144,7 +144,7 @@ describe('page wiring (source guard)', () => {
   it('the overlay runs inside a try, before the emergency decision', () => {
     const overlay = apply.indexOf('applyUsbOverlay(serverManifest');
     expect(overlay).toBeGreaterThan(0);
-    expect(overlay).toBeLessThan(apply.indexOf('signalDisplayEmergencyHold(holdNow, holdNow)'));
+    expect(overlay).toBeLessThan(apply.indexOf('signalDisplayEmergencyHold(holdNow, holdNow,'));
     expect(apply.slice(0, overlay)).toMatch(/try \{\s*const usb = $/);
   });
 

@@ -290,6 +290,9 @@ describe('bulk confirm + results sheet', () => {
     await within(sheet).findByText('4 screens will get it');
     expect(within(sheet).getByText('2 skipped — already on the latest Player')).toBeInTheDocument();
     expect(within(sheet).getByText(/1 screen cannot install silently and will show an Install prompt/)).toBeInTheDocument();
+    // …and says who has to do what, where — remote first (most panels have no touch screen).
+    expect(within(sheet).getByText(/someone at the screen has to select Install \(OK on the remote, or tap it\)\./)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/tap Install/i)).not.toBeInTheDocument();
     expect(within(sheet).getByText(/newest Player \(1\.1\.21\)/)).toBeInTheDocument();
     expect(within(sheet).getByTestId('screens-bulk-confirm')).toHaveTextContent('Send update to 4 screens');
   });

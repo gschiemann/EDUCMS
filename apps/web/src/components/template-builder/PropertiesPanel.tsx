@@ -1,4 +1,7 @@
 "use client";
+import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
+import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
+import { NEWSROOM_LAYOUTS, NEWSROOM_SCOPES, NEWSROOM_PUBLISHERS, NEWSROOM_PALETTES, newsroomScopes } from '../widgets/newsroom-model';
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
@@ -2714,6 +2717,7 @@ function CtsLiveCard({
 // the converted list/schedule editors fire through to a config write.
 export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const tMusic = useTranslations('musicPlayer');
+  const activeForecastTextArea = useBuilderStore(s => s.activeFieldName);
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
     updateZone(zone.id, { defaultConfig: { ...cfg, ...patch } }, true);
@@ -2926,7 +2930,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       const brand: Record<string, string> =
         (cfg.brand && typeof cfg.brand === 'object') ? cfg.brand : {};
       const setBrand = (patch: Record<string, string>) =>
-        setField({ brand: { ...brand, ...patch } });
+        setField({ brand: { ...brand, ...patch }, ...(cfg.directoryDocument?.format === 'arc-riot.directory' ? { contentChanged: true } : {}) });
       const SH = (key: string, label: string) => (
         <div
           key={`sh-${key}`}
@@ -3123,19 +3127,34 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // preview AND every player at runtime.
       // url boards fetch their HTML; AI Designer boards carry it inline in
       // cfg.html (srcdoc). Either way the editor walks the data-field hooks.
+      if (cfg.directoryDocument?.format === 'arc-riot.directory') {
+        const document = cfg.directoryDocument;
+        const image = (key: string, value: string) => {
+          const images = { ...(cfg.imageOverrides || {}) }; delete images[key === 'image' ? 'property.hero' : 'property.logo'];
+          setField({ directoryDocument: { ...document, theme: { ...document.theme, [key]: value } }, imageOverrides: images, contentChanged: true });
+        };
+        const currentImage = (key: string) => { const value = cfg.imageOverrides?.[key === 'image' ? 'property.hero' : 'property.logo']; return (Array.isArray(value) ? value[0] : value) || document.theme?.[key] || ''; };
+        fields.push(<div key="directory-photo" data-edit-img="property.hero" data-field-section="property.hero" className="rounded-lg border border-slate-200 bg-white p-3">
+          <AssetPickerField label="Building photo" kind="image" emptyLabel="Template photo" clearLabel="Restore template photo" value={currentImage('image')} onChange={v => image('image', v)} />
+        </div>);
+        fields.push(<DirectoryBoardEditor key="directory-editor" zoneId={zone.id} cfg={cfg} setField={setField} controls={{ Text: TextField, Number: NumField, Select: SelectField, List: ListItemsEditor }} />);
+        fields.push(<details key="directory-appearance" className="rounded-lg border border-slate-200 bg-white p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">Appearance</summary>
+          <div className="mt-3 space-y-3">
+            <AssetPickerField label="Logo" kind="image" value={currentImage('logo')} onChange={v => image('logo', v)} />
+            <ColorPickerField label="Background" value={brand.background || document.theme?.bg || ''} onChange={v => setBrand({ background: v })} />
+            <ColorPickerField label="Text" value={brand.text || document.theme?.ink || ''} onChange={v => setBrand({ text: v })} />
+            <ColorPickerField label="Accent" value={brand.accent || document.theme?.accent || ''} onChange={v => setBrand({ accent: v })} />
+          </div>
+        </details>);
+        break;
+      }
+
       if (cfg.touchDocument?.format === 'arc-riot.touch-property') {
         fields.push(<TouchPropertyEditor key="touch-property-editor" cfg={cfg} setField={setField} />);
-      } else if (cfg.directoryDocument?.format === 'arc-riot.directory') {
-        fields.push(<DirectoryBoardEditor key="directory-editor" cfg={cfg} setField={setField} />);
       } else if (cfg.url || cfg.html) {
         fields.push(SH('ext-text', 'Edit text'));
-        fields.push(
-          <ExternalHtmlTextEditor
-            key="ext-text-editor"
-            cfg={cfg}
-            setField={setField}
-          />,
-        );
+        fields.push(<ExternalHtmlTextEditor key="ext-text-editor" cfg={cfg} setField={setField} />);
       }
 
       fields.push(SH('brand-colors', 'Brand colors'));
@@ -3494,6 +3513,38 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         />,
       );
       fields.push(<SelectField key="units" label="Units" value={weatherUnits} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ units: v })} />);
+      fields.push(<SelectField key="forecastDays" label="Forecast days" value={String(cfg.forecastDays || (cfg.variant === 'weather-outlook' ? 5 : 1))} options={[["1","Current weather"],["2","2 days"],["3","3 days"],["4","4 days"],["5","5 days"]]} onChange={v => setField({ forecastDays: Number(v), variant: Number(v) > 1 ? 'weather-outlook' : undefined, theme: undefined })} />);
+      if (Number(cfg.forecastDays) >= 2 || cfg.variant === 'weather-outlook') {
+        const setForecast = (patch: Record<string, unknown>) => {
+          const current = useBuilderStore.getState().zones.find(z => z.id === zone.id)?.defaultConfig || cfg;
+          updateZone(zone.id, { defaultConfig: { ...current, ...patch } }, true);
+        };
+        const transparent = forecastIsTransparent(cfg);
+        fields.push(<SelectField key="forecastLayout" label="Forecast layout" value={cfg.forecastLayout || 'auto'} options={FORECAST_LAYOUTS} onChange={v => setForecast({ forecastLayout: v })} />);
+        fields.push(<ToggleField key="forecastTransparent" label="Transparent background" value={transparent} onChange={v => setForecast({ forecastTransparent: v })} />);
+        fields.push(<details key="forecastAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Colors &amp; fonts</summary><div className="mt-3 space-y-3">
+          <SelectField label="Forecast font" value={cfg.forecastFontFamily || ''} options={V2_FONT_OPTIONS} onChange={v => setForecast({ forecastFontFamily: v })} />
+          <NumField id="forecast-text-scale" label="Overall text size · %" value={Math.round((cfg.forecastTextScale || 1) * 100)} min={60} max={180} onChange={v => setForecast({ forecastTextScale: v / 100 })} />
+          <ColorField label="Forecast text" value={cfg.textColor || cfg.style?.textColor || '#f1f7f9'} onChange={v => setForecast({ textColor: v })} />
+          <ColorField label="High temperatures" value={cfg.forecastHighColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastHighColor: v })} />
+          <ColorField label="Low temperatures" value={cfg.forecastLowColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastLowColor: v })} />
+          <ColorField label="Weather icons" value={cfg.forecastIconColor || '#b3dcf0'} onChange={v => setForecast({ forecastIconColor: v })} />
+          <ColorField label="Accent & dividers" value={cfg.accentColor || '#8ec9e4'} allowTransparent onChange={v => setForecast({ accentColor: v })} />
+          <ColorField label="Dates, labels & source" value={cfg.forecastDetailColor || cfg.textColor || '#f1f7f9'} onChange={v => setForecast({ forecastDetailColor: v })} />
+          {!transparent && <><ColorField label="Forecast background" value={cfg.bgColor || cfg.style?.bgColor || '#102b3c'} allowTransparent onChange={v => setForecast({ bgColor: v })} />
+          <NumField id="forecast-background-opacity" label="Background opacity · %" value={cfg.forecastBackgroundOpacity ?? 100} min={0} max={100} onChange={v => setForecast({ forecastBackgroundOpacity: v })} />
+          <ColorField label="Day card background" value={cfg.forecastCardColor || '#ffffff'} allowTransparent onChange={v => setForecast({ forecastCardColor: v })} />
+          <NumField id="forecast-card-opacity" label="Day card opacity · %" value={cfg.forecastCardOpacity ?? 5} min={0} max={100} onChange={v => setForecast({ forecastCardOpacity: v })} /></>}
+          <SelectField label="Text area to style" value={FORECAST_TEXT_AREAS.some(([id]) => id === activeForecastTextArea) ? activeForecastTextArea! : 'forecastHigh'} options={FORECAST_TEXT_AREAS} onChange={v => useBuilderStore.getState().setActiveFieldName(v)} />
+          <p className="text-xs text-slate-500">Click weather text or choose an area above, then use the existing floating toolbar for font, size, color, weight and spacing. Live forecast values stay automatic.</p>
+        </div></details>);
+        fields.push(<details key="forecastLabels" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Heading &amp; location label</summary><div className="mt-3 space-y-3">
+          <StyleableField fieldName="forecastHeading" styles={cfg._styles} label="Forecast heading" value={cfg.forecastHeading ?? `${cfg.forecastDays || 5}-day outlook`} onChange={v => setForecast({ forecastHeading: v })} />
+          <StyleableField fieldName="forecastLocationLabel" styles={cfg._styles} label="Location label (optional)" value={cfg.forecastLocationLabel || ''} placeholder="Use live location name" onChange={v => setForecast({ forecastLocationLabel: v })} />
+        </div></details>);
+        fields.push(<p key="forecast-note" className="text-[10px] text-slate-500">U.S. forecast · National Weather Service. Layout adapts to the widget size.</p>);
+        break;
+      }
       fields.push(
         <WeatherOverrideAdvanced
           key="overrides"
@@ -4646,10 +4697,46 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'PLAYLIST':
       fields.push(<PlaylistPickerField key="playlistId" label="Playlist" value={cfg.playlistId || ''} onChange={(v) => setField({ playlistId: v })} />);
       break;
-    case 'RSS_FEED':
-      fields.push(<TextField key="url" label="RSS feed URL" value={cfg.url || ''} placeholder="https://example.com/rss.xml" onChange={(v) => setField({ url: v })} />);
-      fields.push(<TextField key="maxItems" label="Max items" value={String(cfg.maxItems || 5)} placeholder="5" onChange={(v) => setField({ maxItems: parseInt(v) || 5 })} />);
+    case 'RSS_FEED': {
+      if (cfg.variant === 'rss-newsroom') {
+        // Rapid native field edits must merge with the latest store snapshot,
+        // rather than reverting the look from a previous render's cfg closure.
+        const setNewsField = (patch: Record<string, unknown>) => {
+          const current = useBuilderStore.getState().zones.find(z => z.id === zone.id)?.defaultConfig || cfg;
+          updateZone(zone.id, { defaultConfig: { ...current, ...patch } }, true);
+        };
+        const coverage = newsroomScopes(cfg.coverage);
+        const selected: string[] = Array.isArray(cfg.publishers) ? cfg.publishers : [];
+        const palette = NEWSROOM_PALETTES[cfg.newsLayout as keyof typeof NEWSROOM_PALETTES] || NEWSROOM_PALETTES['front-page'];
+        fields.push(<TextField key="title" label="Heading" value={cfg.title ?? 'The Daily Brief'} onFocus={() => useBuilderStore.getState().setActiveFieldName('title')} onChange={v => setNewsField({ title: v })} />);
+        fields.push(<SelectField key="newsLayout" label="Look" value={cfg.newsLayout || 'front-page'} options={NEWSROOM_LAYOUTS.map(v => [v[0], v[1]])} onChange={v => setNewsField({ newsLayout: v })} />);
+        fields.push(<TextField key="newsLocation" label="Local news · ZIP or city" value={cfg.newsLocation ?? '94583'} placeholder="94583 or San Ramon, CA" onChange={v => setNewsField({ newsLocation: v })} />);
+        fields.push(<div key="coverage" className="space-y-2">{NEWSROOM_SCOPES.map(([id, label]) => <ToggleField key={id} label={label} value={coverage.includes(id)} onChange={on => setNewsField({ coverage: on ? [...coverage, id] : coverage.filter(s => s !== id) })} />)}</div>);
+        if (cfg.newsLayout === 'banner') fields.push(<SelectField key="scrollSpeed" label="Scroll speed" value={cfg.scrollSpeed || 'normal'} options={[["slow","Slow"],["normal","Normal"],["fast","Fast"]]} onChange={v => setNewsField({ scrollSpeed: v })} />);
+        else fields.push(<NumField key="intervalSec" id="newsroom-interval" label="Seconds per headline" value={cfg.intervalSec || 12} min={5} max={120} onChange={v => setNewsField({ intervalSec: v })} />);
+        fields.push(<details key="publishers" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">News sources · {selected.length ? `${selected.length} selected` : 'Automatic variety'}</summary><p className="text-xs text-slate-500 my-3">Choose outlets, or leave all unchecked for automatic variety. Availability depends on current coverage. Publisher selection does not grant rights to their photographs.</p>{NEWSROOM_PUBLISHERS.map(([id, label]) => <ToggleField key={id} label={label} value={selected.includes(id)} onChange={on => setNewsField({ publishers: on ? [...selected, id] : selected.filter(s => s !== id) })} />)}</details>);
+        fields.push(<details key="newsAppearance" className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">Appearance</summary><div className="mt-3 space-y-3">
+          <ColorField label="Background" value={cfg.bgColor || palette.background} allowTransparent onChange={v => setNewsField({ bgColor: v })} />
+          <NumField id="news-opacity" label="Background opacity · %" value={cfg.backgroundOpacity ?? 100} min={0} max={100} onChange={v => setNewsField({ backgroundOpacity: v })} />
+          <ColorField label="Text" value={cfg.textColor || palette.text} onChange={v => setNewsField({ textColor: v })} />
+          <ColorField label="Accent" value={cfg.accentColor || palette.accent} onChange={v => setNewsField({ accentColor: v })} />
+          <NumField id="news-text-scale" label="Text size · %" value={Math.round((cfg.textScale || 1) * 100)} min={60} max={160} onChange={v => setNewsField({ textScale: v / 100 })} />
+          <TextField label="Edition line" value={cfg.strapline ?? 'Your world. In focus.'} onChange={v => setNewsField({ strapline: v })} />
+          <p className="text-xs text-slate-500">Use the existing text toolbar for heading and headline typography. Resize the zone normally; layouts adapt automatically. Headline wording comes from the publisher.</p>
+        </div></details>);
+        break;
+      }
+      const rotating = cfg.variant === 'rss-headlines' || Array.isArray(cfg.sources);
+      if (rotating) {
+        const selected = newsSourceIds(cfg.sources);
+        for (const source of NEWS_SOURCES) fields.push(<ToggleField key={source.id} label={source.name} value={selected.includes(source.id)} onChange={enabled => setField({ sources: enabled ? [...selected, source.id] : selected.filter(id => id !== source.id) })} />);
+        fields.push(<TextField key="title" label="Heading" value={cfg.title ?? 'Headlines'} onChange={v => setField({ title: v })} />);
+        fields.push(<NumField key="intervalSec" id="headline-interval" label="Seconds per headline" value={cfg.intervalSec || 12} min={5} max={120} onChange={v => setField({ intervalSec: v })} />);
+      }
+      fields.push(<TextField key="feedUrl" label={rotating ? 'Additional RSS feed (optional)' : 'RSS feed URL'} value={cfg.feedUrl || cfg.url || ''} placeholder="https://example.com/rss.xml" onChange={v => setField({ feedUrl: v, url: undefined })} />);
+      if (!rotating) fields.push(<NumField key="maxItems" id="feed-max-items" label="Max items" value={cfg.maxItems || 5} min={1} max={20} onChange={v => setField({ maxItems: v })} />);
       break;
+    }
     // SOCIAL_FEED (rebuilt 2026-09-12). The old editor offered a "Profile /
     // feed URL" text box — which was never wired to anything, because a
     // public profile URL cannot authorise reading posts. Instagram and
@@ -11040,7 +11127,7 @@ function VideoThumb({ posterUrl, url, className }: { posterUrl?: string | null; 
 }
 
 // Single-asset picker — opens an inline modal of uploaded assets
-function AssetPickerField({ label, value, onChange, kind }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video' }) {
+function AssetPickerField({ label, value, onChange, kind, emptyLabel = 'None', clearLabel }: { label: string; value: string; onChange: (v: string) => void; kind: 'image' | 'video'; emptyLabel?: string; clearLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -11071,7 +11158,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
           </div>
         ) : (
           <div className="w-14 h-14 rounded border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-600 shrink-0">
-            None
+            {emptyLabel}
           </div>
         )}
         <div className="flex-1 flex flex-col gap-1.5">
@@ -11100,7 +11187,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
                 onClick={() => onChange('')}
                 className="px-2 py-1 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded border border-rose-100"
               >
-                Remove {kind === 'image' ? 'photo' : 'video'}
+                {clearLabel || `Remove ${kind === 'image' ? 'photo' : 'video'}`}
               </button>
             )}
           </div>
@@ -13130,6 +13217,7 @@ export interface ListItemFieldSpec {
   type?: ListItemFieldType; // default 'text'
   placeholder?: string;
   options?: [string, string][]; // for 'select'
+  maxLength?: number;
 }
 
 export function ListItemsEditor({
@@ -13141,6 +13229,8 @@ export function ListItemsEditor({
   newItem,
   makeNewItem,
   itemNoun = 'item',
+  compact = false,
+  onItemFocus,
 }: {
   label: string;
   help?: string;
@@ -13156,7 +13246,11 @@ export function ListItemsEditor({
    */
   makeNewItem?: () => Record<string, unknown>;
   itemNoun?: string;
+  compact?: boolean;
+  onItemFocus?: (id: string) => void;
 }) {
+  const beginEdit = useBuilderStore(s => s.beginTransaction);
+  const endEdit = useBuilderStore(s => s.endTransaction);
   // Normalize: accept a parsed array OR a JSON string OR null/undefined.
   let items: Record<string, unknown>[] = [];
   if (Array.isArray(value)) {
@@ -13194,6 +13288,19 @@ export function ListItemsEditor({
     [next[idx], next[j]] = [next[j], next[idx]];
     onChange(next);
   };
+
+  if (compact) return (
+    <div className="space-y-2">
+      <label className="block text-[10px] font-semibold text-slate-500">{label}</label>
+      <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1">
+        {items.map((item, idx) => <div key={typeof item.id === 'string' ? item.id : idx} data-list-id={String(item.id || '')} className="flex items-center gap-1.5">
+          {fields.map(f => <input key={f.key} data-list-field={f.key} onFocus={() => { beginEdit(); onItemFocus?.(String(item.id || '')); }} onBlur={endEdit} aria-label={`${itemNoun} ${idx + 1} ${f.label}`} value={String(item[f.key] ?? '')} maxLength={f.maxLength} placeholder={f.label} onChange={e => update(idx, { [f.key]: e.target.value })} className={`min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 ${f.key === 'suite' ? 'w-24' : 'flex-1'}`} />)}
+          <button type="button" onClick={() => remove(idx)} aria-label={`Remove ${itemNoun} ${idx + 1}`} className="h-8 w-7 shrink-0 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600">×</button>
+        </div>)}
+      </div>
+      <button type="button" onClick={add} className="w-full rounded-lg border border-dashed border-indigo-200 bg-indigo-50 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100">+ Add {itemNoun}</button>
+    </div>
+  );
 
   const primaryKey = fields[0]?.key;
 

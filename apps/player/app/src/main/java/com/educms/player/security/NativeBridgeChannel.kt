@@ -703,7 +703,7 @@ object NativeBridgeChannel {
             // ⚠️ LIFE SAFETY. ONE argument, on purpose (2026-09-19): the face a
             // hold belongs to is decided by the native host that built this
             // bridge, never by the page. See DisplayEmergency.creditedFace.
-            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
+            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0), args.opt(1) == true)
             "checkForUpdates" -> bridge.checkForUpdates(bridge.channelNonce())
             "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated(bridge.channelNonce())
             "getRecentLogs" -> bridge.getRecentLogs(bridge.channelNonce())

@@ -16,11 +16,14 @@
  * banner-style overlay unless severity is CRITICAL.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 import { isBannerEmergencyMessage } from '@/app/player/emergencySurface';
+import { updateBroadcastBannerInset } from '@/app/player/emergencyHold';
+import type { BroadcastLayout } from '@/app/player/broadcastLayout';
 
 /** The API accepts only https:// emergency media (media-url-guard.ts); refuse
  *  anything else here too, so a pushed message can never inject a script URL. */
@@ -218,6 +221,7 @@ interface Props {
    * WARN broadcast overlays the content instead of taking it down.
    */
   onPolledActiveChange?: (active: boolean, takeover: boolean) => void;
+  onBannerLayoutChange?: (layout: BroadcastLayout | null) => void;
   /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
@@ -266,7 +270,7 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onBannerLayoutChange }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
   // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
@@ -282,6 +286,27 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   // after this overlay first mounts).
   const canvas = useLedCanvas(message?.id ?? polled?.id ?? null);
   const faceStage = useEmergencyFaceStage();
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const displayed = message || polled;
+  const bannerVisible = isBannerEmergencyMessage(displayed);
+  useLayoutEffect(() => {
+    if (!bannerVisible) { onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); return; }
+    const banner = bannerRef.current;
+    if (!banner) return;
+    const measure = () => {
+      const height = faceStage?.height ?? canvas.h ?? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--led-h')) || document.body.clientHeight);
+      const layout = { width: banner.offsetWidth, height, bannerHeight: banner.offsetHeight };
+      onBannerLayoutChange?.(layout);
+      updateBroadcastBannerInset(height > 0 ? layout.bannerHeight / height : 0, document.body.style.transform.includes('rotate(90deg)') ? 90 : 0);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(banner);
+    const bodyObserver = new MutationObserver(measure);
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); bodyObserver.disconnect(); window.removeEventListener('resize', measure); onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); };
+  }, [bannerVisible, displayed?.textBlob, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
 
   useEffect(() => {
     if (message || !apiUrl) return;
@@ -401,8 +426,9 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     //     URL wraps instead of running off a narrow ribbon edge.
     // Taurus-safe (no `inset`, no flex `gap` — the ml-4 stands in for a row
     // gap; vh on a top-anchored fixed bar is fine).
-    return (
+    return createPortal(
       <div
+        ref={bannerRef}
         role="alert"
         aria-live="assertive"
         data-edu-emergency-root="banner"
@@ -431,7 +457,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
             the text column actually shrink below its content width so wrapping
             kicks in on a narrow ribbon instead of overflowing the flex row. */}
         <div className="flex-1 min-w-0 text-xl font-bold leading-snug ml-4 whitespace-pre-wrap break-words">{active.textBlob}</div>
-      </div>
+      </div>, document.body
     );
   }
 

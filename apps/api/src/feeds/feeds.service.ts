@@ -14,6 +14,7 @@
  * see feeds-cache.ts doc for the full math.
  */
 
+import { FeedsRateLimiter } from './feeds-rate-limiter';
 import { Injectable, Logger } from '@nestjs/common';
 import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
 import { RedisService } from '../realtime/redis.service';
@@ -31,7 +32,8 @@ const TIMEOUT_MS = 8000;
 export class FeedsService {
   private readonly logger = new Logger(FeedsService.name);
 
-  constructor(private readonly redis: RedisService) {}
+  private readonly rssRequests = new Map<string, Promise<RssFeedResult>>();
+  constructor(private readonly redis: RedisService, private readonly limiter: FeedsRateLimiter = new FeedsRateLimiter()) {}
 
   /** Normalizes a URL for use as a cache/rate-limit key — strips fragment,
    *  keeps query (some feeds are parametrized), lowercases the host. */
@@ -54,6 +56,13 @@ export class FeedsService {
       }
     }
 
+    const existing = this.rssRequests.get(url); if (existing) return existing;
+    const request = this.fetchRss(url).finally(() => this.rssRequests.delete(url));
+    this.rssRequests.set(url, request); return request;
+  }
+
+  private async fetchRss(url: string): Promise<RssFeedResult> {
+    this.limiter.check(new URL(url).hostname);
     const upstream = await safeFetch(url, {
       timeoutMs: TIMEOUT_MS,
       maxBytes: MAX_BYTES,
@@ -85,6 +94,7 @@ export class FeedsService {
       }
     }
 
+    this.limiter.check(new URL(url).hostname);
     const upstream = await safeFetch(url, {
       timeoutMs: TIMEOUT_MS,
       maxBytes: MAX_BYTES,

@@ -1,28 +1,24 @@
 "use client";
 
-/**
- * Sprint 5: Admin broadcast UI.
- *
- * Send a text overlay (optionally with media URLs) to all screens in a
- * scope. Hold-to-confirm (3s) to guard against accidental sends. Lists
- * currently active emergency messages with per-row Clear buttons.
- */
-
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
-import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
-// LIFE-SAFETY (2026-06-16): bound every broadcast-console fetch so a stalled
-// connection can't hang the operator mid-incident (status poll, send, clear).
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
-import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
+import {
+  AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon,
+  Volume2, Video, MonitorPlay, Clock3, Check, CheckCircle2, RefreshCw, Radio,
+} from 'lucide-react';
 import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
 import * as Sentry from '@sentry/nextjs';
 import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
+import { AssetPicker, type AssetKind } from '@/components/assets/AssetPicker';
+import { transformedImageUrl } from '@/lib/asset-image';
+import type { BroadcastInput, MediaAlertInput } from '@cms/api-types';
 
 type Severity = 'INFO' | 'WARN' | 'CRITICAL';
+type Phase = 'idle' | 'holding' | 'sending' | 'sent' | 'error';
 
 interface ActiveMsg {
   id: string;
@@ -33,417 +29,353 @@ interface ActiveMsg {
   audioUrl: string | null;
   expiresAt: number | null;
   createdAt: string;
-  triggeredByUserId: string | null;
 }
 
 const HOLD_MS = 3000;
-
-// i18n (X7, 2026-08-25): the API's enum codes map to catalog keys through
-// these tables. A code we don't recognize falls back to the raw wire value,
-// so an unknown/new server enum can never throw a missing-message error on
-// a life-safety surface.
+// The player displays four visual attachments per alert.
+const MAX_ATTACHMENTS = 4;
 const MSG_TYPE_KEY: Record<string, string> = {
-  SOS: 'msgTypeSos',
-  TEXT_BROADCAST: 'msgTypeText',
-  MEDIA_ALERT: 'msgTypeMedia',
+  SOS: 'msgTypeSos', TEXT_BROADCAST: 'msgTypeText', MEDIA_ALERT: 'msgTypeMedia',
 };
 const SEVERITY_KEY: Record<string, string> = {
-  INFO: 'sevInfo',
-  WARN: 'sevWarn',
-  CRITICAL: 'sevCritical',
+  INFO: 'sevInfo', WARN: 'sevWarn', CRITICAL: 'sevCritical',
 };
+const SEVERITIES = ['INFO', 'WARN', 'CRITICAL'] as const;
+const SEVERITY_STYLE = {
+  INFO: { selected: 'border-indigo-500 bg-indigo-50 text-indigo-700', badge: 'bg-indigo-50 text-indigo-700 ring-indigo-200', preview: 'bg-yellow-400 text-slate-950', icon: Megaphone },
+  WARN: { selected: 'border-amber-500 bg-amber-50 text-amber-800', badge: 'bg-amber-50 text-amber-800 ring-amber-200', preview: 'bg-orange-500 text-white', icon: AlertTriangle },
+  CRITICAL: { selected: 'border-red-500 bg-red-50 text-red-700', badge: 'bg-red-50 text-red-700 ring-red-200', preview: 'bg-red-700 text-white', icon: ShieldAlert },
+};
+const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60';
+const secondaryButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-50';
+
+function mediaName(url: string): string {
+  try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || url); }
+  catch { return url; }
+}
+
+function MediaPreview({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <div className="flex h-full items-center justify-center gap-2 p-3 text-xs"><ImageIcon className="h-5 w-5 shrink-0" />{alt}</div>;
+  if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+    return <video src={url} controls muted playsInline preload="metadata" aria-label={alt} onError={() => setFailed(true)} className="h-full w-full object-contain" />;
+  }
+  // This is a dashboard thumbnail; screens keep the original stored URL.
+  // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- onError handles image decoding.
+  return <img src={transformedImageUrl(url, { width: 800, quality: 80 })} alt={alt} onError={() => setFailed(true)} className="h-full w-full object-contain" />;
+}
 
 export default function BroadcastPage() {
   const params = useParams<{ schoolId: string }>();
-  const schoolId = params.schoolId;
-  const t = useTranslations();
+  const t = useTranslations('emergency.broadcast');
+  const locale = useLocale();
   const { user, token } = useAppStore();
-  // The URL segment is the workspace SLUG; the API scopes by tenant UUID.
-  // Sending the slug 403d every broadcast for school admins (scope mismatch)
-  // and every status read for super admins (QA 2026-10-23). Same source as
-  // EmergencyTriggerModal: the signed-in workspace.
-  const tenantId = user?.tenantId || schoolId;
-  const userRole = useUIStore((s) => s.user?.role);
-  const isViewer = userRole === 'RESTRICTED_VIEWER';
-
+  // Routes use a workspace slug; emergency APIs require the signed-in tenant ID.
+  const tenantId = user?.tenantId || params.schoolId;
+  const canSend = hasPanicAuthority(user) && user?.role !== 'RESTRICTED_VIEWER';
+  const canClear = canSendAllClear(user) && user?.role !== 'RESTRICTED_VIEWER';
   const [text, setText] = useState('');
   const [severity, setSeverity] = useState<Severity>('WARN');
-  const [durationMin, setDurationMin] = useState(5);
+  const [durationMin, setDurationMin] = useState('5');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
-  const [mediaDraft, setMediaDraft] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [withMedia, setWithMedia] = useState(false);
-
-  const [phase, setPhase] = useState<'idle' | 'holding' | 'sending' | 'sent' | 'error'>('idle');
+  const [picker, setPicker] = useState<AssetKind | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const [active, setActive] = useState<ActiveMsg[]>([]);
-
-  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // A11y / life-safety (P1-9, 2026-05-28): screen-reader live region +
-  // best-effort speech, mirroring the mobile /panic page. A blind admin
-  // broadcasting from desktop now hears hold-start → sending → result.
+  const [snapshot, setSnapshot] = useState<{ tenantId: string; active: ActiveMsg[]; status: 'loading' | 'ready' | 'error' }>({ tenantId, active: [], status: 'loading' });
+  // A workspace switch must never briefly show another workspace's alerts.
+  const active = snapshot.tenantId === tenantId ? snapshot.active : [];
+  const status = snapshot.tenantId === tenantId ? snapshot.status : 'loading';
+  const [clearingId, setClearingId] = useState<string | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mounted = useRef(true);
+  const statusRequest = useRef(0);
+  const invalidateStatus = useCallback(() => { ++statusRequest.current; }, []);
   const { announce, region: liveRegion } = useEmergencyAnnouncer();
+  const locked = phase === 'holding' || phase === 'sending';
+  const takeover = withMedia || severity === 'CRITICAL';
+  const SeverityIcon = SEVERITY_STYLE[severity].icon;
+  const severityLabel = (s: string) => SEVERITY_KEY[s] ? t(SEVERITY_KEY[s]) : s;
+  const msgTypeLabel = (m: string) => MSG_TYPE_KEY[m] ? t(MSG_TYPE_KEY[m]) : m;
 
-  // 2026-10-22 — mirror the API exactly. POST /emergency/broadcast,
-  // /media-alert and /messages/:id/all-clear all carry
-  // @RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN) + @AllowPanicBypass,
-  // and RbacGuard refuses the bypass to RESTRICTED_VIEWER. "Clear" used to be
-  // offered to DISTRICT_ADMIN / SUPER_ADMIN only, so a SCHOOL_ADMIN or a
-  // delegated `canTriggerPanic` staffer could send a broadcast but not end
-  // it from this page — the server would have honoured the clear all along.
-  const canSend = hasPanicAuthority(user) && !isViewer;
-  const canClear = canSendAllClear(user) && !isViewer;
+  const resetHold = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    if (progressTimer.current) clearInterval(progressTimer.current);
+    holdTimer.current = null;
+    progressTimer.current = null;
+  }, []);
 
-  const severityLabel = (s: string) =>
-    SEVERITY_KEY[s] ? t(`emergency.broadcast.${SEVERITY_KEY[s]}`) : s;
-  const msgTypeLabel = (m: string) =>
-    MSG_TYPE_KEY[m] ? t(`emergency.broadcast.${MSG_TYPE_KEY[m]}`) : m;
+  // A released key, interrupted touch, hidden tab or navigation must never send.
+  const cancelHold = useCallback(() => {
+    const wasHolding = holdTimer.current !== null;
+    resetHold();
+    if (wasHolding) {
+      setPhase('idle');
+      setProgress(0);
+    }
+  }, [resetHold]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const onHidden = () => { if (document.hidden) cancelHold(); };
+    window.addEventListener('blur', cancelHold);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      mounted.current = false;
+      resetHold();
+      window.removeEventListener('blur', cancelHold);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, [cancelHold, resetHold]);
+
+  useEffect(() => { cancelHold(); }, [tenantId, token, canSend, cancelHold]);
 
   const fetchActive = useCallback(async () => {
+    const requestId = ++statusRequest.current;
     try {
       const res = await fetchWithTimeout(
         `${API_URL}/emergency/status?tenantId=${encodeURIComponent(tenantId)}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-        4000, // < 5s poll interval — a stalled poll aborts before the next fires
+        { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: 'include' },
+        4000,
       );
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(String(res.status));
       const json = await res.json();
-      setActive(json.active || []);
-    } catch { /* offline — ignore */ }
+      if (!Array.isArray(json.active)) throw new Error('Invalid status response');
+      if (mounted.current && requestId === statusRequest.current) {
+        setSnapshot({ tenantId, active: json.active, status: 'ready' });
+      }
+    } catch {
+      if (mounted.current && requestId === statusRequest.current) setSnapshot((previous) => ({ tenantId, active: previous.tenantId === tenantId ? previous.active : [], status: 'error' }));
+    }
   }, [tenantId, token]);
 
   useEffect(() => {
-    fetchActive();
-    const h = setInterval(fetchActive, 5000);
-    return () => clearInterval(h);
-  }, [fetchActive]);
-
-  const resetHold = () => {
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-    holdTimerRef.current = null;
-    progressTimerRef.current = null;
-  };
-
-  // Shared hold-start — driven by EITHER a pointer press or a keyboard
-  // Space/Enter hold. Same 3s timer, same dispatch path; keyboard is purely
-  // an ADDED input route into the identical safeguarded flow (a11y audit
-  // §18-1 — a keyboard-only operator could not previously trigger).
-  const handleHoldStart = () => {
-    if (phase !== 'idle' && phase !== 'error') return;
-    if (!text.trim()) { setErrorMsg(t('emergency.broadcast.errMessageRequired')); setPhase('error'); announce(t('emergency.broadcast.annNeedMessage')); return; }
-    setPhase('holding');
-    setProgress(0);
-    announce(t('emergency.broadcast.annHolding', { severity: severityLabel(severity).toLowerCase() }));
-    const start = Date.now();
-    progressTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
-      setProgress(Math.min(100, (elapsed / HOLD_MS) * 100));
-    }, 50);
-    holdTimerRef.current = setTimeout(() => { void submit(); }, HOLD_MS);
-  };
-
-  const handlePointerHoldStart = (e: React.PointerEvent) => {
-    e.preventDefault();
-    handleHoldStart();
-  };
-
-  // Keyboard hold — Space/Enter starts the countdown on the focused
-  // button; key-up before HOLD_MS cancels exactly like a pointer-release.
-  // `e.repeat` is squelched so holding the key doesn't restart the 3s timer
-  // ~30×/sec. Mirrors the mobile /panic page handler.
-  const handleKeyHoldStart = (e: React.KeyboardEvent) => {
-    if (e.key !== ' ' && e.key !== 'Enter') return;
-    if (e.repeat) return;
-    e.preventDefault();
-    handleHoldStart();
-  };
-
-  const handleKeyHoldEnd = (e: React.KeyboardEvent) => {
-    if (e.key !== ' ' && e.key !== 'Enter') return;
-    e.preventDefault();
-    handleHoldCancel();
-  };
-
-  const handleHoldCancel = () => {
-    if (phase === 'holding') {
-      setPhase('idle');
-      setProgress(0);
-      announce(t('emergency.broadcast.annCancelled'));
-    }
-    resetHold();
-  };
+    void Promise.resolve().then(fetchActive);
+    const interval = setInterval(() => { void fetchActive(); }, 5000);
+    return () => { clearInterval(interval); invalidateStatus(); };
+  }, [fetchActive, invalidateStatus]);
 
   const submit = async () => {
     resetHold();
     setPhase('sending');
     setErrorMsg('');
-    announce(t('emergency.broadcast.annSending'));
+    announce(t('annSending'));
     try {
-      const endpoint = withMedia ? 'media-alert' : 'broadcast';
-      const body: any = withMedia
-        ? {
-            scopeType: 'tenant',
-            scopeId: tenantId,
-            mediaUrls,
-            audioUrl: audioUrl || undefined,
-            textBlob: text,
-            severity,
-          }
-        : {
-            scopeType: 'tenant',
-            scopeId: tenantId,
-            text,
-            severity,
-            durationMs: durationMin * 60 * 1000,
-          };
-
-      const res = await fetchWithTimeout(
-        `${API_URL}/emergency/${endpoint}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(body),
-          credentials: 'include',
-        },
-        12000, // hung send must fail loudly ("alert was NOT sent"), not hang forever
-      );
-      if (!res.ok) throw new Error(t('emergency.broadcast.errSendFailed', { status: res.status }));
+      const body: BroadcastInput | MediaAlertInput = withMedia
+        ? { scopeType: 'tenant', scopeId: tenantId, mediaUrls, audioUrl: audioUrl || undefined,
+            textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + Number(durationMin) * 60 }
+        : { scopeType: 'tenant', scopeId: tenantId, text: text.trim(), severity,
+            durationMs: Number(durationMin) * 60 * 1000 };
+      const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body), credentials: 'include',
+      }, 12000);
+      if (!res.ok) throw new Error(t('errSendFailed', { status: res.status }));
+      if (!mounted.current) return;
       setPhase('sent');
-      announce(t('emergency.broadcast.annDispatched'));
+      announce(t('annDispatched'));
       setText('');
       setMediaUrls([]);
       setAudioUrl('');
-      fetchActive();
-      setTimeout(() => setPhase('idle'), 2000);
-    } catch (e: any) {
-      const message = e?.message || t('emergency.broadcast.errBroadcastFailed');
+      void fetchActive();
+    } catch (error) {
+      if (!mounted.current) return;
+      const message = error instanceof Error ? error.message : t('errBroadcastFailed');
       setErrorMsg(message);
       setPhase('error');
-      announce(t('emergency.broadcast.annFailed', { error: message }));
+      announce(t('annFailed', { error: message }));
     }
+  };
+
+  const startHold = () => {
+    if (!canSend || locked || holdTimer.current || picker) return;
+    const invalid = !text.trim() ? t('errMessageRequired')
+      : !Number.isInteger(Number(durationMin)) || Number(durationMin) < 1 || Number(durationMin) > 120 ? t('errDuration')
+      : withMedia && mediaUrls.length === 0 && !audioUrl ? t('errMediaRequired') : '';
+    if (invalid) {
+      setErrorMsg(invalid);
+      setPhase('error');
+      announce(invalid);
+      return;
+    }
+    setErrorMsg('');
+    setPhase('holding');
+    setProgress(0);
+    announce(t('annHolding', { severity: severityLabel(severity).toLowerCase() }));
+    const start = Date.now();
+    progressTimer.current = setInterval(() => setProgress(Math.min(100, (Date.now() - start) / HOLD_MS * 100)), 50);
+    holdTimer.current = setTimeout(() => { void submit(); }, HOLD_MS);
   };
 
   const clearMessage = async (id: string) => {
+    if (!canClear || clearingId) return;
+    setClearingId(id);
+    setErrorMsg('');
     try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/emergency/messages/${id}/all-clear`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          credentials: 'include',
-        },
-        12000, // hung clear must fail loudly ("may still be active"), not hang
-      );
-      if (!res.ok) throw new Error(t('emergency.broadcast.errClearFailed', { status: res.status }));
-      announce(t('emergency.broadcast.annCleared'));
-      fetchActive();
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.error('[BroadcastPage] clearMessage FAILED — override may still be active on screens:', e);
-      Sentry.captureException(e, {
-        tags: { component: 'BroadcastPage', action: 'clearMessage' },
-        extra: { messageId: id },
-      });
-      setErrorMsg(t('emergency.broadcast.errClearFailedBanner', { error: message }));
-      setPhase('error');
-      announce(t('emergency.broadcast.annClearFailed', { error: message }));
+      const res = await fetchWithTimeout(`${API_URL}/emergency/messages/${id}/all-clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: 'include',
+      }, 12000);
+      if (!res.ok) throw new Error(t('errClearFailed', { status: res.status }));
+      if (!mounted.current) return;
+      announce(t('annCleared'));
+      void fetchActive();
+    } catch (error) {
+      Sentry.captureException(error, { tags: { component: 'BroadcastPage', action: 'clearMessage' }, extra: { messageId: id } });
+      if (!mounted.current) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMsg(t('errClearFailedBanner', { error: message }));
+      announce(t('annClearFailed', { error: message }));
+    } finally {
+      if (mounted.current) setClearingId(null);
     }
   };
 
-  const severityButton = (s: Severity, label: string, color: string) => (
-    <button
-      type="button"
-      onClick={() => setSeverity(s)}
-      className={`flex-1 px-4 py-3 rounded-lg border-2 font-bold uppercase tracking-wide text-sm transition ${
-        severity === s ? `${color} text-white border-transparent` : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const pickMedia = (url: string) => {
+    // The shared picker supplies a stored URL only after the upload and any
+    // video conversion finish. Never send blob URLs or an unconverted video.
+    if (picker === 'audio') setAudioUrl(url);
+    else setMediaUrls((urls) => urls.includes(url) || urls.length >= MAX_ATTACHMENTS ? urls : [...urls, url]);
+    setPicker(null);
+  };
+
+  const time = (value: string | number) => new Date(typeof value === 'number' ? value * 1000 : value).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 md:p-10">
+    <div className="space-y-6" data-testid="broadcast-page">
       {liveRegion}
-      <div className="max-w-5xl mx-auto">
-        <header className="flex items-center gap-3 mb-8">
-          <Megaphone className="w-8 h-8 text-orange-500" />
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100"><Megaphone className="h-5 w-5" aria-hidden /></span>
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-wide">{t('emergency.broadcast.title')}</h1>
-            <p className="text-sm text-slate-400">{t('emergency.broadcast.subtitle')}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t('title')}</h1>
+            <p className="mt-1 text-sm text-slate-600">{t('subtitle')}</p>
           </div>
-        </header>
+        </div>
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600"><MonitorPlay className="h-4 w-4 text-indigo-500" aria-hidden />{t('workspaceScope')}</span>
+      </header>
 
-        <div className="grid md:grid-cols-5 gap-8">
-          {/* Composer */}
-          {canSend && (<section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.severity')}</label>
-              <div className="flex gap-2">
-                {severityButton('INFO', t('emergency.broadcast.sevInfo'), 'bg-yellow-500')}
-                {severityButton('WARN', t('emergency.broadcast.sevWarn'), 'bg-orange-500')}
-                {severityButton('CRITICAL', t('emergency.broadcast.sevCritical'), 'bg-red-600')}
+      {errorMsg && <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /><span>{errorMsg}</span></div>}
+      {phase === 'sent' && <div role="status" className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden />{t('dispatched')}</div>}
+
+      <div className={`grid items-start gap-6 ${canSend ? 'xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]' : ''}`}>
+        {canSend && <section aria-labelledby="composer-heading" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+            <h2 id="composer-heading" className="text-base font-bold text-slate-900">{t('composeTitle')}</h2>
+            <p className="mt-1 text-xs text-slate-500">{t('composeHint')}</p>
+          </div>
+          <fieldset disabled={locked} className="min-w-0 space-y-6 p-5 sm:p-6">
+            <fieldset>
+              <legend className="mb-2.5 text-sm font-semibold text-slate-800">{t('severity')}</legend>
+              <div className="grid grid-cols-3 gap-2">
+                {SEVERITIES.map((s) => {
+                  const Icon = SEVERITY_STYLE[s].icon;
+                  return <label key={s} className={`relative flex cursor-pointer flex-col items-start gap-2 rounded-xl border p-3 text-xs transition sm:text-sm ${severity === s ? SEVERITY_STYLE[s].selected : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    <input type="radio" name="broadcast-severity" value={s} checked={severity === s} onChange={() => setSeverity(s)} className="peer sr-only" />
+                    <span className="absolute inset-0 rounded-xl peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-500" />
+                    <span className="flex w-full items-center justify-between"><Icon className="h-4 w-4" aria-hidden />{severity === s && <Check className="h-3.5 w-3.5" aria-hidden />}</span>
+                    <span className="font-semibold">{severityLabel(s)}</span>
+                  </label>;
+                })}
               </div>
-            </div>
+            </fieldset>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.message')}</label>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={4}
-                maxLength={2000}
-                placeholder={t('emergency.broadcast.messagePlaceholder')}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-orange-500 focus:outline-none"
-              />
-              <div className="text-xs text-slate-500 mt-1 text-right">{text.length}/2000</div>
+              <div className="mb-2 flex items-center justify-between gap-3"><label htmlFor="broadcast-message" className="text-sm font-semibold text-slate-800">{t('message')}</label><span className="text-xs tabular-nums text-slate-500">{text.length.toLocaleString(locale)} / 2,000</span></div>
+              <textarea id="broadcast-message" value={text} onChange={(e) => { setText(e.target.value); if (phase === 'sent') setPhase('idle'); }} rows={4} maxLength={2000} placeholder={t('messagePlaceholder')} className={`${inputClass} min-h-32 resize-y leading-relaxed`} />
             </div>
 
-            <div>
-              <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
-                <input type="checkbox" checked={withMedia} onChange={(e) => setWithMedia(e.target.checked)} />
-                {t('emergency.broadcast.includeMedia')}
+            <div className="space-y-3">
+              <label htmlFor="broadcast-media" aria-label={t('includeMedia')} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                <input id="broadcast-media" type="checkbox" checked={withMedia} onChange={(e) => setWithMedia(e.target.checked)} className="mt-0.5 h-4 w-4 accent-indigo-600" />
+                <span><span className="block text-sm font-semibold text-slate-800">{t('includeMedia')}</span><span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{t('mediaHint')}</span></span>
               </label>
-              {withMedia ? (
-                <div className="space-y-3 border border-slate-800 rounded-lg p-3 bg-slate-950">
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={mediaDraft}
-                      onChange={(e) => setMediaDraft(e.target.value)}
-                      placeholder="https://cdn.example.com/evac-map.jpg"
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-2 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { if (mediaDraft) { setMediaUrls([...mediaUrls, mediaDraft]); setMediaDraft(''); } }}
-                      className="px-4 bg-slate-800 rounded text-sm font-bold uppercase tracking-wide hover:bg-slate-700"
-                    >{t('emergency.broadcast.add')}</button>
-                  </div>
-                  {mediaUrls.length > 0 && (
-                    <ul className="space-y-1 text-xs">
-                      {mediaUrls.map((u, i) => (
-                        <li key={i} className="flex items-center gap-2 text-slate-400">
-                          <ImageIcon className="w-3 h-3" />
-                          <span className="flex-1 truncate">{u}</span>
-                          <button onClick={() => setMediaUrls(mediaUrls.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-slate-400" />
-                    <input
-                      type="url"
-                      value={audioUrl}
-                      onChange={(e) => setAudioUrl(e.target.value)}
-                      placeholder={t('emergency.broadcast.audioPlaceholder')}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-2 text-sm"
-                    />
-                  </div>
+              {withMedia && <div className="space-y-3 rounded-xl border border-slate-200 p-3.5">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={mediaUrls.length >= MAX_ATTACHMENTS} onClick={() => setPicker('image')} className={secondaryButton}><ImageIcon className="h-4 w-4" aria-hidden />{t('addImage')}</button>
+                  <button type="button" disabled={mediaUrls.length >= MAX_ATTACHMENTS} onClick={() => setPicker('video')} className={secondaryButton}><Video className="h-4 w-4" aria-hidden />{t('addVideo')}</button>
+                  <button type="button" onClick={() => setPicker('audio')} className={secondaryButton}><Volume2 className="h-4 w-4" aria-hidden />{t(audioUrl ? 'replaceAudio' : 'addAudio')}</button>
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.duration')}</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={durationMin}
-                    onChange={(e) => setDurationMin(Math.max(1, parseInt(e.target.value) || 5))}
-                    className="w-32 bg-slate-950 border border-slate-800 rounded-lg p-2 text-white"
-                  />
-                </div>
-              )}
+                {mediaUrls.length === 0 && !audioUrl && <p className="text-xs leading-relaxed text-slate-500">{t('uploadHint')}</p>}
+                {mediaUrls.length > 0 && <ul className="space-y-2">{mediaUrls.map((url, i) => <li key={url} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2">
+                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-md bg-slate-100"><MediaPreview url={url} alt={t('attachment', { number: i + 1 })} /></div>
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700" title={mediaName(url)}>{mediaName(url)}</span>
+                  <button type="button" onClick={() => setMediaUrls((urls) => urls.filter((u) => u !== url))} aria-label={t('removeAttachment', { number: i + 1 })} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
+                </li>)}</ul>}
+                {audioUrl && <div className="space-y-2 rounded-lg bg-slate-50 p-2">
+                  <div className="flex items-center gap-2"><Volume2 className="h-4 w-4 shrink-0 text-indigo-500" /><span className="min-w-0 flex-1 truncate text-xs text-slate-700">{mediaName(audioUrl)}</span><button type="button" onClick={() => setAudioUrl('')} aria-label={t('removeAudio')} className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button></div>
+                  <audio src={audioUrl} controls preload="none" aria-label={t('audioPreview')} className="h-9 w-full" />
+                </div>}
+                <p className="text-xs text-slate-500">{t('attachmentLimit', { count: mediaUrls.length })}</p>
+              </div>}
             </div>
 
-            {/* Preview */}
-            <div>
-              <div className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.preview')}</div>
-              <div className={`rounded-lg p-4 border-2 ${
-                severity === 'INFO' ? 'bg-yellow-400/95 border-yellow-600 text-slate-900' :
-                severity === 'WARN' ? 'bg-orange-500/95 border-orange-700 text-white' :
-                'bg-red-700/95 border-red-900 text-white'
-              }`}>
-                <div className="flex items-center gap-3">
-                  {severity === 'CRITICAL' ? <ShieldAlert className="w-6 h-6" /> :
-                   severity === 'WARN' ? <AlertTriangle className="w-6 h-6" /> :
-                   <Megaphone className="w-6 h-6" />}
-                  <span className="font-bold text-lg">{text || t('emergency.broadcast.previewPlaceholder')}</span>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-3">
+              <label htmlFor="broadcast-duration" className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Clock3 className="h-4 w-4 text-slate-400" aria-hidden />{t('duration')}</label>
+              <div className="flex items-center gap-2"><input id="broadcast-duration" type="number" min={1} max={120} step={1} value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={`${inputClass} w-20 text-center tabular-nums`} /><span className="text-xs text-slate-500">{t('minutes')}</span></div>
             </div>
-
-            {errorMsg && <div className="p-3 rounded bg-red-900/40 border border-red-800 text-red-200 text-sm">{errorMsg}</div>}
-            {phase === 'sent' && <div className="p-3 rounded bg-emerald-900/40 border border-emerald-800 text-emerald-200 text-sm">{t('emergency.broadcast.dispatched')}</div>}
-
-            <button
-              type="button"
-              onPointerDown={handlePointerHoldStart}
-              onPointerUp={handleHoldCancel}
-              onPointerLeave={handleHoldCancel}
-              onKeyDown={handleKeyHoldStart}
-              onKeyUp={handleKeyHoldEnd}
-              onContextMenu={(e) => e.preventDefault()}
-              disabled={phase === 'sending'}
-              aria-label={t('emergency.broadcast.sendAria')}
-              className={`relative w-full py-5 rounded-xl font-black uppercase tracking-widest text-lg overflow-hidden transition
-                ${phase === 'holding' ? 'bg-orange-700' : 'bg-orange-600 hover:bg-orange-500'}
-                ${phase === 'sending' ? 'opacity-60 cursor-not-allowed' : ''}`}
+          </fieldset>
+          <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 p-5 sm:px-6">
+            <button type="button"
+              onPointerDown={(e) => { if (e.button > 0) return; e.preventDefault(); startHold(); }}
+              onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold} onLostPointerCapture={cancelHold} onBlur={cancelHold}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) startHold(); } }}
+              onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); cancelHold(); } }}
+              onContextMenu={(e) => e.preventDefault()} disabled={phase === 'sending' || !!picker}
+              aria-label={t('sendAria')}
+              className="relative flex min-h-12 w-full touch-none select-none items-center justify-center overflow-hidden rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:cursor-wait disabled:opacity-60"
             >
-              {phase === 'holding' && (
-                <span className="absolute inset-y-0 left-0 bg-orange-900/60" style={{ width: `${progress}%` }} />
-              )}
-              <span className="relative flex items-center justify-center gap-3">
-                {phase === 'sending' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                {phase === 'holding'
-                  ? t('emergency.broadcast.holdingPct', { pct: Math.floor(progress) })
-                  : t('emergency.broadcast.holdToBroadcast')}
-              </span>
+              {phase === 'holding' && <span className="absolute inset-y-0 left-0 bg-black/20" style={{ width: `${progress}%` }} />}
+              <span className="relative flex items-center gap-2">{phase === 'sending' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}{phase === 'sending' ? t('sending') : phase === 'holding' ? t('holdingPct', { pct: Math.floor(progress) }) : t('holdToBroadcast')}</span>
             </button>
-          </section>)}
-          <section className={`${canSend ? 'md:col-span-2' : 'md:col-span-5'} bg-slate-900 border border-slate-800 rounded-xl p-6`}>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">{t('emergency.broadcast.activeTitle')}</h2>
-            {active.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">{t('emergency.broadcast.noneActive')}</p>
-            ) : (
-              <ul className="space-y-3">
-                {active.map((m) => (
-                  <li key={m.id} className={`rounded-lg p-3 border ${
-                    m.severity === 'CRITICAL' ? 'border-red-700 bg-red-900/30' :
-                    m.severity === 'WARN' ? 'border-orange-700 bg-orange-900/30' :
-                    'border-yellow-700 bg-yellow-900/20'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold uppercase tracking-widest opacity-80">{msgTypeLabel(m.type)} · {severityLabel(m.severity)}</span>
-                      {canClear && (
-                        <button
-                          onClick={() => clearMessage(m.id)}
-                          className="text-xs font-bold uppercase tracking-wide text-slate-300 hover:text-white border border-slate-600 rounded px-2 py-1"
-                        >{t('emergency.broadcast.clear')}</button>
-                      )}
-                    </div>
-                    <p className="text-sm leading-snug">{m.textBlob || t('emergency.broadcast.noText')}</p>
-                    {m.mediaUrls.length > 0 && (
-                      <p className="text-xs text-slate-400 mt-1">{t('emergency.broadcast.mediaAttachments', { count: m.mediaUrls.length })}</p>
-                    )}
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      {new Date(m.createdAt).toLocaleTimeString()} {m.expiresAt ? t('emergency.broadcast.expires', { time: new Date(m.expiresAt * 1000).toLocaleTimeString() }) : ''}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p className="text-center text-xs leading-relaxed text-slate-500">{t('holdHint')}</p>
+          </div>
+        </section>}
+
+        <div className="min-w-0 space-y-6">
+          {canSend && <section aria-labelledby="preview-heading" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><h2 id="preview-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900"><MonitorPlay className="h-4 w-4 text-slate-400" aria-hidden />{t('preview')}</h2><span className="text-xs font-medium text-slate-500">{t(takeover ? 'fullScreen' : 'textBanner')}</span></div>
+            <div className="p-4 sm:p-5">
+              <div data-testid="broadcast-preview" className={`relative flex aspect-video flex-col overflow-auto rounded-xl ${takeover ? SEVERITY_STYLE[severity].preview : 'bg-slate-100'}`}>
+                <div className={`relative flex gap-2.5 p-4 ${takeover ? 'flex-1 flex-col items-center justify-center text-center' : `${SEVERITY_STYLE[severity].preview} shrink-0 items-start shadow-sm`}`}>
+                  <SeverityIcon className={`shrink-0 ${takeover ? 'h-7 w-7' : 'mt-0.5 h-5 w-5'}`} aria-hidden />
+                  <p className="whitespace-pre-wrap break-words text-sm font-bold leading-relaxed [overflow-wrap:anywhere]">{text || t('previewPlaceholder')}</p>
+                  {withMedia && mediaUrls.length > 0 && <div className="grid w-full grid-cols-2 gap-2">{mediaUrls.map((url, i) => <div key={url} className={`overflow-hidden rounded-md bg-black/10 ${mediaUrls.length === 1 ? 'col-span-2 h-24 sm:h-32' : 'h-20'}`}><MediaPreview url={url} alt={t('attachment', { number: i + 1 })} /></div>)}</div>}
+                  {withMedia && audioUrl && <span className="inline-flex items-center gap-1.5 text-xs"><Volume2 className="h-3.5 w-3.5" aria-hidden />{t('audioIncluded')}</span>}
+                </div>
+                {!takeover && <div className="flex flex-1 flex-col items-center justify-center gap-2 p-3 text-slate-400"><MonitorPlay className="h-7 w-7" aria-hidden /><span className="text-xs">{t('scheduledContent')}</span></div>}
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">{t(takeover ? 'takeoverHint' : 'bannerHint')}</p>
+            </div>
+          </section>}
+
+          <section aria-labelledby="active-heading" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <h2 id="active-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900"><Radio className="h-4 w-4 text-slate-400" aria-hidden />{t('activeTitle')}{status === 'ready' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{active.length}</span>}</h2>
+              <button type="button" onClick={() => { void fetchActive(); }} aria-label={t('refresh')} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-indigo-600"><RefreshCw className={`h-4 w-4 ${status === 'loading' ? 'animate-spin' : ''}`} /></button>
+            </div>
+            <div className="p-5">
+              {status === 'loading' && <p role="status" className="flex items-center gap-2 py-4 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{t('loadingActive')}</p>}
+              {status === 'error' && <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">{t('statusError')}</p>}
+              {status === 'ready' && active.length === 0 && <div className="py-7 text-center"><span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-5 w-5" aria-hidden /></span><p className="text-sm font-semibold text-slate-800">{t('noneActive')}</p><p className="mt-1.5 text-xs leading-relaxed text-slate-500">{t('emptyHint')}</p></div>}
+              {active.length > 0 && <ul className="space-y-3">{active.map((message) => <li key={message.id} className="space-y-3 rounded-xl border border-slate-200 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${SEVERITY_STYLE[message.severity]?.badge || 'bg-slate-50 text-slate-700 ring-slate-200'}`}>{severityLabel(message.severity)}</span><span className="text-xs text-slate-500">{msgTypeLabel(message.type)}</span></div>
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 [overflow-wrap:anywhere]">{message.textBlob || t('noText')}</p>
+                {(message.mediaUrls.length > 0 || message.audioUrl) && <p className="text-xs text-slate-500">{t('mediaAttachments', { count: message.mediaUrls.length + (message.audioUrl ? 1 : 0) })}</p>}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3"><p className="text-xs leading-relaxed text-slate-500">{t('startedAt', { time: time(message.createdAt) })}<span className="block">{message.expiresAt ? t('endsAt', { time: time(message.expiresAt) }) : t('untilCleared')}</span></p>
+                  {canClear && <button type="button" disabled={!!clearingId} onClick={() => { void clearMessage(message.id); }} className={secondaryButton}>{clearingId === message.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <X className="h-3.5 w-3.5" aria-hidden />}{t('clear')}</button>}
+                </div>
+              </li>)}</ul>}
+            </div>
           </section>
         </div>
       </div>
+      {picker && <AssetPicker kind={picker} title={t(picker === 'image' ? 'chooseImage' : picker === 'video' ? 'chooseVideo' : 'chooseAudio')} onPick={pickMedia} onClose={() => setPicker(null)} />}
     </div>
   );
 }

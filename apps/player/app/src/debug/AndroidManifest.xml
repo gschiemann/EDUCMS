@@ -37,5 +37,6 @@
 
     <application>
         <activity android:name=".RendererRecoveryTestActivity" android:exported="false" />
+        <activity android:name=".BroadcastContinuityTestActivity" android:exported="false" />
     </application>
 </manifest>
