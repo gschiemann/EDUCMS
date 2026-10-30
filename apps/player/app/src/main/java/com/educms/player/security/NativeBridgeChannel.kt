@@ -287,7 +287,8 @@ object NativeBridgeChannel {
      * in front of an alert.
      *
      * Still SINGLE-threaded, so ordering WITHIN the lifeline lane is
-     * preserved — two holds from the same face cannot land out of order.
+     * preserved — a banner's bounded geometry and its hold cannot overtake
+     * each other. Media preparation and display-provider work stay outside.
      */
     private val lifelineWorker = Executors.newSingleThreadExecutor { r ->
         val t = Thread(r, "educms-bridge-lifeline")
@@ -295,11 +296,6 @@ object NativeBridgeChannel {
         t
     }
 
-    /**
-     * Methods that ride [lifelineWorker]. Deliberately the smallest set
-     * that keeps an alert moving — widening it would re-create the
-     * head-of-line block inside the lane that exists to avoid it.
-     */
     /** True while FaceHostController is hosting at least one secondary face. */
     @Volatile
     private var multiFace: Boolean = false
@@ -307,20 +303,6 @@ object NativeBridgeChannel {
     fun setMultiFace(hosting: Boolean) {
         multiFace = hosting
     }
-
-    private val LIFELINE_LANE = setOf(
-        // ⚠️ THE HOLD, AND ONLY THE HOLD (2026-09-19, verifier finding 4).
-        // This executor is ONE thread for the whole process, so every method
-        // in it is a queue the alert can wait behind. `displayApply` and
-        // `displaySetSchedule` used to ride here; both block on
-        // DisplayControlRegistry.resolve's `synchronized(this)` and on a sysfs
-        // provider's own monitor, which put side B's display work in front of
-        // side A's lockdown — the very head-of-line block this lane exists to
-        // remove. A face's bridge has no display-control lambdas at all (box
-        // power and brightness belong to the primary), so the only thing two
-        // faces can now contend for here is another hold.
-        "displayEmergencyHold",
-    )
 
     /** True when this WebView implementation supports the secure channel. */
     fun isSupported(): Boolean = try {
@@ -627,7 +609,7 @@ object NativeBridgeChannel {
         // splitting its calls across two threads would let a display command
         // sent right after an all-clear overtake the release and be refused by
         // a hold that was about to lift. One worker, master's exact ordering.
-        val executor = if (multiFace && LIFELINE_LANE.contains(method)) lifelineWorker else worker
+        val executor = if (multiFace && BridgeLifeline.accepts(method, args)) lifelineWorker else worker
         executor.execute {
             try {
                 val result = dispatch(bridge, method, args)
