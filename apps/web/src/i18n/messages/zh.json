@@ -2123,6 +2123,7 @@
         "display-schedule-off": "按开关机时间表关闭",
         "update-window": "处于更新时段",
         "maintenance": "正在重启或更新",
+        "daily-pattern": "按每天的惯常时间关闭",
         "not-seen-30-days": "超过 30 天未上线",
         "never-connected": "从未连接",
         "test-screen": "手机或电脑浏览器中的测试屏幕"
