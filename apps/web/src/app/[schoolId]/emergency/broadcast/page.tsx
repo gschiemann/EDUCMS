@@ -21,7 +21,7 @@ import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPic
 import { fetchEmergencyTargets } from '@/lib/emergency-api';
 import {
   allScreensTarget, groupDisplayName, isAllScreens, targetChipLabel,
-  type EmergencyTarget, type EmergencyTargets,
+  type EmergencyTarget, type EmergencyTargets, type TargetScreen,
 } from '@/lib/emergency-target';
 
 type Severity = 'INFO' | 'WARN' | 'CRITICAL';
@@ -32,6 +32,7 @@ interface ActiveMsg {
   type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT';
   scopeType?: string;
   scopeId?: string;
+  screenIds?: string[];
   severity: Severity;
   textBlob: string | null;
   mediaUrls: string[];
@@ -107,7 +108,17 @@ export default function BroadcastPage() {
   const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const allScreens = useMemo(() => allScreensTarget(tenantId, targets?.allScreensCount ?? null), [tenantId, targets?.allScreensCount]);
-  const target = chosenTarget ?? allScreens;
+  // A hand-picked set of screens (checkbox mode of the shared picker).
+  const [chosenScreens, setChosenScreens] = useState<TargetScreen[]>([]);
+  const multi = chosenScreens.length > 0;
+  const target: EmergencyTarget = multi
+    ? {
+        scopeType: 'device',
+        scopeId: 'multi',
+        name: chosenScreens.length === 1 ? chosenScreens[0].name : `${chosenScreens[0].name} +${chosenScreens.length - 1}`,
+        screenCount: chosenScreens.reduce((n, x) => n + (x.displayScreenCount || 1), 0),
+      }
+    : chosenTarget ?? allScreens;
   useEffect(() => {
     if (!token) return;
     let live = true;
@@ -118,12 +129,13 @@ export default function BroadcastPage() {
     return () => { live = false; };
   }, [token, tenantId, targetsTry]);
   // A workspace switch must not carry a screen of the old workspace along.
-  useEffect(() => { setChosenTarget(null); }, [tenantId]);
+  useEffect(() => { setChosenTarget(null); setChosenScreens([]); }, [tenantId]);
   const scopeNameOf = (m: ActiveMsg): string | null => {
     if (m.scopeType === 'group') {
       const g = targets?.groups?.find((x) => x.id === m.scopeId);
       return g ? groupDisplayName(tt, g.name) : null;
     }
+    if (m.scopeType === 'devices') return null;
     if (m.scopeType === 'device') return targets?.screens?.find((x) => x.id === m.scopeId)?.name ?? null;
     return null;
   };
@@ -202,13 +214,14 @@ export default function BroadcastPage() {
     setErrorMsg('');
     announce(isAllScreens(target) ? t('annSending') : t('annSendingTo', { target: targetChipLabel(tt, target) }));
     try {
-      const sendScope = isAllScreens(target)
+      const sendScope = multi || isAllScreens(target)
         ? { scopeType: 'tenant' as const, scopeId: tenantId }
         : { scopeType: target.scopeType as 'group' | 'device', scopeId: target.scopeId };
+      const screenIds = multi ? chosenScreens.map((x) => x.id) : undefined;
       const body: BroadcastInput | MediaAlertInput = withMedia
-        ? { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, mediaUrls, audioUrl: audioUrl || undefined,
+        ? { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), mediaUrls, audioUrl: audioUrl || undefined,
             textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + Number(durationMin) * 60 }
-        : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, text: text.trim(), severity,
+        : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), text: text.trim(), severity,
             durationMs: Number(durationMin) * 60 * 1000 };
       const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
         method: 'POST',
@@ -316,7 +329,7 @@ export default function BroadcastPage() {
                 target={target}
                 disabled={locked}
                 onChoose={() => setTargetPickerOpen(true)}
-                onReset={() => { setChosenTarget(null); announce(tt('emergency.target.announceTargetSet', { target: tt('emergency.target.allScreens') })); }}
+                onReset={() => { setChosenTarget(null); setChosenScreens([]); announce(tt('emergency.target.announceTargetSet', { target: tt('emergency.target.allScreens') })); }}
               />
             </div>
             <fieldset>
@@ -415,6 +428,7 @@ export default function BroadcastPage() {
               {active.length > 0 && <ul className="space-y-3">{active.map((message) => <li key={message.id} className="space-y-3 rounded-xl border border-slate-200 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${SEVERITY_STYLE[message.severity]?.badge || 'bg-slate-50 text-slate-700 ring-slate-200'}`}>{severityLabel(message.severity)}</span><span className="text-xs text-slate-500">{msgTypeLabel(message.type)}</span></div>
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 [overflow-wrap:anywhere]">{message.textBlob || t('noText')}</p>
+                {message.scopeType === 'devices' && <p className="text-xs font-semibold text-slate-600" data-testid="broadcast-active-scope">{t('activeScopeMany', { count: message.screenIds?.length ?? 0 })}</p>}
                 {(message.scopeType === 'group' || message.scopeType === 'device') && <p className="text-xs font-semibold text-slate-600" data-testid="broadcast-active-scope">{scopeNameOf(message) ? t('activeScope', { name: scopeNameOf(message) as string }) : t('activeScopeUnknown')}</p>}
                 {(message.mediaUrls.length > 0 || message.audioUrl) && <p className="text-xs text-slate-500">{t('mediaAttachments', { count: message.mediaUrls.length + (message.audioUrl ? 1 : 0) })}</p>}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3"><p className="text-xs leading-relaxed text-slate-500">{t('startedAt', { time: time(message.createdAt) })}<span className="block">{message.expiresAt ? t('endsAt', { time: time(message.expiresAt) }) : t('untilCleared')}</span></p>
@@ -431,7 +445,15 @@ export default function BroadcastPage() {
         status={targetsStatus}
         selected={target}
         allScreens={allScreens}
+        multiple
+        selectedScreenIds={chosenScreens.map((x) => x.id)}
+        onSelectScreens={(list) => {
+          setChosenScreens(list);
+          setChosenTarget(null);
+          announce(tt('emergency.target.announceTargetSet', { target: list.length ? tt('emergency.target.screensSelected', { count: list.length }) : tt('emergency.target.allScreens') }));
+        }}
         onSelect={(next) => {
+          setChosenScreens([]);
           setChosenTarget(isAllScreens(next) ? null : next);
           announce(tt('emergency.target.announceTargetSet', { target: targetChipLabel(tt, next) }));
         }}
