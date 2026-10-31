@@ -38,6 +38,7 @@ function makeWorld() {
     if (w.OR) return w.OR.some((o: Row) => incidentMatch(i, o));
     if (w.open !== undefined && i.open !== w.open) return false;
     if (w.state !== undefined && i.state !== w.state) return false;
+    if (w.kind !== undefined && i.kind !== w.kind) return false;
     if (w.screenId && !inList(i.screenId, w.screenId)) return false;
     if (w.closedAt?.lt && !(i.closedAt && i.closedAt < w.closedAt.lt)) return false;
     return true;
@@ -950,5 +951,114 @@ describe('Rule 2 — a remote power-off excuses only while the screen is really 
     const res = await scanAt(w, svc, at + 56 * MIN);
     expect(res.deferred).toEqual({ 'remote-power-off': 1 });
     expect(mailer.sendAlert).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('2026-10-31 accuracy pass: production row shapes', () => {
+  const H = 60 * MIN;
+  const prevSpell = (id: string, tenantId: string, startedAt: number, hours: number) =>
+    w.incidents.push({
+      id: `prev-${id}`,
+      screenId: id,
+      tenantId,
+      kind: 'OFFLINE',
+      open: false,
+      state: 'CLOSED',
+      reason: null,
+      emailedMode: 'on',
+      screenName: id,
+      startedAt: new Date(startedAt),
+      closedAt: new Date(startedAt + hours * H),
+      recoveringSince: null,
+      lastEmailedAt: new Date(startedAt + 16 * MIN),
+    });
+
+  it('a screen that goes dark at its usual evening hour (yesterday: 13 h dark) is silent, recorded, and gets NO "back online" note', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    prevSpell('lobby', 'lincoln', w.clock.now - 24 * H, 13);
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    const res = await scan(w, svc);
+    expect(res.deferred).toEqual({ 'daily-pattern': 1 });
+    expect(res.silenced).toBe(1);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    const row = w.incidents.find((i) => i.screenId === 'lobby')!;
+    expect(row).toEqual(expect.objectContaining({ open: true, state: 'SILENT', reason: 'daily-pattern', emailedMode: null }));
+    await scan(w, svc);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    for (let i = 0; i < 7; i++) {
+      comeBack(w, 'lobby');
+      await scan(w, svc);
+    }
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(w.incidents.find((i) => i.screenId === 'lobby')!.open).toBe(false);
+  });
+
+  it('control: the same screen dropping at a DIFFERENT hour than its last spell is emailed', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    prevSpell('lobby', 'lincoln', w.clock.now - 24 * H - 5 * H, 13);
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    await scan(w, svc);
+    expect(subjects(email)).toContain('VenueOS: lobby is offline at Lincoln Elementary');
+  });
+
+  it('an update installed 20 min before the screen went quiet (the relaunch killed the app) is deferred as maintenance, not an outage', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    const dropAt = w.clock.now;
+    w.screenEvents.push({ screenId: 'lobby', createdAt: new Date(dropAt - 20 * MIN) });
+    goOffline(w, 'lobby', dropAt);
+    w.clock.now = dropAt + 15 * MIN;
+    await scan(w, svc, 0);
+    const res = await scan(w, svc);
+    expect(res.deferred).toEqual({ maintenance: 1 });
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('control: no maintenance evidence, the same drop is emailed', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    await scan(w, svc);
+    expect(email.sendCustomerAlert).toHaveBeenCalled();
+  });
+
+  describe('picture proof stopped on 3+ screens of one organisation within seconds', () => {
+    const blankAt = (id: string, ageMin: number, secOffset: number) =>
+      screen(w, id, 'lincoln', { lastRenderedAt: new Date(w.clock.now - ageMin * MIN + secOffset * 1000) });
+    const keepPinging = () => w.screens.forEach((s) => Object.assign(s, { lastPingAt: new Date(w.clock.now - 10_000) }));
+
+    it('is silenced as one shared cause and never emailed', async () => {
+      const { svc, email } = build(w);
+      for (const id of ['a', 'b', 'c', 'd']) w.schedules.push({ tenantId: 'lincoln', screenId: id, screenGroupId: null });
+      ['a', 'b', 'c', 'd'].forEach((id, i) => blankAt(id, 21, i * 4));
+      await scan(w, svc, 0);
+      keepPinging();
+      const res = await scan(w, svc);
+      expect(res.silenced).toBe(4);
+      expect(res.deferred['shared-proof-stall']).toBe(4);
+      expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+      expect(w.incidents.filter((i) => i.reason === 'shared-proof-stall')).toHaveLength(4);
+    });
+
+    it('control: the same three screens whose proof stopped minutes apart ARE emailed', async () => {
+      const { svc, email } = build(w);
+      for (const id of ['a', 'b', 'c']) w.schedules.push({ tenantId: 'lincoln', screenId: id, screenGroupId: null });
+      blankAt('a', 30, 0);
+      blankAt('b', 26, 0);
+      blankAt('c', 22, 0);
+      await scan(w, svc, 0);
+      keepPinging();
+      await scan(w, svc);
+      expect(email.sendCustomerAlert).toHaveBeenCalled();
+    });
   });
 });

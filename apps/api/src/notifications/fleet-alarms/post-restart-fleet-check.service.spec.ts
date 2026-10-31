@@ -23,6 +23,7 @@ function makeWorld() {
   const displaySchedules: Row[] = [];
   const auditLogs: Row[] = [];
   const screenEvents: Row[] = [];
+  const incidents: Row[] = [];
   const fail = { snapshot: 0, schedules: false };
   const withTenant = (s: Row) => ({ ...s, tenant: { archivedAt: tenants.get(s.tenantId)?.archivedAt ?? null } });
   const client: Row = {
@@ -60,8 +61,11 @@ function makeWorld() {
     },
     auditLog: { findMany: jest.fn(async ({ where }: any) => auditLogs.filter((a) => where.targetId.in.includes(a.targetId))) },
     screenEvent: { findMany: jest.fn(async ({ where }: any) => screenEvents.filter((e) => where.screenId.in.includes(e.screenId))) },
+    screenAlertIncident: {
+      findMany: jest.fn(async ({ where }: any) => incidents.filter((i) => where.screenId.in.includes(i.screenId) && i.kind === where.kind)),
+    },
   };
-  return { client, tenants, screens, displaySchedules, auditLogs, screenEvents, fail };
+  return { client, tenants, screens, displaySchedules, auditLogs, screenEvents, incidents, fail };
 }
 
 type World = ReturnType<typeof makeWorld>;
@@ -313,6 +317,44 @@ describe('a screen that is MEANT to be off is not missing', () => {
     keepCheckingIn(w, clock.now, off);
     const ten = await svc.check(TEN);
     expect(ten.verdict!.excused).toEqual({ 'remote-power-off': 3 });
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('2026-10-31: a player-update wave, 5 screens relaunched for an install 20 min before the deploy and not back yet, is excused', async () => {
+    const off = [uuid(1), uuid(2), uuid(3), uuid(4), uuid(5)];
+    for (const id of off) {
+      w.screenEvents.push({ screenId: id, kind: 'ota-installed', createdAt: new Date(BOOT - 20 * MIN) });
+      w.screens.get(id)!.lastPingAt = new Date(BOOT - 10 * MIN);
+    }
+    const { svc, mailer, clock } = build(w);
+    await svc.snapshot();
+    clock.now = BOOT + TEN;
+    keepCheckingIn(w, clock.now, off);
+    const ten = await svc.check(TEN);
+    expect(ten.verdict!.excused).toEqual({ maintenance: 5 });
+    expect(mailer.sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('2026-10-31: screens that go dark at their usual evening hour (yesterday: 13 h) just after a deploy are excused', async () => {
+    const off = [uuid(1), uuid(2), uuid(3), uuid(4), uuid(5)];
+    for (const id of off) {
+      const dropAt = BOOT - 30 * SEC;
+      w.screens.get(id)!.lastPingAt = new Date(dropAt);
+      w.incidents.push({
+        screenId: id,
+        kind: 'OFFLINE',
+        open: false,
+        reason: null,
+        startedAt: new Date(dropAt - 24 * 60 * MIN),
+        closedAt: new Date(dropAt - 24 * 60 * MIN + 13 * 60 * MIN),
+      });
+    }
+    const { svc, mailer, clock } = build(w);
+    await svc.snapshot();
+    clock.now = BOOT + TEN;
+    keepCheckingIn(w, clock.now, off);
+    const ten = await svc.check(TEN);
+    expect(ten.verdict!.excused).toEqual({ 'daily-pattern': 5 });
     expect(mailer.sendAlert).not.toHaveBeenCalled();
   });
 
