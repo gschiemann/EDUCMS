@@ -35,7 +35,18 @@ export type PlaylistCacheAsset = {
   adoptable?: boolean;
 };
 
-export type PlaylistCacheProgress = { url: string; bytesLoaded: number; bytesTotal: number | null };
+/**
+ * `downloading` = bytes arriving (live, mid-chunk); `verifying` = checking the
+ * finished file's SHA-256 (bytesLoaded = bytes checked); `finishing` = moving
+ * the verified file into place. Absent = `downloading` (older callers).
+ */
+export type PlaylistCacheProgressPhase = 'downloading' | 'verifying' | 'finishing';
+export type PlaylistCacheProgress = {
+  url: string;
+  bytesLoaded: number;
+  bytesTotal: number | null;
+  phase?: PlaylistCacheProgressPhase;
+};
 
 export type PlaylistCacheOptions = {
   /** Abort the page-driven part (a new manifest superseded this asset set). */
@@ -111,6 +122,7 @@ function askWorker(
   message: Record<string, unknown>,
   timeoutMs: number,
   onStarted?: () => number,
+  onProgress?: (frame: { phase: string; done: number; total: number | null }) => void,
 ): Promise<WorkerReply> {
   return new Promise((resolve) => {
     const channel = new MessageChannel();
@@ -126,6 +138,16 @@ function askWorker(
     timer = setTimeout(() => finish(null), timeoutMs);
     channel.port1.onmessage = (event: MessageEvent) => {
       const data = event.data;
+      // A mid-step progress frame (sw-player.js makeProgressReporter) is never the answer.
+      if (data && typeof data === 'object' && (data as { progress?: unknown }).progress === true) {
+        const f = data as { phase?: unknown; done?: unknown; total?: unknown };
+        if (onProgress && typeof f.done === 'number' && Number.isFinite(f.done)) {
+          try {
+            onProgress({ phase: String(f.phase ?? ''), done: f.done, total: typeof f.total === 'number' ? f.total : null });
+          } catch { /* a progress sink must never break the drive */ }
+        }
+        return;
+      }
       if (data && typeof data === 'object' && (data as { started?: unknown }).started === true && onStarted) {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => finish(null), onStarted());
@@ -249,7 +271,13 @@ async function downloadLargeAsset(
     if (opts?.signal?.aborted) return 'aborted';
     const reply = await askWorker(sw, {
       type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, ...tier,
-    }, CHUNK_ACK_TIMEOUT_MS);
+    }, CHUNK_ACK_TIMEOUT_MS, undefined, (f) => {
+      if (f.phase !== 'chunk') return;
+      // Live bytes inside the chunk. Never run ahead of the known total, never
+      // behind what is already staged.
+      const live = total !== null ? Math.min(f.done, total) : f.done;
+      opts?.onProgress?.({ url: asset.url, bytesLoaded: Math.max(offset, live), bytesTotal: f.total ?? total, phase: 'downloading' });
+    });
     if (!reply || reply.ok !== true) {
       reportFailure('chunk', reply?.reason);
       if (isFatalChunkReason(reply?.reason)) return false;
@@ -265,13 +293,16 @@ async function downloadLargeAsset(
       continue;
     }
     offset = next;
-    opts?.onProgress?.({ url: asset.url, bytesLoaded: offset, bytesTotal: total });
+    opts?.onProgress?.({ url: asset.url, bytesLoaded: offset, bytesTotal: total, phase: 'downloading' });
     if (reply.complete !== true) continue;
 
     await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const finishVerify = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
-    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
+    opts?.onProgress?.({ url: asset.url, bytesLoaded: 0, bytesTotal: total, phase: 'verifying' });
+    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS, undefined, (f) => {
+      if (f.phase === 'verify') opts?.onProgress?.({ url: asset.url, bytesLoaded: f.done, bytesTotal: f.total ?? total, phase: 'verifying' });
+    });
     finishVerify?.();
     if (!verified || verified.ok !== true) {
       reportFailure('verify', verified?.reason);
@@ -290,6 +321,7 @@ async function downloadLargeAsset(
     await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const finishAssemble = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'assemble', Date.now());
+    opts?.onProgress?.({ url: asset.url, bytesLoaded: total ?? offset, bytesTotal: total, phase: 'finishing' });
     const assembled = await askWorker(sw, { type: 'PRECACHE_ASSEMBLE', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS);
     finishAssemble?.();
     if (!assembled || assembled.ok !== true) {
