@@ -63,6 +63,27 @@ export const ALERT_RULES = {
   NEW_INSTALL_MS: 2 * 60 * MIN,
   /** Grace after a reboot / player update / remote reboot. */
   MAINTENANCE_GRACE_MS: 30 * MIN,
+  /**
+   * An update / reboot / relaunch within this long of the moment a screen went
+   * quiet explains the silence — for MAINTENANCE_SETTLE_MS after the event
+   * (2026-10-31: the old test only looked 30 min back from the decision, which
+   * is 17+ min after the drop, so a screen that dropped 25 min after its own
+   * 1.1.55 install was emailed as an outage).
+   */
+  MAINTENANCE_AROUND_DROP_MS: 30 * MIN,
+  MAINTENANCE_SETTLE_MS: 2 * 60 * MIN,
+  /** A screen that goes dark about the same time every day (venue closes, outlet timer) and returns by itself. */
+  DAILY_DARK_MIN_MS: 3 * 60 * MIN,
+  DAILY_DARK_MAX_MS: 20 * 60 * MIN,
+  /** Same time of day, give or take. */
+  DAILY_DARK_SLACK_MS: 90 * MIN,
+  /** How far back a previous dark spell still counts as the pattern. */
+  DAILY_DARK_LOOKBACK_MS: 8 * 24 * 60 * MIN,
+  /** How much longer than last time the spell may run before it is no longer "the usual". */
+  DAILY_DARK_RETURN_SLACK_MS: 2 * 60 * MIN,
+  /** Several screens of one organisation whose picture proof stopped within this long of each other share ONE cause. */
+  PROOF_STALL_SPAN_MS: 60_000,
+  PROOF_STALL_MIN_SCREENS: 3,
   /** Grace after an on/off schedule or the update window switches the screen back on. */
   SCHEDULE_GRACE_MS: 30 * MIN,
   /** A recovery must hold this long before a "back online" / "showing content again" note. */
@@ -142,6 +163,18 @@ export interface ScreenFacts {
   lastPowerCommand: { state: 'off' | 'on'; at: Date } | null;
   /** Newest reboot / update / relaunch evidence (ledger rows, remote REBOOT). */
   lastMaintenanceAt: Date | null;
+  /** Every reboot / update / relaunch event of the last MAINTENANCE_SETTLE_MS (ledger rows, remote REBOOT). */
+  maintenanceTimes?: readonly Date[];
+  /** This screen's OFFLINE incident row (the previous dark spell, or the one in progress). */
+  offlineHistory?: OfflineHistory | null;
+}
+
+/** What the dark-spell pattern reads from the screen's `screen_alert_incidents` OFFLINE row. */
+export interface OfflineHistory {
+  open: boolean;
+  reason: string | null;
+  startedAt: Date;
+  closedAt: Date | null;
 }
 
 export type DeferReason =
@@ -152,7 +185,8 @@ export type DeferReason =
   | 'standby'
   | 'display-schedule-off'
   | 'update-window'
-  | 'maintenance';
+  | 'maintenance'
+  | 'daily-pattern';
 
 /**
  * `Screen.lastOtaState` values (player-ota, upper-case on the wire) that mean
@@ -222,14 +256,123 @@ export function intendedDowntime(
     return 'update-window';
   }
 
+  if (kind === 'OFFLINE' && !missedOn && repeatsDailyDark(f.offlineHistory, problemStartMs, nowMs)) return 'daily-pattern';
+  return maintenanceReason(f, kind, problemStartMs, nowMs);
+}
+
+/**
+ * Reboot / update / relaunch evidence. ONE rule for the alert emails, the
+ * post-restart fleet check and the dashboard's "off on purpose" bucket
+ * (2026-10-31): `problemStartMs` is where the silence began (its last
+ * check-in), and the dashboard passes the same instant, so a screen reads the
+ * same everywhere.
+ *   - an event in the last MAINTENANCE_GRACE_MS (the screen is restarting now);
+ *   - an event within MAINTENANCE_AROUND_DROP_MS of the drop, for
+ *     MAINTENANCE_SETTLE_MS after the event — the drop IS the restart. After
+ *     that the screen should have come back, and it is judged as any other.
+ */
+export function maintenanceReason(
+  f: ScreenFacts,
+  kind: ProblemKind,
+  problemStartMs: number,
+  nowMs: number,
+): 'maintenance' | null {
   const recent = (d: Date | null, ms: number = ALERT_RULES.MAINTENANCE_GRACE_MS) =>
     !!d && nowMs - d.getTime() >= -MIN && nowMs - d.getTime() < ms;
+  const aroundDrop = (d: Date) =>
+    Math.abs(d.getTime() - problemStartMs) <= ALERT_RULES.MAINTENANCE_AROUND_DROP_MS &&
+    recent(d, ALERT_RULES.MAINTENANCE_SETTLE_MS);
   if (recent(f.lastMaintenanceAt)) return 'maintenance';
   if (recent(f.forceApkUpdatePendingAt) && !f.forceApkUpdateHold) return 'maintenance';
   if (recent(f.lastOtaAt) && INSTALLING_OTA_STATES.has(String(f.lastOtaState ?? '').toLowerCase())) return 'maintenance';
+  if ((f.maintenanceTimes ?? []).some(aroundDrop)) return 'maintenance';
+  if (f.forceApkUpdatePendingAt && !f.forceApkUpdateHold && aroundDrop(f.forceApkUpdatePendingAt)) return 'maintenance';
+  if (
+    f.lastOtaAt &&
+    INSTALLING_OTA_STATES.has(String(f.lastOtaState ?? '').toLowerCase()) &&
+    aroundDrop(f.lastOtaAt)
+  ) {
+    return 'maintenance';
+  }
   // A page that just booted has not posted its first proof yet.
   if (kind === 'NO_CONTENT' && recent(f.credentialEpochRotatedAt)) return 'maintenance';
   return null;
+}
+
+// ─── The usual dark spell (2026-10-31) ────────────────────────────────────
+
+const DAY_MS = 24 * 60 * MIN;
+
+/**
+ * Is this offline spell the screen's usual one? A venue that closes at 5 PM,
+ * an outlet on a timer: the unit goes dark at about the same time every day
+ * and comes back on its own, 13–18 hours later. Nobody has anything to do, and
+ * the first version of these emails sent a "Video Wall is offline" note every
+ * evening and a "back online" note every morning.
+ *
+ * Read from the screen's own OFFLINE incident row:
+ *   - the PREVIOUS spell (closed): it ran 3–20 h and began within 90 minutes of
+ *     the same time of day, a whole number of days before this one (≤ 8 days) —
+ *     excused until it has run 2 h longer than that previous spell did;
+ *   - the spell IN PROGRESS, already recognised as the pattern by the worker
+ *     (`reason: 'daily-pattern'`), so the chain survives the row being rewritten.
+ * Past that, or on a new time of day, it is judged like any other outage.
+ * `missed-on-time` and platform-incident rows never count: their start is a
+ * clock setting, not a drop.
+ */
+export function repeatsDailyDark(
+  h: OfflineHistory | null | undefined,
+  problemStartMs: number,
+  nowMs: number,
+): boolean {
+  if (!h || h.reason === 'missed-on-time' || h.reason === 'platform-incident') return false;
+  const startedMs = h.startedAt.getTime();
+  const sinceDrop = nowMs - problemStartMs;
+  if (h.open) {
+    return h.reason === 'daily-pattern' && Math.abs(startedMs - problemStartMs) <= 5 * MIN && sinceDrop <= ALERT_RULES.DAILY_DARK_MAX_MS;
+  }
+  if (!h.closedAt) return false;
+  const dark = h.closedAt.getTime() - startedMs;
+  if (dark < ALERT_RULES.DAILY_DARK_MIN_MS || dark > ALERT_RULES.DAILY_DARK_MAX_MS) return false;
+  const apart = problemStartMs - startedMs;
+  if (apart <= 0 || apart > ALERT_RULES.DAILY_DARK_LOOKBACK_MS) return false;
+  const off = apart % DAY_MS;
+  if (Math.min(off, DAY_MS - off) > ALERT_RULES.DAILY_DARK_SLACK_MS) return false;
+  return sinceDrop <= Math.min(dark + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS, ALERT_RULES.DAILY_DARK_MAX_MS);
+}
+
+// ─── Picture proof that stopped everywhere at once (2026-10-31) ───────────
+
+/**
+ * "Not showing content" because the page's picture proof went stale
+ * (`stale-proof`) is a statement about ONE screen. Three or more screens of
+ * the same organisation whose last proof landed within a minute of each other
+ * did not independently break: they share a cause (a proof channel hiccup, a
+ * fleet-wide reload, a bad push of ours), and an email to the customer
+ * telling them to go and look at each screen is not something they can act
+ * on. Returns the ids of the screens to hold back. A real blank page is
+ * `content-unavailable` (the player paints its own card), never part of this.
+ */
+export function sharedProofStall(
+  problems: ReadonlyArray<{ screenId: string; orgId: string; startedAtMs: number }>,
+): Set<string> {
+  const out = new Set<string>();
+  const byOrg = new Map<string, Array<{ screenId: string; startedAtMs: number }>>();
+  for (const p of problems) {
+    const l = byOrg.get(p.orgId) ?? [];
+    l.push(p);
+    byOrg.set(p.orgId, l);
+  }
+  for (const list of byOrg.values()) {
+    const sorted = [...list].sort((a, b) => a.startedAtMs - b.startedAtMs);
+    for (let i = 0; i < sorted.length; i++) {
+      const run = sorted.filter(
+        (x) => x.startedAtMs >= sorted[i].startedAtMs && x.startedAtMs - sorted[i].startedAtMs <= ALERT_RULES.PROOF_STALL_SPAN_MS,
+      );
+      if (run.length >= ALERT_RULES.PROOF_STALL_MIN_SCREENS) for (const r of run) out.add(r.screenId);
+    }
+  }
+  return out;
 }
 
 // ─── "Didn't come back on at its scheduled on time" (2026-10-25) ──────────
