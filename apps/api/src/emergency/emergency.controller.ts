@@ -2379,7 +2379,16 @@ export class EmergencyController {
     // SECURITY: verify the caller owns the message's tenant before clearing.
     const callerTenantId: string = user?.tenantId || user?.schoolId || user?.districtId;
     const isSuper: boolean = user?.role === AppRole.SUPER_ADMIN;
-    if (!isSuper && existing.tenantId !== callerTenantId) {
+    // A district admin reaches DOWN: a broadcast aimed at one group / screen of
+    // a school is stored under that school's tenant (2026-10-31, targeted
+    // broadcasts), and the district admin who sent it must be able to clear it.
+    const mayReachDownward =
+      !isSuper &&
+      existing.tenantId !== callerTenantId &&
+      user?.role === AppRole.DISTRICT_ADMIN &&
+      !!callerTenantId &&
+      (await isDescendantTenant(this.prisma.client.tenant as any, existing.tenantId, callerTenantId));
+    if (!isSuper && existing.tenantId !== callerTenantId && !mayReachDownward) {
       throw new ForbiddenException(
         'You do not have permission to clear emergency messages for this scope.',
       );
@@ -2877,6 +2886,36 @@ export class EmergencyController {
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
+    }
+
+    // 2026-10-31 (targeted broadcasts): a district admin can aim a broadcast at
+    // ONE group / screen of a school below them. That row lives under the
+    // school's tenant, so the console's active list (own tenant only) would
+    // never show it — and it could not be cleared. Add the group / device
+    // scoped rows of the caller's subtree. Tenant-scoped copies are NOT added
+    // (they are fan-out copies of a row the caller's own tenant already lists).
+    // Best-effort: a failed extra read leaves today's list exactly as it was.
+    if (!isDevicePrincipal && (isSuper || req.user?.role === AppRole.DISTRICT_ADMIN)) {
+      try {
+        const below = await collectDescendantTenantIds(this.prisma.client.tenant as any, tenantId);
+        if (below.length > 0) {
+          const extra: any[] =
+            (await this.prisma.client.emergencyMessage.findMany({
+              where: {
+                tenantId: { in: below },
+                scopeType: { in: ['group', 'device'] },
+                clearedAt: null,
+                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 50,
+            })) ?? [];
+          const have = new Set(rows.map((r) => r.id));
+          for (const r of extra) if (!have.has(r.id)) rows.push(r);
+        }
+      } catch {
+        /* degrade to the own-tenant list */
+      }
     }
 
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
