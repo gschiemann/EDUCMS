@@ -135,3 +135,18 @@ Also `packages/api-types/src/emergency-paint-identity.ts` (a copy of the player'
 4. Should a FAIL hold canary auto-promotion for that class?
 5. v1 covers device-scope OVERRIDE only; the 2026-10-22 drop was in pushed messages and district copies (no drill payload). Add a bench district drill and a broadcast drill flag?
 6. Which vendor reviews?
+
+## 9. Lead review (Claude Fable 5.1, 2026-10-31) — verdicts before the owner reads
+
+**Adopted as designed:** the in-process call of the real `triggerEmergency` / `clearEmergency` (no route, token or privilege added); the verdict from server-recorded paint evidence on every pane; the three releases (`expiresAt` ≤ +180 s, the all-clear in `finally`, the orphan sweep); the double block on customer screens (allowlist **and** the organisation root's `isInternal`); email suppression scoped to runner-minted ids with `isDrill`; shadow → alert → on; results as audit rows for v1.
+
+**Modified — these are requirements for the implementation PR, not suggestions:**
+
+1. **Attribution.** Drill rows must not carry `userId: null`. The reason given (a fake id fails the audit insert after the fan-out has left) is right about a *fake* id; the answer is a *real* one: a login-disabled service identity per bench organisation (e.g. a `drill-runner` user, `SCHOOL_ADMIN`, `can_trigger_panic` true, no usable credential), created only for `isInternal` organisations. Every audit row then names the runner, and "who fired this alert?" is always answerable (Article 37). If the trigger path rejects a disabled principal, the implementer proposes the smallest change (a dedicated status is an L2 schema change) rather than falling back to `null`.
+2. **Coverage — v1 must drill the failure we actually had.** The device-scope OVERRIDE is necessary but it is the path that already worked; the ~24 s drop of 2026-07 → 10-22 was in **pushed broadcast messages and district copies**. v1 includes a broadcast-message drill (`isDrill`, bench screen, same three links) and, where a bench district exists, a district-copy check. Exit from `shadow` requires both drill kinds passing daily per class. (Open question 5: yes, in v1.)
+3. **Schedule in the panels' own ON window.** `10:00 UTC` is 02:00–03:00 Pacific; a panel on an on/off schedule is in `intendedDowntime` then, every run is `SKIPPED`, and the dead-man email becomes the only output. Slots are expressed in the screen's own time zone (now known per screen, `screen-time-zone.ts`) inside its ON window — default mid-morning local — and the dead-man check still catches a class that is never drilled. (Open question 2 answered.)
+4. **A FAIL holds canary auto-promotion for that hardware class** (open question 4: yes). That is Article 34's error-budget rule applied where it matters most.
+5. **Standby variant** (open question 3): not in v1, first thing after — the 2026-10-05 P0 was a panel that is OFF, and a drill against a panel in standby is the highest-value drill we can run.
+6. **Reviewer vendor** (open question 6): the implementation is reviewed by a model from a vendor other than Anthropic (Codex), because the designer and the implementer are both Claude.
+
+**Owner decisions still needed:** question 1 (which bench units, and confirming their organisations are flagged internal — flagging one is an owner action), and approval of this design as modified above. No code is written until then.
