@@ -12522,7 +12522,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       >
         <FitToViewport padding={40}>
           <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
-            <h1 style={{ fontSize: 100, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'pre-wrap', margin: 0 }}>{emergencyFallbackText}</h1>
+            {/* The first paragraph is the heading (the type's headline, or the
+                drill mark); the action lines follow — one block, the system
+                board's words, weight and leading. */}
+            {emergencyFallbackText.split('\n\n').map((para, i) => i === 0
+              ? <h1 key={i} style={{ fontSize: 100, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'pre-wrap', margin: 0 }}>{para}</h1>
+              : <p key={i} style={{ fontSize: 100, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'pre-wrap', margin: '1.15em 0 0' }}>{para}</p>)}
           </div>
         </FitToViewport>
       </div>
