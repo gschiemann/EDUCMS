@@ -533,11 +533,13 @@ self.addEventListener('message', (event) => {
     // cache, and a playlist file must never be promoted into the
     // never-evict tier.
     const tier = tierFromMessage(msg);
+    const progressPort = (event.ports && event.ports[0]) || null;
+    const report = makeProgressReporter(progressPort);
     event.waitUntil(answerPort(event, async () => {
       if (!tier) return { ok: false, reason: 'bad-request' };
       const stageTier = await stageTierForMessage(msg, tier);
-      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, stageTier);
-      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, stageTier);
+      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, stageTier, report);
+      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, stageTier, report);
       if (msg.type === 'PRECACHE_ASSEMBLE') return assembleStaged(msg, stageTier);
       // Hash a legacy cached entry on disk against the manifest digest.
       return adoptCached(msg, tier);
@@ -1318,6 +1320,25 @@ async function cacheLookup(msg) {
 }
 
 /** Reply on the message's port; a thrown error becomes an honest `{ ok: false }`. */
+/**
+ * Mid-step progress for the page's download bar (2026-10-31). A chunk or a
+ * verify is one long message event whose only reply used to come at the very
+ * end, so the bar sat still for the whole step. This posts `{ progress: true }`
+ * frames on the SAME port ahead of the final reply (the page treats them as
+ * progress, never as the answer), at most one per 250 ms. Best effort: a gone
+ * page or a port that refuses is ignored, and it never touches the bytes.
+ */
+function makeProgressReporter(port) {
+  let last = 0;
+  return function report(phase, done, total, force) {
+    if (!port) return;
+    const now = Date.now();
+    if (!force && now - last < 250) return;
+    last = now;
+    try { port.postMessage({ progress: true, phase, done, total: total === undefined ? null : total }); } catch (_e) { /* page gone */ }
+  };
+}
+
 async function answerPort(event, work) {
   const port = (event.ports && event.ports[0]) || null;
   let reply;
@@ -1345,9 +1366,24 @@ async function answerPort(event, work) {
  * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
  * temp body can never be counted as staged.
  */
-async function storeStagedChunk(staging, url, start, res, contentType, tier) {
+async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes) {
   const tmpKey = new Request(`${stagePrefixFor(url, tier)}tmp-${start}`);
-  await staging.put(tmpKey, new Response(res.body, { status: 200, headers: { 'content-type': contentType } }));
+  let body = res.body;
+  if (onBytes && body && typeof body.getReader === 'function' && typeof ReadableStream === 'function') {
+    // Count bytes as they arrive so the page can show them mid-chunk.
+    const reader = body.getReader();
+    let seen = 0;
+    body = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) { controller.close(); return; }
+        if (value && value.length) { seen += value.length; try { onBytes(seen); } catch (_e) { /* noop */ } }
+        controller.enqueue(value);
+      },
+      cancel(reason) { try { return reader.cancel(reason); } catch (_e) { return undefined; } },
+    });
+  }
+  await staging.put(tmpKey, new Response(body, { status: 200, headers: { 'content-type': contentType } }));
   const tmp = await staging.match(tmpKey);
   const blob = tmp ? await tmp.blob() : null;
   const length = blob ? blob.size : 0;
@@ -1363,7 +1399,7 @@ async function storeStagedChunk(staging, url, start, res, contentType, tier) {
   return length;
 }
 
-async function stageChunk(msg, tier) {
+async function stageChunk(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
@@ -1461,7 +1497,8 @@ async function stageChunk(msg, tier) {
     }
     let stored;
     try {
-      stored = await storeStagedChunk(staging, url, offset, res, contentType, tier);
+      stored = await storeStagedChunk(staging, url, offset, res, contentType, tier,
+        report ? (n) => report('chunk', offset + n, total) : null);
     } catch (e) {
       return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
     }
@@ -1506,7 +1543,7 @@ function isSha256Hex(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
 }
 
-async function verifyStaged(msg, tier) {
+async function verifyStaged(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
@@ -1517,10 +1554,16 @@ async function verifyStaged(msg, tier) {
   if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total };
   if (expected) {
     const hasher = new Sha256();
+    let hashed = 0;
+    if (report) report('verify', 0, layout.total, true);
     for (const c of layout.chunks) {
       const res = await staging.match(stageChunkKey(tier, url, c.start, c.length));
       if (!res || !res.body) return { ok: false, reason: 'incomplete', nextOffset: c.start, total };
-      await pumpStream(res.body, (bytes) => hasher.update(bytes));
+      await pumpStream(res.body, (bytes) => {
+        hasher.update(bytes);
+        hashed += bytes.length;
+        if (report) report('verify', hashed, layout.total);
+      });
     }
     if (hasher.digestHex() !== expected) {
       // Wrong bytes must never be promoted, and never be reused either.
