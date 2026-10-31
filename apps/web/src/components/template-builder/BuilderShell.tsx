@@ -1,5 +1,6 @@
 "use client";
 
+import { isAutomaticPublicData } from '../widgets/widget-data-capabilities';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -1825,7 +1826,7 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
-    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom' || isAutomaticPublicData(cfg);
     // An old whole-widget !important size must not defeat the selected field.
     const sizeReset = automaticWidget && prop === 'fontSize' ? { fontSize: undefined } : {};
     setCfg(wt === 'HOLIDAY'
