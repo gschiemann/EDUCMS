@@ -11,6 +11,7 @@ Articles 16, 18, 19 · Phase 1 item #16/#18 · prepared 2026-10-31 by the lead �
 | **Validation** | Read-only reads of the ruleset and the last 60 master runs; job display names copied from the workflow files (they are the status-check contexts). Not validated: the behaviour of a path-skipped required check on this repository (GitHub documents "pending"). |
 | **Rollback** | `PUT` the original rule set back (below). Instant. |
 | **Decision requested** | Approve applying it (a) now, accepting (2b) until the workflows are converted, or (b) after the launch freeze together with the workflow conversion. One-way door? No — reversible in one API call. |
+| **Decision** | **(b) — after the launch freeze, together with the workflow conversion.** Owner, 2026-10-31 ("After the freeze"). Until then the ruleset stays as it is; this record is the ready-to-apply change. |
 
 ## The change, ready to apply
 
