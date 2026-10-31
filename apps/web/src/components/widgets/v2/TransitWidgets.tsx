@@ -13,7 +13,7 @@ import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useNowTick } from './_shared/useNowTick';
 import { configFreshness, formatInZone } from '@/lib/time-truth';
-import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
+import { LIVE_DATA_SEEDED_LABELS, NothingTyped, SampleStamp, ManualDataStamp, numberOf as num, ownLabel, textOf as text, typedRows, useRealScreen } from './_shared/live-data-truth';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -90,14 +90,14 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0556), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: '#e8a01e', fontWeight: 800, fontSize: px(height, 0.0593), letterSpacing: '-0.02em' }}>DEPARTURES</div>
-            <div style={{ color: '#e8a01e88', fontSize: px(height, 0.0222), fontWeight: 600, letterSpacing: '0.08em' }}>{airport.toUpperCase()}</div>
+            <div style={{ color: c.style?.textColor || '#e8a01e', fontWeight: 800, fontSize: px(height, 0.0593), letterSpacing: '-0.02em' }}>DEPARTURES</div>
+            <div style={{ color: c.style?.textColor || '#e8a01e88', fontSize: px(height, 0.0222), fontWeight: 600, letterSpacing: '0.08em' }}>{airport.toUpperCase()}</div>
           </div>
-          <div style={{ color: '#e8a01e', fontWeight: 700, fontSize: px(height, 0.0593) }}>{nowHM(now, c.timezone)}</div>
+          <div style={{ color: c.style?.textColor || '#e8a01e', fontWeight: 700, fontSize: px(height, 0.0593) }}>{nowHM(now, c.timezone)}</div>
         </div>
         {visible.length === 0 ? <NothingTyped color="#9a7619" height={height} /> : (
-        <div style={{ flex: 1, marginTop: px(height, 0.0278), background: '#000', border: '1px solid #1a1a1a', borderRadius: px(height, 0.013), padding: px(height, 0.0222), color: '#e8a01e' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: `${px(height, 0.0111)}px 0`, borderBottom: '1px solid #2a2105', color: '#9a7619', fontWeight: 600, fontSize: px(height, 0.0204), letterSpacing: '0.06em' }}>
+        <div style={{ flex: 1, marginTop: px(height, 0.0278), background: '#000', border: '1px solid #1a1a1a', borderRadius: px(height, 0.013), padding: px(height, 0.0222), color: c.style?.textColor || '#e8a01e' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: `${px(height, 0.0111)}px 0`, borderBottom: '1px solid #2a2105', color: c.style?.textColor || '#9a7619', fontWeight: 600, fontSize: px(height, 0.0204), letterSpacing: '0.06em' }}>
             <div style={{ marginRight: px(height, 0.0167) }}>FLIGHT</div>
             <div style={{ marginRight: px(height, 0.0167) }}>TIME</div>
             <div style={{ marginRight: px(height, 0.0167) }}>DESTINATION</div>
@@ -122,13 +122,13 @@ export function DeparturesBoardWidget({ config, live = true, height = 480 }: Wid
               <div style={{ marginRight: px(height, 0.0167) }}>{row.dest}</div>
               <div style={{ marginRight: px(height, 0.0167) }}>{row.gate}</div>
               <div style={{ marginRight: px(height, 0.0167), color: statusColor(row.status) }}>{row.status}</div>
-              <div style={{ color: '#9a7619', fontSize: px(height, 0.0222) }}>{row.note || ''}</div>
+              <div style={{ color: c.style?.textColor || '#9a7619', fontSize: px(height, 0.0222) }}>{row.note || ''}</div>
             </div>
           ))}
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -215,19 +215,19 @@ export function FlightStatusHeroWidget({ config, live = true, height = 480 }: Wi
 
   return (
     <div style={frameStyle(r)}>
-      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0741), display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: '#fff' }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0741), display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: c.style?.textColor || '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'baseline' }}>
             <div style={{ fontWeight: 800, fontSize: px(height, 0.0741), letterSpacing: '-0.02em', marginRight: px(height, 0.0222) }}>{v('flight')}</div>
-            {sampleFlight && <div style={{ color: '#9aa3b2', fontWeight: 600, fontSize: px(height, 0.0296) }}>United Airlines</div>}
+            {sampleFlight && <div style={{ color: c.style?.textColor || '#9aa3b2', fontWeight: 600, fontSize: px(height, 0.0296) }}>United Airlines</div>}
           </div>
-          {status && <div style={{ background: '#22c55e', color: '#0b0c0e', padding: `${px(height, 0.013)}px ${px(height, 0.0222)}px`, borderRadius: px(height, 0.0093), fontWeight: 800, fontSize: px(height, 0.0278), letterSpacing: '0.04em' }}>{status}</div>}
+          {status && <div style={{ background: '#22c55e', color: c.style?.textColor || '#0b0c0e', padding: `${px(height, 0.013)}px ${px(height, 0.0222)}px`, borderRadius: px(height, 0.0093), fontWeight: 800, fontSize: px(height, 0.0278), letterSpacing: '0.04em' }}>{status}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <FlightAirport code={v('from')} city={typed('fromCity') || (realScreen ? '' : FLIGHT_SAMPLE.fromCity)} time={v('depTime')} height={height} />
           <div style={{ flex: 1, height: 2, background: 'linear-gradient(to right, #9aa3b2, #9aa3b2 50%, transparent 50%)', backgroundSize: '18px 2px', position: 'relative', marginLeft: px(height, 0.037), marginRight: px(height, 0.037) }}>
             <div style={{ position: 'absolute', top: px(height, -0.0463), left: '45%', fontSize: px(height, 0.0741), transform: 'rotate(90deg)' }}>{'✈'}</div>
-            {sampleLeg && <div style={{ position: 'absolute', bottom: px(height, -0.0407), left: '40%', color: '#9aa3b2', fontSize: px(height, 0.0222), fontWeight: 600 }}>5h 22m · 2,576 mi</div>}
+            {sampleLeg && <div style={{ position: 'absolute', bottom: px(height, -0.0407), left: '40%', color: c.style?.textColor || '#9aa3b2', fontSize: px(height, 0.0222), fontWeight: 600 }}>5h 22m · 2,576 mi</div>}
           </div>
           <FlightAirport code={v('to')} city={typed('toCity') || (realScreen ? '' : FLIGHT_SAMPLE.toCity)} time={v('arrTime')} height={height} />
         </div>
@@ -238,7 +238,7 @@ export function FlightStatusHeroWidget({ config, live = true, height = 480 }: Wi
           <div><FlightKV label="Aircraft" val={v('aircraft')} height={height} /></div>
         </div>
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -299,10 +299,10 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0556), display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.0241), letterSpacing: '0.08em' }}>{station ? `NEXT TRAINS · ${station.toUpperCase()}` : 'NEXT TRAINS'}</div>
-            <div style={{ color: '#0b0c0e', fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Departures</div>
+            <div style={{ color: c.style?.textColor || '#74767d', fontWeight: 700, fontSize: px(height, 0.0241), letterSpacing: '0.08em' }}>{station ? `NEXT TRAINS · ${station.toUpperCase()}` : 'NEXT TRAINS'}</div>
+            <div style={{ color: c.style?.textColor || '#0b0c0e', fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Departures</div>
           </div>
-          <div style={{ color: '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0444) }}>{nowHM(now, c.timezone)}</div>
+          <div style={{ color: c.style?.textColor || '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0444) }}>{nowHM(now, c.timezone)}</div>
         </div>
         {visible.length === 0 ? <NothingTyped color="#74767d" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'flex', flexDirection: 'column' }}>
@@ -320,16 +320,16 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
                 marginBottom: i === visible.length - 1 ? 0 : px(height, 0.013),
               }}
             >
-              <div style={{ background: l.color, color: '#fff', borderRadius: px(height, 0.013), padding: `${px(height, 0.0111)}px 0`, textAlign: 'center', fontWeight: 800, fontSize: px(height, 0.0444), letterSpacing: '0.02em', marginRight: px(height, 0.0222) }}>{l.line}</div>
+              <div style={{ background: l.color, color: c.style?.textColor || '#fff', borderRadius: px(height, 0.013), padding: `${px(height, 0.0111)}px 0`, textAlign: 'center', fontWeight: 800, fontSize: px(height, 0.0444), letterSpacing: '0.02em', marginRight: px(height, 0.0222) }}>{l.line}</div>
               <div style={{ marginRight: px(height, 0.0222) }}>
-                <div style={{ color: '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0315) }}>{l.toward}</div>
-                <div style={{ color: '#74767d', fontWeight: 600, fontSize: px(height, 0.0204) }}>{l.platform || ''}</div>
+                <div style={{ color: c.style?.textColor || '#0b0c0e', fontWeight: 700, fontSize: px(height, 0.0315) }}>{l.toward}</div>
+                <div style={{ color: c.style?.textColor || '#74767d', fontWeight: 600, fontSize: px(height, 0.0204) }}>{l.platform || ''}</div>
               </div>
               <div style={{ display: 'flex' }}>
                 {l.minutes.slice(0, 3).map((m, j) => (
                   <div key={j} style={{ minWidth: px(height, 0.0815), textAlign: 'center', marginRight: j === 2 ? 0 : px(height, 0.0222) }}>
                     <div style={{ fontWeight: 800, fontSize: px(height, 0.0519), color: m <= 2 ? '#dc2626' : '#0b0c0e', lineHeight: 1 }}>{m}</div>
-                    <div style={{ color: '#74767d', fontWeight: 600, fontSize: px(height, 0.0167) }}>{m <= 0 ? 'now' : 'min'}</div>
+                    <div style={{ color: c.style?.textColor || '#74767d', fontWeight: 600, fontSize: px(height, 0.0167) }}>{m <= 0 ? 'now' : 'min'}</div>
                   </div>
                 ))}
               </div>
@@ -338,7 +338,7 @@ export function TransitDeparturesWidget({ config, live = true, height = 480 }: W
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }
@@ -402,12 +402,12 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
   return (
     <div style={frameStyle(r)}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0556), display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', color: c.style?.textColor || '#fff' }}>
           <div>
-            <div style={{ color: '#74767d', fontSize: px(height, 0.0241), fontWeight: 700, letterSpacing: '0.06em' }}>{facility ? `PARKING · ${facility.toUpperCase()}` : 'PARKING'}</div>
+            <div style={{ color: c.style?.textColor || '#74767d', fontSize: px(height, 0.0241), fontWeight: 700, letterSpacing: '0.06em' }}>{facility ? `PARKING · ${facility.toUpperCase()}` : 'PARKING'}</div>
             <div style={{ fontWeight: 800, fontSize: px(height, 0.0815), letterSpacing: '-0.02em' }}>Available spaces</div>
           </div>
-          <div style={{ color: '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>{freshness && typed.length ? `Updated ${freshness}` : ''}</div>
+          <div style={{ color: c.style?.textColor || '#74767d', fontSize: px(height, 0.0222), fontWeight: 600 }}>{freshness && typed.length ? `Updated ${freshness}` : ''}</div>
         </div>
         {visible.length === 0 ? <NothingTyped color="#74767d" height={height} /> : (
         <div style={{ flex: 1, marginTop: px(height, 0.0278), display: 'grid', gridTemplateColumns: 'repeat(2,1fr)' }}>
@@ -432,17 +432,17 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
                 <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `linear-gradient(180deg, ${tone}15 0%, transparent 80%)` }} />
                 <div style={{ position: 'relative' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                    <div style={{ color: '#fff', fontWeight: 700, fontSize: px(height, 0.0333) }}>{l.name}</div>
-                    <div style={{ color: '#74767d', fontWeight: 600, fontSize: px(height, 0.0204) }}>{l.note}</div>
+                    <div style={{ color: c.style?.textColor || '#fff', fontWeight: 700, fontSize: px(height, 0.0333) }}>{l.name}</div>
+                    <div style={{ color: c.style?.textColor || '#74767d', fontWeight: 600, fontSize: px(height, 0.0204) }}>{l.note}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', marginTop: px(height, 0.0148) }}>
                     <div style={{ color: tone, fontWeight: 800, fontSize: px(height, 0.1481), letterSpacing: '-0.04em', lineHeight: 1, marginRight: px(height, 0.013) }}>{l.avail}</div>
-                    <div style={{ color: '#74767d', fontWeight: 700, fontSize: px(height, 0.0315) }}>/ {l.total} open</div>
+                    <div style={{ color: c.style?.textColor || '#74767d', fontWeight: 700, fontSize: px(height, 0.0315) }}>/ {l.total} open</div>
                   </div>
                   <div style={{ marginTop: px(height, 0.013), height: px(height, 0.013), background: '#1c2230', borderRadius: px(height, 0.0065), overflow: 'hidden' }}>
                     <div style={{ width: `${(l.avail / l.total) * 100}%`, height: '100%', background: tone }} />
                   </div>
-                  <div style={{ marginTop: px(height, 0.013), color: '#9aa3b2', fontSize: px(height, 0.0204), fontWeight: 600 }}>{l.rate}</div>
+                  <div style={{ marginTop: px(height, 0.013), color: c.style?.textColor || '#9aa3b2', fontSize: px(height, 0.0204), fontWeight: 600 }}>{l.rate}</div>
                 </div>
               </div>
             );
@@ -450,7 +450,7 @@ export function ParkingAvailabilityWidget({ config, live = true, height = 480 }:
         </div>
         )}
       </div>
-      {demo && <SampleStamp height={height} />}
+      {demo ? <SampleStamp height={height} /> : <ManualDataStamp height={height} />}
     </div>
   );
 }

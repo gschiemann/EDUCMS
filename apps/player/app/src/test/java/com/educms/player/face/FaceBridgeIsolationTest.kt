@@ -149,9 +149,10 @@ class FaceBridgeIsolationTest {
 
         val channel = codeOnly(read("src/main/java/com/educms/player/security/NativeBridgeChannel.kt"))
         assertTrue(
-            "the secure channel must dispatch the hold with ONE argument",
-            channel.contains("bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))"),
+            "the secure channel may identify a banner only with a literal true; neither argument names a face",
+            channel.contains("bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0), args.opt(1) == true)"),
         )
+        assertFalse("a missing banner flag must never default to true", channel.contains("boolAt(args, 1)"))
 
         val activity = codeOnly(read("src/main/java/com/educms/player/MainActivity.kt"))
         assertTrue(
@@ -159,12 +160,12 @@ class FaceBridgeIsolationTest {
             activity.contains("com.educms.player.display.DisplayEmergency.PRIMARY_FACE"),
         )
         assertTrue(
-            "the Activity's hold lambda must take (active, trusted) and nothing from the page",
-            activity.contains("displayEmergencyHoldImpl = { active, trusted ->"),
+            "the Activity's hold lambda must take the hold type and trust, with no face index from the page",
+            activity.contains("displayEmergencyHoldImpl = { active, trusted, bannerOnly ->"),
         )
         assertTrue(
-            "a face's hold lambda must take (active, trusted) and supply its OWN index",
-            facePlayerHostCode.contains("displayEmergencyHoldImpl = { active, trusted ->"),
+            "a face's hold lambda must take the hold type and trust, and supply its OWN index",
+            facePlayerHostCode.contains("displayEmergencyHoldImpl = { active, trusted, bannerOnly ->"),
         )
     }
 

@@ -9,6 +9,7 @@ export interface FeedItem {
   link: string;
   publishedAt: string | null;
   source: string;
+  author?: string;
 }
 
 export interface CalendarFeedEvent {

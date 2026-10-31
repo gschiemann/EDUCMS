@@ -106,6 +106,7 @@ export function useLiveWeather(config: any): LiveWeatherResult {
   useEffect(() => {
     // A new location owes nothing to the old one's reading.
     goodAt.current = 0;
+    setWeather(null);
     if (!location) { setLoading(false); setWeather(null); return; }
     let cancelled = false;
     setLoading(true);
@@ -144,22 +145,22 @@ export function useLiveWeather(config: any): LiveWeatherResult {
   const overrideHigh = config?.high;
   const high: number | string = given(overrideHigh)
     ? Number(overrideHigh)
-    : (weather?.high ?? temp);
+    : (weather?.high ?? (weather || realScreen ? NO_READING : temp));
 
   const overrideLow = config?.low;
   const low: number | string = given(overrideLow)
     ? Number(overrideLow)
-    : (weather?.low ?? temp);
+    : (weather?.low ?? (weather || realScreen ? NO_READING : temp));
 
   const overrideCondition = (config?.condition || config?.staticDesc || '').trim();
   const condition = overrideCondition
-    || (weather?.weatherCode != null ? getWMO(weather.weatherCode).label : realScreen ? '' : 'Sunny');
+    || (weather ? (weather.weatherCode >= 0 ? getWMO(weather.weatherCode).label : '') : realScreen ? '' : 'Sunny');
 
   // The icon states a condition, so a real screen draws one only for a real
   // weather code (or an icon someone chose) — never the sample's sun.
   const overrideIcon = (config?.staticIcon || '').trim();
   const icon = overrideIcon
-    || (weather?.weatherCode != null || !realScreen ? emojiForCode(weather?.weatherCode) : '');
+    || (weather ? (weather.weatherCode >= 0 ? emojiForCode(weather.weatherCode) : '') : !realScreen ? emojiForCode(null) : '');
 
   const locationName = weather?.locationName || location || '';
 

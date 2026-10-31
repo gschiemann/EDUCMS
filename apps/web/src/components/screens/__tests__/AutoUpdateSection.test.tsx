@@ -61,7 +61,11 @@ it('an admin turns it ON for this one screen; the window it will use is stated',
 it('a screen that would show the Install prompt says so, and is never promised an automatic update', async () => {
   info = { ...base, enabled: true, orgEnabled: true, readiness: 'needs-tap', readinessReason: 'installed-by-another-app' };
   wrap(<AutoUpdateSection screenId="scr-1" />);
-  expect(await screen.findByText(/Needs a tap on site/)).toBeInTheDocument();
+  // 2026-10-26 — most panels are wall-mounted with a remote and no touch screen:
+  // the action and the place, remote first, never "needs a tap".
+  const line = await screen.findByText(/Needs someone at the screen/);
+  expect(line).toHaveTextContent('Use “Push update” when someone can select Install there (OK on the remote, or tap it).');
+  expect(line).not.toHaveTextContent(/needs a tap|tap Install/i);
   expect(screen.queryByText(/Updates itself between/)).toBeNull();
 });
 
@@ -72,7 +76,7 @@ it('read-only roles see the state but cannot change it', async () => {
   expect(screen.getByRole('button', { name: 'Automatic app updates: On' })).toBeDisabled();
 });
 
-it('fleet list counts silent / needs a tap / not reported', async () => {
+it('fleet list counts silent / needs someone at the screen / not reported', async () => {
   fleet = {
     orgEnabled: true, orgWindow: {}, defaultWindow: { start: '03:00', end: '04:00' },
     screens: [
@@ -84,7 +88,9 @@ it('fleet list counts silent / needs a tap / not reported', async () => {
   wrap(<AutoUpdateReadinessList />);
   const list = await screen.findByTestId('auto-update-readiness');
   expect(list).toHaveTextContent('1 screen installs silently');
-  expect(list).toHaveTextContent('1 screen needs a tap on site');
+  expect(list).toHaveTextContent('1 screen needs someone on site');
+  expect(list).toHaveTextContent('Needs someone at the screen');
+  expect(list).not.toHaveTextContent(/needs a tap/i);
   expect(list).toHaveTextContent('1 screen has not reported');
   expect(list).toHaveTextContent('(set on the screen)');
   expect(list).toHaveTextContent('No timezone known');

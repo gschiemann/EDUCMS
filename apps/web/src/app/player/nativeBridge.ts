@@ -467,6 +467,9 @@ export const LEGACY_GATED_METHODS = LEGACY_NONCE_GATED_METHODS;
  * feature. So no nonce ⇒ today's exact call shape, always.
  */
 function legacyArgs(method: string, args: unknown[]): unknown[] {
+  // Only the origin-checked channel may identify a non-interrupting banner.
+  // The legacy interlock keeps its one-boolean shape on every APK version.
+  if (method === 'displayEmergencyHold') return args.slice(0, 1);
   if (LEGACY_NONCE_GATED_METHODS.indexOf(method) === -1) return args;
   const w = win();
   const nonce = w ? (w as { __eduCmsBridgeNonce?: unknown }).__eduCmsBridgeNonce : undefined;

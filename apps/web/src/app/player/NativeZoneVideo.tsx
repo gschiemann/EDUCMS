@@ -1,7 +1,8 @@
 "use client";
 
 import { reportNativeFallback } from "./NativeDualVideo";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { BroadcastLayout } from "./broadcastLayout";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
 import {
   blockNativeVideo,
@@ -94,6 +95,7 @@ export function NativeZoneVideo({
   active,
   prerollOnly,
   measure,
+  canvasLayout,
   onHole,
   onLinger,
   onPlaying,
@@ -113,6 +115,8 @@ export function NativeZoneVideo({
   prerollOnly: boolean;
   /** The viewport rect the APK positions its surface at (null = not measurable yet). */
   measure: (el: HTMLElement | null) => ZoneLayout | null;
+  /** Remeasure after the canvas moves under a broadcast, without restarting. */
+  canvasLayout?: BroadcastLayout | null;
   /** Kept for the page's backdrop machinery; a native slot sits above the window, so no hole is ever opened (1.1.41). */
   localRect?: () => Rect | null;
   onHole: (slot: string, open: boolean, rect: Rect | null) => void;
@@ -134,9 +138,11 @@ export function NativeZoneVideo({
   const container = useRef<HTMLDivElement>(null);
   const controller = useRef<NativeZoneController | null>(null);
   const activeRef = useRef(active);
-  activeRef.current = active;
   const cb = useRef({ onHole, onLinger, onPlaying, onEnded, onAttempt, measure });
-  cb.current = { onHole, onLinger, onPlaying, onEnded, onAttempt, measure };
+  useLayoutEffect(() => {
+    activeRef.current = active;
+    cb.current = { onHole, onLinger, onPlaying, onEnded, onAttempt, measure };
+  }, [active, onHole, onLinger, onPlaying, onEnded, onAttempt, measure]);
   const [phase, setPhase] = useState<{ identity: string; stage: NativeZoneStage }>({ identity: "", stage: "browser" });
   const stage: NativeZoneStage = phase.identity === identity ? phase.stage : "browser";
   // Per-identity mutable facts shared by the effects below.
@@ -317,6 +323,14 @@ export function NativeZoneVideo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity]);
 
+  // CSS transforms do not notify ResizeObserver. A broadcast must move a
+  // surface above the page in this commit, rather than at the next 1 s poll.
+  useLayoutEffect(() => {
+    if (run.current?.identity !== identity || !controller.current) return;
+    const next = cb.current.measure(container.current);
+    if (next) controller.current.layout(next);
+  }, [identity, canvasLayout]);
+
   // The slot reached the glass (or left it).
   useEffect(() => {
     const r = run.current;
@@ -328,7 +342,6 @@ export function NativeZoneVideo({
     }
     // A native surface above the window would hide the next slide: stop at once (a hard cut).
     if (r.played && !r.done) r.finish?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, identity]);
 
   return (

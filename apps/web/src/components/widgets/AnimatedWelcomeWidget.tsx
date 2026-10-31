@@ -30,6 +30,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useLiveTemplateData } from './lib/useLiveTemplateData';
 import { sceneCss } from './scene-css';
 import { handleHotspotKeyDown, replayHotspotClickOnField } from './hotspot-clickthrough';
 
@@ -45,7 +46,7 @@ interface Cfg {
   // Clock timezone — IANA tz string (e.g. 'America/Chicago'). When
   // empty, the player's local browser timezone is used.
   clockTimeZone?: string;
-  // Live weather config — temp + desc are auto-fetched from Open-Meteo
+  // Live weather config — temp + desc are auto-fetched from MET Norway
   // based on weatherLocation. The temp/desc strings are now overrides
   // for offline previews / explicit testing only; default behavior is
   // 100% pulled from the API.
@@ -98,7 +99,7 @@ function tickerDurationSec(speed: Cfg['tickerSpeed'], baseSec: number): number {
 const CANVAS_W = 1920;
 const CANVAS_H = 1080;
 
-// Kid-friendly cute weather phrases keyed by Open-Meteo WMO code.
+// Kid-friendly cute weather phrases keyed by WMO condition code.
 // Tone matches the rainbow theme: warm, playful, never alarming.
 // Uses temperature qualifier when relevant (cold/cool/warm/hot).
 function cuteWeatherPhrase(wmoCode: number, tempF: number): string {
@@ -137,7 +138,7 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
   // passes false). When NOT live we still render every shape so the tile
   // looks accurate, but we skip the expensive browser work:
   //   - clock setInterval (30s, harmless alone but × 60 tiles = 2 tps)
-  //   - 3 external API fetches to resolve weather (ipapi.co is 1-3s and
+  //   - weather source requests (the shared API caches source data and
   //     often rate-limits; firing it from 60 thumbnails on /templates is
   //     the #1 reason the gallery felt slow per 2026-04-19 audit)
   //   - 80-element confetti DOM spawn (repaints on every compositor frame)
@@ -147,10 +148,10 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
   const confettiRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
   const [now, setNow] = useState<Date>(() => new Date());
-  // Live weather state — fetched from Open-Meteo for the configured
+  // Live weather state — from the shared current-hour forecast for the configured
   // location. Falls back to the temp/desc overrides if either fetch
   // fails OR the user has set explicit overrides.
-  const [weather, setWeather] = useState<{ tempF: number; wmoCode: number } | null>(null);
+  const { weather } = useLiveTemplateData({live: isLive, clock: false, weatherLocation: c.weatherLocation, weatherUnits: c.weatherUnits, weatherOverride: c.weatherTemp});
 
   // Scale the 1920×1080 canvas to fit our zone. Use offsetWidth/Height
   // (LAYOUT size, unaffected by parent transforms) instead of
@@ -186,72 +187,8 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
     return () => clearInterval(id);
   }, [isLive]);
 
-  // Live weather — three-tier resolution:
-  //   1. weatherLocation set on the widget    → ZIP-code lookup via zippopotam.us
-  //   2. weatherLocation empty                → IP geolocation via ipapi.co
-  //                                              (free, no key, returns lat/lng)
-  //   3. Both fail OR weatherTemp override set → falls back to override / default
-  // Open-Meteo gives current temp + WMO code from the resolved coords.
-  useEffect(() => {
-    // Skip all weather network work in thumbnail mode — the static "68°"
-    // fallback below renders fine without any fetch.
-    if (!isLive) return;
-    if (c.weatherTemp) return;
-    let cancelled = false;
-    const isCelsius = c.weatherUnits === 'metric';
+  // Weather uses the shared free current-hour forecast service.
 
-    const resolveCoords = async (): Promise<{ lat: number; lng: number } | null> => {
-      const zip = (c.weatherLocation || '').trim();
-      // Tier 1 — explicit ZIP
-      if (zip) {
-        try {
-          const m = zip.match(/^([a-z]{2})\s+(\S+)/i);
-          const country = m ? m[1].toLowerCase() : 'us';
-          const code = m ? m[2] : zip;
-          const r = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(code)}`);
-          if (r.ok) {
-            const j = await r.json();
-            const p = j?.places?.[0];
-            const lat = parseFloat(p?.latitude); const lng = parseFloat(p?.longitude);
-            if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-          }
-        } catch { /* fall through to IP */ }
-      }
-      // Tier 2 — IP geolocation (player's network location)
-      try {
-        const r = await fetch('https://ipapi.co/json/');
-        if (r.ok) {
-          const j = await r.json();
-          const lat = parseFloat(j?.latitude); const lng = parseFloat(j?.longitude);
-          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-        }
-      } catch { /* noop */ }
-      return null;
-    };
-
-    const fetchWx = async () => {
-      const coords = await resolveCoords();
-      if (cancelled || !coords) return;
-      try {
-        const tempUnit = isCelsius ? 'celsius' : 'fahrenheit';
-        const wxRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}` +
-          `&current=temperature_2m,weather_code&temperature_unit=${tempUnit}`
-        );
-        if (!wxRes.ok) return;
-        const wx = await wxRes.json();
-        const tempVal = wx?.current?.temperature_2m;
-        const code2 = wx?.current?.weather_code;
-        if (cancelled || tempVal == null || code2 == null) return;
-        const tempRound = Math.round(tempVal);
-        const tempF = isCelsius ? Math.round(tempRound * 9/5 + 32) : tempRound;
-        setWeather({ tempF, wmoCode: code2 });
-      } catch { /* falls back to default */ }
-    };
-    fetchWx();
-    const id = setInterval(fetchWx, 15 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [isLive, c.weatherLocation, c.weatherUnits, c.weatherTemp]);
 
   // Spawn confetti once — skip entirely in thumbnail mode. 80 absolutely-
   // positioned elements with continuous keyframe animations × N gallery
@@ -403,11 +340,11 @@ export function AnimatedWelcomeWidget({ config, live }: { config: Cfg; live?: bo
                 {/* Live temp wins; explicit override second; static
                     placeholder last so editor previews always show
                     something even before the API call finishes. */}
-                {c.weatherTemp || (weather ? `${weather.tempF}°` : '68°')}
+                {c.weatherTemp || (weather ? `${weather.temperature}°` : isLive ? '—' : '68°')}
               </div>
             </div>
             <div className="aw-weatherDesc" data-field="weatherDesc" style={{ whiteSpace: 'pre-wrap' }}>
-              {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : '~ sunny + crisp ~')}
+              {c.weatherDesc || (weather ? cuteWeatherPhrase(weather.wmoCode, weather.tempF) : isLive ? '' : '~ sunny + crisp ~')}
             </div>
           </div>
 

@@ -1,0 +1,161 @@
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PropertiesPanel } from '../PropertiesPanel';
+import { parseDirectoryLocations, type DirectoryDocument } from '../DirectoryBoardEditor';
+import { useBuilderStore } from '../useBuilderStore';
+import type { Zone } from '../types';
+
+jest.mock('@/lib/api-client', () => ({ ...jest.requireActual('@/lib/api-client'), apiFetch: jest.fn(() => new Promise(() => undefined)) }));
+beforeAll(() => { HTMLElement.prototype.scrollIntoView = jest.fn(); });
+function mount(count = 2, extra: Record<string, unknown> = {}) {
+  const document = { format: 'arc-riot.directory', version: 1, designId: 'pacific-editorial', orientation: 'landscape', dataset: { title: 'Example Centre', tenants: Array.from({ length: count }, (_, i) => ({ id: 'row-' + i, name: 'Company ' + i, suite: String(101 + i) })) }, playback: {}, theme: {} };
+  const zone = { id: 'scene', name: 'Directory', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/directory/pacific-editorial-landscape.html', directoryDocument: document, ...extra } } as Zone;
+  useBuilderStore.getState().init({ id: 'directory', isSystem: false, zones: [zone], meta: { name: 'Directory', description: '', screenWidth: 3840, screenHeight: 2160, bgColor: '', bgGradient: '', bgImage: '' }, isTouchEnabled: false, idleResetMs: 60000, scenes: [] });
+  useBuilderStore.setState({ selectedIds: ['scene'] });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(<QueryClientProvider client={client}><PropertiesPanel /></QueryClientProvider>);
+}
+function saved() { return useBuilderStore.getState().zones[0].defaultConfig as { directoryDocument: DirectoryDocument; contentChanged?: boolean }; }
+
+describe('directory configuration in the existing Properties panel', () => {
+  it('uses the native list and controls, without an embedded settings app or disabled choices', () => {
+    const { container } = mount();
+    expect(screen.getByLabelText('Building name')).toHaveValue('Example Centre');
+    expect(screen.getByLabelText('Display')).toHaveValue('single');
+    expect(screen.getByLabelText('location 1 Name')).toHaveValue('Company 0');
+    expect(screen.getByLabelText('location 1 Suite / room')).toHaveValue('101');
+    expect(container.querySelector('iframe[title="Directory editor"]')).toBeNull();
+    expect(screen.queryByText('Cards / panels')).toBeNull();
+    expect(screen.queryByText('Page order')).toBeNull();
+    expect(screen.queryByText(/milliseconds|pixels per second/i)).toBeNull();
+    expect(screen.getByLabelText('Transition')).toHaveValue('crossfade');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(14);
+    expect(container.querySelector('select:disabled')).toBeNull();
+  });
+  it('saves the simple name or numeric suite sort without changing content or rotation', () => {
+    mount();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('name');
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'suite' } });
+    expect(saved().directoryDocument.playback).toMatchObject({ sort: 'suite' });
+    expect(saved().directoryDocument.dataset.tenants[0]).toMatchObject({ name: 'Company 0', suite: '101' });
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'slide-right' } });
+    expect(saved().directoryDocument.playback).toMatchObject({ sort: 'suite', transitionMode: 'slide-right' });
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'name' } });
+    expect(saved().directoryDocument.playback.sort).toBe('name');
+  });
+  it('adds, edits and removes locations through the shared list editor', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add location' }));
+    fireEvent.change(screen.getByLabelText('location 3 Name'), { target: { value: 'New Company' } });
+    fireEvent.change(screen.getByLabelText('location 3 Suite / room'), { target: { value: '900' } });
+    expect(saved().directoryDocument.dataset.tenants[2]).toMatchObject({ name: 'New Company', suite: '900' });
+    expect(saved().contentChanged).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove location 1' }));
+    expect(saved().directoryDocument.dataset.tenants).toHaveLength(2);
+    expect(saved().directoryDocument.dataset.tenants[0].name).toBe('Company 1');
+  });
+  it('automatically counts pages at the selected capacity, and saves plain timing/speed choices', () => {
+    mount(25);
+    fireEvent.change(screen.getByLabelText('Display'), { target: { value: 'pages' } });
+    expect(screen.getByRole('status')).toHaveTextContent('2 pages');
+    const size = screen.getByLabelText('Locations per page');
+    fireEvent.change(size, { target: { value: '12' } }); fireEvent.blur(size);
+    expect(screen.getByRole('status')).toHaveTextContent('3 pages');
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'flip' } });
+    fireEvent.change(screen.getByLabelText('Transition speed'), { target: { value: 'fast' } });
+    const duration = screen.getByLabelText('Seconds per page'); fireEvent.change(duration, { target: { value: '6' } }); fireEvent.blur(duration);
+    expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'pages', locationsPerPage: 12, transitionMode: 'flip', motionSpeed: 'fast', pageDurationMs: 6000 });
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'continuous-scroll' } });
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(6);
+    expect(screen.queryByLabelText('Transition speed')).toBeNull();
+  });
+  it('offers a visible photo picker and makes two rotating pages in one click', () => {
+    const { container } = mount(10);
+    const photo = container.querySelector('[data-edit-img="property.hero"]')!;
+    expect(photo.closest('details')).toBeNull();
+    expect(photo).toHaveTextContent('Building photo');
+    expect(photo).toHaveTextContent('Browse library');
+    expect(screen.getByText('Pages & rotation')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Make 2 pages' }));
+    expect(screen.getByRole('status')).toHaveTextContent('2 pages');
+    expect(screen.getByLabelText('Locations per page')).toHaveValue(5);
+    expect(screen.getByLabelText('Transition')).toHaveValue('crossfade');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(14);
+    expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'pages', locationsPerPage: 5 });
+  });
+  it('keeps saved timing and directional choices visible before making pages', () => {
+    mount(10);
+    fireEvent.change(screen.getByLabelText('Transition'), { target: { value: 'slide-right' } });
+    const timing = screen.getByLabelText('Seconds per page');
+    fireEvent.change(timing, { target: { value: '8' } }); fireEvent.blur(timing);
+    expect(screen.getByRole('status')).toHaveTextContent('Slide right · 8 sec/page');
+    expect(saved().directoryDocument.playback).toMatchObject({ displayMode: 'single', transitionMode: 'slide-right', pageDurationMs: 8000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Make 2 pages' }));
+    expect(screen.getByLabelText('Transition')).toHaveValue('slide-right');
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(8);
+    for (const mode of ['slide', 'vertical-scroll', 'vertical-scroll-down', 'continuous-scroll', 'continuous-scroll-down']) {
+      fireEvent.change(screen.getByLabelText('Transition'), { target: { value: mode } });
+      expect(saved().directoryDocument.playback.transitionMode).toBe(mode);
+    }
+    expect(screen.getByLabelText('Seconds per page')).toHaveValue(8);
+    expect(screen.queryByLabelText('Transition speed')).toBeNull();
+  });
+  it('opens only the clicked wording and saves it in the document', async () => {
+    mount();
+    act(() => { window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'arc-directory-select', key: 'property.directoryHeading', text: 'City services' } })); });
+    fireEvent.change(screen.getByLabelText('List heading'), { target: { value: 'Our tenants' } });
+    expect(saved().directoryDocument.dataset.directoryHeading).toBe('Our tenants');
+    act(() => { window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'arc-directory-select', key: 'property.imageCaption', text: 'Supplied building artwork' } })); });
+    expect(screen.getByLabelText('Photo caption')).toHaveValue('Supplied building artwork');
+    fireEvent.change(screen.getByLabelText('Photo caption'), { target: { value: 'Our main entrance' } });
+    expect(saved().directoryDocument.dataset.imageCaption).toBe('Our main entrance');
+    act(() => { window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'arc-directory-select', key: 'tenant.row-0.name' } })); });
+    await waitFor(() => expect(screen.getByLabelText('location 1 Name')).toHaveFocus());
+  });
+  it('preserves previous per-field text edits when switching to the simple document editor', () => {
+    mount(2, { textOverrides: { 'property.subtitle': 'Previously saved address', 'tenant.row-0.name': 'Previously saved tenant' } });
+    expect(screen.getByLabelText('location 1 Name')).toHaveValue('Previously saved tenant');
+    fireEvent.change(screen.getByLabelText('Building name'), { target: { value: 'New building name' } });
+    expect(saved().directoryDocument.dataset.subtitle).toBe('Previously saved address');
+    expect(saved().directoryDocument.dataset.tenants[0].name).toBe('Previously saved tenant');
+  });
+  it('can replace fictional starters with a pasted real list in one action', () => {
+    mount(); fireEvent.click(screen.getByRole('button', { name: 'Paste a list from Excel' }));
+    fireEvent.change(screen.getByLabelText('Paste locations'), { target: { value: 'Name,Suite\nMy first tenant,200\nMy second tenant,300' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Replace list' }));
+    expect(saved().directoryDocument.dataset.tenants.map(row => row.name)).toEqual(['My first tenant', 'My second tenant']);
+  });
+  it('accepts Excel/quoted CSV with only the useful name and suite columns', () => {
+    expect(parseDirectoryLocations('Name,Suite\n"Long, Legal & Co.",1201\nQuiet Studio,502').map(row => [row.name, row.suite])).toEqual([['Long, Legal & Co.', '1201'], ['Quiet Studio', '502']]);
+    expect(parseDirectoryLocations('Name\tSuite\nOne\t101')[0]).toMatchObject({ name: 'One', suite: '101' });
+    expect(() => parseDirectoryLocations('"unclosed,101')).toThrow();
+  });
+});
+
+it('updates the same structured text from inline commits and selects it for the native toolbar', () => {
+  mount();
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'educms-field-click',key:'property.brandLabel',text:'DIRECTORY',inline:true}})));
+  expect(useBuilderStore.getState().activeFieldName).toBe('property.brandLabel');
+  expect(screen.getByLabelText('Top left label')).toHaveValue('DIRECTORY');
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'property.brandLabel',value:'Visitor directory'}})));
+  expect(saved().directoryDocument.dataset.brandLabel).toBe('Visitor directory');
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'tenant.row-0.name',value:'Updated company'}})));
+  expect(saved().directoryDocument.dataset.tenants[0].name).toBe('Updated company');
+  fireEvent.focus(screen.getByLabelText('location 1 Suite / room'));
+  expect(useBuilderStore.getState().activeFieldName).toBe('tenant.row-0.suite');
+});
+it('offers visible header text directly in the left panel without requiring a canvas click', () => {
+  mount();
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-status',designId:'pacific-editorial',copy:{brandLabel:'DIRECTORY',locationLabel:'Main lobby'}}})));
+  expect(screen.getByLabelText('Text area')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Text area'),{target:{value:'locationLabel'}});
+  fireEvent.change(screen.getByLabelText('Top right label'),{target:{value:'Reception'}});
+  expect(saved().directoryDocument.dataset.locationLabel).toBe('Reception');
+});
+it('refuses edits from another board frame and from player preview', () => {
+  mount(); const parent=document.createElement('div');parent.dataset.zoneId='another-zone'; const frame=document.createElement('iframe');parent.append(frame);document.body.append(parent);
+  act(()=>window.dispatchEvent(new MessageEvent('message',{source:frame.contentWindow,data:{type:'arc-directory-text-change',key:'property.title',value:'Wrong board'}})));
+  expect(saved().directoryDocument.dataset.title).toBe('Example Centre'); parent.remove();
+  act(()=>{useBuilderStore.setState({previewMode:true});window.dispatchEvent(new MessageEvent('message',{source:window,data:{type:'arc-directory-text-change',key:'property.title',value:'Preview write'}}));});
+  expect(saved().directoryDocument.dataset.title).toBe('Example Centre');
+});

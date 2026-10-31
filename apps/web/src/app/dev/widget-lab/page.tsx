@@ -15,8 +15,10 @@
  */
 export const dynamic = 'force-dynamic';
 
-import WidgetLabClient from './WidgetLabClient';
-
-export default function WidgetLabPage() {
+export default async function WidgetLabPage() {
+  // Gate on the server before importing the developer-only renderer. A client
+  // stub still emitted the lab's entire widget dependency graph in production.
+  if (process.env.NODE_ENV === 'production') return <div>Not available.</div>;
+  const { default: WidgetLabClient } = await import('./WidgetLabClient');
   return <WidgetLabClient />;
 }

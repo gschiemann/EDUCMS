@@ -5,8 +5,7 @@
  * pack widgets (8 landscape + 8 portrait).
  *
  * Wraps the canonical `useLiveTemplateData` hook so the HS pack gets
- * the same Open-Meteo three-tier fetch chain (ZIP → IP geolocate →
- * fallback) the AnimatedWelcome + MS pack already use. No new fetch
+ * the same shared MET Norway current-hour forecast the AnimatedWelcome + MS pack already use. No new fetch
  * code, no new rate-limit risk — single source of truth lives at
  * components/widgets/lib/useLiveTemplateData.ts.
  *
@@ -45,7 +44,7 @@ import { useLiveTemplateData } from '../lib/useLiveTemplateData';
 export interface UseHsLiveWeatherOpts {
   /** From parent widget — false in gallery thumbs, true in player + preview. */
   live?: boolean;
-  /** Optional ZIP / city. Empty → IP geolocation via ipapi.co. */
+  /** ZIP / city / coordinates. Empty leaves weather unconfigured. */
   location?: string;
   /** True → render °C; false → render °F. */
   unitsCelsius?: boolean;
@@ -96,15 +95,15 @@ export function useHsLiveWeather(opts: UseHsLiveWeatherOpts): UseHsLiveWeatherRe
   // Bail to defaults / overrides when the live fetch hasn't returned yet.
   if (!weather) {
     return {
-      tempLabel: tempIsPlaceholder ? defaultTemp : (tempOverride || defaultTemp),
-      conditionLabel: condIsPlaceholder ? defaultCondition : (conditionOverride || defaultCondition),
+      tempLabel: tempIsPlaceholder ? (live ? "—" : defaultTemp) : (tempOverride || defaultTemp),
+      conditionLabel: condIsPlaceholder ? (live ? "" : defaultCondition) : (conditionOverride || defaultCondition),
       isLive: false,
     };
   }
 
   const tempVal = unitsCelsius ? Math.round((weather.tempF - 32) * 5 / 9) : weather.tempF;
   const liveTemp = formatTemp(tempVal);
-  const liveCondition = formatCondition(weather.wmoCode, tempVal);
+  const liveCondition = weather.wmoCode < 0 ? "" : formatCondition(weather.wmoCode, tempVal);
 
   return {
     tempLabel: tempIsPlaceholder ? liveTemp : (tempOverride || liveTemp),
@@ -142,5 +141,5 @@ export function describeWmo(code: number): string {
   if (code === 85 || code === 86) return 'Snow showers';
   if (code === 95) return 'Thunderstorm';
   if (code === 96 || code === 99) return 'Thunderstorm w/ hail';
-  return 'Clear';
+  return '';
 }

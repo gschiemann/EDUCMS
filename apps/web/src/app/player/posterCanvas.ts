@@ -71,6 +71,25 @@ export function isPosterClassUserAgent(userAgent: string | null | undefined): bo
   );
 }
 
+/**
+ * Whether the Back menu offers "Resize LED area" (2026-10-26, owner: "remove
+ * the resize LED button unless its an LED screen"). Only an LED controller
+ * needs it: the server's hardware class names a NovaStar / Taurus controller,
+ * or this WebView is the poster class. A screen that already has an LED
+ * canvas size in force keeps the button too, so a size set by mistake can
+ * always be undone from the remote.
+ */
+export function offersLedResize(args: {
+  hardwareModel?: string | null;
+  userAgent?: string | null;
+  canvasOverrideActive?: boolean;
+}): boolean {
+  const hw = (args.hardwareModel || '').toLowerCase();
+  if (hw.includes('taurus') || hw.includes('novastar') || hw.includes('nova-star')) return true;
+  if (isPosterClassUserAgent(args.userAgent)) return true;
+  return args.canvasOverrideActive === true;
+}
+
 /** Normalize a candidate standard: positive integers only, else the default. */
 export function normalizePosterStandard(
   candidate: Partial<PosterSize> | null | undefined,

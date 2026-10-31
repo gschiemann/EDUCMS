@@ -3,6 +3,8 @@ module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   moduleNameMapper: {
+    // Layout CSS is verified by real-browser tests; Jest has no CSS loader.
+    '\\.css$': '<rootDir>/test-mocks/style.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
     // `lucide-react/dynamic` is ESM-only (a bare `export * from
     // './dynamic.mjs'` shim — lucide can't ship an exports map, see

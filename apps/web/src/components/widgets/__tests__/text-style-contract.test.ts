@@ -225,3 +225,11 @@ describe('text-style contract — CSS rules stay byte-identical', () => {
     expect(buildFieldOnlyStyleRules({ hidden: false })).toEqual([]);
   });
 });
+
+it('keeps automatic weather/news layouts responsive while honoring selected field sizes', () => {
+ expect(buildTextStyleRules({variant:'weather-outlook',fontSize:48})).not.toContain('font-size: 48px !important');
+ expect(buildTextStyleRules({variant:'rss-newsroom',fontSize:48})).not.toContain('font-size: 48px !important');
+ expect(buildTextStyleRules({forecastDays:5,fontSize:48})).not.toContain('font-size: 48px !important');
+ expect(buildTextStyleRules({fontSize:82})).toContain('font-size: 82px !important');
+ expect(buildTextStyleRules({variant:'other-widget',fontSize:48})).toContain('font-size: 48px !important');
+});

@@ -38,6 +38,25 @@ const tenantStateCache = new Map<string, { value: EmergencyState; at: number }>(
 const lastPingWrites = new Map<string, number>();
 
 /**
+ * Per-tenant invalidation epoch (2026-10-26, the MEDICAL drill at a launch
+ * site). THE BUG THIS CLOSES: the emergency controller invalidates this cache
+ * BEFORE its transaction commits (deliberately — the signed fan-out must not
+ * wait on the database), and that fan-out makes every screen in the tenant
+ * re-read its manifest at once. A manifest read that reached Postgres before
+ * the commit wrote the PRE-change row back into this cache, where it stood
+ * for up to 2 s after the commit. On the all-clear that produced a manifest
+ * with the per-screen override rows gone and the tenant still "ACTIVE": an
+ * alert that no longer existed, in a shape the glass had never shown — so
+ * every screen announced a NEW alert and the APK's paint-proof ladder started
+ * over on the way out. A read now records the epoch it started under, and a
+ * write from a read that began before the latest invalidation is refused (a
+ * cache miss, never a stale hit). The controller invalidates again AFTER its
+ * commit, so no read that began before the committed state can repopulate.
+ */
+const tenantStateEpochs = new Map<string, number>();
+let invalidationSeq = 0;
+
+/**
  * Read tenant emergency state with a 2-second in-process cache.
  * Returns `undefined` to signal "not cached or expired — caller should
  * query DB and pass the result back via `setTenantState`".
@@ -52,7 +71,21 @@ export function getTenantState(tenantId: string): EmergencyState | undefined {
     return hit.value;
 }
 
-export function setTenantState(tenantId: string, value: EmergencyState): void {
+/** The epoch a caller must capture BEFORE its database read and hand to `setTenantState`. */
+export function tenantStateEpoch(tenantId: string): number {
+    return tenantStateEpochs.get(tenantId) ?? 0;
+}
+
+/**
+ * Cache a tenant row the caller just read.
+ *
+ * @param readEpoch `tenantStateEpoch(tenantId)` captured BEFORE the read. A
+ *   read that began under an older epoch than the current one may carry
+ *   pre-commit state and is not cached. Omitted = legacy caller: cached as
+ *   before (the controller's post-commit invalidation still bounds it).
+ */
+export function setTenantState(tenantId: string, value: EmergencyState, readEpoch?: number): void {
+    if (readEpoch !== undefined && readEpoch !== tenantStateEpoch(tenantId)) return;
     tenantStateCache.set(tenantId, { value, at: Date.now() });
     // Naive cap: evict oldest when the map gets big. 10k entries in a
     // single-pod memory is fine (~1 MB) but if something pathological
@@ -66,10 +99,18 @@ export function setTenantState(tenantId: string, value: EmergencyState): void {
 /**
  * Immediate invalidate — call from the emergency controller on
  * trigger / all-clear so the next manifest fetch for this tenant
- * definitely sees the new state (no waiting out the 2s TTL).
+ * definitely sees the new state (no waiting out the 2s TTL). Call it
+ * BEFORE the fan-out (so no poll waits out the TTL) AND AFTER the commit
+ * (so no read that began before the committed state can write it back).
  */
 export function invalidateTenantState(tenantId: string): void {
     tenantStateCache.delete(tenantId);
+    invalidationSeq += 1;
+    tenantStateEpochs.set(tenantId, invalidationSeq);
+    if (tenantStateEpochs.size > 10_000) {
+        const oldest = tenantStateEpochs.keys().next().value;
+        if (oldest) tenantStateEpochs.delete(oldest);
+    }
 }
 
 /**
@@ -642,6 +683,8 @@ export function invalidateManifestCache(screenId?: string): void {
 export function resetManifestCacheForTests(): void {
     manifestCache.clear();
     preambleCache.clear();
+    tenantStateCache.clear();
+    tenantStateEpochs.clear();
     manifestContentRev = 0;
     manifestRevHookArmed = false;
 }

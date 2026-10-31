@@ -1,3 +1,11 @@
+import { CurrentWeatherController } from './current-weather.controller';
+import { CurrentWeatherService } from './current-weather.service';
+import { ReferenceRatesController } from './reference-rates.controller';
+import { ReferenceRatesService } from './reference-rates.service';
+import { NewsController } from './news.controller';
+import { NewsService } from './news.service';
+import { ForecastController } from './forecast.controller';
+import { ForecastService } from './forecast.service';
 import { Module } from '@nestjs/common';
 import { FeedsController } from './feeds.controller';
 import { FeedsService } from './feeds.service';
@@ -7,7 +15,20 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
 // realtime.module.ts) — no need to import it here, matching how other
 // feature modules (e.g. auth.module.ts) consume it for free.
 @Module({
-  controllers: [FeedsController],
-  providers: [FeedsService, FeedsRateLimiter],
+  controllers: [
+    FeedsController,
+    ForecastController,
+    NewsController,
+    ReferenceRatesController,
+    CurrentWeatherController,
+  ],
+  providers: [
+    FeedsService,
+    FeedsRateLimiter,
+    ForecastService,
+    NewsService,
+    ReferenceRatesService,
+    CurrentWeatherService,
+  ],
 })
 export class FeedsModule {}

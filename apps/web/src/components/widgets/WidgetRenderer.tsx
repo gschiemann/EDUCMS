@@ -1,5 +1,6 @@
 "use client";
 
+import { withCalendarFeed } from './CalendarFeedBoundary';
 import { QrCodeWidget, type QrCodeConfig } from './QrCodeWidget';
 // 2026-09-12 — the real Instagram / Facebook Page feed. Static import (not a
 // lazy chunk) because SOCIAL_FEED is dispatched from the player's own type
@@ -18,6 +19,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, type ReactElement } 
 // comes through the proxies in ./widget-families.
 import { loadWidgetChunk, useWidgetChunk, type WidgetChunkLoader } from './lazy-widget';
 import { getVariant } from './variants';
+import { CurrentWeatherBoundary, hasCurrentWeather } from './CurrentWeatherBoundary';
 import {
   Clock, Cloud, Sun, CloudRain, CloudSnow, CloudLightning, Wind, Droplets,
   Megaphone, CalendarDays, Bell, UtensilsCrossed, Users, Globe, Rss, Share2,
@@ -788,6 +790,9 @@ export function WidgetPreview(props: {
   // doesn't matter since useGameState() always prefers a real ambient
   // snapshot over the RenderSurface-driven phantom.
   let node = <WidgetPreviewInner {...props} />;
+  if (hasCurrentWeather(widgetType, cfg)) {
+    node = <CurrentWeatherBoundary config={cfg} frozen={props.freeze}>{node}</CurrentWeatherBoundary>;
+  }
   if (wrapInGameProvider) {
     node = <GameStateProvider gameId={gameId}>{node}</GameStateProvider>;
   }
@@ -1502,11 +1507,11 @@ function ClockWidget({ config, compact }: { config: any; compact: boolean }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// WEATHER — Live weather via Open-Meteo (free, no key)
+// WEATHER — current-hour forecast via MET Norway (free, no key)
 // ═══════════════════════════════════════════════════════
 
 // WMO weather code → description + icon + gradient
-// Open-Meteo weather helpers now live in ./weather-api so that a theme can
+// Shared weather helpers now live in ./weather-api so that a theme can
 // use them WITHOUT importing this file — see that module's header for why
 // that cycle had to go. Re-exported here because they were exported from
 // this module before and other code still imports them from it.
@@ -1543,7 +1548,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
   // Theme router — render a themed variant if requested
   if (config.theme === 'sunny-meadow') return <SunnyMeadowWeather config={config} compact={compact} />;
 
-  const location = config.location || config.zipCode || 'Springfield';
+  const location = config.location || config.zipCode || '';
   const units = String(config.units || 'imperial').toLowerCase();
   const isCelsius = units === 'metric' || units === 'celsius' || units === 'c';
   const unit = isCelsius ? '°C' : '°F';
@@ -1577,7 +1582,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
         <div className="flex flex-col items-center gap-1">
           <Cloud style={{ width: '2em', height: '2em', color: 'rgba(255,255,255,0.4)', animation: 'pulse 2s ease-in-out infinite' }} />
           <span style={{ fontSize: '0.5em', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
-            {loading ? 'Loading weather...' : 'Location not found'}
+            {!location ? 'Set a weather location' : loading ? 'Loading weather...' : 'Weather temporarily unavailable'}
           </span>
         </div>
         <style>{sceneCss(`@keyframes pulse { 0%,100% { opacity:0.4 } 50% { opacity:1 } }`)}</style>
@@ -1616,20 +1621,20 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
                 <MapPin style={{ width: '0.6em', height: '0.6em', color: 'rgba(255,255,255,0.5)' }} />
                 <span data-field="location" style={{ fontSize: '0.55em', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{weather.locationName}</span>
               </div>
-              <span style={{ fontSize: '0.5em', color: 'rgba(255,255,255,0.5)' }}>H:{weather.high}° L:{weather.low}°</span>
+              <span style={{ fontSize: '0.5em', color: 'rgba(255,255,255,0.5)' }}>24h H:{weather.high ?? '—'}° L:{weather.low ?? '—'}°</span>
             </div>
             <div className="flex items-center gap-[8%] mt-[3%]">
               <div className="flex items-center gap-[2%]">
                 <Droplets style={{ width: '0.45em', height: '0.45em', color: 'rgba(255,255,255,0.4)' }} />
-                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{weather.humidity}%</span>
+                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{weather.humidity ?? '—'}%</span>
               </div>
               <div className="flex items-center gap-[2%]">
                 <Wind style={{ width: '0.45em', height: '0.45em', color: 'rgba(255,255,255,0.4)' }} />
-                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{weather.wind} mph</span>
+                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{weather.wind ?? '—'} mph</span>
               </div>
               <div className="flex items-center gap-[2%]">
                 <Thermometer style={{ width: '0.45em', height: '0.45em', color: 'rgba(255,255,255,0.4)' }} />
-                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>Feels {weather.feelsLike}°</span>
+                <span style={{ fontSize: '0.42em', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>Feels {weather.feelsLike ?? '—'}°</span>
               </div>
             </div>
           </>
@@ -3031,7 +3036,9 @@ function LunchMenuBoard({ config, compact }: { config: any; compact: boolean }) 
 // CALENDAR — Events display
 // ═══════════════════════════════════════════════════════
 
-function CalendarWidget({ config, compact }: { config: any; compact: boolean }) {
+const CalendarWidget = withCalendarFeed(CalendarLayoutWidget);
+
+function CalendarLayoutWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'office-dashboard') return <OfficeDashboardCalendar config={config} compact={compact} />;
   if (config.theme === 'back-to-school') return <BackToSchoolCalendar config={config} />;
   if (config.theme === 'bus-loop') return <BusLoopCalendar config={config} />;
@@ -5050,7 +5057,7 @@ export function GoogleReviewsWidgetTile({ config }: { config?: GoogleReviewsConf
 
 export function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
   const maxItems = config.maxItems || 5;
-  const feedUrl = (config.feedUrl || '').trim();
+  const feedUrl = (config.feedUrl || config.url || '').trim();
   const live = useLiveRssFeed(feedUrl, maxItems);
   const realScreen = useRenderSurface() === 'player';
 

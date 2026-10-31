@@ -34,7 +34,17 @@
  * itself. PURE — unit-tested per shape in `emergencySurface.test.ts`.
  */
 
-export type EmergencySurface = 'takeover' | 'overlay' | 'content';
+/**
+ * `hold` (2026-10-26): the display hold is engaged — the page observed it on
+ * the APK at boot, or raised it itself — and the page cannot yet say WHICH
+ * alert it is for (no manifest alert, no pushed message, no pending signed
+ * OVERRIDE). Content must not mount under an engaged hold (player rule 11: a
+ * page that reloads under a persisted hold used to boot onto its cached
+ * NORMAL manifest), but the page also cannot claim an emergency it has no
+ * evidence for (rule 10) — least of all a RED one during a drill. So: a
+ * black protective surface, no words, until the live manifest decides.
+ */
+export type EmergencySurface = 'takeover' | 'overlay' | 'content' | 'hold';
 
 export interface SurfaceMessage {
   type: string;
@@ -57,6 +67,8 @@ export interface EmergencySurfaceInput {
   polledTakeover: boolean;
   /** `displayEmergencyHoldRaised()` — the eager hold (also persisted natively). */
   renderHold: boolean;
+  /** Known banner awaiting the same server-confirmed hold release. */
+  playbackHeld?: boolean;
   /** A signed OVERRIDE is still being confirmed by the manifest. */
   pendingOverrideConfirm: boolean;
   /** The current playlist IS the emergency content. */
@@ -70,7 +82,8 @@ export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurfa
   if (i.polledActive && i.polledTakeover) return 'takeover';
   const bannerShown = isBannerEmergencyMessage(i.pushed) || (i.polledActive && !i.polledTakeover);
   if (bannerShown) return 'overlay';
-  // Hold raised with nothing identified yet: protective.
-  if (i.renderHold) return 'takeover';
+  // Hold engaged with nothing identified yet: protective, but unattributed —
+  // black, never a red claim the page cannot back (see `hold` above).
+  if (i.renderHold && i.playbackHeld !== false) return 'hold';
   return 'content';
 }

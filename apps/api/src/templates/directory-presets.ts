@@ -2,7 +2,7 @@ import type { SystemPreset } from './system-presets';
 export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   {
     "name": "Corporate · Directory · Pacific Editorial",
-    "description": "Commercial real estate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Commercial real estate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -320,7 +320,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -330,7 +333,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Pacific Editorial — Portrait",
-    "description": "Commercial real estate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Commercial real estate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -648,7 +651,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -658,7 +664,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Elevator Stack",
-    "description": "Corporate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Corporate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -976,7 +982,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -986,7 +995,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Elevator Stack — Portrait",
-    "description": "Corporate directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Corporate directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -1304,7 +1313,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1314,7 +1326,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Departures Board",
-    "description": "Industrial / logistics directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Industrial / logistics directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -1632,7 +1644,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1642,7 +1657,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Departures Board — Portrait",
-    "description": "Industrial / logistics directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Industrial / logistics directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -1960,7 +1975,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -1970,7 +1988,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Luxury Concierge",
-    "description": "Hospitality directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Hospitality directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -2288,7 +2306,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2298,7 +2319,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Luxury Concierge — Portrait",
-    "description": "Hospitality directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Hospitality directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -2616,7 +2637,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2626,7 +2650,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Swiss Wayfinding",
-    "description": "Government / civic directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Government / civic directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -2944,7 +2968,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -2954,7 +2981,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Swiss Wayfinding — Portrait",
-    "description": "Government / civic directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Government / civic directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -3272,7 +3299,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3282,7 +3312,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Tropical Modernist",
-    "description": "Retail / mixed-use directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Retail / mixed-use directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -3600,7 +3630,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3610,7 +3643,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Tropical Modernist — Portrait",
-    "description": "Retail / mixed-use directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Retail / mixed-use directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -3928,7 +3961,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -3938,7 +3974,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Glass Facade",
-    "description": "Creative / tech directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Creative / tech directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -4256,7 +4292,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4266,7 +4305,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Glass Facade — Portrait",
-    "description": "Creative / tech directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Creative / tech directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -4584,7 +4623,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4594,7 +4636,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Brutalist Poster",
-    "description": "Education / campus directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Education / campus directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -4912,7 +4954,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -4922,7 +4967,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Brutalist Poster — Portrait",
-    "description": "Education / campus directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Education / campus directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -5240,7 +5285,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5250,7 +5298,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Care Atlas",
-    "description": "Medical / wellness directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Medical / wellness directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -5568,7 +5616,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5578,7 +5629,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Care Atlas — Portrait",
-    "description": "Medical / wellness directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Medical / wellness directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -5896,7 +5947,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -5906,7 +5960,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Maison Residence",
-    "description": "Luxury / residential directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Luxury / residential directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "LANDSCAPE",
     "screenWidth": 3840,
@@ -6224,7 +6278,10 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }
@@ -6234,7 +6291,7 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
   },
   {
     "name": "Corporate · Directory · Maison Residence — Portrait",
-    "description": "Luxury / residential directory. Editable destinations, automatic and manual pages, configurable rotation.",
+    "description": "Luxury / residential directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
     "category": "LOBBY",
     "orientation": "PORTRAIT",
     "screenWidth": 2160,
@@ -6552,7 +6609,7644 @@ export const DIRECTORY_TEMPLATE_PRESETS: SystemPreset[] = [
               "scrollSpeedPxPerSecond": 44,
               "scrollStartHoldMs": 2500,
               "sort": "design",
-              "paused": false
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Large Building",
+    "description": "Large buildings / many suites directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#f3efe5",
+    "id": "preset-corporate-directory-building-index-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/building-index-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "building-index",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Meridian Business Center",
+              "subtitle": "Offices · Services · Professional practices",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Meridian",
+              "image": null,
+              "fictional": true,
+              "tenants": [
+                {
+                  "id": "large-001",
+                  "name": "Alder Advisory",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-002",
+                  "name": "Amberstone Design Group",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-003",
+                  "name": "Arcwell Legal Partners",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-004",
+                  "name": "Atlas Wellness",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-005",
+                  "name": "Beacon Engineering",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-006",
+                  "name": "Bellwether Capital",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-007",
+                  "name": "Birchline Architecture",
+                  "suite": "107",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-008",
+                  "name": "Bluehaven Consulting",
+                  "suite": "108",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-009",
+                  "name": "Bridgefield Studio",
+                  "suite": "109",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-010",
+                  "name": "Brightwell Property Group",
+                  "suite": "110",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-011",
+                  "name": "Brookline Advisory",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-012",
+                  "name": "Canyon Design Group",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-013",
+                  "name": "Cedar Legal Partners",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-014",
+                  "name": "Clearwater Wellness",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-015",
+                  "name": "Clover Engineering",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-016",
+                  "name": "Coastline Capital",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-017",
+                  "name": "Copper Architecture",
+                  "suite": "207",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-018",
+                  "name": "Crestview Consulting",
+                  "suite": "208",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-019",
+                  "name": "Daybreak Studio",
+                  "suite": "209",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-020",
+                  "name": "Eastbridge Property Group",
+                  "suite": "210",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-021",
+                  "name": "Evergreen Advisory",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-022",
+                  "name": "Fairway Design Group",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-023",
+                  "name": "Fieldstone Legal Partners",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-024",
+                  "name": "Harbor Wellness",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-025",
+                  "name": "Horizon Engineering",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-026",
+                  "name": "Juniper Capital",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-027",
+                  "name": "Keystone Architecture",
+                  "suite": "307",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-028",
+                  "name": "Lakeview Consulting",
+                  "suite": "308",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-029",
+                  "name": "Laurel Studio",
+                  "suite": "309",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-030",
+                  "name": "Linden Property Group",
+                  "suite": "310",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-031",
+                  "name": "Maple Advisory",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-032",
+                  "name": "Meridian Design Group",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-033",
+                  "name": "Northpoint Legal Partners",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-034",
+                  "name": "Oakwell Wellness",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-035",
+                  "name": "Orchard Engineering",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-036",
+                  "name": "Parkside Capital",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-037",
+                  "name": "Pinecrest Architecture",
+                  "suite": "407",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-038",
+                  "name": "Redwood Consulting",
+                  "suite": "408",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-039",
+                  "name": "Riverstone Studio",
+                  "suite": "409",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-040",
+                  "name": "Seabrook Property Group",
+                  "suite": "410",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-041",
+                  "name": "Silverline Advisory",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-042",
+                  "name": "Southwind Design Group",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-043",
+                  "name": "Springwell Legal Partners",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-044",
+                  "name": "Stonebridge Wellness",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-045",
+                  "name": "Summit Engineering",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-046",
+                  "name": "Tidewater Capital",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-047",
+                  "name": "Valley Architecture",
+                  "suite": "507",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-048",
+                  "name": "Westhaven Consulting",
+                  "suite": "508",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-049",
+                  "name": "Willow Studio",
+                  "suite": "509",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-050",
+                  "name": "Woodland Property Group",
+                  "suite": "510",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-051",
+                  "name": "Alder Capital",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-052",
+                  "name": "Amberstone Architecture",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-053",
+                  "name": "Arcwell Consulting",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-054",
+                  "name": "Atlas Studio",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-055",
+                  "name": "Beacon Property Group",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-056",
+                  "name": "Bellwether Advisory",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-057",
+                  "name": "Birchline Design Group",
+                  "suite": "607",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-058",
+                  "name": "Bluehaven Legal Partners",
+                  "suite": "608",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-059",
+                  "name": "Bridgefield Wellness",
+                  "suite": "609",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-060",
+                  "name": "Brightwell Engineering",
+                  "suite": "610",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-061",
+                  "name": "Brookline Capital",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-062",
+                  "name": "Canyon Architecture",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-063",
+                  "name": "Cedar Consulting",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-064",
+                  "name": "Clearwater Studio",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-065",
+                  "name": "Clover Property Group",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-066",
+                  "name": "Coastline Advisory",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-067",
+                  "name": "Copper Design Group",
+                  "suite": "707",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-068",
+                  "name": "Crestview Legal Partners",
+                  "suite": "708",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-069",
+                  "name": "Daybreak Wellness",
+                  "suite": "709",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-070",
+                  "name": "Eastbridge Engineering",
+                  "suite": "710",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-071",
+                  "name": "Evergreen Capital",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-072",
+                  "name": "Fairway Architecture",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-073",
+                  "name": "Fieldstone Consulting",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-074",
+                  "name": "Harbor Studio",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-075",
+                  "name": "Horizon Property Group",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-076",
+                  "name": "Juniper Advisory",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-077",
+                  "name": "Keystone Design Group",
+                  "suite": "807",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-078",
+                  "name": "Lakeview Legal Partners",
+                  "suite": "808",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-079",
+                  "name": "Laurel Wellness",
+                  "suite": "809",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-080",
+                  "name": "Linden Engineering",
+                  "suite": "810",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-081",
+                  "name": "Maple Capital",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-082",
+                  "name": "Meridian Architecture",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-083",
+                  "name": "Northpoint Consulting",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-084",
+                  "name": "Oakwell Studio",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-085",
+                  "name": "Orchard Property Group",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-086",
+                  "name": "Parkside Advisory",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-087",
+                  "name": "Pinecrest Design Group",
+                  "suite": "907",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-088",
+                  "name": "Redwood Legal Partners",
+                  "suite": "908",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-089",
+                  "name": "Riverstone Wellness",
+                  "suite": "909",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-090",
+                  "name": "Seabrook Engineering",
+                  "suite": "910",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-091",
+                  "name": "Silverline Capital",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-092",
+                  "name": "Southwind Architecture",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-093",
+                  "name": "Springwell Consulting",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-094",
+                  "name": "Stonebridge Studio",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-095",
+                  "name": "Summit Property Group",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-096",
+                  "name": "Tidewater Advisory",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-097",
+                  "name": "Valley Design Group",
+                  "suite": "1007",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-098",
+                  "name": "Westhaven Legal Partners",
+                  "suite": "1008",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-099",
+                  "name": "Willow Wellness",
+                  "suite": "1009",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-100",
+                  "name": "Woodland Engineering",
+                  "suite": "1010",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ],
+              "suiteLabel": "Suite"
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Large Building — Portrait",
+    "description": "Large buildings / many suites directory. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#f3efe5",
+    "id": "preset-corporate-directory-building-index-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/building-index-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "building-index",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Meridian Business Center",
+              "subtitle": "Offices · Services · Professional practices",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Meridian",
+              "image": null,
+              "fictional": true,
+              "tenants": [
+                {
+                  "id": "large-001",
+                  "name": "Alder Advisory",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-002",
+                  "name": "Amberstone Design Group",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-003",
+                  "name": "Arcwell Legal Partners",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-004",
+                  "name": "Atlas Wellness",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-005",
+                  "name": "Beacon Engineering",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-006",
+                  "name": "Bellwether Capital",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-007",
+                  "name": "Birchline Architecture",
+                  "suite": "107",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-008",
+                  "name": "Bluehaven Consulting",
+                  "suite": "108",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-009",
+                  "name": "Bridgefield Studio",
+                  "suite": "109",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-010",
+                  "name": "Brightwell Property Group",
+                  "suite": "110",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-011",
+                  "name": "Brookline Advisory",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-012",
+                  "name": "Canyon Design Group",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-013",
+                  "name": "Cedar Legal Partners",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-014",
+                  "name": "Clearwater Wellness",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-015",
+                  "name": "Clover Engineering",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-016",
+                  "name": "Coastline Capital",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-017",
+                  "name": "Copper Architecture",
+                  "suite": "207",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-018",
+                  "name": "Crestview Consulting",
+                  "suite": "208",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-019",
+                  "name": "Daybreak Studio",
+                  "suite": "209",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-020",
+                  "name": "Eastbridge Property Group",
+                  "suite": "210",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-021",
+                  "name": "Evergreen Advisory",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-022",
+                  "name": "Fairway Design Group",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-023",
+                  "name": "Fieldstone Legal Partners",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-024",
+                  "name": "Harbor Wellness",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-025",
+                  "name": "Horizon Engineering",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-026",
+                  "name": "Juniper Capital",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-027",
+                  "name": "Keystone Architecture",
+                  "suite": "307",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-028",
+                  "name": "Lakeview Consulting",
+                  "suite": "308",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-029",
+                  "name": "Laurel Studio",
+                  "suite": "309",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-030",
+                  "name": "Linden Property Group",
+                  "suite": "310",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-031",
+                  "name": "Maple Advisory",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-032",
+                  "name": "Meridian Design Group",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-033",
+                  "name": "Northpoint Legal Partners",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-034",
+                  "name": "Oakwell Wellness",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-035",
+                  "name": "Orchard Engineering",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-036",
+                  "name": "Parkside Capital",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-037",
+                  "name": "Pinecrest Architecture",
+                  "suite": "407",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-038",
+                  "name": "Redwood Consulting",
+                  "suite": "408",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-039",
+                  "name": "Riverstone Studio",
+                  "suite": "409",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-040",
+                  "name": "Seabrook Property Group",
+                  "suite": "410",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-041",
+                  "name": "Silverline Advisory",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-042",
+                  "name": "Southwind Design Group",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-043",
+                  "name": "Springwell Legal Partners",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-044",
+                  "name": "Stonebridge Wellness",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-045",
+                  "name": "Summit Engineering",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-046",
+                  "name": "Tidewater Capital",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-047",
+                  "name": "Valley Architecture",
+                  "suite": "507",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-048",
+                  "name": "Westhaven Consulting",
+                  "suite": "508",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-049",
+                  "name": "Willow Studio",
+                  "suite": "509",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-050",
+                  "name": "Woodland Property Group",
+                  "suite": "510",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-051",
+                  "name": "Alder Capital",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-052",
+                  "name": "Amberstone Architecture",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-053",
+                  "name": "Arcwell Consulting",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-054",
+                  "name": "Atlas Studio",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-055",
+                  "name": "Beacon Property Group",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-056",
+                  "name": "Bellwether Advisory",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-057",
+                  "name": "Birchline Design Group",
+                  "suite": "607",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-058",
+                  "name": "Bluehaven Legal Partners",
+                  "suite": "608",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-059",
+                  "name": "Bridgefield Wellness",
+                  "suite": "609",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-060",
+                  "name": "Brightwell Engineering",
+                  "suite": "610",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-061",
+                  "name": "Brookline Capital",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-062",
+                  "name": "Canyon Architecture",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-063",
+                  "name": "Cedar Consulting",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-064",
+                  "name": "Clearwater Studio",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-065",
+                  "name": "Clover Property Group",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-066",
+                  "name": "Coastline Advisory",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-067",
+                  "name": "Copper Design Group",
+                  "suite": "707",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-068",
+                  "name": "Crestview Legal Partners",
+                  "suite": "708",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-069",
+                  "name": "Daybreak Wellness",
+                  "suite": "709",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-070",
+                  "name": "Eastbridge Engineering",
+                  "suite": "710",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-071",
+                  "name": "Evergreen Capital",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-072",
+                  "name": "Fairway Architecture",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-073",
+                  "name": "Fieldstone Consulting",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-074",
+                  "name": "Harbor Studio",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-075",
+                  "name": "Horizon Property Group",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-076",
+                  "name": "Juniper Advisory",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-077",
+                  "name": "Keystone Design Group",
+                  "suite": "807",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-078",
+                  "name": "Lakeview Legal Partners",
+                  "suite": "808",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-079",
+                  "name": "Laurel Wellness",
+                  "suite": "809",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-080",
+                  "name": "Linden Engineering",
+                  "suite": "810",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-081",
+                  "name": "Maple Capital",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-082",
+                  "name": "Meridian Architecture",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-083",
+                  "name": "Northpoint Consulting",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-084",
+                  "name": "Oakwell Studio",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-085",
+                  "name": "Orchard Property Group",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-086",
+                  "name": "Parkside Advisory",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-087",
+                  "name": "Pinecrest Design Group",
+                  "suite": "907",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-088",
+                  "name": "Redwood Legal Partners",
+                  "suite": "908",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-089",
+                  "name": "Riverstone Wellness",
+                  "suite": "909",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-090",
+                  "name": "Seabrook Engineering",
+                  "suite": "910",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-091",
+                  "name": "Silverline Capital",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-092",
+                  "name": "Southwind Architecture",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-093",
+                  "name": "Springwell Consulting",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-094",
+                  "name": "Stonebridge Studio",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-095",
+                  "name": "Summit Property Group",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-096",
+                  "name": "Tidewater Advisory",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-097",
+                  "name": "Valley Design Group",
+                  "suite": "1007",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-098",
+                  "name": "Westhaven Legal Partners",
+                  "suite": "1008",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-099",
+                  "name": "Willow Wellness",
+                  "suite": "1009",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "large-100",
+                  "name": "Woodland Engineering",
+                  "suite": "1010",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ],
+              "suiteLabel": "Suite"
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Metropolitan Ledger",
+    "description": "Multi-tenant towers directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#f5f2ec",
+    "id": "preset-corporate-directory-metropolitan-ledger-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/metropolitan-ledger-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "metropolitan-ledger",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Metropolitan Exchange",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Metropolitan Exchange",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "metropolitan-ledger-001",
+                  "name": "Adera",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-002",
+                  "name": "Arven",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-003",
+                  "name": "Aviora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-004",
+                  "name": "Belora",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-005",
+                  "name": "Bexlo",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-006",
+                  "name": "Brivon",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-007",
+                  "name": "Calden",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-008",
+                  "name": "Canora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-009",
+                  "name": "Celven",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-010",
+                  "name": "Corven",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-011",
+                  "name": "Darela",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-012",
+                  "name": "Delora",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-013",
+                  "name": "Denvo",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-014",
+                  "name": "Dovren",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-015",
+                  "name": "Elora",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-016",
+                  "name": "Elven",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-017",
+                  "name": "Emora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-018",
+                  "name": "Envia",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-019",
+                  "name": "Falden",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-020",
+                  "name": "Fenvia",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-021",
+                  "name": "Feron",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-022",
+                  "name": "Fivora",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-023",
+                  "name": "Galden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-024",
+                  "name": "Gelora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-025",
+                  "name": "Givon",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-026",
+                  "name": "Halden",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-027",
+                  "name": "Havora",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-028",
+                  "name": "Helven",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-029",
+                  "name": "Hivora",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-030",
+                  "name": "Idena",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-031",
+                  "name": "Ilora",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-032",
+                  "name": "Imven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-033",
+                  "name": "Inora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-034",
+                  "name": "Jarela",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-035",
+                  "name": "Jivon",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-036",
+                  "name": "Jovren",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-037",
+                  "name": "Kalden",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-038",
+                  "name": "Kivora",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-039",
+                  "name": "Kovren",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-040",
+                  "name": "Lavera",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-041",
+                  "name": "Levon",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-042",
+                  "name": "Livora",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-043",
+                  "name": "Luvren",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-044",
+                  "name": "Malden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-045",
+                  "name": "Mavora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-046",
+                  "name": "Melven",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-047",
+                  "name": "Mivon",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-048",
+                  "name": "Nalden",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-049",
+                  "name": "Navora",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-050",
+                  "name": "Nevon",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-051",
+                  "name": "Novren",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-052",
+                  "name": "Odelia",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-053",
+                  "name": "Olven",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-054",
+                  "name": "Omora",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-055",
+                  "name": "Orven",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-056",
+                  "name": "Palden",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-057",
+                  "name": "Pavora",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-058",
+                  "name": "Pelven",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-059",
+                  "name": "Pivon",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-060",
+                  "name": "Quelen",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-061",
+                  "name": "Qivora",
+                  "suite": "1101",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-062",
+                  "name": "Ravora",
+                  "suite": "1102",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-063",
+                  "name": "Relven",
+                  "suite": "1103",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-064",
+                  "name": "Rivora",
+                  "suite": "1104",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-065",
+                  "name": "Salden",
+                  "suite": "1105",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-066",
+                  "name": "Savora",
+                  "suite": "1106",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Metropolitan Ledger — Portrait",
+    "description": "Multi-tenant towers directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#f5f2ec",
+    "id": "preset-corporate-directory-metropolitan-ledger-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/metropolitan-ledger-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "metropolitan-ledger",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Metropolitan Exchange",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Metropolitan Exchange",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "metropolitan-ledger-001",
+                  "name": "Adera",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-002",
+                  "name": "Arven",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-003",
+                  "name": "Aviora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-004",
+                  "name": "Belora",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-005",
+                  "name": "Bexlo",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-006",
+                  "name": "Brivon",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-007",
+                  "name": "Calden",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-008",
+                  "name": "Canora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-009",
+                  "name": "Celven",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-010",
+                  "name": "Corven",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-011",
+                  "name": "Darela",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-012",
+                  "name": "Delora",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-013",
+                  "name": "Denvo",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-014",
+                  "name": "Dovren",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-015",
+                  "name": "Elora",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-016",
+                  "name": "Elven",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-017",
+                  "name": "Emora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-018",
+                  "name": "Envia",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-019",
+                  "name": "Falden",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-020",
+                  "name": "Fenvia",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-021",
+                  "name": "Feron",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-022",
+                  "name": "Fivora",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-023",
+                  "name": "Galden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-024",
+                  "name": "Gelora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-025",
+                  "name": "Givon",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-026",
+                  "name": "Halden",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-027",
+                  "name": "Havora",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-028",
+                  "name": "Helven",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-029",
+                  "name": "Hivora",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-030",
+                  "name": "Idena",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-031",
+                  "name": "Ilora",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-032",
+                  "name": "Imven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-033",
+                  "name": "Inora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-034",
+                  "name": "Jarela",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-035",
+                  "name": "Jivon",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-036",
+                  "name": "Jovren",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-037",
+                  "name": "Kalden",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-038",
+                  "name": "Kivora",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-039",
+                  "name": "Kovren",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-040",
+                  "name": "Lavera",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-041",
+                  "name": "Levon",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-042",
+                  "name": "Livora",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-043",
+                  "name": "Luvren",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-044",
+                  "name": "Malden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-045",
+                  "name": "Mavora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-046",
+                  "name": "Melven",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-047",
+                  "name": "Mivon",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-048",
+                  "name": "Nalden",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-049",
+                  "name": "Navora",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-050",
+                  "name": "Nevon",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-051",
+                  "name": "Novren",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-052",
+                  "name": "Odelia",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-053",
+                  "name": "Olven",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-054",
+                  "name": "Omora",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-055",
+                  "name": "Orven",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-056",
+                  "name": "Palden",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-057",
+                  "name": "Pavora",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-058",
+                  "name": "Pelven",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-059",
+                  "name": "Pivon",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-060",
+                  "name": "Quelen",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-061",
+                  "name": "Qivora",
+                  "suite": "1101",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-062",
+                  "name": "Ravora",
+                  "suite": "1102",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-063",
+                  "name": "Relven",
+                  "suite": "1103",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-064",
+                  "name": "Rivora",
+                  "suite": "1104",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-065",
+                  "name": "Salden",
+                  "suite": "1105",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "metropolitan-ledger-066",
+                  "name": "Savora",
+                  "suite": "1106",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Campus Grid",
+    "description": "Enterprise campuses directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#193bdd",
+    "id": "preset-corporate-directory-campus-grid-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/campus-grid-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "campus-grid",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Nimbus Campus",
+              "subtitle": "Buildings A · B · C",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Nimbus Campus",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "campus-grid-001",
+                  "name": "Canora",
+                  "suite": "A101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-002",
+                  "name": "Celven",
+                  "suite": "A102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-003",
+                  "name": "Corven",
+                  "suite": "A103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-004",
+                  "name": "Darela",
+                  "suite": "A104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-005",
+                  "name": "Delora",
+                  "suite": "A105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-006",
+                  "name": "Denvo",
+                  "suite": "A106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-007",
+                  "name": "Dovren",
+                  "suite": "A201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-008",
+                  "name": "Elora",
+                  "suite": "A202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-009",
+                  "name": "Elven",
+                  "suite": "A203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-010",
+                  "name": "Emora",
+                  "suite": "A204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-011",
+                  "name": "Envia",
+                  "suite": "A205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-012",
+                  "name": "Falden",
+                  "suite": "A206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-013",
+                  "name": "Fenvia",
+                  "suite": "A301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-014",
+                  "name": "Feron",
+                  "suite": "A302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-015",
+                  "name": "Fivora",
+                  "suite": "A303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-016",
+                  "name": "Galden",
+                  "suite": "A304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-017",
+                  "name": "Gelora",
+                  "suite": "A305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-018",
+                  "name": "Givon",
+                  "suite": "A306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-019",
+                  "name": "Halden",
+                  "suite": "A401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-020",
+                  "name": "Havora",
+                  "suite": "A402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-021",
+                  "name": "Helven",
+                  "suite": "A403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-022",
+                  "name": "Hivora",
+                  "suite": "A404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-023",
+                  "name": "Idena",
+                  "suite": "A405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-024",
+                  "name": "Ilora",
+                  "suite": "A406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-025",
+                  "name": "Imven",
+                  "suite": "B101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-026",
+                  "name": "Inora",
+                  "suite": "B102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-027",
+                  "name": "Jarela",
+                  "suite": "B103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-028",
+                  "name": "Jivon",
+                  "suite": "B104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-029",
+                  "name": "Jovren",
+                  "suite": "B105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-030",
+                  "name": "Kalden",
+                  "suite": "B106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-031",
+                  "name": "Kivora",
+                  "suite": "B201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-032",
+                  "name": "Kovren",
+                  "suite": "B202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-033",
+                  "name": "Lavera",
+                  "suite": "B203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-034",
+                  "name": "Levon",
+                  "suite": "B204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-035",
+                  "name": "Livora",
+                  "suite": "B205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-036",
+                  "name": "Luvren",
+                  "suite": "B206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-037",
+                  "name": "Malden",
+                  "suite": "B301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-038",
+                  "name": "Mavora",
+                  "suite": "B302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-039",
+                  "name": "Melven",
+                  "suite": "B303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-040",
+                  "name": "Mivon",
+                  "suite": "B304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-041",
+                  "name": "Nalden",
+                  "suite": "B305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-042",
+                  "name": "Navora",
+                  "suite": "B306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-043",
+                  "name": "Nevon",
+                  "suite": "B401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-044",
+                  "name": "Novren",
+                  "suite": "B402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-045",
+                  "name": "Odelia",
+                  "suite": "B403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-046",
+                  "name": "Olven",
+                  "suite": "B404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-047",
+                  "name": "Omora",
+                  "suite": "B405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-048",
+                  "name": "Orven",
+                  "suite": "B406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-049",
+                  "name": "Palden",
+                  "suite": "C101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-050",
+                  "name": "Pavora",
+                  "suite": "C102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-051",
+                  "name": "Pelven",
+                  "suite": "C103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-052",
+                  "name": "Pivon",
+                  "suite": "C104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-053",
+                  "name": "Quelen",
+                  "suite": "C105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-054",
+                  "name": "Qivora",
+                  "suite": "C106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-055",
+                  "name": "Ravora",
+                  "suite": "C201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-056",
+                  "name": "Relven",
+                  "suite": "C202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-057",
+                  "name": "Rivora",
+                  "suite": "C203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-058",
+                  "name": "Salden",
+                  "suite": "C204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-059",
+                  "name": "Savora",
+                  "suite": "C205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-060",
+                  "name": "Selven",
+                  "suite": "C206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-061",
+                  "name": "Sivon",
+                  "suite": "C301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-062",
+                  "name": "Tarela",
+                  "suite": "C302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-063",
+                  "name": "Tavora",
+                  "suite": "C303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-064",
+                  "name": "Tivon",
+                  "suite": "C304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-065",
+                  "name": "Ulden",
+                  "suite": "C305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-066",
+                  "name": "Uviora",
+                  "suite": "C306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-067",
+                  "name": "Valden",
+                  "suite": "C401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-068",
+                  "name": "Vavora",
+                  "suite": "C402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-069",
+                  "name": "Velven",
+                  "suite": "C403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-070",
+                  "name": "Vivon",
+                  "suite": "C404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-071",
+                  "name": "Walden",
+                  "suite": "C405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-072",
+                  "name": "Wivora",
+                  "suite": "C406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Campus Grid — Portrait",
+    "description": "Enterprise campuses directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#193bdd",
+    "id": "preset-corporate-directory-campus-grid-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/campus-grid-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "campus-grid",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Nimbus Campus",
+              "subtitle": "Buildings A · B · C",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Nimbus Campus",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "campus-grid-001",
+                  "name": "Canora",
+                  "suite": "A101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-002",
+                  "name": "Celven",
+                  "suite": "A102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-003",
+                  "name": "Corven",
+                  "suite": "A103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-004",
+                  "name": "Darela",
+                  "suite": "A104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-005",
+                  "name": "Delora",
+                  "suite": "A105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-006",
+                  "name": "Denvo",
+                  "suite": "A106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-007",
+                  "name": "Dovren",
+                  "suite": "A201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-008",
+                  "name": "Elora",
+                  "suite": "A202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-009",
+                  "name": "Elven",
+                  "suite": "A203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-010",
+                  "name": "Emora",
+                  "suite": "A204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-011",
+                  "name": "Envia",
+                  "suite": "A205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-012",
+                  "name": "Falden",
+                  "suite": "A206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-013",
+                  "name": "Fenvia",
+                  "suite": "A301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-014",
+                  "name": "Feron",
+                  "suite": "A302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-015",
+                  "name": "Fivora",
+                  "suite": "A303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-016",
+                  "name": "Galden",
+                  "suite": "A304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-017",
+                  "name": "Gelora",
+                  "suite": "A305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-018",
+                  "name": "Givon",
+                  "suite": "A306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-019",
+                  "name": "Halden",
+                  "suite": "A401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-020",
+                  "name": "Havora",
+                  "suite": "A402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-021",
+                  "name": "Helven",
+                  "suite": "A403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-022",
+                  "name": "Hivora",
+                  "suite": "A404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-023",
+                  "name": "Idena",
+                  "suite": "A405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-024",
+                  "name": "Ilora",
+                  "suite": "A406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-025",
+                  "name": "Imven",
+                  "suite": "B101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-026",
+                  "name": "Inora",
+                  "suite": "B102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-027",
+                  "name": "Jarela",
+                  "suite": "B103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-028",
+                  "name": "Jivon",
+                  "suite": "B104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-029",
+                  "name": "Jovren",
+                  "suite": "B105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-030",
+                  "name": "Kalden",
+                  "suite": "B106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-031",
+                  "name": "Kivora",
+                  "suite": "B201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-032",
+                  "name": "Kovren",
+                  "suite": "B202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-033",
+                  "name": "Lavera",
+                  "suite": "B203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-034",
+                  "name": "Levon",
+                  "suite": "B204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-035",
+                  "name": "Livora",
+                  "suite": "B205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-036",
+                  "name": "Luvren",
+                  "suite": "B206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-037",
+                  "name": "Malden",
+                  "suite": "B301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-038",
+                  "name": "Mavora",
+                  "suite": "B302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-039",
+                  "name": "Melven",
+                  "suite": "B303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-040",
+                  "name": "Mivon",
+                  "suite": "B304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-041",
+                  "name": "Nalden",
+                  "suite": "B305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-042",
+                  "name": "Navora",
+                  "suite": "B306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-043",
+                  "name": "Nevon",
+                  "suite": "B401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-044",
+                  "name": "Novren",
+                  "suite": "B402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-045",
+                  "name": "Odelia",
+                  "suite": "B403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-046",
+                  "name": "Olven",
+                  "suite": "B404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-047",
+                  "name": "Omora",
+                  "suite": "B405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-048",
+                  "name": "Orven",
+                  "suite": "B406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-049",
+                  "name": "Palden",
+                  "suite": "C101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-050",
+                  "name": "Pavora",
+                  "suite": "C102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-051",
+                  "name": "Pelven",
+                  "suite": "C103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-052",
+                  "name": "Pivon",
+                  "suite": "C104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-053",
+                  "name": "Quelen",
+                  "suite": "C105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-054",
+                  "name": "Qivora",
+                  "suite": "C106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-055",
+                  "name": "Ravora",
+                  "suite": "C201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-056",
+                  "name": "Relven",
+                  "suite": "C202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-057",
+                  "name": "Rivora",
+                  "suite": "C203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-058",
+                  "name": "Salden",
+                  "suite": "C204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-059",
+                  "name": "Savora",
+                  "suite": "C205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-060",
+                  "name": "Selven",
+                  "suite": "C206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-061",
+                  "name": "Sivon",
+                  "suite": "C301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-062",
+                  "name": "Tarela",
+                  "suite": "C302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-063",
+                  "name": "Tavora",
+                  "suite": "C303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-064",
+                  "name": "Tivon",
+                  "suite": "C304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-065",
+                  "name": "Ulden",
+                  "suite": "C305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-066",
+                  "name": "Uviora",
+                  "suite": "C306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-067",
+                  "name": "Valden",
+                  "suite": "C401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-068",
+                  "name": "Vavora",
+                  "suite": "C402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-069",
+                  "name": "Velven",
+                  "suite": "C403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-070",
+                  "name": "Vivon",
+                  "suite": "C404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-071",
+                  "name": "Walden",
+                  "suite": "C405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "campus-grid-072",
+                  "name": "Wivora",
+                  "suite": "C406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Atrium Register",
+    "description": "Premium office complexes directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#eee9df",
+    "id": "preset-corporate-directory-atrium-register-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/atrium-register-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "atrium-register",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "The Atrium Offices",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to The Atrium Offices",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "atrium-register-001",
+                  "name": "Elora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-002",
+                  "name": "Elven",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-003",
+                  "name": "Emora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-004",
+                  "name": "Envia",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-005",
+                  "name": "Falden",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-006",
+                  "name": "Fenvia",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-007",
+                  "name": "Feron",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-008",
+                  "name": "Fivora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-009",
+                  "name": "Galden",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-010",
+                  "name": "Gelora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-011",
+                  "name": "Givon",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-012",
+                  "name": "Halden",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-013",
+                  "name": "Havora",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-014",
+                  "name": "Helven",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-015",
+                  "name": "Hivora",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-016",
+                  "name": "Idena",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-017",
+                  "name": "Ilora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-018",
+                  "name": "Imven",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-019",
+                  "name": "Inora",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-020",
+                  "name": "Jarela",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-021",
+                  "name": "Jivon",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-022",
+                  "name": "Jovren",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-023",
+                  "name": "Kalden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-024",
+                  "name": "Kivora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-025",
+                  "name": "Kovren",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-026",
+                  "name": "Lavera",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-027",
+                  "name": "Levon",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-028",
+                  "name": "Livora",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-029",
+                  "name": "Luvren",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-030",
+                  "name": "Malden",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-031",
+                  "name": "Mavora",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-032",
+                  "name": "Melven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-033",
+                  "name": "Mivon",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-034",
+                  "name": "Nalden",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-035",
+                  "name": "Navora",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-036",
+                  "name": "Nevon",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-037",
+                  "name": "Novren",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-038",
+                  "name": "Odelia",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-039",
+                  "name": "Olven",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-040",
+                  "name": "Omora",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-041",
+                  "name": "Orven",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-042",
+                  "name": "Palden",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-043",
+                  "name": "Pavora",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-044",
+                  "name": "Pelven",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-045",
+                  "name": "Pivon",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-046",
+                  "name": "Quelen",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-047",
+                  "name": "Qivora",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-048",
+                  "name": "Ravora",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-049",
+                  "name": "Relven",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-050",
+                  "name": "Rivora",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-051",
+                  "name": "Salden",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-052",
+                  "name": "Savora",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-053",
+                  "name": "Selven",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-054",
+                  "name": "Sivon",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-055",
+                  "name": "Tarela",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-056",
+                  "name": "Tavora",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-057",
+                  "name": "Tivon",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-058",
+                  "name": "Ulden",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-059",
+                  "name": "Uviora",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-060",
+                  "name": "Valden",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Atrium Register — Portrait",
+    "description": "Premium office complexes directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#eee9df",
+    "id": "preset-corporate-directory-atrium-register-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/atrium-register-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "atrium-register",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "The Atrium Offices",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to The Atrium Offices",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "atrium-register-001",
+                  "name": "Elora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-002",
+                  "name": "Elven",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-003",
+                  "name": "Emora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-004",
+                  "name": "Envia",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-005",
+                  "name": "Falden",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-006",
+                  "name": "Fenvia",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-007",
+                  "name": "Feron",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-008",
+                  "name": "Fivora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-009",
+                  "name": "Galden",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-010",
+                  "name": "Gelora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-011",
+                  "name": "Givon",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-012",
+                  "name": "Halden",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-013",
+                  "name": "Havora",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-014",
+                  "name": "Helven",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-015",
+                  "name": "Hivora",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-016",
+                  "name": "Idena",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-017",
+                  "name": "Ilora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-018",
+                  "name": "Imven",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-019",
+                  "name": "Inora",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-020",
+                  "name": "Jarela",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-021",
+                  "name": "Jivon",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-022",
+                  "name": "Jovren",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-023",
+                  "name": "Kalden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-024",
+                  "name": "Kivora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-025",
+                  "name": "Kovren",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-026",
+                  "name": "Lavera",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-027",
+                  "name": "Levon",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-028",
+                  "name": "Livora",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-029",
+                  "name": "Luvren",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-030",
+                  "name": "Malden",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-031",
+                  "name": "Mavora",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-032",
+                  "name": "Melven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-033",
+                  "name": "Mivon",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-034",
+                  "name": "Nalden",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-035",
+                  "name": "Navora",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-036",
+                  "name": "Nevon",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-037",
+                  "name": "Novren",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-038",
+                  "name": "Odelia",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-039",
+                  "name": "Olven",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-040",
+                  "name": "Omora",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-041",
+                  "name": "Orven",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-042",
+                  "name": "Palden",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-043",
+                  "name": "Pavora",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-044",
+                  "name": "Pelven",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-045",
+                  "name": "Pivon",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-046",
+                  "name": "Quelen",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-047",
+                  "name": "Qivora",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-048",
+                  "name": "Ravora",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-049",
+                  "name": "Relven",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-050",
+                  "name": "Rivora",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-051",
+                  "name": "Salden",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-052",
+                  "name": "Savora",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-053",
+                  "name": "Selven",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-054",
+                  "name": "Sivon",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-055",
+                  "name": "Tarela",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-056",
+                  "name": "Tavora",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-057",
+                  "name": "Tivon",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-058",
+                  "name": "Ulden",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-059",
+                  "name": "Uviora",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "atrium-register-060",
+                  "name": "Valden",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Night Exchange",
+    "description": "Major corporate headquarters directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#111c2b",
+    "id": "preset-corporate-directory-night-exchange-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/night-exchange-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "night-exchange",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Harbor Exchange",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Harbor Exchange",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "night-exchange-001",
+                  "name": "Fivora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-002",
+                  "name": "Galden",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-003",
+                  "name": "Gelora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-004",
+                  "name": "Givon",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-005",
+                  "name": "Halden",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-006",
+                  "name": "Havora",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-007",
+                  "name": "Helven",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-008",
+                  "name": "Hivora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-009",
+                  "name": "Idena",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-010",
+                  "name": "Ilora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-011",
+                  "name": "Imven",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-012",
+                  "name": "Inora",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-013",
+                  "name": "Jarela",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-014",
+                  "name": "Jivon",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-015",
+                  "name": "Jovren",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-016",
+                  "name": "Kalden",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-017",
+                  "name": "Kivora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-018",
+                  "name": "Kovren",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-019",
+                  "name": "Lavera",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-020",
+                  "name": "Levon",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-021",
+                  "name": "Livora",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-022",
+                  "name": "Luvren",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-023",
+                  "name": "Malden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-024",
+                  "name": "Mavora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-025",
+                  "name": "Melven",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-026",
+                  "name": "Mivon",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-027",
+                  "name": "Nalden",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-028",
+                  "name": "Navora",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-029",
+                  "name": "Nevon",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-030",
+                  "name": "Novren",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-031",
+                  "name": "Odelia",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-032",
+                  "name": "Olven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-033",
+                  "name": "Omora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-034",
+                  "name": "Orven",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-035",
+                  "name": "Palden",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-036",
+                  "name": "Pavora",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-037",
+                  "name": "Pelven",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-038",
+                  "name": "Pivon",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-039",
+                  "name": "Quelen",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-040",
+                  "name": "Qivora",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-041",
+                  "name": "Ravora",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-042",
+                  "name": "Relven",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-043",
+                  "name": "Rivora",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-044",
+                  "name": "Salden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-045",
+                  "name": "Savora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-046",
+                  "name": "Selven",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-047",
+                  "name": "Sivon",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-048",
+                  "name": "Tarela",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-049",
+                  "name": "Tavora",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-050",
+                  "name": "Tivon",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-051",
+                  "name": "Ulden",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-052",
+                  "name": "Uviora",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-053",
+                  "name": "Valden",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-054",
+                  "name": "Vavora",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-055",
+                  "name": "Velven",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-056",
+                  "name": "Vivon",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-057",
+                  "name": "Walden",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-058",
+                  "name": "Wivora",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-059",
+                  "name": "Xelven",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-060",
+                  "name": "Yavora",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-061",
+                  "name": "Zevren",
+                  "suite": "1101",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-062",
+                  "name": "Adera",
+                  "suite": "1102",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-063",
+                  "name": "Arven",
+                  "suite": "1103",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-064",
+                  "name": "Aviora",
+                  "suite": "1104",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-065",
+                  "name": "Belora",
+                  "suite": "1105",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-066",
+                  "name": "Bexlo",
+                  "suite": "1106",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-067",
+                  "name": "Brivon",
+                  "suite": "1201",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-068",
+                  "name": "Calden",
+                  "suite": "1202",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-069",
+                  "name": "Canora",
+                  "suite": "1203",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-070",
+                  "name": "Celven",
+                  "suite": "1204",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-071",
+                  "name": "Corven",
+                  "suite": "1205",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-072",
+                  "name": "Darela",
+                  "suite": "1206",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Night Exchange — Portrait",
+    "description": "Major corporate headquarters directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#111c2b",
+    "id": "preset-corporate-directory-night-exchange-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/night-exchange-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "night-exchange",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Harbor Exchange",
+              "subtitle": "Offices · Companies · Professional services",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Harbor Exchange",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "night-exchange-001",
+                  "name": "Fivora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-002",
+                  "name": "Galden",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-003",
+                  "name": "Gelora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-004",
+                  "name": "Givon",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-005",
+                  "name": "Halden",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-006",
+                  "name": "Havora",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-007",
+                  "name": "Helven",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-008",
+                  "name": "Hivora",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-009",
+                  "name": "Idena",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-010",
+                  "name": "Ilora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-011",
+                  "name": "Imven",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-012",
+                  "name": "Inora",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-013",
+                  "name": "Jarela",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-014",
+                  "name": "Jivon",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-015",
+                  "name": "Jovren",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-016",
+                  "name": "Kalden",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-017",
+                  "name": "Kivora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-018",
+                  "name": "Kovren",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-019",
+                  "name": "Lavera",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-020",
+                  "name": "Levon",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-021",
+                  "name": "Livora",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-022",
+                  "name": "Luvren",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-023",
+                  "name": "Malden",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-024",
+                  "name": "Mavora",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-025",
+                  "name": "Melven",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-026",
+                  "name": "Mivon",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-027",
+                  "name": "Nalden",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-028",
+                  "name": "Navora",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-029",
+                  "name": "Nevon",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-030",
+                  "name": "Novren",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-031",
+                  "name": "Odelia",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-032",
+                  "name": "Olven",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-033",
+                  "name": "Omora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-034",
+                  "name": "Orven",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-035",
+                  "name": "Palden",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-036",
+                  "name": "Pavora",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-037",
+                  "name": "Pelven",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-038",
+                  "name": "Pivon",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-039",
+                  "name": "Quelen",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-040",
+                  "name": "Qivora",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-041",
+                  "name": "Ravora",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-042",
+                  "name": "Relven",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-043",
+                  "name": "Rivora",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-044",
+                  "name": "Salden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-045",
+                  "name": "Savora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-046",
+                  "name": "Selven",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-047",
+                  "name": "Sivon",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-048",
+                  "name": "Tarela",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-049",
+                  "name": "Tavora",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-050",
+                  "name": "Tivon",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-051",
+                  "name": "Ulden",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-052",
+                  "name": "Uviora",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-053",
+                  "name": "Valden",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-054",
+                  "name": "Vavora",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-055",
+                  "name": "Velven",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-056",
+                  "name": "Vivon",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-057",
+                  "name": "Walden",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-058",
+                  "name": "Wivora",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-059",
+                  "name": "Xelven",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-060",
+                  "name": "Yavora",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-061",
+                  "name": "Zevren",
+                  "suite": "1101",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-062",
+                  "name": "Adera",
+                  "suite": "1102",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-063",
+                  "name": "Arven",
+                  "suite": "1103",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-064",
+                  "name": "Aviora",
+                  "suite": "1104",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-065",
+                  "name": "Belora",
+                  "suite": "1105",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-066",
+                  "name": "Bexlo",
+                  "suite": "1106",
+                  "floor": "11",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-067",
+                  "name": "Brivon",
+                  "suite": "1201",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-068",
+                  "name": "Calden",
+                  "suite": "1202",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-069",
+                  "name": "Canora",
+                  "suite": "1203",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-070",
+                  "name": "Celven",
+                  "suite": "1204",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-071",
+                  "name": "Corven",
+                  "suite": "1205",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "night-exchange-072",
+                  "name": "Darela",
+                  "suite": "1206",
+                  "floor": "12",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Foundry Atlas",
+    "description": "Business and innovation parks directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "LANDSCAPE",
+    "screenWidth": 3840,
+    "screenHeight": 2160,
+    "bgColor": "#6c392e",
+    "id": "preset-corporate-directory-foundry-atlas-landscape",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/foundry-atlas-landscape.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "foundry-atlas",
+            "orientation": "landscape",
+            "dataset": {
+              "title": "Union Works",
+              "subtitle": "Offices · Studios · Workshops",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Union Works",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "foundry-atlas-001",
+                  "name": "Hivora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-002",
+                  "name": "Idena",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-003",
+                  "name": "Ilora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-004",
+                  "name": "Imven",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-005",
+                  "name": "Inora",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-006",
+                  "name": "Jarela",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-007",
+                  "name": "Jivon",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-008",
+                  "name": "Jovren",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-009",
+                  "name": "Kalden",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-010",
+                  "name": "Kivora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-011",
+                  "name": "Kovren",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-012",
+                  "name": "Lavera",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-013",
+                  "name": "Levon",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-014",
+                  "name": "Livora",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-015",
+                  "name": "Luvren",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-016",
+                  "name": "Malden",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-017",
+                  "name": "Mavora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-018",
+                  "name": "Melven",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-019",
+                  "name": "Mivon",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-020",
+                  "name": "Nalden",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-021",
+                  "name": "Navora",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-022",
+                  "name": "Nevon",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-023",
+                  "name": "Novren",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-024",
+                  "name": "Odelia",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-025",
+                  "name": "Olven",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-026",
+                  "name": "Omora",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-027",
+                  "name": "Orven",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-028",
+                  "name": "Palden",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-029",
+                  "name": "Pavora",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-030",
+                  "name": "Pelven",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-031",
+                  "name": "Pivon",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-032",
+                  "name": "Quelen",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-033",
+                  "name": "Qivora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-034",
+                  "name": "Ravora",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-035",
+                  "name": "Relven",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-036",
+                  "name": "Rivora",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-037",
+                  "name": "Salden",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-038",
+                  "name": "Savora",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-039",
+                  "name": "Selven",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-040",
+                  "name": "Sivon",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-041",
+                  "name": "Tarela",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-042",
+                  "name": "Tavora",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-043",
+                  "name": "Tivon",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-044",
+                  "name": "Ulden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-045",
+                  "name": "Uviora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-046",
+                  "name": "Valden",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-047",
+                  "name": "Vavora",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-048",
+                  "name": "Velven",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-049",
+                  "name": "Vivon",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-050",
+                  "name": "Walden",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-051",
+                  "name": "Wivora",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-052",
+                  "name": "Xelven",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-053",
+                  "name": "Yavora",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-054",
+                  "name": "Zevren",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-055",
+                  "name": "Adera",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-056",
+                  "name": "Arven",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-057",
+                  "name": "Aviora",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-058",
+                  "name": "Belora",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-059",
+                  "name": "Bexlo",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-060",
+                  "name": "Brivon",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
+            },
+            "theme": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Corporate · Directory · Foundry Atlas — Portrait",
+    "description": "Business and innovation parks directory for large locations. Editable locations, automatic text fitting, single-screen or automatic pages, simple rotation settings.",
+    "category": "LOBBY",
+    "orientation": "PORTRAIT",
+    "screenWidth": 2160,
+    "screenHeight": 3840,
+    "bgColor": "#6c392e",
+    "id": "preset-corporate-directory-foundry-atlas-portrait",
+    "schoolLevel": "UNIVERSAL",
+    "zones": [
+      {
+        "name": "Directory",
+        "widgetType": "EXTERNAL_HTML",
+        "x": 0,
+        "y": 0,
+        "width": 100,
+        "height": 100,
+        "zIndex": 1,
+        "sortOrder": 0,
+        "defaultConfig": {
+          "url": "/templates/signage/corporate/directory/foundry-atlas-portrait.html",
+          "directoryDocument": {
+            "format": "arc-riot.directory",
+            "version": 1,
+            "designId": "foundry-atlas",
+            "orientation": "portrait",
+            "dataset": {
+              "title": "Union Works",
+              "subtitle": "Offices · Studios · Workshops",
+              "brandLabel": "DIRECTORY",
+              "locationLabel": "Main lobby",
+              "footer": "Welcome to Union Works",
+              "image": null,
+              "fictional": true,
+              "source": "Fictional illustrative tenants; replace with your own locations.",
+              "tenants": [
+                {
+                  "id": "foundry-atlas-001",
+                  "name": "Hivora",
+                  "suite": "101",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-002",
+                  "name": "Idena",
+                  "suite": "102",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-003",
+                  "name": "Ilora",
+                  "suite": "103",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-004",
+                  "name": "Imven",
+                  "suite": "104",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-005",
+                  "name": "Inora",
+                  "suite": "105",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-006",
+                  "name": "Jarela",
+                  "suite": "106",
+                  "floor": "1",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-007",
+                  "name": "Jivon",
+                  "suite": "201",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-008",
+                  "name": "Jovren",
+                  "suite": "202",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-009",
+                  "name": "Kalden",
+                  "suite": "203",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-010",
+                  "name": "Kivora",
+                  "suite": "204",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-011",
+                  "name": "Kovren",
+                  "suite": "205",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-012",
+                  "name": "Lavera",
+                  "suite": "206",
+                  "floor": "2",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-013",
+                  "name": "Levon",
+                  "suite": "301",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-014",
+                  "name": "Livora",
+                  "suite": "302",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-015",
+                  "name": "Luvren",
+                  "suite": "303",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-016",
+                  "name": "Malden",
+                  "suite": "304",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-017",
+                  "name": "Mavora",
+                  "suite": "305",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-018",
+                  "name": "Melven",
+                  "suite": "306",
+                  "floor": "3",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-019",
+                  "name": "Mivon",
+                  "suite": "401",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-020",
+                  "name": "Nalden",
+                  "suite": "402",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-021",
+                  "name": "Navora",
+                  "suite": "403",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-022",
+                  "name": "Nevon",
+                  "suite": "404",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-023",
+                  "name": "Novren",
+                  "suite": "405",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-024",
+                  "name": "Odelia",
+                  "suite": "406",
+                  "floor": "4",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-025",
+                  "name": "Olven",
+                  "suite": "501",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-026",
+                  "name": "Omora",
+                  "suite": "502",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-027",
+                  "name": "Orven",
+                  "suite": "503",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-028",
+                  "name": "Palden",
+                  "suite": "504",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-029",
+                  "name": "Pavora",
+                  "suite": "505",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-030",
+                  "name": "Pelven",
+                  "suite": "506",
+                  "floor": "5",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-031",
+                  "name": "Pivon",
+                  "suite": "601",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-032",
+                  "name": "Quelen",
+                  "suite": "602",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-033",
+                  "name": "Qivora",
+                  "suite": "603",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-034",
+                  "name": "Ravora",
+                  "suite": "604",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-035",
+                  "name": "Relven",
+                  "suite": "605",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-036",
+                  "name": "Rivora",
+                  "suite": "606",
+                  "floor": "6",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-037",
+                  "name": "Salden",
+                  "suite": "701",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-038",
+                  "name": "Savora",
+                  "suite": "702",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-039",
+                  "name": "Selven",
+                  "suite": "703",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-040",
+                  "name": "Sivon",
+                  "suite": "704",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-041",
+                  "name": "Tarela",
+                  "suite": "705",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-042",
+                  "name": "Tavora",
+                  "suite": "706",
+                  "floor": "7",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-043",
+                  "name": "Tivon",
+                  "suite": "801",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-044",
+                  "name": "Ulden",
+                  "suite": "802",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-045",
+                  "name": "Uviora",
+                  "suite": "803",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-046",
+                  "name": "Valden",
+                  "suite": "804",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-047",
+                  "name": "Vavora",
+                  "suite": "805",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-048",
+                  "name": "Velven",
+                  "suite": "806",
+                  "floor": "8",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-049",
+                  "name": "Vivon",
+                  "suite": "901",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-050",
+                  "name": "Walden",
+                  "suite": "902",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-051",
+                  "name": "Wivora",
+                  "suite": "903",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-052",
+                  "name": "Xelven",
+                  "suite": "904",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-053",
+                  "name": "Yavora",
+                  "suite": "905",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-054",
+                  "name": "Zevren",
+                  "suite": "906",
+                  "floor": "9",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-055",
+                  "name": "Adera",
+                  "suite": "1001",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-056",
+                  "name": "Arven",
+                  "suite": "1002",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-057",
+                  "name": "Aviora",
+                  "suite": "1003",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-058",
+                  "name": "Belora",
+                  "suite": "1004",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-059",
+                  "name": "Bexlo",
+                  "suite": "1005",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                },
+                {
+                  "id": "foundry-atlas-060",
+                  "name": "Brivon",
+                  "suite": "1006",
+                  "floor": "10",
+                  "category": "",
+                  "active": true
+                }
+              ]
+            },
+            "playback": {
+              "version": 1,
+              "dataset": "demo",
+              "design": "pacific-editorial",
+              "orientation": "landscape",
+              "autoplay": true,
+              "pageDurationMs": 14000,
+              "pageDurationsMs": [],
+              "transitionMode": "crossfade",
+              "transitionDurationMs": 900,
+              "scrollSpeedPxPerSecond": 44,
+              "scrollStartHoldMs": 2500,
+              "sort": "design",
+              "paused": false,
+              "displayMode": "single",
+              "locationsPerPage": 24,
+              "motionSpeed": "normal"
             },
             "theme": {}
           }

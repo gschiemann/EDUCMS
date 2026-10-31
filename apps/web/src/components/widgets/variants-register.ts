@@ -5,7 +5,11 @@
  * before the picker renders. New variants drop into this file as one
  * `registerVariant({...})` call each.
  */
-import { registerVariant } from './variants';
+import { registerVariant as registerWidgetVariant, type WidgetVariant } from './variants';
+import { withCalendarFeed } from './CalendarFeedBoundary';
+function registerVariant(variant: WidgetVariant) {
+  registerWidgetVariant(variant.widgetType === 'CALENDAR' && !variant.previewOnly ? { ...variant, render: withCalendarFeed(variant.render) } : variant);
+}
 import { lazyWidget } from './lazy-widget';
 // ════════════════════════════════════════════════════════════════════════
 // LAZY PICKER TILES (P1-1, 2026-09-03).
@@ -21,6 +25,7 @@ import { lazyWidget } from './lazy-widget';
 // those are neither.
 // ════════════════════════════════════════════════════════════════════════
 import {
+  ForecastWeatherWidget as OutlookTile, HeadlinesWidget as HeadlinesTile, NewsroomWidget as NewsroomTile,
   // → ./variant-tiles/basic-content-tiles
   VideoBasicTile, VideoCarouselTile, WebpageTile, ImageBasicTile, ImageCarouselBasicTile,
   ExternalHtmlTile, WebsiteTabsTile,
@@ -520,7 +525,7 @@ const REACHABILITY_TILES: Array<{
   // tile, which built an empty SOCIAL_FEED zone. The tile renders the real
   // widget against catalogue data, so the thumbnail shows the actual output
   // (star rating, a review card, the Google attribution) rather than art.
-  { id: 'google-reviews-basic', widgetType: 'GOOGLE_REVIEWS', name: 'Google Reviews', description: 'Your Google star rating and reviews, straight from your Business Profile.', from: 'renderer', exportName: 'GoogleReviewsWidgetTile' },
+  { id: 'google-reviews-basic', widgetType: 'GOOGLE_REVIEWS', name: 'Google Reviews', description: 'Relevant Google reviews through an administrator-configured Places API connection (Google billing applies).', from: 'renderer', exportName: 'GoogleReviewsWidgetTile' },
   // NEW 2026-09-12 — real posts from a connected Instagram or Facebook Page.
   // The tile DRAWS the output (a 3x2 photo grid with caption strips); it is a
   // picture, never a live fetch, so the picker makes no network calls.
@@ -2183,3 +2188,8 @@ registerVariant({
   vertical: 'GYM',
   defaultConfig: {},
 });
+
+registerVariant({ id: 'weather-outlook', widgetType: 'WEATHER', name: 'Multi-day Forecast', description: 'Choose 2–5 days. Cards automatically fit wide or tall spaces.', category: 'MODERN', render: OutlookTile, defaultConfig: { forecastDays: 5, units: 'imperial' } });
+registerVariant({ id: 'rss-headlines', widgetType: 'RSS_FEED', name: 'Rotating Headlines', description: 'Select multiple included news sources. Fresh attributed headlines rotate automatically.', category: 'MODERN', render: HeadlinesTile, defaultConfig: { sources: ['global-voices','nasa'], intervalSec: 12, title: 'Headlines' } });
+
+registerVariant({ id: 'rss-newsroom', widgetType: 'RSS_FEED', name: 'Newsroom', description: 'Local, national and international news. Five layouts including a scrolling banner, automatic rotation and adjustable appearance.', category: 'MODERN', render: NewsroomTile, defaultConfig: { newsLayout: 'front-page', newsLocation: '94583', coverage: ['local', 'national', 'world'], intervalSec: 12, title: 'The Daily Brief' } });

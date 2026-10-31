@@ -174,7 +174,7 @@ class FaceVideoBoxContractTest {
         val begin = body(b, "private fun begin(")
         val refusal = begin.indexOf("session.refusal?.let { stopSession(host, session, it); return null }")
         assertTrue("the refusal is applied", refusal >= 0)
-        assertTrue("…before the emergency / lifecycle checks", refusal < begin.indexOf("DisplayEmergency.isHeld(host.ctx)"))
+        assertTrue("…before the emergency / lifecycle checks", refusal < begin.indexOf("DisplayEmergency.isPlaybackHeld(host.ctx)"))
         assertTrue("…and before the authenticated fetch", refusal < begin.indexOf("meta.execute"))
         assertTrue("the session is registered first so the page reads the reason", refusal > begin.indexOf("host.faceSessions[session.key] = session"))
         assertTrue("sessions are built from the resolved class", b.contains("DeviceClassPolicy.current(host.ctx)"))
@@ -345,18 +345,18 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
-    fun `E2 - nothing v4 starts under a hold, and the WebView stays visible and opaque under every v4 session`() {
+    fun `E2 - nothing v4 starts under a playback hold, and the WebView stays visible and opaque under every v4 session`() {
         val b = code(box)
         val intend = body(b, "private fun intend(")
-        assertTrue("the hold is part of the decision", intend.contains("held = DisplayEmergency.isHeld(host.ctx)"))
+        assertTrue("the hold is part of the decision", intend.contains("held = DisplayEmergency.isPlaybackHeld(host.ctx)"))
         assertTrue("…and an intent under it is kept suspended", intend.contains("ints.put(face, intent.copy(suspendedByHold = true))"))
-        assertTrue(body(b, "private fun begin(").contains("if (DisplayEmergency.isHeld(host.ctx)) { stopSession(host, session, \"emergency-held\"); return null }"))
+        assertTrue(body(b, "private fun begin(").contains("if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, \"emergency-held\"); return null }"))
         val start = body(b, "private fun startNow(")
-        assertTrue(start.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
+        assertTrue(start.indexOf("DisplayEmergency.isPlaybackHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
         assertTrue("opaque black, set-to-known-value", start.contains("host.web.setBackgroundColor(Color.BLACK)"))
         val ready = body(b, "private fun v4Ready(")
         assertTrue("not even a hidden pre-roll decoder starts under a hold",
-            ready.indexOf("DisplayEmergency.isHeld(host.ctx)") in 0 until ready.indexOf("s.renderer?.start()"))
+            ready.indexOf("DisplayEmergency.isPlaybackHeld(host.ctx)") in 0 until ready.indexOf("s.renderer?.start()"))
         // Experiment 1 can never hide the WebView under a v4 session (it may outlive its page).
         val updated = body(b, "private fun updated(")
         val hide = updated.indexOf("host.web.visibility = View.INVISIBLE")

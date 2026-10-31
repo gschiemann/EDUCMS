@@ -272,7 +272,8 @@ export function MsPlaylistPortraitWidget({ config, live }: { config?: MsPlaylist
     if (live) {
       if (key === 'brand.date') return fmt.shortDateUpper(now);
       if (key === 'clock.time') return fmt.time12NoSuffix(now);
-      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+      if (key === 'weather.temp' && weather) return `${weather.temperature}°`;
+      if (key === 'weather.temp') return '—';
     }
     return DEFAULTS[key] as string;
   };

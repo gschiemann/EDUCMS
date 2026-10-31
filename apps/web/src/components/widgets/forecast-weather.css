@@ -1,0 +1,298 @@
+.forecast-outlook,
+.forecast-outlook * {
+  box-sizing: border-box;
+}
+.forecast-outlook {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  line-height: 1.2;
+  background: transparent;
+  text-align: center;
+}
+.fw-surface,
+.fw-card-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.forecast-outlook > .fw-header,
+.forecast-outlook > .fw-grid,
+.forecast-outlook > .fw-footer,
+.fw-status {
+  position: relative;
+  min-width: 0;
+}
+.fw-header {
+  display: block;
+  align-self: center;
+  margin-bottom: 0.6em;
+}
+.fw-heading-group {
+  max-width: calc(100% - 3em);
+  margin: 0 auto;
+  text-align: center;
+}
+.fw-heading {
+  font-size: 0.64em;
+  color: var(--fw-details);
+  opacity: var(--fw-detail-opacity);
+  letter-spacing: 0.1em;
+  margin-bottom: 0.25em;
+  line-height: 1.2;
+}
+.fw-location {
+  font-size: 1em;
+  font-weight: 600;
+  overflow-wrap: break-word;
+  line-height: 1.2;
+}
+.fw-units {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--fw-caption);
+  color: var(--fw-details);
+  opacity: var(--fw-detail-opacity);
+}
+.fw-grid {
+  min-height: 0;
+  display: grid;
+  margin: -0.25em;
+  align-items: stretch;
+  justify-items: stretch;
+}
+.fw-day {
+  position: relative;
+  width: calc(100% - 0.5em);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6em;
+  border-radius: 0.4em;
+  border-top: 2px solid var(--fw-accent);
+  overflow: hidden;
+  margin: 0.25em;
+}
+.fw-day-content {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 20em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.fw-day-content > * {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+.fw-day-name {
+  font-size: 1em;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+}
+.fw-date {
+  font-size: var(--fw-caption);
+  font-weight: 400;
+  margin-top: 0.22em;
+  color: var(--fw-details);
+  opacity: var(--fw-detail-opacity);
+}
+.fw-icon {
+  display: block;
+  width: 2.6em;
+  height: 2.6em;
+  margin: 0.55em auto;
+  color: var(--fw-accent);
+}
+.fw-temperatures {
+  width: 100%;
+  text-align: center;
+}
+.fw-degrees {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1.12;
+}
+.fw-high {
+  font-size: 2em;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+}
+.fw-low {
+  font-size: 1.05em;
+  margin-left: 0.35em;
+}
+.fw-details {
+  font-size: var(--fw-caption);
+  margin-top: 0.25em;
+  color: var(--fw-details);
+  opacity: var(--fw-detail-opacity);
+}
+.fw-condition {
+  width: 100%;
+  font-size: var(--fw-small);
+  line-height: 1.2;
+  height: 2.4em;
+  margin-top: 0.55em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-align: center;
+}
+.fw-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: var(--fw-footer-size);
+  line-height: 1.25;
+  color: var(--fw-details);
+  opacity: var(--fw-detail-opacity);
+  margin-top: 0.6em;
+  text-align: center;
+}
+.fw-footer > * {
+  margin: 0 0.4em;
+}
+.fw-footer a {
+  color: inherit;
+}
+.fw-page-label {
+  white-space: nowrap;
+  font-weight: 700;
+}
+.fw-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fw-small);
+}
+.fw-clean .fw-day,
+.fw-strip .fw-day {
+  border-radius: 0;
+  border-top: 0;
+  border-left: 1px solid var(--fw-accent);
+}
+.fw-clean .fw-day:first-child,
+.fw-strip .fw-day:first-child {
+  border-left: 0;
+}
+.forecast-outlook[data-presentation="compact"] .fw-heading-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.forecast-outlook[data-presentation="compact"] .fw-heading {
+  margin: 0 0.8em 0 0;
+}
+.forecast-outlook[data-presentation="compact"] .fw-location {
+  font-size: 0.85em;
+}
+.forecast-outlook[data-presentation="compact"] .fw-date,
+.forecast-outlook[data-presentation="compact"] .fw-details {
+  display: none;
+}
+.forecast-outlook[data-presentation="compact"] .fw-icon {
+  width: 2em;
+  height: 2em;
+  margin: 0.32em auto;
+}
+.forecast-outlook[data-presentation="compact"] .fw-high {
+  font-size: 1.8em;
+}
+.forecast-outlook[data-presentation="compact"] .fw-condition {
+  margin-top: 0.3em;
+}
+.forecast-outlook[data-presentation="compact"] .fw-day {
+  padding: 0.4em;
+}
+.forecast-outlook[data-presentation="rows"] .fw-day {
+  border-radius: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--fw-accent);
+  padding: 0.35em 0.6em;
+}
+.forecast-outlook[data-presentation="rows"] .fw-day-content {
+  display: grid;
+  grid-template-columns: 1fr 0.7fr 1.3fr 1.8fr;
+  max-width: none;
+  align-items: center;
+}
+.forecast-outlook[data-presentation="rows"] .fw-icon {
+  width: 1.6em;
+  height: 1.6em;
+  margin: 0 auto;
+}
+.forecast-outlook[data-presentation="rows"] .fw-high {
+  font-size: 1.5em;
+}
+.forecast-outlook[data-presentation="rows"] .fw-condition {
+  margin: 0;
+  height: auto;
+  max-height: 2.4em;
+  padding-left: 0.6em;
+}
+.forecast-outlook[data-presentation="micro"] .fw-header {
+  margin-bottom: 3px;
+}
+.forecast-outlook[data-presentation="micro"] .fw-heading,
+.forecast-outlook[data-presentation="micro"] .fw-date,
+.forecast-outlook[data-presentation="micro"] .fw-condition,
+.forecast-outlook[data-presentation="micro"] .fw-details,
+.forecast-outlook[data-presentation="micro"] .fw-refreshed {
+  display: none;
+}
+.forecast-outlook[data-presentation="micro"] .fw-location {
+  font-size: 0.72em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.forecast-outlook[data-presentation="micro"] .fw-day {
+  padding: 2px 4px;
+  margin: 2px;
+  border-top: 0;
+}
+.forecast-outlook[data-presentation="micro"] .fw-day-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  max-width: none;
+}
+.forecast-outlook[data-presentation="micro"] .fw-day-name {
+  font-size: 0.8em;
+}
+.forecast-outlook[data-presentation="micro"] .fw-icon {
+  width: 1.2em;
+  height: 1.2em;
+  margin: 0 0.3em;
+}
+.forecast-outlook[data-presentation="micro"] .fw-high {
+  font-size: 1.3em;
+}
+.forecast-outlook[data-presentation="micro"] .fw-low {
+  font-size: 0.72em;
+  margin-left: 0.2em;
+}
+.forecast-outlook[data-presentation="micro"] .fw-footer {
+  margin-top: 3px;
+}

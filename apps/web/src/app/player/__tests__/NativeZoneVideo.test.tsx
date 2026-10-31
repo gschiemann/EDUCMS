@@ -84,6 +84,35 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe("NativeZoneVideo — mixed-playlist slide (above-window, 1.1.41)", () => {
+  it("moves a playing surface immediately when a banner changes, retaining the session", async () => {
+    let measured = layout;
+    let canvasLayout: { width: number; height: number; bannerHeight: number } | null = null;
+    const extra = { measure: () => measured, get canvasLayout() { return canvasLayout; } };
+    const m = mount(false, extra);
+    setSessions([zoneState("ready")]);
+    await flush();
+    setSessions([zoneState("presenting", 1, { held: true })]);
+    await flush();
+    await act(async () => { m.setActive(true); });
+    setSessions([zoneState("presenting", 20, { held: false })]);
+    await flush();
+    bridge.fire.mockClear();
+    measured = { ...layout, x: 96, y: 108, w: 1728, h: 972 };
+    canvasLayout = { width: 1920, height: 1080, bannerHeight: 108 };
+    m.setActive(true);
+    expect(bridge.fire).toHaveBeenCalledWith("sharedVideoPrepare", JSON.stringify({ version: 3, op: "layout", sessionId: session, layout: measured }));
+    expect(ops()).not.toContain("prepare");
+    expect(ops()).not.toContain("sharedVideoStop");
+    expect(m.queryByTestId("web")).toBeNull();
+    bridge.fire.mockClear();
+    measured = layout;
+    canvasLayout = null;
+    m.setActive(true);
+    expect(bridge.fire).toHaveBeenCalledWith("sharedVideoPrepare", JSON.stringify({ version: 3, op: "layout", sessionId: session, layout }));
+    expect(ops()).not.toContain("sharedVideoStop");
+    expect(m.queryByTestId("web")).toBeNull();
+  });
+
   it("pre-rolls while hidden, keeps the web element, sends play when active with the web still mounted, unmounts once native is on its rect", async () => {
     const m = mount(false);
     expect(m.queryByTestId("web")).not.toBeNull();

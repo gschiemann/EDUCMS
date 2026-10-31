@@ -1,6 +1,7 @@
 "use client";
 
 import { createElement, memo, useRef, useState } from 'react';
+import { beginInlineTextEdit } from '@/lib/inline-text-edit';
 import { Lock, Loader2, Upload, Hand } from 'lucide-react';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { isLibraryImageFile } from '@/lib/upload-accept';
@@ -264,111 +265,16 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
     // can group multiple fields under one section.
     const dotIdx = fieldKey.indexOf('.');
     const sectionKey = dotIdx > 0 ? fieldKey.slice(0, dotIdx) : fieldKey;
-    const originalText = target.innerText;
-    const pauseEl = target.closest('[data-inline-edit-pause]') as HTMLElement | null;
-    const previousAnimationPlayState = pauseEl?.style.animationPlayState ?? '';
     try {
       window.dispatchEvent(new CustomEvent('template-edit-field', {
         detail: { zoneId: zone.id, fieldKey, sectionKey },
       }));
     } catch { /* CustomEvent unsupported in older runtimes */ }
 
-    target.setAttribute('contenteditable', 'true');
-    // Persistent outline + glow so the operator sees what they're
-    // editing, NOT just a thin caret. Higher specificity than the
-    // hover style added to BuilderZone, so once edit starts, hover
-    // styles don't fight the active state.
-    target.style.outline = '2px solid #6366f1';
-    target.style.outlineOffset = '2px';
-    target.style.background = 'rgba(99,102,241,0.08)';
-    target.style.borderRadius = '3px';
-    target.style.cursor = 'text';
-    // 2026-04-29 — operator: "you fucked up with editing of text on
-    // the widgets... when you edit the text its transparent and you
-    // cant see hwat you are typing until you click out of the text
-    // field". Cause: BuilderZone's parent div has `userSelect: 'none'`
-    // (line 236) which is inherited by contentEditable children.
-    // userSelect: none on a contentEditable element breaks the
-    // browser's live caret + selection rendering — typed characters
-    // aren't repainted until the field blurs.
-    //
-    // Fix: explicitly override on the editing target so the
-    // contentEditable behaves like a normal input — caret visible,
-    // selection visible, typing repaints character-by-character.
-    // Cleared in commit() / cancel() below so the parent's
-    // userSelect:none returns to effect after editing.
-    target.style.userSelect = 'text';
-    (target.style as any).webkitUserSelect = 'text';
-    (target.style as any).caretColor = 'auto';
-    if (pauseEl) pauseEl.style.animationPlayState = 'paused';
-    target.focus();
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(target);
-      const sel = window.getSelection();
-      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
-    } catch {}
-
-    const commit = () => {
-      target.removeEventListener('blur', commit);
-      target.removeEventListener('keydown', onKey);
-      const newValue = target.innerText.replace(/\u00a0/g, ' ');
-      target.removeAttribute('contenteditable');
-      target.style.outline = '';
-      target.style.outlineOffset = '';
-      target.style.background = '';
-      target.style.borderRadius = '';
-      target.style.cursor = '';
-      target.style.userSelect = '';
-      (target.style as any).webkitUserSelect = '';
-      (target.style as any).caretColor = '';
-      if (pauseEl) pauseEl.style.animationPlayState = previousAnimationPlayState;
-      // 2026-05-03 \u2014 fix audit P0: data-field writes with dotted keys
-      // (e.g. `schedule.0.label`, `agenda.0.t`) must update the nested
-      // location, not store a literal flat key. The previous
-      // `{ [fieldKey]: newValue }` would write
-      //   config["schedule.0.label"] = "Period 1"
-      // which the renderer never reads (it reads config.schedule[0].label).
-      // Result: silent no-op edits \u2014 operator types, sees the canvas
-      // pulse, but nothing actually changes.
-      //
-      // setByPath() walks the dotted path on the EXISTING config and
-      // returns a top-level patch with the correct nested array/object
-      // shape preserved. Shallow-merge friendly (the patch's top key
-      // fully replaces that subtree but with all sibling indexes /
-      // properties carried through from the prior config).
-      //
-      // 2026-05-03 — was reading `(zone as any).config`, which is
-      // ALWAYS undefined (the field is `defaultConfig`). Result: the
-      // patch was built from an empty `{}` base, so an inline edit to
-      // e.g. `schedule.0.label` produced
-      //   { schedule: [{ label: "..." }] }
-      // and the merge wiped all sibling periods (1..N) on commit.
-      // Reading from `defaultConfig` preserves siblings as intended.
+    beginInlineTextEdit(target, newValue => {
       const patch = setByPath((zone.defaultConfig || {}) as Record<string, any>, fieldKey, newValue);
       onConfigChange(zone.id, patch);
-    };
-    const cancel = () => {
-      target.removeEventListener('blur', commit);
-      target.removeEventListener('keydown', onKey);
-      target.removeAttribute('contenteditable');
-      target.style.outline = '';
-      target.style.outlineOffset = '';
-      target.style.background = '';
-      target.style.borderRadius = '';
-      target.style.cursor = '';
-      target.style.userSelect = '';
-      (target.style as any).webkitUserSelect = '';
-      (target.style as any).caretColor = '';
-      if (pauseEl) pauseEl.style.animationPlayState = previousAnimationPlayState;
-      target.innerText = originalText;
-    };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
-      else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
-    };
-    target.addEventListener('blur', commit);
-    target.addEventListener('keydown', onKey);
+    });
   };
 
   return (

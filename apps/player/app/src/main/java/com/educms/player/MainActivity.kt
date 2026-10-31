@@ -3292,12 +3292,13 @@ class MainActivity : ComponentActivity() {
                 // a frame on the primary could call (false, 1) and lift face 1's
                 // live hold, and (true, 7) pinned the box forever. No page gets
                 // to name a face.
-                displayEmergencyHoldImpl = { active, trusted ->
+                displayEmergencyHoldImpl = { active, trusted, bannerOnly ->
                     DisplayControlApi.emergencyHoldJson(
                         applicationContext,
                         active,
                         trusted,
                         com.educms.player.display.DisplayEmergency.PRIMARY_FACE,
+                        bannerOnly,
                     )
                 },
                 // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
@@ -3583,6 +3584,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureUrlOverlay(wv: WebView) {
         wv.visibility = View.GONE
+        com.educms.player.media.BroadcastContentViews.register(0, wv) { webTabsActive || urlOverlayCurrentUrl != null }
         // 2026-05-20 — D-pad navigation needs the overlay WebView to hold
         // Android view focus, otherwise super.onKeyDown routes remote keys
         // to whatever else has focus (the main player WebView) and the
@@ -3962,6 +3964,7 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("showUrlOverlay")
+        com.educms.player.media.BroadcastContentViews.refresh()
         // 2026-05-19 (v1.0.71) — was: binding.recoveryOverlay.bringToFront()
         // Removed. Intent was to keep the recovery overlay on top of the
         // URL iframe, but Taurus's WebView hardware-accel layer punches
@@ -4056,6 +4059,7 @@ class MainActivity : ComponentActivity() {
         binding.managerGateOverlay.bringToFront()
         // 1.1.21 — LAST: a native blank stays over the site it just buried.
         keepBlackoutAboveSiteViews("webTabsShow")
+        com.educms.player.media.BroadcastContentViews.refresh()
         if (binding.recoveryOverlay.visibility == View.VISIBLE) {
             PlayerLogger.i("MainActivity", "Suppressing recovery overlay — a Website Tabs site is in front")
         }
@@ -4520,7 +4524,7 @@ class MainActivity : ComponentActivity() {
                 awaitingPermissionGrant = false
                 PlayerLogger.i("MainActivity", "Permission granted on return — firing bootstrap now")
                 binding.managerGateStatus.text = "Installing companion service…"
-                binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+                binding.managerGateHint.text = "When you see the system Install dialog, select Install (OK on the remote, or tap it)."
                 ManagerBootstrap.bootstrapIfNeeded(applicationContext)
             } else {
                 // User came back without granting. Surface retry button
@@ -4674,6 +4678,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)
         sharedVideoHost?.detach()
         sharedVideoHost = null
         liveInstances.decrementAndGet()
@@ -5226,7 +5231,7 @@ class MainActivity : ComponentActivity() {
             !packageManager.canRequestPackageInstalls()
         if (needsPermission) {
             PlayerLogger.i("MainActivity", "Install permission missing — deep-linking to Settings, gating bootstrap")
-            binding.managerGateStatus.text = "Tap Allow on the next screen to grant install permission"
+            binding.managerGateStatus.text = "On the next screen, select Allow (OK on the remote, or tap it) to grant install permission"
             binding.managerGateHint.text = "We'll continue automatically when you return."
             try {
                 val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
@@ -5248,7 +5253,7 @@ class MainActivity : ComponentActivity() {
                 // Fall through to manual instructions on the gate.
                 binding.managerGateStatus.text =
                     "Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow"
-                binding.managerGateHint.text = "Tap Retry install once permission is granted."
+                binding.managerGateHint.text = "Select Retry install (OK on the remote, or tap it) once permission is granted."
                 binding.managerGateRetry.visibility = View.VISIBLE
             }
             return
@@ -5256,7 +5261,7 @@ class MainActivity : ComponentActivity() {
         // Permission already granted — fire bootstrap directly.
         PlayerLogger.i("MainActivity", "Install permission already granted — firing bootstrap from foreground")
         binding.managerGateStatus.text = "Installing companion service…"
-        binding.managerGateHint.text = "When you see the system Install dialog, tap Install."
+        binding.managerGateHint.text = "When you see the system Install dialog, select Install (OK on the remote, or tap it)."
         LedSystemPromptBanner.announce(
             this,
             "Install the companion service",

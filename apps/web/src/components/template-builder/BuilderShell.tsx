@@ -1770,6 +1770,12 @@ function BuilderBottomBar() {
     return () => clearTimeout(t);
   }, [selectedZone?.id]);
 
+  const [, refreshFieldMetrics] = useState(0);
+  useEffect(() => {
+    const update = () => refreshFieldMetrics(value => value + 1);
+    window.addEventListener('educms-field-metrics', update);
+    return () => window.removeEventListener('educms-field-metrics', update);
+  }, []);
   const activeFieldName = storeActiveFieldName;
   const activeMediaField = ['EXTERNAL_HTML', 'HOLIDAY'].includes(wt) && storeActiveMediaField?.zoneId === selectedZone?.id ? storeActiveMediaField : null;
   // Per-field UX is offered for any selected widget that already
@@ -1819,20 +1825,29 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
+    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    // An old whole-widget !important size must not defeat the selected field.
+    const sizeReset = automaticWidget && prop === 'fontSize' ? { fontSize: undefined } : {};
     setCfg(wt === 'HOLIDAY'
       ? { _styles: nextStyles, __styles: {} }
-      : { _styles: nextStyles });
+      : { _styles: nextStyles, ...sizeReset });
   };
   // Read the rendered px on the focused field so the size stepper
   // anchors on the design value (280, 180, etc.) instead of falling
   // back to the global 16.
   const measureFieldFontSize = (): number | null => {
     if (!activeFieldName || typeof document === 'undefined') return null;
-    const els = document.querySelectorAll<HTMLElement>(`[data-field="${activeFieldName}"]`);
+    const els = document.querySelectorAll<HTMLElement>('[data-field],[data-field-jump]');
     for (const el of Array.from(els)) {
+      if ((el.getAttribute('data-field') || el.getAttribute('data-field-jump')) !== activeFieldName) continue;
+      if (selectedZone && el.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId !== selectedZone.id) continue;
       if (el.closest('[data-properties-panel]')) continue;
       const fs = parseFloat(getComputedStyle(el).fontSize);
       if (Number.isFinite(fs)) return Math.round(fs);
+    }
+    if (selectedZone) for (const frame of Array.from(document.querySelectorAll<HTMLIFrameElement>('[data-canvas-text-sizes]'))) {
+      if (frame.closest<HTMLElement>('[data-zone-id]')?.dataset.zoneId !== selectedZone.id) continue;
+      try { const size = JSON.parse(frame.dataset.canvasTextSizes || '{}')[activeFieldName]; if (typeof size === 'number' && size > 0 && Number.isFinite(size)) return Math.round(size); } catch { /* frame is still loading */ }
     }
     return null;
   };

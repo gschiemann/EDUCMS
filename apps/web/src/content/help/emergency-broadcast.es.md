@@ -1,7 +1,7 @@
 ---
 title: Transmisiones de emergencia y SOS del personal
 category: Emergency System
-updated: 2026-10-26
+updated: 2026-10-28
 excerpt: Ponga un mensaje urgente encima de lo que muestran sus pantallas — texto, o imágenes, video y sonido — y vea quién puede enviarlo y finalizarlo, qué muestran las pantallas y qué guarda el registro de auditoría.
 ---
 
@@ -26,20 +26,20 @@ Una transmisión llega a todas las pantallas de la ubicación en la que está tr
 
 ## Agregar imágenes, video o sonido
 
-Marque **Incluir multimedia (imagen, video o audio)** para enviar en su lugar una **alerta con multimedia**:
+Marque **Añadir imágenes, vídeo o audio** para enviar una **alerta con multimedia**:
 
-1. En **Medios**, abra la imagen o el video y pulse **Copy link**.
-2. Pegue el enlace en la página de transmisión y pulse **Agregar**. Las pantallas muestran hasta cuatro imágenes o videos.
-3. Para agregar sonido, pegue el enlace de un archivo de audio en **URL de audio (opcional)**.
-4. Escriba su mensaje y mantenga pulsado **Mantenga 3 s para transmitir**.
+1. Pulse **Añadir imagen**, **Añadir vídeo** o **Añadir audio**.
+2. Elija un archivo de la biblioteca o pulse **Subir nuevo** para subirlo desde su dispositivo. El selector muestra el progreso y los errores. Los vídeos terminan de convertirse antes de adjuntarse.
+3. Revise los archivos y la vista previa. Puede adjuntar hasta cuatro imágenes o vídeos y una pista de audio; use **×** para quitar un archivo.
+4. Configure la **Duración** (1–120 minutos), escriba su mensaje y mantenga pulsado el botón de envío durante tres segundos.
 
-Una alerta con multimedia siempre ocupa toda la pantalla y se mantiene durante una hora; no hay duración que configurar. Los enlaces deben empezar por `https://` y apuntar a archivos guardados en VenueOS: los enlaces a otros sitios web se rechazan, para que nadie pueda poner una página externa en sus pantallas.
+La alerta ocupa toda la pantalla durante el tiempo elegido. Los archivos usan los mismos controles de carga y almacenamiento que la biblioteca multimedia.
 
 ## Qué muestran las pantallas
 
 | Lo que envió | Lo que muestran las pantallas |
 |---|---|
-| Texto **Aviso** | Una franja amarilla en la parte superior con su mensaje. Lo que se estaba reproduciendo sigue debajo. |
+| Texto **Aviso** | Una franja amarilla en la parte superior con su mensaje. El contenido se ajusta debajo de la franja y continúa sin reiniciarse. |
 | Texto **Alerta** | La misma franja, en naranja. |
 | Texto **Crítico** | Toda la pantalla se vuelve roja con un borde parpadeante, la palabra **Broadcast** y su mensaje. |
 | Una alerta con multimedia | Toda la pantalla, con el color de la gravedad: **Emergency Alert**, su mensaje, sus imágenes o videos (los videos se reproducen sin sonido y en bucle) y un reproductor de audio si agregó sonido. |
@@ -58,10 +58,10 @@ El interruptor **Voz activada** / **Silencio** de la parte superior de `/panic` 
 | Mensaje | Se muestra durante |
 |---|---|
 | Transmisión de texto | La duración que eligió: de 1 a 120 minutos (5 si no la cambia) |
-| Alerta con multimedia | 1 hora |
+| Alerta con multimedia | El tiempo elegido (1–120 minutos; 5 por defecto) |
 | SOS del personal | 30 minutos |
 
-Las pantallas retiran el mensaje solas cuando se acaba su tiempo. Para finalizarlo antes, pulse **Finalizar** junto a él en **Transmisiones activas**: cualquier persona que pueda enviar puede finalizar. Finalizar una transmisión enviada desde una organización también la finaliza en todas sus ubicaciones dependientes. Si la página indica que la finalización falló, el mensaje puede seguir en las pantallas: pulse **Finalizar** otra vez.
+Las pantallas retiran el mensaje solas cuando se acaba su tiempo. Para finalizarlo antes, pulse **Finalizar transmisión** junto a él en **Transmisiones activas**: cualquier persona que pueda enviar puede finalizar. Finalizar una transmisión enviada desde una organización también la finaliza en todas sus ubicaciones dependientes. Si la página indica que la finalización falló, el mensaje puede seguir en las pantallas: pulse **Finalizar transmisión** otra vez.
 
 Una alerta completa (Confinamiento, Evacuación y las demás) termina de otra forma: escriba **CLEAR** y pulse **Finalizar la emergencia (fin de emergencia)** en el panel, o use **Mantén pulsado para enviar el fin de alerta** en `/panic`.
 
@@ -74,7 +74,7 @@ La página de transmisión no tiene el interruptor **REAL | SIMULACRO**: cada tr
 - Los **Superadministradores** y los **Administradores** pueden enviar transmisiones de texto y alertas con multimedia.
 - Los **Editores** solo pueden enviarlas cuando un administrador les activa el permiso **Alertas de emergencia**; vea [delegar el acceso al botón de pánico](/help/panic-delegation). Sin ese permiso, el envío se rechaza.
 - Los **Visualizadores** ven **Transmisiones activas**, pero no pueden enviar.
-- En esta página, **Finalizar** se muestra a todas las personas que pueden enviar: la misma regla que aplica el servidor.
+- En esta página, **Finalizar transmisión** se muestra a todas las personas que pueden enviar: la misma regla que aplica el servidor.
 - Las **claves de API** nunca pueden enviar ni finalizar una transmisión.
 
 ## Qué guarda el registro de auditoría

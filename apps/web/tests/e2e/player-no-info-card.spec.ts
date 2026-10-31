@@ -91,7 +91,7 @@ test('media: tap / click / Enter / Space / Home / i open nothing and the slidesh
   await pressBack(page);
   await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
   await expect(resume(page)).toBeVisible();
-  await expect(resizeLed(page)).toBeVisible();
+  await expect(resizeLed(page)).toHaveCount(0); // an LCD screen: no "Resize LED area" (2026-10-26)
   await expect(infoCard(page)).toHaveCount(0);
   await pressBack(page);
   await expect(resume(page)).toHaveCount(0);
@@ -126,7 +126,7 @@ test('template: tap / click / Enter / Space / Home / i open nothing and the widg
 
   await pressBack(page);
   await expect(page.getByRole('heading', { name: 'Playback Paused' })).toBeVisible({ timeout: 5_000 });
-  await expect(resizeLed(page)).toBeVisible();
+  await expect(resizeLed(page)).toHaveCount(0); // an LCD screen: no "Resize LED area" (2026-10-26)
   await expect(infoCard(page)).toHaveCount(0);
   await pressBack(page);
   await expect(resume(page)).toHaveCount(0);
@@ -135,7 +135,14 @@ test('template: tap / click / Enter / Space / Home / i open nothing and the widg
 
 test('Back menu: "Resize LED area" opens the canvas editor from the remote; Back and Cancel both return to the menu with focus on the button', async ({ page, browserName }) => {
   test.setTimeout(90_000);
-  await bootMockPlayer(page, { tag: 'nocard-resize', kind: 'images' });
+  // An LED controller: the only class that offers "Resize LED area" (2026-10-26).
+  const led = playerIds('nocard-resize');
+  await bootMockPlayer(page, {
+    tag: 'nocard-resize',
+    kind: 'images',
+    // Object.assign (not a fresh literal): the helper's manifest type has no hardwareModel.
+    manifest: Object.assign(playerManifest(led.screenId, 'images'), { hardwareModel: 'novastar-taurus' }),
+  });
   await expect(page.locator(SLIDES)).toHaveCount(3, { timeout: 30_000 });
   await pressBack(page);
   await expect(resume(page)).toBeVisible({ timeout: 5_000 });
@@ -181,6 +188,15 @@ test('Back menu: "Resize LED area" opens the canvas editor from the remote; Back
   await expect(resume(page)).toHaveCount(0);
   await expect(page.locator(SLIDES)).toHaveCount(3, { timeout: 10_000 });
   await expectNoCard(page);
+});
+
+test('Back menu on an LCD screen has no "Resize LED area" (LED controllers only, 2026-10-26)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await bootMockPlayer(page, { tag: 'nocard-noled', kind: 'images' });
+  await expect(page.locator(SLIDES)).toHaveCount(3, { timeout: 30_000 });
+  await pressBack(page);
+  await expect(resume(page)).toBeVisible({ timeout: 5_000 });
+  await expect(resizeLed(page)).toHaveCount(0);
 });
 
 test('a live emergency still takes the screen: the remote is locked, Back / Home / i open nothing, and the all-clear hands Back its menu again', async ({ page }) => {
