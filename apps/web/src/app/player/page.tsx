@@ -262,6 +262,7 @@ import {
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
 import { nativeYieldDelayMs } from './nativeYield';
+import { downloadBarPercent, downloadProgressLabel, type DownloadPhase } from './downloadProgress';
 import { clearOfflineManifests, readOfflineManifest, recordManifestPairing, saveManifest, type SavedManifest } from './offlineBoot';
 // Readiness-gated playback (2026-09-26): a large file is never mounted or
 // streamed before its native bytes are on disk — download the whole file,
@@ -5288,7 +5289,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
   // The large file the page is driving into the cache right now — feeds the
   // splash's real download bar while nothing is ready to play.
-  const [workerDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  const [workerDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null; phase?: DownloadPhase } | null>(null);
   // Native-first store mode (§6): the splash shows the STORE's real download
   // when the page is not driving one itself (the store fetches native files).
   const largeDownload = workerDownload ?? storeDownload;
@@ -11526,6 +11527,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         name: p.url.split('?')[0].split('/').pop() || 'video',
         bytesLoaded: p.bytesLoaded,
         bytesTotal: p.bytesTotal,
+        phase: p.phase,
       }),
     }).then((result) => {
       if (playlistCacheInFlightRef.current !== setHash) return; // superseded
@@ -14559,18 +14561,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   className="text-lg font-medium text-slate-500 mt-2 mb-4 text-center"
                   style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(16px, max(6px, calc(var(--led-w, 1024px) * 0.012))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
-                  {largeDownload && largeDownload.bytesTotal
-                    ? `${largeDownload.name} — ${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}% (${formatBytes(largeDownload.bytesLoaded)} of ${formatBytes(largeDownload.bytesTotal)})`
-                    : largeDownload
-                      ? `${largeDownload.name} — ${formatBytes(largeDownload.bytesLoaded)} so far`
-                      : 'Playback starts the moment the file is complete on this screen.'}
+                  {largeDownload
+                    ? downloadProgressLabel(largeDownload, formatBytes)
+                    : 'Playback starts the moment the file is complete on this screen.'}
                 </p>
                 {largeDownload && largeDownload.bytesTotal ? (
                   <div
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    aria-valuenow={Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}
+                    aria-valuenow={(downloadBarPercent(largeDownload) ?? 0)}
                     aria-label="Download progress"
                     style={{
                       width: 'calc(min(480px, max(160px, calc(var(--led-w, 1024px) * 0.4))) * var(--splash-k, 1))',
@@ -14583,7 +14583,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   >
                     <div
                       style={{
-                        width: `${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}%`,
+                        width: `${(downloadBarPercent(largeDownload) ?? 0)}%`,
                         height: '100%',
                         background: '#6366f1',
                         borderRadius: 999,
