@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { LEGACY_POLYFILLS_JS } from './legacyPolyfills';
 import { UPDATE_COVER_INLINE_JS } from './updateCoverInline';
 import { QUIET_BOOT_INLINE_JS } from './quietBootInline';
+import { SKEW_RECOVERY_INLINE_JS } from './skewRecovery';
 
 // 2026-06-27 — LAUNCH-BLOCKING root cause of "deploys never reach the kiosk".
 // The /player route is a client app with no per-request data, so Next.js
@@ -121,6 +122,18 @@ export default function PlayerLayout({
       <script
         data-edu-shim="face-storage"
         dangerouslySetInnerHTML={{ __html: FACE_STORAGE_SHIM }}
+      />
+      {/* ── DEPLOY-SKEW RECOVERY (2026-10-27 field incident) ──────────────
+          A document whose /_next/static chunks belong to another deployment
+          (or were pinned as a 404) never boots: no register call, no remote
+          handler, black glass. This runs before any chunk and, when a build
+          asset fails or the document loads but never stamps data-edu-booted,
+          does ONE cache-busted reload, then backs off (2 / 10 / 30 min,
+          persisted). After the face shim so each face keeps its own ladder.
+          Body, rules and tests: skewRecovery.ts. Plain ES5. */}
+      <script
+        data-edu-shim="skew-recovery"
+        dangerouslySetInnerHTML={{ __html: SKEW_RECOVERY_INLINE_JS }}
       />
       <script
         data-edu-shim="chromium83"
