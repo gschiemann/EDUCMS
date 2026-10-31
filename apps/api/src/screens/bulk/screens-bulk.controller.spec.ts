@@ -18,7 +18,17 @@
  */
 import { ForbiddenException, HttpException } from '@nestjs/common';
 import { ScreensBulkController } from './screens-bulk.controller';
-import { BULK_MAX_SCREENS, mapWithConcurrency, playerIsCurrent, updateDecision, parseBulkTargets } from './bulk-screen-actions';
+import {
+  BULK_MAX_SCREENS,
+  bulkHardwareRefusal,
+  bulkOffHoursRefusal,
+  mapWithConcurrency,
+  parseMassPushOverride,
+  playerIsCurrent,
+  updateDecision,
+  parseBulkTargets,
+} from './bulk-screen-actions';
+import { evaluateHardwareClasses, evaluateOffHours } from '../../player-ota/fleet-push-policy';
 import { DisplayActionUnsupportedError } from '../../display/display.service';
 import { UserScopeInterceptor } from '../../user-scope/user-scope.interceptor';
 import { decideScopedRoute } from '../../user-scope/user-scope.policy';
@@ -36,14 +46,32 @@ interface Row {
   playerVersion: string | null; playerVersionCode: number | null;
   autoUpdatePlayerOverride: boolean | null; displayCapabilities: unknown;
   lastPushConnectedAt: Date | null; pendingRefreshAt?: Date | null;
+  // What the fleet push rules read (player-ota/fleet-push-policy.ts).
+  hardwareModel?: string | null; lastVideoReport?: unknown; timezone?: string | null;
+  deviceTimeZone?: string | null; latitude?: number | null; longitude?: number | null;
+  tenant?: { timezone?: string | null } | null;
 }
 
+// (2026-10-31) The fixture screens are ONE known hardware class with a known
+// zone: a Player update to more than one screen must be (fleet-push-policy.ts).
 const screen = (id: string, over: Partial<Row> = {}): Row => ({
   id, name: `Screen ${id}`, tenantId: A, screenGroupId: 'g-lobby',
   playerVersion: '1.1.20', playerVersionCode: 10120, autoUpdatePlayerOverride: null,
   displayCapabilities: null, lastPushConnectedAt: new Date(), pendingRefreshAt: null,
+  hardwareModel: 'goodview-ep6n', timezone: 'America/Chicago',
   ...over,
 });
+
+/** Fake only the clock (promises, timers and I/O stay real). */
+const freezeClock = (at: number) => {
+  jest.useFakeTimers({
+    doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+  });
+  jest.setSystemTime(at);
+};
+/** 03:00 and 12:00 in Chicago (CDT) on 2026-10-31. */
+const CHICAGO_NIGHT = Date.UTC(2026, 9, 31, 8, 0);
+const CHICAGO_NOON = Date.UTC(2026, 9, 31, 17, 0);
 
 /** Tiny in-memory prisma that evaluates the `where` shapes this controller uses. */
 function fakePrisma(rows: Row[], groups = [{ id: 'g-lobby', tenantId: A }, { id: 'g-foreign', tenantId: B }]) {
@@ -193,6 +221,11 @@ describe('bulk resync', () => {
 });
 
 describe('bulk update (Send Player update)', () => {
+  // (2026-10-31) An update to more than one screen goes out only 22:00–06:00 in
+  // every screen's own zone (fleet-push-policy.ts): run these at 03:00 Chicago.
+  beforeEach(() => freezeClock(CHICAGO_NIGHT));
+  afterEach(() => jest.useRealTimers());
+
   it('sends only to screens behind the latest Player, skips the rest with a reason, flags install prompts', async () => {
     const rows = [
       screen('old', { playerVersion: '1.1.19', playerVersionCode: 10119 }),
@@ -336,5 +369,184 @@ describe('bulk helpers', () => {
     });
     expect(out).toEqual([2, 4, 6, 8, 10, 12, 14]);
     expect(peak).toBe(3);
+  });
+});
+
+/**
+ * 2026-10-31 — the owner's fleet push rules on "Send Player update"
+ * (player-ota/fleet-push-policy.ts): an update to more than one screen must be
+ * one hardware class and go out 22:00–06:00 in every screen's own time zone,
+ * unless the request carries the explicit `overrideMassPushRules: true`, which
+ * every FORCE_APK_UPDATE row and the summary row record.
+ */
+describe('bulk update — the owner’s fleet push rules', () => {
+  beforeEach(() => freezeClock(CHICAGO_NIGHT));
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+  /** A screen behind the latest Player (1.1.21), so the update would reach it. */
+  const stale = (id: string, over: Partial<Row> = {}) => screen(id, { playerVersion: '1.1.19', playerVersionCode: 10119, ...over });
+  const refusalOf = async (p: Promise<unknown>): Promise<{ status: number; body: any }> => {
+    try {
+      await p;
+    } catch (e) {
+      if (e instanceof HttpException) return { status: e.getStatus(), body: e.getResponse() };
+      throw e;
+    }
+    throw new Error('expected a refusal');
+  };
+  const nothingSent = (h: ReturnType<typeof harness>) => {
+    expect(h.prisma.client.screen.update).not.toHaveBeenCalled();
+    expect(h.signer.signMessage).not.toHaveBeenCalled();
+    expect(h.redis.publish).not.toHaveBeenCalled();
+    expect(h.prisma.client.auditLog.create).not.toHaveBeenCalled();
+  };
+  const report = (cls: string) => ({ native: { device: { class: cls } } });
+
+  it('two hardware classes are refused (422), naming them — the dry run says so first; nothing is sent', async () => {
+    const h = harness([stale('a'), stale('b', { hardwareModel: 'maxhub-l55vec' })]);
+    for (const dryRun of [true, false]) {
+      expect(await refusalOf(h.c.update(admin(), { screenIds: ['a', 'b'], dryRun }))).toMatchObject({
+        status: 422,
+        body: { code: 'BULK_UPDATE_MIXED_HARDWARE', classes: ['goodview-ep6n', 'maxhub-l55vec'] },
+      });
+    }
+    nothingSent(h);
+  });
+
+  it('THE 2026-10-12 SHAPE: a GUQ panel and an rk3288 unit, both generic-android, are two classes', async () => {
+    const h = harness([
+      stale('guq', { hardwareModel: 'generic-android', lastVideoReport: report('amlogic/android-13') }),
+      stale('dh43', { hardwareModel: 'generic-android', lastVideoReport: report('rockchip/android-7') }),
+    ]);
+    expect(await refusalOf(h.c.update(admin(), { screenIds: ['guq', 'dh43'] }))).toMatchObject({
+      status: 422,
+      body: { code: 'BULK_UPDATE_MIXED_HARDWARE', classes: ['generic-android (amlogic/android-13)', 'generic-android (rockchip/android-7)'] },
+    });
+    nothingSent(h);
+  });
+
+  it('a screen of unknown hardware cannot be shown to be one class with the others (422, named)', async () => {
+    const h = harness([stale('a'), stale('b', { name: 'Gym', hardwareModel: null })]);
+    expect(await refusalOf(h.c.update(admin(), { screenIds: ['a', 'b'] }))).toMatchObject({
+      status: 422,
+      body: { code: 'BULK_UPDATE_HARDWARE_UNKNOWN', unknownScreens: [{ id: 'b', name: 'Gym' }] },
+    });
+    nothingSent(h);
+  });
+
+  it('daytime in a screen’s own zone is refused (409), naming the screens and their local time', async () => {
+    freezeClock(CHICAGO_NOON);
+    const h = harness([stale('a'), stale('b')]);
+    expect(await refusalOf(h.c.update(admin(), { screenIds: ['a', 'b'] }))).toMatchObject({
+      status: 409,
+      body: {
+        code: 'BULK_UPDATE_OUTSIDE_OFF_HOURS',
+        offHours: { start: '22:00', end: '06:00' },
+        screens: [
+          { id: 'a', timeZone: 'America/Chicago', localTime: '12:00' },
+          { id: 'b', timeZone: 'America/Chicago', localTime: '12:00' },
+        ],
+      },
+    });
+    nothingSent(h);
+  });
+
+  it('a screen with no time zone refuses it (422) — the device’s own zone is never used', async () => {
+    const h = harness([stale('a'), stale('b', { name: 'Gym', timezone: null, deviceTimeZone: 'America/Chicago' })]);
+    expect(await refusalOf(h.c.update(admin(), { screenIds: ['a', 'b'] }))).toMatchObject({
+      status: 422,
+      body: { code: 'BULK_UPDATE_TIME_ZONE_UNKNOWN', screens: [{ id: 'b', name: 'Gym' }] },
+    });
+    nothingSent(h);
+  });
+
+  it('the zone is the screen’s effective one: its location’s setting, or automatic from its coordinates', async () => {
+    const h = harness([
+      stale('a', { timezone: null, tenant: { timezone: 'America/Chicago' } }),
+      stale('b', { timezone: null, latitude: 41.8781, longitude: -87.6298 }),
+    ]);
+    expect((await h.c.update(admin(), { screenIds: ['a', 'b'] })).summary).toMatchObject({ sent: 2, failed: 0 });
+  });
+
+  it('only the screens the update would reach count: an already-current screen of another kind is skipped, not a mix', async () => {
+    freezeClock(CHICAGO_NOON);
+    const h = harness([stale('a'), screen('cur', { hardwareModel: 'maxhub-l55vec', playerVersion: '1.1.21', playerVersionCode: 10121 })]);
+    const out = await h.c.update(admin(), { screenIds: ['a', 'cur'] });
+    expect(out.results).toEqual([
+      expect.objectContaining({ screenId: 'a', outcome: 'sent' }),
+      expect.objectContaining({ screenId: 'cur', outcome: 'skipped', reason: 'already-current' }),
+    ]);
+  });
+
+  it('ONE screen is exempt from both rules — any hour, no zone, unknown hardware', async () => {
+    freezeClock(CHICAGO_NOON);
+    const h = harness([stale('a', { hardwareModel: null, timezone: null })]);
+    expect((await h.c.update(admin(), { screenIds: ['a'] })).results[0]).toMatchObject({ outcome: 'sent' });
+  });
+
+  it('the explicit override sends it, and every FORCE_APK_UPDATE row and the summary record what it set aside', async () => {
+    freezeClock(CHICAGO_NOON);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = harness([stale('a'), stale('b', { hardwareModel: 'maxhub-l55vec' })]);
+    const out = await h.c.update(admin(), { screenIds: ['a', 'b'], overrideMassPushRules: true });
+    expect(out.summary).toMatchObject({ sent: 2, failed: 0 });
+    const rows = audits(h.prisma);
+    const pushes = rows.filter((x: any) => x.action === 'FORCE_APK_UPDATE');
+    expect(pushes.map((x: any) => x.targetId).sort()).toEqual(['a', 'b']);
+    const summary = rows.filter((x: any) => x.action === 'BULK_SCREEN_ACTION');
+    expect(summary).toHaveLength(1);
+    for (const x of [...pushes, ...summary]) {
+      expect(JSON.parse(x.details)).toMatchObject({ overrideMassPushRules: true, massPushRulesOverridden: ['hardware-class', 'off-hours'] });
+    }
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('mass-push rules OVERRIDDEN (hardware-class, off-hours)'))).toBe(true);
+  });
+
+  it('a compliant update records that no override was needed; a malformed override is a 400 before any database read', async () => {
+    const h = harness([stale('a'), stale('b')]);
+    await h.c.update(admin(), { screenIds: ['a', 'b'] });
+    const rows = audits(h.prisma).filter((x: any) => x.action === 'FORCE_APK_UPDATE' || x.action === 'BULK_SCREEN_ACTION');
+    expect(rows).toHaveLength(3);
+    for (const x of rows) expect(JSON.parse(x.details)).toMatchObject({ overrideMassPushRules: false, massPushRulesOverridden: [] });
+    const h2 = harness([stale('a'), stale('b')]);
+    expect(await refusalOf(h2.c.update(admin(), { screenIds: ['a', 'b'], overrideMassPushRules: 'yes' } as any))).toMatchObject({
+      status: 400,
+      body: { code: 'BULK_MASS_PUSH_OVERRIDE_INVALID' },
+    });
+    expect(h2.prisma.client.screen.findMany).not.toHaveBeenCalled();
+  });
+
+  it('resync and automatic-update settings are not OTA pushes: the rules do not touch them', async () => {
+    freezeClock(CHICAGO_NOON);
+    const rows = [screen('a', { hardwareModel: null, timezone: null }), screen('b', { hardwareModel: 'maxhub-l55vec' })];
+    const h = harness(rows);
+    expect((await h.c.resync(admin(), { screenIds: ['a', 'b'] })).summary).toMatchObject({ sent: 2 });
+    expect((await h.c.autoUpdate(admin(), { screenIds: ['a', 'b'], mode: 'on' })).summary).toMatchObject({ sent: 2 });
+  });
+
+  it('the refusals’ words (the dashboard words each code in en / es / zh)', () => {
+    expect(parseMassPushOverride({})).toBe(false);
+    expect(parseMassPushOverride({ overrideMassPushRules: true })).toBe(true);
+    expect(() => parseMassPushOverride({ overrideMassPushRules: 1 })).toThrow('overrideMassPushRules must be true or false.');
+    const mixed = bulkHardwareRefusal(evaluateHardwareClasses([
+      { id: 'a', hardwareModel: 'goodview-ep6n' },
+      { id: 'b', hardwareModel: 'pi5' },
+    ]));
+    expect(mixed).toMatchObject({ status: 422, code: 'BULK_UPDATE_MIXED_HARDWARE' });
+    expect(mixed.message).toBe('These screens are more than one kind of hardware: goodview-ep6n, pi5. Send the update to one kind at a time.');
+    const night = new Date(CHICAGO_NIGHT);
+    const outside = bulkOffHoursRefusal(evaluateOffHours([
+      { id: 'a', name: 'Lobby', timeZone: 'America/Chicago' },
+      { id: 'b', name: 'Gym', timeZone: 'Asia/Tokyo' },
+    ], night));
+    expect(outside).toMatchObject({ status: 409, code: 'BULK_UPDATE_OUTSIDE_OFF_HOURS' });
+    expect(outside.message).toBe(
+      "An update to more than one screen goes out only between 22:00 and 06:00 in each screen's own time zone. " +
+        'It is 17:00 at Gym (Asia/Tokyo). Send it to one screen at a time, or wait.',
+    );
+    const noZone = bulkOffHoursRefusal(evaluateOffHours([{ id: 'a', name: 'Lobby', timeZone: null }, { id: 'b', timeZone: 'America/Chicago' }], night));
+    expect(noZone).toMatchObject({ status: 422, code: 'BULK_UPDATE_TIME_ZONE_UNKNOWN' });
+    expect(noZone.message).toMatch(/^Lobby has no time zone, .*Set its time zone, or send the update to it on its own\.$/);
   });
 });

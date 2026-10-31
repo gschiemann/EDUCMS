@@ -32,6 +32,15 @@
  *
  * Never a silent partial failure: every requested id comes back with
  * `sent` / `skipped` (with a reason) / `failed` (with a reason).
+ *
+ * THE OWNER'S FLEET PUSH RULES (2026-10-31, player-ota/fleet-push-policy.ts):
+ * "Send Player update" to more than one screen must be ONE hardware class and
+ * go out only 22:00–06:00 in every screen's own time zone — else a 422 / 409
+ * whose code the dashboard words in en / es / zh, and the dry run answers the
+ * same. The explicit `overrideMassPushRules: true` (the dashboard does not
+ * send it) sets both aside and is recorded on every FORCE_APK_UPDATE row and
+ * on the summary row. Resync, power and auto-update are not OTA pushes and
+ * are unchanged.
  */
 import { Body, Controller, HttpException, HttpStatus, Post, Request, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -48,6 +57,8 @@ import { runDisplayControl } from '../../display/display.controller';
 import { silentUpdateReadiness } from '../../player-ota/auto-update-policy';
 import { overrideToMode } from '../../player-ota/auto-update-report';
 import { resolveLatestReleaseInfo } from '../../player-ota/player-ota.controller';
+import { evaluateHardwareClasses, evaluateOffHours, type MassPushRule } from '../../player-ota/fleet-push-policy';
+import { manifestTimeZone } from '../screen-time-zone';
 import { screenScopeOf } from '../../user-scope/user-scope.context';
 import { assertSupportReach } from '../../support-access/support-access.context';
 import { recordPushDeployment } from '../deployment-record';
@@ -57,16 +68,20 @@ import {
   BULK_OTA_CONCURRENCY,
   BulkInputError,
   REASON_MESSAGE,
+  bulkHardwareRefusal,
+  bulkOffHoursRefusal,
   mapWithConcurrency,
   mergeTargetIds,
   parseAutoUpdateMode,
   parseBulkTargets,
+  parseMassPushOverride,
   parsePowerState,
   summarize,
   updateDecision,
   type BulkAction,
   type BulkBody,
   type BulkReason,
+  type BulkRuleRefusal,
   type BulkScreenResult,
 } from './bulk-screen-actions';
 
@@ -80,6 +95,19 @@ interface BulkScreenRow {
   autoUpdatePlayerOverride: boolean | null;
   displayCapabilities: unknown;
   lastPushConnectedAt: Date | null;
+}
+
+/** What the fleet push rules read for one screen: hardware class + effective time zone. */
+interface RuleFacts {
+  id: string;
+  name?: string | null;
+  hardwareModel?: string | null;
+  lastVideoReport?: unknown;
+  timezone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  screenGroup?: { latitude?: number | null; longitude?: number | null } | null;
+  tenant?: { timezone?: string | null; latitude?: number | null; longitude?: number | null } | null;
 }
 
 interface Resolved {
@@ -199,17 +227,29 @@ export class ScreensBulkController {
   @RequireRoles(...ADMIN_ROLES)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async update(@Request() req: any, @Body() body: BulkBody): Promise<BulkResponse> {
+    const override = this.input(() => parseMassPushOverride(body));
     const r = await this.resolve(req, body);
     // Only ask GitHub when a target has a Player version to grade against it.
     const latest = r.targets.some((t) => !!t.playerVersion) ? await this.latestPlayerVersion() : null;
     const prompts = await this.installPromptMap(r);
     const plan = r.targets.map((t) => ({ t, d: updateDecision(t.playerVersion, latest) }));
+    // The owner's fleet push rules, over the screens this update would reach.
+    // A dry run answers the same refusal, so the confirm sheet says it before Send.
+    const overridden = await this.massPushRules(r, plan.filter((p) => p.d.send).map((p) => p.t), override);
     if (r.dryRun) {
       const results = plan.map(({ t, d }) => (d.send ? sent(t, { installPrompt: prompts.get(t.id) }) : skip(t, d.reason)));
       return { ...this.respond('update', r, null, results), latestPlayerVersion: latest };
     }
     const corrId = newCorrId('ota-bulk');
     const requestedBy = req.user.userId || req.user.id || null;
+    if (overridden.length) {
+      console.warn(
+        `[bulk-screens] update ${corrId} tenant=${r.tenantId} with the mass-push rules OVERRIDDEN ` +
+          `(${overridden.join(', ')}) by=${requestedBy ?? '-'}`,
+      );
+    }
+    // The owner's explicit override, and the rules it set aside (none = not needed).
+    const ruleAudit = { overrideMassPushRules: override, massPushRulesOverridden: overridden };
     // Bounded: each push is a DB write + a signed publish; 500 at once would
     // queue the whole pool behind one click.
     const results = await mapWithConcurrency(plan, BULK_OTA_CONCURRENCY, async ({ t, d }) => {
@@ -222,7 +262,7 @@ export class ScreensBulkController {
         );
         await this.audit({
           action: 'FORCE_APK_UPDATE', targetId: t.id, tenantId: r.tenantId, userId: req.user.id,
-          details: { scope: 'screen', screenName: t.name, corrId, bulk: true, armed: pushed.armed, published: pushed.published },
+          details: { scope: 'screen', screenName: t.name, corrId, bulk: true, armed: pushed.armed, published: pushed.published, ...ruleAudit },
         });
         // The armed flag IS the push (the screen's own update-check reads it);
         // the realtime nudge only makes it sooner.
@@ -231,7 +271,48 @@ export class ScreensBulkController {
         return fail(t, 'error', { message: (e as Error)?.message || REASON_MESSAGE.error });
       }
     });
-    return { ...(await this.finish(req, 'update', r, corrId, results, { latestPlayerVersion: latest })), latestPlayerVersion: latest };
+    return {
+      ...(await this.finish(req, 'update', r, corrId, results, { latestPlayerVersion: latest, ...ruleAudit })),
+      latestPlayerVersion: latest,
+    };
+  }
+
+  /**
+   * The owner's fleet push rules (player-ota/fleet-push-policy.ts) for a
+   * Player update to MORE THAN ONE screen — the screens it would actually
+   * reach; a skipped screen installs nothing. One hardware class, and
+   * 22:00–06:00 in every screen's own time zone (the zone the screen shows,
+   * screens/screen-time-zone.ts — never the device's). Throws the first
+   * refusal; with the explicit override, returns the rules it set aside for
+   * the audit rows. One screen never breaks either rule.
+   */
+  private async massPushRules(r: Resolved, sending: BulkScreenRow[], override: boolean): Promise<MassPushRule[]> {
+    if (sending.length <= 1) return [];
+    const facts = (await this.prisma.client.screen.findMany({
+      where: { id: { in: sending.map((t) => t.id) }, tenantId: r.tenantId },
+      select: {
+        id: true, name: true, hardwareModel: true, lastVideoReport: true,
+        timezone: true, latitude: true, longitude: true,
+        screenGroup: { select: { latitude: true, longitude: true } },
+        tenant: { select: { timezone: true, latitude: true, longitude: true } },
+      },
+    })) as RuleFacts[];
+    const byId = new Map(facts.map((f) => [f.id, f]));
+    // A screen whose facts could not be read proves neither a class nor a zone.
+    const screens: RuleFacts[] = sending.map((t) => byId.get(t.id) ?? { id: t.id, name: t.name });
+    const broken: Array<[MassPushRule, BulkRuleRefusal]> = [];
+    const hardware = evaluateHardwareClasses(screens);
+    if (!hardware.ok) broken.push(['hardware-class', bulkHardwareRefusal(hardware)]);
+    const hours = evaluateOffHours(
+      screens.map((s) => ({ id: s.id, name: s.name, timeZone: manifestTimeZone(s, s.screenGroup, s.tenant) })),
+      new Date(),
+    );
+    if (!hours.ok) broken.push(['off-hours', bulkOffHoursRefusal(hours)]);
+    if (broken.length && !override) {
+      const refusal = broken[0][1];
+      throw new HttpException({ code: refusal.code, message: refusal.message, ...refusal.extra }, refusal.status);
+    }
+    return broken.map(([rule]) => rule);
   }
 
   // ─── Turn panels on / off ─────────────────────────────────────────────

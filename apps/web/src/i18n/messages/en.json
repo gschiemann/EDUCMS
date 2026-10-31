@@ -2783,6 +2783,12 @@
         "notDelivered": "could not be delivered",
         "noLiveConnection": "no live connection right now — try again once it reconnects",
         "error": "something went wrong"
+      },
+      "refusal": {
+        "mixedHardware": "these screens are more than one kind of hardware — send the update to one kind at a time",
+        "hardwareUnknown": "these screens can't be confirmed as the same kind of hardware — send the update to one screen at a time",
+        "outsideOffHours": "an update to more than one screen goes out only between 10 PM and 6 AM in each screen's own time zone — send it to one screen at a time, or wait until then",
+        "timeZoneUnknown": "a screen in this update has no time zone, so its local time can't be checked — send that screen its update on its own"
       }
     },
     "sleepWake": {

@@ -2783,6 +2783,12 @@
         "notDelivered": "no se pudo entregar",
         "noLiveConnection": "sin conexión en vivo ahora — inténtelo cuando se vuelva a conectar",
         "error": "algo salió mal"
+      },
+      "refusal": {
+        "mixedHardware": "estas pantallas son de más de un tipo de hardware — envíe la actualización a un solo tipo a la vez",
+        "hardwareUnknown": "no se puede confirmar que estas pantallas sean del mismo tipo de hardware — envíe la actualización a una pantalla a la vez",
+        "outsideOffHours": "una actualización a más de una pantalla solo sale entre las 10 p. m. y las 6 a. m. en la zona horaria de cada pantalla — envíela a una pantalla a la vez o espere hasta entonces",
+        "timeZoneUnknown": "una pantalla de esta actualización no tiene zona horaria, así que no se puede comprobar su hora local — envíele la actualización por separado"
       }
     },
     "sleepWake": {

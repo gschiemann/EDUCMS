@@ -63,6 +63,14 @@ const named = (s: { id: string; name?: string | null }): NamedScreen => ({
   name: typeof s.name === 'string' && s.name ? s.name : null,
 });
 
+/** "Lobby, Gym and 2 more" for a refusal — a screen without a name is its id's first 8 characters. */
+export function listScreenNames(screens: ReadonlyArray<NamedScreen>, max = 3): string {
+  const names = screens.map((s) => s.name ?? s.id.slice(0, 8));
+  if (names.length <= 1) return names[0] ?? '';
+  if (names.length <= max) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `${names.slice(0, max).join(', ')} and ${names.length - max} more`;
+}
+
 // ─── 2. Bench screens ──────────────────────────────────────────────────────
 
 export const FIELD_BENCH_ENV = 'PLAYER_FIELD_BENCH_SCREENS';
