@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
@@ -16,6 +16,13 @@ import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegio
 import { AssetPicker, type AssetKind } from '@/components/assets/AssetPicker';
 import { transformedImageUrl } from '@/lib/asset-image';
 import type { BroadcastInput, MediaAlertInput } from '@cms/api-types';
+import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
+import { fetchEmergencyTargets } from '@/lib/emergency-api';
+import {
+  allScreensTarget, groupDisplayName, isAllScreens, targetChipLabel,
+  type EmergencyTarget, type EmergencyTargets,
+} from '@/lib/emergency-target';
 
 type Severity = 'INFO' | 'WARN' | 'CRITICAL';
 type Phase = 'idle' | 'holding' | 'sending' | 'sent' | 'error';
@@ -23,6 +30,8 @@ type Phase = 'idle' | 'holding' | 'sending' | 'sent' | 'error';
 interface ActiveMsg {
   id: string;
   type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT';
+  scopeType?: string;
+  scopeId?: string;
   severity: Severity;
   textBlob: string | null;
   mediaUrls: string[];
@@ -68,6 +77,7 @@ function MediaPreview({ url, alt }: { url: string; alt: string }) {
 export default function BroadcastPage() {
   const params = useParams<{ schoolId: string }>();
   const t = useTranslations('emergency.broadcast');
+  const tt = useTranslations();
   const locale = useLocale();
   const { user, token } = useAppStore();
   // Routes use a workspace slug; emergency APIs require the signed-in tenant ID.
@@ -89,6 +99,34 @@ export default function BroadcastPage() {
   const active = snapshot.tenantId === tenantId ? snapshot.active : [];
   const status = snapshot.tenantId === tenantId ? snapshot.status : 'loading';
   const [clearingId, setClearingId] = useState<string | null>(null);
+  // WHERE the broadcast goes. Default: all screens (today's behaviour). The
+  // list behind "Choose screens" is read once and never blocks sending.
+  const [targets, setTargets] = useState<EmergencyTargets | null>(null);
+  const [targetsStatus, setTargetsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [targetsTry, setTargetsTry] = useState(0);
+  const [chosenTarget, setChosenTarget] = useState<EmergencyTarget | null>(null);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const allScreens = useMemo(() => allScreensTarget(tenantId, targets?.allScreensCount ?? null), [tenantId, targets?.allScreensCount]);
+  const target = chosenTarget ?? allScreens;
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    setTargetsStatus('loading');
+    fetchEmergencyTargets(token)
+      .then((data) => { if (live) { setTargets(data); setTargetsStatus('ready'); } })
+      .catch(() => { if (live) setTargetsStatus('error'); });
+    return () => { live = false; };
+  }, [token, tenantId, targetsTry]);
+  // A workspace switch must not carry a screen of the old workspace along.
+  useEffect(() => { setChosenTarget(null); }, [tenantId]);
+  const scopeNameOf = (m: ActiveMsg): string | null => {
+    if (m.scopeType === 'group') {
+      const g = targets?.groups?.find((x) => x.id === m.scopeId);
+      return g ? groupDisplayName(tt, g.name) : null;
+    }
+    if (m.scopeType === 'device') return targets?.screens?.find((x) => x.id === m.scopeId)?.name ?? null;
+    return null;
+  };
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useRef(true);
@@ -162,12 +200,15 @@ export default function BroadcastPage() {
     resetHold();
     setPhase('sending');
     setErrorMsg('');
-    announce(t('annSending'));
+    announce(isAllScreens(target) ? t('annSending') : t('annSendingTo', { target: targetChipLabel(tt, target) }));
     try {
+      const sendScope = isAllScreens(target)
+        ? { scopeType: 'tenant' as const, scopeId: tenantId }
+        : { scopeType: target.scopeType as 'group' | 'device', scopeId: target.scopeId };
       const body: BroadcastInput | MediaAlertInput = withMedia
-        ? { scopeType: 'tenant', scopeId: tenantId, mediaUrls, audioUrl: audioUrl || undefined,
+        ? { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, mediaUrls, audioUrl: audioUrl || undefined,
             textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + Number(durationMin) * 60 }
-        : { scopeType: 'tenant', scopeId: tenantId, text: text.trim(), severity,
+        : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, text: text.trim(), severity,
             durationMs: Number(durationMin) * 60 * 1000 };
       const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
         method: 'POST',
@@ -177,7 +218,7 @@ export default function BroadcastPage() {
       if (!res.ok) throw new Error(t('errSendFailed', { status: res.status }));
       if (!mounted.current) return;
       setPhase('sent');
-      announce(t('annDispatched'));
+      announce(isAllScreens(target) ? t('annDispatched') : t('annDispatchedTo', { target: targetChipLabel(tt, target) }));
       setText('');
       setMediaUrls([]);
       setAudioUrl('');
@@ -270,6 +311,14 @@ export default function BroadcastPage() {
             <p className="mt-1 text-xs text-slate-500">{t('composeHint')}</p>
           </div>
           <fieldset disabled={locked} className="min-w-0 space-y-6 p-5 sm:p-6">
+            <div className="rounded-2xl bg-slate-900 p-1">
+              <EmergencyTargetBar
+                target={target}
+                disabled={locked}
+                onChoose={() => setTargetPickerOpen(true)}
+                onReset={() => { setChosenTarget(null); announce(tt('emergency.target.announceTargetSet', { target: tt('emergency.target.allScreens') })); }}
+              />
+            </div>
             <fieldset>
               <legend className="mb-2.5 text-sm font-semibold text-slate-800">{t('severity')}</legend>
               <div className="grid grid-cols-3 gap-2">
@@ -366,6 +415,7 @@ export default function BroadcastPage() {
               {active.length > 0 && <ul className="space-y-3">{active.map((message) => <li key={message.id} className="space-y-3 rounded-xl border border-slate-200 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2"><span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${SEVERITY_STYLE[message.severity]?.badge || 'bg-slate-50 text-slate-700 ring-slate-200'}`}>{severityLabel(message.severity)}</span><span className="text-xs text-slate-500">{msgTypeLabel(message.type)}</span></div>
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 [overflow-wrap:anywhere]">{message.textBlob || t('noText')}</p>
+                {(message.scopeType === 'group' || message.scopeType === 'device') && <p className="text-xs font-semibold text-slate-600" data-testid="broadcast-active-scope">{scopeNameOf(message) ? t('activeScope', { name: scopeNameOf(message) as string }) : t('activeScopeUnknown')}</p>}
                 {(message.mediaUrls.length > 0 || message.audioUrl) && <p className="text-xs text-slate-500">{t('mediaAttachments', { count: message.mediaUrls.length + (message.audioUrl ? 1 : 0) })}</p>}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3"><p className="text-xs leading-relaxed text-slate-500">{t('startedAt', { time: time(message.createdAt) })}<span className="block">{message.expiresAt ? t('endsAt', { time: time(message.expiresAt) }) : t('untilCleared')}</span></p>
                   {canClear && <button type="button" disabled={!!clearingId} onClick={() => { void clearMessage(message.id); }} className={secondaryButton}>{clearingId === message.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <X className="h-3.5 w-3.5" aria-hidden />}{t('clear')}</button>}
@@ -375,6 +425,19 @@ export default function BroadcastPage() {
           </section>
         </div>
       </div>
+      <EmergencyTargetPicker
+        open={targetPickerOpen}
+        targets={targets}
+        status={targetsStatus}
+        selected={target}
+        allScreens={allScreens}
+        onSelect={(next) => {
+          setChosenTarget(isAllScreens(next) ? null : next);
+          announce(tt('emergency.target.announceTargetSet', { target: targetChipLabel(tt, next) }));
+        }}
+        onClose={() => setTargetPickerOpen(false)}
+        onRetry={() => setTargetsTry((n) => n + 1)}
+      />
       {picker && <AssetPicker kind={picker} title={t(picker === 'image' ? 'chooseImage' : picker === 'video' ? 'chooseVideo' : 'chooseAudio')} onPick={pickMedia} onClose={() => setPicker(null)} />}
     </div>
   );
