@@ -517,6 +517,51 @@ describe('GET /screens/:id/events', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 5b — GET /screens/:id/usb-events (2026-10-26): what this screen did with a
+// USB drive, for the drawer. Same ownership proof as :id/events.
+// ─────────────────────────────────────────────────────────────────────────
+describe('GET /screens/:id/usb-events', () => {
+  it('returns the newest USB states for one owned screen, newest first', async () => {
+    const usbIngestEvent = {
+      findMany: jest.fn(async () => [
+        { id: 'u2', outcome: 'IMPORTED', reason: 'imported: 6 files', bundleVersion: '1761495599000', assetCount: 6, createdAt: new Date(NOW) },
+        { id: 'u1', outcome: 'NEEDS_ACCESS', reason: 'no-file-access: All files access is not granted', bundleVersion: null, assetCount: 0, createdAt: new Date(NOW - 60_000) },
+      ]),
+    };
+    const { controller, mockPrisma } = makeController({ usbIngestEvent });
+    mockPrisma.client.tenant.findMany.mockResolvedValue([{ id: 'child-live' }]);
+    mockPrisma.client.screen.findFirst.mockResolvedValue({ id: 's1', tenantId: 'child-live' });
+
+    const out: any = await controller.screenUsbEvents(adminReq(), 's1');
+    expect(out.events.map((e: any) => e.outcome)).toEqual(['IMPORTED', 'NEEDS_ACCESS']);
+    expect(mockPrisma.client.screen.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 's1', tenantId: { in: ['tenant-a', 'child-live'] } } }),
+    );
+    expect(usbIngestEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // The screen's own tenant (the row's), never the caller's.
+        where: { tenantId: 'child-live', screenId: 's1' },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    );
+  });
+
+  it('caps the window and 404s a screen outside the tenant scope', async () => {
+    const usbIngestEvent = { findMany: jest.fn(async () => []) };
+    const { controller, mockPrisma } = makeController({ usbIngestEvent });
+    mockPrisma.client.screen.findFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-a' });
+    await controller.screenUsbEvents(adminReq(), 's1', '500');
+    expect(usbIngestEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
+
+    mockPrisma.client.screen.findFirst.mockResolvedValue(null);
+    usbIngestEvent.findMany.mockClear();
+    await expect(controller.screenUsbEvents(adminReq(), 'foreign')).rejects.toMatchObject({ status: 404 });
+    expect(usbIngestEvent.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 6 — the ack event fires on the value match ONLY.
 // ─────────────────────────────────────────────────────────────────────────
 describe('POST /screens/:id/render-proof — refresh-acked event', () => {

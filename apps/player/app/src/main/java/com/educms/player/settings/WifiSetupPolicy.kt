@@ -93,6 +93,23 @@ object WifiSetupPolicy {
      * @param dialogAvailable the save dialog opens here ([DIALOG_SDK]+ and a
      *        system Settings page answers it — `SettingsPagePolicy`).
      * @param wpa3Supported Android reports WPA3-Personal (SAE) support.
+     * @param atScreen a PERSON asked, from VenueOS's own Network screen
+     *        (`WifiConnect`), not the dashboard.
+     *
+     * ⚠️ A PERSON AT THE SCREEN GETS ANDROID'S SAVE DIALOG WHEREVER IT EXISTS
+     * (2026-10-26, the GUQ55 field failure). A suggestion is only a CANDIDATE:
+     * Android joins it when it next runs network selection and judges it the
+     * best — never while the screen is on a network it considers sufficient,
+     * and not at all until the one-time approval prompt is answered — so the
+     * owner typed a password, answered Android's prompt, and watched "Saved"
+     * with nothing connected. Android's own `ACTION_WIFI_ADD_NETWORKS` page
+     * (Settings' AddAppNetworksFragment) does what no normal app may: for ONE
+     * network it SAVES it as the user's and then calls the privileged
+     * `WifiManager.connect()` — a real switch, now, on Android 11, 12 and 13
+     * alike. The person's press on Connect is the confirmation, so the dialog
+     * costs exactly one Save tap (the owner's "one confirmation tap per
+     * action" on Android ≤ 11). The dashboard (nobody at the screen) keeps the
+     * silent suggestion path.
      */
     fun route(
         sdk: Int,
@@ -100,6 +117,7 @@ object WifiSetupPolicy {
         approval: String,
         dialogAvailable: Boolean,
         wpa3Supported: Boolean,
+        atScreen: Boolean = false,
     ): Route = when {
         // WPA3 needs Android 10 and hardware that says it can.
         value.security == "wpa3" && (sdk < SUGGESTION_SDK || !wpa3Supported) ->
@@ -108,6 +126,8 @@ object WifiSetupPolicy {
         sdk < SUGGESTION_SDK -> Route.Legacy
         value.permanent ->
             if (dialogAvailable) Route.Dialog else Route.Refuse(DeviceSettingCodes.WIFI_NO_DIALOG)
+        // A person at the screen: the dialog Android connects from, where this ROM has it.
+        atScreen && dialogAvailable -> Route.Dialog
         // Declined suggestions close only the suggestion path.
         approval == DeviceSettingsFacts.WIFI_REJECTED ->
             if (dialogAvailable) Route.Dialog else Route.Refuse(DeviceSettingCodes.WIFI_REJECTED)
@@ -229,6 +249,18 @@ object WifiSetupPolicy {
             perNetwork[0] == Settings.ADD_WIFI_RESULT_ALREADY_EXISTS -> DeviceSettingCodes.WIFI_SAVED
         else -> DeviceSettingCodes.WIFI_ERROR
     }
+
+    /**
+     * Android's page found the network ALREADY saved (2026-10-26). Settings
+     * then finishes with RESULT_OK and connects to NOTHING — it only calls
+     * `WifiManager.connect()` for a network it saved just now — so the screen
+     * must not sit waiting for a switch that is not coming: it hands over to
+     * Android's Wi-Fi list at once, where one press on the saved network
+     * connects.
+     */
+    @SuppressLint("InlinedApi")
+    fun dialogAlreadySaved(resultOk: Boolean, perNetwork: List<Int>?): Boolean =
+        resultOk && perNetwork?.firstOrNull() == Settings.ADD_WIFI_RESULT_ALREADY_EXISTS
 
     /**
      * Must the background relaunch paths (watchdog, wake, post-update) leave

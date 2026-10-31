@@ -139,6 +139,61 @@ object OtaAttemptPolicy {
         }
     }
 
+    // ── 1.1.56 — a person can ALWAYS install from the Back menu ───────────
+    //
+    // Field (Android 9 panels): the unattended commit either threw before a
+    // status existed (reported ERROR), ended in a ROM-level refusal, or never
+    // reported a status at all (the dashboard sat on INSTALLING). None of
+    // those states renders the Back menu's "Install v…" button, and the
+    // worker never commits again on a timer — so the screen was stranded.
+    // Each of them now lands on NEEDS_TAP (the button); only a person's own
+    // press that fails, or a failure a tap cannot fix, is FAILED_<CODE>
+    // (which still shows the button). No device-owner API is involved.
+
+    /** Statuses a person pressing Install can get past (the ROM refused an unattended install). */
+    private val PERSON_CAN_FIX = setOf(Status.FAILURE, Status.FAILURE_ABORTED, Status.FAILURE_BLOCKED)
+
+    /** What a status of OUR OWN session means for the attempt. Null = SUCCESS / nothing to record. */
+    fun outcomeForStatus(status: Int, userRaised: Boolean): Outcome? = when {
+        status == Status.SUCCESS -> null
+        status == Status.PENDING_USER_ACTION -> Outcome.NEEDS_TAP
+        !userRaised && status in PERSON_CAN_FIX -> Outcome.NEEDS_TAP
+        status in Status.FAILURE..Status.FAILURE_INCOMPATIBLE -> Outcome.FAILED
+        else -> null // not a status of a finished session
+    }
+
+    /** The commit could not even start (the session threw). */
+    fun outcomeForStartFailure(userRaised: Boolean): Outcome = if (userRaised) Outcome.FAILED else Outcome.NEEDS_TAP
+
+    /** The FAILED_<CODE> code for a commit that could not start. */
+    const val START_FAILURE_CODE = "START"
+
+    /** How long a committed session may go without a status before the button is offered. */
+    const val COMMIT_STATUS_GRACE_MS = 5L * 60L * 1000L
+
+    /**
+     * A commit whose status never came back: still COMMITTED for [versionCode]
+     * after [COMMIT_STATUS_GRACE_MS], the build not installed, and no install
+     * dialog of ours open. Becomes NEEDS_TAP.
+     */
+    fun stalledCommit(a: Attempt?, versionCode: Int, installedVersionCode: Int, dialogOpen: Boolean): Boolean =
+        a != null && a.versionCode == versionCode && a.outcome == Outcome.COMMITTED &&
+            installedVersionCode < versionCode && !dialogOpen
+
+    /**
+     * A check that does NOT commit (HOLD_NEEDS_TAP, or the server holding a
+     * push for a tap): say NEEDS_TAP again — the staged wording — whenever no
+     * dialog of ours is open, so a state that drifted (ERROR, INSTALLING) can
+     * never hide the button.
+     */
+    fun restateNeedsTap(a: Attempt?, dialogOpen: Boolean): Boolean =
+        !dialogOpen && a != null && (a.outcome == Outcome.NEEDS_TAP || a.outcome == Outcome.COMMITTED)
+
+    /** NEEDS_TAP wording when nothing is on the glass yet (the Back menu's Install button). */
+    fun stagedNeedsTapMessage(target: String): String =
+        "$target is downloaded and waiting for a person: on the screen press Back, choose Install $target, " +
+            "then select Install (OK on the remote, or tap it)."
+
     // ── the server's `uptoDate` answers, read once in one place ──────────
 
     /** What an `uptoDate` answer means for a stored attempt. */

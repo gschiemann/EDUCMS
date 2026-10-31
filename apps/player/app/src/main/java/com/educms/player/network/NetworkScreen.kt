@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -84,6 +83,16 @@ import java.util.concurrent.Executors
  *
  * Entry points: the boot diagnostic's "Network settings" button and the
  * player's Back-menu "Network" entry (the `openNetworkScreen` bridge method).
+ *
+ * 2026-10-26 (the GUQ55 field failure — "saved the wifi connection info,
+ * never connected, not user friendly"): a person's Connect now takes
+ * Android's own save page wherever the ROM has it (Settings saves AND
+ * connects — `WifiSetupPolicy.route`); a network Android has taken but not
+ * moved onto is never shown as a success — the screen says "Not connected
+ * yet", hands over to Android's Wi-Fi list with the one press that connects,
+ * and keeps watching so it flips to the big check the moment the screen is
+ * on it; and the screen asks for NO permission itself — location is granted
+ * once, at setup, with every other grant ([Fix.OPEN_SETUP]).
  */
 object NetworkScreen {
 
@@ -110,12 +119,17 @@ object NetworkScreen {
      * @param onConnected a join succeeded and the screen is returning by
      *        itself: the caller takes the person back to content (or the
      *        pairing code). Called after the screen has closed.
+     * @param onOpenSetup raise the setup checklist — where location access
+     *        is granted, with every other grant (2026-10-26). Returns false
+     *        when it could not open (no checklist on this install); the
+     *        screen then asks Android directly, as the only way left.
      */
     fun open(
         activity: Activity,
         onAndroidSettings: () -> Unit,
         source: String,
         onConnected: () -> Unit = {},
+        onOpenSetup: () -> Boolean = { false },
     ): Boolean {
         if (screen != null) return true
         val app = activity.applicationContext
@@ -129,7 +143,7 @@ object NetworkScreen {
         restoreFocus = activity.currentFocus?.let { WeakReference(it) }
         val pickUp = NetworkResume.restore(resume, SystemClock.elapsedRealtime())
         resume = null
-        val view = NetworkScreenView(activity, onAndroidSettings, pickUp) { reason -> close(reason, onConnected) }
+        val view = NetworkScreenView(activity, onAndroidSettings, onOpenSetup, pickUp) { reason -> close(reason, onConnected) }
         root.addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         // On an LED poster: top-left at the LED canvas, never centred off the glass. No-op elsewhere.
         LedCanvasHost.pin(view)
@@ -145,6 +159,15 @@ object NetworkScreen {
         val view = screen ?: return false
         view.back()
         return true
+    }
+
+    /**
+     * The setup checklist that was raised over this screen has closed
+     * (2026-10-26): take the remote back and look at the grant again — a
+     * location access granted there lists the networks here at once.
+     */
+    fun onSetupClosed() {
+        screen?.setupClosed()
     }
 
     /** Take it down and give the remote back to the surface it came from. */
@@ -168,6 +191,7 @@ object NetworkScreen {
 internal class NetworkScreenView(
     private val activity: Activity,
     private val onAndroidSettings: () -> Unit,
+    private val onOpenSetup: () -> Boolean,
     private val pickUp: NetworkResume.Snapshot?,
     private val onClose: (String) -> Unit,
 ) : FrameLayout(activity) {
@@ -193,11 +217,31 @@ internal class NetworkScreenView(
         var background = false
         var finished = false
         var lastProbeAt = 0L
+
+        /** The engine took Android's save page (Settings saves AND connects) rather than suggesting. */
+        var viaDialog = false
+
+        /** Android's page found the network already saved — it connected to nothing. */
+        var alreadySaved = false
+
+        /** The screen has said "not connected yet" and is still watching for Android to move. */
+        var handedOff = false
     }
 
-    private enum class ResultKind { SUCCESS, SAVED, FAILURE }
+    private enum class ResultKind { SUCCESS, NOT_YET, FAILURE }
 
-    private data class ResultState(val kind: ResultKind, val words: Words?, val ssid: String, val secured: Boolean, val previous: String?)
+    private data class ResultState(
+        val kind: ResultKind,
+        val words: Words?,
+        val ssid: String,
+        val secured: Boolean,
+        val previous: String?,
+        val reason: NetworkScreenPolicy.NotYetReason? = null,
+        val viaDialog: Boolean = false,
+    ) {
+        /** The screen keeps watching behind this result and flips to the big check when Android moves. */
+        val stillWatching: Boolean get() = kind == ResultKind.NOT_YET || words == Words.NO_SERVER_YET
+    }
 
     private enum class Tone { GOOD, WARN, INFO }
 
@@ -274,6 +318,9 @@ internal class NetworkScreenView(
         override fun run() {
             if (stopped) return
             refreshStatus()
+            // A grant made on the setup checklist (over this screen) or in
+            // Android's settings lists the networks here without a reopen.
+            if (step == Step.LIST) recheckAccess()
             main.postDelayed(this, NetworkScreenPolicy.STATUS_REFRESH_MS)
         }
     }
@@ -286,12 +333,16 @@ internal class NetworkScreenView(
     }
     private val stageTick = object : Runnable {
         override fun run() {
-            if (stopped || step != Step.CONNECTING) return
+            if (stopped || !watchingJoin()) return
             refreshStatus()
             judgeStages()
             main.postDelayed(this, NetworkScreenPolicy.STAGE_POLL_MS)
         }
     }
+
+    /** A join is being watched: the connecting stages, or a "not connected yet" result still waiting for Android. */
+    private fun watchingJoin(): Boolean =
+        step == Step.CONNECTING || (step == Step.RESULT && result?.stillWatching == true && attempt?.finished == false)
     private val unmask = Runnable {
         revealIndex = null
         updateField()
@@ -386,15 +437,55 @@ internal class NetworkScreenView(
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
-        // Back from Android's permission, location or save dialog: look again.
+        // Back from Android's location or save page: look again.
         if (hasWindowFocus && !stopped && step == Step.LIST) {
             refreshStatus()
             if (scan?.access != WifiScanPolicy.Access.GRANTED) startScan()
         }
-        // Android's approval / save prompt answered: judge the join now, not a second later.
-        if (hasWindowFocus && !stopped && step == Step.CONNECTING) {
+        // Android's approval / save prompt answered, or the person is back from
+        // Android's Wi-Fi list: judge the join now, not a second later.
+        if (hasWindowFocus && !stopped && watchingJoin()) {
             refreshStatus()
             judgeStages()
+        }
+    }
+
+    /**
+     * The setup checklist raised over this screen has closed (2026-10-26):
+     * the remote comes back here, and a grant made there is read now.
+     */
+    fun setupClosed() {
+        if (stopped) return
+        refreshStatus()
+        if (step == Step.LIST) {
+            if (scan?.access != WifiScanPolicy.Access.GRANTED) startScan()
+            parkFocus()
+        } else if (findFocus() == null) {
+            parkFocus()
+        }
+    }
+
+    /**
+     * While the list shows why it is empty, re-read the grant every few
+     * seconds (cheap: two permission checks and the Location switch) so the
+     * networks appear the moment it is given — on the setup checklist, in
+     * Android's settings, or by adb.
+     */
+    private fun recheckAccess() {
+        val r = scan ?: return
+        if (scanning || r.access == WifiScanPolicy.Access.GRANTED || demo != null) return
+        background {
+            val now = runCatching { WifiScan.access(activity, app) }.getOrNull() ?: return@background
+            main.post {
+                if (stopped || step != Step.LIST || scanning) return@post
+                val current = scan ?: return@post
+                if (now == WifiScanPolicy.Access.GRANTED) {
+                    startScan()
+                } else if (now != current.access) {
+                    scan = WifiScan.Result(now, emptyList(), fresh = false)
+                    bindWifi()
+                }
+            }
         }
     }
 
@@ -452,6 +543,8 @@ internal class NetworkScreenView(
             val live = "${st?.transport}|${st?.ssid}"
             if (live != listLive) bindWifi()
         }
+        // Behind a "not connected yet" result the connection is still watched.
+        if (step == Step.RESULT && result?.stillWatching == true) judgeStages()
     }
 
     private fun liveNetworks(networks: List<WifiScanPolicy.Network>): List<WifiScanPolicy.Network> =
@@ -1465,20 +1558,25 @@ internal class NetworkScreenView(
         if (stopped || a.finished || r.id != a.id) return
         val words = NetworkScreenPolicy.words(r.status, r.code)
         a.words = words
-        PlayerLogger.i(TAG, "join result: ${r.status}${r.code?.let { " ($it)" } ?: ""} → $words")
+        if (words == Words.WAITING_DIALOG) a.viaDialog = true
+        if (r.alreadySaved) a.alreadySaved = true
+        PlayerLogger.i(
+            TAG,
+            "join result: ${r.status}${r.code?.let { " ($it)" } ?: ""} → $words" +
+                (if (a.viaDialog) " (via Android's save page)" else "") + (if (r.alreadySaved) " (already saved)" else ""),
+        )
         if (r.settled) {
             refreshStatus()
             main.postDelayed({ if (!stopped) startScan() }, 2_000L)
         }
         when (NetworkScreenPolicy.outcome(words)) {
             Outcome.SUCCESS -> finishAttempt(a, ResultKind.SUCCESS, words)
-            Outcome.SAVED -> {
-                // Android took it; whether it MOVES onto it is Android's call. Watch, then say which.
-                a.watchUntil = SystemClock.elapsedRealtime() + (demo?.watchMs ?: NetworkScreenPolicy.WATCH_JOIN_MS)
-                if (step == Step.CONNECTING && !a.background) updateConnecting()
-                judgeStages()
-            }
-            Outcome.WAITING -> if (step == Step.CONNECTING && !a.background) updateConnecting()
+            // Android took it; whether it MOVES onto it is Android's call. Watch, then say which.
+            Outcome.SAVED -> watchAndroid(a)
+            Outcome.WAITING ->
+                // Android's approval is watched like a save (2026-10-26) — it used to wait forever.
+                if (words == Words.WAITING_APPROVAL) watchAndroid(a)
+                else if (step == Step.CONNECTING && !a.background) updateConnecting()
             // No password was typed for an open network: nothing to go back and fix.
             Outcome.PASSWORD -> if (!NetworkScreenPolicy.needsPassword(a.security)) finishAttempt(a, ResultKind.FAILURE, words) else {
                 a.finished = true
@@ -1501,7 +1599,28 @@ internal class NetworkScreenView(
         }
     }
 
-    /** Re-read where the join stands from what the screen can SEE; promote a watched save to success. */
+    /**
+     * Android took the network (saved, suggested, or waiting for its
+     * approval). Hand over at once where waiting would be a lie
+     * ([NetworkScreenPolicy.handoffNow]); otherwise watch, nudge Android's
+     * network selection after a suggestion, then say which.
+     */
+    private fun watchAndroid(a: Attempt) {
+        val st = status
+        val on = NetworkScreenPolicy.onNetwork(st?.transport, st?.ssid, a.ssid)
+        NetworkScreenPolicy.handoffNow(a.words, a.viaDialog, a.alreadySaved, on, st?.transport)?.let { reason ->
+            finishAttempt(a, ResultKind.NOT_YET, Words.NOT_YET, reason)
+            return
+        }
+        a.watchUntil = SystemClock.elapsedRealtime() + (demo?.watchMs ?: NetworkScreenPolicy.WATCH_JOIN_MS)
+        if (demo == null && NetworkScreenPolicy.shouldNudgeScan(a.words, a.viaDialog)) {
+            WifiScan.nudge(app, "after suggesting a network")
+        }
+        if (step == Step.CONNECTING && !a.background) updateConnecting()
+        judgeStages()
+    }
+
+    /** Re-read where the join stands from what the screen can SEE; promote a watched save to success, or say it is not there yet. */
     private fun judgeStages() {
         val a = attempt ?: return
         if (a.finished) return
@@ -1521,15 +1640,27 @@ internal class NetworkScreenView(
         val watchExpired = a.watchUntil > 0L && SystemClock.elapsedRealtime() >= a.watchUntil
         when (NetworkScreenPolicy.promote(words, a.stage, systemDialogUp = !hasWindowFocus(), watchExpired = watchExpired)) {
             NetworkScreenPolicy.Promotion.SUCCESS -> finishAttempt(a, ResultKind.SUCCESS, Words.CONNECTED)
-            NetworkScreenPolicy.Promotion.SAVED -> finishAttempt(a, ResultKind.SAVED, words ?: Words.SAVED)
+            // Said once; behind the result the watch goes on until Android moves (or the person leaves).
+            NetworkScreenPolicy.Promotion.NOT_YET ->
+                if (!a.handedOff) finishAttempt(a, ResultKind.NOT_YET, Words.NOT_YET, NetworkScreenPolicy.NotYetReason.TIMEOUT)
+            NetworkScreenPolicy.Promotion.NO_SERVER_YET ->
+                if (!a.handedOff) finishAttempt(a, ResultKind.FAILURE, Words.NO_SERVER_YET)
             NetworkScreenPolicy.Promotion.NONE -> Unit
         }
     }
 
-    private fun finishAttempt(a: Attempt, kind: ResultKind, words: Words) {
-        a.finished = true
-        main.removeCallbacks(stageTick)
-        val state = ResultState(kind, words, a.ssid, NetworkScreenPolicy.needsPassword(a.security), a.previous)
+    private fun finishAttempt(a: Attempt, kind: ResultKind, words: Words, reason: NetworkScreenPolicy.NotYetReason? = null) {
+        val state = ResultState(kind, words, a.ssid, NetworkScreenPolicy.needsPassword(a.security), a.previous, reason, a.viaDialog)
+        if (state.stillWatching) {
+            // "Not connected yet" is a verdict, not an end: the connection stays
+            // watched behind it (the stage tick keeps running), and the big
+            // check comes up by itself the moment Android moves onto it.
+            a.handedOff = true
+            PlayerLogger.i(TAG, "${if (kind == ResultKind.NOT_YET) "not connected yet ($reason)" else "on the network, VenueOS not reached"} — still watching")
+        } else {
+            a.finished = true
+            main.removeCallbacks(stageTick)
+        }
         if (kind == ResultKind.SUCCESS) {
             keyboard = KeyboardModel() // done with the password
             venueos = true
@@ -1537,10 +1668,10 @@ internal class NetworkScreenView(
         if (a.background) {
             val text = when (kind) {
                 ResultKind.SUCCESS -> s(R.string.net_success_title, a.ssid)
-                ResultKind.SAVED -> s(R.string.net_saved_title, a.ssid)
+                ResultKind.NOT_YET -> s(R.string.net_banner_notyet, a.ssid)
                 ResultKind.FAILURE -> failureTitle(words, a.ssid)
             }
-            showBanner(Banner(text, if (kind == ResultKind.FAILURE) Tone.WARN else Tone.GOOD))
+            showBanner(Banner(text, if (kind == ResultKind.SUCCESS) Tone.GOOD else Tone.WARN))
             return
         }
         result = state
@@ -1622,8 +1753,11 @@ internal class NetworkScreenView(
         }
         connectingNote?.text = when (a.words) {
             Words.WAITING_DIALOG -> s(R.string.net_wait_dialog, a.ssid)
-            Words.WAITING_APPROVAL -> s(R.string.net_result_waiting_approval)
-            Words.SAVED, Words.SUGGESTED -> s(R.string.net_wait_android)
+            // Android 11 shows its one-time "allow suggested networks?" prompt over this screen; name the right answer.
+            Words.WAITING_APPROVAL -> s(R.string.net_result_waiting_approval) + "\n" + s(R.string.net_wait_suggestion_allow)
+            Words.SAVED, Words.SUGGESTED ->
+                if (a.viaDialog) s(R.string.net_wait_android_dialog)
+                else s(R.string.net_wait_android) + "\n" + s(R.string.net_wait_suggestion_allow)
             Words.JOINING -> s(R.string.net_wait_proof, a.previous ?: s(R.string.net_previous_network))
             else -> ""
         }
@@ -1688,6 +1822,8 @@ internal class NetworkScreenView(
     private fun failureTitle(words: Words?, ssid: String): String = when (words) {
         Words.COULD_NOT_JOIN, Words.WRONG_PASSWORD -> s(R.string.net_fail_join_title, ssid)
         Words.NO_SERVER -> s(R.string.net_fail_server_title, ssid)
+        Words.NO_SERVER_YET -> s(R.string.net_noserver_yet_title, ssid)
+        Words.NOT_YET -> s(R.string.net_notyet_title)
         Words.DECLINED -> s(R.string.net_fail_declined_title)
         Words.WIFI_OFF -> s(R.string.net_fail_wifi_off_title)
         Words.NAME_TAKEN -> s(R.string.net_fail_taken_title, ssid)
@@ -1700,12 +1836,34 @@ internal class NetworkScreenView(
         Words.COULD_NOT_JOIN, Words.WRONG_PASSWORD ->
             s(if (secured) R.string.net_fail_join_body else R.string.net_fail_join_body_open) + " " + stillOn(previous)
         Words.NO_SERVER -> s(R.string.net_fail_server_body) + " " + stillOn(previous)
+        Words.NO_SERVER_YET -> s(R.string.net_noserver_yet_body)
         Words.DECLINED -> s(R.string.net_fail_declined_body)
         Words.WIFI_OFF -> s(R.string.net_fail_wifi_off_body)
         Words.NAME_TAKEN -> s(R.string.net_fail_taken_body)
         Words.NOT_SUPPORTED -> s(R.string.net_fail_unsupported_body)
         Words.ALERT -> s(R.string.net_result_alert)
         else -> s(R.string.net_fail_body) + " " + stillOn(previous)
+    }
+
+    /**
+     * "Not connected yet": WHY Android has not moved (one sentence), then
+     * WHAT TO PRESS (one sentence) — Android's own Wi-Fi list, where one
+     * press on the network connects. Whether the password is already there
+     * depends on how the network was handed to Android: saved by its page →
+     * yes; only suggested → Android may ask for it.
+     */
+    private fun notYetBody(r: ResultState): String {
+        val why = when (r.reason) {
+            NetworkScreenPolicy.NotYetReason.ALREADY_SAVED -> s(R.string.net_notyet_already, r.ssid)
+            NetworkScreenPolicy.NotYetReason.ON_OTHER_WIFI -> s(R.string.net_notyet_other, r.previous ?: s(R.string.net_previous_network))
+            NetworkScreenPolicy.NotYetReason.TIMEOUT, null -> s(R.string.net_notyet_timeout, r.ssid)
+        }
+        val how = if (r.viaDialog || r.reason == NetworkScreenPolicy.NotYetReason.ALREADY_SAVED) {
+            s(R.string.net_notyet_how_saved, r.ssid)
+        } else {
+            s(R.string.net_notyet_how_suggested, r.ssid)
+        }
+        return "$why $how"
     }
 
     private fun buildResult(): View {
@@ -1715,7 +1873,8 @@ internal class NetworkScreenView(
         col.addView(inner, LinearLayout.LayoutParams(if (ui.wide) ui.px(1040) else NetUi.MATCH, NetUi.WRAP))
         val (top, bottom, iconRes) = when (r.kind) {
             ResultKind.SUCCESS -> Triple(0xFF34D399.toInt(), 0xFF059669.toInt(), R.drawable.ic_net_check)
-            ResultKind.SAVED -> Triple(NetTheme.PRIMARY_TOP, NetTheme.PRIMARY_BOTTOM, R.drawable.ic_net_info)
+            // Amber, with the Wi-Fi mark: something to do, nothing broken.
+            ResultKind.NOT_YET -> Triple(0xFFF59E0B.toInt(), 0xFFB45309.toInt(), R.drawable.ic_net_wifi_2)
             ResultKind.FAILURE ->
                 if (r.words == Words.NOT_SUPPORTED || r.words == Words.NAME_TAKEN) Triple(0xFF64748B.toInt(), 0xFF334155.toInt(), R.drawable.ic_net_lock)
                 else Triple(0xFFF59E0B.toInt(), 0xFFB45309.toInt(), R.drawable.ic_net_warning)
@@ -1734,12 +1893,12 @@ internal class NetworkScreenView(
         }
         val title = when (r.kind) {
             ResultKind.SUCCESS -> s(R.string.net_success_title, r.ssid)
-            ResultKind.SAVED -> s(R.string.net_saved_title, r.ssid)
+            ResultKind.NOT_YET -> s(R.string.net_notyet_title)
             ResultKind.FAILURE -> failureTitle(r.words, r.ssid)
         }
         val body = when (r.kind) {
             ResultKind.SUCCESS -> s(R.string.net_success_body)
-            ResultKind.SAVED -> if (r.words == Words.SUGGESTED) s(R.string.net_result_suggested, r.ssid) else s(R.string.net_saved_body) + " " + stillOn(r.previous)
+            ResultKind.NOT_YET -> notYetBody(r)
             ResultKind.FAILURE -> failureBody(r.words, r.previous, r.secured)
         }
         inner.addView(ui.text(title, 46f, NetTheme.TEXT, ui.bold, lines = 3).apply { gravity = Gravity.CENTER }, ui.lp(NetUi.MATCH, NetUi.WRAP, t = ui.px(36)))
@@ -1765,15 +1924,16 @@ internal class NetworkScreenView(
     /** A next-step button: the words for [fix] and what pressing it does. */
     private fun fixButton(fix: Fix, primary: Boolean, key: String): NetControl {
         val (label, icon) = when (fix) {
-            Fix.ALLOW -> s(R.string.net_allow) to R.drawable.ic_net_location
-            Fix.APP_SETTINGS -> s(R.string.net_fix_app_settings) to R.drawable.ic_net_external
+            Fix.OPEN_SETUP -> s(R.string.net_open_setup) to R.drawable.ic_net_settings
             Fix.LOCATION_ON -> s(R.string.net_fix_location) to R.drawable.ic_net_location
             Fix.WIFI_ON -> s(R.string.net_fix_wifi) to R.drawable.ic_net_wifi_4
             Fix.EDIT_PASSWORD -> s(R.string.net_fix_edit_password) to R.drawable.ic_net_lock
             Fix.TRY_AGAIN -> s(R.string.net_fix_try_again) to R.drawable.ic_net_refresh
+            Fix.CHECK_AGAIN -> s(R.string.net_fix_check_again) to R.drawable.ic_net_refresh
             Fix.SCAN_AGAIN -> s(R.string.net_scan_again) to R.drawable.ic_net_refresh
             Fix.CHOOSE_ANOTHER -> s(R.string.net_fix_choose) to R.drawable.ic_net_wifi_4
             Fix.ANDROID_SETTINGS -> s(R.string.net_fix_android) to R.drawable.ic_net_external
+            Fix.CONNECT_IN_ANDROID -> s(R.string.net_connect_in_android) to R.drawable.ic_net_external
             Fix.DONE -> s(R.string.net_done) to R.drawable.ic_net_check
         }
         return button(label, icon, primary = primary, key = key) { runFix(fix) }
@@ -1781,24 +1941,34 @@ internal class NetworkScreenView(
 
     private fun runFix(fix: Fix) {
         when (fix) {
-            Fix.ALLOW -> if (demo == null) WifiScan.requestPermission(activity, "network screen")
-            Fix.APP_SETTINGS -> openSystemPage(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}")))
+            // Location access is a setup grant (2026-10-26). The checklist comes up over this
+            // screen; when it closes, setupClosed() reads the grant and lists the networks. Where
+            // no checklist exists on this install, Android's own dialog is the only way left.
+            Fix.OPEN_SETUP -> if (demo == null) {
+                val opened = runCatching { onOpenSetup() }.getOrDefault(false)
+                if (!opened) PlayerLogger.i(TAG, "setup checklist unavailable — location is asked at first launch only")
+            }
             Fix.LOCATION_ON -> openSystemPage(WifiScan.locationSettingsIntent())
-            Fix.WIFI_ON -> openSystemPage(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Intent(Settings.Panel.ACTION_WIFI) else Intent(Settings.ACTION_WIFI_SETTINGS),
-            )
+            Fix.WIFI_ON, Fix.CONNECT_IN_ANDROID -> openWifiPicker()
             Fix.EDIT_PASSWORD -> {
                 val r = result
                 if (r != null) {
                     chosenSsid = r.ssid
                     chosenSecurity = attempt?.security ?: chosenSecurity
                 }
+                attempt?.finished = true // the watch behind "not connected yet" ends with the password it was made with
+                main.removeCallbacks(stageTick)
                 keyboard = keyboard.cursorToEnd()
                 entryMessage = null
                 entryError = true
                 step = Step.PASSWORD
                 render(forward = false)
                 focusByKey(deleteKey())
+            }
+            Fix.CHECK_AGAIN -> {
+                venueos = null
+                probe(force = true)
+                refreshStatus()
             }
             Fix.TRY_AGAIN -> {
                 attempt?.let {
@@ -1820,10 +1990,25 @@ internal class NetworkScreenView(
 
     private fun goHome() {
         main.removeCallbacks(countdownTick)
+        // Leaving a "not connected yet" result: the engine has the network; the screen stops watching it here.
+        attempt?.let { if (it.handedOff) it.finished = true }
+        main.removeCallbacks(stageTick)
         keyboard = KeyboardModel()
         result = null
         step = Step.LIST
         render(forward = false)
+    }
+
+    /**
+     * Android's own Wi-Fi list — the panel (Android 10+), else the full Wi-Fi
+     * settings page — resolved to a system Settings app, never a browser. One
+     * press on a saved network there connects: the handover for "not
+     * connected yet", and the way to switch Wi-Fi on.
+     */
+    private fun openWifiPicker() {
+        openSystemPage(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Intent(Settings.Panel.ACTION_WIFI) else Intent(Settings.ACTION_WIFI_SETTINGS),
+        )
     }
 
     /** Success: back to where the person came from (content or the pairing code). */
@@ -1962,8 +2147,9 @@ internal class NetworkScreenView(
             Step.RESULT -> {
                 val r = result
                 main.removeCallbacks(countdownTick)
-                if (r != null && r.kind == ResultKind.FAILURE && r.secured && attempt?.ssid == r.ssid) {
+                if (r != null && r.kind == ResultKind.FAILURE && r.words != Words.NO_SERVER_YET && r.secured && attempt?.ssid == r.ssid) {
                     // One step back from a failed join is the password it was made with — kept.
+                    // (Not from "on it, VenueOS not reached": that password was right.)
                     runFix(Fix.EDIT_PASSWORD)
                 } else {
                     goHome()

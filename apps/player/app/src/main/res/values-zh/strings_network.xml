@@ -151,4 +151,18 @@
     <string name="wifi_card_body">您的 VenueOS 管理后台要求此屏幕保存“%1$s”。请按遥控器上的确定键（或点按“保存网络”），然后选择“保存”。</string>
     <string name="wifi_card_save">保存网络</string>
     <string name="wifi_card_later">暂不</string>
+    <string name="net_banner_notyet">尚未连接：“%1$s”</string>
+    <string name="net_wait_suggestion_allow">如果 Android 询问，请用遥控器按“允许”。</string>
+    <string name="net_wait_android_dialog">Android 正在询问是否保存此网络。请用遥控器按“保存”。</string>
+    <string name="net_noserver_yet_title">“%1$s”上尚未联系到 VenueOS</string>
+    <string name="net_notyet_title">尚未连接</string>
+    <string name="net_noserver_yet_body">屏幕已在此网络上获得地址，但 VenueOS 尚未通过它响应。请检查网络，然后点“再次检查”。</string>
+    <string name="net_notyet_already">“%1$s”已保存在 Android 中，因此 Android 没有连接它。请在 Android 的 Wi-Fi 列表中选择它以连接。</string>
+    <string name="net_notyet_other">屏幕仍连接着 Android 更倾向的 %1$s。请在 Android 的 Wi-Fi 列表中选择新网络以切换。</string>
+    <string name="net_notyet_timeout">Android 尚未将屏幕切换到“%1$s”。请在 Android 的 Wi-Fi 列表中选择它以连接。</string>
+    <string name="net_notyet_how_saved">Android 已保存“%1$s”。请打开 Android 的 Wi-Fi 列表，选择它一次即可连接。</string>
+    <string name="net_notyet_how_suggested">Android 已接受“%1$s”作为建议网络。请打开 Android 的 Wi-Fi 列表，选择它一次即可连接。</string>
+    <string name="net_open_setup">打开设置</string>
+    <string name="net_fix_check_again">再次检查</string>
+    <string name="net_connect_in_android">在 Android 中连接</string>
 </resources>
