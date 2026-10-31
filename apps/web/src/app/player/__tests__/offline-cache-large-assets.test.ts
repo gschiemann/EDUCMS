@@ -105,7 +105,7 @@ describe('player offline-cache large-asset orchestration', () => {
     const result = await precachePlaylist(
       [{ url: 'https://cdn.example.com/small.jpg', size: 1000 }, { url, sha256: 'ab'.repeat(32), size }],
       undefined,
-      { onAssetCached: (u) => cached.push(u), onProgress: (p) => progress.push(p.bytesLoaded) },
+      { onAssetCached: (u) => cached.push(u), onProgress: (p) => { if (p.phase === 'downloading') progress.push(p.bytesLoaded); } },
     );
     expect(result).toEqual({ ok: true, failures: 0, count: 2 });
     expect(sent.map((m) => m.type)).toEqual([
