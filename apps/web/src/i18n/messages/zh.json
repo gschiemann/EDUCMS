@@ -6765,6 +6765,11 @@
       "FIELD_BUILD_WINDOW_SETTLING": "窗口仍在同步到所有服务器。请几秒后重试。",
       "FIELD_BUILD_MIRROR_MISSING": "此版本的私有副本不在存储中，因此屏幕会保持当前版本。",
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "该屏幕不在此窗口中。",
+      "FIELD_BUILD_SCREEN_NOT_BENCH": "现场测试版只会发送到测试台屏幕，而该屏幕不是测试台屏幕。",
+      "FIELD_BUILD_MIXED_HARDWARE": "这些屏幕属于不止一种硬件。请一次只选择同一种硬件的屏幕。",
+      "FIELD_BUILD_HARDWARE_UNKNOWN": "无法确认这些屏幕属于同一种硬件。请一次只选择一块屏幕。",
+      "FIELD_BUILD_OUTSIDE_OFF_HOURS": "向多块屏幕推送只能在每块屏幕所在时区的晚上 10 点到早上 6 点之间进行。请一次只推送一块屏幕，或等到该时段再推送。",
+      "FIELD_BUILD_TIME_ZONE_UNKNOWN": "此次推送中有一块屏幕没有时区，因此无法确认其当地时间。请单独推送该屏幕。",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS 支持无权访问其中一个组织。"
     }
   },

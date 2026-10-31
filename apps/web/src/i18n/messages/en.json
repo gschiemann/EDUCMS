@@ -6765,6 +6765,11 @@
       "FIELD_BUILD_WINDOW_SETTLING": "The window is still reaching every server. Try again in a few seconds.",
       "FIELD_BUILD_MIRROR_MISSING": "This build's private copy isn't in storage, so the screen would stay on its current build.",
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "That screen isn't in this window.",
+      "FIELD_BUILD_SCREEN_NOT_BENCH": "Field builds go only to bench screens, and that screen isn't one.",
+      "FIELD_BUILD_MIXED_HARDWARE": "These screens are more than one kind of hardware. Choose screens of one kind at a time.",
+      "FIELD_BUILD_HARDWARE_UNKNOWN": "These screens can't be confirmed as the same kind of hardware. Choose one screen at a time.",
+      "FIELD_BUILD_OUTSIDE_OFF_HOURS": "A push to more than one screen goes out only between 10 PM and 6 AM in each screen's own time zone. Push one screen at a time, or wait until then.",
+      "FIELD_BUILD_TIME_ZONE_UNKNOWN": "A screen in this push has no time zone, so its local time can't be checked. Push it on its own.",
       "SUPPORT_ACCESS_REQUIRED": "VenueOS support doesn't have access to one of these organizations."
     }
   },
