@@ -69,6 +69,8 @@ export function deviceMessagesWhere(scope: DeviceMessageScope, now: Date) {
   const scopeOr: Array<Record<string, unknown>> = [
     { scopeType: 'tenant' },
     { scopeType: 'device', scopeId: scope.screenId },
+    // A send to a hand-picked set of screens (2026-10-31): the row lists them.
+    { scopeType: 'devices', screenIds: { has: scope.screenId } },
   ];
   if (scope.groupId) scopeOr.push({ scopeType: 'group', scopeId: scope.groupId });
   return {
