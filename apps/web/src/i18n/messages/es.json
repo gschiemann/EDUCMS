@@ -2119,6 +2119,7 @@
         "display-schedule-off": "Apagada según su horario",
         "update-window": "En su ventana de actualización",
         "maintenance": "Reiniciando o actualizando",
+        "daily-pattern": "Apagada a su hora habitual de cada día",
         "not-seen-30-days": "Sin conexión hace más de 30 días",
         "never-connected": "Nunca se conectó",
         "test-screen": "Pantalla de prueba en el navegador de un teléfono o computadora"

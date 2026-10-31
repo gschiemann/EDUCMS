@@ -60,6 +60,7 @@ import {
   orgHourlyLimit,
   platformClusterAround,
   platformGate,
+  sharedProofStall,
   resolveAlertMode,
   type AlertMode,
   type ProblemEvent,
@@ -493,6 +494,16 @@ export class CustomerAlertEmailsService {
         continue;
       }
       const reason = intendedDowntime(f.facts, p.kind, p.startedAtMs, now, p.missedOnTime ? 'missed-on-time' : undefined);
+      if (reason === 'daily-pattern' && !ownerOnly) {
+        // The screen's usual nightly dark spell: record it (SILENT) so the
+        // pattern chain survives the row being rewritten, and so the
+        // recovery closes quietly — no "back online" note for a problem that
+        // was never emailed.
+        await this.upsertIncident(p, { state: 'SILENT', reason: 'daily-pattern', emailed: false, mode });
+        result.silenced++;
+        defer(reason);
+        continue;
+      }
       if (reason) {
         defer(reason);
         continue;
@@ -517,6 +528,25 @@ export class CustomerAlertEmailsService {
         }
       }
       real.push(p);
+    }
+
+    // ── 1b. Picture proof that stopped on several screens of one organisation
+    // within a minute of each other is one shared cause, not N dead screens ──
+    if (real.length > 0 && !ownerOnly) {
+      const stalled = sharedProofStall(
+        real
+          .filter((p) => p.kind === 'NO_CONTENT' && !p.contentUnavailable)
+          .map((p) => ({ screenId: p.screenId, orgId: this.rootOf(p.tenantId, tenants), startedAtMs: p.startedAtMs })),
+      );
+      if (stalled.size > 0) {
+        for (const p of [...real]) {
+          if (!stalled.has(p.screenId) || p.kind !== 'NO_CONTENT') continue;
+          await this.upsertIncident(p, { state: 'SILENT', reason: 'shared-proof-stall', emailed: false, mode });
+          result.silenced++;
+          defer('shared-proof-stall');
+          real.splice(real.indexOf(p), 1);
+        }
+      }
     }
 
     // ── 2. Platform incident: many organisations at once is OUR problem ──
@@ -680,7 +710,7 @@ export class CustomerAlertEmailsService {
   ): Promise<Map<string, LoadedFacts>> {
     const ids = [...new Set(problems.map((p) => p.screenId))];
     const tenantIds = [...new Set(problems.map((p) => p.tenantId))];
-    const [rows, schedules, audits, ledger] = await Promise.all([
+    const [rows, schedules, audits, ledger, history] = await Promise.all([
       this.prisma.client.screen.findMany({ where: { id: { in: ids } }, select: FACT_SELECT }) as Promise<FactRow[]>,
       this.prisma.client.displaySchedule
         .findMany({
@@ -708,10 +738,16 @@ export class CustomerAlertEmailsService {
           where: {
             screenId: { in: ids },
             kind: { in: MAINTENANCE_LEDGER_KINDS },
-            createdAt: { gte: new Date(now - ALERT_RULES.MAINTENANCE_GRACE_MS) },
+            createdAt: { gte: new Date(now - ALERT_RULES.MAINTENANCE_SETTLE_MS) },
           },
           select: { screenId: true, createdAt: true },
           take: 2_000,
+        })
+        .catch(() => null),
+      this.prisma.client.screenAlertIncident
+        .findMany({
+          where: { screenId: { in: ids }, kind: 'OFFLINE' },
+          select: { screenId: true, open: true, reason: true, startedAt: true, closedAt: true },
         })
         .catch(() => null),
     ]);
@@ -719,7 +755,7 @@ export class CustomerAlertEmailsService {
     for (const row of rows) {
       // A read that failed must defer, never send: an unknown schedule might
       // have been an "off" one, an unknown audit trail a power-off.
-      if (schedules === null || audits === null || ledger === null) continue;
+      if (schedules === null || audits === null || ledger === null || history === null) continue;
       const mine = audits.filter((a) => a.targetId === row.id);
       const displayWindows = windowsForScreen(
         { id: row.faceOfScreenId ?? row.id, screenGroupId: row.screenGroupId },
@@ -741,11 +777,13 @@ export class CustomerAlertEmailsService {
           nativeRuntimeReportAt: row.nativeRuntimeReportAt,
         },
       );
-      const rebootAt = mine.find((a) => a.action === DISPLAY_AUDIT_ACTIONS.REBOOT)?.createdAt ?? null;
-      const ledgerAt = ledger
-        .filter((l) => l.screenId === row.id)
-        .reduce<Date | null>((m, l) => (!m || l.createdAt > m ? l.createdAt : m), null);
-      const lastMaintenanceAt = [rebootAt, ledgerAt].reduce<Date | null>((m, d) => (d && (!m || d > m) ? d : m), null);
+      const settleFrom = now - ALERT_RULES.MAINTENANCE_SETTLE_MS;
+      const rebootTimes = mine
+        .filter((a) => a.action === DISPLAY_AUDIT_ACTIONS.REBOOT && a.createdAt.getTime() >= settleFrom)
+        .map((a) => a.createdAt);
+      const maintenanceTimes = [...rebootTimes, ...ledger.filter((l) => l.screenId === row.id).map((l) => l.createdAt)];
+      const lastMaintenanceAt = maintenanceTimes.reduce<Date | null>((m, d) => (!m || d > m ? d : m), null);
+      const offlineHistory = history.find((h) => h.screenId === row.id) ?? null;
       const tenant = row.tenantId ? tenants.get(row.tenantId) : undefined;
       const facts: ScreenFacts = {
         id: row.id,
@@ -764,6 +802,8 @@ export class CustomerAlertEmailsService {
         otaWindow: tenant ? otaWindowOf(tenant) : null,
         lastPowerCommand: power,
         lastMaintenanceAt,
+        maintenanceTimes,
+        offlineHistory,
       };
       out.set(row.id, { row, facts });
     }
