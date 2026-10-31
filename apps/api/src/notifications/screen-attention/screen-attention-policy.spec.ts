@@ -126,3 +126,20 @@ describe('down — a real, recent outage', () => {
     expect(classifyOfflineScreen({ ...android, lastPingAt: new Date(NOW - 20 * MIN) }, null, NOW)).toEqual({ bucket: 'down' });
   });
 });
+
+
+describe('2026-10-31: the dashboard reads the SAME maintenance + nightly-pattern rules as the emails', () => {
+  it('an update install near the moment it went quiet is resting "maintenance" (an hour later too)', () => {
+    const lastPingAt = new Date(NOW - 60 * MIN);
+    const f = facts({ lastPingAt, maintenanceTimes: [new Date(NOW - 80 * MIN)] });
+    expect(restingReason(f, NOW)).toBe('maintenance');
+  });
+  it('the usual nightly dark spell is resting "daily-pattern", and red again once it overstays', () => {
+    const lastPingAt = new Date(NOW - 5 * 60 * MIN);
+    const h = { open: false, reason: null, startedAt: new Date(lastPingAt.getTime() - DAY), closedAt: new Date(lastPingAt.getTime() - DAY + 13 * 60 * MIN) };
+    expect(restingReason(facts({ lastPingAt, offlineHistory: h }), NOW)).toBe('daily-pattern');
+    const late = new Date(NOW - 16 * 60 * MIN);
+    const h2 = { open: false, reason: null, startedAt: new Date(late.getTime() - DAY), closedAt: new Date(late.getTime() - DAY + 13 * 60 * MIN) };
+    expect(restingReason(facts({ lastPingAt: late, offlineHistory: h2 }), NOW)).toBeNull();
+  });
+});
