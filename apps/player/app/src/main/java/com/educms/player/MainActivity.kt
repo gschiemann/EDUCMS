@@ -1513,6 +1513,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         liveInstances.incrementAndGet()
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
+        if (savedInstanceState == null) {
+            // Location for the Wi-Fi list is asked once, here, never during a join (2026-10-26).
+            window.decorView.post { runCatching { com.educms.player.settings.WifiScan.requestAtFirstLaunch(this) } }
+        }
         // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
         // expanded so support can answer "what's the kiosk's actual
         // hardware / WebView / ABI / network state?" from a single

@@ -151,4 +151,18 @@
     <string name="wifi_card_body">Su panel de VenueOS pidió a esta pantalla guardar “%1$s”. Pulse OK en el control remoto (o toque Guardar red) y luego elija Guardar.</string>
     <string name="wifi_card_save">Guardar red</string>
     <string name="wifi_card_later">Ahora no</string>
+    <string name="net_banner_notyet">Aún no conectado: “%1$s”</string>
+    <string name="net_wait_suggestion_allow">Si Android lo pide, pulse Permitir con el mando.</string>
+    <string name="net_wait_android_dialog">Android pregunta si guardar esta red. Pulse Guardar con el mando.</string>
+    <string name="net_noserver_yet_title">En “%1$s”, aún no se llega a VenueOS</string>
+    <string name="net_notyet_title">Aún no conectado</string>
+    <string name="net_noserver_yet_body">La pantalla tiene dirección en esta red, pero VenueOS aún no ha respondido. Revise la red y pulse Comprobar de nuevo.</string>
+    <string name="net_notyet_already">“%1$s” ya está guardada en Android, así que Android no se conectó. Elíjala en la lista Wi-Fi de Android para conectarse.</string>
+    <string name="net_notyet_other">La pantalla sigue en %1$s, que Android prefiere. Elija la nueva red en la lista Wi-Fi de Android para cambiar.</string>
+    <string name="net_notyet_timeout">Android aún no ha pasado la pantalla a “%1$s”. Elíjala en la lista Wi-Fi de Android para conectarse.</string>
+    <string name="net_notyet_how_saved">Android guardó “%1$s”. Abra la lista Wi-Fi de Android y elíjala una vez para conectarse.</string>
+    <string name="net_notyet_how_suggested">Android aceptó “%1$s” como sugerencia. Abra la lista Wi-Fi de Android y elíjala una vez para conectarse.</string>
+    <string name="net_open_setup">Abrir configuración</string>
+    <string name="net_fix_check_again">Comprobar de nuevo</string>
+    <string name="net_connect_in_android">Conectar en Android</string>
 </resources>
