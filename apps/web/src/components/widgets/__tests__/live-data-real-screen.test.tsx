@@ -75,7 +75,7 @@ const stamped = (container: HTMLElement) => container.querySelector('[data-live-
 const SAMPLE: Record<string, string[]> = {
   STOCK_TICKER: ['AAPL', 'NVDA', '232.18', 'delayed 15 min'],
   CRYPTO_TICKER: ['Bitcoin', 'BTC', '96,420', 'CoinGecko'],
-  NEWS_HEADLINES: ['Global summit', 'Underdog stuns', 'AP · Reuters · BBC', '12 min ago', 'BREAKING'],
+  NEWS_HEADLINES: ['Global summit', 'Underdog stuns', 'AP · Reuters · BBC', '12 min ago', 'HEADLINES'],
   AIR_QUALITY: ['Springfield', 'Moderate', 'PM2.5', '62'],
   FX_RATES: ['Euro', '0.9241', 'Mid-market', 'refreshed every', 'OpenExchangeRates'],
   TRAFFIC_CAM: ['I-5', 'Exit 168', 'HEAVY', 'Sample data', 'SAMPLE'],
@@ -93,7 +93,7 @@ const TYPED: Record<string, { config: Record<string, unknown>; shows: string[]; 
   CRYPTO_TICKER: { config: { coins: [{ name: 'Tigercoin', symbol: 'TGR', price: '3.5', pct: 1 }] }, shows: ['Tigercoin', '$3.5', '+1.00%'] },
   NEWS_HEADLINES: {
     config: { items: [{ cat: 'CAMPUS', time: 'Today', headline: 'Robotics team heads to state' }], source: 'Tiger Times' },
-    shows: ['Robotics team heads to state', 'Tiger Times', 'BREAKING'],
+    shows: ['Robotics team heads to state', 'Tiger Times', 'HEADLINES'],
   },
   AIR_QUALITY: { config: { aqi: 41, pm25: 9, location: 'Lincoln High' }, shows: ['41', 'Good', 'Lincoln High', 'PM2.5'], hides: ['PM10', 'NO₂'] },
   FX_RATES: { config: { pairs: [{ code: 'CAD', name: 'Canadian Dollar', flag: '', rate: 1.37, delta: 0.01 }] }, shows: ['CAD', 'Canadian Dollar', '1.3700'] },
@@ -146,7 +146,7 @@ describe('Live Data + Transit boards on a real screen', () => {
     });
 
     it(`${w.type}: the builder shows the sample, stamped SAMPLE`, () => {
-      const { container } = mount(Component, {}, 'builder');
+      const { container } = mount(Component, w.type === 'FX_RATES' ? {dataMode:'manual'} : {}, 'builder');
       const text = textIn(container);
       expect(sample.some((s) => text.includes(s))).toBe(true);
       expect(stamped(container)).toBe(true);
@@ -237,23 +237,18 @@ describe('v2 weather pack', () => {
   it('shows the real reading on a real screen, and a failed fetch never becomes 72°', async () => {
     const neon = WEATHER.find((w) => w.type === 'WX_NEON')!.Component as AnyWidget;
     const WeatherNeon = neon;
-    global.fetch = jest.fn(async (url: string) => ({
-      ok: true,
-      json: async () => (String(url).includes('geocoding')
-        ? { results: [{ latitude: 40, longitude: -75 }] }
-        : { current_weather: { temperature: 55.4, weathercode: 61 }, daily: { temperature_2m_max: [61.2], temperature_2m_min: [44.9] } }),
-    })) as unknown as typeof fetch;
+    fetchWeatherMock.mockResolvedValue({temp:55,weatherCode:61,high:61,low:45,locationName:'Philadelphia'});
     const ok = mount(neon, { location: 'Philadelphia' }, 'player');
     await waitFor(() => expect(textIn(ok.container)).toContain('55'));
     expect(textIn(ok.container)).toContain('HI 61°F');
-    expect(textIn(ok.container)).toContain('RAINY');
+    expect(textIn(ok.container)).toContain('LIGHT RAIN');
     // Clearing the location drops that place's reading at once.
     ok.rerender(<RenderSurfaceProvider surface="player"><WeatherNeon config={{}} live={false} /></RenderSurfaceProvider>);
     expect(textIn(ok.container)).not.toContain('55');
     expect(textIn(ok.container)).toContain('—');
     ok.unmount();
 
-    global.fetch = jest.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;
+    fetchWeatherMock.mockResolvedValue(null);
     const down = mount(neon, { location: 'Philadelphia' }, 'player');
     await act(async () => { await Promise.resolve(); });
     expect(textIn(down.container)).not.toContain('72');
@@ -262,13 +257,9 @@ describe('v2 weather pack', () => {
 
   it('a reply with no current temperature is no reading (it used to become 70°)', async () => {
     const glass = WEATHER.find((w) => w.type === 'WX_GLASS')!.Component as AnyWidget;
-    const fetchSpy = jest.fn(async (url: string) => ({
-      ok: true,
-      json: async () => (String(url).includes('geocoding') ? { results: [{ latitude: 1, longitude: 2 }] } : { current_weather: {} }),
-    }));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    fetchWeatherMock.mockResolvedValue(null);
     const { container } = mount(glass, { location: 'Nowhere' }, 'player');
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchWeatherMock).toHaveBeenCalledWith('Nowhere', false));
     await act(async () => { await Promise.resolve(); });
     expect(textIn(container)).not.toContain('70');
     expect(textIn(container)).toContain('—');

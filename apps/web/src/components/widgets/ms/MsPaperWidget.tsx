@@ -335,7 +335,14 @@ export function MsPaperWidget({ config, live }: { config: MsPaperConfig; live?: 
     if (live) {
       if (key === 'clock.day') return fmt.weekdayLong(now);
       if (key === 'clock.date') return fmt.shortDate(now);
-      if (key === 'weather.high' && weather) return `${weather.tempF}°`;
+      if (key === 'weather.high' && weather) return weather.high == null ? '—' : `${weather.high}`;
+      if (key === 'weather.high') return '—';
+      if (key === 'weather.low') return weather?.low == null ? '—' : `${weather.low}`;
+      if (key === 'weather.sky') return weather?.condition || '';
+      if (key === 'weather.sky_label') return 'Forecast';
+      if (key === 'edition.flag') return `LIVE · ${fmt.time12(now)}`;
+      if (key === 'weather.label') return '24h high';
+      if (key === 'weather.low_label') return '24h low';
     }
     return DEFAULTS[key] as string;
   };
@@ -369,21 +376,21 @@ export function MsPaperWidget({ config, live }: { config: MsPaperConfig; live?: 
             <span className="ms-pp-k" data-field="weather.label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.label')}</span>
             <span className="ms-pp-v">
               <span data-field="weather.high" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.high')}</span>
-              <small>&deg;F</small>
+              <small>{(cfg as any).weatherUnits === 'metric' ? '°C' : '°F'}</small>
             </span>
           </div>
           <div className="ms-pp-tile" data-widget="weather-low">
             <span className="ms-pp-k" data-field="weather.low_label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.low_label')}</span>
             <span className="ms-pp-v">
               <span data-field="weather.low" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.low')}</span>
-              <small>&deg;F</small>
+              <small>{(cfg as any).weatherUnits === 'metric' ? '°C' : '°F'}</small>
             </span>
           </div>
           <div className="ms-pp-tile ms-pp-full" data-widget="weather-summary">
             <span className="ms-pp-k" data-field="weather.sky_label" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.sky_label')}</span>
             <span className="ms-pp-v">
               <span data-field="weather.sky" style={{ whiteSpace: 'pre-wrap' }}>{pick('weather.sky')}</span>
-              <span className="ms-pp-arrow">&mdash; light SW wind</span>
+              {!live && <span className="ms-pp-arrow">&mdash; light SW wind</span>}
             </span>
           </div>
         </div>

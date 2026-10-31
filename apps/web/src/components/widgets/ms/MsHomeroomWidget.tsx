@@ -314,7 +314,8 @@ export function MsHomeroomWidget({ config, live }: { config?: MsHomeroomConfig; 
       if (key === 'day.dow') return fmt.weekdayLong(now);
       if (key === 'day.date') return fmt.monthDay(now);
       if (key === 'clock.time') return fmt.time12NoSuffix(now);
-      if (key === 'weather.temp' && weather) return `${weather.tempF}°`;
+      if (key === 'weather.temp' && weather) return `${weather.temperature}°`;
+      if (key === 'weather.temp') return '—';
     }
     return DEFAULTS[key] as string;
   };

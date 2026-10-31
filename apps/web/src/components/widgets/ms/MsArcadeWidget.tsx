@@ -256,7 +256,8 @@ export function MsArcadeWidget({
     if (live) {
       if (key === 'school.date') return fmt.shortDateUpper(now) as Required<MsArcadeConfig>[K];
       if (key === 'clock.time') return fmt.time12NoSuffix(now) as Required<MsArcadeConfig>[K];
-      if (key === 'weather.temp' && weather) return (`${weather.tempF}°`) as Required<MsArcadeConfig>[K];
+      if (key === 'weather.temp' && weather) return (`${weather.temperature}°`) as Required<MsArcadeConfig>[K];
+      if (key === 'weather.temp') return '—';
     }
     return DEFAULTS[key] as Required<MsArcadeConfig>[K];
   };

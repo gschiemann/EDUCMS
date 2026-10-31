@@ -214,3 +214,25 @@ describe('§19 — no duplicate/competing controls, and no regression off the v2
     expect(screen.getByLabelText('Background color')).toBeTruthy();
   });
 });
+
+describe('simple automatic widget typography', () => {
+ it.each([['WEATHER','weather-outlook'],['RSS_FEED','rss-newsroom']])('%s exposes a single text formatting workflow', (type, variant) => {
+  render(<ContentFields zone={makeZone(type, {variant, location:'94583'})} updateZone={jest.fn()} />);
+  expect(screen.getByLabelText('Text to format')).toBeTruthy();
+  expect(screen.queryByLabelText('Font size')).toBeNull();
+  expect(screen.queryByLabelText(/text size.*%/i)).toBeNull();
+ });
+ it('labels a flight board as entered content before offering its fields', () => {
+  render(<ContentFields zone={makeZone('LIVE_DATA', {variant:'flight-status-hero'})} updateZone={jest.fn()} />);
+  expect(screen.getByText('Manually updated')).toBeTruthy();
+  expect(screen.getByText(/not live flight tracking/)).toBeTruthy();
+ });
+ it('adds typed flight rows using the existing row editor, without seeding a fake flight', () => {
+  const updateZone=jest.fn();
+  render(<ContentFields zone={makeZone('LIVE_DATA', {variant:'departures-board'})} updateZone={updateZone} />);
+  expect(screen.queryByDisplayValue('AA 1421')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:/Add row/}));
+  const flights=lastCfg(updateZone).flights as Record<string,unknown>[];
+  expect(flights).toHaveLength(1); expect(flights[0]).toEqual({flight:'',time:'',dest:'',gate:'',status:'',note:''});
+ });
+});

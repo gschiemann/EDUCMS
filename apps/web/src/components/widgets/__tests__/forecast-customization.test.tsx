@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import {
   ForecastWeatherWidget,
   forecastDayCount,
@@ -7,8 +7,9 @@ import { forecastIsTransparent, forecastLayout } from "../forecast-appearance";
 import { RenderSurfaceProvider } from "../render-surface";
 import { usePolledFeed } from "../use-live-feed";
 jest.mock("../forecast-weather.css", () => ({}));
+let mockSize = {width: 1920, height: 1080};
 jest.mock("../v2/_shared/useElementSize", () => ({
-  useElementSize: () => ({ ref: { current: null }, width: 1920, height: 1080 }),
+  useElementSize: () => ({ ref: { current: null }, ...mockSize }),
 }));
 jest.mock("../use-live-feed", () => ({ usePolledFeed: jest.fn() }));
 const poll = usePolledFeed as jest.Mock;
@@ -25,7 +26,7 @@ const data = {
   source: "National Weather Service",
   geocoded: false,
 };
-beforeEach(() => poll.mockReturnValue({ data, loading: false, error: false }));
+beforeEach(() => {mockSize={width:1920,height:1080};poll.mockReturnValue({ data, loading: false, error: false });});
 function draw(config: Record<string, unknown> = {}) {
   return render(
     <RenderSurfaceProvider surface="player">
@@ -134,4 +135,21 @@ describe("Forecast appearance", () => {
     ).toBeInTheDocument();
     expect(container.querySelectorAll("[data-forecast-day]")).toHaveLength(0);
   });
+});
+
+it('rotates every requested day in a narrow zone without shrinking all five into it',()=>{
+ jest.useFakeTimers();
+ try {
+  mockSize={width:300,height:80};
+  const {container}=draw({forecastDays:5});
+  expect(container.querySelector('[data-weather-outlook]')).toHaveAttribute('data-page-count','5');
+  const seen=new Set<string>();
+  for(let i=0;i<5;i++) {
+   expect(container.querySelectorAll('[data-forecast-day]')).toHaveLength(1);
+   seen.add(container.querySelector('.fw-high')!.textContent!);
+   act(()=>{jest.advanceTimersByTime(8000);});
+  }
+  expect(seen.size).toBe(5);
+  expect(container.querySelector('[data-weather-outlook]')).toHaveAttribute('data-page','1');
+ } finally {jest.useRealTimers();}
 });

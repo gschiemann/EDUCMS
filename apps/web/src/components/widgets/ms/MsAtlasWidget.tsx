@@ -255,7 +255,8 @@ export function MsAtlasWidget({ config, live }: { config?: MsAtlasConfig; live?:
     if (live) {
       if (key === 'banner.date') return fmt.shortDateUpper(now);
       if (key === 'meta.time.value') return fmt.time12NoSuffix(now);
-      if (key === 'meta.temp.value' && weather) return `${weather.tempF}°`;
+      if (key === 'meta.temp.value' && weather) return `${weather.temperature}°`;
+      if (key === 'meta.temp.value') return '—';
     }
     return DEFAULTS[key] as string;
   };
