@@ -103,6 +103,10 @@ object UsbAutoImport {
 
     // Worker-thread state.
     private var firstScan = true
+    /** This scan found something that looks like a VenueOS package (UsbPackageFinder.looksLikePackage). */
+    private var packageSeen = false
+    /** looksLikePackage answers by candidate identity (path|size|mtime) — a stick left in is not re-opened every minute. */
+    private val looksMemo = LinkedHashMap<String, Boolean>()
     private var lastDrive: String? = null
 
     @Volatile private var awaitingAccessSinceMs = 0L
@@ -275,10 +279,14 @@ object UsbAutoImport {
         val hadDrive = !lastDrive.isNullOrEmpty()
         firstScan = false
         lastDrive = drive
+        packageSeen = false
 
         if (roots.isEmpty()) {
             synchronized(processed) { processed.clear() } // a stick put back in is read again
-            when (UsbImportPolicy.next(drivePresent = false, requested = requested != null, access = false, usableCandidates = 0, hasKey = false)) {
+            when (UsbImportPolicy.next(
+                drivePresent = false, requested = requested != null, access = false, usableCandidates = 0, hasKey = false,
+                driveJustRemoved = hadDrive || change.removed,
+            )) {
                 UsbNext.NO_DRIVE -> stage(trigger, drive, UsbCardState(UsbStage.NO_DRIVE))
                 else -> if (hadDrive) {
                     PlayerLogger.i(TAG, "USB drive removed")
@@ -289,17 +297,19 @@ object UsbAutoImport {
             refreshKeyIfDue()
             return
         }
+        // -- access is judged from the permission, never from a listing (a
+        //    FUSE listing without access succeeds and simply leaves the files out) --
+        val access = hasFileAccess()
+        // 1.1.56 — only what looks like a VenueOS package is a candidate at
+        // all, and only then may anything go on the glass by itself.
+        val found = UsbPackageFinder.candidates(roots).filter(::looksLikePackage)
+        packageSeen = found.isNotEmpty()
         if (trigger.deliberate) {
-            PlayerLogger.i(TAG, "USB_IMPORT_DETECTED $drive ($trigger)")
+            PlayerLogger.i(TAG, "USB_IMPORT_DETECTED $drive ($trigger, VenueOS package seen=$packageSeen)")
             stage(trigger, drive, UsbCardState(UsbStage.READING))
         }
         // After the card is up: on an offline screen this can take its 10 s connect timeout.
         refreshKeyIfDue()
-
-        // -- access is judged from the permission, never from a listing (a
-        //    FUSE listing without access succeeds and simply leaves the files out) --
-        val access = hasFileAccess()
-        val found = UsbPackageFinder.candidates(roots)
         val usable = if (access) found else found.filter(::readableWithoutAccess)
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         var key = prefs.getString(KEY_KEY, null)
@@ -460,6 +470,7 @@ object UsbAutoImport {
         emergency: Boolean = false,
     ) {
         present(trigger, drive, state)
+        if (!UsbImportPolicy.reports(trigger, state.stage, packageSeen)) return
         val (outcome, reason) = UsbImportPolicy.report(state.stage, detail) ?: return
         reportOnce(trigger, drive, outcome, reason, version, count, bytes, emergency)
     }
@@ -473,7 +484,7 @@ object UsbAutoImport {
         val memo = prefs.getString(KEY_SHOWN, null)
         val shownBefore = memo?.takeIf { it.substringBeforeLast('|') == drive }
             ?.substringAfterLast('|')?.let { s -> runCatching { UsbStage.valueOf(s) }.getOrNull() }
-        if (!UsbImportPolicy.shows(trigger, state.stage, shownBefore)) return
+        if (!UsbImportPolicy.shows(trigger, state.stage, shownBefore, packageSeen)) return
         main.post {
             if (!connection.current(ticket)) return@post
             val shown = runCatching { host?.show(state, connection.mayOpen(ticket)) ?: false }.getOrDefault(false)
@@ -502,35 +513,74 @@ object UsbAutoImport {
         if (c.isDirectory) File(c, UsbPackage.MANIFEST).canRead() else c.canRead()
     }.getOrDefault(false)
 
-    /** Mounted removable volumes. Several routes: OEM ROMs disagree. */
+    /** Mounted removable volumes. Several routes: OEM ROMs disagree. Never the internal storage (UsbVolumePolicy). */
     private fun mountedVolumeRoots(): List<File> {
         val out = LinkedHashSet<File>()
+        val internal = internalRoots()
         runCatching {
             val sm = app.getSystemService(Context.STORAGE_SERVICE) as StorageManager
             for (v in sm.storageVolumes) {
-                if (!v.isRemovable || v.state != Environment.MEDIA_MOUNTED) continue
+                if (!v.isRemovable || v.isPrimary || v.isEmulated || v.state != Environment.MEDIA_MOUNTED) continue
                 val dir = if (Build.VERSION.SDK_INT >= 30) v.directory else
                     runCatching { v.javaClass.getMethod("getPathFile").invoke(v) as? File }.getOrNull()
-                if (dir != null) out.add(dir)
+                if (dir == null || !dir.exists()) continue
+                if (UsbVolumePolicy.counts(dir.path, canonical(dir), internal, reportedRemovable = true, mountPoints = null, hasEntries = true)) out.add(dir)
             }
         }
-        return out.filter { it.exists() }
+        return out.toList()
     }
 
     private fun volumeRoots(mounted: List<File> = mountedVolumeRoots()): List<File> {
         val out = LinkedHashSet<File>(mounted)
+        val internal = internalRoots()
+        val mounts = runCatching { UsbVolumePolicy.mountPoints(File("/proc/mounts").readText()) }.getOrNull()
+        val fallback = LinkedHashSet<File>()
         // Fallbacks for ROMs whose StorageManager does not list USB disks.
         for (parent in listOf("/storage", "/mnt/media_rw", "/mnt/usb_storage", "/mnt/usbhost", "/mnt/udisk")) {
             val dirs = File(parent).listFiles() ?: continue
-            for (d in dirs) {
-                if (!d.isDirectory) continue
-                if (d.name in setOf("emulated", "self", "sdcard0", "enc_emulated")) continue
-                out.add(d)
+            for (d in dirs) if (d.isDirectory) fallback.add(d)
+        }
+        for (p in listOf("/mnt/usb_storage", "/mnt/udisk", "/mnt/usbdisk")) File(p).takeIf { it.isDirectory }?.let { fallback.add(it) }
+        for (d in fallback) {
+            if (d in out || !d.exists()) continue
+            val counts = UsbVolumePolicy.counts(
+                d.path, canonical(d), internal, reportedRemovable = false, mountPoints = mounts,
+                hasEntries = runCatching { !d.list().isNullOrEmpty() }.getOrDefault(false),
+            )
+            if (counts) out.add(d)
+        }
+        // The same drive reached by two routes (/storage/X and /mnt/media_rw/X) is one drive.
+        return out.distinctBy { it.name }
+    }
+
+    private fun canonical(f: File): String = runCatching { f.canonicalPath }.getOrDefault(f.path)
+
+    /** The device's own storage, by canonical path: a "drive" that is (or links to) it never counts. */
+    private fun internalRoots(): List<String> {
+        val out = LinkedHashSet<String>()
+        runCatching { @Suppress("DEPRECATION") out += canonical(Environment.getExternalStorageDirectory()) }
+        runCatching { out += canonical(app.filesDir) }
+        runCatching { app.getExternalFilesDir(null)?.let { out += canonical(it) } }
+        runCatching {
+            val sm = app.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+            for (v in sm.storageVolumes) {
+                if (!v.isPrimary && !v.isEmulated) continue
+                val dir = if (Build.VERSION.SDK_INT >= 30) v.directory else
+                    runCatching { v.javaClass.getMethod("getPathFile").invoke(v) as? File }.getOrNull()
+                if (dir != null) out += canonical(dir)
             }
         }
-        for (p in listOf("/mnt/usb_storage", "/mnt/udisk", "/mnt/usbdisk")) File(p).takeIf { it.isDirectory }?.let { out.add(it) }
-        // The same drive reached by two routes (/storage/X and /mnt/media_rw/X) is one drive.
-        return out.filter { it.exists() }.distinctBy { it.name }
+        return out.filter { it.isNotEmpty() && it != "/" }
+    }
+
+    /** UsbPackageFinder.looksLikePackage, memoised per candidate identity. */
+    private fun looksLikePackage(c: File): Boolean {
+        val id = "${c.path}|${c.length()}|${c.lastModified()}"
+        looksMemo[id]?.let { return it }
+        val v = UsbPackageFinder.looksLikePackage(c)
+        looksMemo[id] = v
+        if (looksMemo.size > 256) looksMemo.remove(looksMemo.keys.first())
+        return v
     }
 
     private fun storageDevice(intent: Intent): Boolean = runCatching {

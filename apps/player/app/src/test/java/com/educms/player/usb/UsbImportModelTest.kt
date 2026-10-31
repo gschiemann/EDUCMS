@@ -158,25 +158,58 @@ class UsbImportModelTest {
     // ── when the card goes on the glass ────────────────────────────────
 
     @Test
-    fun `a person or a fresh insertion always sees every state`() {
-        for (t in listOf(UsbTrigger.INSERTED, UsbTrigger.MANUAL, UsbTrigger.RETURNED)) {
-            for (s in UsbStage.values()) assertTrue("$t $s", UsbImportPolicy.shows(t, s, shownBefore = s))
+    fun `a person's own request on the screen sees every state, package or not`() {
+        for (t in listOf(UsbTrigger.MANUAL, UsbTrigger.RETURNED)) {
+            for (s in UsbStage.values()) {
+                assertTrue("$t $s", UsbImportPolicy.shows(t, s, shownBefore = s, packageSeen = false))
+                assertTrue("$t $s", UsbImportPolicy.shows(t, s, shownBefore = s, packageSeen = true))
+            }
         }
     }
 
     @Test
-    fun `a stick left in says each problem once per drive, and a new playlist always`() {
+    fun `a fresh insertion of a VenueOS stick sees every state`() {
+        for (s in UsbStage.values()) assertTrue("$s", UsbImportPolicy.shows(UsbTrigger.INSERTED, s, shownBefore = s, packageSeen = true))
+    }
+
+    /** 1.1.56 (owner) — a random stick at a venue must never put anything over the signage. */
+    @Test
+    fun `a stick with no VenueOS package never puts anything on the glass`() {
+        for (t in listOf(UsbTrigger.INSERTED, UsbTrigger.BOOT, UsbTrigger.PERIODIC)) {
+            for (s in UsbStage.values()) {
+                assertFalse("$t $s", UsbImportPolicy.shows(t, s, shownBefore = null, packageSeen = false))
+            }
+        }
+        // Not reported either — except NEEDS_ACCESS, which is how an admin learns
+        // an Android 11+ screen cannot see an exported .zip without the grant.
+        assertFalse(UsbImportPolicy.reports(UsbTrigger.INSERTED, UsbStage.NO_PACKAGE, packageSeen = false))
+        assertFalse(UsbImportPolicy.reports(UsbTrigger.PERIODIC, UsbStage.READING, packageSeen = false))
+        assertTrue(UsbImportPolicy.reports(UsbTrigger.INSERTED, UsbStage.NEEDS_ACCESS, packageSeen = false))
+        assertTrue(UsbImportPolicy.reports(UsbTrigger.MANUAL, UsbStage.NO_PACKAGE, packageSeen = false))
+        assertTrue(UsbImportPolicy.reports(UsbTrigger.PERIODIC, UsbStage.OTHER_ORG, packageSeen = true))
+    }
+
+    @Test
+    fun `removing a stick never shows anything, even under a person's open card`() {
+        assertEquals(UsbNext.QUIET, UsbImportPolicy.next(drivePresent = false, requested = false, access = true, usableCandidates = 0, hasKey = true, driveJustRemoved = true))
+        assertEquals(UsbNext.QUIET, UsbImportPolicy.next(drivePresent = false, requested = true, access = true, usableCandidates = 0, hasKey = true, driveJustRemoved = true))
+        // A person asking with nothing ever plugged in is still told.
+        assertEquals(UsbNext.NO_DRIVE, UsbImportPolicy.next(drivePresent = false, requested = true, access = true, usableCandidates = 0, hasKey = true, driveJustRemoved = false))
+    }
+
+    @Test
+    fun `a VenueOS stick left in says each problem once per drive, and a new playlist always`() {
         // Reading a drive that changes nothing never shows.
-        assertFalse(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.READING, null))
-        assertFalse(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.READING, null))
+        assertFalse(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.READING, null, packageSeen = true))
+        assertFalse(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.READING, null, packageSeen = true))
         // A new playlist copying in always shows, even after a reboot.
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.COPYING, UsbStage.COPYING))
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.IMPORTED, UsbStage.IMPORTED))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.COPYING, UsbStage.COPYING, packageSeen = true))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.IMPORTED, UsbStage.IMPORTED, packageSeen = true))
         // A problem: the first time for this drive, then not after every nightly reboot.
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.NEEDS_ACCESS, null))
-        assertFalse(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.NEEDS_ACCESS, UsbStage.NEEDS_ACCESS))
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.WAITING_KEY, UsbStage.NEEDS_ACCESS))
-        assertFalse(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.NO_PACKAGE, UsbStage.NO_PACKAGE))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.NEEDS_ACCESS, null, packageSeen = true))
+        assertFalse(UsbImportPolicy.shows(UsbTrigger.BOOT, UsbStage.NEEDS_ACCESS, UsbStage.NEEDS_ACCESS, packageSeen = true))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.WAITING_KEY, UsbStage.NEEDS_ACCESS, packageSeen = true))
+        assertFalse(UsbImportPolicy.shows(UsbTrigger.PERIODIC, UsbStage.NO_PACKAGE, UsbStage.NO_PACKAGE, packageSeen = true))
     }
 
     @Test
@@ -232,7 +265,8 @@ class UsbImportModelTest {
         val before = UsbImportPolicy.next(drivePresent = true, requested = false, access = false, usableCandidates = 0, hasKey = true)
         assertEquals(UsbNext.NEEDS_ACCESS, before)
         assertEquals("NEEDS_ACCESS", UsbImportPolicy.report(UsbStage.NEEDS_ACCESS)!!.first)
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.INSERTED, UsbStage.NEEDS_ACCESS, null))
+        assertTrue(UsbPackageFinder.looksLikePackage(candidates.single()))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.INSERTED, UsbStage.NEEDS_ACCESS, null, packageSeen = true))
         assertEquals(UsbAction.ALLOW, UsbImportPolicy.actions(UsbStage.NEEDS_ACCESS).first())
 
         // 2. Allow → Android's page → back: a return, and a deliberate scan (the card shows it).
@@ -252,7 +286,7 @@ class UsbImportModelTest {
         assertEquals("GGP", out.label)
         assertEquals(listOf(0, 1), progress)
         assertEquals("IMPORTED", UsbImportPolicy.report(UsbStage.IMPORTED)!!.first)
-        assertTrue(UsbImportPolicy.shows(UsbTrigger.RETURNED, UsbStage.IMPORTED, UsbStage.NEEDS_ACCESS))
+        assertTrue(UsbImportPolicy.shows(UsbTrigger.RETURNED, UsbStage.IMPORTED, UsbStage.NEEDS_ACCESS, packageSeen = true))
     }
 
     @Test

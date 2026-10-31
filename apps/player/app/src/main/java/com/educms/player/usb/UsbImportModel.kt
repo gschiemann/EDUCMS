@@ -41,8 +41,11 @@ enum class UsbTrigger {
     RETURNED,
     ;
 
-    /** A person (or a fresh insertion) asked for this — the card always shows and a same package plays again. */
+    /** A person (or a fresh insertion) asked for this — a same package plays again. */
     val deliberate: Boolean get() = this == INSERTED || this == MANUAL || this == RETURNED
+
+    /** A person asked on the screen itself (Import from USB, Look again, back from Android's page) — every state shows. */
+    val requested: Boolean get() = this == MANUAL || this == RETURNED
 }
 
 /** Everything the card can say. One stage per thing a person can see or act on. */
@@ -127,8 +130,17 @@ object UsbImportPolicy {
      *        (all of them with access; on an old world-readable mount, those
      *        whose manifest opens without it).
      */
-    fun next(drivePresent: Boolean, requested: Boolean, access: Boolean, usableCandidates: Int, hasKey: Boolean): UsbNext = when {
-        !drivePresent -> if (requested) UsbNext.NO_DRIVE else UsbNext.QUIET
+    fun next(
+        drivePresent: Boolean,
+        requested: Boolean,
+        access: Boolean,
+        usableCandidates: Int,
+        hasKey: Boolean,
+        driveJustRemoved: Boolean = false,
+    ): UsbNext = when {
+        // 1.1.56 — removing a stick never puts anything up, not even under a
+        // person's open "Import from USB" card (the card is taken down instead).
+        !drivePresent -> if (requested && !driveJustRemoved) UsbNext.NO_DRIVE else UsbNext.QUIET
         usableCandidates == 0 -> if (access) UsbNext.NO_PACKAGE else UsbNext.NEEDS_ACCESS
         !hasKey -> UsbNext.WAITING_KEY
         else -> UsbNext.VERIFY
@@ -200,13 +212,28 @@ object UsbImportPolicy {
      *    in a port does not put the same card up after every nightly reboot;
      *    reading a drive that changes nothing never shows.
      */
-    fun shows(trigger: UsbTrigger, stage: UsbStage, shownBefore: UsbStage?): Boolean = when {
+    fun shows(trigger: UsbTrigger, stage: UsbStage, shownBefore: UsbStage?, packageSeen: Boolean): Boolean = when {
+        // 1.1.56 (owner) — a stick that holds no VenueOS package puts NOTHING
+        // over the signage: no "reading", no "needs permission", no "no
+        // playlist". Only a person's own request on the screen sees those.
+        trigger.requested -> true
+        !packageSeen -> false
         trigger.deliberate -> true
         stage == UsbStage.COPYING || stage == UsbStage.IMPORTED -> true
         stage.working -> false
         stage == UsbStage.NO_DRIVE -> false
         else -> shownBefore != stage
     }
+
+    /**
+     * Is this state sent to the dashboard? A person's request or a drive that
+     * holds a VenueOS package: always. Any other stick: only NEEDS_ACCESS (an
+     * Android 11+ screen cannot see an exported .zip without "All files
+     * access", and the dashboard is where an admin learns that) — never
+     * "no package" for every unrelated stick plugged into a venue's screen.
+     */
+    fun reports(trigger: UsbTrigger, stage: UsbStage, packageSeen: Boolean): Boolean =
+        trigger.requested || packageSeen || stage == UsbStage.NEEDS_ACCESS
 
     /** Never over an alert: the card does not open while a hold is in force, and leaves when one starts. */
     fun mayShow(emergencyHeld: Boolean): Boolean = !emergencyHeld

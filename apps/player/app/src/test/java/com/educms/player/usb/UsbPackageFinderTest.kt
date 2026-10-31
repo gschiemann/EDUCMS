@@ -87,6 +87,32 @@ class UsbPackageFinderTest {
 
     private fun dir(vararg path: String): File = File(stick, path.joinToString(File.separator)).apply { mkdirs() }
 
+    // ── 1.1.56: only a VenueOS package may put anything on the glass ────
+
+    @Test
+    fun `a package folder, the exported zip and a renamed zip that holds one look like a package`() {
+        assertTrue(UsbPackageFinder.looksLikePackage(folder(stick, UsbPackage.FOLDER, pkg())))
+        assertTrue(UsbPackageFinder.looksLikePackage(zip(File(stick, "VenueOS-USB-Lobby-20261031.zip"), pkg())))
+        assertTrue(UsbPackageFinder.looksLikePackage(zip(File(stick, "lobby.zip"), pkg())))
+        // The dashboard's file name is recognised even before it can be opened.
+        val unreadable = File(stick, "VenueOS-USB-Gym-20261031 (1).zip").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        assertTrue(UsbPackageFinder.looksLikePackage(unreadable))
+    }
+
+    @Test
+    fun `a random stick — photos, documents, other zips, a manifest with no signature — is not a package`() {
+        File(stick, "DCIM/100CAMERA").mkdirs()
+        File(stick, "DCIM/100CAMERA/IMG_0001.JPG").writeBytes(byteArrayOf(1, 2, 3))
+        File(stick, "report.pdf").writeBytes(byteArrayOf(4, 5))
+        zip(File(stick, "backup.zip"), mapOf("notes.txt" to "hello".toByteArray()), wrap = "")
+        zip(File(stick, "other.zip"), mapOf(UsbPackage.MANIFEST to "{}".toByteArray()))
+        File(stick, "edu-cms-content/manifest.json").apply { parentFile!!.mkdirs() }.writeText("{}")
+        File(stick, "broken.zip").writeBytes(byteArrayOf(9, 9, 9))
+        val seen = UsbPackageFinder.candidates(listOf(stick)).filter(UsbPackageFinder::looksLikePackage)
+        assertTrue("nothing VenueOS-shaped: $seen", seen.isEmpty())
+        assertFalse(UsbPackageFinder.looksLikePackage(stick))
+    }
+
     private fun found(): List<String> = UsbPackageFinder.candidates(listOf(stick)).map { it.relativeTo(stick).path }
 
     private fun importer() = UsbImporter(device) { Long.MAX_VALUE }

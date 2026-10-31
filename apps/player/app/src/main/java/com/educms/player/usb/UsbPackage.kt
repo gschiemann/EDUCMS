@@ -239,6 +239,32 @@ object UsbPackageFinder {
         return out.values.toList()
     }
 
+    /**
+     * 1.1.56 (owner) — does this candidate actually look like a VenueOS
+     * playlist package? Only then may anything go on the glass by itself.
+     *
+     *   • a folder (or the drive's top) with BOTH `manifest.json` and
+     *     `manifest.sig` — a stat, which works on Android 11+ even without
+     *     "All files access" (the files list but cannot be opened);
+     *   • a .zip named the way the dashboard names its download
+     *     (`VenueOS-USB-….zip`) — by name, so it is recognised even when it
+     *     cannot be opened yet;
+     *   • any other .zip only when it opens and holds a manifest.json AND a
+     *     manifest.sig in the same folder.
+     *
+     * A stick of holiday photos, documents or someone else's zips is not one.
+     */
+    fun looksLikePackage(candidate: File): Boolean = runCatching {
+        if (candidate.isDirectory) {
+            File(candidate, UsbPackage.MANIFEST).isFile && File(candidate, UsbPackage.SIGNATURE).isFile
+        } else if (candidate.isFile && candidate.name.lowercase().endsWith(".zip")) {
+            isExportName(candidate.name) || ZipBundleSource.of(candidate)?.use { it.open(UsbPackage.SIGNATURE)?.use { true } } == true
+        } else false
+    }.getOrDefault(false)
+
+    /** `VenueOS-USB-<playlist>-<time>.zip`, and the copies a browser names `… (1).zip`. */
+    fun isExportName(name: String): Boolean = name.lowercase().let { it.startsWith("venueos-usb-") && it.endsWith(".zip") }
+
     /** A folder that holds a package itself. */
     fun isPackageFolder(dir: File): Boolean {
         if (!File(dir, UsbPackage.MANIFEST).isFile) return false

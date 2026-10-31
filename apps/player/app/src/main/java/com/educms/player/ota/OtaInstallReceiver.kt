@@ -62,7 +62,10 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 if (confirm == null) {
                     PlayerLogger.w(TAG, "STATUS_PENDING_USER_ACTION but no EXTRA_INTENT")
-                    reportOtaError(context, "Install stalled: user-action intent missing")
+                    // 1.1.56 — our own update already reported NEEDS_TAP above
+                    // (the Back menu's button commits a fresh session); an ERROR
+                    // here would overwrite it and hide the button.
+                    if (selfOtaVc <= 0) reportOtaError(context, "Install stalled: user-action intent missing")
                     return
                 }
                 // Diagnostic: log component + resolveActivity result so
@@ -207,20 +210,12 @@ class OtaInstallReceiver : BroadcastReceiver() {
      * dialog. The dashboard used to say "tap Install" for both.
      */
     private fun recordSelfOtaOutcome(context: Context, versionCode: Int, status: Int, userRaised: Boolean) {
-        val (outcome, state) = when (status) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION ->
-                OtaAttemptPolicy.Outcome.NEEDS_TAP to "NEEDS_TAP"
-            PackageInstaller.STATUS_FAILURE,
-            PackageInstaller.STATUS_FAILURE_ABORTED,
-            PackageInstaller.STATUS_FAILURE_BLOCKED,
-            PackageInstaller.STATUS_FAILURE_CONFLICT,
-            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
-            PackageInstaller.STATUS_FAILURE_INVALID,
-            PackageInstaller.STATUS_FAILURE_STORAGE ->
-                OtaAttemptPolicy.Outcome.FAILED to
-                    OtaAttemptPolicy.failedState(OtaAttemptPolicy.failureCode(status))
-            else -> return // SUCCESS: the next check sees the new build and clears the record.
-        }
+        // 1.1.56 — an UNATTENDED commit the ROM refused (FAILURE / ABORTED /
+        // BLOCKED) is NEEDS_TAP, not FAILED: a person pressing Install from the
+        // Back menu can still get past it, and the button must be there.
+        val outcome = OtaAttemptPolicy.outcomeForStatus(status, userRaised) ?: return
+        val state = if (outcome == OtaAttemptPolicy.Outcome.NEEDS_TAP) "NEEDS_TAP"
+            else OtaAttemptPolicy.failedState(OtaAttemptPolicy.failureCode(status))
         val code = if (outcome == OtaAttemptPolicy.Outcome.FAILED) OtaAttemptPolicy.failureCode(status) else null
         OtaAttemptStore.recordOutcome(context, versionCode, outcome, code)
         val name = OtaAttemptStore.read(context)?.takeIf { it.versionCode == versionCode }?.versionName
@@ -246,7 +241,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
     /** What a person at the screen has to do — staged (Back menu) vs raised (the dialog is up). */
     internal fun needsTapMessage(target: String, dialogRaised: Boolean): String =
         if (dialogRaised) "Android's Install dialog for $target is open on the screen — select Install (OK on the remote, or tap it)."
-        else "$target is downloaded and waiting for a person: on the screen press Back, choose Install $target, then select Install (OK on the remote, or tap it)."
+        else OtaAttemptPolicy.stagedNeedsTapMessage(target)
 
     private fun reportOtaError(context: Context, message: String) {
         try {
