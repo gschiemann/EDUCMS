@@ -65,7 +65,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 
 | Scope | Granted by | Date | Expiry |
 |---|---|---|---|
-| Launch-tracker work (`docs/research/2026-10-24-launch-week/00-PLAN.md`): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
+| Launch-tracker work (docs/research/2026-10-24-launch-week/00-PLAN.md): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
 
 ## Freeze
 
