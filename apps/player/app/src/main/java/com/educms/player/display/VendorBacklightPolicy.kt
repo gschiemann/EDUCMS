@@ -313,7 +313,19 @@ object VendorBacklightPolicy {
      * @param msSinceLastCommand since OUR last power command, or null if none.
      * @param lastCommandOn the direction of that command.
      */
-    fun powerStep(wantOn: Boolean, screenOn: Boolean?, msSinceLastCommand: Long?, lastCommandOn: Boolean?): PowerStep {
+    fun powerStep(
+        wantOn: Boolean,
+        screenOn: Boolean?,
+        msSinceLastCommand: Long?,
+        lastCommandOn: Boolean?,
+        idempotent: Boolean = false,
+    ): PowerStep {
+        // A backend whose commands are SETTERS (the RK3576 box's
+        // `setDeviceShallowOnoff`, [RkSdkApiPolicy]) cannot be toggled the
+        // wrong way: send every time, so a stale or unreadable state never
+        // leaves a panel dark under an alert, and nothing waits out a settle
+        // window.
+        if (idempotent) return PowerStep.SEND
         if (screenOn == null) return PowerStep.UNKNOWN
         val settling = msSinceLastCommand != null && msSinceLastCommand in 0 until POWER_SETTLE_MS
         if (settling && lastCommandOn != wantOn) return PowerStep.SETTLING

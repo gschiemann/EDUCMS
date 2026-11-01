@@ -60,6 +60,14 @@ class VendorBacklightEngine(private val ports: Ports) {
         fun seen()
 
         fun log(level: Level, message: String)
+
+        /**
+         * True when OFF / ON are setters, not a toggle (the RK3576 backend,
+         * [RkSdkApiPolicy]): the engine then sends every time
+         * ([VendorBacklightPolicy.powerStep] `idempotent`). The GUQ's power
+         * key is a toggle, so the default stays false.
+         */
+        fun idempotentCommands(): Boolean = false
     }
 
     enum class Level { INFO, WARN, ERROR }
@@ -206,7 +214,7 @@ class VendorBacklightEngine(private val ports: Ports) {
             val screenOn = (read as? Call.Reply)?.let { VendorBacklightPolicy.booleanResult(VendorBacklightPolicy.parseReply(it.json)) }
             val since = lastCommandAtMs?.let { ports.nowMs() - it }
 
-            when (VendorBacklightPolicy.powerStep(on, screenOn, since, lastCommandOn)) {
+            when (VendorBacklightPolicy.powerStep(on, screenOn, since, lastCommandOn, ports.idempotentCommands())) {
                 VendorBacklightPolicy.PowerStep.UNKNOWN ->
                     return failed(on, "could not read whether the panel is on — nothing sent (the power key is a toggle)")
 
