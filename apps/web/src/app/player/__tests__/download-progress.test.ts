@@ -90,6 +90,11 @@ describe('precachePlaylist progress inside a step', () => {
     const seen: PlaylistCacheProgress[] = [];
     const result = await precachePlaylist([{ url, size }], undefined, { onProgress: (p) => seen.push(p) });
     expect(result.ok).toBe(true);
+    // The page opts in to progress frames; the worker sends none otherwise.
+    const steps = worker.postMessage.mock.calls.map(([m]: [Record<string, any>]) => m)
+      .filter((m: Record<string, any>) => m.type === 'PRECACHE_CHUNK' || m.type === 'PRECACHE_VERIFY');
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every((m: Record<string, any>) => m.wantsProgress === true)).toBe(true);
     const trace = seen.map((p) => `${p.phase}:${Math.round(p.bytesLoaded / MiB)}`);
     expect(trace).toEqual([
       'downloading:2',

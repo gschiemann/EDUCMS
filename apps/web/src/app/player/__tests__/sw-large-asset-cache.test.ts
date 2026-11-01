@@ -72,6 +72,28 @@ describe('sw-player large-asset staging', () => {
     expect(server.calls.length).toBe(callsBefore);
   });
 
+  it('posts progress frames only to a page that asks for them (an older page reads the first frame as the answer)', async () => {
+    const w = loadWorker();
+    const file = randomBytes(2 * MiB);
+    const server: RangeServer = { file, calls: [] };
+    w.setFetch(rangeFetch(server));
+    const asset = { url: URL_4K, sha256: sha256Hex(file), size: file.length };
+    // A page bundle from before the progress protocol: exactly one frame, the answer.
+    const legacy = await w.sendFrames({ type: 'PRECACHE_CHUNK', ...asset, offset: 0, chunkBytes: MiB });
+    expect(legacy).toHaveLength(1);
+    expect(legacy[0]).toMatchObject({ ok: true, nextOffset: MiB });
+    // The current page opts in: live byte frames, then the answer last.
+    const live = await w.sendFrames({ type: 'PRECACHE_CHUNK', ...asset, offset: MiB, chunkBytes: MiB, wantsProgress: true });
+    expect(live.length).toBeGreaterThan(1);
+    expect(live.slice(0, -1).every((f) => f.progress === true && f.phase === 'chunk')).toBe(true);
+    expect(live[live.length - 1]).toMatchObject({ ok: true, nextOffset: 2 * MiB, complete: true });
+    const legacyVerify = await w.sendFrames({ type: 'PRECACHE_VERIFY', ...asset });
+    expect(legacyVerify).toEqual([expect.objectContaining({ ok: true, verified: true })]);
+    const liveVerify = await w.sendFrames({ type: 'PRECACHE_VERIFY', ...asset, wantsProgress: true });
+    expect(liveVerify[0]).toMatchObject({ progress: true, phase: 'verify', done: 0 });
+    expect(liveVerify[liveVerify.length - 1]).toMatchObject({ ok: true, verified: true });
+  });
+
   it('resumes from staged chunks: a restarted driver re-fetches nothing it already has', async () => {
     const w = loadWorker();
     const file = randomBytes(3 * MiB);
