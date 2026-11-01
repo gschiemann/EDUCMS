@@ -321,4 +321,14 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2749998,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41282358157',
   },
+  // Signed CI 41321768888, source fix/ep6n-sleep-like-cloudsign (PR #203):
+  // 1.1.57 + EP6N/RK3576 sleep through the box's sdkapi service.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.58-field.1': {
+    versionName: '1.1.58-field.1',
+    versionCode: 10158,
+    sha256: '23803f6c90a39a6ecb20ba4eb934747d568204cdfd5f1f65bdfbd5f10080c997', // gitleaks:allow -- verified public APK integrity digest
+    size: 2750062,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41321768888',
+  },
 };
