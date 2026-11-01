@@ -1,5 +1,6 @@
 "use client";
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { forecastGeometry } from "./forecast-responsive";
 import { useElementSize } from "./v2/_shared/useElementSize";
 import {
   Cloud,
@@ -81,23 +82,26 @@ export function ForecastWeatherWidget({
     rain: i % 2 ? 20 : 0,
   }));
   const days = data?.days.slice(0, count) || (sample ? samples : []);
-  const cols = layout === "list" ? 1 : w / h < 1.4 ? Math.min(2, count) : count;
-  const rows = Math.ceil(count / cols);
+  const geometry = forecastGeometry(w, h, days.length || count, layout);
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(days.length / geometry.capacity));
+  useEffect(() => {
+    setPage(0);
+    if (pageCount <= 1) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) setPage((i) => (i + 1) % pageCount);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [pageCount, count, location]); // perf-allow: visible, 8-second forecast page rotation only when necessary.
+  const start = (page % pageCount) * geometry.capacity;
+  const shown = days.slice(start, start + geometry.capacity);
+  const cols = Math.min(geometry.columns, shown.length || 1);
+  const rows = Math.ceil((shown.length || 1) / cols);
   const textScale =
     typeof config.forecastTextScale === "number"
       ? Math.max(0.6, Math.min(1.8, config.forecastTextScale))
       : 1;
-  const font =
-    Math.max(
-      6,
-      Math.min(
-        128,
-        layout === "list" ? w / 29 : w / (cols * (layout === "strip" ? 8 : 7)),
-        layout === "list"
-          ? h / (count * 3.7 + 6)
-          : h / (rows * (layout === "strip" ? 6 : 9) + 6),
-      ) * 0.85,
-    ) * textScale;
+  const font = geometry.font * textScale;
   const bg = config.bgColor ?? config.style?.bgColor ?? "#102b3c";
   const ink = config.textColor ?? config.style?.textColor ?? "#f1f7f9";
   const details = config.forecastDetailColor || "inherit";
@@ -110,6 +114,10 @@ export function ForecastWeatherWidget({
   const field = (name: string) => forecastTextStyle(config, name);
   const rootStyle = {
     fontSize: font,
+    padding: geometry.padding,
+    "--fw-small": `${Math.max(12, font * 0.76)}px`,
+    "--fw-caption": `${Math.max(11, font * 0.68)}px`,
+    "--fw-footer-size": `${Math.max(10, font * 0.54)}px`,
     color: ink,
     fontFamily:
       config.forecastFontFamily ||
@@ -126,6 +134,17 @@ export function ForecastWeatherWidget({
       data-days={count}
       data-layout={layout}
       data-transparent={transparent}
+      data-presentation={
+        geometry.micro
+          ? "micro"
+          : geometry.list
+            ? "rows"
+            : geometry.compact
+              ? "compact"
+              : "cards"
+      }
+      data-page={(page % pageCount) + 1}
+      data-page-count={pageCount}
       className={`forecast-outlook fw-${layout}${w < h ? " fw-portrait" : ""}`}
       style={rootStyle}
     >
@@ -173,9 +192,11 @@ export function ForecastWeatherWidget({
           style={{
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+            width: `${(100 * cols) / geometry.columns}%`,
+            justifySelf: "center",
           }}
         >
-          {days.map((d, i) => {
+          {shown.map((d, i) => {
             const Icon = weatherIcon(d.condition);
             return (
               <article
@@ -184,9 +205,18 @@ export function ForecastWeatherWidget({
                 className="fw-day"
                 style={{
                   gridColumn:
-                    cols > 1 && count % cols === 1 && i === count - 1
+                    cols > 1 &&
+                    shown.length % cols === 1 &&
+                    i === shown.length - 1
                       ? `span ${cols}`
                       : undefined,
+                  width:
+                    cols > 1 &&
+                    shown.length % cols === 1 &&
+                    i === shown.length - 1
+                      ? `calc(${100 / cols}% - 0.5em)`
+                      : undefined,
+                  justifySelf: "center",
                 }}
               >
                 <div
@@ -199,74 +229,76 @@ export function ForecastWeatherWidget({
                       : forecastOpacity(config.forecastCardOpacity, 0.05),
                   }}
                 />
-                <div className="fw-day-name">
-                  <span
-                    data-field-jump="forecastDay"
-                    style={field("forecastDay")}
-                  >
-                    {sample
-                      ? ["Mon", "Tue", "Wed", "Thu", "Fri"][i]
-                      : new Date(d.date + "T12:00:00Z").toLocaleDateString(
-                          undefined,
-                          { weekday: "short", timeZone: "UTC" },
-                        )}
-                  </span>
-                  <div
-                    className="fw-date"
-                    data-field-jump="forecastDate"
-                    style={field("forecastDate")}
-                  >
-                    {sample
-                      ? "Sample"
-                      : new Date(d.date + "T12:00:00Z").toLocaleDateString(
-                          undefined,
-                          { month: "short", day: "numeric", timeZone: "UTC" },
-                        )}
-                  </div>
-                </div>
-                <Icon
-                  aria-hidden
-                  className="fw-icon"
-                  style={{ color: config.forecastIconColor || "#b3dcf0" }}
-                  strokeWidth={1.3}
-                />
-                <div
-                  className="fw-condition"
-                  data-field-jump="forecastCondition"
-                  style={field("forecastCondition")}
-                >
-                  {d.condition}
-                </div>
-                <div className="fw-temperatures">
-                  <div className="fw-degrees">
+                <div className="fw-day-content">
+                  <div className="fw-day-name">
                     <span
-                      className="fw-high"
-                      data-field-jump="forecastHigh"
-                      style={{
-                        color: config.forecastHighColor || "inherit",
-                        ...field("forecastHigh"),
-                      }}
+                      data-field-jump="forecastDay"
+                      style={field("forecastDay")}
                     >
-                      {d.high}°
+                      {sample
+                        ? ["Mon", "Tue", "Wed", "Thu", "Fri"][start + i]
+                        : new Date(d.date + "T12:00:00Z").toLocaleDateString(
+                            undefined,
+                            { weekday: "short", timeZone: "UTC" },
+                          )}
                     </span>
-                    <span
-                      className="fw-low"
-                      data-field-jump="forecastLow"
-                      style={{
-                        color: config.forecastLowColor || "inherit",
-                        opacity: config.forecastLowColor ? 1 : 0.6,
-                        ...field("forecastLow"),
-                      }}
+                    <div
+                      className="fw-date"
+                      data-field-jump="forecastDate"
+                      style={field("forecastDate")}
                     >
-                      {d.low == null ? "—" : `${d.low}°`}
-                    </span>
+                      {sample
+                        ? "Sample"
+                        : new Date(d.date + "T12:00:00Z").toLocaleDateString(
+                            undefined,
+                            { month: "short", day: "numeric", timeZone: "UTC" },
+                          )}
+                    </div>
+                  </div>
+                  <Icon
+                    aria-hidden
+                    className="fw-icon"
+                    style={{ color: config.forecastIconColor || "#b3dcf0" }}
+                    strokeWidth={1.3}
+                  />
+                  <div className="fw-temperatures">
+                    <div className="fw-degrees">
+                      <span
+                        className="fw-high"
+                        data-field-jump="forecastHigh"
+                        style={{
+                          color: config.forecastHighColor || "inherit",
+                          ...field("forecastHigh"),
+                        }}
+                      >
+                        {d.high}°
+                      </span>
+                      <span
+                        className="fw-low"
+                        data-field-jump="forecastLow"
+                        style={{
+                          color: config.forecastLowColor || "inherit",
+                          opacity: config.forecastLowColor ? 1 : 0.6,
+                          ...field("forecastLow"),
+                        }}
+                      >
+                        {d.low == null ? "—" : `${d.low}°`}
+                      </span>
+                    </div>
+                    <div
+                      className="fw-details"
+                      data-field-jump="forecastDetails"
+                      style={field("forecastDetails")}
+                    >
+                      High / Low{d.rain != null ? ` · ${d.rain}% rain` : ""}
+                    </div>
                   </div>
                   <div
-                    className="fw-details"
-                    data-field-jump="forecastDetails"
-                    style={field("forecastDetails")}
+                    className="fw-condition"
+                    data-field-jump="forecastCondition"
+                    style={field("forecastCondition")}
                   >
-                    High / Low{d.rain != null ? ` · ${d.rain}% rain` : ""}
+                    {d.condition}
                   </div>
                 </div>
               </article>
@@ -292,7 +324,7 @@ export function ForecastWeatherWidget({
           target="_blank"
           rel="noopener noreferrer"
         >
-          National Weather Service
+          {geometry.micro ? "NWS" : "National Weather Service"}
         </a>
         {data?.geocoded && (
           <a
@@ -300,16 +332,24 @@ export function ForecastWeatherWidget({
             target="_blank"
             rel="noopener noreferrer"
           >
-            © OpenStreetMap contributors
+            {geometry.micro ? "© OSM" : "© OpenStreetMap contributors"}
           </a>
         )}
         {data && (
-          <span>
+          <span className="fw-refreshed">
             {error ? "Refresh delayed · " : ""}Refreshed{" "}
             {new Date(data.fetchedAt).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",
             })}
+          </span>
+        )}
+        {pageCount > 1 && (
+          <span
+            className="fw-page-label"
+            aria-label={`Forecast page ${(page % pageCount) + 1} of ${pageCount}`}
+          >
+            {(page % pageCount) + 1} / {pageCount}
           </span>
         )}
       </footer>

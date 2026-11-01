@@ -218,6 +218,14 @@ export function toCssTextStyleMap(
  */
 export function buildTextStyleRules(style: unknown): string[] {
   const css = toCssTextStyle(style);
+  // These data layouts size each role from their own box. An old blanket
+  // size collapses that hierarchy and can cover the selected text hotspot.
+  // Field maps contain no variant/day metadata, so explicit field sizes
+  // continue through the exact same builder/player contract.
+  if (style && typeof style === 'object') {
+    const config = style as Record<string, unknown>;
+    if (config.variant === 'weather-outlook' || config.variant === 'rss-newsroom' || Number(config.forecastDays) >= 2) delete css.fontSize;
+  }
   const rules: string[] = [];
   if (css.fontFamily) rules.push(`font-family: ${css.fontFamily} !important`);
   if (typeof css.fontSize === 'number' && css.fontSize) rules.push(`font-size: ${css.fontSize}px !important`);

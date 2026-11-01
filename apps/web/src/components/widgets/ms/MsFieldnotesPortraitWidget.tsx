@@ -329,9 +329,11 @@ export function MsFieldnotesPortraitWidget({
     const v = cfg[key];
     if (v !== undefined && v !== '') return v as string;
     if (live) {
+      if (key === 'weather.cap') return weather?.condition || '';
       if (key === 'brand.day') return fmt.shortDateUpper(now);
       if (key === 'clock.v') return fmt.time12NoSuffix(now);
-      if (key === 'weather.v' && weather) return `${weather.tempF}°`;
+      if (key === 'weather.v' && weather) return `${weather.temperature}°`;
+      if (key === 'weather.v') return '—';
     }
     return DEFAULTS[key] as string;
   };

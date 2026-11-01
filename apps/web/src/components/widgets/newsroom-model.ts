@@ -1,3 +1,8 @@
+export const NEWSROOM_TEXT_AREAS: [string, string][] = [
+  ['title', 'Heading'], ['headline', 'Headlines'], ['edition', 'Edition line'],
+  ['source', 'Publisher & coverage'], ['indexed', 'Story dates'],
+  ['status', 'Update status'], ['section', 'Section labels'], ['footer', 'Credits & refresh time'],
+];
 export const NEWSROOM_LAYOUTS = [
   ["front-page", "Front Page"],
   ["broadcast", "Broadcast"],
@@ -59,7 +64,7 @@ export function balanceNews(
         !/^https?:\/\//i.test(a.link) ||
         !a.title.trim() ||
         !Number.isFinite(date) ||
-        date < now - 7 * 86400000 ||
+        date < now - 86400000 ||
         date > now + 3600000
       )
         return false;

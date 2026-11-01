@@ -1,5 +1,5 @@
 import { NewsController } from './news.controller';
-import { NewsService, parseNewsArticles } from './news.service';
+import { NewsService, parseNewsArticles, normalizeNewsTitle } from './news.service';
 import { safeFetch } from '../branding/safe-fetch';
 jest.mock('../branding/safe-fetch', () => ({ safeFetch: jest.fn() }));
 
@@ -85,9 +85,9 @@ describe('Newsroom metadata boundary', () => {
     ]);
     expect(one).toEqual(two);
     await s.get('national', '10001');
-    expect(mock).toHaveBeenCalledTimes(1);
-    expect(check).toHaveBeenCalledTimes(1);
-    expect(String(mock.mock.calls[0][0])).toContain('api.gdeltproject.org');
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(mock.mock.calls.filter(([url]) => new URL(String(url)).hostname === 'api.gdeltproject.org')).toHaveLength(1);
     expect(one.provider).toBe('GDELT');
   });
   it('refuses uncached fetches when shared pacing is unavailable', async () => {
@@ -157,7 +157,7 @@ it('keeps the last good edition during 429 cooldown and does not stampede upstre
       120,
     );
     await s.get('national', '', ['cooldown.example']);
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/api/v2/doc/'))).toHaveLength(2);
     jest.setSystemTime(now + 61 * 60000);
     fetcher.mockResolvedValueOnce({
       status: 429,
@@ -172,7 +172,7 @@ it('keeps the last good edition during 429 cooldown and does not stampede upstre
   }
 });
 
-it('uses an established-outlet query and a recent seven-day window for national coverage', async () => {
+it('uses an established-outlet query and a current one-day window for national coverage', async () => {
   const redis = {
     publisher: {
       get: jest.fn(async () => null),
@@ -196,7 +196,7 @@ it('uses an established-outlet query and a recent seven-day window for national 
     'sourcecountry:unitedstates',
   );
   expect(target.searchParams.get('query')).toContain('domainis:query.example');
-  expect(target.searchParams.get('timespan')).toBe('7d');
+  expect(target.searchParams.get('timespan')).toBe('1d');
 });
 
 it('accepts an empty optional location for national and international client URLs', () => {
@@ -245,4 +245,10 @@ it('recovers search throttling from the shared official rolling index without mi
   expect(
     fetcher.mock.calls.filter((c) => c[0].includes('/doc/doc')),
   ).toHaveLength(1);
+});
+
+it('normalizes escaped headline punctuation as text and rejects day-old search metadata', () => {
+ expect(normalizeNewsTitle('Yukon gov&#39;t &amp; utilities&#x2019; response')).toBe("Yukon gov't & utilities’ response");
+ expect(normalizeNewsTitle('&lt;img src=x onerror=alert(1)&gt;')).toBe('<img src=x onerror=alert(1)>');
+ expect(parseNewsArticles([{...article, seendate:'20261026T110000Z'}], 'national', now)).toEqual([]);
 });

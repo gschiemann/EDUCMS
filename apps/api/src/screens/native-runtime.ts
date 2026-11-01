@@ -33,6 +33,18 @@ export const NATIVE_SLEEP_OUTCOMES = [
   'kept-on',
   'failed',
 ] as const;
+export const VENDOR_BACKLIGHT_DETECTIONS = [
+  'probing',
+  'available',
+  'absent',
+  'unreachable',
+  'unsupported',
+] as const;
+const vendorBacklightSchema = z.object({
+  d: z.enum(VENDOR_BACKLIGHT_DETECTIONS),
+  off: z.boolean(),
+  f: z.string().max(40).optional(),
+});
 const sleepSchema = z.object({
   blank: mechanismId.optional(),
   dream: z.boolean().optional(),
@@ -64,6 +76,14 @@ const sleepSchema = z.object({
   // `display-off` — not ours, and not a timeout; `unknown` = no idle time.
   off: z.enum(NATIVE_OFF_CAUSES).optional(),
   sotS: z.number().int().min(-1).max(999_999_999).optional(),
+  // Player 1.1.52+ (VendorBacklightProvider.reportJson): the vendor backlight
+  // — `d` detection, `off` = the backlight is off by OUR hand in this boot,
+  // `f` the fault latch. The player has sent it since 1.1.52; this schema
+  // used to STRIP it (z.object drops unknown keys), so the dashboard never
+  // learned a GUQ panel was dark behind a page that keeps painting and only
+  // offered "Turn panel off" (2026-10-31 field result). A malformed block is
+  // dropped on its own — never the whole report.
+  vb: vendorBacklightSchema.optional().catch(undefined),
 });
 
 /**
@@ -240,6 +260,9 @@ export function nativePowerStateChanged(
     a.sleep?.admin !== next.sleep?.admin ||
     a.sleep?.offAt !== next.sleep?.offAt ||
     a.sleep?.attS !== next.sleep?.attS ||
+    // The vendor backlight going dark / lit (or faulting) is a power change.
+    a.sleep?.vb?.off !== next.sleep?.vb?.off ||
+    a.sleep?.vb?.f !== next.sleep?.vb?.f ||
     // A wake step (requested, panel on, resumed, concluded) and a process
     // restart are exactly the facts that must reach the row promptly.
     a.wake?.reqAt !== next.wake?.reqAt ||

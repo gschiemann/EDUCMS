@@ -82,3 +82,10 @@ describe("Newsroom", () => {
     expect(backgroundWithOpacity("#ffffff", 0)).toBe("rgba(255,255,255,0)");
   });
 });
+
+it('styles edition, source, dates, status and credits through the existing toolbar schema', () => {
+ const keys=['edition','source','indexed','status','section','footer'];
+ const styles=Object.fromEntries(keys.map(k=>[k,{fontSize:32,color:'#335577'}]));
+ const {container}=render(<NewsroomWidget config={{_styles:styles}} previewData={[row('local','Story one'),row('world','Story two')]} />);
+ for(const key of keys) expect(container.querySelector(`[data-field-jump="${key}"]`)).toHaveStyle({fontSize:'32px',color:'#335577'});
+});

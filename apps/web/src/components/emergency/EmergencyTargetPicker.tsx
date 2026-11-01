@@ -29,6 +29,7 @@ import {
   targetChipLabel,
   type EmergencyTarget,
   type EmergencyTargets,
+  type TargetScreen,
 } from '@/lib/emergency-target';
 
 export interface EmergencyTargetPickerProps {
@@ -42,6 +43,15 @@ export interface EmergencyTargetPickerProps {
   onSelect: (target: EmergencyTarget) => void;
   onClose: () => void;
   onRetry: () => void;
+  /**
+   * Opt-in (broadcasts): screens become a checkbox list ("N screens selected")
+   * and "Done" hands the chosen set to `onSelectScreens`. All screens and
+   * groups still go through `onSelect`. Absent = the single-select picker the
+   * emergency surfaces use, unchanged.
+   */
+  multiple?: boolean;
+  selectedScreenIds?: readonly string[];
+  onSelectScreens?: (screens: TargetScreen[]) => void;
 }
 
 export function EmergencyTargetPicker({
@@ -53,10 +63,28 @@ export function EmergencyTargetPicker({
   onSelect,
   onClose,
   onRetry,
+  multiple = false,
+  selectedScreenIds,
+  onSelectScreens,
 }: EmergencyTargetPickerProps) {
   const t = useTranslations();
   const [query, setQuery] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Multi-select draft: committed only by "Done", dropped by closing.
+  const [draft, setDraft] = useState<string[]>([]);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current && multiple) setDraft([...(selectedScreenIds ?? [])]);
+    wasOpen.current = open;
+  }, [open, multiple, selectedScreenIds]);
+  const toggleDraft = (id: string) =>
+    setDraft((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]));
+  const done = () => {
+    const byId = new Map((targets?.screens ?? []).map((x) => [x.id, x]));
+    const chosen = draft.map((id) => byId.get(id)).filter((x): x is TargetScreen => !!x);
+    onSelectScreens?.(chosen);
+    close();
+  };
 
   /** Close with a fresh search for next time. */
   const close = () => {
@@ -238,7 +266,7 @@ export function EmergencyTargetPicker({
             </h3>
             <ul className="space-y-2">
               {screens.map((s) => {
-                const on = isSelected('device', s.id);
+                const on = multiple ? draft.includes(s.id) : isSelected('device', s.id);
                 const where = [s.location, s.groupName ? groupDisplayName(t, s.groupName) : null, multiTenant ? s.tenantName : null]
                   .filter(Boolean)
                   .join(' · ');
@@ -246,8 +274,8 @@ export function EmergencyTargetPicker({
                   <li key={s.id}>
                     <button
                       type="button"
-                      onClick={() => pick(screenTarget(s))}
-                      aria-pressed={on}
+                      onClick={() => (multiple ? toggleDraft(s.id) : pick(screenTarget(s)))}
+                      {...(multiple ? { role: 'checkbox' as const, 'aria-checked': on } : { 'aria-pressed': on })}
                       data-testid={`target-option-screen-${s.id}`}
                       className={rowCls}
                       style={rowStyle(on)}
@@ -274,6 +302,22 @@ export function EmergencyTargetPicker({
           </section>
         )}
       </div>
+
+      {multiple && (
+        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <p className="text-sm font-semibold" role="status" data-testid="target-selected-count">
+            {t('emergency.target.screensSelected', { count: draft.length })}
+          </p>
+          <button
+            type="button"
+            onClick={done}
+            data-testid="target-done"
+            className="min-h-[48px] px-5 rounded-xl bg-white text-slate-900 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            {t('emergency.target.done')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

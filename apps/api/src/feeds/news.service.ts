@@ -28,6 +28,40 @@ export interface NewsResult {
   limited?: boolean;
 }
 
+/** Decode headline entities as text; React still escapes any markup. */
+export function normalizeNewsTitle(value: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    quot: '"',
+    apos: "'",
+    lt: '<',
+    gt: '>',
+    nbsp: ' ',
+    hellip: '…',
+    mdash: '—',
+    ndash: '–',
+    rsquo: '’',
+    lsquo: '‘',
+    rdquo: '”',
+    ldquo: '“',
+  };
+  return value
+    .replace(
+      /&#(x[0-9a-f]+|[0-9]+);|&(amp|quot|apos|lt|gt|nbsp|hellip|mdash|ndash|rsquo|lsquo|rdquo|ldquo);/gi,
+      (raw, numeric, name) => {
+        if (name) return named[name.toLowerCase()];
+        const n =
+          numeric[0].toLowerCase() === 'x'
+            ? parseInt(numeric.slice(1), 16)
+            : Number(numeric);
+        return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff)
+          ? String.fromCodePoint(n)
+          : raw;
+      },
+    )
+    .trim();
+}
+
 /** Metadata only: never copy article bodies, logos or publisher photographs.
  * GDELT's dataset terms permit attributed commercial reuse. Coverage is search
  * based, not editorially curated, and seendate is INDEX time, not publication. */
@@ -62,7 +96,7 @@ export function parseNewsArticles(
       if (
         !Number.isFinite(time) ||
         time > now + 3600000 ||
-        time < now - 7 * 86400000
+        time < now - 86400000
       )
         return out;
       const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -70,7 +104,7 @@ export function parseNewsArticles(
       seen.add(key);
       seen.add(u.href);
       out.push({
-        title: a.title.trim().slice(0, 360),
+        title: normalizeNewsTitle(a.title).slice(0, 360),
         link: u.href,
         publisher: u.hostname.replace(/^www\./, ''),
         indexedAt,
@@ -87,6 +121,7 @@ export function parseNewsArticles(
 export class NewsService {
   private readonly logger = new Logger(NewsService.name);
   private pending = new Map<string, Promise<NewsResult>>();
+  private refreshes = new Map<string, Promise<NewsResult>>();
   private indexPending?: Promise<{ feed: RssFeedResult; fetchedAt: string }>;
   constructor(
     private readonly redis: RedisService,
@@ -123,7 +158,7 @@ export class NewsService {
     sources: string[] = [],
   ): Promise<NewsResult> {
     // National/world are shared across ALL locations, not one cache per ZIP.
-    const key = `news-v2:${scope}:${scope === 'local' ? location.toLowerCase() : 'us'}:${sources.join(',')}`;
+    const key = `news-v3:${scope}:${scope === 'local' ? location.toLowerCase() : 'us'}:${sources.join(',')}`;
     const cached = await getCachedFeed(this.redis.publisher, 'rss', key);
     if (cached) {
       try {
@@ -134,68 +169,127 @@ export class NewsService {
     }
     const running = this.pending.get(key);
     if (running) return running;
-    const fallback = async () => {
+    const lastGood = async (): Promise<NewsResult | null> => {
       const saved = await getCachedFeed(
         this.redis.publisher,
         'rss',
         `last-good:${key}`,
       );
-      if (saved) {
-        try {
-          const result = JSON.parse(saved) as NewsResult;
-          if (Date.now() - Date.parse(result.fetchedAt) <= 3600000)
-            return { ...result, stale: true };
-        } catch {
-          /* invalid cache */
-        }
-      }
+      if (!saved) return null;
       try {
-        return await this.recentIndex(scope, location, sources);
+        const result = JSON.parse(saved) as NewsResult;
+        if (
+          result.items.length &&
+          Date.now() - Date.parse(result.fetchedAt) <= 3600000
+        )
+          return { ...result, stale: true };
       } catch {
-        throw new ServiceUnavailableException(
-          'News is temporarily unavailable. Retrying automatically.',
-        );
+        /* invalid cache */
       }
+      return null;
     };
-    if (await getCachedFeed(this.redis.publisher, 'rss', `backoff:${key}`))
-      return fallback();
-    // A cache/backoff read can yield while another request starts loading.
+    const remember = async (result: NewsResult, seconds: number) => {
+      await setCachedFeed(
+        this.redis.publisher,
+        'rss',
+        key,
+        JSON.stringify(result),
+        seconds,
+      );
+      if (result.items.length)
+        await setCachedFeed(
+          this.redis.publisher,
+          'rss',
+          `last-good:${key}`,
+          JSON.stringify(result),
+          3600,
+        );
+      return result;
+    };
+    const unavailable = () =>
+      new ServiceUnavailableException(
+        'News is temporarily unavailable. Retrying automatically.',
+      );
+    // Search may take twenty seconds or be throttled. Keep it bounded and
+    // coalesced separately from the fast edition response: closing a browser
+    // request must not start a second search for the same edition.
+    let refresh = this.refreshes.get(key);
+    if (
+      !refresh &&
+      this.refreshes.size < 12 &&
+      !(await getCachedFeed(this.redis.publisher, 'rss', `backoff:${key}`))
+    ) {
+      // Recheck after the cache read yielded to another request.
+      refresh = this.refreshes.get(key);
+      if (!refresh) {
+        refresh = this.load(scope, location, sources)
+          .then(async (result) => {
+            if (result.items.length) return remember(result, 600);
+            return (await lastGood()) || result;
+          })
+          .catch(async (error: unknown) => {
+            this.logger.warn(
+              `News ${scope} fetch failed: ${error instanceof Error ? error.message : 'unknown upstream error'}`,
+            );
+            await setCachedFeed(
+              this.redis.publisher,
+              'rss',
+              `backoff:${key}`,
+              '1',
+              60,
+            );
+            return (await lastGood()) || Promise.reject(unavailable());
+          })
+          .finally(() => this.refreshes.delete(key));
+        this.refreshes.set(key, refresh);
+        void refresh.catch(() => undefined); // A fast index response may finish before this background refresh.
+      }
+    }
     const waiting = this.pending.get(key);
     if (waiting) return waiting;
-    if (this.pending.size >= 12) return fallback();
-    const request = this.load(scope, location, sources)
-      .then(async (result) => {
-        await setCachedFeed(
-          this.redis.publisher,
-          'rss',
-          key,
-          JSON.stringify(result),
-          600,
-        );
-        if (result.items.length)
-          await setCachedFeed(
+    if (this.pending.size >= 12)
+      return (
+        (await lastGood()) || {
+          items: [],
+          fetchedAt: new Date().toISOString(),
+          location,
+          scope,
+          provider: 'GDELT',
+          limited: true,
+        }
+      );
+    const request = (async () => {
+      try {
+        const indexed = await this.recentIndex(scope, location, sources);
+        if (indexed.items.length) {
+          // A complete search edition always wins over the limited index.
+          const complete = await getCachedFeed(
             this.redis.publisher,
             'rss',
-            `last-good:${key}`,
-            JSON.stringify(result),
-            3600,
+            key,
           );
-        return result;
-      })
-      .catch(async (error: unknown) => {
-        this.logger.warn(
-          `News ${scope} fetch failed: ${error instanceof Error ? error.message : 'unknown upstream error'}`,
-        );
-        await setCachedFeed(
-          this.redis.publisher,
-          'rss',
-          `backoff:${key}`,
-          '1',
-          60,
-        );
-        return fallback();
-      })
-      .finally(() => this.pending.delete(key));
+          if (complete) {
+            const result = JSON.parse(complete) as NewsResult;
+            if (result.items.length && !result.limited) return result;
+          }
+          return remember(indexed, 60);
+        }
+        const good = await lastGood();
+        if (good) return good;
+        // Return an honest empty edition promptly; the pending search fills
+        // the shared cache, and clients retry limited editions after a minute.
+        return indexed;
+      } catch {
+        if (refresh) {
+          try {
+            return await refresh;
+          } catch {
+            /* use last known edition below */
+          }
+        }
+        return (await lastGood()) || Promise.reject(unavailable());
+      }
+    })().finally(() => this.pending.delete(key));
     this.pending.set(key, request);
     return request;
   }
@@ -207,7 +301,7 @@ export class NewsService {
     location: string,
     sources: string[],
   ): Promise<NewsResult> {
-    const key = 'gdelt-recent-index-v1';
+    const key = 'gdelt-recent-index-v2';
     const saved = await getCachedFeed(this.redis.publisher, 'rss', key);
     let indexed: { feed: RssFeedResult; fetchedAt: string };
     if (saved) indexed = JSON.parse(saved);
@@ -238,8 +332,48 @@ export class NewsService {
           );
           if (response.status !== 200)
             throw new Error('Recent news index unavailable');
+          const incoming = parseRssOrAtom(
+            response.body.toString('utf8'),
+            10000,
+          );
+          // The upstream replaces its feed every fifteen minutes. Retain real
+          // indexed metadata across windows; never change a story's index time.
+          const archive = await getCachedFeed(
+            publisher,
+            'rss',
+            'gdelt-index-archive-v1',
+          );
+          let previous: RssFeedResult['items'] = [];
+          try {
+            previous = archive ? JSON.parse(archive) : [];
+          } catch {
+            /* cold archive */
+          }
+          const cutoff = Date.now() - 6 * 3600000;
+          const seen = new Set<string>();
+          const items = [...incoming.items, ...previous]
+            .filter((item) => {
+              const at = Date.parse(item.publishedAt || '');
+              if (
+                !Number.isFinite(at) ||
+                at < cutoff ||
+                at > Date.now() + 3600000 ||
+                seen.has(item.link)
+              )
+                return false;
+              seen.add(item.link);
+              return true;
+            })
+            .slice(0, 12000);
+          await setCachedFeed(
+            publisher,
+            'rss',
+            'gdelt-index-archive-v1',
+            JSON.stringify(items),
+            6 * 3600,
+          );
           const result = {
-            feed: parseRssOrAtom(response.body.toString('utf8'), 10000),
+            feed: { ...incoming, items },
             fetchedAt: new Date().toISOString(),
           };
           await setCachedFeed(
@@ -268,6 +402,36 @@ export class NewsService {
             'nbcnews.com',
             'npr.org',
             'pbs.org',
+            'nytimes.com',
+            'washingtonpost.com',
+            'usatoday.com',
+            'latimes.com',
+            'cnbc.com',
+            'axios.com',
+            'politico.com',
+            'thehill.com',
+            'newsweek.com',
+            'abcnews.com',
+            'aol.com',
+            'foxnews.com',
+            'time.com',
+            'forbes.com',
+            'fortune.com',
+            'bloomberg.com',
+            'nypost.com',
+            'theatlantic.com',
+            'sfgate.com',
+            'sacbee.com',
+            'sfchronicle.com',
+            'miamiherald.com',
+            'bostonglobe.com',
+            'seattletimes.com',
+            'chicagotribune.com',
+            'denverpost.com',
+            'dallasnews.com',
+            'tampabay.com',
+            'oregonlive.com',
+            'nj.com',
           ]
         : scope === 'world'
           ? [
@@ -278,6 +442,14 @@ export class NewsService {
               'dw.com',
               'france24.com',
               'rnz.co.nz',
+              'cbc.ca',
+              'abc.net.au',
+              'independent.co.uk',
+              'news.sky.com',
+              'straitstimes.com',
+              'scmp.com',
+              'rte.ie',
+              'japantimes.co.jp',
             ]
           : [];
     const rows = indexed.feed.items
@@ -285,7 +457,13 @@ export class NewsService {
         try {
           const url = new URL(item.link),
             host = url.hostname.replace(/^www\./, '');
-          if (outlets.length && !outlets.includes(host)) return false;
+          if (
+            outlets.length &&
+            !outlets.some(
+              (outlet) => host === outlet || host.endsWith('.' + outlet),
+            )
+          )
+            return false;
           if (
             scope === 'local' &&
             !item.title
@@ -404,7 +582,7 @@ export class NewsService {
       mode: 'artlist',
       format: 'json',
       maxrecords: '20',
-      timespan: '7d',
+      timespan: '1d',
       sort: 'datedesc',
     }))
       url.searchParams.set(k, v);

@@ -74,6 +74,7 @@ export function usePolledFeed<T>(
   holdMs = Infinity,
   timeoutMs = 8000,
   initialDelayMs = 0,
+  shouldRetrySoon?: (value: T) => boolean,
 ): { data: T | null; loading: boolean; error: boolean } {
   const requestUrl = buildUrl();
   const [data, setData] = useState<{ url: string; value: T } | null>(null);
@@ -126,7 +127,7 @@ export function usePolledFeed<T>(
         hasLoadedRef.current = true;
         goodAt.current = Date.now();
         setData({ url: requestUrl, value: json });
-        retrySoon = false;
+        retrySoon = shouldRetrySoon?.(json) ?? false;
         setError(false);
         setLoading(false);
       } catch {
@@ -163,7 +164,7 @@ export function usePolledFeed<T>(
       document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, intervalMs, requestUrl, holdMs, timeoutMs, initialDelayMs]);
+  }, [active, intervalMs, requestUrl, holdMs, timeoutMs, initialDelayMs, shouldRetrySoon]);
 
   return { data: data?.url === requestUrl ? data.value : null, loading, error };
 }
@@ -175,7 +176,7 @@ export interface LiveRssResult {
   error: boolean;
 }
 
-export function useLiveRssFeed(feedUrl: string | undefined, maxItems: number, holdMs = Infinity): LiveRssResult {
+export function useLiveRssFeed(feedUrl: string | undefined, maxItems: number, holdMs = 60 * 60 * 1000): LiveRssResult {
   const trimmed = (feedUrl || '').trim();
   const active = trimmed.length > 0;
   const url = `${API_BASE}/api/v1/feeds/rss?url=${encodeURIComponent(trimmed)}`;
@@ -202,7 +203,7 @@ export function useLiveIcsFeed(feedUrl: string | undefined): LiveIcsResult {
   const active = trimmed.length > 0;
   const url = `${API_BASE}/api/v1/feeds/ics?url=${encodeURIComponent(trimmed)}`;
 
-  const { data, loading, error } = usePolledFeed<IcsApiResponse>(active, () => url, ICS_POLL_INTERVAL_MS);
+  const { data, loading, error } = usePolledFeed<IcsApiResponse>(active, () => url, ICS_POLL_INTERVAL_MS, 24 * 60 * 60 * 1000);
 
   return {
     events: data?.events ?? null,

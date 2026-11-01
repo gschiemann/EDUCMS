@@ -99,3 +99,9 @@ export function NothingTyped({ color, height }: { color: string; height: number 
     </div>
   );
 }
+
+/** A designed board is not a live connection. Keep entered values honest on
+ * the canvas and on public screens, including saved legacy configurations. */
+export function ManualDataStamp({ height }: { height: number }) {
+  return <div data-manual-data="" style={{ position: 'absolute', bottom: 4, right: 6, zIndex: 20, padding: '2px 6px', borderRadius: 3, background: 'rgba(0,0,0,0.7)', color: '#ffffff', fontFamily: 'Arial, sans-serif', fontSize: Math.max(10, Math.min(22, height * 0.022)), lineHeight: 1.2, pointerEvents: 'none' }}>Manually updated</div>;
+}

@@ -310,6 +310,24 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     }
   });
 
+  // 2026-10-31 GUQ field result: "Turn off" darkened the MCU backlight, the
+  // page kept painting behind it, and the row kept offering only "Turn off".
+  it('GUQ vendor backlight off (sleep.vb.off) while painting → offers "Turn panel on" only', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-backlight' }, {}, {
+      ...PAINTING,
+      nativeRuntimeReport: { sleep: { blank: 'vendor-backlight', vb: { d: 'available', off: true } } },
+      nativeRuntimeReportAt: new Date().toISOString(),
+    });
+    expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+  });
+
+  it('GUQ vendor backlight, painting, no vb evidence → both verbs stay offered', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-backlight' }, {}, PAINTING);
+    expect(rtl.getByRole('button', { name: /Turn panel on/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /Turn panel off/ })).toBeTruthy();
+  });
+
   it('UNKNOWN panel state → no power buttons, one honest line', () => {
     renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, UNPROVED);
     expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
