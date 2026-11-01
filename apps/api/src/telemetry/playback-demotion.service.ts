@@ -50,6 +50,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 import { emergencyContentUse } from '../emergency/emergency-content-use';
 import { valid1080pRendition } from '../screens/video-rendition';
+import { demotionExpiryCutoff } from '../screens/playback-demotions';
 import { ScreenEventsService } from '../screens/events/screen-events.service';
 
 /** Ops hear about one screen × file at most this often (owner decision C). */
@@ -183,9 +184,13 @@ export class PlaybackDemotionService {
       copy.sha256 !== sha &&
       (typeof asset.fileSize !== 'number' || typeof copy.size !== 'number' || copy.size < asset.fileSize);
 
+    const unexpired = () => {
+      const cutoff = demotionExpiryCutoff();
+      return cutoff ? { createdAt: { gt: cutoff } } : {};
+    };
     const alreadyDemoted = served === 'original'
       ? !!(await this.db.screenPlaybackDemotion.findFirst({
-          where: { screenId, tenantId, sourceSha256: sha, clearedAt: null },
+          where: { screenId, tenantId, sourceSha256: sha, clearedAt: null, ...unexpired() },
           select: { id: true },
         }))
       : false;
@@ -309,6 +314,15 @@ export class PlaybackDemotionService {
   private async createDemotion(args: { tenantId: string; screenId: string; sha: string; assetId: string; evidence: Record<string, unknown> }): Promise<boolean> {
     try {
       await this.prisma.client.$transaction(async (tx: any) => {
+        // An expired row still holds the partial unique index; close it so a
+        // fresh, proven stutter can demote again.
+        const cutoff = demotionExpiryCutoff();
+        if (cutoff) {
+          await tx.screenPlaybackDemotion.updateMany({
+            where: { screenId: args.screenId, tenantId: args.tenantId, sourceSha256: args.sha, clearedAt: null, createdAt: { lte: cutoff } },
+            data: { clearedAt: new Date() },
+          });
+        }
         const row = await tx.screenPlaybackDemotion.create({
           data: {
             tenantId: args.tenantId,
@@ -345,7 +359,12 @@ export class PlaybackDemotionService {
   async listActive(screenId: string, tenantId: string): Promise<Array<{ id: string; sourceSha256: string; assetId: string | null; createdAt: Date }>> {
     try {
       return await this.db.screenPlaybackDemotion.findMany({
-        where: { screenId, tenantId, clearedAt: null },
+        where: {
+          screenId,
+          tenantId,
+          clearedAt: null,
+          ...(demotionExpiryCutoff() ? { createdAt: { gt: demotionExpiryCutoff() } } : {}),
+        },
         select: { id: true, sourceSha256: true, assetId: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
         take: 50,

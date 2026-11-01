@@ -116,7 +116,19 @@ export function loadWorker() {
   const send = (data: Record<string, unknown>) => new Promise<any>((resolvePort) => {
     handlers.message({
       data,
-      ports: [{ postMessage: (reply: any) => { if (!(reply && reply.started === true)) resolvePort(reply); } }],
+      ports: [{ postMessage: (reply: any) => { if (!(reply && (reply.started === true || reply.progress === true))) resolvePort(reply); } }],
+      waitUntil: () => undefined,
+    });
+  });
+  /** Every frame posted on the reply port, in order, until the real answer (progress frames included). */
+  const sendFrames = (data: Record<string, unknown>) => new Promise<any[]>((resolveFrames) => {
+    const frames: any[] = [];
+    handlers.message({
+      data,
+      ports: [{ postMessage: (reply: any) => {
+        frames.push(reply);
+        if (!(reply && (reply.started === true || reply.progress === true))) resolveFrames(frames);
+      } }],
       waitUntil: () => undefined,
     });
   });
@@ -132,7 +144,7 @@ export function loadWorker() {
     const cache = await caches.open(cacheName);
     await cache.put(url, new Response(bytes.slice(), { status: 200, headers: { 'content-type': 'video/mp4' } }));
   };
-  return { context, hooks, send, cacheNamed, fetchRequest, status, seedLegacyEntry, setFetch: (fn: unknown) => { context.fetch = fn; } };
+  return { context, hooks, send, sendFrames, cacheNamed, fetchRequest, status, seedLegacyEntry, setFetch: (fn: unknown) => { context.fetch = fn; } };
 }
 
 export type Worker = ReturnType<typeof loadWorker>;

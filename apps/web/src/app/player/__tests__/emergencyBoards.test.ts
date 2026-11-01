@@ -12,11 +12,13 @@ import { emergencyPaintIdentity } from '../emergencyPaintProof';
 import { alertFromOverridePush, alertFromRevEnvelope, overridePushPlaylistId } from '../emergencyRev';
 import { emergencyBoardStaysOnGlass } from '../emergencyInterlock';
 import {
+  isTemplateBoard,
   keepStagedBoards,
   persistStagedBoards,
   readPersistedStagedBoards,
   readStagedBoardsResponse,
   selectStagedBoard,
+  stagedBoardImageUrls,
   stagedBoardsStorageKey,
   type StagedBoards,
 } from '../emergencyBoards';
@@ -143,5 +145,80 @@ describe('the board interlock', () => {
     expect(emergencyBoardStaysOnGlass({ alertStaysOnGlass: false, boardOnGlass: true })).toBe(false);
     expect(emergencyBoardStaysOnGlass({ alertStaysOnGlass: true, boardOnGlass: false })).toBe(false);
     expect(emergencyBoardStaysOnGlass({ alertStaysOnGlass: false, boardOnGlass: false })).toBe(false);
+  });
+});
+
+/**
+ * 2026-10-31 — "first frame is the final board". `boardFor` now names the
+ * BOARD the manifest will play (`boardKey`), which may be a synthesized one:
+ * the screen's single file (`asset:…`) or the system text board (`system:…`).
+ * The launch site's live LANDSCAPE playlists have no items, so `playlistId`
+ * alone named a board that was never staged.
+ */
+const systemBoard = (type: string, drill: boolean, bg = drill ? '#3730a3' : '#dc2626') => ({
+  id: 'DEFAULT_EMERGENCY', name: `SYSTEM DEFAULT - ${type}`, contentRev: `rev-${type}-${drill ? 'd' : 'l'}`, items: [],
+  template: { name: 'EMERGENCY OVERRIDE', bgColor: bg, screenWidth: 1920, screenHeight: 1080, zones: [{ id: 'emergency-zone', widgetType: 'TEXT', defaultConfig: { content: `${type}` } }] },
+});
+const RESPONSE_V2 = {
+  assets: [], setHash: 'set-2',
+  boards: {
+    'pl-land-empty-never-staged': undefined,
+    'pl-port': board('pl-port', 'https://cdn.invalid/port.png'),
+    'pl-drill': board('pl-drill', 'https://cdn.invalid/drill.png'),
+    'asset:EVACUATE:live': { id: 'screen-asset-evacuate', name: 'EVACUATE (custom asset)', items: [{ item_id: 'screen-asset-scr-evacuate', asset_id: null, asset_hash: null, url: 'https://cdn.invalid/exit.png', duration_ms: 60_000, sequence: 0, mime_type: 'image/png', transition_type: null }] },
+    'system:MEDICAL:live': systemBoard('MEDICAL', false),
+    'system:MEDICAL:drill': systemBoard('MEDICAL', true),
+    'system:HOLD:live': systemBoard('HOLD', false),
+    'bogus:key': systemBoard('X', false), // an unknown staging kind is dropped
+  },
+  boardFor: {
+    // A landscape screen: the live playlist resolved but is EMPTY → the system board; the drill board has content.
+    MEDICAL: { live: { playlistId: 'pl-land-empty-never-staged', perScreen: false, boardKey: 'system:MEDICAL:live' }, drill: { playlistId: 'pl-drill', perScreen: false, boardKey: 'pl-drill' } },
+    EVACUATE: { live: { playlistId: null, perScreen: false, boardKey: 'asset:EVACUATE:live' }, drill: { playlistId: null, perScreen: false, boardKey: 'asset:EVACUATE:live' } },
+    HOLD: { live: { playlistId: null, perScreen: false, boardKey: 'system:HOLD:live' }, drill: { playlistId: null, perScreen: false, boardKey: 'system:HOLD:drill' } },
+  },
+};
+
+describe('what the manifest will play: boardKey, synthesized boards', () => {
+  const staged = readStagedBoardsResponse(RESPONSE_V2)!;
+  it('reads synthesized boards under their staging keys and keeps the manifest id inside; an unknown kind is dropped', () => {
+    expect(Object.keys(staged.boards).sort()).toEqual(['asset:EVACUATE:live', 'pl-drill', 'pl-port', 'system:HOLD:live', 'system:MEDICAL:drill', 'system:MEDICAL:live']);
+    expect(staged.boards['system:MEDICAL:live'].id).toBe('DEFAULT_EMERGENCY');
+    expect(isTemplateBoard(staged.boards['system:MEDICAL:live'])).toBe(true);
+    expect(isTemplateBoard(staged.boards['pl-port'])).toBe(false);
+    expect(staged.boardFor.MEDICAL?.live.boardKey).toBe('system:MEDICAL:live');
+  });
+  it('a landscape LIVE alert whose own playlist is empty opens on the SYSTEM board, never the empty playlist, never the portrait board', () => {
+    const raised = alertFromOverridePush(REAL_PUSH_PAYLOAD)!;
+    const picked = selectStagedBoard(staged, raised, null, { severity: 'CRITICAL' });
+    expect(picked?.id).toBe('DEFAULT_EMERGENCY');
+    expect(picked?.contentRev).toBe('rev-MEDICAL-l');
+  });
+  it('the same type as a DRILL opens on the drill board — live and drill never cross', () => {
+    expect(selectStagedBoard(staged, { type: 'medical', isDrill: true }, null, { severity: 'CRITICAL' })?.id).toBe('pl-drill');
+    expect(selectStagedBoard(staged, { type: 'HOLD', isDrill: true }, null, { severity: 'CRITICAL' })).toBeNull(); // no drill system board staged → typed surface
+    expect(selectStagedBoard(staged, { type: 'HOLD' }, null, { severity: 'CRITICAL' })?.contentRev).toBe('rev-HOLD-l');
+  });
+  it("a screen with only a single file for the type opens on that file's board", () => {
+    expect(selectStagedBoard(staged, { type: 'evacuate' }, null, { severity: 'CRITICAL' })?.id).toBe('screen-asset-evacuate');
+  });
+  it('the system board is skipped when the trigger carries words, media or another colour — the manifest brings a different board then', () => {
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, null, { severity: 'CRITICAL', textBlob: 'Room 12' })).toBeNull();
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, null, { severity: 'CRITICAL', mediaUrl: 'https://cdn.invalid/x.png' })).toBeNull();
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, null, { severity: 'MEDIUM' })).toBeNull();
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, null, { severity: 'HIGH' })?.id).toBe('DEFAULT_EMERGENCY');
+    expect(selectStagedBoard(staged, { type: 'MEDICAL' }, null, null)?.id).toBe('DEFAULT_EMERGENCY');
+    // A CUSTOM board is what the manifest plays whatever the trigger's words or severity.
+    expect(selectStagedBoard(staged, { type: 'medical', isDrill: true }, null, { severity: 'MEDIUM', textBlob: 'words' })?.id).toBe('pl-drill');
+  });
+  it('an older payload (playlistId only) selects exactly as before', () => {
+    const old = readStagedBoardsResponse(RESPONSE)!;
+    expect(old.boardFor.MEDICAL?.live.boardKey).toBeNull();
+    expect(selectStagedBoard(old, { type: 'medical' })?.id).toBe('pl-port');
+  });
+  it('the pictures to pre-decode: images of every staged board, once each, bounded', () => {
+    expect(stagedBoardImageUrls(staged)).toEqual(['https://cdn.invalid/port.png', 'https://cdn.invalid/drill.png', 'https://cdn.invalid/exit.png']);
+    expect(stagedBoardImageUrls(staged, 2)).toHaveLength(2);
+    expect(stagedBoardImageUrls(null)).toEqual([]);
   });
 });

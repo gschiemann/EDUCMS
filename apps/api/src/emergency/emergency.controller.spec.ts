@@ -760,10 +760,11 @@ describe('EmergencyController', () => {
         expect.arrayContaining([
           { scopeType: 'tenant' },
           { scopeType: 'device', scopeId: 'scr1' },
+          { scopeType: 'devices', screenIds: { has: 'scr1' } },
           { scopeType: 'group', scopeId: 'grp9' },
         ]),
       );
-      expect(scopeOr).toHaveLength(3);
+      expect(scopeOr).toHaveLength(4);
     });
 
     it('omits the group scope when the screen is in no group', async () => {
@@ -777,6 +778,7 @@ describe('EmergencyController', () => {
       expect(scopeOr).toEqual([
         { scopeType: 'tenant' },
         { scopeType: 'device', scopeId: 'scr1' },
+        { scopeType: 'devices', screenIds: { has: 'scr1' } },
       ]);
     });
 
