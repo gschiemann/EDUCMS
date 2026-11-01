@@ -79,6 +79,16 @@ import {
 } from './customer-alert-copy';
 import { gradeScreenRow } from './render-trust-grade';
 import { otaWindowOf, windowsForScreen, type DisplayScheduleRowLike } from './schedule-windows';
+// 2026-11-01 — the synthetic emergency drill (apps/api/src/emergency/drill/):
+// its own alerts get no customer record copy, and a problem that begins while
+// it has a bench screen's glass is deferred (`synthetic-drill`).
+import { isRunnerMintedDrillId } from '../../emergency/drill/synthetic-drill.registry';
+import {
+  DRILL_RESULT_ACTION,
+  DRILL_STARTED_ACTION,
+  DRILL_TIMING,
+  drillWindowsByPane,
+} from '../../emergency/drill/synthetic-drill.policy';
 
 const MIN = 60_000;
 /** Ledger kinds that mean "rebooting / updating right now" (screens/events/screen-events.ts). */
@@ -249,6 +259,11 @@ export class CustomerAlertEmailsService {
    */
   recordEmergency(input: EmergencyRecordInput): void {
     try {
+      // The synthetic drill's own alerts (2026-11-01): skipped ONLY when the
+      // trigger itself says drill AND this process's drill runner minted the
+      // id moments ago. A live alert, an operator's drill, or any id that
+      // merely looks like a runner id always gets its copy.
+      if (input.isDrill === true && isRunnerMintedDrillId(input.overrideId)) return;
       if (resolveAlertMode() === 'off') return;
       const key = `${input.overrideId}:${input.event}`;
       const now = Date.now();
@@ -710,7 +725,7 @@ export class CustomerAlertEmailsService {
   ): Promise<Map<string, LoadedFacts>> {
     const ids = [...new Set(problems.map((p) => p.screenId))];
     const tenantIds = [...new Set(problems.map((p) => p.tenantId))];
-    const [rows, schedules, audits, ledger, history] = await Promise.all([
+    const [rows, schedules, audits, ledger, history, drillRows] = await Promise.all([
       this.prisma.client.screen.findMany({ where: { id: { in: ids } }, select: FACT_SELECT }) as Promise<FactRow[]>,
       this.prisma.client.displaySchedule
         .findMany({
@@ -750,7 +765,27 @@ export class CustomerAlertEmailsService {
           select: { screenId: true, open: true, reason: true, startedAt: true, closedAt: true },
         })
         .catch(() => null),
+      // 2026-11-01 — synthetic emergency drill windows (bench screens only).
+      // A read that fails costs nothing but the defer: drills only ever run
+      // on internal organisations, so this never adds a way to silence — or
+      // to email — a customer.
+      Promise.resolve()
+        .then(() =>
+          this.prisma.client.auditLog.findMany({
+            where: {
+              tenantId: { in: tenantIds },
+              action: { in: [DRILL_STARTED_ACTION, DRILL_RESULT_ACTION] },
+              createdAt: { gte: new Date(now - DRILL_TIMING.MAX_RUN_MS - DRILL_TIMING.CUSTOMER_ALERT_TAIL_MS - 10 * MIN) },
+            },
+            select: { action: true, details: true, createdAt: true },
+            take: 500,
+          }),
+        )
+        .catch(() => null),
     ]);
+    const drillWindows = Array.isArray(drillRows)
+      ? drillWindowsByPane(drillRows as Array<{ action: string; details: string | null; createdAt: Date }>)
+      : new Map<string, { startMs: number; untilMs: number }>();
     const out = new Map<string, LoadedFacts>();
     for (const row of rows) {
       // A read that failed must defer, never send: an unknown schedule might
@@ -804,6 +839,7 @@ export class CustomerAlertEmailsService {
         lastMaintenanceAt,
         maintenanceTimes,
         offlineHistory,
+        syntheticDrill: drillWindows.get(row.id) ?? null,
       };
       out.set(row.id, { row, facts });
     }

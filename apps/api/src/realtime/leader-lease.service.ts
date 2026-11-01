@@ -140,6 +140,12 @@ export const LEASE = {
   // refusal evaluator reads refusals every replica writes to shared Redis sets.
   POST_RESTART_FLEET_CHECK: 'alarms:post-restart-fleet-check',
   DEVICE_CREDENTIAL_REFUSAL_ALARM: 'alarms:device-credential-refusals',
+  // 2026-11-01 — the synthetic emergency drill (emergency/drill/). Gates the
+  // TICK only — the in-process trigger and all-clear it calls stay un-leased
+  // (binding rule 2). Unlike every other lease here, a DEGRADED answer (no
+  // Redis) means NO drill: a drill without the realtime path proves nothing,
+  // and two replicas must never drill the same bench glass at once.
+  EMERGENCY_DRILL: 'emergency:synthetic-drill',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

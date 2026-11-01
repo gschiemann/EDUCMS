@@ -1062,3 +1062,95 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
     });
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════
+// 2026-11-01 — the synthetic emergency drill (emergency/drill/) is not an
+// incident: a problem that began while a drill had a bench screen's glass is
+// deferred (`synthetic-drill`), and so is never counted toward a platform
+// incident either.
+// ═════════════════════════════════════════════════════════════════════════
+
+describe('a synthetic emergency drill is not an incident (2026-11-01)', () => {
+  /** The runner's STARTED / RESULT rows for one run on `screenId`, in the bench tenant. */
+  const drillRows = (screenId: string, startedAt: number, endedAt: number) => {
+    const runId = `run-${screenId}`;
+    const started = {
+      v: 1, runId, kind: 'override', overrideId: 'ovr_drill_x', slot: 's', mode: 'shadow', type: 'hold', screenId, paneIds: [screenId],
+      hardwareModel: null, deviceClass: null, playerVersion: null, dispatchAt: new Date(startedAt).toISOString(),
+      expiresAt: new Date(startedAt + 180_000).toISOString(), runnerUserId: 'runner', rootTenantId: 'bench',
+    };
+    const result = {
+      v: 1, runId, kind: 'override', verdict: 'FAIL', reason: 'r', failedLink: 'delivery', mode: 'shadow', slot: 's', type: 'hold',
+      overrideId: 'ovr_drill_x', messageId: null, expected: null, dispatchAtMs: startedAt, clearAtMs: null, cleared: true, paneIds: [screenId],
+      panes: [], screenId, rootTenantId: 'bench', hardwareModel: null, deviceClass: null, playerVersion: null, alerted: false, runnerUserId: 'runner',
+    };
+    return [
+      { tenantId: 'bench', action: 'EMERGENCY_DRILL_STARTED', details: JSON.stringify(started), createdAt: new Date(startedAt) },
+      { tenantId: 'bench', action: 'EMERGENCY_DRILL_RESULT', details: JSON.stringify(result), createdAt: new Date(endedAt) },
+    ];
+  };
+  /** The world's audit read, plus the drill-window read (which carries no targetId). */
+  const withDrillRows = (rows: Row[]) => {
+    const real = w.client.auditLog.findMany;
+    w.client.auditLog.findMany = jest.fn(async (args: any) =>
+      Array.isArray(args?.where?.action?.in) && args.where.action.in.includes('EMERGENCY_DRILL_STARTED')
+        ? rows.filter((r) => args.where.tenantId.in.includes(r.tenantId) && args.where.action.in.includes(r.action))
+        : real(args),
+    );
+  };
+  const dropThree = () => {
+    w.tenants.set('bench', { id: 'bench', name: 'VenueOS bench', slug: 'bench', parentId: null, archivedAt: null, otaWindowStart: null, otaWindowEnd: null, otaWindowTimezone: null });
+    w.users.push({ id: 'bench-admin', tenantId: 'bench', role: 'SCHOOL_ADMIN', email: 'bench-admin@example.org', status: 'ACTIVE', deletedAt: null, alertEmailsEnabled: true, alertEmailLocale: null, mustSetupCredentials: false, emailVerificationPending: false });
+    for (const [id, t] of [['acme-tv', 'acme'], ['globex-tv', 'globex'], ['bench-tv', 'bench']]) {
+      screen(w, id, t);
+      goOffline(w, id, w.clock.now);
+    }
+    // A fleet big enough that two organisations are not 30 % of it (the share rule).
+    for (let i = 0; i < 10; i++) screen(w, `healthy-${i}`, 'initech');
+  };
+  const keepHealthyPinging = () => {
+    for (let i = 0; i < 10; i++) comeBack(w, `healthy-${i}`);
+  };
+
+  it('three organisations drop together, one of them a bench screen inside a drill window → NOT a platform incident; the drill screen is deferred, the other two emailed', async () => {
+    const { svc, email } = build(w);
+    const dropAt = w.clock.now;
+    dropThree();
+    // The drill started a minute after the screen's last check-in and ended 5 minutes later.
+    withDrillRows(drillRows('bench-tv', dropAt + 60_000, dropAt + 6 * MIN));
+    w.clock.now += 15 * MIN;
+    keepHealthyPinging();
+    await scan(w, svc, 0);
+    keepHealthyPinging();
+    const res = await scan(w, svc);
+    expect(res.platformIncident).toBe(false);
+    expect(res.deferred['synthetic-drill']).toBe(1);
+    expect(sentTo(email)).toEqual(['acme-admin@example.org', 'globex-admin@example.org']);
+  });
+
+  it('control: the same three drops with no drill rows ARE a platform incident (nobody emailed, one owner alert)', async () => {
+    const { svc, email, mailer } = build(w);
+    dropThree();
+    withDrillRows([]);
+    w.clock.now += 15 * MIN;
+    keepHealthyPinging();
+    await scan(w, svc, 0);
+    keepHealthyPinging();
+    const res = await scan(w, svc);
+    expect(res.platformIncident).toBe(true);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('after the run + 10 min the bench screen is judged like any other (the drill window does not excuse a real outage forever)', async () => {
+    const { svc, email } = build(w);
+    const dropAt = w.clock.now;
+    screen(w, 'bench-tv', 'lincoln');
+    goOffline(w, 'bench-tv', dropAt);
+    withDrillRows(drillRows('bench-tv', dropAt + 60_000, dropAt + 2 * MIN).map((r) => ({ ...r, tenantId: 'lincoln' })));
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    await scan(w, svc);
+    expect(sentTo(email)).toEqual(['principal@example.org', 'superintendent@example.org']);
+  });
+});

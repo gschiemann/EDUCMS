@@ -167,6 +167,12 @@ export interface ScreenFacts {
   maintenanceTimes?: readonly Date[];
   /** This screen's OFFLINE incident row (the previous dark spell, or the one in progress). */
   offlineHistory?: OfflineHistory | null;
+  /**
+   * 2026-11-01 — the last SYNTHETIC EMERGENCY DRILL that had this screen's
+   * glass (apps/api/src/emergency/drill/): from its start to its result, plus
+   * a 10-minute tail. Bench screens only (internal organisations).
+   */
+  syntheticDrill?: { startMs: number; untilMs: number } | null;
 }
 
 /** What the dark-spell pattern reads from the screen's `screen_alert_incidents` OFFLINE row. */
@@ -186,7 +192,27 @@ export type DeferReason =
   | 'display-schedule-off'
   | 'update-window'
   | 'maintenance'
-  | 'daily-pattern';
+  | 'daily-pattern'
+  | 'synthetic-drill';
+
+/**
+ * 2026-11-01 — a problem that began while a synthetic emergency drill had
+ * the screen's glass (or within its 10-minute tail) was caused by — or is
+ * indistinguishable from — the drill: not an incident. Deferred while the
+ * window lasts; a problem still there afterwards is judged like any other.
+ * The 2-minute slack before the start is the drill's own "checked in within
+ * 2 min" guard: a unit unplugged in that gap is the drill's negative control.
+ * Because every `intendedDowntime` screen is dropped from the platform-
+ * incident cluster, a drill can never manufacture a platform incident either.
+ */
+export function syntheticDrillCovers(
+  w: { startMs: number; untilMs: number } | null | undefined,
+  problemStartMs: number,
+  nowMs: number,
+): boolean {
+  if (!w) return false;
+  return nowMs <= w.untilMs && problemStartMs >= w.startMs - 2 * MIN && problemStartMs <= w.untilMs;
+}
 
 /**
  * `Screen.lastOtaState` values (player-ota, upper-case on the wire) that mean
@@ -231,6 +257,7 @@ export function intendedDowntime(
 ): DeferReason | null {
   const missedOn = shape === 'missed-on-time' && kind === 'OFFLINE';
   if (!f.tenantId || f.status === 'REVOKED' || f.status === 'PENDING') return 'unpaired';
+  if (syntheticDrillCovers(f.syntheticDrill, problemStartMs, nowMs)) return 'synthetic-drill';
   if (!f.lastPingAt) return 'not-recently-used';
   if (!missedOn && nowMs - f.lastPingAt.getTime() > ALERT_RULES.UNUSED_MS) return 'not-recently-used';
   if (f.pairedAt && problemStartMs - f.pairedAt.getTime() < ALERT_RULES.NEW_INSTALL_MS) return 'just-installed';

@@ -8,6 +8,11 @@ import { EmergencyController } from './emergency/emergency.controller';
 import { ScreenEmergencyController } from './emergency/screen-emergency.controller';
 import { EmergencyReadinessController } from './emergency/emergency-readiness.controller';
 import { EmergencyReadinessService } from './emergency/emergency-readiness.service';
+// 2026-11-01 — the synthetic emergency drill (emergency/drill/): an in-process,
+// leader-leased timer that drills listed bench screens of INTERNAL organisations
+// through the controller's own trigger / all-clear. Off unless
+// EMERGENCY_DRILL_SCREENS is set; EMERGENCY_DRILL_CRON_DISABLED=1 beats everything.
+import { SyntheticDrillRunner } from './emergency/drill/synthetic-drill.runner';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
@@ -329,6 +334,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // See health/boot-readiness.service.ts for why it can never pod-thrash.
     BootReadinessService,
     EmergencyReadinessService,
+    SyntheticDrillRunner,
     GeocodingService,
     PlaylistDistributionService,
     WebsocketSignerService,
