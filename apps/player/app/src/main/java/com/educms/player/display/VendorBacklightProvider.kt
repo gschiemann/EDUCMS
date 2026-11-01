@@ -321,6 +321,14 @@ object VendorBacklightProvider : DisplayControlProvider {
     /** Is the backlight off because WE turned it off, in THIS boot? */
     fun isDarkByUs(): Boolean = engine?.dark == true
 
+    /**
+     * 1.1.59 — the probe's answer as its wire word ("absent", "probing",
+     * "available", "unreachable", "unsupported"), or null when the provider
+     * never started. Read by the setup list's needs matrix: a vendor service
+     * that is installed but refuses us is what makes "VenueOS sleep" needed.
+     */
+    fun detectionWire(): String? = engine?.detection?.wire
+
     /** What the last vendor blank proved (SleepProofPolicy outcome), or null. */
     fun lastBlankOutcome(): String? = lastBlankOutcome
 

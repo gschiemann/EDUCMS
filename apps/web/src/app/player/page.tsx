@@ -12675,7 +12675,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               }}
               className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
             >
-              Device setup
+              Finish screen setup
             </button>
           )}
           {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
@@ -15522,6 +15522,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       title="Set the LED's visible pixel size (overrides the controller's frame buffer)"
                     >
                       <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
+                    </button>
+                  )}
+                  {bootMounted && isAndroidWebView() && nativeHas('openSetupChecklist') && (
+                    <button
+                      // 2026-11-01 (APK 1.1.59) — "Finish screen setup": the
+                      // one-time permission list. The APK never asks for a
+                      // permission mid-use any more, so this is the on-glass
+                      // way back to anything still missing (the dashboard's
+                      // "Open setup on this panel" is the other). Existing
+                      // bridge method (≥ 1.1.6), fire-and-forget; the APK
+                      // refuses it over an alert and logs why.
+                      data-edu-finish-setup=""
+                      onClick={(e) => { e.stopPropagation(); nativeFire('openSetupChecklist'); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Settings className="w-4 h-4 text-slate-400" /> Finish screen setup
                     </button>
                   )}
                   {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (

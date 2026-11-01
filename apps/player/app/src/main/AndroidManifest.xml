@@ -8,12 +8,16 @@
     <!--
       USB playlist sticks (2026-10-22): the player reads its package straight
       off a mounted stick, with no picker. Android <= 10 needs READ_EXTERNAL_
-      STORAGE for that; Android 11+ needs "all files access", granted ONCE per
-      box on a settings screen UsbAutoImport opens the first time a stick is
-      unreadable (never over an emergency hold). Sideloaded kiosk app: the Play
-      policy on MANAGE_EXTERNAL_STORAGE does not apply.
+      STORAGE for that; Android 11+ needs "all files access". 1.1.59: BOTH are
+      asked ONCE, on the first-launch setup list (setup/SetupCeremony — the
+      storage permission inside its one permission dialog, all files access as
+      its own row), never mid-use; the USB card's button only re-opens that
+      list. maxSdkVersion 29 (was 32): from Android 11 the only consumer
+      (UsbImportPolicy.hasFileAccess) reads all files access, never this.
+      Sideloaded kiosk app: the Play policy on MANAGE_EXTERNAL_STORAGE does
+      not apply.
     -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
@@ -127,7 +131,11 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 1.1.59: SCHEDULE_EXACT_ALARM capped at 32. Android 12/12L grant it
+         at install; from 13 USE_EXACT_ALARM (install-time) is the one that
+         holds, so the user-revocable one is never consulted there and no
+         setup row is needed on any version. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!--
@@ -302,6 +310,24 @@
         </intent>
         <intent>
             <action android:name="android.settings.HOME_SETTINGS" />
+        </intent>
+        <!-- 1.1.59 — the setup list's new rows: All files access (USB
+             sticks), Accessibility (VenueOS sleep, only where the vendor
+             sleep refuses us), and the app's own page for permissions
+             Android will no longer ask about in a dialog. -->
+        <intent>
+            <action android:name="android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION" />
+            <data android:scheme="package" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.ACCESSIBILITY_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+            <data android:scheme="package" />
         </intent>
         <intent>
             <action android:name="android.settings.SETTINGS" />

@@ -27,7 +27,7 @@
     <string name="usb_no_drive_title">No se encontró ninguna unidad USB</string>
     <string name="usb_no_drive_body">Conecte la unidad al puerto USB de esta pantalla y elija Buscar de nuevo.</string>
     <string name="usb_access_title">VenueOS necesita permiso para leer unidades USB</string>
-    <string name="usb_access_body">Elija Permitir, active “%1$s” y pulse Atrás para volver aquí.</string>
+    <string name="usb_access_body">Es un paso de configuración único. Elija Terminar la configuración, active “%1$s” y pulse Atrás para volver aquí.</string>
     <string name="usb_no_access_page_title">Esta pantalla no puede dar a VenueOS acceso a unidades USB</string>
     <string name="usb_no_access_page_body">Android en esta pantalla no tiene una página para permitirlo, así que la unidad no se puede leer aquí.</string>
     <string name="usb_no_package_title">No hay ninguna lista de VenueOS en esta unidad</string>
@@ -44,7 +44,7 @@
     <string name="usb_read_failed_body">La unidad se retiró o dejó de responder: vuelva a conectarla y elija Buscar de nuevo.</string>
 
     <!-- Botones -->
-    <string name="usb_allow">Permitir</string>
+    <string name="usb_allow">Terminar la configuración</string>
     <string name="usb_not_now">Ahora no</string>
     <string name="usb_look_again">Buscar de nuevo</string>
     <string name="usb_network">Configuración de red</string>

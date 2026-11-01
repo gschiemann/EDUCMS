@@ -637,7 +637,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         /** The storage permission dialog the USB card's Allow raises on Android 10 and older. */
-        private const val USB_READ_PERMISSION_REQUEST = 4711
 
         /**
          * SEC-002 (re-audit) — spacing and cap for the bridge-nonce
@@ -1521,10 +1520,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         liveInstances.incrementAndGet()
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
-        if (savedInstanceState == null) {
-            // Location for the Wi-Fi list is asked once, here, never during a join (2026-10-26).
-            window.decorView.post { runCatching { com.educms.player.settings.WifiScan.requestAtFirstLaunch(this) } }
-        }
+        // 1.1.59 — location for the Wi-Fi list is no longer asked here: it is
+        // part of the setup list's ONE permission dialog (SetupCeremony
+        // STEP_RUNTIME), with notifications and storage. Two dialogs from two
+        // owners on first launch is what that list exists to stop.
         // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
         // expanded so support can answer "what's the kiosk's actual
         // hardware / WebView / ABI / network state?" from a single
@@ -3564,14 +3563,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The USB card's Allow (2026-10-26) — a PERSON's press, never a scan's
-     * guess. Android 11+: Android's "All files access" page for this app
-     * (the app's own toggle first, the list of apps second, the app's info
-     * page last), each resolved through [com.educms.player.setup.
-     * SettingsPagePolicy] so only a system Settings app — never a browser —
-     * can answer; the card reads the drive again when the person comes back
-     * (UsbAutoImport.hostResumed). Older Android: the storage permission
-     * dialog. Never over an alert, never inside a pinned task.
+     * The USB card's "Finish screen setup" (1.1.59; was "Allow" since
+     * 2026-10-26) — a PERSON's press. The card no longer opens a permission
+     * page of its own: every grant lives on the one setup list, so this opens
+     * THAT list, where "Play from a USB drive" (Android 11+) or the permission
+     * dialog (older Android) is a row. The card reads the drive again when the
+     * person comes back (UsbAutoImport.hostResumed). Never over an alert,
+     * never inside a pinned task (the list refuses both itself).
      */
     private fun openUsbFileAccess() {
         if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return
@@ -3581,57 +3579,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (runCatching { LockTaskController.isActive(this) }.getOrDefault(false)) {
-            PlayerLogger.w("UsbImportCard", "file access page not opened — the kiosk is pinned")
+            PlayerLogger.w("UsbImportCard", "setup list not opened — the kiosk is pinned")
             usb.noAccessPage()
             return
         }
-        if (Build.VERSION.SDK_INT < 30) {
-            usb.awaitingAccess()
-            runCatching { requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), USB_READ_PERMISSION_REQUEST) }
-                .onFailure {
-                    PlayerLogger.w("UsbImportCard", "storage permission dialog unavailable: ${it.message}")
-                    usb.noAccessPage()
-                }
-            return
-        }
-        val pkg = Uri.parse("package:$packageName")
-        val routes = listOf(
-            Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, pkg),
-            Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
-            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg),
-        )
-        val app = applicationContext
-        Thread({
-            val browsers = runCatching { com.educms.player.setup.SetupFactsReader.browserPackages(app) }.getOrDefault(emptySet())
-            val own = setOf(app.packageName, "com.educms.manager", "com.educms.manager.debug")
-            val chosen = routes.firstNotNullOfOrNull { intent ->
-                val decision = runCatching {
-                    com.educms.player.setup.SettingsPagePolicy.decide(
-                        com.educms.player.setup.SetupFactsReader.resolve(app, intent, browsers),
-                        own,
-                    )
-                }.getOrNull()
-                (decision as? com.educms.player.setup.PageDecision.Open)?.let { intent to it.handler }
-            }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return@runOnUiThread
-                if (chosen == null) {
-                    PlayerLogger.w("UsbImportCard", "no Settings page grants file access on this screen")
-                    usb.noAccessPage()
-                    return@runOnUiThread
-                }
-                val (intent, handler) = chosen
-                usb.awaitingAccess()
-                runCatching {
-                    startActivity(Intent(intent).setClassName(handler.packageName, handler.activityName))
-                    PlayerLogger.i("UsbImportCard", "opened ${intent.action} (${handler.packageName}) for file access")
-                }.onFailure {
-                    PlayerLogger.w("UsbImportCard", "file access page would not open: ${it.message}")
-                    usb.noAccessPage()
-                }
-            }
-        }, "venueos-usb-access").apply { isDaemon = true }.start()
+        com.educms.player.usb.UsbImportCard.hide("finish screen setup")
+        usb.awaitingAccess()
+        openSetupChecklistNow("usb card")
     }
 
     /**

@@ -94,16 +94,16 @@ internal class SetupChecklistView(
     private companion object {
         // Palette lifted from the existing kiosk overlays so setup does
         // not look like a different product than the gate that precedes it.
-        const val BG = 0xFF0F172A.toInt()
+        const val BG = com.educms.player.network.NetTheme.CARD_TOP
 
         /** 90%-opaque slate — the recovery overlay's scrim, to the byte. */
-        const val SCRIM = 0xE60F172A.toInt()
+        const val SCRIM = 0xF205060F.toInt()
         const val TEXT = 0xFFFFFFFF.toInt()
         const val SUBTLE = 0xFF94A3B8.toInt()
         const val FAINT = 0xFF475569.toInt()
         const val WARN = 0xFFFBBF24.toInt()
         const val OK = 0xFF34D399.toInt()
-        const val ACCENT = 0xFF6366F1.toInt()
+        const val ACCENT = com.educms.player.network.NetTheme.PRIMARY_TOP
 
         /**
          * Status glyphs. `✓` and `○` are near-universal; the operator's
@@ -140,6 +140,18 @@ internal class SetupChecklistView(
     private val secondaryButton: Button
     private val card: LinearLayout
 
+    /**
+     * 1.1.59 — the Network screen's look: large type read from across a
+     * room. Scales with the screen's width in dp (1.0 on a phone-width or LED
+     * column, up to 1.6 on a 1920-dp TV), so a 320 px poster column is
+     * unchanged and a wall panel no longer shows 11 sp footnotes.
+     */
+    private val typeScale: Float = run {
+        val density = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        val widthDp = LedCanvasHost.viewportWidthPx(activity) / density
+        (widthDp / 640f).coerceIn(1.0f, 1.6f)
+    }
+
     init {
         // A SCRIM, not a blackout — same treatment as the recovery
         // overlay in activity_main.xml. On first boot the WebView behind
@@ -169,7 +181,7 @@ internal class SetupChecklistView(
         val column = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            background = pill(BG, dp(14))
+            background = cardBackground()
             setPadding(dp(16), dp(22), dp(16), dp(22))
         }
         card = column
@@ -197,7 +209,7 @@ internal class SetupChecklistView(
         // the one focus treatment.
         primaryButton = Button(activity).apply {
             setAllCaps(false)
-            textSize = 15f
+            textSize = 15f * typeScale
             setTextColor(TEXT)
             background = null
             setPadding(dp(20), dp(12), dp(20), dp(12))
@@ -205,14 +217,14 @@ internal class SetupChecklistView(
         }
         decorate(primaryButton)
         primaryShell = FrameLayout(activity).apply {
-            background = pill(ACCENT)
+            background = primaryBackground()
             addView(primaryButton)
         }
         column.addView(primaryShell, lpWrap(marginBottom = dp(10)))
 
         secondaryButton = Button(activity).apply {
             setAllCaps(false)
-            textSize = 13f
+            textSize = 13f * typeScale
             setTextColor(SUBTLE)
             background = null
             setPadding(dp(16), dp(10), dp(16), dp(10))
@@ -271,7 +283,7 @@ internal class SetupChecklistView(
         // glass shows the leftmost 320. Unchanged on every other device.
         val screen = LedCanvasHost.viewportWidthPx(context)
         val available = screen - dp(24)
-        return minOf(available, dp(520)).coerceAtLeast(dp(160))
+        return minOf(available, (dp(520) * typeScale).toInt()).coerceAtLeast(dp(160))
     }
 
     /** Key the primary button currently fires. Null in PAUSED/COMPLETE. */
@@ -751,7 +763,7 @@ internal class SetupChecklistView(
         bold: Boolean = false,
     ): TextView = TextView(context).apply {
         this.text = text
-        textSize = sizeSp
+        textSize = sizeSp * typeScale
         setTextColor(color)
         gravity = Gravity.CENTER_HORIZONTAL
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -773,11 +785,22 @@ internal class SetupChecklistView(
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-    private fun pill(color: Int, radiusPx: Int = dp(10)): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = radiusPx.toFloat()
+    /** The Network screen's card: a navy gradient with a hairline border. */
+    private fun cardBackground(): GradientDrawable =
+        GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(com.educms.player.network.NetTheme.CARD_TOP, com.educms.player.network.NetTheme.CARD_BOTTOM),
+        ).apply {
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), com.educms.player.network.NetTheme.CARD_BORDER)
         }
+
+    /** The Network screen's primary button fill: indigo → violet. */
+    private fun primaryBackground(): GradientDrawable =
+        GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(com.educms.player.network.NetTheme.PRIMARY_TOP, com.educms.player.network.NetTheme.PRIMARY_BOTTOM),
+        ).apply { cornerRadius = dp(12).toFloat() }
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density + 0.5f).toInt()

@@ -35,7 +35,7 @@
     <string name="usb_no_drive_title">No USB drive found</string>
     <string name="usb_no_drive_body">Plug the drive into this screen’s USB port, then choose Look again.</string>
     <string name="usb_access_title">VenueOS needs permission to read USB drives</string>
-    <string name="usb_access_body">Choose Allow, switch on “%1$s”, then press Back to come back here.</string>
+    <string name="usb_access_body">This is a one-time setup step. Choose Finish screen setup, switch on “%1$s”, then press Back to come back here.</string>
     <string name="usb_no_access_page_title">This screen can’t give VenueOS access to USB drives</string>
     <string name="usb_no_access_page_body">Android on this screen has no page to allow it, so the drive can’t be read here.</string>
     <string name="usb_no_package_title">No VenueOS playlist on this drive</string>
@@ -52,7 +52,7 @@
     <string name="usb_read_failed_body">The drive was removed or stopped answering — plug it back in and choose Look again.</string>
 
     <!-- Buttons -->
-    <string name="usb_allow">Allow</string>
+    <string name="usb_allow">Finish screen setup</string>
     <string name="usb_not_now">Not now</string>
     <string name="usb_look_again">Look again</string>
     <string name="usb_network">Network settings</string>

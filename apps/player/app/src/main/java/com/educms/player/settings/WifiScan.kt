@@ -101,7 +101,19 @@ object WifiScan {
             .getOrDefault(false)
     }
 
-    /** First launch: ask for location once, so no Wi-Fi join ever raises the dialog (2026-10-26). */
+    /**
+     * 1.1.59 — the setup list asked for location (in its one permission
+     * dialog). Recorded so [access] tells "never asked" from "refused".
+     */
+    fun markAsked(ctx: Context) {
+        prefs(ctx.applicationContext).edit().putBoolean(KEY_ASKED, true).apply()
+    }
+
+    /**
+     * First launch: ask for location once, so no Wi-Fi join ever raises the dialog (2026-10-26).
+     * ⚠️ 1.1.59: NO LONGER CALLED. Location is the setup list's one permission
+     * dialog now (SetupCeremony STEP_RUNTIME), together with every other grant.
+     */
     fun requestAtFirstLaunch(activity: Activity) {
         val app = activity.applicationContext
         if (!WifiScanPolicy.shouldAskAtLaunch(granted(app), prefs(app).getBoolean(KEY_ASKED, false))) return

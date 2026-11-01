@@ -25,7 +25,7 @@
     <string name="usb_no_drive_title">未找到 U 盘</string>
     <string name="usb_no_drive_body">请把 U 盘插入此屏幕的 USB 接口，然后选择“重新查找”。</string>
     <string name="usb_access_title">VenueOS 需要读取 U 盘的权限</string>
-    <string name="usb_access_body">选择“允许”，打开“%1$s”的开关，然后按返回键回到这里。</string>
+    <string name="usb_access_body">这是一次性设置步骤。选择“完成屏幕设置”，打开“%1$s”的开关，然后按返回键回到这里。</string>
     <string name="usb_no_access_page_title">此屏幕无法允许 VenueOS 读取 U 盘</string>
     <string name="usb_no_access_page_body">此屏幕的 Android 系统没有允许此操作的设置页面，因此无法在这里读取 U 盘。</string>
     <string name="usb_no_package_title">此 U 盘中没有 VenueOS 播放列表</string>
@@ -42,7 +42,7 @@
     <string name="usb_read_failed_body">U 盘已被拔出或停止响应，请重新插入，然后选择“重新查找”。</string>
 
     <!-- 按钮 -->
-    <string name="usb_allow">允许</string>
+    <string name="usb_allow">完成屏幕设置</string>
     <string name="usb_not_now">以后再说</string>
     <string name="usb_look_again">重新查找</string>
     <string name="usb_network">网络设置</string>
