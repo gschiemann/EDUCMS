@@ -85,6 +85,25 @@ export function reasonKey(reason: string | undefined): string | null {
   return reason && REASON_KEY[reason] ? `screens.bulk.reason.${REASON_KEY[reason]}` : null;
 }
 
+/**
+ * i18n key for a REQUEST-level refusal of "Send update" by the owner's fleet
+ * push rules (apps/api/src/player-ota/fleet-push-policy.ts: one hardware class
+ * per update, off-hours in each screen's own zone). null = not one of them —
+ * the sheet then shows the server's own message, exactly as before.
+ */
+const REFUSAL_KEY: Record<string, string> = {
+  BULK_UPDATE_MIXED_HARDWARE: 'mixedHardware',
+  BULK_UPDATE_HARDWARE_UNKNOWN: 'hardwareUnknown',
+  BULK_UPDATE_OUTSIDE_OFF_HOURS: 'outsideOffHours',
+  BULK_UPDATE_TIME_ZONE_UNKNOWN: 'timeZoneUnknown',
+};
+
+export function refusalKey(code: unknown): string | null {
+  return typeof code === 'string' && Object.prototype.hasOwnProperty.call(REFUSAL_KEY, code)
+    ? `screens.bulk.refusal.${REFUSAL_KEY[code]}`
+    : null;
+}
+
 export interface GroupedResults {
   sent: BulkScreenResult[];
   skipped: BulkScreenResult[];
