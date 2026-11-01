@@ -57,6 +57,7 @@ import {
 // against is memoised in `tenant-ancestors.ts`.
 import {
   clearTargetMessageIds,
+  rootMessageIdOf,
   deviceMessagesWhere,
   isMessageVisibleToTenant,
   type DeviceMessageScope,
@@ -2098,6 +2099,15 @@ export class EmergencyController {
   ) {
     const user = req.user || {};
     const { scopeType, scopeId, text, severity, durationMs } = body;
+    if (body.screenIds && body.screenIds.length > 0) {
+      const expires = body.expiresAt
+        ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
+        : new Date(Date.now() + (durationMs ?? 5 * 60 * 1000));
+      return this.dispatchToScreenSet({
+        kind: 'broadcast', screenIds: body.screenIds, user, severity, textBlob: text,
+        mediaUrls: [], audioUrl: undefined, expiresAt: expires,
+      });
+    }
 
     // SECURITY: verify the caller owns the target scope before any mutation.
     const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, user);
@@ -2252,6 +2262,16 @@ export class EmergencyController {
     assertAllowedEmergencyMediaUrls(mediaUrls, 'mediaUrls');
     assertAllowedEmergencyMediaUrl(audioUrl, 'audioUrl');
 
+    if (body.screenIds && body.screenIds.length > 0) {
+      return this.dispatchToScreenSet({
+        kind: 'media', screenIds: body.screenIds, user, severity, textBlob,
+        mediaUrls, audioUrl,
+        expiresAt: body.expiresAt
+          ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
+          : new Date(Date.now() + 60 * 60 * 1000),
+      });
+    }
+
     // SECURITY: verify the caller owns the target scope before any mutation.
     const ownedTenantId = await this.resolveScopeTenant(scopeType, scopeId, user);
 
@@ -2358,6 +2378,143 @@ export class EmergencyController {
   }
 
   /**
+   * A broadcast / media alert aimed at a HAND-PICKED SET of screens
+   * (2026-10-31, `screenIds`). The set is stored on the row(s): one row per
+   * tenant the screens sit in (the device poll pins `tenantId` to the screen's
+   * own tenant), `scopeType: 'devices'`, `scopeId` = the send's root message
+   * id (so a clear finds every sibling), `screenIds` = that tenant's share.
+   *
+   * SECURITY: EVERY id must exist and belong to a tenant the caller may act
+   * on (`resolveScopeTenant`, the same gate as every other scope). One bad id
+   * refuses the whole request and writes nothing. A double-sided unit named by
+   * either pane reaches both panes (`deviceScopeScreenIds`).
+   */
+  private async dispatchToScreenSet(args: {
+    kind: 'broadcast' | 'media';
+    screenIds: string[];
+    user: any;
+    severity: string;
+    textBlob: string;
+    mediaUrls: string[];
+    audioUrl?: string;
+    expiresAt: Date;
+  }) {
+    const { kind, user, severity, textBlob, mediaUrls, audioUrl, expiresAt } = args;
+    const named = [...new Set(args.screenIds)];
+    // ten-ok: ownership RESOLVER — tenantId is verified against the caller below (403); SUPER_ADMIN cross-tenant by design
+    const found: Array<{ id: string; tenantId: string | null; faceOfScreenId?: string | null }> =
+      (await this.prisma.client.screen.findMany({
+        where: { id: { in: named } },
+        select: { id: true, tenantId: true, faceOfScreenId: true },
+      })) ?? [];
+    if (found.length !== named.length) {
+      throw new NotFoundException('One or more of the chosen screens were not found');
+    }
+    if (found.some((r) => !r.tenantId)) {
+      throw new BadRequestException('One or more of the chosen screens are not assigned to a location');
+    }
+    const roots = [...new Set(found.map((r) => r.faceOfScreenId || r.id))];
+    // ten-ok: ownership RESOLVER — every resulting row's tenant is verified below
+    const unit: Array<{ id: string; tenantId: string | null; faceOfScreenId?: string | null }> =
+      (await this.prisma.client.screen.findMany({
+        where: { OR: [{ id: { in: roots } }, { faceOfScreenId: { in: roots } }] },
+        select: { id: true, tenantId: true, faceOfScreenId: true },
+      })) ?? [];
+    const rowsById = new Map([...found, ...unit].map((r) => [r.id, r]));
+    const finalIds = new Set<string>(named);
+    for (const id of named) for (const x of deviceScopeScreenIds(id, unit)) finalIds.add(x);
+
+    const byTenant = new Map<string, string[]>();
+    for (const id of finalIds) {
+      const tid = rowsById.get(id)?.tenantId;
+      if (!tid) continue; // a pane with no tenant is not a deliverable screen
+      byTenant.set(tid, [...(byTenant.get(tid) ?? []), id]);
+    }
+    // Every tenant must be reachable by the caller — one refusal refuses all.
+    for (const tid of byTenant.keys()) await this.resolveScopeTenant('tenant', tid, user);
+
+    const tenantIds = [...byTenant.keys()].sort();
+    const rootTenantId = tenantIds[0];
+    const messageId = `${kind === 'media' ? 'media' : 'bcast'}_${crypto.randomUUID()}`;
+    const idForTenant = (tid: string) => (tid === rootTenantId ? messageId : `${messageId}_${tid}`);
+
+    await this.prisma.client.$transaction([
+      ...tenantIds.map((tid) =>
+        this.prisma.client.emergencyMessage.create({
+          data: {
+            id: idForTenant(tid),
+            tenantId: tid,
+            triggeredByUserId: user.id || null,
+            type: kind === 'media' ? 'MEDIA_ALERT' : 'TEXT_BROADCAST',
+            severity,
+            textBlob,
+            mediaUrls: mediaUrls.length ? JSON.stringify(mediaUrls) : null,
+            audioUrl: audioUrl || null,
+            scopeType: 'devices',
+            scopeId: messageId,
+            screenIds: byTenant.get(tid)!,
+            expiresAt,
+          },
+        }),
+      ),
+      this.prisma.client.auditLog.create({
+        data: {
+          action: kind === 'media' ? 'MEDIA_ALERT' : 'BROADCAST_TEXT',
+          targetType: 'devices',
+          targetId: messageId,
+          tenantId: rootTenantId,
+          userId: user.id,
+          details: JSON.stringify({
+            messageId,
+            severity,
+            screenCount: finalIds.size,
+            affectedTenantCount: tenantIds.length,
+          }),
+        },
+      }),
+    ]);
+
+    for (const tid of tenantIds) bumpTenantEmergencyEpoch({ redis: this.redisService }, tid);
+
+    const expiresEpoch = Math.floor(expiresAt.getTime() / 1000);
+    const pushes: Array<Promise<void>> = [];
+    for (const tid of tenantIds) {
+      const id = idForTenant(tid);
+      const signed =
+        kind === 'media'
+          ? this.signer.signMessage('MEDIA_ALERT', { messageId: id, severity, textBlob, mediaUrls, audioUrl, expiresAt: expiresEpoch })
+          : this.signer.signMessage('TEXT_BROADCAST', { messageId: id, severity, text: textBlob, expiresAt: expiresEpoch });
+      for (const sid of byTenant.get(tid)!) {
+        pushes.push(
+          Promise.resolve(this.redisService.publish(`device:${sid}`, signed)).then(
+            () => undefined,
+            (error) => {
+              Sentry.withScope((s) => {
+                s.setTag('emergency.action', kind === 'media' ? 'media-alert' : 'broadcast');
+                s.setTag('emergency.scopeType', 'devices');
+                s.setExtra('messageId', id);
+                s.setExtra('channel', `device:${sid}`);
+                Sentry.captureException(error);
+              });
+              console.warn(`[Emergency] Screen-set publish failed for device:${sid}. Falling back to HTTP polling. Error: ${error}`);
+            },
+          ),
+        );
+      }
+    }
+    await Promise.all(pushes);
+
+    return {
+      success: true,
+      messageId,
+      affectedTenantIds: tenantIds,
+      affectedTenantCount: tenantIds.length,
+      affectedScreenCount: finalIds.size,
+      message: `${kind === 'media' ? 'Media alert' : 'Broadcast'} dispatched to ${finalIds.size} screen(s)`,
+    };
+  }
+
+  /**
    * All-clear for a specific EmergencyMessage (SOS / broadcast / media-alert).
    * Existing `:overrideId/all-clear` stays untouched for legacy overrides.
    */
@@ -2379,7 +2536,16 @@ export class EmergencyController {
     // SECURITY: verify the caller owns the message's tenant before clearing.
     const callerTenantId: string = user?.tenantId || user?.schoolId || user?.districtId;
     const isSuper: boolean = user?.role === AppRole.SUPER_ADMIN;
-    if (!isSuper && existing.tenantId !== callerTenantId) {
+    // A district admin reaches DOWN: a broadcast aimed at one group / screen of
+    // a school is stored under that school's tenant (2026-10-31, targeted
+    // broadcasts), and the district admin who sent it must be able to clear it.
+    const mayReachDownward =
+      !isSuper &&
+      existing.tenantId !== callerTenantId &&
+      user?.role === AppRole.DISTRICT_ADMIN &&
+      !!callerTenantId &&
+      (await isDescendantTenant(this.prisma.client.tenant as any, existing.tenantId, callerTenantId));
+    if (!isSuper && existing.tenantId !== callerTenantId && !mayReachDownward) {
       throw new ForbiddenException(
         'You do not have permission to clear emergency messages for this scope.',
       );
@@ -2397,17 +2563,40 @@ export class EmergencyController {
     // set is derived from the row's own id, and every write below is pinned
     // to that subtree so an id collision could never reach outside it.
     // A group / device-scoped message has no copies; the walk is skipped.
-    const descendantTenantIds =
+    let descendantTenantIds =
       existing.scopeType === 'tenant'
         ? await collectDescendantTenantIds(this.prisma.client.tenant as any, existing.tenantId)
         : [];
-    const affectedTenantIds = [existing.tenantId, ...descendantTenantIds];
-    const targetIds = clearTargetMessageIds(messageId, existing.tenantId, descendantTenantIds);
+    let affectedTenantIds = [existing.tenantId, ...descendantTenantIds];
+    let targetIds = clearTargetMessageIds(messageId, existing.tenantId, descendantTenantIds);
+    // 2026-10-31 — a send to a hand-picked SET of screens is one row per
+    // tenant, all sharing `scopeId` = the send's root id. Clear every sibling
+    // the caller may reach (their own tenant, plus the subtree for a district
+    // admin; a super admin reaches all, each behind a support-access check).
+    if (existing.scopeType === 'devices') {
+      let reach: string[] | null = null;
+      if (!isSuper) {
+        reach = [callerTenantId];
+        if (user?.role === AppRole.DISTRICT_ADMIN) {
+          reach.push(...(await collectDescendantTenantIds(this.prisma.client.tenant as any, callerTenantId)));
+        }
+      }
+      // ten-ok: siblings share the verified row's scopeId; narrowed to the caller's reach below
+      const siblings: Array<{ id: string; tenantId: string }> =
+        (await this.prisma.client.emergencyMessage.findMany({
+          where: { scopeType: 'devices', scopeId: existing.scopeId, ...(reach ? { tenantId: { in: reach } } : {}) },
+          select: { id: true, tenantId: true },
+        })) ?? [];
+      for (const sib of siblings) if (isSuper && sib.tenantId !== existing.tenantId) await assertSupportReach(user, sib.tenantId);
+      targetIds = [...new Set([messageId, ...siblings.map((x) => x.id)])];
+      affectedTenantIds = [...new Set([existing.tenantId, ...siblings.map((x) => x.tenantId)])];
+      descendantTenantIds = affectedTenantIds.filter((t) => t !== existing.tenantId);
+    }
     // ten-ok: id set derived from the verified row above; tenantId pinned to the verified subtree
-    const copies: Array<{ id: string; tenantId: string; scopeType: string; scopeId: string }> =
+    const copies: Array<{ id: string; tenantId: string; scopeType: string; scopeId: string; screenIds?: string[] }> =
       (await this.prisma.client.emergencyMessage.findMany({
         where: { id: { in: targetIds }, tenantId: { in: affectedTenantIds } },
-        select: { id: true, tenantId: true, scopeType: true, scopeId: true },
+        select: { id: true, tenantId: true, scopeType: true, scopeId: true, screenIds: true },
       })) ?? [];
     if (!copies.some((c) => c.id === existing.id)) {
       copies.unshift({
@@ -2415,6 +2604,7 @@ export class EmergencyController {
         tenantId: existing.tenantId,
         scopeType: existing.scopeType,
         scopeId: existing.scopeId,
+        screenIds: (existing as any).screenIds ?? [],
       });
     }
 
@@ -2458,11 +2648,15 @@ export class EmergencyController {
     // a tenant publish against the DEVICE's own tenant), a group / device
     // message rode `<scopeType>:<scopeId>`. Each carries ITS OWN id — the one
     // the screen was handed — so the player's reconcile and the push agree.
-    const publishTargets = copies.map((c) => ({
-      ch: c.scopeType === 'tenant' ? `tenant:${c.tenantId}` : `${c.scopeType}:${c.scopeId}`,
-      id: c.id,
-      tenantId: c.tenantId,
-    }));
+    const publishTargets = copies.flatMap((c) =>
+      c.scopeType === 'devices'
+        ? (c.screenIds ?? []).map((sid) => ({ ch: `device:${sid}`, id: c.id, tenantId: c.tenantId }))
+        : [{
+            ch: c.scopeType === 'tenant' ? `tenant:${c.tenantId}` : `${c.scopeType}:${c.scopeId}`,
+            id: c.id,
+            tenantId: c.tenantId,
+          }],
+    );
     // Same reasoning as the broadcast/SOS bumps: move the revision, leave
     // `active` alone (clearing a pushed message is not a tenant all-clear).
     for (const tid of new Set(publishTargets.map((p) => p.tenantId))) {
@@ -2879,6 +3073,52 @@ export class EmergencyController {
       });
     }
 
+    // 2026-10-31 (targeted broadcasts): a district admin can aim a broadcast at
+    // ONE group / screen of a school below them. That row lives under the
+    // school's tenant, so the console's active list (own tenant only) would
+    // never show it — and it could not be cleared. Add the group / device
+    // scoped rows of the caller's subtree. Tenant-scoped copies are NOT added
+    // (they are fan-out copies of a row the caller's own tenant already lists).
+    // Best-effort: a failed extra read leaves today's list exactly as it was.
+    if (!isDevicePrincipal && (isSuper || req.user?.role === AppRole.DISTRICT_ADMIN)) {
+      try {
+        const below = await collectDescendantTenantIds(this.prisma.client.tenant as any, tenantId);
+        if (below.length > 0) {
+          const extra: any[] =
+            (await this.prisma.client.emergencyMessage.findMany({
+              where: {
+                tenantId: { in: below },
+                scopeType: { in: ['group', 'device', 'devices'] },
+                clearedAt: null,
+                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 50,
+            })) ?? [];
+          const have = new Set(rows.map((r) => r.id));
+          for (const r of extra) if (!have.has(r.id)) rows.push(r);
+        }
+      } catch {
+        /* degrade to the own-tenant list */
+      }
+      // One screen-set send is one row per tenant; show it once, with the
+      // whole set of screens.
+      const seen = new Map<string, any>();
+      const collapsed: any[] = [];
+      for (const r of rows) {
+        if (r.scopeType !== 'devices') { collapsed.push(r); continue; }
+        const first = seen.get(r.scopeId);
+        if (!first) {
+          const copy = { ...r, screenIds: [...(r.screenIds ?? [])] };
+          seen.set(r.scopeId, copy);
+          collapsed.push(copy);
+        } else {
+          first.screenIds.push(...(r.screenIds ?? []));
+        }
+      }
+      rows = collapsed;
+    }
+
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
 
     return {
@@ -2905,6 +3145,7 @@ export class EmergencyController {
       audioUrl: r.audioUrl,
       scopeType: r.scopeType,
       scopeId: r.scopeId,
+      ...(r.scopeType === 'devices' ? { screenIds: r.screenIds ?? [] } : {}),
       expiresAt: r.expiresAt ? Math.floor(r.expiresAt.getTime() / 1000) : null,
       createdAt: r.createdAt.toISOString(),
       triggeredByUserId: r.triggeredByUserId,

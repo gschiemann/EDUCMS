@@ -533,8 +533,13 @@ self.addEventListener('message', (event) => {
     // cache, and a playlist file must never be promoted into the
     // never-evict tier.
     const tier = tierFromMessage(msg);
-    const progressPort = (event.ports && event.ports[0]) || null;
-    const report = makeProgressReporter(progressPort);
+    // Progress frames are OPT-IN (`wantsProgress: true`). A page bundle that
+    // predates them (deploy skew: a new worker serving an older cached page)
+    // treats the first non-`started` message on the port as the answer, so an
+    // unrequested `{ progress: true }` frame would end its chunk drive with a
+    // bogus reply and the file would never cache.
+    const progressPort = msg.wantsProgress === true ? ((event.ports && event.ports[0]) || null) : null;
+    const report = progressPort ? makeProgressReporter(progressPort) : null;
     event.waitUntil(answerPort(event, async () => {
       if (!tier) return { ok: false, reason: 'bad-request' };
       const stageTier = await stageTierForMessage(msg, tier);

@@ -449,6 +449,7 @@ const PANEL_UNREPORTED_NOTE =
 export function panelPowerOffer(
   power: ResolvedDisplayControls['power'],
   state: PanelPowerState,
+  evidence: PanelPowerEvidence = {},
 ): PanelPowerOffer {
   // Nothing reported: capability is unknown before state is even relevant.
   if (!power.off.available && !power.on.available) {
@@ -457,6 +458,12 @@ export function panelPowerOffer(
       showOn: false,
       note: power.off.noteText ?? PANEL_UNREPORTED_NOTE,
     };
+  }
+  // The panel itself says WE turned it off (or this operator just did). That
+  // beats render proof, which on a vendor-backlight panel keeps reading
+  // "painting" behind a dark backlight. Recovery direction: offer ON.
+  if (evidence.hardOff && power.on.available) {
+    return { showOff: false, showOn: true, note: PANEL_HARD_OFF_NOTE };
   }
   if (state === 'unknown') {
     return { showOff: false, showOn: false, note: PANEL_STATE_UNKNOWN_NOTE };
@@ -469,11 +476,77 @@ export function panelPowerOffer(
     };
   }
   // state === 'on'
+  // A mechanism that keeps the page painting behind a dark panel: render
+  // proof cannot see the glass, so "painting" proves nothing about power.
+  // Both verbs stay offered — a Turn on that is never shown is a remote trip.
+  if ([evidence.mechanism, power.mechanism].some((m) => !!m && PAINTS_BEHIND_DARK_PANEL.has(m))) {
+    return {
+      showOff: power.off.available,
+      showOn: power.on.available,
+      note: PANEL_PAINTS_BEHIND_NOTE,
+    };
+  }
   return {
     showOff: power.off.available,
     showOn: false,
     note: power.off.noteText ?? '',
   };
+}
+
+/**
+ * Extra power evidence the render proof cannot carry (2026-10-31, GUQ field
+ * result: "Turn off" blanked the panel, then the row offered only "Turn off"
+ * again and the IR remote was the only way back).
+ */
+export interface PanelPowerEvidence {
+  /**
+   * The panel is off by OUR hard command: the native heartbeat's
+   * `sleep.vb.off`, or a POWER_OFF this operator sent in this session with
+   * no POWER_ON after it.
+   */
+  hardOff?: boolean;
+  /** The blank mechanism the device resolved (`sleep.blank`), when the verdict has none. */
+  mechanism?: string | null;
+}
+
+/**
+ * Mechanisms that darken the panel while Android, the app and its WebView
+ * keep running — so the page keeps posting render proof and "painting" says
+ * nothing about the glass. `vendor-backlight` (Goodview GUQ MCU backlight,
+ * player 1.1.52+) is the one where that is by design.
+ */
+export const PAINTS_BEHIND_DARK_PANEL: ReadonlySet<string> = new Set(['vendor-backlight']);
+
+const PANEL_HARD_OFF_NOTE = 'This panel was turned off from here. Turn panel on brings it back.';
+const PANEL_PAINTS_BEHIND_NOTE =
+  'This panel keeps running while it is off, so we can’t see from here whether it is lit. Turn panel on brings it back.';
+
+/**
+ * `sleep.vb` from the stored native runtime report: is the backlight off by
+ * our hand? Only a report from the last day counts — a reboot resets the MCU
+ * and the next report says so.
+ */
+export function nativeHardOff(
+  report: unknown,
+  reportAt: string | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!report || typeof report !== 'object') return false;
+  const at = reportAt ? Date.parse(reportAt) : NaN;
+  if (!Number.isFinite(at) || nowMs - at > 24 * 60 * 60_000) return false;
+  const sleep = (report as { sleep?: unknown }).sleep;
+  if (!sleep || typeof sleep !== 'object') return false;
+  const vb = (sleep as { vb?: unknown }).vb;
+  return !!vb && typeof vb === 'object' && (vb as { off?: unknown }).off === true;
+}
+
+/** `sleep.blank` from the stored native runtime report, or null. */
+export function nativeBlankMechanism(report: unknown): string | null {
+  if (!report || typeof report !== 'object') return null;
+  const sleep = (report as { sleep?: unknown }).sleep;
+  if (!sleep || typeof sleep !== 'object') return null;
+  const blank = (sleep as { blank?: unknown }).blank;
+  return typeof blank === 'string' ? blank : null;
 }
 
 /**

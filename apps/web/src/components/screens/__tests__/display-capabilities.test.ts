@@ -21,6 +21,8 @@ import {
   parseDisplayCapabilities,
   derivePanelPowerState,
   panelPowerOffer,
+  nativeHardOff,
+  nativeBlankMechanism,
   clampBrightness,
   clampVolume,
   serializeDays,
@@ -694,6 +696,50 @@ describe('panelPowerOffer — one verb, and only when it is true', () => {
       expect(o.showOn).toBe(false);
       expect(o.note.length).toBeGreaterThan(0);
     }
+  });
+
+  // 2026-10-31 GUQ field result: "Turn off" darkened the vendor backlight,
+  // the page kept painting behind it, and the row offered only "Turn off"
+  // again — the IR remote was the only way back.
+  const vendorBacklight = resolveDisplayControls(
+    stored({ ...FULL_VERDICT, screenBlank: 'vendor-backlight' }),
+  ).power;
+
+  it('hard-off evidence → offers ON, even while render proof says painting', () => {
+    for (const power of [proven, unproven, vendorBacklight]) {
+      for (const state of ['on', 'dark', 'unknown'] as const) {
+        const o = panelPowerOffer(power, state, { hardOff: true });
+        expect(o.showOn).toBe(true);
+        expect(o.showOff).toBe(false);
+      }
+    }
+  });
+
+  it('a vendor-backlight panel that reads painting keeps Turn panel on offered', () => {
+    const o = panelPowerOffer(vendorBacklight, 'on');
+    expect(o.showOn).toBe(true);
+    // The device-reported mechanism counts even when the verdict names another.
+    const viaReport = panelPowerOffer(proven, 'on', { mechanism: 'vendor-backlight' });
+    expect(viaReport.showOn).toBe(true);
+    expect(viaReport.showOff).toBe(true);
+  });
+
+  it('hard-off evidence never invents buttons on an unreported screen', () => {
+    const o = panelPowerOffer(unreported, 'on', { hardOff: true });
+    expect(o.showOn).toBe(false);
+    expect(o.showOff).toBe(false);
+  });
+
+  it('reads sleep.vb.off from a recent native report only', () => {
+    const now = Date.parse('2026-10-31T12:00:00Z');
+    const report = { sleep: { blank: 'vendor-backlight', vb: { d: 'available', off: true } } };
+    expect(nativeHardOff(report, '2026-10-31T11:59:00Z', now)).toBe(true);
+    expect(nativeHardOff(report, '2026-10-29T11:59:00Z', now)).toBe(false);
+    expect(nativeHardOff({ sleep: { vb: { off: false } } }, '2026-10-31T11:59:00Z', now)).toBe(false);
+    expect(nativeHardOff(null, '2026-10-31T11:59:00Z', now)).toBe(false);
+    expect(nativeHardOff(report, null, now)).toBe(false);
+    expect(nativeBlankMechanism(report)).toBe('vendor-backlight');
+    expect(nativeBlankMechanism({})).toBeNull();
   });
 
   it('always returns a note — a silent row is a row that explains nothing', () => {

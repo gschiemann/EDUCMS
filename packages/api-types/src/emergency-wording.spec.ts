@@ -3,8 +3,38 @@ import {
   EMERGENCY_WORDING_KINDS,
   emergencyWordingKind,
   standardEmergencyText,
+  systemEmergencyBoardColor,
+  systemEmergencyBoardText,
   type EmergencyWordingLocale,
 } from './emergency-wording';
+
+describe('the system board — one rule for the manifest, the staging and the player surface', () => {
+  it('a live alert of a known type with no words of its own shows the standard words', () => {
+    expect(systemEmergencyBoardText({ type: 'MEDICAL', isDrill: false })).toBe(standardEmergencyText('medical'));
+    expect(systemEmergencyBoardText({ type: 'EVACUATE', isDrill: false })).toBe(standardEmergencyText('evacuate'));
+  });
+  it('a drill says so first and never uses the live standard words', () => {
+    const text = systemEmergencyBoardText({ type: 'HOLD', isDrill: true });
+    expect(text.startsWith('DRILL — THIS IS A DRILL\n\nHOLD DRILL')).toBe(true);
+    expect(text).toContain('This is not a real emergency.');
+  });
+  it("the operator's text wins, then the scope note; EVACUATE is labelled FIRE — EVACUATE", () => {
+    expect(systemEmergencyBoardText({ type: 'LOCKDOWN', isDrill: false, textBlob: 'Stay put' })).toBe('Stay put');
+    expect(systemEmergencyBoardText({ type: 'LOCKDOWN', isDrill: true, textBlob: 'Stay put' })).toBe('DRILL — THIS IS A DRILL\n\nStay put');
+    expect(systemEmergencyBoardText({ type: 'EVACUATE', isDrill: false, scopeNote: 'North wing' }))
+      .toBe('FIRE — EVACUATE — North wing\n\nFollow standard procedures.');
+  });
+  it('an unknown type keeps the generic board', () => {
+    expect(systemEmergencyBoardText({ type: 'CUSTOM', isDrill: false })).toContain('CUSTOM PROTOCOL ACTIVE');
+  });
+  it('colour: drill indigo, CRITICAL/HIGH red, anything else amber', () => {
+    expect(systemEmergencyBoardColor('CRITICAL', true)).toBe('#3730a3');
+    expect(systemEmergencyBoardColor('CRITICAL', false)).toBe('#dc2626');
+    expect(systemEmergencyBoardColor('HIGH', false)).toBe('#dc2626');
+    expect(systemEmergencyBoardColor('MEDIUM', false)).toBe('#d97706');
+    expect(systemEmergencyBoardColor(null, false)).toBe('#d97706');
+  });
+});
 
 /**
  * The life-safety standard for the standard alert wording, made mechanical.

@@ -270,7 +270,7 @@ async function downloadLargeAsset(
     await yieldStep(opts);
     if (opts?.signal?.aborted) return 'aborted';
     const reply = await askWorker(sw, {
-      type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, ...tier,
+      type: 'PRECACHE_CHUNK', url: asset.url, sha256, size, offset, chunkBytes, wantsProgress: true, ...tier,
     }, CHUNK_ACK_TIMEOUT_MS, undefined, (f) => {
       if (f.phase !== 'chunk') return;
       // Live bytes inside the chunk. Never run ahead of the known total, never
@@ -300,7 +300,7 @@ async function downloadLargeAsset(
     if (opts?.signal?.aborted) return 'aborted';
     const finishVerify = opts?.tier === 'emergency' ? null : playbackSafety().begin(asset.url, sha256, 'verify', Date.now());
     opts?.onProgress?.({ url: asset.url, bytesLoaded: 0, bytesTotal: total, phase: 'verifying' });
-    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, ...tier }, STEP_ACK_TIMEOUT_MS, undefined, (f) => {
+    const verified = await askWorker(sw, { type: 'PRECACHE_VERIFY', url: asset.url, sha256, wantsProgress: true, ...tier }, STEP_ACK_TIMEOUT_MS, undefined, (f) => {
       if (f.phase === 'verify') opts?.onProgress?.({ url: asset.url, bytesLoaded: f.done, bytesTotal: f.total ?? total, phase: 'verifying' });
     });
     finishVerify?.();
