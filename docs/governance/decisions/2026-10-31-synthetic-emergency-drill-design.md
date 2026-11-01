@@ -150,3 +150,12 @@ Also `packages/api-types/src/emergency-paint-identity.ts` (a copy of the player'
 6. **Reviewer vendor** (open question 6): the implementation is reviewed by a model from a vendor other than Anthropic (Codex), because the designer and the implementer are both Claude.
 
 **Owner decisions still needed:** question 1 (which bench units, and confirming their organisations are flagged internal — flagging one is an owner action), and approval of this design as modified above. No code is written until then.
+
+## 10. Owner's answers and the lead's defaults (2026-11-01)
+
+The owner approved the design as modified in §9 ("today we wrap up"; he does not want to adjudicate bench lists). The lead's defaults, which the owner may veto:
+
+- **Bench organisation:** the internal tenant `dodgers` ("Brookfield Residential Northern California", `is_internal = true`, 21 screens, 1 user) is the owner's bench — every unit on it is a test unit. **Before any drill ever runs, the real launch customer's production organisation must be a separate, non-internal tenant**; the drill's guard 2 (root `isInternal`) is only a guard if that stays true. The lead will verify this at implementation time and again before `shadow` starts.
+- **Bench screens (≤ 12, one per hardware class, from the internal tenant):** GUQ55 `1cff5eb0-…`, GUQ65 `69b7bf43-…` (Goodview GUQ class), DH43 `40864836-…` + DH43 — Back `80bf9b8d-…` (rk3288 double-sided, both faces), M43 `c4945182-…`, M86 `8c83e356-…`, L55VEC `882706a8-…` (MAXHUB), LED Poster 3 `430ec97c-…` and Foldable LED `cf213ae7-…` (NovaStar Taurus — web-only player, RUNTIME class differs), G75 `ba3fc3b3-…`, Mobile A-Frame `81bdb7e5-…`. Full ids in the Register B row at implementation.
+- **Schedule:** mid-morning in each screen's own zone (default 10:30 local), per §9.3.
+- **Reviewer:** Codex, per §9.6.
