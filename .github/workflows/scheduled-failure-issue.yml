@@ -70,6 +70,10 @@ jobs:
       WF_URL: ${{ github.event.workflow_run.html_url }}
       WF_RUN_ID: ${{ github.event.workflow_run.id }}
       WF_EVENT: ${{ github.event.workflow_run.event }}
+      # A BOOLEAN only — never the secret values, which stay in the fire step's own env
+      # so the classify step never sees them. `secrets` cannot be read in a step's `if:`;
+      # this job-level `env` can, and the two on-call steps at the bottom branch on it.
+      ON_CALL_CONFIGURED: ${{ secrets.ROUTINE_FIRE_URL != '' && secrets.ROUTINE_FIRE_TOKEN != '' }}
     steps:
       - name: Classify the failure and open or update the issue
         run: |
@@ -107,10 +111,18 @@ jobs:
       # POST starts a Claude Code cloud session on the failure immediately, per
       # https://platform.claude.com/docs/en/api/claude-code/routines-fire.
       # The two secrets are minted in the routine's edit page (the token is
-      # shown once) and stored as repository secrets. Until they exist this
-      # step is a no-op and says so, rather than failing the responder.
+      # shown once) and stored as repository secrets. Until they exist the fire
+      # step below is SKIPPED (it never fails the responder) and the step before it
+      # says so in one line. It used to run anyway, print a notice annotation and report
+      # success, so an unconfigured pager looked the same as a working one in the step
+      # list. (The script keeps its own empty-secret guard as a second line of defence.)
+      - name: On-call routine not configured
+        if: ${{ always() && env.ON_CALL_CONFIGURED != 'true' }}
+        run: |
+          echo "::notice::on-call routine not configured: ROUTINE_FIRE_URL/TOKEN unset"
+
       - name: Fire the on-call routine
-        if: ${{ always() }}
+        if: ${{ always() && env.ON_CALL_CONFIGURED == 'true' }}
         env:
           ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
           ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
