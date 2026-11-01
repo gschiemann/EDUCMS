@@ -146,7 +146,7 @@ export default function BroadcastPage() {
   const invalidateStatus = useCallback(() => { ++statusRequest.current; }, []);
   const { announce, region: liveRegion } = useEmergencyAnnouncer();
   const locked = phase === 'holding' || phase === 'sending';
-  const takeover = withMedia || severity === 'CRITICAL';
+  const takeover = severity === 'CRITICAL' || (withMedia && (mediaUrls.length > 0 || !!audioUrl));
   const SeverityIcon = SEVERITY_STYLE[severity].icon;
   const severityLabel = (s: string) => SEVERITY_KEY[s] ? t(SEVERITY_KEY[s]) : s;
   const msgTypeLabel = (m: string) => MSG_TYPE_KEY[m] ? t(MSG_TYPE_KEY[m]) : m;
