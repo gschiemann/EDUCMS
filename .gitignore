@@ -111,3 +111,6 @@ apps/web/src/app/dev/mobile-home-mock/
 # Load-test working directory: throwaway stack secrets + a fleet.json full of
 # device tokens. Disposable-stack only, but it must never enter git.
 scripts/loadtest/.out/
+
+# Field/test APK builds at the repo root are never committed (public repo)
+*.apk

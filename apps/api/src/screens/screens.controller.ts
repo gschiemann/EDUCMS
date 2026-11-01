@@ -127,7 +127,6 @@ import { manifestTimeZone, screenTimeZoneFields } from './screen-time-zone';
 import { isValidIanaTimeZone, normalizeTimeZoneInput } from '@cms/api-types';
 // 2026-10-26 — the standard words a live alert shows when this organization has
 // no content of its own for the type (owner-approved, Settings simplification).
-import { emergencyWordingKind, standardEmergencyText } from '@cms/api-types';
 // 2026-09-02 (efficiency program P0-1) — the ONLINE grace is now paired with
 // the unified telemetry cadence and lives in ONE place that documents the
 // relationship. It was three inline `35 * 1000` literals sized for a 30 s
@@ -151,7 +150,18 @@ import {
 } from '../emergency/emergency-drill';
 // 2026-10-26 — the ONE builder of the emergency playlist payload, shared with
 // the staged boards `emergency-assets` pre-delivers (see emergency-boards.ts).
-import { emergencyBoardPayload, resolveEmergencyBoardSelection, type EmergencyBoard } from '../emergency/emergency-boards';
+import {
+  EMERGENCY_BOARD_TYPES,
+  emergencyBoardPayload,
+  resolveEmergencyBoardSelection,
+  screenAssetBoard,
+  screenAssetBoardStagingKey,
+  screenAssetUrlFor,
+  systemBoardStagingKey,
+  systemEmergencyBoard,
+  type EmergencyBoard,
+  type SystemEmergencyBoard,
+} from '../emergency/emergency-boards';
 import { sanitizeCacheReport } from '../telemetry/cache-report';
 // 2026-08-13 — display control. The manifest's `display` block carries the
 // on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
@@ -6773,27 +6783,9 @@ export class ScreensController {
         // its live media (`drillPerScreen` is empty on a live alert).
         const effectiveAsset = effectiveOverrideAsset || drillPerScreen.mediaUrl || effectivePerScreenAsset;
         if (playlists.length === 0 && effectiveAsset) {
-          const url = effectiveAsset;
-          const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
-          const mime =
-            ['mp4','mov','webm','m4v'].includes(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` :
-            ['png','jpg','jpeg','webp','gif','svg','bmp'].includes(ext) ? `image/${ext === 'jpg' ? 'jpeg' : ext}` :
-            ext === 'pdf' ? 'application/pdf' :
-            null;
-          playlists = [{
-            id: `screen-asset-${emergencyTypeKey.toLowerCase()}`,
-            name: `${emergencyTypeKey} (custom asset)`,
-            items: [{
-              item_id: `screen-asset-${screen.id}-${emergencyTypeKey.toLowerCase()}`,
-              asset_id: null,
-              asset_hash: null,
-              url,
-              duration_ms: 60_000,  // 60s default for a single-asset emergency loop
-              sequence: 0,
-              mime_type: mime,
-              transition_type: null,
-            }],
-          }];
+          // THE builder (emergency-boards.ts): `emergency-assets` stages this
+          // same one-item board so the signed push can raise it instantly.
+          playlists = [screenAssetBoard({ screenId: screen.id, typeKey: emergencyTypeKey, url: effectiveAsset })];
         }
 
         // Effective emergency type for THIS screen — per-screen
@@ -6822,105 +6814,25 @@ export class ScreensController {
         // and scope_note land in the fallback content so the rendered
         // text matches the trigger UX exactly.
         if (playlists.length === 0) {
-          // 2026-06-28 (Greg live P0 — lockdown rendered at 1920 on the
-          // 960×1080 LED): the fallback template MUST be authored at the
-          // screen's REAL visible canvas, not a hardcoded 1920/1080. The
-          // player's TemplateScaler sizes the scene to designW=template.
-          // screenWidth; when that was 1920 the lockdown was laid out for a
-          // 1920 frame buffer and only the left ~960 showed on the panel. Use
-          // the operator-set canvasW/canvasH (e.g. 960×1080) so the fallback
-          // emergency fills the actual LED exactly; fall back to the
-          // portrait/landscape default only when the screen has no canvas set.
-          const canvasW =
-            screen.canvasW && screen.canvasW > 0 ? screen.canvasW : (isPortrait ? 1080 : 1920);
-          const canvasH =
-            screen.canvasH && screen.canvasH > 0 ? screen.canvasH : (isPortrait ? 1920 : 1080);
-          // Pick the most specific text we have — operator's textBlob
-          // first, then the scope_note ("Gym wing — hold position"),
-          // then a SYSTEM DEFAULT message that includes the type.
-          // DISPLAY-ONLY (2026-09-21). `effectiveType` stays the raw enum
-          // everywhere it is transmitted or keyed on — the manifest's
-          // `emergencyType` field and the synthetic playlist name below —
-          // because deployed players and APKs switch on that value. This
-          // label is ONLY the words a person reads off the glass: operators
-          // look for "FIRE" and do not find it, while EVACUATE is the word
-          // schools drill (SRP) and also covers gas leaks / bomb threats,
-          // so the wall says both.
-          const effectiveTypeLabel =
-            effectiveType === 'EVACUATE' ? 'FIRE — EVACUATE' : effectiveType;
-          // 2026-10-10 — a DRILL says so in the words themselves, on top of
-          // the player's banner, so an old cached bundle still shows it.
-          const drillMark = isDrill ? 'DRILL — THIS IS A DRILL\n\n' : '';
-          // 2026-10-26 — STANDARD WORDING (owner-approved; @cms/api-types
-          // emergency-wording.ts). A LIVE alert of one of the six known types,
-          // with no content of its own, no operator-typed message and no scope
-          // note, shows that type's standard words ("LOCKDOWN / Locks, lights,
-          // out of sight.") instead of the generic "PROTOCOL ACTIVE" board —
-          // the same red board, the same layout, only the words differ. The
-          // operator's own text and scope note still win, a drill keeps its
-          // own DRILL board, and an unknown type keeps the generic message.
-          // Display-only: nothing is written and no transmitted field changes.
-          const standardKind = emergencyWordingKind(effectiveType);
-          const fallbackContent =
-            activeScreenOverride?.textBlob
-              ? `${drillMark}${activeScreenOverride.textBlob}`
-              : activeScreenOverride?.scopeNote
-                ? `${drillMark}${effectiveTypeLabel} — ${activeScreenOverride.scopeNote}\n\nFollow standard procedures.`
-                : isDrill
-                  ? `DRILL — THIS IS A DRILL\n\n${effectiveTypeLabel} DRILL\n\nFollow standard procedures. This is not a real emergency.`
-                  : standardKind
-                    ? standardEmergencyText(standardKind)
-                    : `EMERGENCY NOTIFICATION\n\n${effectiveTypeLabel} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
-          const fallbackBg =
-            // A drill's system-default board is indigo, never the red of a
-            // live alert — the same colour the player banner and the dashboard
-            // use, so "drill" reads at a glance from across a gym.
-            isDrill ? '#3730a3' :
-            effectiveSeverity === 'CRITICAL' ? '#dc2626' :
-            effectiveSeverity === 'HIGH'     ? '#dc2626' :
-            effectiveSeverity === 'MEDIUM'   ? '#d97706' :
-            '#d97706';
-          playlists = [{
-             id: "DEFAULT_EMERGENCY",
-             name: `SYSTEM DEFAULT - ${effectiveType}`,
-             template: {
-               name: "EMERGENCY OVERRIDE",
-               bgColor: fallbackBg,
-               screenWidth: canvasW,
-               screenHeight: canvasH,
-               zones: [
-                 {
-                   id: "emergency-zone",
-                   x: 0, y: 0, width: 100, height: 100, zIndex: 1,
-                   widgetType: "TEXT",
-                   // 2026-06-27 (LANE 1 life-safety) — route through the
-                   // signage-design ENGINE text path (`sizeMode: 'absolute'`)
-                   // so the message ALWAYS fits its zone via FitScaler
-                   // (measure + transform:scale, Chromium-83/Taurus-safe),
-                   // never clipping. The legacy TEXT path hard-CLAMPS
-                   // fontSize to 3em (~48px) AND wraps inside an
-                   // `overflow:hidden` box with NO shrink — so a long
-                   // operator-typed lockdown message (textBlob) was cut off
-                   // top/bottom on any canvas where the wrapped text ran
-                   // taller than the zone (the exact clip class Greg caught
-                   // on the 960×1080 LED). `fontSize` here is the INTENDED
-                   // size; FitScaler shrinks it down to fit. fontWeight 800
-                   // replaces the legacy `bold` flag (the absolute path reads
-                   // a numeric weight, not the toggle).
-                   defaultConfig: {
-                     sizeMode: "absolute",
-                     content: fallbackContent,
-                     fontSize: isPortrait ? 140 : 100,
-                     fontWeight: 800,
-                     color: "white",
-                     alignment: "center",
-                     lineHeight: 1.15
-                   }
-                 }
-               ]
-             },
-             items: []
-          }];
+          // THE builder (emergency-boards.ts `systemEmergencyBoard`, 2026-10-31):
+          // the same board `emergency-assets` pre-stages on the player, so the
+          // one raised from the signed push and the one this manifest brings
+          // are one apply signature (`tpl:<name>:<contentRev>`) — no re-mount,
+          // no visual change. The canvas is the screen's REAL visible canvas
+          // (2026-06-28, the 960×1080 LED); the words are the operator's text,
+          // then the scope note, then the drill words or the type's standard
+          // wording (owner-approved, @cms/api-types); a drill is indigo, a
+          // live alert red (CRITICAL / HIGH) or amber.
+          playlists = [systemEmergencyBoard({
+            type: effectiveType,
+            severity: effectiveSeverity,
+            isDrill,
+            isPortrait,
+            canvasW: screen.canvasW,
+            canvasH: screen.canvasH,
+            textBlob: activeScreenOverride?.textBlob ?? null,
+            scopeNote: activeScreenOverride?.scopeNote ?? null,
+          })];
         }
 
         return res.status(200).json({
@@ -8442,7 +8354,7 @@ export class ScreensController {
 
     const assets: Array<{ url: string; sha256: string | null; size: number; kind: string }> = [];
     const seen = new Set<string>();
-    const boards: Record<string, EmergencyBoard> = {};
+    const boards: Record<string, EmergencyBoard | SystemEmergencyBoard> = {};
     let loadedPlaylists: any[] = [];
 
     if (playlistIds.length > 0) {
@@ -8505,13 +8417,45 @@ export class ScreensController {
 
     // Which staged board each incident type resolves to for THIS screen — the
     // trigger's own precedence over the same columns (emergency-boards.ts).
+    const stagingIsPortrait = emergencyLayoutIsPortrait(screen as any, manifestPosterStandard(tenant));
     const boardFor = resolveEmergencyBoardSelection({
       screen,
       tenant,
-      isPortrait: emergencyLayoutIsPortrait(screen as any, manifestPosterStandard(tenant)),
+      isPortrait: stagingIsPortrait,
       locationModeOn: tenant.locationBasedEmergencyEnabled === true,
       drillPairHasItems: (ids) => ids.some((pid) => (loadedPlaylists.find((pl) => pl.id === pid)?.items?.length ?? 0) > 0),
+      // A resolved playlist with no PUBLISHED items is "no playlist" to the
+      // manifest; the selection falls through exactly as the manifest does.
+      boardHasItems: (pid) => !!boards[pid],
     });
+    // 2026-10-31 — stage what the manifest will ACTUALLY play when no custom
+    // board has content: the screen's single-file board (location mode) and
+    // the system board, per type × live/drill, from the same builders the
+    // manifest branch calls. Severity CRITICAL (the dashboard's trigger); the
+    // player checks the push's severity against the board's colour and keeps
+    // its typed surface when they differ. Only the keys `boardFor` names.
+    const locationModeOnForStaging = tenant.locationBasedEmergencyEnabled === true;
+    for (const type of EMERGENCY_BOARD_TYPES) {
+      for (const drill of [false, true]) {
+        const sel = drill ? boardFor[type].drill : boardFor[type].live;
+        const assetKey = screenAssetBoardStagingKey(type, drill);
+        if (sel.boardKey === assetKey && locationModeOnForStaging) {
+          const url = screenAssetUrlFor(screen, type, drill, stagingIsPortrait);
+          if (url) boards[assetKey] = screenAssetBoard({ screenId: id, typeKey: type, url });
+          else sel.boardKey = systemBoardStagingKey(type, drill);
+        }
+        if (sel.boardKey === systemBoardStagingKey(type, drill)) {
+          boards[sel.boardKey] = systemEmergencyBoard({
+            type,
+            severity: 'CRITICAL',
+            isDrill: drill,
+            isPortrait: stagingIsPortrait,
+            canvasW: (screen as any).canvasW,
+            canvasH: (screen as any).canvasH,
+          });
+        }
+      }
+    }
 
     const screenAssetUrls = [
       (screen as any).emergencyLockdownAssetUrl,
