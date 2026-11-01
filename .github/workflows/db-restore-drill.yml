@@ -14,8 +14,8 @@
 # WHAT: take the newest successful DB Backup run -> download its artifact with
 # the built-in GITHUB_TOKEN -> decrypt exactly as db-backup.yml encrypts ->
 # pg_restore into a Postgres SERVICE CONTAINER on this runner -> assert -> delete.
-# The evidence Article 29 asks for (backup date, size, restore time, row counts)
-# is written to the job summary.
+# The evidence Article 29 asks for (backup date, size, restore time, per-table
+# verdicts) is written to the job summary.
 #
 # NEVER TOUCHES PRODUCTION: SUPABASE_DB_URL is not referenced anywhere in this
 # file. The one credential used is BACKUP_ENC_KEY, handed to the single step that
@@ -27,8 +27,10 @@
 # PUBLIC-REPO SECURITY MODEL (do not weaken): this repo is PUBLIC, so every log
 # line and job summary is world-readable, and the thing being restored is the
 # customer database.
-#   - The only values derived from restored data that are ever printed are the
-#     five row COUNTS below (the owner asked for them as the evidence).
+#   - Nothing derived from restored data is printed except a per-table VERDICT
+#     (rows present / zero rows / missing) for five application tables. Exact
+#     row counts stay out of the public log and summary (lead's decision,
+#     2026-11-01: a customer-count is not evidence the drill needs).
 #   - pg_restore's stderr is NEVER echoed. A failed COPY quotes the offending data
 #     row in its CONTEXT line, and DETAIL lines quote key values. Errors are
 #     parsed, and an unexpected one is printed as ONE masked line (quoted
@@ -411,22 +413,25 @@ jobs:
 
           fail=0
           {
-            echo "| table | rows |"
-            echo "|---|---:|"
+            echo "| table | restored |"
+            echo "|---|---|"
           } > "$WORK/counts.md"
-          echo "Row counts in the restored database:"
+          echo "Application tables in the restored database (exact counts are deliberately not printed):"
           for t in tenants users screens audit_logs playlists; do
             n=$(pg17 psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$t\"" 2> "$WORK/psql.err")
             if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-              n="MISSING"
+              verdict="MISSING"
               echo "::error::Could not count public.$t in the restored database (table absent or unreadable)."
               fail=1
             elif [ "$n" -eq 0 ]; then
+              verdict="ZERO ROWS"
               echo "::error::public.$t restored with ZERO rows - the backup has no data for it."
               fail=1
+            else
+              verdict="rows present"
             fi
-            printf '  %-12s %s\n' "$t" "$n"
-            echo "| $t | $n |" >> "$WORK/counts.md"
+            printf '  %-12s %s\n' "$t" "$verdict"
+            echo "| $t | $verdict |" >> "$WORK/counts.md"
           done
           tables=$(pg17 psql -X -qAt -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" 2> /dev/null)
           [[ "$tables" =~ ^[0-9]+$ ]] || tables="?"
@@ -464,7 +469,7 @@ jobs:
             if [ -s "$RUNNER_TEMP/restore-drill/counts.md" ]; then
               cat "$RUNNER_TEMP/restore-drill/counts.md"
             else
-              echo "_Row counts were not reached._"
+              echo "_The per-table check was not reached._"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$JOB_STATUS" = "success" ]; then
