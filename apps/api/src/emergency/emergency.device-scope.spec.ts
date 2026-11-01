@@ -67,6 +67,7 @@ describe('GET /emergency/status — device principals', () => {
         OR: [
           { scopeType: 'tenant' },
           { scopeType: 'device', scopeId: 'screen-A' },
+          { scopeType: 'devices', screenIds: { has: 'screen-A' } },
           { scopeType: 'group', scopeId: 'group-9' },
         ],
       },
@@ -80,7 +81,7 @@ describe('GET /emergency/status — device principals', () => {
       undefined as any,
     );
     const scopes = whereOf(prisma).AND[0].OR;
-    expect(scopes).toHaveLength(2);
+    expect(scopes).toHaveLength(3);
     expect(scopes.some((s: any) => s.scopeType === 'group')).toBe(false);
   });
 
