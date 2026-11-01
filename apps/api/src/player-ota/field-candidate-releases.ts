@@ -311,4 +311,14 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2724530,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/40423894913',
   },
+  // Signed CI 41282358157, source field/1.1.57: USB only for VenueOS sticks,
+  // Wi-Fi join, install-button fallback, GUQ sleep the Goodview way.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.57-field.1': {
+    versionName: '1.1.57-field.1',
+    versionCode: 10157,
+    sha256: 'eb0ecb325013328c9b5eec51afcd8ca2ad4cb1e337bbeb29b574562066f9736f', // gitleaks:allow -- verified public APK integrity digest
+    size: 2749998,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41282358157',
+  },
 };
