@@ -53,6 +53,7 @@ import {
   ConsecutiveScans,
   effectivePowerCommand,
   intendedDowntime,
+  dailyPatternReason,
   isFlapping,
   lastPowerCommandOf,
   missedOnTime,
@@ -111,6 +112,7 @@ interface IncidentRow {
   kind: string;
   open: boolean;
   state: string;
+  reason?: string | null;
   emailedMode: string | null;
   screenName: string;
   startedAt: Date;
@@ -349,7 +351,16 @@ export class CustomerAlertEmailsService {
     const incidents = await this.loadTrackedIncidents();
     const open = (kind: ProblemKind) =>
       new Map(incidents.filter((i) => i.open && i.kind === kind).map((i) => [i.screenId, i]));
-    const openOffline = open('OFFLINE');
+    // A SILENT row recording the screen's usual nightly dark spell is NOT a
+    // reason to stop looking: it is judged again every scan, so a screen that
+    // does not come back is emailed once it is 60 minutes past its learned
+    // return (2026-11-01). Every other open row still means "already handled".
+    const isPatternRow = (i: { state: string; reason: string | null }) =>
+      i.state === 'SILENT' && (i.reason === 'daily-pattern' || (i.reason ?? '').startsWith('daily-pattern:'));
+    const patternRows = new Map(incidents.filter((i) => i.open && i.kind === 'OFFLINE' && isPatternRow(i)).map((i) => [i.screenId, i]));
+    const openOffline = new Map([...open('OFFLINE')].filter(([id]) => !patternRows.has(id)));
+    const maxAgeOf = (id: string) =>
+      patternRows.has(id) ? ALERT_RULES.DAILY_DARK_MAX_MS + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS : ALERT_RULES.OFFLINE_MAX_AGE_MS;
     const openNoContent = open('NO_CONTENT');
 
     // ── When each offline screen's problem STARTED (2026-10-25) ──
@@ -377,7 +388,7 @@ export class CustomerAlertEmailsService {
     }
     const startOf = (s: { id: string; lastPingAt: Date }) => missedById.get(s.id)?.onAtMs ?? s.lastPingAt.getTime();
     const ageOf = (s: { id: string; lastPingAt: Date }) => now - startOf(s);
-    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > ALERT_RULES.OFFLINE_MAX_AGE_MS).length;
+    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > maxAgeOf(s.id)).length;
 
     // ── Platform gate: restart / degraded / incident quiet window ──
     const gateInput = {
@@ -410,7 +421,7 @@ export class CustomerAlertEmailsService {
 
     // ── Candidates (observed every scan, so confirmation counts are honest) ──
     const offlineDueNow = snapshot.filter(
-      (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && !openOffline.has(s.id),
+      (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= maxAgeOf(s.id) && !openOffline.has(s.id),
     );
     result.offlineDue = offlineDueNow.length;
     result.offlineMissedOnTime = offlineDueNow.filter((s) => missedById.has(s.id)).length;
@@ -440,7 +451,7 @@ export class CustomerAlertEmailsService {
     const offlineActionable = new Map(offlineConfirmed.map((s) => [s.id, s]));
     for (const s of snapshot) {
       if (offlineActionable.has(s.id) || openOffline.has(s.id) || !confirmedTenants.has(s.tenantId)) continue;
-      if (ageOf(s) >= ALERT_RULES.STRAGGLER_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS) offlineActionable.set(s.id, s);
+      if (ageOf(s) >= ALERT_RULES.STRAGGLER_MS && ageOf(s) <= maxAgeOf(s.id)) offlineActionable.set(s.id, s);
     }
     const noContentActionable = noContentDueNow.filter((c) => this.noContentDue.confirmed(c.row.id));
     result.offlineCandidates = offlineActionable.size;
@@ -451,7 +462,7 @@ export class CustomerAlertEmailsService {
 
     // ── Tenants (names, hierarchy, update windows) for everything we may touch ──
     const tenantIds = new Set<string>([
-      ...snapshot.filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS).map((s) => s.tenantId),
+      ...snapshot.filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= maxAgeOf(s.id)).map((s) => s.tenantId),
       ...noContent.map((c) => c.row.tenantId as string),
       ...incidents.map((i) => i.tenantId),
     ]);
@@ -499,7 +510,7 @@ export class CustomerAlertEmailsService {
         // pattern chain survives the row being rewritten, and so the
         // recovery closes quietly — no "back online" note for a problem that
         // was never emailed.
-        await this.upsertIncident(p, { state: 'SILENT', reason: 'daily-pattern', emailed: false, mode });
+        if (!patternRows.has(p.screenId)) await this.upsertIncident(p, { state: 'SILENT', reason: dailyPatternReason(f.facts.offlineHistory, p.missedOnTime ? p.missedOnTime.onAtMs : p.startedAtMs), emailed: false, mode });
         result.silenced++;
         defer(reason);
         continue;
@@ -559,7 +570,7 @@ export class CustomerAlertEmailsService {
       const near = (t: number) => real.some((p) => Math.abs(p.startedAtMs - t) <= W);
       const nearby: NewProblem[] = [
         ...snapshot
-          .filter((s) => ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && near(startOf(s)))
+          .filter((s) => ageOf(s) <= maxAgeOf(s.id) && near(startOf(s)))
           .map((s) => ({
             screenId: s.id,
             tenantId: s.tenantId,

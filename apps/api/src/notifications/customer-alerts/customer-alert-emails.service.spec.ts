@@ -986,7 +986,7 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
     expect(res.silenced).toBe(1);
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     const row = w.incidents.find((i) => i.screenId === 'lobby')!;
-    expect(row).toEqual(expect.objectContaining({ open: true, state: 'SILENT', reason: 'daily-pattern', emailedMode: null }));
+    expect(row).toEqual(expect.objectContaining({ open: true, state: 'SILENT', reason: `daily-pattern:${13 * H}`, emailedMode: null }));
     await scan(w, svc);
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     for (let i = 0; i < 7; i++) {
@@ -995,6 +995,30 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
     }
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     expect(w.incidents.find((i) => i.screenId === 'lobby')!.open).toBe(false);
+  });
+
+  it('a nightly screen that never returns: silent until 60 min past its learned return, then exactly ONE offline email', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    const drop = w.clock.now;
+    prevSpell('lobby', 'lincoln', drop - 24 * H, 13);
+    goOffline(w, 'lobby', drop);
+    await scan(w, svc, 15);
+    await scan(w, svc);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    for (const at of [drop + 6 * H, drop + 13 * H + 59 * MIN]) {
+      await scanAt(w, svc, at);
+      await scanAt(w, svc, at + MIN - 1_000);
+    }
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    await scanAt(w, svc, drop + 14 * H + 2 * MIN);
+    await scanAt(w, svc, drop + 14 * H + 3 * MIN);
+    expect(subjects(email)).toContain('VenueOS: lobby is offline at Lincoln Elementary');
+    expect(w.sends).toHaveLength(1);
+    const sent = email.sendCustomerAlert.mock.calls.length;
+    await scanAt(w, svc, drop + 15 * H);
+    await scanAt(w, svc, drop + 16 * H);
+    expect(email.sendCustomerAlert.mock.calls.length).toBe(sent);
   });
 
   it('control: the same screen dropping at a DIFFERENT hour than its last spell is emailed', async () => {
