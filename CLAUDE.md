@@ -6,7 +6,7 @@
 
 **VenueOS** — a secure, real-time signage + emergency-alert CMS. Born in K-12 (interactive displays, digital signage, and life-safety lockdown / weather / evacuation alerts across thousands of screens) and now **multi-vertical**: K-12 districts (the beachhead + the emergency moat), live **sports venues** (Sprint 13 — scoreboards, ribbon boards, game presentation), and QSR / restaurant / retail / worship / corporate. The wedge: ONE platform that runs everyday signage **and** native life-safety **and** (in sports) full game presentation on the same screens — so the board earns its keep 5 days a week, not just on Friday night.
 
-> **READ FIRST — current audit + remediation program (2026-07-12):** `docs/research/2026-07-12-world-class-fullapp-audit/VENUEOS-WORLD-CLASS-AI-DEVELOPER-BRIEF.md` is the self-contained execution brief for AI development agents — master remediation program + nine evidence appendices, code-verified against the full 21-section Standard Audit Surface (humans: `00-MASTER-REMEDIATION.md` in the same folder). Older background: `docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`. New here? Start with `CONTRIBUTING.md`. Pre-launch April-2026 design docs in `docs/archive/` are HISTORICAL ONLY — ignore them.
+> **READ FIRST:** `AGENTS.md` (imported at the top of this file — the North Star, the precedence of texts and the hard stops), then `docs/governance/` (the app profile, owner rules, autonomy registers, mechanism map and the current freeze) and the latest handoff in `docs/handoffs/`. New here? Start with `CONTRIBUTING.md`. Pre-launch April-2026 design docs in `docs/archive/` are HISTORICAL ONLY — ignore them.
 
 Ambition: the default operating system for every screen a school, venue, or multi-location operator runs.
 
@@ -102,13 +102,15 @@ were stale (true before 2026-05-04).
    applied migrations and `migrate deploy` compares them.
 4. The `main.ts` "boot-time schema safety net" is a seatbelt for `SKIP_MIGRATE` boots, **not**
    the mechanism: it runs AFTER `app.listen()`.
-5. CI enforces rule 1: `scripts/check-schema-has-migration.cjs` (Deploy Reliability →
-   `schema-has-migration`) fails a schema DDL change with no new migration dir, and prints
-   the DDL. It is database-free. Verified against `684f8576` itself: red.
+5. CI checks rule 1: `scripts/check-schema-has-migration.cjs` (Deploy Reliability →
+   `schema-has-migration`, shown as "schema change ships a migration") fails a schema DDL
+   change with no new migration dir, and prints the DDL. It is database-free. Verified
+   against `684f8576` itself: red. It reports; it does not block a merge — only four build
+   checks are required today (see the Deploy Reliability section).
 
 ### Testing & Lint
 ```bash
-pnpm test                    # Run Jest suite
+pnpm test                    # Jest in each workspace that defines a test script (api, renderer, api-types, scoreboard-cts, signage-design). apps/web has none: run its Jest with `pnpm --filter web exec jest`
 pnpm lint                    # ESLint across workspaces (api auto-fixes, web only reports)
 ```
 
@@ -116,11 +118,11 @@ pnpm lint                    # ESLint across workspaces (api auto-fixes, web onl
 Individual app scripts available:
 - `pnpm --filter api run start:prod` — NestJS production binary
 - `pnpm --filter api run test:cov` — Jest with coverage
-- `pnpm --filter web run build` — Next.js static build
+- `pnpm --filter web run build` — Next.js production build (a server build: route handlers and middleware, started with `next start`; not a static export)
 
 ## Environment Variables
 
-All required env vars for `.env` (gitignored):
+The env vars documented below for `.env` (gitignored). **This table is a subset, not the full list:** `apps/api/src` reads 168 distinct `process.env` names (2026-11-01; `grep -rhoE 'process\.env\.[A-Z][A-Z0-9_]*' apps/api/src --include='*.ts' --exclude='*.spec.ts' --exclude='*.test.ts' | sort -u | wc -l`), about two thirds of them named nowhere in this file, and `.env.example` omits 40 of the 89 names listed below. Until the typed env schema (Phase 1) generates this table and `.env.example`, grep `process.env.` before concluding a variable does not exist.
 
 | Variable | Purpose | Example |
 |---|---|---|
@@ -128,13 +130,13 @@ All required env vars for `.env` (gitignored):
 | `DIRECT_URL` | Prisma direct (migrations only) | `postgresql://user:pass@host:5432/postgres` |
 | `SUPABASE_URL` | Supabase project URL | `https://xyz.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase auth + storage | `eyJ...` |
-| `PLAYER_APK_STORAGE_BUCKET` | Optional. Bucket holding the **fleet APK delivery copies** (efficiency audit 2026-09-02, P0-5). Default `apks`. **The bucket is PRIVATE** — `scripts/upload-apks-to-storage.mjs` creates it with `public:false` and refuses to write to a public one, and the API mints 1-hour signed URLs per download (`apps/api/src/player-ota/apk-storage.ts`). A signed kiosk APK sitting world-readable at a guessable URL is the one artifact that must not stay public once the repo is private. Layout is `<kind>/v<versionCode>/edu-cms-<kind>-v<versionName>.apk` plus a `.sha256` sidecar, written APK-first, never overwritten (a rebuild of a published version is a hard failure in the uploader). **The GitHub Release stays the source of truth for the version catalogue and for the digest** — the sidecar is only ever cross-checked against the API's own digest (committed pin, else the hash of the authenticated release asset), so a compromised bucket cannot get different bytes installed. Set this only if you run a second Supabase project (staging/on-prem). | `apks` |
+| `PLAYER_APK_STORAGE_BUCKET` | Optional. Bucket holding the **fleet APK delivery copies** (efficiency audit 2026-09-02, P0-5). Default `apks`. **The bucket is PRIVATE** — `scripts/upload-apks-to-storage.mjs` creates it with `public:false` and refuses to write to a public one, and the API mints 1-hour signed URLs per download (`apps/api/src/player-ota/apk-storage.ts`). A signed kiosk APK sitting world-readable at a guessable URL in OUR bucket is the artifact that must not exist. (The repo is public, so the GitHub Release already hosts every APK publicly: this bucket is about moving delivery bytes off the API's egress, not about secrecy — it becomes the only non-public copy if the repo ever goes private again.) Layout is `<kind>/v<versionCode>/edu-cms-<kind>-v<versionName>.apk` plus a `.sha256` sidecar, written APK-first, never overwritten (a rebuild of a published version is a hard failure in the uploader). **The GitHub Release stays the source of truth for the version catalogue and for the digest** — the sidecar is only ever cross-checked against the API's own digest (committed pin, else the hash of the authenticated release asset), so a compromised bucket cannot get different bytes installed. Set this only if you run a second Supabase project (staging/on-prem). | `apks` |
 | `PLAYER_APK_STORAGE_REDIRECT` | Optional kill switch for the same feature. `off` / `false` / `0` sends every APK download back through the API byte proxy (the path that served the fleet before P0-5). **Subtractive only** — like `PLAYER_APK_QUARANTINE`, it can only ever remove an option, so a stale value can never pin or strand the fleet (the failure mode that got `PLAYER_APK_LATEST_VERSION_CODE` deleted on 2026-05-15). Leave unset in normal operation. Nothing redirects until an object exists anyway, so the rollout is inherently staged: deploy (no-op) → `node scripts/upload-apks-to-storage.mjs --from-releases` → watch `grep 'apk-delivery'` in the Railway logs flip `served=proxy` to `served=redirect`. | `off` |
 | `JWT_SECRET` | Signing JWTs (64-char hex) | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `SESSION_SECRET` | express-session encryption (64-char hex) | (same as JWT_SECRET safe) |
 | `DEVICE_SECRET_KEY` | Signing device tokens (64-char hex) | (random) |
 | `DEVICE_JWT_SECRET` | Device JWT signing (64-char hex) | (random) |
-| `DEVICE_SECRET_KEY_PREVIOUS` / `DEVICE_JWT_SECRET_PREVIOUS` | Optional **rotation window** for the two device secrets (2026-10-22, after the Railway env leak; `apps/api/src/security/key-ring.ts`). Set the NEW value in the primary variable and the OLD value here, deploy, wait, delete. While set: everything NEW is minted / signed / encrypted with the primary; every verifier accepts the primary **then** the previous — the device-JWT guard and `admitDeviceCredential` (so a screen still on an old-key token keeps working until it re-registers onto the new key — ⚠️ **paired screens hold 180-day tokens and re-register only on a page load**, never on a timer, so the fleet must be Resynced inside the window; `node scripts/railway-rotation.mjs finish` refuses to close it while a screen alive in the last 24 h has no token issued on the new key — the audit rows' non-secret `mintKeyId` — unless `--override-unrenewed "<why>"`, which is recorded in `audit_logs` first; a screen that still meets the closed window re-registers into a 1-hour credential + "re-pair required", healed by **Restore trust** — it was a hard 401, dark forever, until 2026-10-23), the Redis fan-out gate on every replica (a lockdown signed by a replica still on the old key is still delivered), stream tickets / capabilities / sports tokens / OTA tags / Clever state, and the three envelope ciphers (streaming / POS / ads / social creds, BYOK AI keys, MFA secrets, kiosk Wi-Fi). A leader-leased boot job (`KeyRotationRewrapService`, ~45 s after boot) re-wraps every sealed row's data-key envelope onto the primary without decrypting plaintext; `POST /api/v1/super/key-rotation/rewrap` re-runs it (idempotent) and its `rewrapped: 0, unreadable: 0` answer is the proof the previous can go. **Unset = byte-identical to today.** Boot REFUSES a previous shorter than 16 chars or identical to the primary. Never a straight swap of either secret again — runbook `docs/SECRET-ROTATION.md`. | (the value the primary had before the rotation) |
+| `DEVICE_SECRET_KEY_PREVIOUS` / `DEVICE_JWT_SECRET_PREVIOUS` | Optional **rotation window** for the two device secrets (2026-10-22, after the Railway env leak; `apps/api/src/security/key-ring.ts`). Set the NEW value in the primary variable and the OLD value here, deploy, wait, delete. While set: everything NEW is minted / signed / encrypted with the primary; every verifier accepts the primary **then** the previous — the device-JWT guard and `admitDeviceCredential` (so a screen still on an old-key token keeps working until it re-registers onto the new key — ⚠️ **paired screens hold 180-day tokens, and the web player's 10-minute credential timer (`deviceCredential.ts`, `renewalDecision`) renews a proven token only inside its last 14 days**, so a rotation window is closed by Resyncing the fleet inside it, not by waiting; `node scripts/railway-rotation.mjs finish` refuses to close it while a screen alive in the last 24 h has no token issued on the new key — the audit rows' non-secret `mintKeyId` — unless `--override-unrenewed "<why>"`, which is recorded in `audit_logs` first; a screen that still meets the closed window re-registers into a 1-hour credential + "re-pair required", healed by **Restore trust** — it was a hard 401, dark forever, until 2026-10-23), the Redis fan-out gate on every replica (a lockdown signed by a replica still on the old key is still delivered), stream tickets / capabilities / sports tokens / OTA tags / Clever state, and the three envelope ciphers (streaming / POS / ads / social creds, BYOK AI keys, MFA secrets, kiosk Wi-Fi). A leader-leased boot job (`KeyRotationRewrapService`, ~45 s after boot) re-wraps every sealed row's data-key envelope onto the primary without decrypting plaintext; `POST /api/v1/super/key-rotation/rewrap` re-runs it (idempotent) and its `rewrapped: 0, unreadable: 0` answer is the proof the previous can go. **Unset = byte-identical to today.** Boot REFUSES a previous shorter than 16 chars or identical to the primary. Never a straight swap of either secret again — runbook `docs/SECRET-ROTATION.md`. | (the value the primary had before the rotation) |
 | `REDIS_URL` | Redis pub/sub for realtime | `redis://localhost:6379` |
 | `RESEND_API_KEY` | [Resend](https://resend.com) API key. Powers **every** outbound email: password-reset, user invites, welcome mail, asset-approval notices, and the Bug Reporter's "we got it / fix shipped" + owner-alert emails. When unset: dev logs to console (zero-config); **production throws on send** so the UI surfaces a real "email not configured" error instead of lying "check your inbox" (`EmailService.isConfigured()` gates this). Most common "I set the key but no emails arrive" cause is the `EMAIL_FROM` default — see below. | `re_...` |
 | `EMAIL_FROM` | Sender for all outbound mail. Defaults to `VenueOS <onboarding@resend.dev>`. **WARNING:** Resend only delivers from `onboarding@resend.dev` to the email that **owns the Resend account** — every other recipient (other admins, operators, parents) is silently dropped/spam-filtered. To email anyone else you MUST verify a custom sending domain in the Resend dashboard and set this to an address on it. This is the usual root cause of "no bug emails getting sent." | `VenueOS <noreply@yourdomain.com>` |
@@ -145,12 +147,12 @@ All required env vars for `.env` (gitignored):
 | `GATEWAY_SHARED_SECRET` | Shared secret for the player's **same-origin control-plane gateway** (2026-09-02, P0-1). Set the **same value on BOTH services** (Vercel web + Railway API), or leave it unset on both. Some OEM Android WebViews (the Android-9 Goodview units) load the player shell from the web origin and then cannot reach `NEXT_PUBLIC_API_URL`'s origin at all — TLS chain / DNS / transparent proxy — so the screen sits on "Connecting to your CMS…" forever. Such a device falls back to running its WHOLE control plane through Next middleware on the web origin (`apps/web/src/proxy.ts`, allowlist in `apps/web/src/app/player/gatewayPaths.ts`; WebSocket stays direct because Vercel cannot proxy it — the SSE/HTTP-poll fallbacks ride the gateway). **That hop appends VERCEL'S EGRESS ADDRESS to `X-Forwarded-For`**, so the `TRUSTED_PROXY_HOPS` right-counted rule above would resolve EVERY gateway device in the fleet to one shared address: one throttle key for all of them (every per-IP brute-force cap collapses — the 2026-07-07 bug's consequence, fleet-wide) and an `AuditLog.ipAddress` naming Vercel instead of whoever fired a district-wide lockdown. So the gateway forwards the real client IP in `x-venueos-gw-client-ip` alongside this secret in `x-venueos-gw-secret`, and the API honors the forwarded IP **only** on a `timingSafeEqual` match (`client-ip.ts`); a wrong or missing secret falls back to the normal rule and NEVER to a client-supplied value, so a client that sets the headers itself gains nothing. Must be ≥ 16 chars. When unset the gateway still rewrites (devices stay reachable) but gateway devices share Vercel's address as their throttle key — set it. **The allowlist is now the WHOLE story on the web origin (GW-01, 2026-09-02).** `apps/web/vercel.json` used to blanket-rewrite `/api/v1/:path*` → Railway (commit f23fde88), and Vercel applies rewrites AFTER middleware returns `NextResponse.next()` — so the ENTIRE API was reachable at `https://<web-origin>/api/v1/...`, including every route this allowlist exists to exclude (`/auth/login`, `/signup`, `/password-reset/request`, `/devices/pair`, `/proxy/web`), with the ATTACKER choosing the path. Those requests carried Vercel's egress and NO secret, so every per-IP brute-force cap collapsed onto one attacker-selectable key and `AuditLog.ipAddress` was launderable. **That rewrite is deleted**: a non-allowlisted `/api/v1` path on the web origin now falls through to Next's router and 404s. The three relative callers it was carrying (`FitnessStickLauncherWidget`, `FitnessAdBannerWidget`'s fallback, `CtsRibbonWidgets.ribbonApiRoot`'s last resort) address the API origin directly via `@/lib/api-url`'s `API_URL`. **Never re-add a blanket `/api/v1` rewrite**, and never add a NEW relative `/api/v1` fetch on the web origin — use `API_URL`. Do not widen the gateway allowlist to admin routes. `proxy.ts` also strips `x-venueos-gw-client-ip` / `x-venueos-gw-secret` / `cookie` from EVERY `/api/v1` request that enters the middleware, before the allowlist branch (`stripGatewayRequestHeaders` in `gatewayPaths.ts`, unit-tested) — defence in depth; the API's `timingSafeEqual` on the secret stays the real control. | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `VIDEO_PROBE_AUTOHEAL_DISABLED` | `1` stops the hourly **video re-probe** (2026-09-24). Every upload is ffprobe'd for the facts behind the Media Library's "Playback on screens" grade (`packages/api-types/src/video-encode.ts` — kiosk-safe = MP4 · H.264 ≤ L4.1 · 8-bit 4:2:0 · ≤ 1080p · ≤ 30 fps · sane bitrate · fast start · AAC stereo); videos from before the probe existed are graded by a leader-leased cron (`video-probe-autoheal.cron.ts`: boot + hourly, 25 newest rows per tick, 2 s apart) or by the card's "Check this file" button (`POST /assets/:id/check-playback`). A failed probe is stamped (`probeFailed` + `probeFailedVersion`) and retried once per probe version, never hourly. Off under `NODE_ENV=test`. Leave unset. | `1` |
 | `VIDEO_FASTSTART_REMUX_DISABLED` | `1` stops the automatic **fast-start re-mux** (2026-09-24). When the probe reads an MP4 whose index (`moov`) sits AFTER its samples — nothing renders until the whole file has arrived — `VideoPosterService` re-muxes it losslessly (`apps/api/src/storage/video-remux.ts`: `ffmpeg -c copy -movflags +faststart`, no re-encode; the copy must re-probe as the same codec / size / rotation / audio / duration AND read fast-start, or nothing changes), uploads it beside the original as `<basename>-faststart-<token>.mp4`, and moves the row onto it in ONE tenant-scoped write guarded by the old `file_url` — with a new `fileHash`, because the player's cache refuses bytes that do not match it. Runs async after the probe + poster on upload, in the auto-heal cron and on "Check this file" (`remux: 'scheduled'`); one re-mux per process at a time; inputs over 2 GiB refused. **The original is KEPT** (`processingMeta.remux.previousStoragePath`): the template builder writes a picked video's URL into widget config the moment the upload returns, so deleting it would 404 those widgets; it is deleted with the asset. **Never** re-muxed: emergency content (every tenant/screen emergency playlist and media-URL column the never-evict cache is built from, protected playlists, live overrides/messages — a new URL would leave that cache without the file; the check fails closed), a file another asset row shares (fleet distribution), a file outside the row's tenant folder. A failed re-mux changes nothing and stamps nothing. **Order with the signage transcode** (`storage/video-transcode`, same day): a re-mux is DEFERRED while a `video_transcode_jobs` row for the asset is queued or running — checked before it starts and again right before the swap — because the transcode's swap is conditional on the row still serving the URL it was queued with (a re-mux first would make it `source-changed` and cost the file its smaller copy), and the transcode's own output is `+faststart`; when the transcode KEEPS the original (not smaller, already optimal, a failed encode) its worker runs the pass itself (`VideoTranscodePipeline.remuxKeptOriginal` → `processVideo({ remux: 'async', poster: false })`). Leave unset. | `1` |
-| `UPLOAD_CONTENT_CHECK_DISABLED` | `1` switches off the **upload content check** (2026-10-05, media beta test). Until then the type of an upload came from its NAME alone: a text file, a ZIP or an executable named `.mp4`, HTML named `.jpg`, a video cut off mid-upload — all were stored and shown "Ready", then froze a screen, sat black for their slot, or refused a whole playlist on every 1080p screen. `complete-upload` now reads the stored object BEFORE an Asset row exists (`apps/api/src/assets/upload-content-check.service.ts`; the policy is the pure `upload-content-verdict.ts`): a picture must be one `sharp` can read, a video must probe as a real video stream AND decode at its end, audio must have an audio stream, a PDF must start `%PDF-` and end `%%EOF`. A DEFINITE verdict refuses with a 422, a stable `code`, plain words in en/es/zh, and deletes the object. **A check that could not run (storage, ffprobe, a time-out) ACCEPTS as before and logs `[upload-check] could not check …`** — a storage blip must never refuse a good file; never invert that. Proven on the beta-test corpora: 100/100 H.264 files, 56/56 other-codec videos and every real image, PDF and audio file accepted; only the fakes and cut files refused (`docs/research/2026-10-05-upload-truth/`). Tunables, all optional: `UPLOAD_CHECK_BUDGET_MS` (whole check per file, default 12000 — at the deadline the child is killed and the upload accepted), `UPLOAD_CHECK_PROBE_MS` (the ffprobe step, default 6000), `UPLOAD_CHECK_MAX_PARALLEL` (ffprobe/ffmpeg children at once per process, default 1 — this process also delivers alerts). Same wave: a publish that cannot prepare a file for 1080p screens NAMES the file(s) (`files` in the 422/503 body, `SCHEDULE_MEDIA_COPY_FAILED` audit row, `pendingMediaFiles` on `GET /schedules`) instead of refusing the playlist with no name, and the upload hint shows the real storage ceiling (500 MB today) from the presign answer's `maxFileSize`. | `1` |
+| `UPLOAD_CONTENT_CHECK_DISABLED` | `1` switches off the **upload content check** (2026-10-05, media beta test). Until then the type of an upload came from its NAME alone: a text file, a ZIP or an executable named `.mp4`, HTML named `.jpg`, a video cut off mid-upload — all were stored and shown "Ready", then froze a screen, sat black for their slot, or refused a whole playlist on every 1080p screen. `complete-upload` now reads the stored object BEFORE an Asset row exists (`apps/api/src/assets/upload-content-check.service.ts`; the policy is the pure `upload-content-verdict.ts`): a picture must be one `sharp` can read, a video must probe as a real video stream AND decode at its end, audio must have an audio stream, a PDF must start `%PDF-` and end `%%EOF`. A DEFINITE verdict refuses with a 422, a stable `code`, plain words in en/es/zh, and deletes the object. **A check that could not run (storage, ffprobe, a time-out) ACCEPTS as before and logs `[upload-check] could not check …`** — a storage blip must never refuse a good file; never invert that. Proven on the beta-test corpora: 100/100 H.264 files, 56/56 other-codec videos and every real image, PDF and audio file accepted; only the fakes and cut files refused. Tunables, all optional: `UPLOAD_CHECK_BUDGET_MS` (whole check per file, default 12000 — at the deadline the child is killed and the upload accepted), `UPLOAD_CHECK_PROBE_MS` (the ffprobe step, default 6000), `UPLOAD_CHECK_MAX_PARALLEL` (ffprobe/ffmpeg children at once per process, default 1 — this process also delivers alerts). Same wave: a publish that cannot prepare a file for 1080p screens NAMES the file(s) (`files` in the 422/503 body, `SCHEDULE_MEDIA_COPY_FAILED` audit row, `pendingMediaFiles` on `GET /schedules`) instead of refusing the playlist with no name, and the upload hint shows the real storage ceiling (500 MB today) from the presign answer's `maxFileSize`. | `1` |
 | `UPLOAD_HEIC_BUDGET_MS` | Optional, default `30000`: the whole-file budget for converting an uploaded **HEIC / HEIF photo to JPEG** (2026-10-05) — wait for a slot, `heif-dec`, the sharp encode; the child is SIGKILLed at it. **What an upload may be is ONE table**, `packages/api-types/src/upload-formats.ts`, read by the API's allow-list, the `assets` bucket's MIME list (`ASSETS_BUCKET_MIME_TYPES`) and every dashboard upload entry point (`apps/web/src/lib/upload-accept.ts` — a test finds the entry points by their upload calls). MOV, AVI, MKV, WMV, MPG, 3GP and TS/M2TS/MTS are ACCEPTED on the Media Library's direct path and converted AFTER upload by the signage transcode (any name that is not MP4 is a required conversion — `transcode-profile.ts` `SourceLabel` — so the asset ends `video/mp4`); until that MP4 exists the row is stamped "converting" (`processingMeta.screen`, the screen-ready gate) and no screen is handed it — the verdict comes from the upload check's own probe, which reads the stored name too, or from the stored type alone when that probe could not run (`storedTypeScreenVerdict`, MOV & co. only; an MP4 with no clean probe stays unstamped as before); a picker that keeps a URL by value (template widgets, sports cues) waits for the MP4 (`apps/web/src/lib/screen-version.ts`). A HEIC (by its name, or HEIC bytes under any picture name) is converted BEFORE the asset exists (`apps/api/src/assets/heif-convert.ts`: libheif's `heif-dec` — tiles, `irot`, Display-P3 → sRGB via `withIccProfile('srgb')`, ≤ 3840 px, no EXIF/GPS; ffmpeg was measured and drops the P3 profile) and is never stored as HEIC: a broken one is a 422 `ASSET_IMAGE_HEIC`, a conversion that could not run a 503 `ASSET_IMAGE_HEIC_UNAVAILABLE`. `UPLOAD_CONTENT_CHECK_DISABLED` does not turn the conversion off. The Dockerfile installs `libheif-tools` and fails the build unless `heif-dec` decodes a HEIC it makes itself. `/assets/upload` (the lockdown/evacuate editor — its content is never converted) takes HEIC but not a video converted after upload; `/assets/emergency-upload` keeps the screen-ready list. The bucket's MIME list is applied ON ITS OWN at boot when the 2 GB size update is refused (the refusal used to throw the list away). | `30000` |
 | `SETUP_EMAIL_VERIFICATION` | `auto` (default) \| `required` \| `off` — whether **first-login setup proves the new email with a 6-digit code** (2026-10-06). Setup (`POST /auth/complete-setup`) replaces the account's placeholder email with the person's own; nothing used to check the mailbox was real, so a typo — or an address that never was an inbox (Greg's own RIOT Corporate claim, 2026-10-05) — stranded every sign-in code and password reset, and a profile cannot change its email. Now `POST /auth/complete-setup/email-code` emails a code to the NEW address (bound to account + address, 10 min, 5 wrong tries, never returned or logged; rows live in `mfa_email_codes` under a deterministic `challengeHash`, `auth/setup-email-verification.ts`) and `complete-setup` finishes only with it (`emailCode`). **`auto` requires it exactly when `EmailService.isDeliverableToArbitraryRecipients()` is true** (a verified sending domain — on the shared `onboarding@resend.dev` sender nobody but the Resend account owner receives mail, so a required code would make setup impossible for every customer); it therefore switches itself on the day `EMAIL_FROM` moves to a verified domain. `required` forces it (also on the shared sender — only when you know mail works); `off` is the break-glass. The route is one of FOUR the setup-state guard allows (`SETUP_REQUIRED_ALLOWED_ROUTES`, pinned by `jwt-auth.guard.setup-gate.spec.ts`). Unit tests: `auth.controller.setup-email-code.spec.ts`. | `auto` |
 | `PLAYER_LOOP_CONTINUOUS` | Standard one-element MSE repetition for existing and newly paired screens: unset/empty or `all` requests continuous for every screen; no per-screen enrollment. `off`/`0`/`false`/`no` restores legacy `PLAYER_LOOP_TWODECK` selection (native without a two-deck opt-in); an explicit ID list restricts continuous for diagnosis/rollback. Continuous takes precedence over two-deck and is carried as `playback.loopMode: continuous` in the hashed manifest. The player still requires a solo, muted, unsynced H.264 MP4, MSE/rVFC and a verified source digest. Locally fragments the verified cached source without re-encoding/downscaling, then appends repeats to one advancing timeline with bounded buffers; unsupported profiles, corruption or stalls revert once to native with a per-file 24 h block. Emergency/sync/audio/mixed playlists remain excluded. Hardware evidence is rVFC compositor timing, not an on-glass camera or full qualification matrix. See `docs/player/CONTINUOUS-VIDEO-LOOP.md`. | `all` |
-| `VIDEO_PLAYBACK_GATE` / `VIDEO_PLAYBACK_DEMOTION` / `VIDEO_DEMOTION_*` | Video guarantee steps 5–7 (2026-10-12, owner decisions A/B/C; design `docs/research/2026-10-11-launch-readiness/02-video-guarantee.md`). **Gate** (`warn` default \| `enforce` \| `off`): every activation door runs `PlaybackGateService` inside `MediaPublicationService.prepare`; `warn` publishes as before and returns `playbackWarnings` (file + screens, en/es/zh toast); `enforce` refuses 422 `VIDEO_SCREEN_CANNOT_PLAY` before any write — **never for a two-sided unit** (B); unknown never warns; emergency playlists never evaluated. **Demotion** (`on` default \| `observe` \| `off`): a BAD minute is a settled, cached sample dropping ≥ `VIDEO_DEMOTION_BAD_PCT` (5) % or freezing ≥ `VIDEO_DEMOTION_STALL_MS` (250) ms; `VIDEO_DEMOTION_STREAK` (3) in a row (a good one resets) on an original with a validated 1080p copy writes a sticky, audited `screen_playback_demotions` row (manifest-fed) and `selectVideoFile` serves that screen the copy — normal branch only, emergency never. Two-sided units are recorded only; no lighter copy → keeps playing + tenant notification + platform alert, once per screen × file per day (C). The player swaps only after the new file is on disk and verified, at a natural boundary (`player/renditionSwap.ts`). "Try full quality again" = `POST /screens/:id/playback-demotions/:id/clear` (admins, audited). | `warn` / `on` / `5`,`250`,`3` |
-| `PLAYER_NATIVE_VIDEO_EXPERIMENTS` | The native-video experiments of player **1.1.41** and **1.1.42** (plan `docs/research/2026-10-17-player-rock-solid/00-PLAN.md` §4E), default OFF — and, from **1.1.43**, the lead-only KILL SWITCHES of the two pacing behaviours that APK runs by default (last paragraph). Comma tokens `webview-invisible:<screen uuid|all>`, `surface-frame-rate:<…>`, `decoder-rotation:<…>`, `vsync-snap:<…>`, `prefer-60hz:<…>`, each switchable on its own; a typo enables nothing. Carried per screen on the hashed `nativeVideo` descriptor as `experiments` (omitted when none is on) and OUTSIDE its `revision`, so a flip never restarts a session on the glass — it applies to the next native session. (1) the player WebView goes INVISIBLE while a solo native session presents (VISIBLE again on any end, FIRST on an emergency hold; a process-wide guard disables it after one fault — one flip, never a storm); (2) `Surface.setFrameRate(fps, ONLY_IF_SEAMLESS)` on API 30+; (3) the Activity stays in the panel's natural orientation (`setOrientation('NATURAL')`, no new bridge method) and the decoder rotates. **1.1.42 (2026-10-18, the pacing finding: M43 and L55VEC run 30 fps on a 30 Hz mode — zero headroom, two free-running clocks, a frame periodically straddles a vsync):** (4) `vsync-snap` — every decoder output is released at the vsync CLOSEST to its due time, on a period + phase the APK measures from `Choreographer` on the UI thread (`media/VsyncClock.kt`, bounded, allocation-free, Media3's `VideoFrameReleaseHelper` rule: 0.8 of a period early so SurfaceFlinger latches it for exactly that vsync), and the media clock is slewed by at most 0.3 ms per frame toward the grid so it stays locked instead of walking across half a period (`VideoFrameSchedule.releaseTime`); the late/drop policy and the emergency-first order are untouched; the snapshot gains `snappedFrames`, `snapErrorMaxUs`/`snapErrorMeanUs`, `clockSlewUs` (signed — the measured drift), `vsyncPeriodUs`, `vsyncSamples`; the fault guard covers it like (1). Only on the default display (a face on a second panel is not snapped). (5) `prefer-60hz` — when the panel lists a ~60 Hz (59–61) mode of the SAME resolution, the APK asks for it through `Window.preferredDisplayModeId` on the face's own window (the Activity's, or the face Presentation's) at a native session boundary, BEFORE that session's surface exists, never mid-session; kept for the process while the flag stays on, reverted at a session boundary once it is withdrawn; `preferredModeApplied` / `preferredModeResult` and the live `displayMode` say what happened. **⚠️ A display-mode switch can BLANK the panel for a second or two** — it ships default OFF and the lead switches it on per screen after proving it on the glass. Flag or not, every supported mode is logged once per native session (`PLAYER_NATIVE_VIDEO_DISPLAY … modes=…`) and rides the snapshot as `timing.supportedModes` and on `device.supportedModes` / `device.refreshRate`; `timing.keepScreenOn` reports whether the window held `FLAG_KEEP_SCREEN_ON` (read, never written, by the engine — `KeepScreenOnContractTest`). Needs an APK ≥ 1.1.42 for (4)/(5); older APKs ignore the keys. **1.1.43 (2026-10-19, owner: "make sure it auto detects, I don't want another setting"): (4) and (5) are AUTOMATIC — no setting, decided by the device from its own facts on every class that runs native (Taurus stays web-only, so nothing applies there).** (4) is ON for every solo session on the default display, with a GRID-SIZED release lead (`VideoFrameSchedule.releaseLeadNs`: 0.8 P on grids of ≥ 25 ms, 0.5 P on grids of ≤ 20 ms — 8.3 ms before each vsync at 60 Hz — linear between; the fixed 0.8 P latched ~0.17 % of frames one vsync EARLY on the rk3328 unit's 60 Hz grid), reported as `releaseLeadUs` on the snapshot and the ledger. (5) is asked ONCE per process, on the default display's face only (face 0 — the safety net's frame proof follows that display; a double-sided unit's second panel never switches), at the first native session boundary after boot (before that session's surface exists, while the web engine still shows the content; never for a slot; never under an emergency hold — neither the request nor the kill switch's withdraw, which is a mode switch too) and then PROVEN by a safety net: within 10 s the active mode must be the one asked for (else `reverted-no-switch`) and Choreographer frames must still flow (one within 2 s of the check, else `reverted-no-frames`), and the first native frame confirms it; a stall (`output-stalled` / `output-unavailable` / `codec-stalled`) before that first frame is the switch's failure — the session ends TRANSIENT as `display-mode-reverted`, never a 24 h block of the file. A failed switch is reverted to mode 0 and the request is blocked on the unit for 24 h (persisted in the `native_video_display` prefs, so it survives the nightly reboot; `blocked` while it stands; once per process, a later boundary repeats the verdict). The tokens for these two can now only REMOVE behaviour: `-vsync-snap:<uuid|all>` / `-prefer-60hz:<uuid|all>` send `false` (OFF; a mode this process asked for is withdrawn at the next boundary), a negative token wins over a positive one for the same screen, and the positive tokens are accepted and change nothing on 1.1.43 — nothing forces a request past the block (a 1.1.42 APK still reads them as ON and ignores `false`; the three experiments above keep their positive tokens). Same build: failure grading phase 0 — `NativeEndGrade` (`FaceVideoPolicy.kt`), mirrored by `nativeVideoEndGrade` (`nativeSharedVideo.ts`; a web test reads the Kotlin and fails on drift): TRANSIENT and NOT-READY ends (network, storage, authorization, manifest — an offline boot, a 5xx, `media-incomplete` for a short download, `media-missing` for a pruned cache file) are retried and never block; BOX verdicts stay web for the document; only a FAULT of a verified file blocks for 24 h, and an ungraded code fails closed as a fault. And the panel FIRMWARE's own display facts, read-only and bounded: `device.sysDisplayMode` (Amlogic `/sys/class/display/mode`, ≤ 48 chars) and `device.sysDisplayCaps` (Amlogic `disp_cap`, else Rockchip `fb0/modes`; ≤ 16 × ≤ 32), stripped to `[A-Za-z0-9:_.*+/@-]`, re-read at most every 30 s, shown on the Overview for the default display's face only. Needs an APK ≥ 1.1.43; report `docs/research/2026-10-17-player-rock-solid/10-apk-1-1-43-defaults.md`; nothing hardware-qualified yet. | `-prefer-60hz:<uuid>` |
+| `VIDEO_PLAYBACK_GATE` / `VIDEO_PLAYBACK_DEMOTION` / `VIDEO_DEMOTION_*` | Video guarantee steps 5–7 (2026-10-12, owner decisions A/B/C). **Gate** (`warn` default \| `enforce` \| `off`): every activation door runs `PlaybackGateService` inside `MediaPublicationService.prepare`; `warn` publishes as before and returns `playbackWarnings` (file + screens, en/es/zh toast); `enforce` refuses 422 `VIDEO_SCREEN_CANNOT_PLAY` before any write — **never for a two-sided unit** (B); unknown never warns; emergency playlists never evaluated. **Demotion** (`on` default \| `observe` \| `off`): a BAD minute is a settled, cached sample dropping ≥ `VIDEO_DEMOTION_BAD_PCT` (5) % or freezing ≥ `VIDEO_DEMOTION_STALL_MS` (250) ms; `VIDEO_DEMOTION_STREAK` (3) in a row (a good one resets) on an original with a validated 1080p copy writes a sticky, audited `screen_playback_demotions` row (manifest-fed) and `selectVideoFile` serves that screen the copy — normal branch only, emergency never. Two-sided units are recorded only; no lighter copy → keeps playing + tenant notification + platform alert, once per screen × file per day (C). The player swaps only after the new file is on disk and verified, at a natural boundary (`player/renditionSwap.ts`). "Try full quality again" = `POST /screens/:id/playback-demotions/:id/clear` (admins, audited). | `warn` / `on` / `5`,`250`,`3` |
+| `PLAYER_NATIVE_VIDEO_EXPERIMENTS` | The native-video experiments of player **1.1.41** and **1.1.42**, default OFF — and, from **1.1.43**, the lead-only KILL SWITCHES of the two pacing behaviours that APK runs by default (last paragraph). Comma tokens `webview-invisible:<screen uuid|all>`, `surface-frame-rate:<…>`, `decoder-rotation:<…>`, `vsync-snap:<…>`, `prefer-60hz:<…>`, each switchable on its own; a typo enables nothing. Carried per screen on the hashed `nativeVideo` descriptor as `experiments` (omitted when none is on) and OUTSIDE its `revision`, so a flip never restarts a session on the glass — it applies to the next native session. (1) the player WebView goes INVISIBLE while a solo native session presents (VISIBLE again on any end, FIRST on an emergency hold; a process-wide guard disables it after one fault — one flip, never a storm); (2) `Surface.setFrameRate(fps, ONLY_IF_SEAMLESS)` on API 30+; (3) the Activity stays in the panel's natural orientation (`setOrientation('NATURAL')`, no new bridge method) and the decoder rotates. **1.1.42 (2026-10-18, the pacing finding: M43 and L55VEC run 30 fps on a 30 Hz mode — zero headroom, two free-running clocks, a frame periodically straddles a vsync):** (4) `vsync-snap` — every decoder output is released at the vsync CLOSEST to its due time, on a period + phase the APK measures from `Choreographer` on the UI thread (`media/VsyncClock.kt`, bounded, allocation-free, Media3's `VideoFrameReleaseHelper` rule: 0.8 of a period early so SurfaceFlinger latches it for exactly that vsync), and the media clock is slewed by at most 0.3 ms per frame toward the grid so it stays locked instead of walking across half a period (`VideoFrameSchedule.releaseTime`); the late/drop policy and the emergency-first order are untouched; the snapshot gains `snappedFrames`, `snapErrorMaxUs`/`snapErrorMeanUs`, `clockSlewUs` (signed — the measured drift), `vsyncPeriodUs`, `vsyncSamples`; the fault guard covers it like (1). Only on the default display (a face on a second panel is not snapped). (5) `prefer-60hz` — when the panel lists a ~60 Hz (59–61) mode of the SAME resolution, the APK asks for it through `Window.preferredDisplayModeId` on the face's own window (the Activity's, or the face Presentation's) at a native session boundary, BEFORE that session's surface exists, never mid-session; kept for the process while the flag stays on, reverted at a session boundary once it is withdrawn; `preferredModeApplied` / `preferredModeResult` and the live `displayMode` say what happened. **⚠️ A display-mode switch can BLANK the panel for a second or two** — it ships default OFF and the lead switches it on per screen after proving it on the glass. Flag or not, every supported mode is logged once per native session (`PLAYER_NATIVE_VIDEO_DISPLAY … modes=…`) and rides the snapshot as `timing.supportedModes` and on `device.supportedModes` / `device.refreshRate`; `timing.keepScreenOn` reports whether the window held `FLAG_KEEP_SCREEN_ON` (read, never written, by the engine — `KeepScreenOnContractTest`). Needs an APK ≥ 1.1.42 for (4)/(5); older APKs ignore the keys. **1.1.43 (2026-10-19, owner: "make sure it auto detects, I don't want another setting"): (4) and (5) are AUTOMATIC — no setting, decided by the device from its own facts on every class that runs native (Taurus stays web-only, so nothing applies there).** (4) is ON for every solo session on the default display, with a GRID-SIZED release lead (`VideoFrameSchedule.releaseLeadNs`: 0.8 P on grids of ≥ 25 ms, 0.5 P on grids of ≤ 20 ms — 8.3 ms before each vsync at 60 Hz — linear between; the fixed 0.8 P latched ~0.17 % of frames one vsync EARLY on the rk3328 unit's 60 Hz grid), reported as `releaseLeadUs` on the snapshot and the ledger. (5) is asked ONCE per process, on the default display's face only (face 0 — the safety net's frame proof follows that display; a double-sided unit's second panel never switches), at the first native session boundary after boot (before that session's surface exists, while the web engine still shows the content; never for a slot; never under an emergency hold — neither the request nor the kill switch's withdraw, which is a mode switch too) and then PROVEN by a safety net: within 10 s the active mode must be the one asked for (else `reverted-no-switch`) and Choreographer frames must still flow (one within 2 s of the check, else `reverted-no-frames`), and the first native frame confirms it; a stall (`output-stalled` / `output-unavailable` / `codec-stalled`) before that first frame is the switch's failure — the session ends TRANSIENT as `display-mode-reverted`, never a 24 h block of the file. A failed switch is reverted to mode 0 and the request is blocked on the unit for 24 h (persisted in the `native_video_display` prefs, so it survives the nightly reboot; `blocked` while it stands; once per process, a later boundary repeats the verdict). The tokens for these two can now only REMOVE behaviour: `-vsync-snap:<uuid|all>` / `-prefer-60hz:<uuid|all>` send `false` (OFF; a mode this process asked for is withdrawn at the next boundary), a negative token wins over a positive one for the same screen, and the positive tokens are accepted and change nothing on 1.1.43 — nothing forces a request past the block (a 1.1.42 APK still reads them as ON and ignores `false`; the three experiments above keep their positive tokens). Same build: failure grading phase 0 — `NativeEndGrade` (`FaceVideoPolicy.kt`), mirrored by `nativeVideoEndGrade` (`nativeSharedVideo.ts`; a web test reads the Kotlin and fails on drift): TRANSIENT and NOT-READY ends (network, storage, authorization, manifest — an offline boot, a 5xx, `media-incomplete` for a short download, `media-missing` for a pruned cache file) are retried and never block; BOX verdicts stay web for the document; only a FAULT of a verified file blocks for 24 h, and an ungraded code fails closed as a fault. And the panel FIRMWARE's own display facts, read-only and bounded: `device.sysDisplayMode` (Amlogic `/sys/class/display/mode`, ≤ 48 chars) and `device.sysDisplayCaps` (Amlogic `disp_cap`, else Rockchip `fb0/modes`; ≤ 16 × ≤ 32), stripped to `[A-Za-z0-9:_.*+/@-]`, re-read at most every 30 s, shown on the Overview for the default display's face only. Needs an APK ≥ 1.1.43; nothing hardware-qualified yet. | `-prefer-60hz:<uuid>` |
 | `PLAYER_VENDOR_BACKLIGHT` | The lead-only KILL SWITCH for **true standby on a Goodview GUQ** (player **1.1.52**, 2026-10-23; design `docs/research/2026-10-23-guq-enhancements/02-backlight-standby.md`). On an Amlogic t982 / IFPDOS panel the player's BLANK now binds the panel vendor's own control service (`com.seewo.mcuservice`, action `com.ifpdos.opensdk.SERVICE_MANAGER` — the call the vendor's own player makes) and asks the MCU to switch the **backlight** off (`CmdSetScreenStatus(false)`) while Android, the app, its WebView and the native alert watch keep running; WAKE and every alert switch it back on through the same call. New blank mechanism `vendor-backlight` (`apps/player/.../display/VendorBacklightProvider.kt`, rules in `VendorBacklightPolicy.kt`), between an explicit vendor recipe and the device-admin lock in the BLANK/WAKE chains. **Auto-detected, no setting**: offered only once the service is installed, binds, hands out a token and answers a probe on that box (bounded, off the main thread; a box that proved it once is trusted through the next boot's probe); every other box resolves exactly as before. **Emergency first**: `DisplayEmergency.enforceNow` queues the backlight ON on the provider's worker before its first window hook and never waits for it; the native alert watch treats a vendor-dark panel as dark (`isDarkByUs`) and polls; the all-clear restores the pre-alert state exactly as 1.1.51 (the mechanism is not in `RestoreBlankPolicy.LOCK_FAMILY`). A failed ON after our own OFF latches a per-process fault that withdraws BLANK (never WAKE); a failed vendor blank never falls through to a latch-prone lock below Android 13. Server side `vendor-backlight` joined `DISPLAY_BLANK_MECHANISMS` and `DISPLAY_POWER_PROVEN_MECHANISMS` (same class as a recipe: reversed by the same command, Android awake, no vendor standby entered), so the dashboard's Turn off and the hard on/off schedule reach it; removing that one entry routes the GUQ class soft again. The sleep report carries `sleep.vb` (`d` detection, `off`, `f` fault) and `sleep.blank`/`last.m` name the mechanism; a vendor blank proves `off`/`on` only by the MCU's own readback. This env: `off` / `0` / `false` / `no` / `-all` = fleet-wide off; `-<screen uuid>,…` = those screens off; `all` / a bare uuid accepted and change nothing; a typo disables nothing. Carried as `display.vendorBacklight: false` ONLY for a screen it names (no other ETag moves); the APK reads exactly `false`, and a switch that lands while the backlight is off lights it first and re-blanks through the remaining chain. Needs an APK ≥ 1.1.52; nothing hardware-qualified yet — the on-glass checklist is in the design doc. | `-<uuid>` |
 | `PLAYER_LOOP_NATIVE` | Exact comma-separated screen IDs pinned to the browser-native loop, ahead of continuous/two-deck selectors, for a scoped same-file comparison or rollback. Unset/empty affects no screens; `all` is not a wildcard. Does not change resolution, bitrate, frame rate, URL/hash/size, or emergency/sync eligibility. Remove the IDs to restore normal continuous selection. Changes reach only the named screens on their next manifest after API restart; no web-page reload is needed. | unset |
 | `PLAYER_PORTRAIT_AVC_COMPAT` | Exact screen IDs allowed a verified `portrait-avc-compat` rendition on a 1080p screen. Requires source-bound digest, complete integrity fields, identical displayed pixels/frame rate, and landscape-coded AVC Baseline L4.0 with a 90-degree display matrix. Missing/invalid metadata keeps ordinary selection; 4K screens retain their primary file. Pair with native repetition because the MSE fragmenter does not preserve the display matrix. Empty is the default; no wildcard. | unset |
@@ -177,8 +179,8 @@ All required env vars for `.env` (gitignored):
 | `CSRF_ENFORCE` | `false` → warn-mode. Default (unset) = enforced (sec-fix wave1 #7). | `false` |
 | `CSRF_WARN` | `true` → warn-mode (alias for `CSRF_ENFORCE=false`). | `true` |
 | `DEV_WS_ALLOW` | Dev-only: `true` enables unsigned `dev_` WebSocket tokens. **Never set in production.** | `true` |
-| `ANTHROPIC_API_KEY` | "Our key" — powers every AI surface for tenants without their own key (Concierge, AI designer, sparkle copy, alt text). When unset, AI surfaces "AI not configured for this deploy" — the app keeps working. **No model is configured anywhere (2026-09-22):** each call asks the live catalog (`apps/api/src/ai/ai-model-catalog.ts`) for its JOB — `fast` (chat, extraction, captions) → Standard tier, `design` (boards) → a per-job VENDOR route (next row) — and the catalog answers with the newest version in that tier's family. The daily leased sync (`ai-model-sync.cron.ts`) reads the vendors' public feeds (OpenRouter + LiteLLM; a model needs BOTH, at the higher of the two prices), canary-tests a new tier pick on this key, and adopts it with no deploy. Request rules (temperature, effort knob, thinking headroom) are model CAPABILITIES, never id regexes; a 400 naming a parameter is retried once without it and learned. Super Admin → AI models & usage (`/super/ai`) shows it all, pins a tier, or moves design to Premium. **Spend is metered in dollars** per call (`ai_usage_events`) against the organisation's included allowance (next rows). | `sk-ant-api03-...` |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` | Our key for the OTHER vendors (2026-09-22). Each job on our key has a vendor ROUTE (`DEFAULT_PLATFORM_ROUTES` in `ai-model-catalog.ts`, editable in `/super/ai`): `fast` → Anthropic Standard (Haiku 4.5) → OpenAI → Google; `design` → **OpenAI Premium (GPT-6 Sol)** → Google Premium — **never Claude** (Greg, 2026-09-22: Claude does not touch design; chat-to-edit counts as design). The first route whose key is set wins, so **without `OPENAI_API_KEY` (or `GEMINI_API_KEY`) there is NO board design on our key** — an honest 503 `AI_DESIGN_UNAVAILABLE` before anything is spent, never a quiet Claude fallback; an owner can still deliberately list a Claude tier in `/super/ai`. **A location with no key of its own uses its organisation's saved key** (`ai-tenant-key.ts` walks up `parentId`, nearest key wins; Settings → AI says whose key is in use). `ai-platform-keys.ts` is the ONLY reader of these vars (a key is never sent to another vendor). On our key a call fails over ONCE to the next keyed route on an outage (key rejected — incl. Google's 400 `API_KEY_INVALID` — out of credit, 429, 5xx, model refused, empty answer), within ONE shared time budget; **never** on a timeout and **never** on a vendor's safety refusal (422 `AI_DECLINED`). No second route → 503 `AI_PLATFORM_UNAVAILABLE` + a `PLATFORM AI KEY PROBLEM` log line — a tenant is never shown a vendor-account message about OUR key. Images never run on our key. Tenant keys never fail over. `GOOGLE_AI_API_KEY` is accepted as an alias. | `sk-proj-…` / `AIza…` |
+| `ANTHROPIC_API_KEY` | "Our key" — powers every AI surface for tenants without their own key (Concierge, AI designer, sparkle copy, alt text). When unset, AI surfaces "AI not configured for this deploy" — the app keeps working. **No call site names a model (2026-09-22; the catalog's seed lineup, `SEED_MODELS`, names the starting picks — the Haiku 4.5 and GPT-6 Sol in the next row are today's):** each call asks the live catalog (`apps/api/src/ai/ai-model-catalog.ts`) for its JOB — `fast` (chat, extraction, captions) → Standard tier, `design` (boards) → a per-job VENDOR route (next row) — and the catalog answers with the newest version in that tier's family. The daily leased sync (`ai-model-sync.cron.ts`) reads the vendors' public feeds (OpenRouter + LiteLLM; a model needs BOTH, at the higher of the two prices), canary-tests a new tier pick on this key, and adopts it with no deploy. Request rules (temperature, effort knob, thinking headroom) are model CAPABILITIES, never id regexes; a 400 naming a parameter is retried once without it and learned. Super Admin → AI models & usage (`/super/ai`) shows it all, pins a tier, or moves design to Premium. **Spend is metered in dollars** per call (`ai_usage_events`) against the organisation's included allowance (next rows). | `sk-ant-api03-...` |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | Our key for the OTHER vendors (2026-09-22). Each job on our key has a vendor ROUTE (`DEFAULT_PLATFORM_ROUTES` in `ai-model-catalog.ts`, editable in `/super/ai`): `fast` → Anthropic Standard (Haiku 4.5) → OpenAI → Google; `design` → **OpenAI Premium (GPT-6 Sol)** → Google Premium — **never Claude** (Greg, 2026-09-22: Claude does not touch design; chat-to-edit counts as design). The first route whose key is set wins, so **without `OPENAI_API_KEY` (or `GEMINI_API_KEY`) there is NO board design on our key** — an honest 503 `AI_DESIGN_UNAVAILABLE` before anything is spent, never a quiet Claude fallback; an owner can still deliberately list a Claude tier in `/super/ai`. **A location with no key of its own uses its organisation's saved key** (`ai-tenant-key.ts` walks up `parentId`, nearest key wins; Settings → AI says whose key is in use). `ai-platform-keys.ts` is the ONLY reader of these vars (a key is never sent to another vendor). On our key a call fails over ONCE to the next keyed route on an outage (key rejected — incl. Google's 400 `API_KEY_INVALID` — out of credit, 429, 5xx, model refused, empty answer), within ONE shared time budget; **never** on a timeout and **never** on a vendor's safety refusal (422 `AI_DECLINED`). No second route → 503 `AI_PLATFORM_UNAVAILABLE` + a `PLATFORM AI KEY PROBLEM` log line — a tenant is never shown a vendor-account message about OUR key. Images run on our key only for the VenueOS + AI plan and free trials (2026-10-12; they need `OPENAI_API_KEY` — see the `AI_IMAGES_PER_SCREEN` and `AI_IMAGE_COST_USD` rows below). Tenant keys never fail over. `GOOGLE_AI_API_KEY` is accepted as an alias. | `sk-proj-…` / `AIza…` |
 | `AI_INCLUDED_USD_PER_SCREEN` / `AI_INCLUDED_USD_FLOOR` | The included AI on our key, per organisation per UTC month: `max(FLOOR, paired screens × PER_SCREEN)`, pooled across a district's schools / a chain's locations (`ai-allowance.service.ts`). Defaults **$2.50 / screen** (half the $5 AI add-on, 2026-10-12) and **$5 floor** — the HARD ceiling over the counted limits below. Metered at the real price of the model that served each call — a cheaper model stretches every allowance the day the catalog adopts it. Out of allowance → one `AI_CAP_REACHED` 402 ("add your own AI key to keep going"). Tenants on their own key are unlimited here (the hourly abuse cap still applies). Replaced the flat 200-generation `AI_FREE_TIER_CAP`, which is gone. | `2` / `5` |
 | `AI_MODEL_SYNC_DISABLED` | `1` stops the daily vendor-feed model sync; the catalog then stays exactly where it is (seed lineup + whatever was last synced). Leave unset. | `1` |
 | `PEXELS_API_KEY` | Free [Pexels](https://pexels.com/api) stock-photo key for the **IMAGERY wave** — makes EVERY photo-appropriate AI signage board come back with a real, relevant stock photo for **$0**, for every tenant, regardless of AI provider. **PHOTO-FORWARD BY DEFAULT (2026-06-28):** the art-director now *defaults* the photo-appropriate archetypes (`hero-fullbleed`, `lower-third-banner`, `poster-promo`, `split-50`) to a real photo (`image.mode` → `stock`, even when the model omits the plan) — the themed gradient is the graceful FALLBACK, not the default outcome. The text-/data-dense archetypes (stat/grid/menu/quote/title-cta) stay on a gradient. **AUTO-PHOTO ON ACCEPT (the key lever):** the 3-candidate previews stay image-FREE (fast/cheap), but when the operator KEEPS a board (`POST /templates/create-from-candidate`), `AiService.attachKeptBoardPhoto` makes it photo-rich before persisting — **STOCK first** (free, this key) then **AI fallback** (the tenant's OpenAI/Google BYOK key, honoring the image hourly cap; never the platform Tier-1 key), at most ONE image per kept board. The engine art-directs the photo (brand grade + directional contrast scrim, `imageTreatmentCss`) so the headline stays legible; on persist the photo is re-hosted into our Supabase bucket (durable + offline-cacheable on Taurus). The operator can still one-tap **"Make it an AI photo"** to upgrade to an on-brand AI photo (`POST /templates/:id/regenerate-image`, BYOK). Used **server-side only** (key in the `Authorization` header, never the URL, never logged; ~6s AbortSignal). When **unset** AND no BYOK image provider, boards ride their themed gradient exactly as before — every image path returns null/undefined, never throws, zero regression. Generous free tier (≈200 req/hr, 20k/mo); get one free + instant at pexels.com/api. | `563492ad…` |
@@ -241,21 +243,21 @@ rely on that value for anything reachable from the internet.
 
 | Model | Purpose | Key Fields |
 |---|---|---|
-| **Tenant** | District or school (hierarchy-enabled) | `id`, `parentId` (for district→school), `name`, `slug`, `emergencyStatus`, `emergency*PlaylistId` (4 panic types) |
-| **User** | Team member with RBAC role | `id`, `tenantId`, `email`, `passwordHash`, `role` (enum), `canTriggerPanic` (capability flag) |
+| **Tenant** | District or school (hierarchy-enabled) | `id`, `parentId` (for district→school), `name`, `slug`, `emergencyStatus`, `emergencyPlaylistId` / `emergencyPortraitPlaylistId` (the active alert), `emergencyIsDrill`, and 24 per-incident playlist ids: `panic{Evacuate,Lockdown,Weather,Hold,Secure,Medical}PlaylistId` and `drill{…}PlaylistId`, each with a `…PortraitPlaylistId` twin |
+| **User** | Team member with RBAC role | `id`, `tenantId`, `email`, `passwordHash`, `role` (a `String` column holding an `AppRole` value — the schema defines no enums), `canTriggerPanic` (capability flag) |
 | **Screen** | Physical or virtual display | `id`, `tenantId`, `screenGroupId`, `name`, `deviceFingerprint`, `pairingCode`, `status`, `lastPingAt`, `resolution`, `osInfo`, `browserInfo` |
 | **ScreenGroup** | Organize screens (hallway, lobby, etc.) | `id`, `tenantId`, `name`, `description` |
 | **Playlist** | Sequence of assets + schedule rules | `id`, `tenantId`, `name`, `templateId`, `items[]` (PlaylistItem[]) |
 | **PlaylistItem** | Single asset in a playlist | `id`, `playlistId`, `assetId`, `durationMs`, `sequenceOrder`, `daysOfWeek`, `timeStart`/`timeEnd`, `transitionType` |
 | **Schedule** | When/where a playlist plays | `id`, `tenantId`, `playlistId`, `screenId|screenGroupId`, `startTime`/`endTime`, `daysOfWeek`, `timeStart`/`timeEnd`, `priority`, `isActive` |
-| **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (PENDING_APPROVAL, APPROVED) |
+| **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (a `String`: `PENDING_APPROVAL` by default, `PUBLISHED` once approved — the only value the manifest serves — or `ARCHIVED`) |
 | **AssetFolder** | Hierarchical asset organization | `id`, `tenantId`, `parentId`, `name` |
-| **Template** | Screen layout (493 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
+| **Template** | Screen layout (537 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
 | **TemplateZone** | Widget region in a template | `id`, `templateId`, `name`, `widgetType`, `x`/`y`/`width`/`height` (% coords), `zIndex`, `defaultConfig` |
 | **AuditLog** | Immutable activity log | `id`, `tenantId`, `userId`, `action`, `targetType`, `targetId`, `details`, `createdAt` |
 
 ### User Roles
-- **SUPER_ADMIN** — Anthropic/company staff; manage all tenants
+- **SUPER_ADMIN** — VenueOS staff; manage all tenants
 - **DISTRICT_ADMIN** — District-level; manage schools, users, branding
 - **SCHOOL_ADMIN** — School-level; manage screens, playlists, staff
 - **CONTRIBUTOR** — Can upload/edit assets and schedules
@@ -269,7 +271,7 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 - **POST `/api/v1/emergency/trigger`** — Dispatch emergency alert
   - Body: `{ scopeType: 'tenant'|'group'|'device', scopeId, overridePayload: { type, severity, mediaUrl, textBlob, expiresAt, playlistId, ... } }`
   - Returns: `{ success: true, overrideId, message }`
-  - Roles: SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN (+ `@AllowPanicBypass()` can override `canTriggerPanic` flag)
+  - Roles: SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN (`@RequireRoles`); `@AllowPanicBypass()` additionally admits any non-`RESTRICTED_VIEWER` user whose `canTriggerPanic` flag is true, without the role check (Key Safeguards 1)
   - Effects:
     - Updates Tenant.emergencyStatus and Tenant.emergencyPlaylistId
     - Creates immutable AuditLog entry
@@ -282,7 +284,7 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
   - Effects: Clears emergencyStatus, logs action, publishes ALL_CLEAR message
 
 ### Key Safeguards
-1. **@AllowPanicBypass Decorator** — Only admins can override individual `canTriggerPanic` capability flags. Prevents unauthorized delegated triggers.
+1. **@AllowPanicBypass Decorator** (`apps/api/src/auth/panic-bypass.decorator.ts`, read by `RbacGuard` in `apps/api/src/auth/rbac.guard.ts`) — it WIDENS access; it does not restrict it. On a route that carries it, a user whose `canTriggerPanic` flag is true is admitted without meeting the route's `@RequireRoles` — that is how a receptionist, security guard or nurse with a wall panic button can fire an alert without admin rights. An admin sets the flag per user; it rides in the JWT claim (`req.user.canTriggerPanic`), and removing it takes effect by rejecting that user's older tokens (`users.controller.ts` records a per-user invalid-before epoch, `jwt-auth.guard.ts` enforces it). `RESTRICTED_VIEWER` is never admitted this way, even with the flag set. The guard returns `true` at that point — before its role check and before its district/school scope check — so tenant scoping on these routes is the controller's job (`emergency.targeting.spec.ts` pins that a delegated staffer is confined to their own tenant). It is meant only for emergency routes and is applied today to ten handlers: in `emergency.controller.ts` `POST trigger`, `POST :overrideId/all-clear`, `POST broadcast`, `POST media-alert`, `POST messages/:messageId/all-clear`, `GET targets` and `GET active`; in `screen-emergency.controller.ts` `POST :screenId/trigger`, `POST :screenId/all-clear` and `POST bulk-trigger`.
 2. **Immutable Audit Log** — Every trigger/clear is logged with userId, severity, overrideId, timestamp. No deletion or modification allowed.
 3. **Signed WebSocket Messages** — every Redis fan-out is HMAC-verified at the broadcast gate (`apps/api/src/realtime/redis.service.ts` `verifyWsHmac`) before reaching the WS gateway or SSE fallback, so a forged channel message can't enter the broadcast bus. The player checks for the presence of a `signature` field as a smoke test; full per-tenant asymmetric verification on the player itself is a documented follow-up — the primary safeguard is the server-side gate, not the client check.
 4. **HTTP Polling Fallback** — If Redis fails, screens fall back to polling their device-authenticated manifest at `/api/v1/screens/:id/manifest` (which carries the live `emergency` field — same `Tenant.emergencyStatus` source of truth).
@@ -293,8 +295,7 @@ Any modification to emergency endpoints, payload validation, auth bypass logic, 
 
 ## Player Reliability — non-negotiable (2026-08-30)
 
-Born from the 1.1.6 fleet failure (Codex audit `docs/research/2026-08-28-player-1.1.6-audit-handoff.md`,
-verified + fixed in `docs/research/2026-08-30-player-reliability-program/`): screens sat "ONLINE"
+Born from the 1.1.6 fleet failure (a Codex audit of 2026-08-28, verified and fixed by 2026-08-30): screens sat "ONLINE"
 and content-dead for DAYS behind an ignored `requiresRePair`, a 401 loop whose failure counter
 never grew, three disagreeing token stores, and watchdogs satisfied by any live JS event loop.
 A reliable player continuously proves FOUR SEPARATE FACTS — never let one stand in for another:
@@ -338,7 +339,7 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
    attempts use one identity shared with the live displayApply path. A later physical OFF
    suppresses retries of that old identity. Native ACK requires observed Android interactive
    AND Player foreground; it never stamps content render/cache proof. This requires the new
-   native implementation; Player 1.1.23 has no such unattended wake command transport.
+   native implementation (`heartbeat/NativePowerOnPolicy.kt`); a build without it — Player 1.1.23 was one when this rule was written — has no such unattended wake command transport.
 7. **Manifest schedule order is deterministic** (`effective-schedule.ts`: screen-pin > group,
    priority desc, newest startTime, stable id) and the player applies the first window-open
    replace winner — "any template wins" must never come back. Template apply signatures include
@@ -361,10 +362,17 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     check green). No release is production-ready until every REQUIRED hardware class in
     `apps/player/HARDWARE-QUALIFICATION.md` has PASS for cold install, pairing, reboot,
     offline recovery, content update, emergency drill, remote-only nav, OTA push and
-    boot-proof. `scripts/check-hardware-qual.cjs` enforces it before any assemble on a
-    release tag and inside `scripts/release-apk.sh`; run
+    boot-proof. `scripts/check-hardware-qual.cjs` checks it before any assemble on a
+    release TAG (`player-v*` / `manager-v*`) and inside `scripts/release-apk.sh` — and
+    nowhere else: a field candidate (`workflow_dispatch` with `playerFieldCandidate`,
+    delivered through `/super/field-builds`) skips the gate
+    (`docs/governance/FIRST-RESPONSE.md`). Run
     `docs/player/HARDWARE-QUAL-CHECKLIST.md` on the glass. Never invent a PASS row —
     untested is `UNQUALIFIED`, and `--unqualified-override` is a logged hotfix debt.
+    **State on 2026-11-01:** the matrix holds 0 `PASS` cells; the 16 player releases
+    1.1.13–1.1.29 are 945 `OVERRIDE` cells, and player 1.1.12 and manager 1.0.24 are all
+    `UNQUALIFIED` — so every player release from 1.1.13 on shipped on a recorded override,
+    never on a PASS, and field candidates carry no matrix row at all.
 10. **Copy states what the evidence proves** — "no render proof for N minutes", never "showing a
     frozen frame" from a system that cannot see the glass.
 11. **Emergency logic runs FIRST in `applyManifest`, and protective caches never clear on
@@ -378,8 +386,16 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     time ever with latching bugs. If a fix activates behavior operators could observe, it ships
     deliberately — named, tested per shape (`scheduleWindow.ts`), with edge-refetch for anything
     the ETag can't see.
-13. **Player release = one atomic push**: `git push origin master player-vX.Y.Z` — a tag pushed
-    seconds after master races the "APK version is tagged" gate (bitten on v1.1.7 AND v1.1.8).
+13. **Player release = a reviewed PR, then a tag on the merged commit**: branch
+    `<vendor>/<topic>` → PR in the decision format → `gh pr checks <PR> --watch` →
+    different-vendor review (a player release is consequential) → the Lead merges on the
+    owner's written go → tag the MERGED commit `player-vX.Y.Z` and push the tag. No model
+    pushes to `master` (`AGENTS.md` hard stop). The "APK version is tagged" check
+    (`deploy-reliability.yml`) reads red on the version-bump PR until that tag exists; it is
+    not a required check, so it does not block the merge — tag the merged commit and re-run
+    it (a tag cut seconds after the push raced the same gate on v1.1.7 AND v1.1.8).
+    `scripts/release-apk.sh` bumps the gradle and tags locally; the
+    `git push origin master <tag>` hint it prints predates this rule — do not follow it.
 14. **Player e2e harness rules** (each cost a real debug cycle): never replace
     `window.WebSocket` wholesale (Next dev HMR uses it — a dead stub stalls the entire page
     boot with no errors; delegate non-`/realtime` URLs); StrictMode double-fires mount effects
@@ -497,7 +513,7 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
 
 17. **A big file downloads WHOLE, in short verified resumable steps, and only
     THEN plays — never streamed from origin, never a lower-resolution stand-in**
-    (2026-09-26, the 4K cache-fill incident: `docs/research/2026-09-26-4k-cache-fill/`).
+    (2026-09-26, the 4K cache-fill incident).
     The customer's 4K screen reported 0 cached files for hours and dropped 121 of
     264 frames streaming its 141 MB clip from origin. Two limits in
     `sw-player.js` explained the empty cache, and both scale with file size:
@@ -526,7 +542,7 @@ A reliable player continuously proves FOUR SEPARATE FACTS — never let one stan
     are on disk (`CACHE_LOOKUP` `present`, or landed by the drive). Free-run: the
     monotonic counter is re-aimed at the first playable slot and every advance
     steps to the next playable one, so ready items rotate while the rest
-    download; one ready item is a solo slide. Sync (`syncMode='locked'`): the
+    download; one ready item is a solo slide. Sync (`Playlist.syncPlayback`, the manifest's `sync.enabled`): the
     timeline slot is NEVER moved — an unready slot is HELD (the screen keeps its
     last shown slide) so on-screen stays f(manifest, syncedNow). A new playlist
     with nothing ready is DEFERRED while regular content is on glass
@@ -574,9 +590,8 @@ switch since 2026-09-29, `apps/api/src/screens/screen-sync.ts`; a group's legacy
 a frame across screens). The video servo's seek decisions live in
 `apps/web/src/app/player/sync/videoServo.ts`: never seek while a seek is in flight,
 a MEASURED seek lead, and hard seeks paused 10 min when they keep landing late — the
-old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. Full design + research:
-`docs/research/2026-07-28-multiscreen-sync/` (00-DESIGN, 01-CODEBASE-RECON,
-02-INDUSTRY-RESEARCH). Rules when touching the player or realtime layer:
+old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. Rules when
+touching the player or realtime layer:
 
 1. **THE INVARIANT: while sync is active, what is on screen is a pure function
    of (manifest, syncedNow).** Never add a free-running advance path (a
@@ -584,7 +599,7 @@ old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. 
    `syncActiveRef.current` — one screen advancing out-of-band breaks the whole
    group's phase. The rAF conductor in `player/page.tsx` owns advancement.
 2. Pure math lives in `apps/web/src/app/player/sync/` (`syncClock.ts`,
-   `syncTimeline.ts`) — unit-tested without mounting the 8.6k-line page. Keep
+   `syncTimeline.ts`) — unit-tested without mounting the 16k-line page (`player/page.tsx`). Keep
    it pure (no React/DOM/network).
 3. Clock transport: WS `TIME_PING`→`TIME_PONG` (direct socket reply, like
    AUTH_OK) + HTTP `GET /api/v1/realtime/time` fallback. Server time comes from
@@ -595,7 +610,8 @@ old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. 
    changes bust the 304). **Never add a volatile per-request clock field to the
    manifest** — it would kill 304s fleet-wide; clock samples ride the dedicated
    endpoints above.
-5. Tests that must stay green: `apps/web/src/app/player/sync/__tests__/` (Jest),
+5. Tests that must stay green (CI runs them and reports; none is a required check today —
+   see Deploy Reliability): `apps/web/src/app/player/sync/__tests__/` (Jest),
    `apps/web/tests/e2e/multiscreen-sync.spec.ts` (two-screen lockstep harness,
    chromium+webkit), `realtime.gateway.spec.ts` (TIME_PONG echo).
 6. Diagnostics: `/player?synchud=1` renders the filmable sweep-bar/flash HUD;
@@ -612,38 +628,40 @@ old blind 80 ms-lead seek looped forever on slow-seeking panels and froze them. 
    (raw-SQL/Studio edits show up on players only after TTL); a NEW
    high-frequency Screen telemetry column MUST be added to
    `SCREEN_TELEMETRY_ONLY_FIELDS` or fleet telemetry will thrash the cache
-   (silently re-creating the 25 GB/mo egress this killed — see
-   `docs/research/2026-07-30-supabase-bill-diet/`); and per sync-rule #4 the
+   (silently re-creating the 25 GB/mo egress this killed); and per sync-rule #4 the
    cached payload stays free of volatile per-request fields.
 
 ## Template System
 
-Templates define screen layouts using **493 system presets** (re-derived 2026-10-13) plus custom operator-created templates.
+Templates define screen layouts using **537 system presets** (re-derived 2026-11-01) plus custom operator-created templates.
 
 ⚠️ **This file said "17 system presets" until 2026-09-11 — it was wrong by 27×, and it is the
-first thing every agent and every external auditor reads.** The 17 below are only the original
-K-12 core. The real catalogue uses **seven top-level preset packs** under `apps/api/src/templates/`,
-unioned into `ALL_PRESETS` by `ensure-system-presets.ts`. Two additional source files are
-spread into the system pack — that union, not `system-presets.ts`
-alone, is what seeds and what the gallery serves:
+first thing every agent and every external auditor reads.** The real catalogue uses **seven
+top-level preset packs** under `apps/api/src/templates/`, unioned into `ALL_PRESETS` by
+`ensure-system-presets.ts`. Four additional source files are spread into the system pack —
+that union, not `system-presets.ts` alone, is what seeds and what the gallery serves:
 
 | file | export | count |
 |---|---|---|
-| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **381** (includes the 14 Homebuilder, 8 workflow entries and 3 reviewed portrait entries below) |
+| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **425** (includes the 14 Homebuilder, 32 Directory, 12 Touch-property and 8 workflow entries below, and 3 reviewed portrait entries) |
 | `homebuilder-presets.ts` | `HOMEBUILDER_TEMPLATE_PRESETS` | 14 (spread into the system pack) |
+| `directory-presets.ts` | `DIRECTORY_TEMPLATE_PRESETS` | 32 (spread into the system pack) |
+| `touch-property-presets.ts` | `TOUCH_PROPERTY_TEMPLATE_PRESETS` | 12 (spread into the system pack) |
 | `gap-presets.ts` | `GAP_TEMPLATE_PRESETS` | 8 (four workflows × two orientations; spread into the system pack) |
 | `sports-presets.ts` | `SPORTS_TEMPLATE_PRESETS` | 44 |
 | `fitness-presets.ts` | `FITNESS_TEMPLATE_PRESETS` | 25 |
 | `restaurant-presets.ts` | `RESTAURANT_TEMPLATE_PRESETS` | 21 |
 | `retail-presets.ts` / `worship-presets.ts` | `RETAIL_` / `WORSHIP_TEMPLATE_PRESETS` | 8 each |
 | `bar-presets.ts` | `BAR_TEMPLATE_PRESETS` | 6 |
-| | **TOTAL (unique ids)** | **493** |
+| | **TOTAL (unique ids)** | **537** |
 
 **Re-derive it rather than trusting the table** — `SYSTEM_TEMPLATE_PRESETS` is a *computed*
-array (`system-presets.ts:3468` filters `RAW_SYSTEM_PRESETS` for retired widget types, then
-concatenates `MODERN_SCHOOL_PRESETS`), so grepping for `id:` overcounts. Every one of these
-files imports only `import type`, so they transpile and run with zero runtime deps. From the
-repo root:
+array (in `system-presets.ts` it filters `RAW_SYSTEM_PRESETS` for retired widget types, then
+concatenates `MODERN_SCHOOL_PRESETS`, the reviewed portraits and the spread-in packs), so
+grepping for `id:` overcounts. Every one of these files imports only `import type` — except
+`system-presets.ts`, which imports the four packs it spreads in (a runtime import; the
+command's `require.extensions` hook resolves it) — so they transpile and run with no other
+runtime deps. From the repo root:
 
 ```bash
 node -e '
@@ -656,8 +674,9 @@ for(const f of fs.readdirSync(dir).filter(f=>/-presets\.ts$/.test(f)&&!f.startsW
 }
 console.log(String(ids.size).padStart(4),"UNIQUE ids (the catalogue)");'
 ```
-(Count UNIQUE ids, not the sum: Homebuilder and workflow arrays are also spread into
-`SYSTEM_TEMPLATE_PRESETS`, so the per-file numbers add up to 22 more than the catalogue. The
+(Count UNIQUE ids, not the sum: the Homebuilder, Directory, Touch-property and workflow
+arrays are also spread into `SYSTEM_TEMPLATE_PRESETS`, so the per-file numbers add up to 66
+more than the catalogue. The
 previous form of this command compiled each file in isolation and broke on 2026-10-01 when
 `system-presets.ts` gained a runtime import — it printed 126.)
 
@@ -665,18 +684,18 @@ previous form of this command compiled each file in isolation and broke on 2026-
 
 There are **three** template-editing architectures; do not confuse them:
 1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
-2. **EXTERNAL_HTML boards** — the **286** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+2. **EXTERNAL_HTML boards** — the **330** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
 
    **This said "~107 … {hs,kiosk,signage,fitness}" until 2026-09-11** — low by 143 boards and
    missing `school/` entirely, which is exactly how the editability sweep below ended up
    skipping 59 boards. Re-derive with one command (it is just a file count — trust nothing):
    ```bash
-   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 286
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 330
    find apps/web/public/templates -name '*.html' -not -path '*/_*' | cut -d/ -f5 | sort | uniq -c
-   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 41 school · 175 signage
+   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 41 school · 219 signage
    ```
-   `signage/` is itself 16 industry sub-folders (`qsr` 24, `worship` 24, `hospitality` 16, `bar`
-   13, `corporate` 13, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
+   `signage/` is itself 16 industry sub-folders (`qsr` 28, `worship` 24, `hospitality` 16, `bar`
+   13, `corporate` 71, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
    `retail` 9, `veterinary` 2, `clinic` 2, and `museum`/`office`/`real-estate` 1 each) — so any
    sweep must recurse, never list a fixed set of directories. `-not -path '*/_*'` skips
    `_thumbs/` and `_edit-shim.js`, the same "no `_`-prefixed path segment" rule the poster
@@ -686,7 +705,7 @@ There are **three** template-editing architectures; do not confuse them:
 **The EXTERNAL_HTML shim does TWO jobs (since V5, 2026-06-07):** (a) apply overrides INBOUND (brand/text/image/styles), and (b) **report clicks OUTBOUND** — the "hot zones": click an element in the builder → the panel jumps to that element's field editor. The protocol the panel speaks: `educms-ready` (load) · `educms-edit-mode {on}` (panel→iframe, arms hover-outline + click-report; NEVER sent on the live player) · `educms-field-click {key,kind}` (iframe→panel, drives the jump). The walker keys off `data-field`/`data-imgslot`/`data-action` — so **every editable element needs one of those** (same contract as editability).
 
 **The shim is INJECTED, never hand-written.** Existing apply/click mechanisms:
-- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V15** (apply + click-to-edit) into static boards, replacing every older marker (V14…V2, `EDUCMS-BRAND-SHIM`) in place. The version lives at `inject-shim-v2.cjs:66` — read it, don't trust this line (it said "V5" here until 2026-09-11). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
+- `apps/web/scripts/inject-shim-v2.cjs` → bakes the current **EDUCMS-SHIM-V16** (apply + click-to-edit) into static boards, replacing every older marker (V15…V2, `EDUCMS-BRAND-SHIM`) in place. The version is the `MARKER` constant in `inject-shim-v2.cjs` — read it, don't trust this line (it said "V5" here until 2026-09-11, and "V15" until 2026-11-01). The subdirectory argument is **optional and scopes the walk**; with no argument it walks all of `public/templates`, which is what you normally want: `node apps/web/scripts/inject-shim-v2.cjs` (or `… school`, `… signage/qsr`, …).
 - `apps/web/scripts/inject-click-shim.cjs` → an **additive** click-only shim for the 30 `signage/{qsr,menus-pos,bar}` MENU boards, whose hand-crafted V5 carries `applyMenu()` (live per-location POS price + auto-86) that must NOT be clobbered. `node apps/web/scripts/inject-click-shim.cjs signage`.
 - Kiosks load the external `public/templates/kiosk/_edit-shim.js` (apply + click + kiosk engine-render hook). The injectors **skip** any file referencing it (no double-shim).
 
@@ -736,47 +755,33 @@ in `src/lib/template-poster.ts`. The behavioral coverage is
 `builder-media-editing.spec.ts` and the discovered full-corpus
 `board-media-compatibility.spec.ts` (Chromium + WebKit).
 
-**⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the sweep + the real-browser tests:
+**⚠️ REDESIGN INVARIANT — the trap that caused the 2026-06-07 "none of the templates can be edited" fire:** when you edit/redesign an existing board, the OLD shim block stays baked in. A board left on the apply-only V4 shim is **un-editable by click**. So **after editing ANY `public/templates/**` board, re-run the injector for its subdir** (and `inject-click-shim.cjs` for menu boards). Confirm with the editability gate + the real-browser tests:
 ```bash
-# Sweeps ALL 285 boards. The old form here named `hs signage fitness`, which
-# silently covered only 191 — school/ (40) and kiosk/ (19) were never checked.
+# The real gate: discovers every board by walking the tree and resolves the shim on disk.
+node apps/web/tools/check-board-editability.cjs
+# Quick shell check, every board: one with NEITHER a baked shim marker NOR the external kiosk shim.
+# (The old `educms-field-click` form of this grep can no longer fail — see below.)
 cd apps/web/public/templates && for f in $(find . -name "*.html" -not -path "*/_*"); do \
-  grep -qE "educms-field-click|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: ${f#./}"; done
+  grep -qE "EDUCMS-SHIM-V|src=[\"'][^\"']*_edit-shim" "$f" || echo "NO CLICK-TO-EDIT: ${f#./}"; done
 pnpm --filter web exec playwright test tests/e2e/external-html-clickedit.spec.ts   # boards (chromium+webkit)
 pnpm --filter web exec playwright test tests/e2e/holiday-hotzone.spec.ts           # holiday boards
 ```
-Both alternations in that `grep` are load-bearing: 231 boards carry a **baked** shim
-(`educms-field-click`) and the 19 `kiosk/` boards instead `<script src>` the external
-`_edit-shim.js`, so dropping either branch reports ~20% of the corpus as a false failure. As of
-2026-09-11 the widened sweep reports **zero** violations — school/ and kiosk/ were already
-clean, so this closes a blind spot rather than a live breakage.
+Both alternations in that `grep` are load-bearing: 311 boards carry a **baked** shim
+(`EDUCMS-SHIM-V<n>`) and the 19 `kiosk/` boards instead `<script src>` the external
+`_edit-shim.js` (311 + 19 = 330), so dropping either branch reports a whole class of boards as a
+false failure. As of 2026-11-01 it reports **zero** violations. **The old sweep
+(`grep -qE "educms-field-click|…"`) can no longer fail:** the shared media-controls companion
+(`EDUCMS-MEDIA-CONTROLS-V2`, `board-media-controls.ts`) is baked into every board and itself posts
+`educms-field-click`, so that string is on all 330 boards whether or not they carry a click shim.
+The quick grep above is also weaker than the gate — it cannot tell an apply-only V2–V4 shim from a
+V5+ one, and it does not resolve the kiosk `src` on disk. The real gate is
+`apps/web/tools/check-board-editability.cjs`, run by `taurus-safety.yml`; like the other
+workflows it reports and is not a required check.
 Full conventions (editability contract, brand tokens, auto-fit ≥50px floor, live engines, build checklist) live in `.claude/agents/venueos-template-designer.md` + `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` — the binding spec for any template work.
 
-### System Presets — the original K-12 core (17 of 488)
+### System Presets
 
-⚠️ **This list is NOT the catalogue.** It is the founding K-12 seventeen, kept because they are
-the presets most docs and tests reference by name. The other 442 — every `MODERN_SCHOOL_*`,
-`preset-hs-*`, `preset-sig-*`, sports, fitness, restaurant, bar, retail and worship preset — are
-not listed here and never will be; enumerate them with the command above instead of reading a
-list that goes stale the day someone ships a pack.
-
-1. Sunny Meadow — Elementary Welcome (with layered CSS background + inline SVG)
-2. Lobby Welcome Board
-3. Lobby Info Board
-4. Hallway Tri-Zone
-5. Hallway Portrait Display
-6. Cafeteria Menu Board
-7. Main Entrance Ticker
-8. Class Schedule Board
-9. Staff Bulletin Board
-10. Room Occupancy Display
-11. Bus Information Board
-12. Event Countdown Board
-13. Achievement Showcase
-14. Weather Alert Template
-15. Emergency Alert (Lockdown, Evacuate, Weather)
-16. Daily Digest
-17. Attendance Ticker
+The catalogue is derived by the command above; it is deliberately not listed here.
 
 Each preset has **zones** (layout regions) with widget types, percentage-based coordinates, and optional default config.
 
@@ -800,9 +805,9 @@ Each widget can have a `theme` variant in config (e.g., Sunny Meadow theme for c
    `system-presets.ts` is the K-12 pack, not a dumping ground; a gym board goes in
    `fitness-presets.ts`, a bar board in `bar-presets.ts`, and so on.
 2. Add it to that file's `*_TEMPLATE_PRESETS` export. If you created a *new* preset file, spread
-   it into `ALL_PRESETS` in `ensure-system-presets.ts:19-27` too, or it is seeded by nothing.
+   it into `ALL_PRESETS` in `ensure-system-presets.ts` too, or it is seeded by nothing.
 3. **Tag its vertical.** `ensure-system-presets.ts` maps every preset id to a `Tenant.vertical`
-   (`PRESET_VERTICAL`, ~line 119 onward) and the list endpoint filters on it. An untagged preset
+   (`PRESET_VERTICAL`) and the list endpoint filters on it. An untagged preset
    is not "neutral" — it leaks into every vertical's gallery, which is the bug
    `bf2a95de` had to fix for the RESTAURANT/RETAIL/WORSHIP/HEALTHCARE/HOSPITALITY/CORPORATE packs.
 4. Seed script loads it on `pnpm db:seed`.
@@ -810,12 +815,12 @@ Each widget can have a `theme` variant in config (e.g., Sunny Meadow theme for c
 
 ## Conventions
 
-- **TypeScript:** `strict: true` in tsconfig; no `any` without deliberate reason
+- **TypeScript:** `strict: true` in `apps/web`, the root tsconfig and the `@cms/api-types`, `@cms/scoreboard-cts` and `@cms/signage-design` packages; `apps/api` is NOT strict (`strictNullChecks` only — `noImplicitAny: false`, no `strict`); no `any` without deliberate reason
 - **Database Access:** Always via Prisma client (typed, migrations tracked)
 - **Components:** shadcn/Base UI + lucide-react icons; Tailwind for styling
-- **Forms:** React Hook Form + Zod validation (Zod at API boundary is Sprint 1 goal)
-- **Testing:** Jest test files live next to source as `*.spec.ts`
-- **Async Patterns:** RxJS in NestJS, async/await in Next.js
+- **Forms:** React Hook Form + Zod validation; Zod is already in use at the API boundary (26 non-test files import it — 21 in `apps/api`, 4 in `packages/api-types`, 1 in `apps/web`)
+- **Testing:** API and package Jest specs live next to source as `*.spec.ts`; web unit tests are `*.test.ts(x)` under `apps/web/src` (almost all in `__tests__/`) and run with `pnpm --filter web exec jest` (`pnpm test` skips them); Playwright e2e specs are `*.spec.ts` under `apps/web/tests`
+- **Async Patterns:** async/await throughout; RxJS appears in only 8 API files (the interceptors), not NestJS-wide
 - **Secrets:** Use env vars, never hardcode. .env is gitignored.
 
 ## Cross-browser support — non-negotiable
@@ -840,9 +845,11 @@ Safari for months. Local dev was Chrome-only so we never saw it.
 
 1. **Test in WebKit before considering anything `done`.** `pnpm --filter
    web run test:cross-browser` runs the holiday-bridge protocol checks
-   (18 templates × 5 protocol assertions = 90 in WebKit). It runs in
-   under a minute. CI runs it on every push + PR via
-   `.github/workflows/cross-browser.yml` and blocks merge on red.
+   (every holiday board in the script's `TEMPLATES` list, each through the
+   7-step bridge protocol, in WebKit) plus the other bridge, fit and style
+   suites the script chains. CI runs it nightly (07:00 UTC), on every PR to
+   master and on demand via `.github/workflows/cross-browser.yml` — not on
+   every push — and it reports; it does not block merge (see Deploy Reliability).
    For the **authed dashboard's client-side navigation** (the surface the
    2026-06-08 favicon-crash class lived in), `pnpm --filter web run
    test:webkit-nav` logs into the live deploy in WebKit, clicks the sidebar
@@ -865,9 +872,10 @@ Safari for months. Local dev was Chrome-only so we never saw it.
    per browser. Add Chromium / Firefox passes alongside WebKit when
    you find a NEW Chromium-/Firefox-specific issue (don't add them
    speculatively; the WebKit canary is the high-leverage check).
-5. **CLAUDE.md is the source of truth.** When you fix a Safari bug,
-   add a paragraph to `reference_recurring_failure_patterns.md` (in
-   memory) so the next agent doesn't rediscover it.
+5. **CLAUDE.md is the application rulebook.** When you fix a Safari bug,
+   record it here (a rule or a one-line pattern) or in `docs/handoffs/` so the
+   next agent — of any vendor — doesn't rediscover it. A model's private memory
+   is a cache of the repository, never the record.
 
 6. **NEVER imperatively detach a DOM node that React rendered** —
    especially `<head>` `<link>`/`<meta>`/`<title>` under React 19 +
@@ -885,11 +893,14 @@ Safari for months. Local dev was Chrome-only so we never saw it.
    must override a React-rendered node, **mutate it in place** (set
    `href`/attributes) or render your own separate node — never `.remove()`
    React's. Audit any `querySelector(...).remove()` / `removeChild` that
-   can hit a node React owns. See recurring-failure-patterns #12.
+   can hit a node React owns.
 
 7. **When a customer reports a UI bug you CANNOT reproduce in Chrome,
    switch to WebKit/Safari IMMEDIATELY** (Playwright `webkit`), and
-   **read the in-app bug telemetry FIRST**: `SELECT captured_context FROM
+   **read the in-app bug telemetry FIRST** — through a read-only database role,
+   in a sub-agent that holds no write or deploy tools, never in the Lead's own
+   session (the content is customer-supplied text; `docs/governance/standard/MULTI-AGENT.md`,
+   Credentials): `SELECT captured_context FROM
    bugs ORDER BY created_at DESC` carries the real browser (`->browser->
    userAgent`), the page, console entries, network failures and React
    Query state from the operator's actual session. On 2026-06-08 that
@@ -904,12 +915,12 @@ The operator runs the whole product from an **iPhone**. On 2026-06-16 the
 mobile bottom-nav + "More" sheet had major tap lag — and since the "More"
 sheet is a pure local-`useState` toggle (no fetch, no navigation), its lag
 proved the **main thread / GPU was busy at tap time**: app-wide contention,
-not the tab bar. Two root-cause classes, both now fixed and **locked in by CI**
+not the tab bar. Two root-cause classes, both now fixed and **checked by CI**
 (`Mobile Perf` workflow → `node apps/web/tools/check-mobile-perf.cjs`, also
-`pnpm mobile-perf-guard`). Full write-up:
-`docs/research/2026-06-16-mobile-perf-deepdive/`.
+`pnpm mobile-perf-guard`; it runs on every push to master and every PR and
+reports — it is not a required check).
 
-**The standard the guard enforces (every new feature must keep these):**
+**The standard (every new feature must keep these; the guard enforces rules 1–3 only — rule 4 is held by review):**
 
 1. **Never poll a backgrounded tab.** No `refetchIntervalInBackground: true`
    anywhere under `apps/web/src` — a phone the operator isn't looking at must
@@ -939,24 +950,26 @@ not the tab bar. Two root-cause classes, both now fixed and **locked in by CI**
 on the offending line (the guard skips it; the PR reviewer sees why).
 
 Run `pnpm mobile-perf-guard` before pushing mobile/chrome/data-hook changes;
-CI runs it on every push + PR and blocks merge on red.
+CI runs it on every push to master and every PR and reports; it does not block
+merge (see Deploy Reliability).
 
 ## Deploy reliability (Railway + Vercel)
 
 Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.
 
 **Health endpoints** (all under `/api/v1`):
-- `GET /health` — liveness. Always 200 (even if DB/Redis degraded). Railway healthcheck uses this. Returns `{ status, db, redis, uptime, version, timestamp }`.
+- `GET /health` — liveness. Always 200 (even if DB/Redis degraded — the truth is in the body). Returns `{ status, db, redis, uptime, version, commit, timestamp }`. Monitoring uses it (`keep-warm.yml`, `node scripts/venueos.cjs status`); Railway's deploy healthcheck does NOT.
+- `GET /health/started` — the Railway deploy healthcheck (`healthcheckPath` in `railway.json`). A one-way latch: 503 until the DB has served a real query and Redis has settled (or a ceiling of about 45 s passes), 200 forever after — it can never fail a running pod.
 - `GET /health/ready` — readiness. 503 when DB unreachable. Use for monitoring, NOT Railway.
 - `GET /health/emergency-path` — verifies DB + WS signer chain before a drill.
 
 **Verify a deploy succeeded:**
-1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"`.
-2. Railway dashboard: deployment shows "Healthy" (green). `healthcheckPath` is set in `railway.json`.
-3. Vercel cron `/api/cron/keepwarm` logs a 200 every 5 minutes — Vercel → Logs.
+1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"` **and a `commit` equal to the merge commit's SHA.** `/health` is 200 even when degraded, and the previous container keeps answering until the new one takes over, so the `commit` field is the proof of a deploy (`node scripts/venueos.cjs status` shows local, origin, DEPLOYED and CI in one view). A `commit` of `dev` or the previous SHA means it is not deployed.
+2. Railway dashboard: deployment shows "Healthy" (green) — it passed `/api/v1/health/started` (`healthcheckPath` in `railway.json`).
+3. There is no Vercel cron: `.github/workflows/keep-warm.yml` (GitHub Actions, every 5 minutes; per its header it replaced the Vercel cron, which the Hobby plan limits to daily) pings `/health` (the body must contain `"db":"ok"`), `/health/ready` and `/health/emergency-path` and fails if any does not answer. `apps/web/vercel.json` schedules no cron.
 
 **If the demo breaks:**
-- API unreachable → Railway → Deployments → Restart latest. Auto-restart covers most blips (10 retries, 300s window).
+- API unreachable → Railway → Deployments → Restart latest. Auto-restart covers most blips (restart policy `ON_FAILURE`, up to 10 retries; the 300 s in `railway.json` is `healthcheckTimeout` — how long a new deploy gets to pass `/health/started` — not a restart window).
 - UI says "Can't reach the server" → check `NEXT_PUBLIC_API_URL` in Vercel env. If unset the frontend falls back to localhost — set it and redeploy web.
 - DB errors in Railway logs → Supabase pooler hiccup. Boot warm-up logs `Prisma pool warm (Nms)`; if consistently >2s, check `DATABASE_URL` / `DIRECT_URL` split.
 - Redis missing → API boots anyway (HTTP-polling realtime fallback). Emergency trigger still works.
@@ -971,34 +984,52 @@ the API image three times). The API's dashboard settings mirror the file exactly
 service points at its own Dockerfile through **Settings → Build → Dockerfile path** plus the
 variable `RAILWAY_DOCKERFILE_PATH` — never a per-service `railway.json`, never a Root Directory
 (`apps/renderer/README.md`, "Deploying on Railway"). Before 2026-12-01 the API must move to
-Infrastructure as Code (`.railway/railway.ts`, `railway config migrate` — needs `railway login`).
+Infrastructure as Code (`.railway/railway.ts`, `railway config migrate` — needs `railway login`);
+as of 2026-11-01 no `.railway/` directory exists yet, and this is a dated Phase 1 item
+(`docs/governance/MECHANISMS.md`).
 
-**Multi-replica (2026-09-03).** Every cluster-singleton background worker now takes a Redis leader lease before its tick (`apps/api/src/realtime/` lease module; 13 leased, 8 deliberately not — the un-leased ones carry a `NO LEADER LEASE, DELIBERATELY` comment at the site, and the reasons are in `docs/research/2026-09-02-efficiency-audit/1H-multi-replica.md`). Two rules: a replica that cannot reach Redis **assumes leadership and logs it** (degraded == today's single-replica behaviour, never worse), and a health/liveness probe is never leased — a replica that has lost Postgres cannot take a lease, so leasing its probe would silence the page exactly when it should fire. Express sessions are in Redis for the same reason; they fail SOFT (a store error must never 500 the dashboard).
+**Multi-replica (2026-09-03).** Every cluster-singleton background worker now takes a Redis leader lease before its tick (`LEASE` in `apps/api/src/realtime/leader-lease.service.ts`; 25 leased, 12 deliberately not — each un-leased one carries a `NO LEADER LEASE, DELIBERATELY` comment at the site that gives the reason). Two rules: a replica that cannot reach Redis **assumes leadership and logs it** (degraded == today's single-replica behaviour, never worse), and a health/liveness probe is never leased — a replica that has lost Postgres cannot take a lease, so leasing its probe would silence the page exactly when it should fire. Express sessions are in Redis for the same reason; they fail SOFT (a store error must never 500 the dashboard).
 
 ## Backup & Rollback
 
 Refer to `docs/BACKUP_AND_ROLLBACK.md` for full procedures. Summary:
-- **Before risky changes:** `git tag backup/pre-sprint-N-$(date +%Y%m%d-%H%M%S) && git push origin --tags`
-- **Tarball backup:** `tar -czf edu-cms-backup-$(date +%Y%m%d-%H%M%S).tar.gz . --exclude=node_modules --exclude=.git/objects`
-- **Restore from tag:** `git reset --hard backup/pre-sprint-N-TIMESTAMP`
-- **Recover one file:** Extract from tarball, copy out
+- **Roll back a bad change:** revert the PR (a new PR; the Lead merges it) or redeploy the previous build from Railway / Vercel. Never `git reset --hard` or force-push `master`: the ruleset forbids non-fast-forward pushes (admin bypass aside) and the standard forbids pushing to master at all. A backup tag is for comparison (`git diff <tag>..master`), not a way to move master.
+- **The database** is backed up by `.github/workflows/db-backup.yml` (nightly, AES-256-encrypted `pg_dump`, 30-day artifacts; `node scripts/ops-sweep.mjs` checks the newest one is under 36 h old). No restore drill is recorded or automated — a GAP (`docs/governance/MECHANISMS.md`, row #29): an untested backup is a hope, not a plan.
+- **Before risky changes:** `git tag backup/pre-<topic>-$(date +%Y%m%d-%H%M%S)` and push that one tag (`git push origin <tag>` — never `--tags`, which republishes every local tag).
+- **Tarball backup** (a local working-tree snapshot; on macOS `tar` the options go BEFORE the path, and it must never contain secrets): `tar -czf edu-cms-backup-$(date +%Y%m%d-%H%M%S).tar.gz --exclude=node_modules --exclude=.git/objects --exclude='.env' --exclude='*.env*' .` — `.env`, `apps/api/.env`, `apps/web/.env.local` and every `*.env*` file are left out.
+- **Recover one file:** `git checkout <ref> -- <path>`, or extract it from a tarball and copy it out.
 
 Keep 3 most recent tarballs; older ones can be deleted (git history is safe).
 
-## Deploy Reliability
+## Deploy Reliability — CI gates
 
 The `.github/workflows/deploy-reliability.yml` pipeline runs on every push
-to master + every PR with four parallel jobs. They catch the build
-failures we hit in production debugging on 2026-04-19 BEFORE the bad
-commit reaches Railway. **Always wait for the green CI check before
-shipping anything user-facing.**
+to master + every PR (one that touches only `docs/**`, root `*.md`, `.claude/**`,
+`scratch/**` or `LICENSE` skips it) with eight parallel jobs: `APK version is tagged`,
+`pnpm lockfile drift`, `schema change ships a migration`, `API + workspace packages build`,
+`Web Jest (unit)`, `Web typecheck + build`, `Docker build + boot smoke test` and
+`Renderer image build + render smoke test`. They detect the build
+failures we hit in production debugging on 2026-04-19.
+
+**What blocks a merge, and what does not (2026-11-01).** The ruleset "Master deploy safety"
+requires only FOUR checks — `pnpm lockfile drift`, `API + workspace packages build`,
+`Web typecheck + build` and `Docker build + boot smoke test` — and an admin can bypass it
+("always"). Every other gate (the other four jobs above, the emergency-path e2e, tenant
+isolation, cross-browser, mobile-perf, taurus-safety, a11y, the API Jest suite)
+runs and reports but does NOT block. Nothing requires a pull request, and **Railway and
+Vercel deploy on push, not on CI success** — a merge to master is a deploy. The change that
+would make the risk-weighted gates required is recorded, not applied:
+`docs/governance/decisions/2026-10-31-required-checks-ruleset.md`. **Never merge on red:
+wait for the PR's checks to finish green before the Lead merges.**
 
 ### Build failure modes we've seen, and how the CI catches them
 
-1. **argon2 / bcrypt fail to native-compile on Alpine.**
-   The Dockerfile builder stage is `node:20-alpine` which ships without a
+1. **argon2 fails to native-compile on Alpine** (`bcrypt`, which did too, is no
+   longer a dependency).
+   The Dockerfile builder stage is `node:22.23.4-alpine` (pinned by digest in
+   `ARG NODE_IMAGE`), which ships without a
    C/C++ toolchain. Without `apk add python3 make g++ openssl libc6-compat`
-   before `pnpm install`, both packages fail their `node-gyp` build with
+   before `pnpm install`, the package fails its `node-gyp` build with
    a cryptic `ELIFECYCLE` and Railway shows "Application failed to
    respond." → Caught by the **`docker-build`** job which runs the same
    image Railway will run.
@@ -1031,13 +1062,14 @@ shipping anything user-facing.**
 
 Before pushing, run `pnpm preflight` from the repo root. It runs the same
 non-Docker checks the CI does (lockfile + workspace builds + API + web)
-in under 90 seconds. The Docker check is CI-only because spinning up
-Docker locally is slow.
+in under 90 seconds. The Docker check is slower locally but not CI-only:
+`node scripts/venueos.cjs env up` builds the real API image and boots it against an
+isolated Postgres, and `node scripts/venueos.cjs verify` runs every CI-wired gate locally.
 
 ### Post-push: WATCH CI TO GREEN — do not declare "done" before it resolves (2026-05-31)
 
 `pnpm preflight` is NOT proof CI will pass. It skips Docker AND it runs on
-*your* machine, where native modules (argon2, bcrypt) are already built and
+*your* machine, where native modules (argon2; `bcrypt` is no longer a dependency) are already built and
 cached. The raw GitHub runner is a fresh `pnpm install --frozen-lockfile`
 that does **not** rebuild those bindings for the Jest job — so a suite that's
 green locally can have 5 suites *fail to load* in CI (`Cannot find module
@@ -1046,19 +1078,22 @@ blocking off a local-green run and turned Deploy Reliability red on every
 subsequent push — the *operator* caught it, not the lead. That is the failure
 mode this rule kills.
 
-**Standing rule:** after EVERY `git push`, watch the run to completion and
-react to red BEFORE telling the user anything shipped. The agent has `gh` —
-there is no excuse to make the user your CI monitor. One-liner (backgroundable
-so the harness re-invokes you on completion):
+**Standing rule:** after EVERY `git push` of a branch, watch the PR's checks to completion and
+react to red BEFORE telling the user anything shipped. The agent has `gh` — there is no excuse
+to make the user your CI monitor. Backgroundable, so the harness re-invokes you on completion
+(it exits non-zero if any check failed):
 
 ```bash
-sha=$(git rev-parse HEAD)
-for i in $(seq 1 24); do rid=$(gh run list --limit 40 --json databaseId,headSha,workflowName \
-  -q "[.[]|select(.headSha==\"$sha\" and .workflowName==\"Deploy Reliability\")][0].databaseId"); \
-  [ -n "$rid" ] && [ "$rid" != null ] && break; sleep 5; done
-gh run watch "$rid" --exit-status   # exits non-zero if CI failed
-gh run list --limit 40 --json headSha,workflowName,conclusion \
-  -q "[.[]|select(.headSha==\"$sha\")]|.[]|\"\(.conclusion) \(.workflowName)\""
+gh pr checks <PR-number> --watch      # add --required to see only the checks that can block the merge
+```
+
+After the Lead merges, the merge commit's SHA is NOT your local HEAD (a merge or squash makes a
+new commit), so key the follow-up on it — the push run on master, then the deploy:
+
+```bash
+sha=<merge commit SHA>
+gh run list --commit "$sha" --json workflowName,status,conclusion -q '.[]|"\(.status) \(.conclusion) \(.workflowName)"'
+curl -s https://<railway-api>/api/v1/health   # "commit" must equal $sha  (or: node scripts/venueos.cjs status)
 ```
 
 "Pushed, CI watch running" is honest. "Done / shipped" before CI is green is
@@ -1066,7 +1101,10 @@ the exact over-claim the operator has banned repeatedly.
 
 ### Pre-commit hook (husky)
 
-`.husky/pre-commit` blocks any commit that would drift `pnpm-lock.yaml`.
+`.husky/pre-commit` blocks any commit that would drift `pnpm-lock.yaml`, and any staged
+player/widget file containing `inset: 0` (For AI Assistants #10). `.husky/pre-push` runs
+`pnpm preflight` (the api + web builds) and prints non-blocking workspace-hygiene warnings;
+neither hook scans for secrets — gitleaks runs in CI (`ci.yml`).
 Activates automatically after `pnpm install` (via the `prepare` script).
 On Windows, Git for Windows runs the hook through its bundled `sh.exe`;
 no extra config needed.
@@ -1081,96 +1119,21 @@ respond," the container itself is down (not a downstream service).
 
 ### What never to do
 
-- Add `healthcheckPath` to `railway.json` without first confirming the
-  container actually boots and `/api/v1/health` responds. The healthcheck
-  GATES the deploy — a never-responding endpoint blocks all new code.
-- Bump `bcrypt` or `argon2` major versions without testing on Alpine
-  Docker locally first. Both have changed their build requirements
-  multiple times.
+- Change `healthcheckPath` in `railway.json` (today `/api/v1/health/started`) without
+  first confirming the container actually boots and that endpoint responds. The
+  healthcheck GATES the deploy — a never-responding endpoint blocks all new code.
+- Bump the `argon2` major version without testing on Alpine
+  Docker locally first (`node scripts/venueos.cjs env up`). It has changed its
+  build requirements multiple times.
 - Add a workspace package without a `tsconfig.json` and `dist/index.js`
   in its `main`. The API's CommonJS `require()` cannot parse raw
   TypeScript at runtime.
 
-## Template Design Workflow (load-bearing — read every time)
+## Template Design Workflow
 
-We've built ~60 templates and only the ones we iterated on look good
-(Rainbow Ribbon, Animated Rainbow). Batch-built templates regress to
-"rounded rectangle with shadow" every time. **Stop batching.** Use this
-workflow for every template from now on.
-
-### The 4-step loop (do not skip steps)
-
-1. **HTML mockups in `scratch/design/<name>-vN.html`** — build 3-5
-   variations of the SAME template idea, each as a standalone HTML
-   file. Open `scratch/design/index.html` to navigate them. Use:
-   - **Fixed pixel sizes** sized for a 1920x1080 canvas (logo 150px,
-     title 88px, etc.). Never `vw`/`%` for sizing in mockups — they
-     read the browser viewport, not the widget container, and the
-     port to React breaks.
-   - Real Google Fonts loaded via `<link>` (no system stacks).
-   - Real shadows, real textures, real CSS shapes. No placeholders.
-   - Every widget is a SHAPE (cloud, sun, polaroid, balloon cluster,
-     ribbon banner, starburst). Never a rounded rectangle with a
-     shadow. If you can't think of a shape for a widget, ask the user
-     for a reference image first.
-2. **User picks the winner** — they screenshot back, point at what
-   they like and what to redo. Iterate until they say "ship it." Do
-   NOT move to React until they explicitly approve.
-3. **Port to React using the transform:scale pattern** — wrap the
-   entire scene in a fixed-size 1920x1080 div, then wrap THAT in a
-   container that measures its parent and applies `transform: scale(N)`
-   to fit. This is the same pattern `ScaledTemplateThumbnail` uses
-   for gallery thumbs. Never use `vw`/`%` for sizing inside the scene
-   — keep every pixel size from the HTML mockup intact.
-4. **Verify the live React render** — screenshot the deployed page,
-   compare it side-by-side with the approved HTML mockup. They must
-   match. If they don't, the port is broken — fix the port, don't
-   redesign. Common port failures:
-   - Mixed pixel + percentage units → drift between elements
-   - Missing the transform:scale wrapper → text wraps weird at 4K
-   - Dropped CSS keyframes during refactor → animations stop
-   - Lost `dangerouslySetInnerHTML` for inline SVG logos → blank tiles
-
-### Why batch design fails for me
-
-When I batch-build 5+ templates in one pass, every one of them gets
-the lowest-common-denominator treatment:
-- Rectangle backgrounds with rounded corners
-- Title font 32px (too small for 8-foot viewing distance)
-- Generic emoji + grey text instead of themed shapes
-- No shadow / texture variation between themes
-
-The user has called this out repeatedly. Don't do it. **One template
-at a time, with a real iteration loop, no exceptions.**
-
-### When designing for a specific theme
-
-Push the metaphor as far as it will go. A "Storybook" theme is not a
-serif font on a beige rectangle — it's an open-book spread with a
-center spine, illuminated drop caps, page numbers in roman, double
-border frames, parchment texture. A "Bulletin Board" is not a brown
-background with a list — it's cork texture with pinned index cards
-and washi tape. If the metaphor is invisible at a glance, redo it.
-
-### Reference-driven design
-
-I do not have visual taste from training; I have patterns. **Ask the
-user for 2-3 reference images** (Pinterest, Dribbble, real signage
-photos) before starting any new theme. Without references, default
-to copying a known-good template (Rainbow Ribbon is the gold standard).
-
-### Track which templates have been approved
-
-Every approved template gets a comment in the React component:
-
-```tsx
-// APPROVED 2026-04-19 — matches scratch/design/animated-rainbow-v3.html
-// Reviewed by user, ported via transform:scale pattern. DO NOT
-// regress to vw/% units.
-```
-
-Without this comment, the template is unverified. Future agents
-should treat unverified templates as candidates for rebuild.
+The binding spec for any template work is `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md` and `.claude/agents/venueos-template-designer.md` (its always-loaded operating manual) — EXTERNAL_HTML boards on a 3840 stage, the editability contract, 20 ft legibility with a 50 px floor. Read both before building or committing any template.
+Where this file and either of them disagree about template design, they win.
+The mockup-then-port-to-React loop that used to be written here (a 1920 canvas, `scratch/design/`, an `APPROVED` comment citing `scratch/`) is retired: it contradicted that spec.
 
 ## Roadmap & Sprint Plan
 
@@ -1205,7 +1168,7 @@ This list is the floor, not the ceiling. Add to it when a new integration domain
 - USB playlist sticks (2026-10-22 — no settings, no PIN): "Download to USB" / the wizard's "USB drive" destination (`@/lib/usb-export`) → API signs with a silently minted tenant key (`usb-export/usb-signing-key.ts`) → a paired APK fetches the key (`GET /screens/:id/usb-key`), auto-detects the stick, verifies HMAC + every SHA-256, imports (`usb/UsbPackage.kt`, `UsbAutoImport.kt`) and serves it to page + service worker; the web player overlays it on normal manifests only (`player/usbPackage.ts`) until the next server publish
 - Floor plan upload (Sprint 8b)
 - Asset re-cache backfill jobs
-- Image / video transcoding pipeline (if/when built)
+- Image / video transcoding pipeline (built — `apps/api/src/storage/video-transcode/`)
 
 ### 3. AI providers — every entry point × every provider
 For each of the 3 providers (**Anthropic / OpenAI / Google**):
@@ -1223,7 +1186,7 @@ For each of the 3 providers (**Anthropic / OpenAI / Google**):
 ### 4. AI feature surfaces — every place AI does work
 - Sparkle button (text generation in widgets — PropertiesPanel mount sites)
 - Touch-template generation (full-template synthesis)
-- AI image generation (DALL-E / Imagen / Stable Diffusion) — if/when built
+- AI image generation (OpenAI / Google image models) — built (`POST /templates/:id/regenerate-image`; on our key only for the VenueOS + AI plan and free trials)
 - AI background removal — if/when built
 - AI translation for multilingual templates — if/when built
 - TTS for emergency announcements (V2 spec — Voice synthesis)
@@ -1250,7 +1213,7 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 ### 6. Streaming integrations
 - RTSP camera feed widgets (V2 Responder Bridge)
 - HLS / DASH / M3U8 live streams in player
-- Embedded YouTube live / Twitch / Facebook Live / Periscope
+- Embedded YouTube live / Twitch / Facebook Live (Periscope shut down in 2021)
 - NFHS Network broadcast overlay (Sprint 13 streaming)
 - Webcam URL widget
 - Streaming asset playlist support (treat as Asset, schedule rules)
@@ -1279,7 +1242,7 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 
 ### 9. Communications integrations
 - Twilio SMS / voice (V2 multi-modal output)
-- Sendgrid email
+- Email (Resend, `apps/api/src/email/` — not SendGrid)
 - APNs / FCM push notifications (mobile panic page)
 - Slack outbound notifications
 - Microsoft Teams outbound notifications
@@ -1290,10 +1253,10 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 - JWT issuance + revocation (jwt_revoked_list)
 - Argon2 password hashing
 - express-session cookies
-- TOTP MFA (pending)
-- WebAuthn passkeys (pending)
-- SSO (OIDC / SAML / Google / Okta) — Sprint 2
-- Clever SIS — Sprint 2
+- TOTP MFA (built — `apps/api/src/auth/mfa.controller.ts`)
+- WebAuthn passkeys (built — `apps/api/src/auth/passkey.controller.ts`)
+- SSO (OIDC built — `apps/api/src/sso/`; SAML is a stub that is hard-gated off, `passport-saml` intentionally not installed)
+- Clever SIS (built — `apps/api/src/integrations/clever/`, env-gated by `CLEVER_CLIENT_ID` / `CLEVER_CLIENT_SECRET`)
 - Role staleness (canTriggerPanic JWT-claim vs live row)
 
 ### 11. Billing + commerce
@@ -1323,14 +1286,14 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 - PA / IP-speaker (Valcom / Atlas / SingleWire InformaCast Fusion)
 
 ### 14. Multi-vertical surface
-- Every vertical in `packages/api-types/src/verticals.ts` has matching copy in DistrictSchoolsCard COPY
+- Every vertical in `packages/api-types/src/verticals.ts` has its sample identity there (`VerticalSample`) and its industry copy in `useTenantCopy` (`apps/web/src/hooks/use-tenant-copy.ts`); `DistrictSchoolsCard` no longer exists — its behaviour moved to `settings/cc/LocationsPage.tsx`
 - Vertical-specific default templates (Sports gets scoreboards, Retail gets promos, etc.)
 - Sample data per vertical (signup + onboarding flows)
 - Vertical-aware billing tier names (no "EDU District" on a Sports tenant)
 - Per-vertical AI prompts (announcement style for school vs gym vs restaurant)
 - Per-vertical sample URLs for branding wizard
 - Brand-applyToTemplates covers vertical-specific widget sets (Sports, Retail, etc.)
-- "Add a [noun]" buttons match the vertical (School / Location / Store / Gym / Office / Restaurant / Boutique / Bar / Venue / Hotel / Parish)
+- "Add a [noun]" buttons say "Location" for every vertical (the hierarchy nouns are unified — `useTenantCopy`, operator decision 2026-06-01); only the industry identity (tagline, template categories, role labels) varies by vertical
 
 ### 15. Cross-browser + Chromium-83
 - Safari (WebKit) — every customer-facing surface
@@ -1349,9 +1312,9 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 
 ### 17. Operational + DX
 - Health endpoints (liveness, readiness, emergency-path)
-- Pre-deploy CI gates (preflight, taurus-safety, cross-browser, a11y)
-- Pre-push hooks (lockfile drift, secret scan)
-- Rollback procedure (git tag + tarball discipline)
+- CI gates (preflight, taurus-safety, cross-browser, a11y) — they report on PRs and pushes; only the four build checks block a merge (see Deploy Reliability)
+- Git hooks (pre-commit: lockfile drift and `inset: 0` in player/widget files; pre-push: `pnpm preflight` — no secret scan locally, gitleaks runs in CI)
+- Rollback procedure (revert the PR or redeploy the previous build; nightly `db-backup.yml` for data — see Backup & Rollback)
 - Multi-replica safety (in-memory caches → Redis when load-bearing)
 - Connection pool sizing (`connection_limit=10` + `pool_timeout=20` on DATABASE_URL)
 - Boot-time required-secret enforcement
@@ -1382,12 +1345,12 @@ Audits MUST list every widget + the missing fields. Adding entries to a registry
 
 ### 20. Design + UX + Functionality lenses
 
-Every "audit the entire app" pass MUST score every Standard Audit Surface section (1-19) across three lenses:
+Every "audit the entire app" pass MUST score every Standard Audit Surface section (1-21) across three lenses:
 - **DESIGN**: does it look like a $$$ product? Would a superintendent show this to their board?
 - **UX**: can a non-IT operator complete the task in 30 seconds without help / docs / a Loom video?
 - **FUNCTIONALITY**: does it actually work end-to-end? Or is it "Coming soon" wearing a real-button costume?
 
-The audit report's page 1 coverage table now has 3 columns (D / UX / F) × 19 rows. Anything ≤ B in any column is a gap.
+The audit report's page 1 coverage table has 3 columns (D / UX / F) × 21 rows. Anything ≤ B in any column is a gap.
 
 **UX time-budget — a standing acceptance gate (added 2026-05-29).** Beyond audits: NO new operator-facing feature ships without a named **happy path** a non-IT operator can complete in **under 30 seconds / a handful of clicks**, plus a screenshot (or Playwright run) proving it. "Easiest UX — the app almost does the work for them" is a north-star, not a nicety: default to auto-detect + sensible defaults + one-click over forms; route operators through the **Integration Concierge** (paste-URL / describe-in-a-sentence → we discover + wire the integration + auto-seed the first template) wherever they'd otherwise need an IT consultant. If a feature can't clear its 30-second happy path, it isn't done.
 
@@ -1422,7 +1385,7 @@ This is now the standing rule for every parallel-agent deployment:
 
    **1c. Assert the main tree is clean before AND after every agent batch.** Run `git status --short`; it MUST be empty (modulo intended lead commits). Any agent-origin dirtiness is a HARD STOP — reconcile it (`git checkout HEAD -- <file>` to drop orphaned edits; cherry-pick the agent's *worktree branch* as the source of truth) before merging/pushing. And before blaming an agent for main-tree edits, VERIFY via its transcript (`grep '"file_path"' <task>.output`) whether its writes were worktree-scoped or main-tree — never assert contention without proof (the 2026-05-29 misattribution).
 
-2. **Lead agent (me) owns the merge.** Agents return their branch name. Lead reviews the diff (`git diff master..agent-branch`), audits, cherry-picks or merges, then commits + pushes to master. Agents never push to master directly.
+2. **The Lead owns the merge — and no model pushes to master.** Agents work on a branch named `<vendor>/<topic>` (rename a harness-named `worktree-agent-<id>` branch first) and return its name. The Lead reviews the diff (`git diff master..<vendor>/<topic>`), audits, and opens (or takes over) a pull request in the decision format; a consequential change is reviewed by a model from a different vendor than the one that wrote it; the Lead merges on the owner's written go (or a standing approval in `docs/governance/AUTONOMY-REGISTER.md`). Nobody — the Lead included — pushes to master (`AGENTS.md` hard stop).
 
 3. **Commit before dispatch.** Any uncommitted local work must be committed (even WIP) before parallel agents fire. Untracked files survive nothing.
 
@@ -1430,7 +1393,7 @@ This is now the standing rule for every parallel-agent deployment:
 
 5. **Recovery via transcripts.** Every agent's full transcript is at `/private/tmp/claude-501/<project>/<session>/tasks/<agentId>.output`. If a fix vanishes, grep there first — anything the agent wrote before crashing is recoverable.
 
-6. **Audit before merge.** Lead reads the agent's diff, runs tsc + lint + the agent's target tests, screenshots the affected page if UI-touching. No merge without proof.
+6. **Audit before merge.** Lead reads the agent's diff, runs tsc + the agent's target tests (never `pnpm --filter api run lint` — it auto-fixes files), screenshots the affected page if UI-touching. No merge without proof.
 
 7. **Agents are tools, not authors.** Lead is responsible for what ships. "An agent did it" is never a defense for a regression.
 
@@ -1438,7 +1401,9 @@ This is now the standing rule for every parallel-agent deployment:
    agent returns substantive findings (≥500 words of report-form
    output OR a punch list ≥3 items OR any work the user paid real
    money for), the lead MUST write the full report to a markdown file
-   under `docs/research/<YYYY-MM-DD>-<topic>/` BEFORE writing the
+   under a TRACKED path, `docs/handoffs/<YYYY-MM-DD>-<topic>/` (a report that
+   maps a weakness — a security finding, forensics — goes to the private
+   standard repository's `decisions/` instead), BEFORE writing the
    next user-facing summary. Do NOT rely on conversation context to
    hold agent work — context can compact at any time and the work
    becomes invisible to chat, regardless of how recently it landed.
@@ -1454,7 +1419,7 @@ This is now the standing rule for every parallel-agent deployment:
 
    **Workflow:**
    - Agent dispatched → agent returns → IMMEDIATELY `Write` the
-     full report to `docs/research/<date>-<topic>/<NN>-<scope>.md`
+     full report to `docs/handoffs/<date>-<topic>/<NN>-<scope>.md`
      before any other tool call.
    - Add a README to the folder listing all reports + scope.
    - THEN summarize to the user.
@@ -1477,15 +1442,18 @@ git status --short  # must be empty
 # 3. Confirm origin is up-to-date.
 git fetch origin master && git log master..origin/master --oneline  # must be empty
 
-# 4. Clean up old worktrees so the new dispatch starts fresh. `git worktree
+# 4. Clean up YOUR OWN finished worktrees so the new dispatch starts fresh. `git worktree
 #    prune` ALONE IS NOT ENOUGH — it SKIPS locked worktrees, and the harness
 #    locks every agent tree, so they accumulate INVISIBLY. On 2026-06-02 this
 #    reached 154 leftover trees / 83 GB and made every git command slow/erroring
-#    (the operator caught it, not the lead — never again). Use the real cleanup
-#    (unlock → remove --force → prune, with a branch-manifest backup):
-pnpm worktrees:status            # count leftover agent/session worktrees
-pnpm worktrees:clean             # remove them all (backs up to ~/Desktop first)
-git worktree list                # MUST show ONLY the main tree before dispatch
+#    (the operator caught it, not the lead — never again). Other sessions' trees
+#    (Codex, a second Claude session) are NOT yours: never remove them.
+pnpm worktrees:status            # count leftover agent/session worktrees (read-only)
+git worktree remove --force ".claude/worktrees/<your-finished-tree>"   # your own trees, by name
+git worktree list                # none of YOUR finished trees may remain
+# `pnpm worktrees:clean` sweeps EVERY idle tree under .claude/worktrees/ (backs up to ~/Desktop
+# first; skips trees touched in the last 20 min) — other sessions' included. Run it only when
+# no other session is working.
 ```
 
 If ANY of those four fail, **stop and fix the workspace before spawning agents.** A dirty tree means a previous session left untracked work that the next agent batch will appear to "wipe" — that was the source of every "agents are stomping me" panic.
@@ -1508,34 +1476,42 @@ Don't tail agent transcript files — they overflow context. Trust the harness n
 
 ```bash
 # 1. Read the agent's diff against master FIRST. No exceptions.
-git diff master..worktree-agent-<id>
+git diff master..<vendor>/<topic>
 
-# 2. Cherry-pick clean commits one at a time. Per-commit, not bulk.
-git cherry-pick <agent-commit-sha>
-
-# 3. Run tsc on whatever they touched.
+# 2. Run tsc on whatever they touched. (Never `pnpm --filter api run lint` — it auto-fixes files.)
 rm -f apps/api/tsconfig.build.tsbuildinfo
 pnpm --filter api exec tsc --noEmit --project tsconfig.build.json
 pnpm --filter web exec tsc --noEmit | grep -v "test\.\|@testing-library"
 
-# 4. Verify branch is master before push.
-git branch --show-current  # MUST be "master"
-git push origin master --no-verify   # --no-verify only when preflight has been done manually
+# 3. Open the pull request from the branch — decision format, naming model, version and
+#    harness — and watch its checks. NEVER push to master; never use --no-verify.
+git push origin <vendor>/<topic>
+gh pr create --base master --head <vendor>/<topic>   # body: Situation · Evidence · Recommendation · Risk · Validation · Rollback · Decision
+gh pr checks <PR-number> --watch                     # exits non-zero if a check failed
 
-# 5. ⚠️ REMOVE THE AGENT'S WORKTREE THIS SAME TURN. Non-negotiable. The 83 GB /
+# 4. A consequential change (emergency path, auth/secrets, migrations, billing, the native
+#    player, CI/CD) is reviewed by a model from a DIFFERENT vendor before the merge (AGENTS.md).
+
+# 5. The Lead merges on the owner's written go (or a standing approval in
+#    docs/governance/AUTONOMY-REGISTER.md). A merge to master is a deploy. For a player
+#    release, tag the MERGED commit (Player Reliability rule 13).
+
+# 6. ⚠️ REMOVE YOUR OWN FINISHED WORKTREE THIS SAME TURN. Non-negotiable. The 83 GB /
 #    154-tree pileup (2026-06-02) was caused by exactly this step being skipped:
-#    cherry-pick to master, then walk away leaving the locked ~540 MB tree
-#    behind forever. Once the agent's commits are on master:
+#    work handed back, then the locked ~540 MB tree left behind forever.
+#    Once the branch is pushed (it lives on origin) and the agent's report is on disk:
 git worktree remove --force ".claude/worktrees/agent-<id>"   # the tree
-git branch -D "worktree-agent-<id>"                          # the now-stale branch
-# (or just `pnpm worktrees:clean` to sweep every finished agent tree at once.)
+git branch -D "worktree-agent-<id>"                          # the now-stale local branch
+# (`pnpm worktrees:clean` sweeps every idle agent tree at once — other sessions' included; use it
+#  only when no other session is working.)
 ```
 
-**STANDING RULE (2026-06-02): a parallel-agent session is NOT done until
-`git worktree list` shows only the main tree again.** Leaving agent worktrees
+**STANDING RULE (2026-06-02): a parallel-agent session is NOT done until none of YOUR
+finished agent worktrees remain in `git worktree list`.** Leaving agent worktrees
 behind is the "lazy development" that built an 83 GB invisible mess. Run
-`pnpm worktrees:status` at the end of every agent batch; if it's not 0, clean it
-before you tell the user the work shipped.
+`pnpm worktrees:status` at the end of every agent batch and remove your own leftovers
+before you tell the user the work shipped — never another session's tree (Codex's or a
+second Claude session's): those legitimately appear in `git worktree list`.
 
 ### Workspace hygiene — `pnpm hygiene` (2026-06-02)
 
@@ -1551,7 +1527,7 @@ the standing early-warning — it reports leftover worktrees, `.git` object/garb
 health, dirty tree, stale local/remote branches, backup-tag clutter, and
 dependency CVEs, each with the fix command. Run it periodically and as part of
 the pre-dispatch checklist. If `.git` ever shows thousands of loose objects or
-any garbage, run `git gc`. Full audit: `docs/research/2026-06-02-dev-process-audit/`.
+any garbage, run `git gc`.
 
 ### Things that look like "agents stomping me" but aren't
 
@@ -1565,7 +1541,7 @@ any garbage, run `git gc`. Full audit: `docs/research/2026-06-02-dev-process-aud
 - **Spawning agents without `isolation: "worktree"`.** They all write to the same tree and stomp each other's untracked files. The IntegrationDiscoveryService was wiped TWICE this way before the rule landed.
 - **Committing before checking current branch.** Your commit lands on an agent branch, master stays behind, push appears to succeed (you pushed master's HEAD), but the commit isn't actually on master.
 - **Cherry-picking the same logical work from two agents.** Two agents writing similar fixes (e.g. PropertiesPanel HOUSE_AD_BANNER case) will conflict at merge. Pick one, skip the other.
-- **`git push --no-verify` without running preflight locally.** The pre-push hook exists for a reason; bypassing it means breaking master via the cascade of CI workflows.
+- **`git push --no-verify`.** Never (a hard stop in `AGENTS.md`). The pre-push hook runs `pnpm preflight`; bypassing it is how a broken build reaches master and — because Railway and Vercel deploy on push — production.
 
 ## AI Integration Concierge — vision
 
@@ -1583,7 +1559,7 @@ The Integration Concierge is the AI-driven discovery + setup layer that sits bet
 
 4. **Auto-seeded templates per vertical**: when an integration connects (e.g., Toast POS), the Concierge offers to drop a Menu Board template pre-wired to that integration's live data. One click → operator has a working board on screen.
 
-5. **AI as the explainer**: if the operator hovers an unfamiliar integration ("what's Square Catalog?") the Concierge calls the platform AI (see Economic Model below) for a 1-sentence plain-English explanation. Free tier, capped at 100 calls/tenant/day.
+5. **AI as the explainer**: if the operator hovers an unfamiliar integration ("what's Square Catalog?") the Concierge calls the platform AI (see Economic Model below) for a 1-sentence plain-English explanation. Metered like every other AI call on our key, against the included allowance (see the Economic Model below).
 
 6. **Diagnostic concierge**: if an integration goes RED, the AI assistant explains the likely cause + a 3-step fix in plain English instead of dumping a stack trace.
 
@@ -1595,13 +1571,13 @@ Operator's intent (2026-05-26): *"we would have to use our own AI integration th
 
 | Tier | AI provider | Who pays | Usage cap |
 |---|---|---|---|
-| **Platform Concierge** (setup-time) | VenueOS's `ANTHROPIC_API_KEY` | VenueOS | Per-tenant ≤ 50 calls / lifetime + 100 calls / day during onboarding |
-| **Customer BYOK Creative** (everyday) | Tenant's own Anthropic/OpenAI/Google key | Tenant pays their provider | Subject to their provider's rate limits + our 30/hr/tenant cap |
-| **Managed-AI Subscription** (future) | VenueOS's keys, pooled | Tenant pays VenueOS a subscription line item | Per-tier monthly quotas; spillover billed |
+| **Platform Concierge** (setup-time) | VenueOS's `ANTHROPIC_API_KEY` | VenueOS | The included allowance, in dollars: `max($5 floor, paired screens × $2.50)` per organisation per UTC month (`AI_INCLUDED_USD_FLOOR` / `AI_INCLUDED_USD_PER_SCREEN`) is the hard ceiling, plus counted boards and images per paired screen (10 / 20; a free trial 2 / 2); beyond it, 402 `AI_CAP_REACHED` |
+| **Customer BYOK Creative** (everyday) | Tenant's own Anthropic/OpenAI/Google key | Tenant pays their provider | Subject to their provider's rate limits + our 120/hr/tenant abuse cap (`AI_HOURLY_CAP`, default 120) |
+| **Managed-AI Subscription** (shipped 2026-10-12 as the VenueOS + AI plan: $25/screen/month or $250/screen/year) | VenueOS's keys, pooled per organisation | Tenant pays VenueOS (`STRIPE_PRICE_MONTHLY_AI` / `STRIPE_PRICE_ANNUAL_AI`) | The counted boards and images per paired screen per UTC month, under the same dollar ceiling |
 
-The Concierge calls live on Tier 1. Sparkle button on widgets + Touch Template Generator + AI alt-text live on Tier 2. Tier 3 unlocks once we have enterprise contracts that justify the spend pool.
+The Concierge calls live on Tier 1. Sparkle button on widgets + Touch Template Generator + AI alt-text live on Tier 2. Tier 3 shipped (2026-10-12) as the VenueOS + AI plan — see the Stripe price rows in the environment table.
 
-The platform must NEVER silently spend Tier-1 budget on Tier-2 actions. If a tenant has no BYOK and is on the Free tier, sparkle should say "Configure your AI provider — settings → AI" not "fall back to platform key."
+The platform must NEVER silently spend Tier-1 budget on Tier-2 actions. A tenant with no key of its own and no AI plan or free trial gets a 402 `AI_PLAN_REQUIRED` ("Add VenueOS AI for $5/screen/month … or connect your own AI key for free", `byokAvailable: true`) — never a silent fall-back to the platform key.
 
 ## Design Imports = Template Feature (not a Setting)
 
@@ -1615,29 +1591,29 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ## For AI Assistants
 
-1. **Model routing (Foundry Standard Art. 42, 53):** cost-first — the cheapest model whose track record passes the gate for the task class, escalating only on a failed gate, a consequential change or real ambiguity; the live table, the cross-vendor review rule and the succession order are in `AGENTS.md` and `docs/governance/standard/MULTI-AGENT.md`. Emergency, security and architecture work always gets a frontier-class model plus a review by a different vendor.
+1. **Model routing (Foundry Standard Art. 42, 53):** cost-first — the cheapest model whose track record passes the gate for the task class, escalating only on a failed gate, a consequential change or real ambiguity; the routing table and the succession rule are in `docs/governance/standard/MULTI-AGENT.md` (Routing; Continuity when a vendor is down), and the cross-vendor review rule is in `AGENTS.md` and there. Emergency, security and architecture work always gets a frontier-class model plus a review by a different vendor.
 
-2. **Always read this file first** — it's the source of truth for the codebase.
+2. **Read `AGENTS.md` first (this file imports it), then this file** — this is the application rulebook, the source of truth for the codebase. When texts disagree the precedence is (`AGENTS.md`): `docs/governance/OWNER-RULES.md` → the Foundry Standard → this file → `AGENTS.md` → your own memory.
 
-3. **Never weaken emergency safeguards** without explicit approval from Integration Lead. Emergency system changes require review.
+3. **Never weaken emergency safeguards** without the owner's written approval (`AGENTS.md`: changing the emergency path is a consequential change). Emergency system changes also require a review by a different vendor.
 
 4. **Never commit `.env` or secrets** to git. Treat every change as world-readable regardless of repo visibility (see #5).
    Rotating one? `docs/SECRET-ROTATION.md` lists every store and consumer per secret — tick it, don't remember it (the 2026-09-04 rotation missed the DB Backup secret for nine nights).
 
 5. **Repo is PUBLIC again on GitHub** (`https://github.com/gschiemann/EDUCMS`) as of 2026-09-14 — public 2026-04→08-01, private 08-01→09-14. It went back for cost: the private Free plan's Actions spending limit was refusing every job (nightly backups included) while Railway still deployed each push, and its 2-vCPU runners OOM-killed the e2e gate. Public = unlimited standard-runner minutes, the 4-vCPU class back, branch protection / rulesets back, GitHub secret scanning + push protection on. **Public is NOT open source** — `LICENSE` is a source-available, all-rights-reserved notice. **Every commit, PR and issue is world-readable, so: no hardcoded credentials, API keys, customer names or PII, ever**; the CI gitleaks gate + `.gitleaksignore` (per-fingerprint, never per-path) are the mechanical floor. A full-history `gitleaks` scan on 2026-09-14 (3,442 commits) found only doc examples, React `key=` props, the SEC-006 canary and two pre-August hex values whose secrets were rotated on 2026-09-04.
 
-   If it ever goes private again, remember what that removes (learned 2026-08→09): **no branch protection and no rulesets** on Free + private (`403 Upgrade to GitHub Pro`), so nothing mechanically gates a merge or a deploy — Railway deploys on push, not on CI success; **runners halve** to 2 vCPU / 7 GB (heavy suites need `--maxWorkers=2` + `NODE_OPTIONS=--max-old-space-size=4096`); and a **spending limit** that refuses every job with 0 steps — including the nightly DB backup — while pushes still deploy. Either way: watch CI to green after every push, and never call something shipped before it resolves.
+   If it ever goes private again, remember what that removes (learned 2026-08→09): **no branch protection and no rulesets** on Free + private (`403 Upgrade to GitHub Pro`), so nothing would gate a merge at all (even while public, the ruleset requires only four build checks and an admin can bypass it, and Railway and Vercel deploy on push, not on CI success — see Deploy Reliability); **runners halve** to 2 vCPU / 7 GB (heavy suites need `--maxWorkers=2` + `NODE_OPTIONS=--max-old-space-size=4096`); and a **spending limit** that refuses every job with 0 steps — including the nightly DB backup — while pushes still deploy. Either way: watch CI to green after every push, and never call something shipped before it resolves.
 
-6. **Check the memory system** at `~/.claude/projects/-Users-gschiemann-Desktop-EDU-CMS/memory/MEMORY.md` for Integration Lead preferences and prior session context.
+6. **Read the owner's rules and the latest handoff:** `docs/governance/OWNER-RULES.md` (the owner's binding corrections, readable by every vendor) and `docs/handoffs/` (prior-session context). A model's private memory (Claude's `MEMORY.md` among them) is a cache of the repository, never the record — a fresh checkout has none of it.
 
-7. **Feature flags & observability** — Sprint 1 goal is GrowthBook + Sentry. Wrap new features with feature flags where reasonable.
+7. **Feature flags & observability** — GrowthBook (`apps/api/src/feature-flags/`, `apps/web/src/lib/feature-flags.ts`) and Sentry (`apps/api/src/sentry.ts`, `apps/web/sentry.*.config.ts`) are wired in. The standing practice for new behaviour is a subtractive kill switch — an env flag that can only remove behaviour, with its failure direction written down (`AGENTS.md`) — as in the `PLAYER_*` rows above; wrap new features in a feature flag where reasonable.
 
 8. **Prisma schema & types** — Source of truth is `packages/database/prisma/schema.prisma`. Regenerate `@prisma/client` after schema changes: `pnpm db:generate`
 
 9. **VERIFY THE RENDER TREE before editing any UI file.** Three rounds
    of touch-widget edits on 2026-05-12 landed in
-   `apps/web/src/components/template-builder/WidgetPalette.tsx` —
-   a file that was imported but **never rendered**. CI was green,
+   `apps/web/src/components/template-builder/WidgetPalette.tsx` (deleted
+   2026-05-13) — a file that was imported but **never rendered**. CI was green,
    build succeeded, no changes appeared in the operator's UI. The
    widgets panel actually renders `<VariantPicker />` (which reads
    `variants-register.ts`), not `<WidgetPalette />`.
@@ -1679,10 +1655,10 @@ The page renders inside the brand shell — same chrome, same palette, same font
      `flex-shrink: 0`, `margin: auto`) — "Zoom in" used to move only the
      label. Presets ship sample NUMBERS, never a literal `countdownDate`
      (`preset-countdown-dates.spec.ts`).
-   - The builder end-to-end harness is `docs/research/2026-09-12-editor-
-     integrity/demo-walk/audit-builder.mjs` (42 checks, `BROWSER=webkit`)
-     against the local sandbox stack; `apps/web/playwright.sandbox.config.ts`
-     runs the e2e specs against the RUNNING dev server (no `next build`).
+   - `apps/web/playwright.sandbox.config.ts` runs the e2e specs against the
+     RUNNING dev server (no `next build`). (The 42-check `BROWSER=webkit`
+     builder harness once named here, `audit-builder.mjs`, was never
+     committed — it is an untracked file on the lead's machine.)
 
    Green CI is NOT proof of correctness. CI checks syntax + types,
    not "is this file actually mounted." When changing user-visible
@@ -1751,7 +1727,7 @@ The page renders inside the brand shell — same chrome, same palette, same font
     `inset: 0` and the operator's Rainbow Animated Portrait template
     was unrenderable on the Taurus until we mass-replaced them. Same
     bug pattern as the 2026-05-09 Safari minified-bridge regression
-    in `reference_recurring_failure_patterns.md` — modern Chromium
+    (Cross-browser support, above) — modern Chromium
     tolerates Web platform features ahead of spec; older Chromium
     forks (Android System WebView on locked-firmware controllers,
     Smart TVs, Tizen, WebOS) do not.
@@ -1792,11 +1768,13 @@ The page renders inside the brand shell — same chrome, same palette, same font
       apps/web/src/components/widgets apps/web/src/app/player \
       apps/web/src/components/player
     ```
-    Anything that returns a hit is a regression on Taurus. (The two
-    intentional callsites — `KioskSplash.tsx` line 401 and the
-    `TemplateScaler` outer in `player/page.tsx` — declare BOTH the
-    shorthand AND the long-hand on adjacent lines, so modern engines
-    parse the shorthand and Chromium 83 falls back to the long-hand.)
+    A hit in code is a regression on Taurus, with these exceptions: comments, the
+    polyfill selector in `player/layout.tsx`, and the intentional callsites — the
+    `.kiosk-*` CSS rules in `KioskSplash.tsx` and the full-screen overlay in
+    `CanvasSizeEditor` (`player/page.tsx`) — which declare BOTH the shorthand AND
+    the long-hand on adjacent lines, so modern engines parse the shorthand and
+    Chromium 83 falls back to the long-hand. (On 2026-11-01 the grep returned 21
+    hits, all of those kinds.)
 
     2026-07-03: a THIRD variant, invisible to grep — no file contains the
     word "inset" at all. A React inline `style={{ position:'absolute',
@@ -1890,15 +1868,5 @@ The page renders inside the brand shell — same chrome, same palette, same font
 
 ---
 
-**Last Updated:** 2026-10-31 — the Foundry Standard adopted (v1.0.0, vendored at `docs/governance/standard/`, pinned by `standard.lock`): `AGENTS.md` now opens with the one-page North Star every model reads first and this file imports it (`@AGENTS.md`, line 1); `docs/governance/` holds the VenueOS profile, the owner rules, the two autonomy registers, the launch freeze and the mechanism map; the old "Model tier" rule in For AI Assistants is replaced by cost-first routing. Previous stamp, 2026-10-25 — customer alert emails, two owner rules (`CUSTOMER_ALERT_EMAILS_*` row): "didn't come back on at its scheduled on time" (a screen dark in its on/off schedule's OFF window and not back at the switch-on is an outage from that switch-on) and a remote power-off excuses only while it really holds on the glass (refused / undelivered never; ends at a schedule switch-on, a wake, a page boot for the soft BLANK); on/off schedule rows now govern their own tenant's screens only; still shadow mode. Previous stamp, 2026-10-23 — owner fleet alarms (`POST_RESTART_FLEET_CHECK_DISABLED` / `DEVICE_CREDENTIAL_REFUSAL_ALARM_DISABLED` row): a post-restart fleet check (+10 / +20 min, ≥ 3 screens not back) and a device-credential refusal alarm (≥ 3 screens refused 10 min, hourly at most, recovery note), owner-only; the customer alerts' platform-incident owner alert no longer waits out the restart quiet. Earlier the same day — retired signing key: screens that had not re-registered inside a `DEVICE_JWT_SECRET` rotation window were refused (`401 SCREEN_TOKEN_MISMATCH`) on every re-register after it closed and stayed dark; a prior token naming the screen that no current key verifies is now graded `unverifiable` and gets the same 1-hour credential + `requiresRePair` as no token at all (`isUnverifiableDeviceTokenForScreen`, `screens.register-retired-key.spec.ts`); token-issue audit rows carry a non-secret `mintKeyId`, and `scripts/railway-rotation.mjs finish` refuses to close a window while a live screen has no token on the new key (`DEVICE_*_PREVIOUS` row, `docs/SECRET-ROTATION.md` A-4/A-5). Earlier the same day — customer alert emails (`CUSTOMER_ALERT_EMAILS_*` row): screen offline / not showing content / back, and an emergency record copy, to each organisation's admins in their language — shadow mode by default (only the owner sees what would have gone out), every false-positive rail tested in `customer-alert-policy.spec.ts`; additive migration `20261023120000_customer_alert_emails`. Previous stamp, 2026-10-22 — player 1.1.51 field candidate (launch blockers; report `docs/research/2026-10-17-player-rock-solid/30-player-1-1-51-launch-blockers.md`): the push channel always comes back (`apps/web/src/app/player/wsSupervisor.ts` — a state-driven tick re-arms the WebSocket when `onclose` never fires: CONNECTING/CLOSING stuck, OPEN but never AUTH_OK'd, silent; same failure counter, same 1–30 s backoff, SSE/HTTP ladder, no give-up; `window.__eduRealtime`); alert paint proof accepts a real WebView (a null background drawable is opaque — `setBackgroundColor` never sets one) and a vendor wake that BLOCKS is bounded to 2 s off the hold path; the back face of a double-sided unit is watched for alerts on its own manifest; a screen that was OFF (dashboard Turn off / hard BLANK, soft schedule) goes back to OFF after the all-clear (`RestoreBlankAfterAlertPolicy`, `SoftScheduleRunner.alertTookOverlayDown`); a native-first face whose manifest is unreachable at start plays its persisted last authenticated selection from the verified disk copy, emergency first (`media/OfflineSelection.kt`); the one content store is wired, dark behind `PLAYER_CONTENT_STORE` (row above); NEEDS_TAP names a staged commit vs an open dialog, an unanswered dialog expires at 30 min on a timer and moves the push to EXPIRED on the API; refused field offers log their reason. The double-post decision is never invisible (0b — M43 on 1.1.50 reported `requested.doublePost` with no answer: the APK's verdict lived only in `timing.doublePost`, which the page's reader and the API's strict schema dropped; now `experiments.applied.doublePost` carries a verdict code on every path — pending / guard-disabled / session-ended / no-surface / the result — the web reader and the API schema accept it, and the delayed decision resolves the session's CURRENT host and surface; L55VEC's missing native report was content — its active schedule is a six-PNG playlist). Nothing hardware-qualified yet. Previous stamp, 2026-10-22 — secret-rotation windows for `DEVICE_JWT_SECRET` / `DEVICE_SECRET_KEY` (`_PREVIOUS` companions, `security/key-ring.ts`; verify/decrypt accept primary then previous, mint/sign/encrypt always primary; leader-leased re-wrap of every stored credential envelope + `POST /super/key-rotation/rewrap`; runbook in `docs/SECRET-ROTATION.md`) after the 2026-10-21 Railway env leak. Previous stamp, 2026-10-19 — player 1.1.43 field candidate (`PLAYER_NATIVE_VIDEO_EXPERIMENTS` row): the pacing behaviours are automatic, no setting — vsync snap on for every solo session with a grid-sized release lead (0.5 P on a 60 Hz grid), the same-resolution ~60 Hz mode asked once per process behind a safety net that reverts an unproven switch and blocks the unit for 24 h, nothing touching the display mode under an emergency hold; the `vsync-snap` / `prefer-60hz` tokens became lead-only kill switches that can only remove behaviour; failure grading phase 0 (network, storage, auth and manifest ends never block native for a day; a web test holds the page's table to the APK's); the panel firmware's own display tables on the device report — report `docs/research/2026-10-17-player-rock-solid/10-apk-1-1-43-defaults.md`; nothing hardware-qualified yet. Previous stamp, 2026-10-18 — player 1.1.42 field candidate (`PLAYER_NATIVE_VIDEO_EXPERIMENTS` row, tokens `vsync-snap` / `prefer-60hz`): vsync-snapped release on a Choreographer-measured grid with a bounded media-clock slew, a same-resolution ~60 Hz mode request at a native session boundary (default OFF — a mode switch can blank the panel), every supported display mode logged per session and on the device report, `keepScreenOn` observed on the native runtime report — report `docs/research/2026-10-17-player-rock-solid/07-apk-1-1-42-pacing.md`; nothing hardware-qualified yet. Previous stamp, 2026-10-17 — player 1.1.41 field candidate (`PLAYER_NATIVE_VIDEO_EXPERIMENTS` row): one compositing contract (the WebView is opaque black in every state; solo native AND positioned slots are composed above the window or refused with `composition-unavailable`; a template zone another zone overlaps stays web, `zone-overlap`), the in-APK device-class policy table (native on every AVC class, Taurus web-only, update path `installer-of-record` or `tap` — the Manager is never device owner), the render-callback interval histogram + persisted timing ledger (reboot-aware), and the three M43 experiments — report `docs/research/2026-10-17-player-rock-solid/02-apk-1-1-41.md`; nothing hardware-qualified yet. Previous stamp, 2026-10-13 — verified template publication: 493 unique presets / 286 HTML boards, including the retail workflow and three reviewed portrait registrations. Earlier stamp, 2026-10-12 — per-face native video engine (`PLAYER_NATIVE_VIDEO` row): independent hardware-surface sessions per face, default on for double-sided units only, unqualified on glass. Previous stamp, 2026-10-06 — first-login setup now proves the new email with an emailed 6-digit code (`SETUP_EMAIL_VERIFICATION` row; auto-enforced once the sending domain is verified); the required passkey step can no longer hang on a browser that never opens its sheet; "Copy all codes" says whether it copied. Previous stamp, 2026-10-05 — MOV, AVI, MKV, WMV, MPG, 3GP, TS and HEIC uploads are accepted and converted (videos to MP4 after upload, HEIC to JPEG before the asset exists; one shared format table; `UPLOAD_HEIC_BUDGET_MS` row). Earlier the same day — uploads are checked by content, not by name (`UPLOAD_CONTENT_CHECK_DISABLED` row): damaged and fake files are refused at upload, a check that cannot run accepts; a publish names the file it cannot prepare. Previous stamp, 2026-10-04 — compatibility before size: a video that is not screen-safe is converted and replaces the original at any size (`processingMeta.screen` is the verdict; delivered video ≤ 30 fps; the colour chain needs ffmpeg ≥ 8, Dockerfile-checked). Earlier today — Template System counts re-derived (482 presets, 282 boards, shim V14) and the preset-count command repaired (it printed 126 after `system-presets.ts` gained a runtime import). Previous stamp, 2026-09-29 — continuous repetition is the default for every existing and newly paired screen (unset/empty or `PLAYER_LOOP_CONTINUOUS=all`), with player eligibility and native fallback preserved. Earlier today — sync is decided by the playlist alone (a screen group's `syncMode` is ignored) and the video sync servo no longer seek-loops on slow panels (`sync/videoServo.ts`); the `PLAYER_LOOP_TWODECK` row carries the first real-hardware results. Previous stamp, 2026-09-26 — Player Reliability rule 17 rewritten to what ships: a big file downloads WHOLE in chunked, verified, resumable steps and only THEN plays — readiness-gated playback (`mediaReadiness.ts`; free-run skips an unready slot, a synced group HOLDS it; a new playlist with nothing ready is deferred behind the content on glass), NO 1080p stand-in (Greg's rule, the `bdb3f59a` fallback path deleted), legacy cache entries adopted by hashing on disk instead of re-downloaded, and the emergency tier's large-file lane (≥ 8 MiB only, `tier: 'emergency'`, own staging namespace, set-hash commits only after the confirm pass) — the customer's 4K cache-fill incident, `docs/research/2026-09-26-4k-cache-fill/`; the shared emergency-content check now guards asset and playlist deletion (a Codex ba1a8ed regression); the media-publication sweep is leader-leased and ignores errored rows. Previous stamp, 2026-09-24 — an MP4 whose index sits at the end is now re-muxed to fast start automatically: losslessly, original kept, never for emergency content (`VIDEO_FASTSTART_REMUX_DISABLED` row). Earlier the same day — video encode grading: every upload is ffprobe'd (probe version 2), graded against the kiosk-safe target in `@cms/api-types` and warned about in the Media Library, the playlist editor and the New Playlist wizard; legacy videos are graded by the `VIDEO_PROBE_AUTOHEAL_DISABLED` cron or on demand; the player's dropped-frame sample lands on `Screen.lastVideoReport` (migration `20260924120000_screen_video_playback`) so the screen Overview can say whether the last clip stuttered. Previous stamp, 2026-09-23 — Railway config-as-code is deprecated (cutoff 2026-12-01): the root `railway.json` lost its `build` section, the API's dashboard mirrors it, and a second service (`renderer`) is wired through the Dockerfile-path setting + `RAILWAY_DOCKERFILE_PATH`. Previous stamp, 2026-09-22 — AI models are catalog DATA that upgrade themselves daily, AI on our key is metered in dollars against an allowance per paired screen (`AI_INCLUDED_USD_*`, `AI_MODEL_SYNC_DISABLED` rows), and our key is now per-vendor with per-job routes and a one-hop failover (`OPENAI_API_KEY` / `GEMINI_API_KEY` row — board design prefers GPT-6 Sol). Previous stamp, 2026-09-19 — added the "a schema change ships a MIGRATION FILE" rules under Database Commands: production runs `prisma migrate deploy` at boot (it has since 2026-05-04), `db:push` is local-only, and the 2026-09-16 fleet incident was a schema change with no migration file — now a CI gate (`schema-has-migration`). Previous stamp, 2026-09-14 — repo back to PUBLIC (cost: Actions spending limit + halved runners), `LICENSE` = source-available notice, rule #5 rewritten. Previous stamp, 2026-09-13 — template-builder rules from the pre-Codex audit: selection is a chrome overlay (never hoist a zone's z-index), an idle hotspot press must still drag, canvas frame sizing in `canvas-frame-style.ts`, presets carry no literal countdown dates; plus the harness + sandbox Playwright config pointers. Previous stamp, 2026-09-12 — added the Meta (`INSTAGRAM_APP_ID/SECRET`, `META_APP_ID/SECRET`) and Google Reviews env rows: the four "Coming soon" Apps tiles are real integrations now, dormant until those keys exist. Previous stamp, 2026-09-11 — corrected the Template System section, which was wrong by an
-order of magnitude in the file every agent and auditor reads first: **17 → 459** system presets
-(across SEVEN preset files, not one) and **~107 → 250** EXTERNAL_HTML boards (across five
-subdirectories, not four — `school/` was missing entirely). Widened the click-to-edit sweep from
-191 boards to all 250, fixed the shim version (V5 → V13), and added a re-derivation command for
-every number so the next person can CHECK rather than trust. Rule 9 now carries the
-"green test ≠ mounted component" case (`AddSidebar`, deleted here, and `BottomToolbar`).
-
-⚠️ **Keep this stamp current when you change this file.** A stale footer is not
-cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361
-lines from this file, which is exactly why nobody noticed it was telling agents to
-use a forbidden `DATABASE_URL` for three months.
+**Last Updated:** 2026-11-01
+History in `CHANGELOG.md` — add an entry there, and bump this date, whenever you change this file.
