@@ -6,10 +6,9 @@ import Link from 'next/link';
 import {
   Home, FolderOpen, ListMusic, MonitorPlay, MoreHorizontal,
   Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
-  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint, Megaphone,
+  UtensilsCrossed, Tag, LifeBuoy, Crown, LogOut, RotateCcw, Fingerprint,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { useAppStore } from '@/lib/store';
 import { useNotifications, usePasskeys } from '@/hooks/use-api';
 import { passkeysSupported } from '@/lib/passkeys';
@@ -163,12 +162,9 @@ export function MobileNavV1({ onSwitchShell }: { onSwitchShell: (v: MobileShell)
     ...(isAdmin
       ? [{ key: 'audit', label: t('nav.audit'), icon: FileClock, href: `${base}/audit` }]
       : []),
-    // Emergency → Broadcast (2026-10-22): same capability the API honours
-    // for POST /emergency/broadcast (admins + canTriggerPanic), one shared
-    // answer — see Sidebar. §10: emergency discovery follows the capability.
-    ...(hasPanicAuthority(user)
-      ? [{ key: 'broadcast', label: t('nav.broadcast'), icon: Megaphone, href: `${base}/emergency/broadcast` }]
-      : []),
+    // (2026-10-26) No Broadcast entry: a typed-in message is the Custom message
+    // card on the Emergency page (§10: emergency discovery follows the
+    // capability — the card is offered to exactly those who may send) — see Sidebar.
     // Owner decision 1 (2026-10-24): Settings is for administrators; an
     // Editor or Viewer has My account (the next row) for everything of theirs.
     ...(isAdmin

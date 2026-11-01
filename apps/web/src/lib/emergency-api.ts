@@ -39,3 +39,94 @@ export async function fetchActiveAlerts(
   const data = await readJson<{ alerts?: ActiveAlert[] }>('/emergency/active', token, timeoutMs);
   return Array.isArray(data?.alerts) ? data.alerts : [];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom messages (2026-10-26) — the typed-in message that used to live on its
+// own Broadcast page and is now a card on the Emergency page.
+//
+// Same transport and the same bounds the Broadcast page always had: a bearer
+// token, `credentials: 'include'`, and a timeout on EVERY call so a stalled
+// connection fails loudly ("the message was NOT sent") instead of hanging the
+// operator. The body for a send is built by `customMessageBody`
+// (emergency-target.ts); nothing here decides who receives it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A non-2xx answer, carrying the HTTP status so the UI can say it in words. */
+export class EmergencyApiError extends Error {
+  constructor(public readonly status: number, public readonly path: string) {
+    super(`${path} failed: ${status}`);
+    this.name = 'EmergencyApiError';
+  }
+}
+
+/** One live emergency message as GET /emergency/status lists it for an operator. */
+export interface LiveMessage {
+  id: string;
+  type: string;
+  severity: string;
+  textBlob: string | null;
+  scopeType: string;
+  scopeId: string;
+  /** UNIX seconds, or null for "until cleared". */
+  expiresAt: number | null;
+  createdAt: string;
+  /** A send to specific screens: one entry for the whole set, named. */
+  sendId?: string;
+  targetScreens?: Array<{ id: string; name: string | null }>;
+  targetScreenCount?: number;
+}
+
+/** GET /emergency/status — what is on screens right now (the caller's tenant, and the schools below it). */
+export async function fetchLiveMessages(
+  token: string | null | undefined,
+  tenantId: string,
+  timeoutMs = 4000,
+): Promise<LiveMessage[]> {
+  const data = await readJson<{ active?: LiveMessage[] }>(
+    `/emergency/status?tenantId=${encodeURIComponent(tenantId)}`,
+    token,
+    timeoutMs,
+  );
+  return Array.isArray(data?.active) ? data.active : [];
+}
+
+async function postJson(
+  path: string,
+  token: string | null | undefined,
+  body?: unknown,
+  timeoutMs = 12000,
+): Promise<Response> {
+  const res = await fetchWithTimeout(
+    `${API_URL}${path}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      credentials: 'include',
+    },
+    timeoutMs,
+  );
+  if (!res.ok) throw new EmergencyApiError(res.status, path);
+  return res;
+}
+
+/** POST /emergency/broadcast — resolves with the server's own account of where it went. */
+export async function sendCustomMessage(
+  token: string | null | undefined,
+  body: unknown,
+): Promise<{ messageId?: string; affectedScreenCount?: number; affectedTenantCount?: number }> {
+  const res = await postJson('/emergency/broadcast', token, body);
+  try {
+    return (await res.json()) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** POST /emergency/messages/:id/all-clear — ends the message (and, for a screen-list send, the whole set). */
+export async function clearCustomMessage(token: string | null | undefined, messageId: string): Promise<void> {
+  await postJson(`/emergency/messages/${encodeURIComponent(messageId)}/all-clear`, token);
+}

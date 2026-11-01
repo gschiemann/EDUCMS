@@ -34,6 +34,14 @@ export interface EmergencyTarget {
   name: string | null;
   /** Screens the alert reaches (whole double-sided displays counted); null = not known yet. */
   screenCount: number | null;
+  /**
+   * 2026-10-26 — SPECIFIC screens: a custom message aimed at several chosen
+   * screens ("pick displays if i want, and not have to hit them all"). Set
+   * only by `screensTarget`, always with `scopeType: 'device'` and `scopeId`
+   * the first of them; an alert trigger never carries it, so every alert
+   * request stays byte-for-byte what it was.
+   */
+  screenIds?: readonly string[];
 }
 
 /** One group as GET /emergency/targets reports it. */
@@ -116,6 +124,69 @@ export function groupTarget(g: TargetGroup): EmergencyTarget {
 
 export function screenTarget(s: TargetScreen): EmergencyTarget {
   return { scopeType: 'device', scopeId: s.id, name: s.name, screenCount: s.displayScreenCount };
+}
+
+/**
+ * Specific screens, chosen one by one (2026-10-26) — the picker's multi-select
+ * answer. The count is the number of screens the operator PICKED (what the
+ * "Selected: N screens" line says); the server reports the true number of
+ * displays reached once the message is sent.
+ */
+export function screensTarget(screens: ReadonlyArray<Pick<TargetScreen, 'id' | 'name'>>): EmergencyTarget {
+  const seen = new Set<string>();
+  const picked = screens.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+  return {
+    scopeType: 'device',
+    scopeId: picked[0]?.id ?? '',
+    name: picked.length === 1 ? picked[0].name : null,
+    screenCount: picked.length,
+    screenIds: picked.map((s) => s.id),
+  };
+}
+
+/** True for a target built by `screensTarget` (a list of specific screens). */
+export function isScreenListTarget(target: EmergencyTarget | null | undefined): boolean {
+  return !!target && target.scopeType === 'device' && Array.isArray(target.screenIds) && target.screenIds.length > 0;
+}
+
+/** The ids a target picks, when it is a list of specific screens; otherwise an empty list. */
+export function targetScreenIds(target: EmergencyTarget | null | undefined): string[] {
+  return isScreenListTarget(target) ? [...(target as EmergencyTarget).screenIds!] : [];
+}
+
+/**
+ * The exact JSON body POSTed to /emergency/broadcast for a custom message
+ * (2026-10-26). Everywhere (the default) is byte-for-byte — key order
+ * included — what the Broadcast page always sent:
+ *   { scopeType: 'tenant', scopeId: <tenant id>, text, severity, durationMs }
+ * A group adds nothing but its own scope; specific screens add `screenIds` to
+ * the same tenant-scoped body (the scope names the SENDER, the list names who
+ * receives it — see BroadcastInputSchema).
+ */
+export function customMessageBody(payload: {
+  tenantId: string;
+  text: string;
+  severity: 'INFO' | 'CRITICAL';
+  durationMin: number;
+  target?: EmergencyTarget | null;
+}): {
+  scopeType: EmergencyScopeType;
+  scopeId: string;
+  text: string;
+  severity: 'INFO' | 'CRITICAL';
+  durationMs: number;
+  screenIds?: string[];
+} {
+  const durationMs = Math.round(payload.durationMin * 60 * 1000);
+  const base = { text: payload.text, severity: payload.severity, durationMs };
+  const target = payload.target;
+  if (!target || isAllScreens(target)) {
+    return { scopeType: 'tenant', scopeId: payload.tenantId, ...base };
+  }
+  if (isScreenListTarget(target)) {
+    return { scopeType: 'tenant', scopeId: payload.tenantId, ...base, screenIds: targetScreenIds(target) };
+  }
+  return { scopeType: target.scopeType, scopeId: target.scopeId, ...base };
 }
 
 /**
@@ -217,6 +288,10 @@ export function groupDisplayName(t: Translate, name: string): string {
 /** The target's name as an operator reads it — no count. */
 export function targetName(t: Translate, target: EmergencyTarget): string {
   if (isAllScreens(target)) return t('emergency.target.allScreens');
+  // Several chosen screens have no single name — they are "3 screens".
+  if (isScreenListTarget(target) && (target.screenIds?.length ?? 0) > 1) {
+    return t('emergency.target.manyScreens', { count: target.screenIds!.length });
+  }
   const name = target.name ?? '';
   return target.scopeType === 'group' ? groupDisplayName(t, name) : name;
 }
@@ -232,6 +307,10 @@ export function targetSummary(t: Translate, typeName: string, target: EmergencyT
       ? t('emergency.target.summaryAllUnknown', { type: typeName })
       : t('emergency.target.summaryAll', { type: typeName, count: target.screenCount });
   }
+  // "Info message on 3 screens" — several chosen screens, no single name to add.
+  if (isScreenListTarget(target) && (target.screenIds?.length ?? 0) > 1) {
+    return t('emergency.target.summaryMany', { type: typeName, count: target.screenIds!.length });
+  }
   return t('emergency.target.summaryOne', {
     type: typeName,
     count: target.screenCount ?? 1,
@@ -245,6 +324,10 @@ export function targetChipLabel(t: Translate, target: EmergencyTarget): string {
     return target.screenCount == null
       ? t('emergency.target.allScreens')
       : t('emergency.target.allScreensCount', { count: target.screenCount });
+  }
+  // Several chosen screens: "3 screens" (one chosen screen reads like any single screen).
+  if (isScreenListTarget(target) && (target.screenIds?.length ?? 0) > 1) {
+    return t('emergency.target.manyScreens', { count: target.screenIds!.length });
   }
   return t('emergency.target.chipOne', {
     name: targetName(t, target),

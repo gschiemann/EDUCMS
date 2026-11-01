@@ -42,6 +42,7 @@ import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
 import { decideEmergencySurface } from './emergencySurface';
+import { messageWasTheOnlyHold } from './messageEnd';
 import { cachedManifestWouldClearLiveAlert, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
   USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
@@ -4701,6 +4702,62 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   useEffect(() => {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
+  // ── A MESSAGE THAT ENDS NEVER FLASHES AN ALERT BOARD (2026-10-26) ──────────
+  // The owner, clearing a broadcast: "it also had the same issue of showing
+  // emergency real quick when you click disable on it." A pushed / polled
+  // message raises the display hold when it lands and the hold is released
+  // ONLY by the manifest (emergencyHold.ts rule 1). The instant the message
+  // ended the page dropped it and asked for a manifest — and for that round
+  // trip "hold engaged, nothing identified" painted the protective red
+  // "EMERGENCY" board (a black screen since #164): every Clear of an Info
+  // banner or a Critical message flashed one. `messageEnded` says the page
+  // KNOWS the ended message was the only reason for the hold (messageEnd.ts):
+  // the content stays through the release instead. Raise-only is untouched —
+  // the hold still releases from the manifest and nowhere else.
+  const [messageEnded, setMessageEnded] = useState(false);
+  /**
+   * The APK was ALREADY holding when this document booted (a persisted native
+   * hold, observed below): a reason the page cannot see and must not explain
+   * away. Every other reason for the hold is live-checked when a message ends.
+   */
+  const bootObservedHoldRef = useRef(false);
+  /** A message landed: raise the hold exactly as before and clear any earlier "ended". */
+  const raiseHoldForMessage = useCallback((force = true) => {
+    signalDisplayEmergencyHold(true, force);
+    setMessageEnded(false);
+  }, []);
+  /**
+   * A message ended (all-clear, stranded-message reconcile, expiry, the poll
+   * finding it gone). Decided from live evidence and applied in the SAME batch
+   * as the state drop that follows, so no frame sees "hold engaged, nothing
+   * identified" in between.
+   */
+  const noteMessageEnded = useCallback((otherMessageShowing: boolean) => {
+    if (displayEmergencyHoldRaised() && messageWasTheOnlyHold({
+      holdIsOurs: !bootObservedHoldRef.current,
+      activeEmergency: !!activeEmergencyRef.current,
+      pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
+      anotherMessageShowing: otherMessageShowing,
+    })) {
+      setMessageEnded(true);
+    }
+  }, []);
+  /** Drop the pushed message, noting first (same batch) that it was the hold's only reason. */
+  const endPushedMessage = useCallback(() => {
+    noteMessageEnded(polledEmergencyHeldRef.current);
+    setPushedEmergencyMessage(null);
+  }, [noteMessageEnded]);
+  // The hold is released (the manifest said so) → the next message starts fresh.
+  // Any signal that takes the glass for itself ends the allowance as well.
+  useEffect(() => {
+    if (!emergencyRenderHold) {
+      bootObservedHoldRef.current = false;
+      setMessageEnded(false);
+    }
+  }, [emergencyRenderHold]);
+  useEffect(() => {
+    if (activeEmergency || pushedEmergencyMessage || polledEmergencyHeld) setMessageEnded(false);
+  }, [activeEmergency, pushedEmergencyMessage, polledEmergencyHeld]);
   emergencyMonitor.screenId.current = screenId;
   emergencyExpectedIdentityRef.current = pushedEmergencyMessage
     ? emergencyPaintIdentity(pushedEmergencyMessage)
@@ -5009,7 +5066,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             `[Player] emergency message ${shownId} no longer active server-side — ` +
               `clearing stranded overlay (missed ALL_CLEAR_MESSAGE backstop)`,
           );
-          setPushedEmergencyMessage(null);
+          endPushedMessage();
         }
       } catch {
         /* offline — keep the alert up (fail-safe toward over-alerting) */
@@ -5037,7 +5094,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       }
     }
     return () => { stopped = true; clearInterval(h); timers.forEach(clearTimeout); };
-  }, [pushedEmergencyMessage]);
+  }, [pushedEmergencyMessage, endPushedMessage]);
 
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   // Sprint 13 — live CTS scoreboard state pushed from the CtsBridge via
@@ -5712,6 +5769,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       const proof = (state as { emergencyProof?: { challenge?: unknown } } | null)?.emergencyProof;
       if (typeof proof?.challenge === 'string' && proof.challenge.length > 0) {
         console.warn('[Player] booted under a persisted native emergency hold — content stays down until the live manifest decides');
+        bootObservedHoldRef.current = true;
         signalDisplayEmergencyHold(true, true);
       }
     }).catch(() => { /* an unreadable bridge changes nothing */ });
@@ -8288,12 +8346,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     setPolledEmergencyTakeover(active && takeover);
     if (polledEmergencyHeldRef.current === active) return;
     polledEmergencyHeldRef.current = active;
-    if (active) signalDisplayEmergencyHold(true);
+    // 2026-10-26 — raise exactly as before (`raiseHoldForMessage(false)` is
+    // `signalDisplayEmergencyHold(true)`); when the poll-only message ENDS,
+    // note — in this same batch — whether it was the hold's only reason.
+    if (active) raiseHoldForMessage(false);
+    else noteMessageEnded(!!pushedEmergencyMessageRef.current);
     setPolledEmergencyHeld(active);
     // Two empty overlay polls still do not release the device hold. Ask the
     // authenticated manifest to confirm clear through its existing lane.
     if (!active) preemptReconcile();
-  }, [preemptReconcile]);
+  }, [preemptReconcile, raiseHoldForMessage, noteMessageEnded]);
 
   // 2026-10-23 (launch QA B3b) — the same confirm-through-the-manifest for a
   // PUSHED message that ends (ALL_CLEAR_MESSAGE, the stranded-message
@@ -9524,7 +9586,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // EventSource opened (device JWT) and at the Redis fan-out gate;
       // the SSE `handle()` wrapper hands us the inner signed payload.
       const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
-        signalDisplayEmergencyHold(true, true);
+        raiseHoldForMessage();
         // The DB row id arrives as `messageId` in the signed payload (a
         // literal `id` is accepted too). Shared with the WS branch since
         // 2026-10-22 — see `pushedEmergencyMessage.ts`. The SSE `handle()`
@@ -9534,7 +9596,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       handle('SOS', onEmergencyMessage('SOS'));
       handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
       handle('MEDIA_ALERT', onEmergencyMessage('MEDIA_ALERT'));
-      handle('ALL_CLEAR_MESSAGE', () => setPushedEmergencyMessage(null));
+      handle('ALL_CLEAR_MESSAGE', () => endPushedMessage());
       // Tier-3 camera calibration — mirror of the WS branch (a new WS
       // type MUST be handled on both transports or it silently no-ops
       // for SSE-tier screens; recon doc 01 gotcha #12).
@@ -9875,7 +9937,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {
               // Interlock: a pushed alert takes the glass exactly like a
               // tenant override, so the display hold goes up with it.
-              signalDisplayEmergencyHold(true, true);
+              raiseHoldForMessage();
               // 2026-10-22 — id = the signed `messageId`, never the eventId
               // (the 12 s reconcile must find it). See pushedEmergencyMessage.ts.
               setPushedEmergencyMessage(
@@ -9886,7 +9948,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 ),
               );
             } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
-              setPushedEmergencyMessage(null);
+              endPushedMessage();
             }
             // Sprint 13 — CTS scoreboard updates broadcast from the
             // bridge. The payload carries one CtsFullSnapshot per
@@ -12483,6 +12545,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     renderHold: emergencyRenderHold,
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
+    messageEnded,
   });
   // 2026-10-26 — `hold`: the display hold is engaged (observed on the APK at
   // boot, or raised by this page) and nothing identifies the alert yet. No

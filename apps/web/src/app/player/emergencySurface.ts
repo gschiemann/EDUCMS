@@ -32,6 +32,16 @@
  * Never weakens a real takeover: every input that took the glass before
  * still does, except a banner whose ONLY companion is the hold it raised
  * itself. PURE — unit-tested per shape in `emergencySurface.test.ts`.
+ *
+ * 2026-10-26 — A MESSAGE THAT ENDS (`messageEnded`). The hold a pushed message
+ * raised is released only by the manifest, one round trip after the message
+ * is gone. Until then "hold engaged, nothing identified" used to answer
+ * `takeover` (red) and then `hold` (black) — an alert board, or a blank, for
+ * every Clear of an Info banner or a Critical message. When the page KNOWS
+ * the message was the only reason for the hold (`messageEnd.ts`), nothing is
+ * identified because nothing is left to identify: the content stays. Checked
+ * LAST, so a lockdown, a pending signed OVERRIDE or another message still
+ * takes the glass first.
  */
 
 /**
@@ -71,6 +81,12 @@ export interface EmergencySurfaceInput {
   pendingOverrideConfirm: boolean;
   /** The current playlist IS the emergency content. */
   playlistIsEmergency: boolean;
+  /**
+   * The message that raised the hold has ENDED and was the only thing holding
+   * the glass (`messageWasTheOnlyHold`); the hold itself is still waiting for
+   * the manifest. Absent = false = exactly the pre-2026-10-26 decision.
+   */
+  messageEnded?: boolean;
 }
 
 export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurface {
@@ -80,6 +96,9 @@ export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurfa
   if (i.polledActive && i.polledTakeover) return 'takeover';
   const bannerShown = isBannerEmergencyMessage(i.pushed) || (i.polledActive && !i.polledTakeover);
   if (bannerShown) return 'overlay';
+  // The hold is the ended message's own, still waiting for the manifest: there
+  // is nothing left to protect, so the content stays (no flash of any board).
+  if (i.renderHold && i.messageEnded === true) return 'content';
   // Hold engaged with nothing identified yet: protective, but unattributed —
   // black, never a red claim the page cannot back (see `hold` above).
   if (i.renderHold) return 'hold';

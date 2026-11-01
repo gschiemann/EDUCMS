@@ -58,6 +58,10 @@ import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
 import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
+// 2026-10-26 — the Broadcast page became this card: type a message, Info or
+// Critical, pick who gets it, hold 3 seconds. The old /<school>/emergency/
+// broadcast URL redirects here with ?message=1 and the sheet opens at once.
+import { CustomMessageCard } from '@/components/emergency/CustomMessageCard';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -837,6 +841,10 @@ export default function MobilePanicPage() {
             announce(t('emergency.target.announceTargetSet', { target: targetChipLabel(t, allScreens) }));
           }}
         />
+        {/* CUSTOM MESSAGE (2026-10-26) — the typed-in message, a card here
+            rather than a page of its own. One compact line so the six
+            buttons below keep their size; its sheet has the 3-second hold. */}
+        <CustomMessageCard token={verifiedToken} user={verifiedUser} openFromUrl compact />
       </div>
 
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}

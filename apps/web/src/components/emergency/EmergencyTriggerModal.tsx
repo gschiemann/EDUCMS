@@ -11,6 +11,8 @@ import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegio
 // 2026-10-05 — alert targeting: All screens (default) / one group / one screen.
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
+// 2026-10-26 — Custom message: the Broadcast page, now a card on this window.
+import { CustomMessageCard } from '@/components/emergency/CustomMessageCard';
 // 2026-10-10 — LIVE | DRILL. Local state, defaults to LIVE on every open,
 // never persisted (see LiveDrillSwitch.tsx for the rule).
 import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
@@ -416,6 +418,13 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               </div>
             </div>
           )}
+
+          {/* Custom message (2026-10-26) — your own words, not an SRP alert. A
+              separate action with its own 3-second hold, so it sits beside the
+              alert types, not inside their type-the-word ceremony. */}
+          <div className="pt-5 border-t border-white/10" data-testid="modal-custom-message">
+            <CustomMessageCard token={token} user={user} />
+          </div>
         </div>
 
         {/* Dispatch error banner — shown only when the server call failed */}

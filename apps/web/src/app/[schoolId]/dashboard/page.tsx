@@ -621,7 +621,7 @@ export default function DashboardPage() {
               <div className="text-sm opacity-90 mt-0.5">{t('emergency.drill.dashboardDesc')}</div>
             </div>
             <Link
-              href={`${tenantBase}/emergency/broadcast`}
+              href={`/panic?schoolId=${encodeURIComponent(schoolId)}`}
               className="shrink-0 px-4 py-2.5 rounded-xl bg-white/95 text-indigo-700 text-sm font-bold hover:bg-white shadow-sm transition-colors"
             >
               {t('dashboard.emergencyConsole')}
@@ -642,7 +642,7 @@ export default function DashboardPage() {
               <div className="text-sm opacity-90 mt-0.5">{t('dashboard.emergencyOverrideAll')}</div>
             </div>
             <Link
-              href={`${tenantBase}/emergency/broadcast`}
+              href={`/panic?schoolId=${encodeURIComponent(schoolId)}`}
               className="shrink-0 px-4 py-2.5 rounded-xl bg-white/95 text-red-600 text-sm font-bold hover:bg-white shadow-sm transition-colors"
             >
               {t('dashboard.emergencyConsole')}

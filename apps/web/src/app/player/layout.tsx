@@ -395,6 +395,26 @@ document.body.appendChild(d);
         html[data-edu-update-cover] .player-root-wrapper [data-edu-emergency-root],
         html[data-edu-quiet-boot] .player-root-wrapper [data-edu-emergency-root] { visibility: visible !important; }
 
+        /* 2026-10-26 — an Info banner PUSHES the content down instead of
+           covering it (bannerPush.ts). The banner publishes its own height
+           as --edu-banner-h and the stage height as --edu-stage-h on <html>
+           and sets data-edu-banner-push; every content root (template, media,
+           tiles) then starts below it with the height that is left, and the
+           template scaler re-fits the scene into that space. No mark = no
+           effect: a page with no banner is byte-for-byte what it was.
+           Taurus (rule #10): top + an explicit height from two pixel
+           variables — never the inset shorthand, no flex gap. The sub-0
+           numbers cannot occur: bannerOffsetPx() is an integer >= 1 while
+           the mark is set, and 0px only during the glide home. */
+        html[data-edu-banner-push] [data-edu-player-root] {
+          top: var(--edu-banner-h, 0px) !important;
+          height: calc(var(--edu-stage-h, 100vh) - var(--edu-banner-h, 0px)) !important;
+          transition: top 200ms ease, height 200ms ease;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          html[data-edu-banner-push] [data-edu-player-root] { transition: none; }
+        }
+
         /* 2026-05-26 — The player-root-wrapper (a few lines below this
            style block) uses width:var(--led-w,100vw); height:var(--led-h,
            100vh). When the pin script set --led-w/--led-h to the LED

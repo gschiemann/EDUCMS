@@ -8,10 +8,8 @@ import {
   LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
   UtensilsCrossed,
   Tag,
-  Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { useAppStore } from '@/lib/store';
 import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -181,12 +179,8 @@ function ClassicMobileTabBar({ onSwitchShell }: { onSwitchShell: (v: MobileShell
           { key: 'audit', label: t('nav.audit'), icon: FileClock, href: `${base}/audit` },
         ]
       : []),
-    // Emergency → Broadcast (2026-10-22): same capability the API honours
-    // for POST /emergency/broadcast (admins + canTriggerPanic), one shared
-    // answer — see Sidebar.
-    ...(hasPanicAuthority(user)
-      ? [{ key: 'broadcast', label: t('nav.broadcast'), icon: Megaphone, href: `${base}/emergency/broadcast` }]
-      : []),
+    // (2026-10-26) No Broadcast tab: a typed-in message is the Custom message
+    // card on the Emergency page — see Sidebar.
     { key: 'settings', label: t('nav.settings'), icon: Settings, href: `${base}/settings` },
     { key: 'account', label: t('nav.account'), icon: User, href: `${base}/account` },
   ];

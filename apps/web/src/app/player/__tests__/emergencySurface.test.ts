@@ -86,4 +86,55 @@ describe('decideEmergencySurface', () => {
   it('a stale polledTakeover flag without an active poll never takes the glass', () => {
     expect(decideEmergencySurface({ ...base, polledActive: false, polledTakeover: true })).toBe('content');
   });
+
+  // 2026-10-26 — a CLEARED custom message must not flash an alert board on its
+  // way out. The hold it raised is released by the manifest one round trip
+  // later; when the page knows the message was the hold's only reason, the
+  // content stays (messageEnd.ts). The flag is checked LAST, so every real
+  // alert still takes the glass first.
+  describe('messageEnded — a message that ends leaves content, never a board', () => {
+    it('hold still engaged, the ended message was the only reason → content (no red board, no black screen)', () => {
+      expect(decideEmergencySurface({ ...base, renderHold: true, messageEnded: true })).toBe('content');
+    });
+
+    it('absent / false is exactly the old decision (hold engaged, nothing identified → black hold)', () => {
+      expect(decideEmergencySurface({ ...base, renderHold: true })).toBe('hold');
+      expect(decideEmergencySurface({ ...base, renderHold: true, messageEnded: false })).toBe('hold');
+    });
+
+    it('does nothing when there is no hold to explain', () => {
+      expect(decideEmergencySurface({ ...base, messageEnded: true })).toBe('content');
+    });
+
+    it('never outranks a real alert: a lockdown, a pending OVERRIDE, a pushed or polled message still take the glass', () => {
+      const ended = { ...base, renderHold: true, messageEnded: true };
+      expect(decideEmergencySurface({ ...ended, activeEmergency: true })).toBe('takeover');
+      expect(decideEmergencySurface({ ...ended, pendingOverrideConfirm: true })).toBe('takeover');
+      expect(decideEmergencySurface({ ...ended, pushed: critical })).toBe('takeover');
+      expect(decideEmergencySurface({ ...ended, pushed: sos })).toBe('takeover');
+      expect(decideEmergencySurface({ ...ended, polledActive: true, polledTakeover: true })).toBe('takeover');
+    });
+
+    it('a NEW banner after the end overlays the content as usual', () => {
+      expect(decideEmergencySurface({ ...base, renderHold: true, messageEnded: true, pushed: info })).toBe('overlay');
+    });
+
+    it('Info banner → clear: overlay, then content — the sequence never visits takeover or hold', () => {
+      const sequence = [
+        decideEmergencySurface({ ...base, renderHold: true, pushed: info }),
+        decideEmergencySurface({ ...base, renderHold: true, messageEnded: true }),
+        decideEmergencySurface({ ...base, renderHold: false }),
+      ];
+      expect(sequence).toEqual(['overlay', 'content', 'content']);
+    });
+
+    it('Critical message → clear: takeover, then content (a board never follows the clear)', () => {
+      const sequence = [
+        decideEmergencySurface({ ...base, renderHold: true, pushed: critical }),
+        decideEmergencySurface({ ...base, renderHold: true, messageEnded: true }),
+        decideEmergencySurface({ ...base, renderHold: false }),
+      ];
+      expect(sequence).toEqual(['takeover', 'content', 'content']);
+    });
+  });
 });

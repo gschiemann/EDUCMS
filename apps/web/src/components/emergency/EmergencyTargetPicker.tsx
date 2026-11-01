@@ -3,18 +3,29 @@
 /**
  * "Choose screens" — where an emergency alert goes (2026-10-05).
  *
- * Shared by the /panic page (phones, the primary surface) and the dashboard
- * trigger modal. Both are always-dark life-safety surfaces, so this is too.
+ * Shared by the /panic page (phones, the primary surface), the dashboard
+ * trigger modal and — since 2026-10-26 — the Custom message card. All are
+ * always-dark life-safety surfaces, so this is too.
  *
- * One target per alert: All screens (the default, first row), ONE group, or
+ * One target per ALERT: All screens (the default, first row), ONE group, or
  * ONE screen. An operator who needs a second target sends a second alert.
- * Multi-select is a deliberate follow-up, not an omission.
+ *
+ * ONE exception, opt-in (2026-10-26, `multiScreens`): a custom message may be
+ * aimed at SEVERAL specific screens — the owner, on site: "broadcast should
+ * let me pick displays if i want as well and not have to hit them all." In
+ * that mode a screen row TOGGLES instead of closing the sheet, a sticky
+ * footer says "Selected: N screens", and Done commits the list. Everything
+ * else — the sheet, the rows, the search, the "All screens" and group
+ * choices, the loading / error / empty states — is the very same component.
+ * Without the prop it is byte-for-byte the single-choice picker /panic and
+ * the trigger modal have always used.
  *
  * Phone-first: a full-screen sheet with 56 px rows, a search field at 16 px
  * (iOS zooms anything smaller on focus), the keyboard NOT opened on arrival
  * (a sheet that throws a keyboard over the list is the wrong first frame
  * during an incident), and every state the lists can be in stated in words —
- * including "couldn't load", which never blocks All screens.
+ * including "couldn't load", which never blocks All screens. Every control is
+ * a real <button> with a visible focus ring, so a D-pad / keyboard reaches it.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -26,7 +37,9 @@ import {
   groupTarget,
   isAllScreens,
   screenTarget,
+  screensTarget,
   targetChipLabel,
+  targetScreenIds,
   type EmergencyTarget,
   type EmergencyTargets,
 } from '@/lib/emergency-target';
@@ -42,6 +55,12 @@ export interface EmergencyTargetPickerProps {
   onSelect: (target: EmergencyTarget) => void;
   onClose: () => void;
   onRetry: () => void;
+  /**
+   * Choose SEVERAL specific screens (a custom message). Opt-in — see the
+   * header. `onSelect` then receives `screensTarget([...])` for any list of
+   * one or more screens, and the usual group / All-screens targets otherwise.
+   */
+  multiScreens?: boolean;
 }
 
 export function EmergencyTargetPicker({
@@ -53,10 +72,13 @@ export function EmergencyTargetPicker({
   onSelect,
   onClose,
   onRetry,
+  multiScreens = false,
 }: EmergencyTargetPickerProps) {
   const t = useTranslations();
   const [query, setQuery] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  // The screens ticked so far (multi mode only), in the order they were ticked.
+  const [draftIds, setDraftIds] = useState<string[]>([]);
 
   /** Close with a fresh search for next time. */
   const close = () => {
@@ -85,6 +107,14 @@ export function EmergencyTargetPicker({
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
+  // Each opening starts from what is currently chosen (multi mode).
+  useEffect(() => {
+    if (open && multiScreens) setDraftIds(targetScreenIds(selected));
+    // `selected` is read once per opening on purpose: ticking rows must not be
+    // overwritten by the parent re-rendering with the same committed choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, multiScreens]);
+
   const { groups, screens } = useMemo(() => filterTargets(targets, query), [targets, query]);
   // A district admin sees several schools — say which one each row is in.
   const multiTenant = useMemo(() => {
@@ -102,10 +132,22 @@ export function EmergencyTargetPicker({
     onSelect(target);
     close();
   };
+  const draft = new Set(draftIds);
+  const toggleScreen = (id: string) =>
+    setDraftIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const selectAllShown = () =>
+    setDraftIds((prev) => [...prev, ...screens.map((s) => s.id).filter((id) => !prev.includes(id))]);
+  const commitScreens = () => {
+    const byId = new Map((targets?.screens ?? []).map((s) => [s.id, s]));
+    const chosen = draftIds.map((id) => byId.get(id)).filter((s): s is NonNullable<typeof s> => !!s);
+    if (chosen.length === 0) return;
+    pick(screensTarget(chosen));
+  };
   const searching = query.trim().length > 0;
   const nothingMatches = status === 'ready' && searching && groups.length === 0 && screens.length === 0;
   const nothingAtAll =
     status === 'ready' && !searching && (targets?.groups.length ?? 0) === 0 && (targets?.screens.length ?? 0) === 0;
+  const allShownPicked = screens.length > 0 && screens.every((s) => draft.has(s.id));
 
   const rowCls =
     'w-full min-h-[56px] px-4 py-2.5 flex items-center gap-3 text-left rounded-xl border transition-colors ' +
@@ -123,6 +165,7 @@ export function EmergencyTargetPicker({
       aria-labelledby="emergency-target-picker-title"
       tabIndex={-1}
       data-testid="emergency-target-picker"
+      data-multi={multiScreens ? 'true' : undefined}
       className="fixed top-0 right-0 bottom-0 left-0 z-[120] flex flex-col text-white outline-none"
       style={{ background: 'linear-gradient(180deg, #121a30 0%, #0b1020 100%)' }}
     >
@@ -155,9 +198,18 @@ export function EmergencyTargetPicker({
             className="w-full h-12 pl-9 pr-3 rounded-xl bg-slate-950/60 border border-white/15 text-[16px] text-white placeholder-white/45 outline-none focus:ring-2 focus:ring-red-500/70"
           />
         </label>
+        {multiScreens && status === 'ready' && (targets?.screens.length ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-white/60" data-testid="target-multi-hint">
+            {t('emergency.target.multiHint')}
+          </p>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-5">
+      <div
+        className={`flex-1 overflow-y-auto overscroll-contain px-4 space-y-5 ${
+          multiScreens ? 'pb-4' : 'pb-[max(1.25rem,env(safe-area-inset-bottom))]'
+        }`}
+      >
         {/* The default, always first, always available — even when the lists fail. */}
         <button
           type="button"
@@ -233,12 +285,26 @@ export function EmergencyTargetPicker({
 
         {status === 'ready' && screens.length > 0 && (
           <section aria-labelledby="emergency-target-screens">
-            <h3 id="emergency-target-screens" className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55 mb-2">
-              {t('emergency.target.screens')}
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 id="emergency-target-screens" className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">
+                {t('emergency.target.screens')}
+              </h3>
+              {multiScreens && screens.length > 1 && (
+                <button
+                  type="button"
+                  onClick={allShownPicked ? () => setDraftIds((prev) => prev.filter((id) => !screens.some((s) => s.id === id))) : selectAllShown}
+                  data-testid="target-multi-select-all"
+                  className="min-h-[44px] px-3 -mr-3 rounded-lg text-xs font-bold text-white/85 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                >
+                  {allShownPicked
+                    ? t('emergency.target.unselectShown', { count: screens.length })
+                    : t('emergency.target.selectShown', { count: screens.length })}
+                </button>
+              )}
+            </div>
             <ul className="space-y-2">
               {screens.map((s) => {
-                const on = isSelected('device', s.id);
+                const on = multiScreens ? draft.has(s.id) : isSelected('device', s.id);
                 const where = [s.location, s.groupName ? groupDisplayName(t, s.groupName) : null, multiTenant ? s.tenantName : null]
                   .filter(Boolean)
                   .join(' · ');
@@ -246,7 +312,7 @@ export function EmergencyTargetPicker({
                   <li key={s.id}>
                     <button
                       type="button"
-                      onClick={() => pick(screenTarget(s))}
+                      onClick={() => (multiScreens ? toggleScreen(s.id) : pick(screenTarget(s)))}
                       aria-pressed={on}
                       data-testid={`target-option-screen-${s.id}`}
                       className={rowCls}
@@ -265,7 +331,21 @@ export function EmergencyTargetPicker({
                           {where ? ` · ${where}` : ''}
                         </span>
                       </span>
-                      {on && <Check className="w-5 h-5 shrink-0 text-red-300" aria-hidden />}
+                      {multiScreens ? (
+                        // A real checkbox look: a ticked or empty square, so "tap to add" reads at a glance.
+                        <span
+                          aria-hidden
+                          className="w-6 h-6 shrink-0 rounded-md border flex items-center justify-center"
+                          style={{
+                            background: on ? '#ef4444' : 'transparent',
+                            borderColor: on ? '#fca5a5' : 'rgba(255,255,255,0.35)',
+                          }}
+                        >
+                          {on && <Check className="w-4 h-4 text-white" aria-hidden />}
+                        </span>
+                      ) : (
+                        on && <Check className="w-5 h-5 shrink-0 text-red-300" aria-hidden />
+                      )}
                     </button>
                   </li>
                 );
@@ -274,6 +354,43 @@ export function EmergencyTargetPicker({
           </section>
         )}
       </div>
+
+      {multiScreens && (
+        <div
+          data-testid="target-multi-footer"
+          className="border-t border-white/10 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center"
+          style={{ background: 'rgba(8,12,24,0.92)' }}
+        >
+          <p
+            className="flex-1 min-w-0 text-sm font-semibold"
+            role="status"
+            aria-live="polite"
+            data-testid="target-multi-count"
+          >
+            {t('emergency.target.selectedCount', { count: draftIds.length })}
+          </p>
+          {draftIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDraftIds([])}
+              data-testid="target-multi-clear"
+              className="min-h-[48px] px-4 mr-2 rounded-xl text-sm font-semibold text-white/80 hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              {t('emergency.target.clearSelection')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={commitScreens}
+            disabled={draftIds.length === 0}
+            data-testid="target-multi-done"
+            className="min-h-[48px] px-6 rounded-xl text-sm font-bold text-white disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            style={{ background: 'linear-gradient(160deg, #ef4444 0%, #b91c1c 100%)' }}
+          >
+            {t('emergency.target.done')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

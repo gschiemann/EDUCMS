@@ -66,6 +66,7 @@ import {
   ShieldAlert,
   Users,
   ArrowRight,
+  Megaphone,
 } from 'lucide-react';
 import {
   useTenant,
@@ -112,6 +113,7 @@ const HEALTH_LINK_ROLES = new Set(['SUPER_ADMIN', 'DISTRICT_ADMIN']);
 const ANCHORS = {
   setup: 'emergency-setup',
   practice: 'emergency-practice',
+  message: 'emergency-message',
   readiness: 'emergency-readiness',
   enablement: 'emergency-enabled',
   delivery: 'emergency-delivery',
@@ -265,6 +267,26 @@ function EmergencyEditor({ schoolId }: { schoolId: string }) {
           >
             <FlaskConical className="w-4 h-4" aria-hidden />
             {t('settings.cc.emergency.practice.action')}
+          </Link>
+        </EditorSection>
+      )}
+
+      {/* 6b — Custom message (2026-10-26): the old Broadcast page is now a card
+          on the Emergency page. A LINK, like Practice above — this page is
+          configuration and never renders a trigger. */}
+      {capabilityOn && (
+        <EditorSection
+          id={ANCHORS.message}
+          title={t('settings.cc.emergency.message.title')}
+          description={t('settings.cc.emergency.message.desc')}
+        >
+          <Link
+            href={`/panic?schoolId=${encodeURIComponent(schoolId)}&message=1`}
+            data-testid="emergency-message-link"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-[10px] border border-amber-200 bg-amber-50 text-[13px] font-medium text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+          >
+            <Megaphone className="w-4 h-4" aria-hidden />
+            {t('settings.cc.emergency.message.action')}
           </Link>
         </EditorSection>
       )}

@@ -21,6 +21,7 @@ import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 import { isBannerEmergencyMessage } from '@/app/player/emergencySurface';
+import { applyBannerPush, clearBannerPush, stageHeightPx } from '@/app/player/bannerPush';
 
 /** The API accepts only https:// emergency media (media-url-guard.ts); refuse
  *  anything else here too, so a pushed message can never inject a script URL. */
@@ -275,6 +276,9 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const polledActive = !!polled;
   const polledTakeover = polledActive && !isBannerEmergencyMessage(polled);
   useEffect(() => { onPolledActiveChange?.(polledActive, polledTakeover); }, [polledActive, polledTakeover, onPolledActiveChange]);
+  // The latest callback, for the poll below (its effect does not re-subscribe on a new identity).
+  const onPolledActiveChangeRef = useRef(onPolledActiveChange);
+  useEffect(() => { onPolledActiveChangeRef.current = onPolledActiveChange; });
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
   // half / thinks it's 1920×1080" P0). Pass the active message id so the canvas
@@ -353,7 +357,16 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           setPolled(active[0]);
         } else {
           emptyPollStreakRef.current += 1;
-          if (emptyPollStreakRef.current >= 2) setPolled(null);
+          if (emptyPollStreakRef.current >= 2) {
+            // 2026-10-26 — a message that ENDS must never flash an alert board
+            // on its way out (messageEnd.ts). Tell the page in the SAME batch
+            // this overlay goes away, not a commit later from the effect
+            // above: that commit would be a frame with the overlay gone and
+            // the page still holding the glass for a message it no longer
+            // shows. (The effect's own call is then a no-op — idempotent.)
+            onPolledActiveChangeRef.current?.(false, false);
+            setPolled(null);
+          }
         }
       } catch {
         /* ignore — offline; overlay stays on last known state */
@@ -366,6 +379,53 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   }, [message, tenantId, apiUrl, pollMs, deviceToken, onTenantEmergencyHint]);
 
   const active = message || polled;
+
+  // An Info banner PUSHES the content down instead of covering it (2026-10-26,
+  // bannerPush.ts): the banner measures itself and publishes its height on
+  // <html>; one rule in player/layout.tsx moves every content root below it.
+  // Unconditional hook — the banner branch below only attaches the ref.
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const bannerShown = !!active && isBannerEmergencyMessage(active);
+  const bannerKey = active?.id ?? null;
+  useEffect(() => {
+    if (!bannerShown) return;
+    const el = bannerRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const apply = () => {
+      let cssLedHeight: string | null = null;
+      try { cssLedHeight = getComputedStyle(root).getPropertyValue('--led-h'); } catch { /* fall through to the viewport */ }
+      applyBannerPush(
+        root,
+        // The LAYOUT height: unlike a bounding rect it is unaffected by the
+        // rotated body of a secondary face / a rotated preview.
+        el.offsetHeight,
+        stageHeightPx({
+          faceStageHeight: faceStage?.height ?? null,
+          canvasHeight: canvas.h,
+          cssLedHeight,
+          viewportHeight: window.innerHeight,
+        }),
+      );
+    };
+    apply();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+    }
+    const fonts = (document as { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (fonts?.ready?.then) fonts.ready.then(apply).catch(() => {});
+    window.addEventListener('resize', apply);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', apply);
+      // The content glides home when the banner clears; a banner replacing a
+      // banner re-applies in the same commit, so nothing visibly moves.
+      clearBannerPush(root);
+    };
+  }, [bannerShown, bannerKey, faceStage?.height, canvas.h]);
+
   if (!active) return null;
 
   const style = severityStyles[active.severity] || severityStyles.CRITICAL;
@@ -403,6 +463,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     // gap; vh on a top-anchored fixed bar is fine).
     return (
       <div
+        ref={bannerRef}
         role="alert"
         aria-live="assertive"
         data-edu-emergency-root="banner"

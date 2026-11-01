@@ -6,10 +6,9 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, Megaphone, UserRound } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag, UserRound } from 'lucide-react';
 import { canSeeSettings } from '@/components/settings/shell/registry';
 import { RoleGate } from '../RoleGate';
-import { hasPanicAuthority } from '@/lib/emergency-capability';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -254,15 +253,11 @@ export function Sidebar() {
           icon: isRetailPricing ? Tag : UtensilsCrossed,
         }]
       : []),
-    // Emergency → Broadcast (2026-10-22). The page existed only behind the
-    // dashboard's "Emergency Console" button; nothing in the navigation
-    // reached it. Gated on the same capability the API honours for
-    // POST /emergency/broadcast (@RequireRoles admins + @AllowPanicBypass
-    // canTriggerPanic) — `hasPanicAuthority`, the one shared answer. Mounted-
-    // gated like the admin set below (user lives in localStorage).
-    ...(mounted && hasPanicAuthority(user)
-      ? [{ name: t('nav.broadcast'), href: hrefFor('/emergency/broadcast'), icon: Megaphone }]
-      : []),
+    // (2026-10-26) The Broadcast entry that stood here is gone: "it should not
+    // get its own page, add it into the emergency page area as a custom
+    // message." A typed-in message is the Custom message card on the Emergency
+    // window below (and on /panic); the old /emergency/broadcast URL redirects
+    // to it, so nothing that points there breaks.
     // Owner decision 1 (Settings simplification, 2026-10-24): Editors and
     // Viewers do not see Settings — everything they can change about
     // themselves is in My account. Mounted-gated like the admin set below
