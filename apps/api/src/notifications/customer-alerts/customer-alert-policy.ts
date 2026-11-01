@@ -79,8 +79,12 @@ export const ALERT_RULES = {
   DAILY_DARK_SLACK_MS: 90 * MIN,
   /** How far back a previous dark spell still counts as the pattern. */
   DAILY_DARK_LOOKBACK_MS: 8 * 24 * 60 * MIN,
-  /** How much longer than last time the spell may run before it is no longer "the usual". */
-  DAILY_DARK_RETURN_SLACK_MS: 2 * 60 * MIN,
+  /**
+   * How much past the time it came back in its learned pattern (or past its
+   * schedule's switch-on) a nightly screen may stay dark before it is emailed
+   * as an outage (owner, 2026-11-01: 60 minutes).
+   */
+  DAILY_DARK_RETURN_SLACK_MS: 60 * MIN,
   /** Several screens of one organisation whose picture proof stopped within this long of each other share ONE cause. */
   PROOF_STALL_SPAN_MS: 60_000,
   PROOF_STALL_MIN_SCREENS: 3,
@@ -257,6 +261,12 @@ export function intendedDowntime(
   }
 
   if (kind === 'OFFLINE' && !missedOn && repeatsDailyDark(f.offlineHistory, problemStartMs, nowMs)) return 'daily-pattern';
+  // A nightly screen with an on/off schedule that has not returned at the
+  // schedule's switch-on: held for 60 minutes past it, then judged normally.
+  if (missedOn && nowMs - problemStartMs < ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS && f.lastPingAt) {
+    const h = f.offlineHistory;
+    if (dailyDarkMatch(h, problemStartMs) || dailyDarkMatch(h, f.lastPingAt.getTime())) return 'daily-pattern';
+  }
   return maintenanceReason(f, kind, problemStartMs, nowMs);
 }
 
@@ -325,20 +335,50 @@ export function repeatsDailyDark(
   problemStartMs: number,
   nowMs: number,
 ): boolean {
-  if (!h || h.reason === 'missed-on-time' || h.reason === 'platform-incident') return false;
-  const startedMs = h.startedAt.getTime();
+  const m = dailyDarkMatch(h, problemStartMs);
+  if (!m) return false;
   const sinceDrop = nowMs - problemStartMs;
+  // Excused until 60 minutes past the time it came back in its learned
+  // pattern; a recognised row from before the learned length was stored keeps
+  // the old ceiling.
+  const cap = m.learnedDarkMs === null ? ALERT_RULES.DAILY_DARK_MAX_MS : Math.min(m.learnedDarkMs + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS, ALERT_RULES.DAILY_DARK_MAX_MS);
+  return sinceDrop <= cap;
+}
+
+const DAILY_PATTERN = 'daily-pattern';
+
+/** `daily-pattern` or `daily-pattern:<learned dark ms>` — the OFFLINE row's reason once the pattern is recognised. */
+export function dailyPatternReason(h: OfflineHistory | null | undefined, problemStartMs: number): string {
+  const m = dailyDarkMatch(h, problemStartMs);
+  return m && m.learnedDarkMs !== null ? `${DAILY_PATTERN}:${Math.round(m.learnedDarkMs)}` : DAILY_PATTERN;
+}
+
+/**
+ * Does a dark spell that began at `dropMs` repeat this screen's previous one
+ * (same time of day, 3–20 h)? Carries the learned dark length so the return
+ * time survives the row being rewritten by the open spell.
+ */
+export function dailyDarkMatch(
+  h: OfflineHistory | null | undefined,
+  dropMs: number,
+): { learnedDarkMs: number | null } | null {
+  if (!h || h.reason === 'missed-on-time' || h.reason === 'platform-incident') return null;
+  const startedMs = h.startedAt.getTime();
   if (h.open) {
-    return h.reason === 'daily-pattern' && Math.abs(startedMs - problemStartMs) <= 5 * MIN && sinceDrop <= ALERT_RULES.DAILY_DARK_MAX_MS;
+    const r = h.reason ?? '';
+    if (r !== DAILY_PATTERN && !r.startsWith(`${DAILY_PATTERN}:`)) return null;
+    if (Math.abs(startedMs - dropMs) > 5 * MIN) return null;
+    const n = r === DAILY_PATTERN ? NaN : Number(r.slice(DAILY_PATTERN.length + 1));
+    return { learnedDarkMs: Number.isFinite(n) && n > 0 ? n : null };
   }
-  if (!h.closedAt) return false;
+  if (!h.closedAt) return null;
   const dark = h.closedAt.getTime() - startedMs;
-  if (dark < ALERT_RULES.DAILY_DARK_MIN_MS || dark > ALERT_RULES.DAILY_DARK_MAX_MS) return false;
-  const apart = problemStartMs - startedMs;
-  if (apart <= 0 || apart > ALERT_RULES.DAILY_DARK_LOOKBACK_MS) return false;
+  if (dark < ALERT_RULES.DAILY_DARK_MIN_MS || dark > ALERT_RULES.DAILY_DARK_MAX_MS) return null;
+  const apart = dropMs - startedMs;
+  if (apart <= 0 || apart > ALERT_RULES.DAILY_DARK_LOOKBACK_MS) return null;
   const off = apart % DAY_MS;
-  if (Math.min(off, DAY_MS - off) > ALERT_RULES.DAILY_DARK_SLACK_MS) return false;
-  return sinceDrop <= Math.min(dark + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS, ALERT_RULES.DAILY_DARK_MAX_MS);
+  if (Math.min(off, DAY_MS - off) > ALERT_RULES.DAILY_DARK_SLACK_MS) return null;
+  return { learnedDarkMs: dark };
 }
 
 // ─── Picture proof that stopped everywhere at once (2026-10-31) ───────────
