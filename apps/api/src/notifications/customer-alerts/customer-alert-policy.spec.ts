@@ -9,6 +9,9 @@ import {
   intendedDowntime,
   isFlapping,
   lastPowerCommandOf,
+  maintenanceReason,
+  repeatsDailyDark,
+  sharedProofStall,
   missedOnTime,
   noContentVerdict,
   orgHourlyLimit,
@@ -437,5 +440,88 @@ describe('Rule 2 — a remote power-off excuses a screen only while it is really
     const on = { state: 'on' as const, at: AT };
     expect(effectivePowerCommand(on, evidence())).toBe(on);
     expect(effectivePowerCommand(null, evidence())).toBeNull();
+  });
+});
+
+
+// --- 2026-10-31 accuracy pass: each case is cut from a real production row shape ---
+
+describe('maintenance is judged against the DROP, not against the decision (OTA 1.1.55 rollout)', () => {
+  // The screen's last check-in (= the drop) was 20 min before NOW; the decision
+  // is made after 15 min + two scans, so an install that ran 20 min before the
+  // drop is 40 min old at decision time, outside the old "last 30 min" test.
+  const dropAt = NOW - 20 * MIN;
+  it('an update install 20 min before the drop still explains it (2 h settle)', () => {
+    const f = facts({ maintenanceTimes: [new Date(dropAt - 20 * MIN)], lastMaintenanceAt: new Date(dropAt - 20 * MIN) });
+    expect(intendedDowntime(f, 'OFFLINE', dropAt, NOW)).toBe('maintenance');
+  });
+  it('a relaunch 10 min AFTER the drop (the install killed the app) explains it too', () => {
+    const f = facts({ maintenanceTimes: [new Date(dropAt + 10 * MIN)] });
+    expect(maintenanceReason(f, 'OFFLINE', dropAt, NOW)).toBe('maintenance');
+  });
+  it('but only for 2 h after the event: a screen that did not come back is judged as any outage', () => {
+    const ev = new Date(NOW - 2 * 60 * MIN - MIN);
+    const f = facts({ maintenanceTimes: [ev] });
+    expect(maintenanceReason(f, 'OFFLINE', ev.getTime() - 5 * MIN, NOW)).toBeNull();
+  });
+  it('and an event far from the drop (rebooted at 09:13, dropped at noon) explains nothing', () => {
+    const f = facts({ maintenanceTimes: [new Date(dropAt - 3 * 60 * MIN)] });
+    expect(maintenanceReason(f, 'OFFLINE', dropAt, NOW)).toBeNull();
+  });
+  it('the dashboard and the email give the same answer for the same facts', () => {
+    const f = facts({ maintenanceTimes: [new Date(dropAt - 20 * MIN)] });
+    expect(maintenanceReason(f, 'OFFLINE', dropAt, NOW)).toBe(intendedDowntime(f, 'OFFLINE', dropAt, NOW));
+  });
+});
+
+describe('the usual nightly dark spell is not an outage (venue closes, outlet timer)', () => {
+  const H = 60 * MIN;
+  // Real shape: dark ~21:20Z, back ~10:36Z next morning (13 h 16 min), every day.
+  const prev = { open: false, reason: null, startedAt: new Date(NOW - 24 * H), closedAt: new Date(NOW - 24 * H + 13 * H + 16 * MIN) };
+  const drop = NOW - 20 * MIN;
+  it("same time of day as yesterday's spell is excused", () => {
+    expect(repeatsDailyDark(prev, drop, NOW)).toBe(true);
+    expect(intendedDowntime(facts({ offlineHistory: prev }), 'OFFLINE', drop, NOW)).toBe('daily-pattern');
+  });
+  it('a pattern two days back (nobody looked yesterday) still counts', () => {
+    expect(repeatsDailyDark({ ...prev, startedAt: new Date(NOW - 48 * H), closedAt: new Date(NOW - 48 * H + 13 * H) }, drop, NOW)).toBe(true);
+  });
+  it('a different time of day (3 h apart) is a NEW problem', () => {
+    expect(repeatsDailyDark({ ...prev, startedAt: new Date(NOW - 24 * H - 3 * H), closedAt: new Date(NOW - 24 * H + 10 * H) }, drop, NOW)).toBe(false);
+  });
+  it('a short blip yesterday (40 min) is not a pattern', () => {
+    expect(repeatsDailyDark({ ...prev, closedAt: new Date(NOW - 24 * H + 40 * MIN) }, drop, NOW)).toBe(false);
+  });
+  it('excused only until it has run 2 h longer than the usual: a unit that does not return is an outage', () => {
+    const lateDrop = NOW - (13 * H + 16 * MIN + 2 * H + MIN);
+    expect(repeatsDailyDark({ ...prev, startedAt: new Date(lateDrop - 24 * H), closedAt: new Date(lateDrop - 24 * H + 13 * H + 16 * MIN) }, lateDrop, NOW)).toBe(false);
+  });
+  it('a missed-on-time or platform-incident row is a clock setting, never the pattern', () => {
+    expect(repeatsDailyDark({ ...prev, reason: 'missed-on-time' }, drop, NOW)).toBe(false);
+    expect(repeatsDailyDark({ ...prev, reason: 'platform-incident' }, drop, NOW)).toBe(false);
+  });
+  it('the spell already recognised (open, reason daily-pattern) keeps being excused; any other open row is not', () => {
+    const open = { open: true, reason: 'daily-pattern', startedAt: new Date(drop), closedAt: null };
+    expect(repeatsDailyDark(open, drop, NOW)).toBe(true);
+    expect(repeatsDailyDark({ ...open, reason: 'flap' }, drop, NOW)).toBe(false);
+  });
+  it('no history: never excused (the first night is the only one that can email)', () => {
+    expect(repeatsDailyDark(null, drop, NOW)).toBe(false);
+    expect(intendedDowntime(facts(), 'OFFLINE', drop, NOW)).toBeNull();
+  });
+});
+
+describe('picture proof that stopped on several screens at once is one cause, not N dead screens', () => {
+  const at = NOW - 40 * MIN;
+  it('7 screens of one organisation whose proof stopped within 11 s are all held back', () => {
+    const problems = Array.from({ length: 7 }, (_, i) => ({ screenId: `s${i}`, orgId: 'o1', startedAtMs: at + i * 1_800 }));
+    expect([...sharedProofStall(problems)].sort()).toEqual(problems.map((p) => p.screenId).sort());
+  });
+  it('two screens, or three spread over minutes, are independent and still emailed', () => {
+    expect(sharedProofStall([{ screenId: 'a', orgId: 'o', startedAtMs: at }, { screenId: 'b', orgId: 'o', startedAtMs: at + 1_000 }]).size).toBe(0);
+    expect(sharedProofStall([0, 5, 11].map((m, i) => ({ screenId: `s${i}`, orgId: 'o', startedAtMs: at + m * MIN }))).size).toBe(0);
+  });
+  it('three screens at the same second but in three different organisations are not a stall of one', () => {
+    expect(sharedProofStall(['a', 'b', 'c'].map((o) => ({ screenId: o, orgId: o, startedAtMs: at }))).size).toBe(0);
   });
 });

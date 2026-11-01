@@ -262,6 +262,7 @@ import {
 } from './offline-cache';
 import { PlaylistCacheRetryPolicy } from './playlistCacheRetryPolicy';
 import { nativeYieldDelayMs } from './nativeYield';
+import { downloadBarPercent, downloadProgressLabel, type DownloadPhase } from './downloadProgress';
 import { clearOfflineManifests, readOfflineManifest, recordManifestPairing, saveManifest, type SavedManifest } from './offlineBoot';
 // Readiness-gated playback (2026-09-26): a large file is never mounted or
 // streamed before its native bytes are on disk — download the whole file,
@@ -296,7 +297,8 @@ import {
   refreshAckToReport,
 } from './refreshAckReport';
 import { itemContentSigInput } from './contentSig';
-import { persistStagedBoards, readPersistedStagedBoards, readStagedBoardsResponse, selectStagedBoard, type StagedBoards } from './emergencyBoards';
+import { isTemplateBoard, persistStagedBoards, readPersistedStagedBoards, readStagedBoardsResponse, selectStagedBoard, stagedBoardImageUrls, type PushBoardFacts, type StagedBoards } from './emergencyBoards';
+import { systemEmergencyBoardColor, systemEmergencyBoardText } from '@cms/api-types';
 import { nativeWebsiteTarget, publishDisplayBlank } from './displayBlankSignal';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 // Seamless file swaps under the same items (2026-10-12, video guarantee):
@@ -2805,7 +2807,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode; drillBanner?:
           data-edu-emergency-drill={crashDrill ? 'true' : undefined}
           className="fixed text-white"
           style={{
-            backgroundColor: crashDrill ? '#3730a3' : '#b91c1c',
+            backgroundColor: crashDrill ? '#3730a3' : '#dc2626',
             position: 'fixed',
             top: 0,
             left: 0,
@@ -4804,7 +4806,26 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // shape, and the commit function defined after `commitMediaPlaylist`
   // (a ref, because this callback is declared first).
   const stagedBoardsRef = useRef<StagedBoards | null>(null);
-  const raiseStagedBoardRef = useRef<(alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null) => void>(() => {});
+  // 2026-10-31 — the staged boards' pictures, DECODED and held, so a board
+  // raised from the push paints on its first frame (a 4K PNG decodes slowly on
+  // a slow panel; while it decoded the protective surface showed first).
+  // Detached elements, never in the DOM: nothing to lay out, nothing a render
+  // exit has to carry. Re-warmed when the staged set changes.
+  const warmBoardImagesRef = useRef<{ setHash: string; images: HTMLImageElement[] }>({ setHash: '', images: [] });
+  const warmStagedBoardImages = useCallback((staged: StagedBoards | null) => {
+    if (!staged || typeof Image === 'undefined') return;
+    if (warmBoardImagesRef.current.setHash === staged.setHash && warmBoardImagesRef.current.images.length > 0) return;
+    const images = stagedBoardImageUrls(staged).map((url) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = resolveAssetUrl(url.startsWith('http') ? url : `${getApiRoot()}${url}`);
+      // `decode()` forces the bitmap into the decoded-image cache (Chromium 83+, WebKit).
+      try { void img.decode?.().catch(() => {}); } catch { /* an old engine without decode(): the fetch alone warms the HTTP cache */ }
+      return img;
+    });
+    warmBoardImagesRef.current = { setHash: staged.setHash, images };
+  }, []);
+  const raiseStagedBoardRef = useRef<(alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null, push: PushBoardFacts | null) => void>(() => {});
   const raiseFromSignedPush = useCallback((payload: unknown, via: 'ws' | 'sse' | 'rev', raised: RevAlertPayload | null = alertFromOverridePush(payload)) => {
     setPendingOverrideDrill(raised?.isDrill === true || (!!payload && typeof payload === 'object' && (payload as { isDrill?: unknown }).isDrill === true));
     if (!raised || activeEmergencyRef.current) return;
@@ -4815,7 +4836,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // The location's board, if it is staged, goes on the glass in this same
     // tick through the manifest's own playlist state (no typed surface first,
     // no re-mount when the committed manifest lands with the same board).
-    raiseStagedBoardRef.current(raised, overridePushPlaylistId(payload));
+    const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+    const text = (v: unknown) => (typeof v === 'string' && v.trim().length > 0 ? v : null);
+    raiseStagedBoardRef.current(raised, overridePushPlaylistId(payload), p ? { severity: text(p.severity), textBlob: text(p.textBlob), mediaUrl: text(p.mediaUrl) } : null);
   }, []);
   // 2026-05-26 P0-3 — Sprint 5 emergency-message overlay state.
   // SOS / TEXT_BROADCAST / MEDIA_ALERT pushed via WS land here; the
@@ -5288,7 +5311,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
   // The large file the page is driving into the cache right now — feeds the
   // splash's real download bar while nothing is ready to play.
-  const [workerDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null } | null>(null);
+  const [workerDownload, setLargeDownload] = useState<{ name: string; bytesLoaded: number; bytesTotal: number | null; phase?: DownloadPhase } | null>(null);
   // Native-first store mode (§6): the splash shows the STORE's real download
   // when the page is not driving one itself (the store fetches native files).
   const largeDownload = workerDownload ?? storeDownload;
@@ -6580,6 +6603,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (staged) {
         stagedBoardsRef.current = staged;
         persistStagedBoards(typeof localStorage !== 'undefined' ? localStorage : null, screenId, staged);
+        warmStagedBoardImages(staged);
       }
       if (!isSwSupported()) return;
       // Short-circuit if the asset set is unchanged since last push.
@@ -7021,14 +7045,31 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // and the typed surface shows as before. It commits through the SAME
   // function and the SAME item transform + signature as the manifest apply,
   // so the committed manifest carrying this board is "identical content".
-  const raiseStagedBoard = useCallback((alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null) => {
-    const board = selectStagedBoard(stagedBoardsRef.current, alert, pushPlaylistId);
+  const raiseStagedBoard = useCallback((alert: { type: string; isDrill?: boolean }, pushPlaylistId: string | null, push: PushBoardFacts | null = null) => {
+    const board = selectStagedBoard(stagedBoardsRef.current, alert, pushPlaylistId, push);
     if (!board) return;
+    const base = playbackManifestRef.current ?? { m: {}, fromCache: true };
+    if (isTemplateBoard(board)) {
+      // The SYSTEM board (2026-10-31): the manifest's own text template, applied
+      // exactly as applyManifest applies a template winner — the same
+      // signature (`tpl:<name>:<contentRev>`), the same state — so the
+      // committed manifest's `DEFAULT_EMERGENCY` is "the same template".
+      const tpl = board.template as { id?: string; name?: string };
+      const tplSig = 'tpl:' + (tpl.id || tpl.name || '') + (board.contentRev ? `:${board.contentRev}` : '');
+      if (tplSig === currentPlaylistSigRef.current) return; // already on the glass
+      pendingPlaylistCommitRef.current = null;
+      playbackManifestRef.current = { m: base.m, fromCache: true };
+      currentPlaylistSigRef.current = tplSig;
+      contentIsEmergencyRef.current = true;
+      setPlaylist({ name: tpl.name || board.name, template: board.template, items: [], isEmergency: true, systemEmergencyLayout: true });
+      setCurrentIndex(0);
+      console.warn(`[Player] ${alert.type}${alert.isDrill ? ' (DRILL)' : ''}: staged system board on glass from the signed push — manifest confirm in flight`);
+      return;
+    }
     const items = combinedItemsFromSources([board]);
     if (items.length === 0) return;
     const sig = playlistSigOf(items);
     if (sig === currentPlaylistSigRef.current) return; // already on the glass
-    const base = playbackManifestRef.current ?? { m: {}, fromCache: true };
     // A deferred normal playlist is no longer wanted under an alert (the
     // manifest path drops it the same way before an emergency commit).
     pendingPlaylistCommitRef.current = null;
@@ -7051,13 +7092,23 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // alert (a reload by the APK's paint ladder mid-alert, a reboot) — its board
   // straight away, before the live manifest round trip. Raise-only, like the
   // cached alert itself; the live manifest decides as before.
-  useEffect(() => {
+  // A LAYOUT effect (2026-10-31): it runs before the browser paints, so the
+  // first frame of a document reloaded mid-alert is the board — not the typed
+  // surface for one frame and then the board (the "something else first" the
+  // APK's +4 s reload produced on every slow box). The cached alert is read
+  // here too for the same reason; the hydration effect below only re-states it.
+  useLayoutEffect(() => {
     if (!screenId) return;
     const persisted = readPersistedStagedBoards(typeof localStorage !== 'undefined' ? localStorage : null, screenId);
     if (persisted && !stagedBoardsRef.current) stagedBoardsRef.current = persisted;
-    const cached = activeEmergencyRef.current;
+    warmStagedBoardImages(stagedBoardsRef.current);
+    let cached = activeEmergencyRef.current;
+    if (!cached) {
+      cached = readCachedEmergency();
+      if (cached) { setActiveEmergency(cached); activeEmergencyRef.current = cached; }
+    }
     if (cached && currentPlaylistSigRef.current === '') raiseStagedBoard(cached, null);
-  }, [screenId, raiseStagedBoard]);
+  }, [screenId, raiseStagedBoard, warmStagedBoardImages]);
 
   const fetchContentInner = useCallback(async () => {
     if (!screenId || serverUnpairedRef.current) return;
@@ -10698,7 +10749,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // OR the playlist content changes. Without this, advancing to slide 2
   // would inherit slide 1's start time, immediately re-fire the advance,
   // and skip slide 2 entirely.
-  useEffect(() => {
+  // A LAYOUT effect (2026-10-31), so it stays ORDERED BEFORE the decoded-image
+  // check below in the same pre-paint phase: with the check pre-paint and this
+  // reset post-paint, a staged emergency board painted first and then showed
+  // the protective surface for one task (seen in the instant-board e2e).
+  useLayoutEffect(() => {
     slideStartedAtRef.current = Date.now();
     setMediaReady(false);
   }, [currentIndex, playlistItemsSig]);
@@ -10714,12 +10769,24 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // 12d65e8dd, 2026-09-24, introduced the flag). Ask the browser instead: the
   // slide on glass is ready when ITS picture is decoded. Declared AFTER the
   // reset so, within one commit, this wins over the `false` above.
-  useEffect(() => {
+  // A LAYOUT effect (2026-10-31): a picture already decoded (a staged
+  // emergency board's, pre-warmed) is complete the moment its element is
+  // inserted, and this runs before the browser paints — so the emergency
+  // board's first frame is the board, never the protective surface for the
+  // one frame the post-paint effect used to cost. Blink starts a new
+  // element's load in a microtask, so ITS `complete` is still false here even
+  // for a memory-cached picture (WebKit answers true); the WARM element that
+  // decoded the same URL is the proof then — the new element paints from the
+  // same decoded bitmap before the next frame.
+  useLayoutEffect(() => {
     if (displayIndex === null) return;
     const it: any = sorted[displayIndex];
     if (!it || !String(it.asset?.mimeType || '').startsWith('image/')) return;
-    if (isImageLoaded(findSlideImage(String(it.id)))) setMediaReady(true);
-  }, [displayIndex, currentIndex, playlistItemsSig, sorted]);
+    const slide = findSlideImage(String(it.id));
+    const warmDecoded = !!slide && !!playlist?.isEmergency &&
+      warmBoardImagesRef.current.images.some((w) => w.src === slide.src && isImageLoaded(w));
+    if (isImageLoaded(slide) || warmDecoded) setMediaReady(true);
+  }, [displayIndex, currentIndex, playlistItemsSig, sorted, playlist?.isEmergency]);
 
   // Clear the all-broken-assets failure tracker whenever the manifest
   // delivers a genuinely different item set (republish, edit, or a fresh
@@ -11526,6 +11593,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         name: p.url.split('?')[0].split('/').pop() || 'video',
         bytesLoaded: p.bytesLoaded,
         bytesTotal: p.bytesTotal,
+        phase: p.phase,
       }),
     }).then((result) => {
       if (playlistCacheInFlightRef.current !== setHash) return; // superseded
@@ -12426,6 +12494,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // dashboard use, and it says so in the operator's language. The protective
   // surface itself is unchanged for a live alert.
   const emergencyIsDrill = activeEmergency?.isDrill === true;
+  // 2026-10-31 — the typed surface IS the system board, as far as a page can
+  // draw it: the same words (`systemEmergencyBoardText`, the manifest's rule
+  // in @cms/api-types) on the same colour (`systemEmergencyBoardColor`), bold,
+  // centred, fitted. It used to be its own red (#b91c1c), a triangle and the
+  // bare type name, so when the manifest's DEFAULT_EMERGENCY board landed the
+  // glass visibly changed from one red board to another. The one case it still
+  // bridges is a push with an older staging payload or operator text; it
+  // should look like what follows it.
+  const emergencyFallbackText = activeEmergency
+    ? systemEmergencyBoardText({
+        type: String(activeEmergency.type || activeEmergency.title || tEmergency('trigger').toUpperCase()),
+        isDrill: emergencyIsDrill,
+        textBlob: typeof activeEmergency.textBlob === 'string' && activeEmergency.textBlob.length > 0 ? activeEmergency.textBlob : null,
+        scopeNote: typeof activeEmergency.scopeNote === 'string' && activeEmergency.scopeNote.length > 0 ? activeEmergency.scopeNote : null,
+      })
+    : '';
   const emergencyFallback = activeEmergency &&
     (!playlist?.isEmergency || (isTemplate ? !emergencyTemplateReady :
       !mediaReady || displayIndex === null ||
@@ -12436,14 +12520,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         data-edu-emergency-root="fallback"
         data-edu-emergency-identity={emergencyPaintIdentity(activeEmergency)}
         data-edu-emergency-drill={emergencyIsDrill ? 'true' : undefined}
-        style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', backgroundColor: emergencyIsDrill ? '#3730a3' : '#b91c1c', color: '#fff', zIndex: 9998 }}
+        style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', backgroundColor: systemEmergencyBoardColor(activeEmergency.severity, emergencyIsDrill), color: '#fff', zIndex: 9998 }}
       >
         <FitToViewport padding={40}>
           <div style={{ textAlign: 'center', maxWidth: '90vw', overflowWrap: 'break-word' }}>
-            <AlertTriangle style={{ width: 96, height: 96, margin: '0 auto 24px' }} />
-            {emergencyIsDrill ? <p style={{ fontSize: 40, fontWeight: 900, letterSpacing: '0.08em', marginBottom: 16 }}>{tEmergency('drill.playerBanner')}</p> : null}
-            <h1 style={{ fontSize: 72, fontWeight: 900, lineHeight: 1.1 }}>{activeEmergency.type || activeEmergency.title || tEmergency('trigger').toUpperCase()}{emergencyIsDrill ? ` ${tEmergency('drill.drill')}` : ''}</h1>
-            {activeEmergency.textBlob ? <p style={{ fontSize: 32, whiteSpace: 'pre-wrap' }}>{activeEmergency.textBlob}</p> : null}
+            {/* The first paragraph is the heading (the type's headline, or the
+                drill mark); the action lines follow — one block, the system
+                board's words, weight and leading. */}
+            {emergencyFallbackText.split('\n\n').map((para, i) => i === 0
+              ? <h1 key={i} style={{ fontSize: 100, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'pre-wrap', margin: 0 }}>{para}</h1>
+              : <p key={i} style={{ fontSize: 100, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'pre-wrap', margin: '1.15em 0 0' }}>{para}</p>)}
           </div>
         </FitToViewport>
       </div>
@@ -12680,7 +12766,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const holdOnly = emergencySurface === 'hold';
   if ((emergencySurface === 'takeover' || holdOnly) && !playlist?.isEmergency) {
     return (
-      <div data-edu-emergency-transition="true" data-edu-emergency-hold={holdOnly ? 'true' : undefined} data-edu-emergency-drill={!holdOnly && pendingSurfaceIsDrill ? 'true' : undefined} style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: holdOnly ? '#000' : pendingSurfaceIsDrill ? '#3730a3' : '#b91c1c', color: '#fff' }}>
+      <div data-edu-emergency-transition="true" data-edu-emergency-hold={holdOnly ? 'true' : undefined} data-edu-emergency-drill={!holdOnly && pendingSurfaceIsDrill ? 'true' : undefined} style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: holdOnly ? '#000' : pendingSurfaceIsDrill ? '#3730a3' : '#dc2626', color: '#fff' }}>
         {emergencyFallback || (!pushedEmergencyMessage && !holdOnly && (
           // No alert identity yet: this is a protective pending surface,
           // never an overlay-painted receipt for an unknown alert.
@@ -14559,18 +14645,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   className="text-lg font-medium text-slate-500 mt-2 mb-4 text-center"
                   style={{ fontSize: 'calc(min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014))) * var(--splash-k, 1))', fontWeight: 500, color: '#64748b', marginTop: 'calc(8px * var(--splash-k, 1))', marginBottom: 'calc(min(16px, max(6px, calc(var(--led-w, 1024px) * 0.012))) * var(--splash-k, 1))', textAlign: 'center', lineHeight: 1.3 }}
                 >
-                  {largeDownload && largeDownload.bytesTotal
-                    ? `${largeDownload.name} — ${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}% (${formatBytes(largeDownload.bytesLoaded)} of ${formatBytes(largeDownload.bytesTotal)})`
-                    : largeDownload
-                      ? `${largeDownload.name} — ${formatBytes(largeDownload.bytesLoaded)} so far`
-                      : 'Playback starts the moment the file is complete on this screen.'}
+                  {largeDownload
+                    ? downloadProgressLabel(largeDownload, formatBytes)
+                    : 'Playback starts the moment the file is complete on this screen.'}
                 </p>
                 {largeDownload && largeDownload.bytesTotal ? (
                   <div
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    aria-valuenow={Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}
+                    aria-valuenow={(downloadBarPercent(largeDownload) ?? 0)}
                     aria-label="Download progress"
                     style={{
                       width: 'calc(min(480px, max(160px, calc(var(--led-w, 1024px) * 0.4))) * var(--splash-k, 1))',
@@ -14583,7 +14667,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   >
                     <div
                       style={{
-                        width: `${Math.min(100, Math.floor((largeDownload.bytesLoaded / largeDownload.bytesTotal) * 100))}%`,
+                        width: `${(downloadBarPercent(largeDownload) ?? 0)}%`,
                         height: '100%',
                         background: '#6366f1',
                         borderRadius: 999,
