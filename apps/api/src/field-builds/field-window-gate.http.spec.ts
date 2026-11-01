@@ -309,3 +309,43 @@ describe('FieldWindowGateMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 2026-10-31 — PLAYER_FIELD_BENCH_SCREENS at the REAL update check and the
+ * REAL download (player-ota/fleet-push-policy.ts). Set, a pushed screen that
+ * is not on the list is HELD on its build — never offered the field build,
+ * never handed the stable one in its place — and a ticket it already holds no
+ * longer downloads. Unset, nothing changes: every case above runs unset.
+ */
+describe('PLAYER_FIELD_BENCH_SCREENS at the update check and the download', () => {
+  it('SET without this screen: the pushed screen is held on its current build, and the log says why', async () => {
+    process.env.PLAYER_FIELD_BENCH_SCREENS = OTHER_SCREEN;
+    const { http } = await boot();
+    const warn = jest.spyOn(Logger.prototype, 'warn');
+    const res = await updateCheck(http).expect(201);
+    expect(res.body).toEqual({ uptoDate: true });
+    expect(field.verifiedFieldBytes).not.toHaveBeenCalled();
+    expect(prisma.client.auditLog.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'PLAYER_FIELD_APK_OFFER' }) }),
+    );
+    const line = warn.mock.calls.map((c) => String(c[0])).find((l) => l.includes('[ota] decision=uptoDate-field'));
+    expect(line).toMatch(/reason=not-a-bench-screen/);
+  });
+
+  it('SET with this screen (any case): offered exactly as when unset', async () => {
+    process.env.PLAYER_FIELD_BENCH_SCREENS = `${OTHER_SCREEN}, ${SCREEN.toUpperCase()}`;
+    const { http } = await boot();
+    const res = await updateCheck(http).expect(201);
+    expect(res.body.latest).toMatchObject({ versionName: CANDIDATE, versionCode: RELEASE.versionCode, sha256: RELEASE.sha256 });
+  });
+
+  it('a ticket handed out while the screen was on the bench no longer downloads once the list drops it', async () => {
+    const { http } = await boot();
+    const offer = await updateCheck(http).expect(201);
+    const url = new URL(offer.body.latest.apkUrl);
+    process.env.PLAYER_FIELD_BENCH_SCREENS = OTHER_SCREEN;
+    await request(http).get(url.pathname + url.search).expect(404);
+    delete process.env.PLAYER_FIELD_BENCH_SCREENS;
+    await request(http).get(url.pathname + url.search).expect(200);
+  });
+});
