@@ -244,6 +244,15 @@
             <action android:name="com.ifpdos.opensdk.SERVICE_MANAGER" />
         </intent>
         <!--
+          1.1.58 — the RK3576 box's control service (Goodview EP6N class,
+          display/RkSdkApiPolicy), the second backend of vendor-backlight.
+          Same reason as above: unseen on API 30+ without these lines.
+        -->
+        <package android:name="com.sdkapi.sdkapiservice" />
+        <intent>
+            <action android:name="com.sdkapi.sdkapiservice.service.sdkapiservice" />
+        </intent>
+        <!--
           1.1.23 (the X80 setup freeze) — the setup checklist now ASKS which
           app answers each Settings intent before it opens one, and opens
           that component explicitly: a VisionCore X80 (Goodview firmware)

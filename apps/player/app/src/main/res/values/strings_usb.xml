@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The USB card (2026-10-26): what the screen is doing with a USB drive. Read
+  by a person standing at a wall-mounted screen with a remote: plain words, one
+  sentence, the fix on the focused button, nothing the screen cannot prove
+  (player rule 10). Translated in values-es and values-zh — every string here
+  must exist in all three (lint MissingTranslation stays on for this file).
+-->
+<resources>
+    <string name="usb_caption">USB drive</string>
+    <string name="usb_hint">Press Back to close.</string>
+    <string name="usb_closing">Closing in %1$d s</string>
+    <string name="usb_this_playlist">this playlist</string>
+    <!-- The app's name as Android's settings list it, when it cannot be read. A name: never translated. -->
+    <string name="usb_app_fallback" translatable="false">VenueOS Player</string>
+
+    <!-- Working -->
+    <string name="usb_looking_title">Looking for a USB drive…</string>
+    <string name="usb_looking_body">Checking this screen’s USB ports.</string>
+    <string name="usb_reading_title">USB drive found — reading…</string>
+    <string name="usb_reading_body">Looking for a VenueOS playlist on the drive.</string>
+    <string name="usb_copying_title">Copying %1$s from USB</string>
+    <string name="usb_copying_body">Keep the drive in until this finishes.</string>
+    <plurals name="usb_copying_progress">
+        <item quantity="one">%1$d of %2$d file · %3$s of %4$s</item>
+        <item quantity="other">%1$d of %2$d files · %3$s of %4$s</item>
+    </plurals>
+
+    <!-- Done -->
+    <string name="usb_imported_title">Playing %1$s from USB</string>
+    <string name="usb_imported_body">You can remove the drive now.</string>
+    <string name="usb_imported_body_again">It was already on this screen and plays again now — you can remove the drive.</string>
+
+    <!-- Problems: one sentence each; the fix is the focused button -->
+    <string name="usb_no_drive_title">No USB drive found</string>
+    <string name="usb_no_drive_body">Plug the drive into this screen’s USB port, then choose Look again.</string>
+    <string name="usb_access_title">VenueOS needs permission to read USB drives</string>
+    <string name="usb_access_body">Choose Allow, switch on “%1$s”, then press Back to come back here.</string>
+    <string name="usb_no_access_page_title">This screen can’t give VenueOS access to USB drives</string>
+    <string name="usb_no_access_page_body">Android on this screen has no page to allow it, so the drive can’t be read here.</string>
+    <string name="usb_no_package_title">No VenueOS playlist on this drive</string>
+    <string name="usb_no_package_body">In VenueOS, open the playlist, choose Download to USB, and copy the download onto this drive.</string>
+    <string name="usb_waiting_key_title">Connect this screen to the internet once to enable USB playlists</string>
+    <string name="usb_waiting_key_body">This screen has to be paired and reach VenueOS one time before it can check a playlist from a drive.</string>
+    <string name="usb_other_org_title">This playlist belongs to a different organization</string>
+    <string name="usb_other_org_body">Download the playlist from the VenueOS account this screen is paired with.</string>
+    <string name="usb_unverified_title">Couldn’t verify the files on this drive</string>
+    <string name="usb_unverified_body">The playlist changed after it was downloaded — download it again and copy it onto the drive.</string>
+    <string name="usb_no_space_title">Not enough room on this screen</string>
+    <string name="usb_no_space_body">This playlist needs about %1$s of free space on the screen.</string>
+    <string name="usb_read_failed_title">Couldn’t read this drive</string>
+    <string name="usb_read_failed_body">The drive was removed or stopped answering — plug it back in and choose Look again.</string>
+
+    <!-- Buttons -->
+    <string name="usb_allow">Allow</string>
+    <string name="usb_not_now">Not now</string>
+    <string name="usb_look_again">Look again</string>
+    <string name="usb_network">Network settings</string>
+    <string name="usb_close">Close</string>
+    <string name="usb_ok">OK</string>
+</resources>

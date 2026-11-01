@@ -29,11 +29,18 @@ import java.util.concurrent.atomic.AtomicReference
  * panel is reachable through one exported bound service, exactly the way the
  * vendor's own player reaches it: `bindService("com.ifpdos.opensdk
  * .SERVICE_MANAGER" @ com.seewo.mcuservice)` → `getService("opensdk")` →
- * `getToken(ourPackage)` → `sendMessage(token, json)`. `CmdSetScreenStatus
- * (false)` switches the BACKLIGHT off while Android, this process, the
- * WebView and the native alert watch keep running; `(true)` lights it again.
- * That is a dark panel whose page is ALIVE — the thing the standby-alert hole
- * (`project_standby_alert_hole_2026_10_05`) needed.
+ * `getToken(ourPackage)` → `sendMessage(token, json)`. Sleep and wake are
+ * Goodview's CMS sequence (see [VendorBacklightPolicy]): read the power state,
+ * then `CmdPowerOff(-1)` to sleep / the power key `CmdSendKeyEvent(5000)` to
+ * wake — the OS's own standby, which this process, the WebView and the native
+ * alert watch stay alive through. (Through 1.1.56 this sent the MCU-only
+ * `CmdSetScreenStatus`, which latched GUQs into a blinking-LED state.)
+ *
+ * 1.1.58 — a SECOND BACKEND for the Goodview RK3576 HDMI box (EP6N class):
+ * where `com.sdkapi.sdkapiservice` is installed and the GUQ's MCU service is
+ * not, the same engine drives that box's own `setDeviceShallowOnoff` /
+ * `getDeviceShallowOnoff` ([RkSdkApiPorts], rules in [RkSdkApiPolicy]). Same
+ * id, same kill switch, same emergency path; `sleep.vb.b` names the backend.
  *
  * ─────────────────────────────────────────────────────────────────────
  * WHAT THIS FILE DOES AND DOES NOT DO
@@ -80,6 +87,7 @@ object VendorBacklightProvider : DisplayControlProvider {
     @Volatile private var engine: VendorBacklightEngine? = null
     @Volatile private var ports: AndroidPorts? = null
     @Volatile private var lastBlankOutcome: String? = null
+    @Volatile private var backend: String = RkSdkApiPolicy.SEEWO_BACKEND
 
     /** One worker. A call that outlives its budget is abandoned here and the worker replaced ([replaceWorker]). */
     private var worker: ScheduledThreadPoolExecutor = newWorker()
@@ -101,7 +109,13 @@ object VendorBacklightProvider : DisplayControlProvider {
         synchronized(lock) {
             if (engine != null) return
             app = a
-            val p = AndroidPorts(a)
+            // Which vendor service this box ships (RkSdkApiPolicy.backendFor):
+            // the GUQ's MCU service, or the RK3576 box's control service.
+            backend = RkSdkApiPolicy.backendFor(
+                seewoInstalled = packageInstalled(a, VendorBacklightPolicy.SERVICE_PACKAGE),
+                sdkApiInstalled = packageInstalled(a, RkSdkApiPolicy.SERVICE_PACKAGE),
+            )
+            val p = if (backend == RkSdkApiPolicy.BACKEND) RkSdkApiPorts(a) else AndroidPorts(a)
             ports = p
             engine = VendorBacklightEngine(p).also { e ->
                 e.restoreDark(readDark(a))
@@ -335,7 +349,7 @@ object VendorBacklightProvider : DisplayControlProvider {
     fun reportJson(): JSONObject? {
         val e = engine ?: return null
         if (e.detection == Detection.ABSENT) return null
-        val out = JSONObject().put("d", e.detection.wire).put("off", e.dark)
+        val out = JSONObject().put("d", e.detection.wire).put("off", e.dark).put("b", backend)
         e.faulted?.let { out.put("f", it.take(40)) }
         return out
     }
@@ -343,6 +357,16 @@ object VendorBacklightProvider : DisplayControlProvider {
     // ─── prefs ───────────────────────────────────────────────────────
 
     private fun prefs(a: Context) = a.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun packageInstalled(a: Context, pkg: String): Boolean = try {
+        a.packageManager.getPackageInfo(pkg, 0)
+        true
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "package lookup failed: ${t.message}")
+        false
+    }
 
     private fun seenBefore(a: Context): Boolean = runCatching { prefs(a).getBoolean(KEY_SEEN, false) }.getOrDefault(false)
 
@@ -358,7 +382,7 @@ object VendorBacklightProvider : DisplayControlProvider {
 
     // ─── the Android ports ───────────────────────────────────────────
 
-    private class AndroidPorts(private val a: Context) : VendorBacklightEngine.Ports {
+    private open class AndroidPorts(protected val a: Context) : VendorBacklightEngine.Ports {
 
         private val managerRef = AtomicReference<IBinder?>(null)
         private val sdkRef = AtomicReference<IBinder?>(null)
@@ -385,19 +409,11 @@ object VendorBacklightProvider : DisplayControlProvider {
             token = null
         }
 
-        fun connected(): Boolean = sdkRef.get()?.isBinderAlive == true && token != null
+        open fun connected(): Boolean = sdkRef.get()?.isBinderAlive == true && token != null
 
         override fun nowMs(): Long = SystemClock.elapsedRealtime()
 
-        override fun servicePackageInstalled(): Boolean = try {
-            a.packageManager.getPackageInfo(VendorBacklightPolicy.SERVICE_PACKAGE, 0)
-            true
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
-        } catch (t: Throwable) {
-            PlayerLogger.w(TAG, "package lookup failed: ${t.message}")
-            false
-        }
+        override fun servicePackageInstalled(): Boolean = packageInstalled(a, VendorBacklightPolicy.SERVICE_PACKAGE)
 
         override fun connect(budgetMs: Long): VendorBacklightEngine.Connect {
             if (connected()) return VendorBacklightEngine.Connect.Ready
@@ -458,6 +474,11 @@ object VendorBacklightProvider : DisplayControlProvider {
 
         override fun submit(work: () -> Unit): Boolean = runCatching {
             synchronized(lock) { worker.execute { work() } }
+            true
+        }.getOrDefault(false)
+
+        override fun schedule(delayMs: Long, work: () -> Unit): Boolean = runCatching {
+            synchronized(lock) { worker.schedule({ work() }, delayMs, TimeUnit.MILLISECONDS) }
             true
         }.getOrDefault(false)
 
@@ -527,6 +548,102 @@ object VendorBacklightProvider : DisplayControlProvider {
                 sdk.transact(VendorBacklightPolicy.TX_SEND_MESSAGE, data, reply, 0)
                 reply.readException()
                 return reply.readString()
+            } finally {
+                reply.recycle()
+                data.recycle()
+            }
+        }
+    }
+
+    // ─── the RK3576 box's control service (RkSdkApiPolicy) ───────────
+
+    /**
+     * The same engine over `com.sdkapi.sdkapiservice`: the engine's three
+     * requests map onto `getDeviceShallowOnoff` / `setDeviceShallowOnoff`
+     * ([RkSdkApiPolicy.opFor]) and the replies are re-shaped into the SDK
+     * replies the engine already reads. A `SecurityException` (the service
+     * will not serve an unprivileged caller) is a settled refusal, so the
+     * probe reads UNSUPPORTED and the chain falls through.
+     */
+    private class RkSdkApiPorts(a: Context) : AndroidPorts(a) {
+
+        private val binderRef = AtomicReference<IBinder?>(null)
+        @Volatile private var rkLatch: CountDownLatch? = null
+        @Volatile private var rkBound = false
+
+        private val rkConnection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                binderRef.set(service)
+                rkLatch?.countDown()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                binderRef.set(null)
+            }
+        }
+
+        override fun connected(): Boolean = binderRef.get()?.isBinderAlive == true
+
+        override fun idempotentCommands(): Boolean = true
+
+        override fun servicePackageInstalled(): Boolean = packageInstalled(a, RkSdkApiPolicy.SERVICE_PACKAGE)
+
+        override fun connect(budgetMs: Long): VendorBacklightEngine.Connect {
+            if (connected()) return VendorBacklightEngine.Connect.Ready
+            return try {
+                val latch = CountDownLatch(1)
+                rkLatch = latch
+                if (!rkBound) {
+                    val intent = Intent(RkSdkApiPolicy.SERVICE_ACTION).setPackage(RkSdkApiPolicy.SERVICE_PACKAGE)
+                    rkBound = a.bindService(intent, rkConnection, Context.BIND_AUTO_CREATE)
+                    if (!rkBound) return VendorBacklightEngine.Connect.Failed("bindService refused")
+                }
+                if (!latch.await(budgetMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS) && !connected()) {
+                    return VendorBacklightEngine.Connect.TimedOut
+                }
+                if (connected()) VendorBacklightEngine.Connect.Ready else VendorBacklightEngine.Connect.Failed("no binder")
+            } catch (t: Throwable) {
+                VendorBacklightEngine.Connect.Failed(t.javaClass.simpleName)
+            }
+        }
+
+        override fun disconnect() {
+            binderRef.set(null)
+            if (rkBound) {
+                runCatching { a.unbindService(rkConnection) }
+                rkBound = false
+            }
+        }
+
+        override fun send(requestJson: String, budgetMs: Long): VendorBacklightEngine.Call {
+            val binder = binderRef.get() ?: return VendorBacklightEngine.Call.Failed("not connected")
+            if (budgetMs <= 0L) return VendorBacklightEngine.Call.TimedOut
+            val op = RkSdkApiPolicy.opFor(requestJson)
+                ?: return VendorBacklightEngine.Call.Failed("no RK3576 equivalent for this request")
+            val data = Parcel.obtain()
+            val reply = Parcel.obtain()
+            return try {
+                data.writeInterfaceToken(RkSdkApiPolicy.DESCRIPTOR)
+                when (op) {
+                    RkSdkApiPolicy.Op.Read -> {
+                        binder.transact(RkSdkApiPolicy.TX_GET_SHALLOW_ONOFF, data, reply, 0)
+                        reply.readException()
+                        VendorBacklightEngine.Call.Reply(RkSdkApiPolicy.readReply(reply.readInt() != 0))
+                    }
+                    is RkSdkApiPolicy.Op.Set -> {
+                        data.writeInt(if (op.on) 1 else 0)
+                        binder.transact(RkSdkApiPolicy.TX_SET_SHALLOW_ONOFF, data, reply, 0)
+                        reply.readException()
+                        VendorBacklightEngine.Call.Reply(RkSdkApiPolicy.setReply())
+                    }
+                }
+            } catch (d: DeadObjectException) {
+                VendorBacklightEngine.Call.Failed("DeadObjectException", binderDead = true)
+            } catch (s: SecurityException) {
+                PlayerLogger.w(TAG, "the RK3576 control service refused this app: ${s.message}")
+                VendorBacklightEngine.Call.Reply(RkSdkApiPolicy.refusedReply())
+            } catch (t: Throwable) {
+                VendorBacklightEngine.Call.Failed(t.javaClass.simpleName)
             } finally {
                 reply.recycle()
                 data.recycle()

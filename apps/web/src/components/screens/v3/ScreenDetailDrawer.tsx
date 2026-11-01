@@ -54,6 +54,7 @@ import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
+import { ScreenUsbSection } from '../ScreenUsbSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -783,6 +784,8 @@ export function ScreenDetailDrawer({
                     {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
                     <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
+                    {/* 2026-10-26 — what this screen last did with a USB drive (its own reports). */}
+                    <ScreenUsbSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
                     {/* Device — the facts the screen reported about itself
                         (2026-09-24, Greg: "give info about the screen itself right?

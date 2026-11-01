@@ -201,6 +201,13 @@ class WebAppBridge(
      */
     private val onOpenNetworkScreen: () -> Unit = {},
     /**
+     * 2026-10-26 — the Back menu's "Import from USB": read the USB drive now
+     * and show what happens on the USB card (usb.UsbImportCard). Copies
+     * nothing by itself — every package is still verified — and the card
+     * never opens over an alert.
+     */
+    private val onImportFromUsb: () -> Unit = {},
+    /**
      * 2026-09-02 (P0-2) — FACT 1: the web bundle's client JS is running.
      *
      * Fired from the same mount effect that stamps `data-edu-booted="1"`.
@@ -528,6 +535,25 @@ class WebAppBridge(
             onOpenNetworkScreen()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "openNetworkScreen failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * 2026-10-26 (M43 on site: "inserted a USB … nothing happens") — the Back
+     * menu's "Import from USB". Fire-and-forget like [openNetworkScreen]: the
+     * screen reads the drive again (forgetting what it already read) and the
+     * USB card says what it found — the fix on its focused button. Grants
+     * nothing and skips no check: a package is still verified file by file.
+     * THREE-FILE ATOMIC CHANGE: the channel's METHODS + dispatch arm, the
+     * web's NATIVE_VOID_METHODS (excluded from KNOWN_METHODS until the fleet
+     * floor includes this APK), and the drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun importFromUsb() {
+        try {
+            onImportFromUsb()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "importFromUsb failed: ${ex.message}")
         }
     }
 
