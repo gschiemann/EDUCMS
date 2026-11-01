@@ -34,26 +34,13 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [master, main]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    # No paths-ignore here (2026-11-01, Foundry Standard Phase 1): the four
+    # REQUIRED checks live in this workflow, and a docs-only PR skipped by a
+    # trigger-level path filter never reports them, so it could never merge
+    # (seen on PRs #196 and #198). Instead the `changes` job classifies the PR
+    # and the build jobs SKIP on docs-only changes: a skipped job satisfies a
+    # required check, a missing one blocks forever. `push` keeps its
+    # paths-ignore — master needs no run for a docs-only commit.
 
 permissions:
   contents: read
@@ -64,6 +51,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed (docs-only PRs skip the build jobs)
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(git diff --name-only "$BASE_SHA...HEAD")
+          else
+            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          fi
+          # The same set as the push trigger's paths-ignore above.
+          if printf '%s\n' "$files" | grep -vE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' | grep -q .; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; echo "code changed: the build jobs run"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"; echo "docs-only: the build jobs are skipped and report as such"
+          fi
+
   apk-version-tag-sync:
     # The #1 recurring OTA failure: a developer bumps versionCode /
     # versionName in build.gradle.kts but forgets to push the matching
@@ -74,6 +86,8 @@ jobs:
     # failure into a red check that prints the exact `git tag` command.
     name: APK version is tagged
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -126,6 +140,8 @@ jobs:
   lockfile-check:
     name: pnpm lockfile drift
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -147,6 +163,8 @@ jobs:
     # author's machine. Database-free; see the script header.
     name: schema change ships a migration
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -169,6 +187,8 @@ jobs:
   api-build:
     name: API + workspace packages build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -207,6 +227,8 @@ jobs:
   web-jest:
     name: Web Jest (unit)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -259,6 +281,8 @@ jobs:
   web-build:
     name: Web typecheck + build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -328,6 +352,8 @@ jobs:
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -413,11 +439,76 @@ jobs:
     # has no network), and runs as a non-root user. Nothing is pushed.
     name: Renderer image build + render smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build the renderer image Railway will build
         run: docker build -f apps/renderer/Dockerfile -t venueos-renderer:ci .
+
+      # ── Image security: SBOM + vulnerability scan — REPORT-ONLY (2026-11-01) ─────
+      #
+      # The API image has both (ci.yml, "Container Security Scanning": a CycloneDX SBOM,
+      # then a BLOCKING Trivy scan since SEC-005). The renderer image had neither, and it
+      # ships a full Chromium plus font packages from Alpine — a large, fast-moving CVE
+      # surface to leave unwatched.
+      #
+      # The three steps below mirror the API job's: the same trivy-action and
+      # upload-artifact commit SHAs, the same DB mirrors, the same ignore-unfixed /
+      # os,library / CRITICAL,HIGH / .trivyignore.yaml, SBOM first. ONE deliberate
+      # difference: they cannot fail this job — `exit-code: '0'` on both Trivy steps, and
+      # `continue-on-error` on all three, so a DB-download or action-install hiccup can
+      # never red the smoke test below, which is what this job exists for. The API scan
+      # blocks; this one reports, so the first runs measure the baseline before anything
+      # depends on it.
+      #
+      # ⚠️ A red step here means the step could not run — read its log. It is not a verdict
+      # on the image; findings, if any, are the table printed by the Trivy scan step.
+      #
+      # TO PROMOTE IT TO A GATE (what SEC-005 did for the API): set `exit-code: '1'` on the
+      # scan step and delete its `continue-on-error`, after triaging whatever the baseline
+      # shows — fix it, or add a dated, justified entry to .trivyignore.yaml (its header
+      # has the rules).
+      - name: Software bill of materials (CycloneDX)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: 'venueos-renderer:ci'
+          format: 'cyclonedx'
+          output: 'sbom-renderer.cdx.json'
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
+      - name: Keep the SBOM
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-renderer-${{ github.sha }}
+          path: sbom-renderer.cdx.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Trivy vulnerability scan (report-only)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'venueos-renderer:ci'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          trivyignores: '.trivyignore.yaml'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
       - name: Boot, health, render, non-root
         run: |
           docker run -d --name renderer-smoke -p 18081:8080 -e PORT=8080 --memory=2g venueos-renderer:ci
