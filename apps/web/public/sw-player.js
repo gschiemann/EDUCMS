@@ -579,7 +579,7 @@ async function shellNavigate(req) {
   // and refresh the pin from the network in the background. A missing pin
   // (nothing prepared) falls through to the normal network-first path.
   if (await takeShellSwap()) {
-    const pinned = await cache.match(docKey);
+    const pinned = await completeShellDocument(cache, docKey);
     if (pinned) {
       fetch(req).then((res) => { if (res && res.ok) return cache.put(docKey, res.clone()); }).catch(() => {});
       return pinned;
@@ -594,7 +594,12 @@ async function shellNavigate(req) {
     cache.put(docKey, res.clone()).catch(() => {});
     return res;
   } catch (e) {
-    const cached = await cache.match(docKey);
+    // Deploy skew (2026-10-27): serve the saved document ONLY when every
+    // chunk it names is saved too. A document whose chunks belong to a
+    // deployment the host no longer serves cannot boot — it is the
+    // "client JS never started" black screen — so it is never served; the
+    // self-healing page below waits for the network instead.
+    const cached = await completeShellDocument(cache, docKey);
     if (cached) return cached;
     const target = new URL(req.url).pathname || '/player';
     return new Response(
@@ -618,12 +623,35 @@ async function shellNavigate(req) {
   }
 }
 
+// The saved player document, but only when it can actually boot: every
+// /_next/static asset it names is in the shell cache (deploy skew,
+// 2026-10-27). Returns the cached Response, or null. Never throws.
+async function completeShellDocument(cache, docKey) {
+  try {
+    const doc = await cache.match(docKey);
+    if (!doc) return null;
+    const html = await doc.clone().text();
+    const urls = extractShellUrls(html);
+    for (const u of urls) {
+      const hit = await cache.match(new Request(u, { credentials: 'same-origin' }));
+      if (!hit) return null;
+    }
+    return doc;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Cache-first for immutable /_next/static assets + runtime capture of
 // anything the page loads that the HTML parse missed.
 async function shellFetch(req) {
   try {
     const cache = await caches.open(SHELL_CACHE);
-    const hit = await cache.match(req);
+    // ignoreSearch: /_next/static paths are content-hashed, so the query adds
+    // nothing — and with Vercel Skew Protection on every chunk URL carries
+    // `?dpl=<id>`, which would otherwise miss every entry the route-HTML
+    // parse saved by pathname (and so the whole offline shell).
+    const hit = await cache.match(req, { ignoreSearch: true });
     if (hit) {
       // Renew the runtime stamp so the prune keeps this entry (P0-3): a
       // lazily-imported chunk lives ONLY in this tier and is invisible to
@@ -631,7 +659,18 @@ async function shellFetch(req) {
       touchShellEntry(req.url);
       return hit;
     }
-    const res = await fetch(req);
+    let res = await fetch(req);
+    // Deploy skew (2026-10-27): the host answers a missing /_next/static file
+    // with a 404 that carries `max-age=31536000, immutable`, so ONE miss during
+    // a promotion or rollback can be pinned by the HTTP cache and fail every
+    // later load of the same document. Ask once more past the HTTP cache
+    // before giving up; a real 404 costs one extra request, never a loop.
+    if (!res || !res.ok) {
+      try {
+        const again = await fetch(new Request(req.url, { cache: 'reload', credentials: 'same-origin' }));
+        if (again && again.ok) res = again;
+      } catch (e2) { /* keep the first answer */ }
+    }
     if (res && res.ok) {
       cache.put(req, res.clone()).catch(() => {});
       touchShellEntry(req.url);
