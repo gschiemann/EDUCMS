@@ -322,6 +322,41 @@ describe('bulk confirm + results sheet', () => {
     expect(bulkMutate.mock.calls[1][0]).toMatchObject({ action: 'power', state: 'off', screenIds: ['hen1'] });
   });
 
+  // 2026-10-31 — the owner's fleet push rules (apps/api/src/player-ota/fleet-push-policy.ts)
+  // refuse a Send update by code; the sheet words it in the operator's language.
+  const refusal = (code: string, status: number) =>
+    Object.assign(new Error('English words from the server'), { code, status });
+
+  it('a fleet push rule refusal is worded in the operator’s language — and the sheet never sends the override', async () => {
+    bulkMutate.mockImplementation(async () => { throw refusal('BULK_UPDATE_MIXED_HARDWARE', 422); });
+    renderPage();
+    fireEvent.click(rtl.getByTestId('screens-select-all'));
+    fireEvent.click(rtl.getByTestId('screens-bulk-update'));
+    const sheet = await rtl.findByTestId('screens-bulk-sheet');
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(
+      'Could not check the screens: these screens are more than one kind of hardware — send the update to one kind at a time',
+    );
+    expect(within(sheet).queryByText(/English words from the server/)).not.toBeInTheDocument();
+    expect(bulkMutate.mock.calls[0][0]).toMatchObject({ action: 'update', dryRun: true });
+    expect(bulkMutate.mock.calls[0][0]).not.toHaveProperty('overrideMassPushRules');
+  });
+
+  it('…and the same when Send itself is refused (off-hours)', async () => {
+    bulkMutate.mockImplementation(async (req: Bulk) => {
+      if (!req.dryRun) throw refusal('BULK_UPDATE_OUTSIDE_OFF_HOURS', 409);
+      return answer(req);
+    });
+    renderPage();
+    fireEvent.click(rtl.getByTestId('screens-select-all'));
+    fireEvent.click(rtl.getByTestId('screens-bulk-update'));
+    const sheet = await rtl.findByTestId('screens-bulk-sheet');
+    await within(sheet).findByText(/will get it/);
+    await act(async () => { fireEvent.click(within(sheet).getByTestId('screens-bulk-confirm')); });
+    expect(within(sheet).getByRole('alert')).toHaveTextContent(
+      "The request did not go through: an update to more than one screen goes out only between 10 PM and 6 AM in each screen's own time zone — send it to one screen at a time, or wait until then. Nothing was sent.",
+    );
+  });
+
   it('automatic updates go through the same sheet', async () => {
     bulkMutate.mockImplementation(async (req: Bulk) => answer(req));
     renderPage();
