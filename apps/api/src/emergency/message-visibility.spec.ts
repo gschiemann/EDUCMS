@@ -21,7 +21,7 @@ describe('deviceMessagesWhere', () => {
     expect(where.clearedAt).toBeNull();
     expect(where.OR).toEqual([{ expiresAt: null }, { expiresAt: { gt: now } }]);
     expect(where.AND).toEqual([
-      { OR: [{ scopeType: 'tenant' }, { scopeType: 'device', scopeId: 'scr-1' }] },
+      { OR: [{ scopeType: 'tenant' }, { scopeType: 'device', scopeId: 'scr-1' }, { scopeType: 'devices', screenIds: { has: 'scr-1' } }] },
     ]);
   });
 
@@ -29,7 +29,7 @@ describe('deviceMessagesWhere', () => {
     const where = deviceMessagesWhere({ tenantId: 't', screenId: 's', groupId: 'g1' }, now);
     expect(where.AND[0].OR).toContainEqual({ scopeType: 'group', scopeId: 'g1' });
     const noGroup = deviceMessagesWhere({ tenantId: 't', screenId: 's', groupId: undefined }, now);
-    expect(noGroup.AND[0].OR.map((c) => c.scopeType)).toEqual(['tenant', 'device']);
+    expect(noGroup.AND[0].OR.map((c) => c.scopeType)).toEqual(['tenant', 'device', 'devices']);
   });
 });
 

@@ -131,6 +131,8 @@ import {
   clampBrightness,
   clampVolume,
   derivePanelPowerState,
+  nativeBlankMechanism,
+  nativeHardOff,
   panelPowerOffer,
   type ControlAxis,
 } from './display-capabilities';
@@ -305,6 +307,13 @@ export interface DisplayControlScreen {
   renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
   renderStale?: boolean | null;
   lastRenderedAt?: string | null;
+  /**
+   * The native heartbeat's report (2026-10-31). `sleep.vb.off` says the
+   * vendor backlight is off by our hand — on a GUQ the page keeps painting
+   * behind it, so render proof alone offered "Turn panel off" to a dark panel.
+   */
+  nativeRuntimeReport?: unknown;
+  nativeRuntimeReportAt?: string | null;
 }
 
 export function ScreenDisplayControls({
@@ -389,7 +398,17 @@ export function ScreenDisplayControls({
         : null,
     }),
   );
-  const powerOffer = panelPowerOffer(caps.power, panelState);
+  // The last hard power verb THIS operator got accepted here. A POWER_OFF
+  // keeps "Turn panel on" on offer until a POWER_ON follows, whatever the
+  // render proof says (a vendor-backlight panel keeps painting behind it).
+  const [lastPowerSent, setLastPowerSent] = useState<'off' | 'on' | null>(null);
+  const powerOffer = panelPowerOffer(caps.power, panelState, {
+    hardOff:
+      lastPowerSent === 'off' ||
+      (lastPowerSent !== 'on' &&
+        nativeHardOff(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, Date.now())),
+    mechanism: nativeBlankMechanism(screen?.nativeRuntimeReport),
+  });
 
   const send = async (
     action: DisplayActionType,
@@ -445,6 +464,8 @@ export function ScreenDisplayControls({
         });
         return;
       }
+      if (action === 'POWER_OFF') setLastPowerSent('off');
+      if (action === 'POWER_ON') setLastPowerSent('on');
       setStatus({ ok: true, msg: opts.okMsg });
     } catch (e) {
       // THE TIMEOUT IS NOT A FAILURE — it is an UNKNOWN, and those are not

@@ -228,6 +228,8 @@ export const BroadcastInputSchema = z
     scopeId: Id,
     text: BoundedText(2000).min(1),
     severity: BroadcastSeverity.default('WARN'),
+    /** A hand-picked set of screens; when present it wins over scopeType/scopeId. */
+    screenIds: z.array(Id).min(1).max(500).optional(),
     durationMs: z.number().int().positive().max(24 * 60 * 60 * 1000).optional(),
     expiresAt: EpochSecondsOrIso.optional(),
   })
@@ -242,6 +244,8 @@ export const MediaAlertInputSchema = z
     audioUrl: UrlString.optional(),
     textBlob: BoundedText(5000).min(1),
     severity: BroadcastSeverity.default('CRITICAL'),
+    /** A hand-picked set of screens; when present it wins over scopeType/scopeId. */
+    screenIds: z.array(Id).min(1).max(500).optional(),
     expiresAt: EpochSecondsOrIso.optional(),
   })
   .strict();

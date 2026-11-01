@@ -62,6 +62,13 @@ on:
       - 'scratch/**'
       - 'LICENSE'
   workflow_dispatch:
+  # Nightly synthetic run (Foundry Standard Art. 20 / 44, Phase 1, 2026-10-31):
+  # the alert path is exercised every night even when nothing was pushed, so a
+  # drift in the fixtures, the player bundle or a dependency shows up as a red
+  # run (and an ops issue via scheduled-failure-issue.yml) instead of staying
+  # green by silence. Off-peak UTC, offset from the other nightly jobs.
+  schedule:
+    - cron: '43 8 * * *'
 
 permissions:
   contents: read

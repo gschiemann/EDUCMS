@@ -31,7 +31,7 @@
  */
 import { nativeReportsAsleep } from '../../screens/native-runtime';
 import { desiredOnAt, type OnWindow } from '../customer-alerts/schedule-windows';
-import { ALERT_RULES, INSTALLING_OTA_STATES, type ScreenFacts } from '../customer-alerts/customer-alert-policy';
+import { ALERT_RULES, maintenanceReason, repeatsDailyDark, type ScreenFacts } from '../customer-alerts/customer-alert-policy';
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -52,7 +52,8 @@ export type RestingReason =
   | 'standby'
   | 'display-schedule-off'
   | 'update-window'
-  | 'maintenance';
+  | 'maintenance'
+  | 'daily-pattern';
 
 export type DormantReason = 'not-seen-30-days' | 'never-connected' | 'test-screen';
 
@@ -122,11 +123,12 @@ export function restingReason(f: ScreenFacts, nowMs: number): RestingReason | nu
     return 'update-window';
   }
 
-  const recent = (d: Date | null) =>
-    !!d && nowMs - d.getTime() >= -MIN && nowMs - d.getTime() < ATTENTION_RULES.MAINTENANCE_GRACE_MS;
-  if (recent(f.lastMaintenanceAt)) return 'maintenance';
-  if (recent(f.forceApkUpdatePendingAt) && !f.forceApkUpdateHold) return 'maintenance';
-  if (recent(f.lastOtaAt) && INSTALLING_OTA_STATES.has(String(f.lastOtaState ?? '').toLowerCase())) return 'maintenance';
+  // The SAME rules the emails use (customer-alert-policy.ts), anchored on the
+  // moment this screen went quiet, so the card and the email never disagree.
+  const dropMs = f.lastPingAt ? f.lastPingAt.getTime() : nowMs;
+  if (repeatsDailyDark(f.offlineHistory, dropMs, nowMs)) return 'daily-pattern';
+  const m = maintenanceReason(f, 'OFFLINE', dropMs, nowMs);
+  if (m) return m;
   return null;
 }
 
