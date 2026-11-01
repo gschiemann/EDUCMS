@@ -67,6 +67,13 @@ object WifiScanPolicy {
     /** Both location permissions, asked together (Android 12+ requires COARSE beside FINE). */
     fun permissions(): List<String> = listOf(PERMISSION_FINE, PERMISSION_COARSE)
 
+    /**
+     * Ask for location at first launch only (2026-10-26): once it is asked, or
+     * granted, a join never raises Android's dialog. A refusal is not asked again.
+     */
+    fun shouldAskAtLaunch(granted: Set<String>, askedBefore: Boolean): Boolean =
+        !askedBefore && PERMISSION_FINE !in granted
+
     fun hasPermission(sdk: Int, granted: Set<String>): Boolean =
         if (sdk >= FINE_ONLY_SDK) PERMISSION_FINE in granted
         else PERMISSION_FINE in granted || PERMISSION_COARSE in granted
