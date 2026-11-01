@@ -191,7 +191,9 @@ describe('BYPASS 4 — managing a customer\'s people (users.controller + managea
 describe('BYPASS 5 — the audit of what was closed, by source (so a revert cannot be silent)', () => {
   const read = (p: string) => require('fs').readFileSync(require.resolve(p), 'utf8');
   it.each([
-    ['../emergency/emergency.controller.ts', 3],
+    // 4 since 545ecacf7 (PR #191, broadcast to several chosen screens): a SUPER_ADMIN's
+    // sibling screens in OTHER tenants each need support reach — one more guard, not one fewer.
+    ['../emergency/emergency.controller.ts', 4],
     ['../emergency/screen-emergency.controller.ts', 1],
     ['../screens/screens.controller.ts', 2],
     ['../screens/gpio.controller.ts', 1],
