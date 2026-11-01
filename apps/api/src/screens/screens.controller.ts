@@ -8,6 +8,7 @@ import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaits
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
+import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
@@ -4893,9 +4894,24 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post('force-update')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async forceUpdateAll(@Request() req: any) {
+  async forceUpdateAll(@Request() req: any, @Body() body?: { overrideMassPushRules?: unknown }) {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    // 2026-10-31 — this is the purest mass push there is: ONE write marks every
+    // screen of the location. The owner's fleet push rules (update-push-rules.ts
+    // → player-ota/fleet-push-policy.ts) run over exactly the screens it marks:
+    // one hardware class, and 22:00–06:00 in every screen's own time zone. A
+    // refusal marks, publishes and audits nothing; the explicit
+    // `overrideMassPushRules: true` (never sent by the dashboard) sets both
+    // aside and is recorded on the audit row below.
+    const override = updatePushOverride(body);
+    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override });
+    if (overridden.length) {
+      console.warn(
+        `[force-update] tenant=${tenantId} every screen, with the mass-push rules OVERRIDDEN ` +
+          `(${overridden.join(', ')}) by=${req.user.userId || req.user.id || '-'}`,
+      );
+    }
     // Mark every screen in the tenant as force-pending so the next
     // /update-check from each one gets the latest APK (gated 30 min).
     // Safe even when tenant.autoUpdatePlayerEnabled is false — the
@@ -4933,7 +4949,8 @@ export class ScreensController {
         targetId: tenantId,
         tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ scope: 'tenant' }),
+        // The owner's explicit override, and the rules it set aside (none = not needed).
+        details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
       },
     }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'tenant' };

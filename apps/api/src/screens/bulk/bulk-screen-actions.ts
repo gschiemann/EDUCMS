@@ -130,10 +130,11 @@ export function bulkHardwareRefusal(v: HardwareClassVerdict): BulkRuleRefusal {
   return {
     status: 422,
     code: 'BULK_UPDATE_HARDWARE_UNKNOWN',
-    message:
-      `${listScreenNames(v.unknown)} ${v.unknown.length === 1 ? 'has' : 'have'} no known hardware model, so this update ` +
-      'cannot be shown to go to one kind of hardware. Send it to one screen at a time.',
-    extra: { classes: v.classes, unknownScreens: v.unknown },
+    message: v.incomplete
+      ? 'This location has too many screens to show they are one kind of hardware. Select the screens to update instead.'
+      : `${listScreenNames(v.unknown)} ${v.unknown.length === 1 ? 'has' : 'have'} no known hardware model, so this update ` +
+        'cannot be shown to go to one kind of hardware. Send it to one screen at a time.',
+    extra: { classes: v.classes, unknownScreens: v.unknown, incomplete: v.incomplete },
   };
 }
 
