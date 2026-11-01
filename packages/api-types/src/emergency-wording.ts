@@ -103,3 +103,51 @@ export function standardEmergencyText(kind: EmergencyWordingKind, locale: Emerge
   const w = standardEmergencyWording(kind, locale);
   return `${w.headline}\n\n${w.lines.join('\n')}`;
 }
+
+/**
+ * THE SYSTEM BOARD — the words and the colour of the manifest's bulletproof
+ * `DEFAULT_EMERGENCY` board, as ONE rule (2026-10-31, "first frame is the
+ * final board").
+ *
+ * Three readers must agree byte-for-byte, or a screen visibly changes boards
+ * after the alert is already up:
+ *   - the manifest's emergency branch, which builds the board a screen with no
+ *     content of its own plays (apps/api emergency-boards.ts);
+ *   - `emergency-assets`, which pre-stages that same board on the player so the
+ *     signed push can put it on the glass before the committed manifest;
+ *   - the player's own typed protective surface, which an old staging payload
+ *     or a push with operator text still falls back to — it shows the same
+ *     words on the same colour as the board the manifest will bring.
+ *
+ * Display-only: nothing here is transmitted or keyed on.
+ */
+export const EMERGENCY_DRILL_MARK = 'DRILL — THIS IS A DRILL';
+
+/** The headline word for a type: operators look for "FIRE" and schools drill EVACUATE, so the wall says both. */
+export function systemEmergencyTypeLabel(type: string): string {
+  return type === 'EVACUATE' ? 'FIRE — EVACUATE' : type;
+}
+
+export function systemEmergencyBoardText(a: {
+  type: string;
+  isDrill: boolean;
+  textBlob?: string | null;
+  scopeNote?: string | null;
+}): string {
+  const label = systemEmergencyTypeLabel(a.type);
+  const drillMark = a.isDrill ? `${EMERGENCY_DRILL_MARK}\n\n` : '';
+  if (a.textBlob) return `${drillMark}${a.textBlob}`;
+  if (a.scopeNote) return `${drillMark}${label} — ${a.scopeNote}\n\nFollow standard procedures.`;
+  if (a.isDrill) return `${EMERGENCY_DRILL_MARK}\n\n${label} DRILL\n\nFollow standard procedures. This is not a real emergency.`;
+  const kind = emergencyWordingKind(a.type);
+  return kind
+    ? standardEmergencyText(kind)
+    : `EMERGENCY NOTIFICATION\n\n${label} PROTOCOL ACTIVE\n\nPlease follow standard procedures`;
+}
+
+/** A drill's board is indigo, never the red of a live alert; a lesser severity is amber. */
+export function systemEmergencyBoardColor(severity: string | null | undefined, isDrill: boolean): string {
+  if (isDrill) return '#3730a3';
+  const s = String(severity ?? '').toUpperCase();
+  return s === 'CRITICAL' || s === 'HIGH' ? '#dc2626' : '#d97706';
+}

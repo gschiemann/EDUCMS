@@ -251,6 +251,8 @@ describe('staged boards are the manifest emergency branch, byte for byte', () =>
     expect(s.boardFor.MEDICAL.live).toEqual({
       playlistId: LAND,
       perScreen: false,
+      // 2026-10-31 — the key of what the manifest WILL play: the board itself, since it has items.
+      boardKey: LAND,
     });
     expect(s.boards[LAND]).toEqual(m.playlists[0]);
     // Items come out ordered by sequence, exactly like the manifest.
@@ -335,12 +337,17 @@ describe('set hash and tenant isolation', () => {
     expect(h.client.playlist.findMany.mock.calls[0][0].where.id.in).toContain(
       FOREIGN,
     );
-    expect(Object.keys(s.boards).sort()).toEqual([LAND, PORT]);
+    // Custom boards: only this tenant's two. The `system:` keys are the
+    // synthesized system boards (2026-10-31), built from no playlist row.
+    expect(Object.keys(s.boards).filter((k) => !k.startsWith('system:') && !k.startsWith('asset:')).sort()).toEqual([LAND, PORT]);
     expect(JSON.stringify(s.boards)).not.toContain(OTHER_TENANT);
     expect(s.boardFor.LOCKDOWN.live).toEqual({
       playlistId: FOREIGN,
       perScreen: true,
+      // The foreign row was never staged, so the manifest will fall through to the system board.
+      boardKey: 'system:LOCKDOWN:live',
     });
+    expect(s.boards['system:LOCKDOWN:live'].id).toBe('DEFAULT_EMERGENCY');
     expect(s.tenantId).toBe(TENANT);
   });
 
@@ -355,7 +362,15 @@ describe('set hash and tenant isolation', () => {
         }),
       }),
     );
-    expect(s.boards).toEqual({});
+    // No CUSTOM board of any tenant; what IS staged is this screen's system
+    // board per type × live/drill (2026-10-31), so even a tenant with nothing
+    // configured opens on the final board at the push.
+    expect(Object.keys(s.boards).filter((k) => !k.startsWith('system:'))).toEqual([]);
+    expect(Object.keys(s.boards)).toHaveLength(12);
+    expect(JSON.stringify(s.boards)).not.toContain(OTHER_TENANT);
     expect(s.boardFor.MEDICAL.live.playlistId).toBeNull();
+    expect(s.boardFor.MEDICAL.live.boardKey).toBe('system:MEDICAL:live');
+    expect(s.boards['system:MEDICAL:live'].template.bgColor).toBe('#dc2626');
+    expect(s.boards['system:MEDICAL:drill'].template.bgColor).toBe('#3730a3');
   });
 });

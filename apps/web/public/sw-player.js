@@ -533,11 +533,18 @@ self.addEventListener('message', (event) => {
     // cache, and a playlist file must never be promoted into the
     // never-evict tier.
     const tier = tierFromMessage(msg);
+    // Progress frames are OPT-IN (`wantsProgress: true`). A page bundle that
+    // predates them (deploy skew: a new worker serving an older cached page)
+    // treats the first non-`started` message on the port as the answer, so an
+    // unrequested `{ progress: true }` frame would end its chunk drive with a
+    // bogus reply and the file would never cache.
+    const progressPort = msg.wantsProgress === true ? ((event.ports && event.ports[0]) || null) : null;
+    const report = progressPort ? makeProgressReporter(progressPort) : null;
     event.waitUntil(answerPort(event, async () => {
       if (!tier) return { ok: false, reason: 'bad-request' };
       const stageTier = await stageTierForMessage(msg, tier);
-      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, stageTier);
-      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, stageTier);
+      if (msg.type === 'PRECACHE_CHUNK') return stageChunk(msg, stageTier, report);
+      if (msg.type === 'PRECACHE_VERIFY') return verifyStaged(msg, stageTier, report);
       if (msg.type === 'PRECACHE_ASSEMBLE') return assembleStaged(msg, stageTier);
       // Hash a legacy cached entry on disk against the manifest digest.
       return adoptCached(msg, tier);
@@ -577,7 +584,7 @@ async function shellNavigate(req) {
   // and refresh the pin from the network in the background. A missing pin
   // (nothing prepared) falls through to the normal network-first path.
   if (await takeShellSwap()) {
-    const pinned = await cache.match(docKey);
+    const pinned = await completeShellDocument(cache, docKey);
     if (pinned) {
       fetch(req).then((res) => { if (res && res.ok) return cache.put(docKey, res.clone()); }).catch(() => {});
       return pinned;
@@ -592,7 +599,12 @@ async function shellNavigate(req) {
     cache.put(docKey, res.clone()).catch(() => {});
     return res;
   } catch (e) {
-    const cached = await cache.match(docKey);
+    // Deploy skew (2026-10-27): serve the saved document ONLY when every
+    // chunk it names is saved too. A document whose chunks belong to a
+    // deployment the host no longer serves cannot boot — it is the
+    // "client JS never started" black screen — so it is never served; the
+    // self-healing page below waits for the network instead.
+    const cached = await completeShellDocument(cache, docKey);
     if (cached) return cached;
     const target = new URL(req.url).pathname || '/player';
     return new Response(
@@ -616,12 +628,35 @@ async function shellNavigate(req) {
   }
 }
 
+// The saved player document, but only when it can actually boot: every
+// /_next/static asset it names is in the shell cache (deploy skew,
+// 2026-10-27). Returns the cached Response, or null. Never throws.
+async function completeShellDocument(cache, docKey) {
+  try {
+    const doc = await cache.match(docKey);
+    if (!doc) return null;
+    const html = await doc.clone().text();
+    const urls = extractShellUrls(html);
+    for (const u of urls) {
+      const hit = await cache.match(new Request(u, { credentials: 'same-origin' }));
+      if (!hit) return null;
+    }
+    return doc;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Cache-first for immutable /_next/static assets + runtime capture of
 // anything the page loads that the HTML parse missed.
 async function shellFetch(req) {
   try {
     const cache = await caches.open(SHELL_CACHE);
-    const hit = await cache.match(req);
+    // ignoreSearch: /_next/static paths are content-hashed, so the query adds
+    // nothing — and with Vercel Skew Protection on every chunk URL carries
+    // `?dpl=<id>`, which would otherwise miss every entry the route-HTML
+    // parse saved by pathname (and so the whole offline shell).
+    const hit = await cache.match(req, { ignoreSearch: true });
     if (hit) {
       // Renew the runtime stamp so the prune keeps this entry (P0-3): a
       // lazily-imported chunk lives ONLY in this tier and is invisible to
@@ -629,7 +664,18 @@ async function shellFetch(req) {
       touchShellEntry(req.url);
       return hit;
     }
-    const res = await fetch(req);
+    let res = await fetch(req);
+    // Deploy skew (2026-10-27): the host answers a missing /_next/static file
+    // with a 404 that carries `max-age=31536000, immutable`, so ONE miss during
+    // a promotion or rollback can be pinned by the HTTP cache and fail every
+    // later load of the same document. Ask once more past the HTTP cache
+    // before giving up; a real 404 costs one extra request, never a loop.
+    if (!res || !res.ok) {
+      try {
+        const again = await fetch(new Request(req.url, { cache: 'reload', credentials: 'same-origin' }));
+        if (again && again.ok) res = again;
+      } catch (e2) { /* keep the first answer */ }
+    }
     if (res && res.ok) {
       cache.put(req, res.clone()).catch(() => {});
       touchShellEntry(req.url);
@@ -1279,6 +1325,25 @@ async function cacheLookup(msg) {
 }
 
 /** Reply on the message's port; a thrown error becomes an honest `{ ok: false }`. */
+/**
+ * Mid-step progress for the page's download bar (2026-10-31). A chunk or a
+ * verify is one long message event whose only reply used to come at the very
+ * end, so the bar sat still for the whole step. This posts `{ progress: true }`
+ * frames on the SAME port ahead of the final reply (the page treats them as
+ * progress, never as the answer), at most one per 250 ms. Best effort: a gone
+ * page or a port that refuses is ignored, and it never touches the bytes.
+ */
+function makeProgressReporter(port) {
+  let last = 0;
+  return function report(phase, done, total, force) {
+    if (!port) return;
+    const now = Date.now();
+    if (!force && now - last < 250) return;
+    last = now;
+    try { port.postMessage({ progress: true, phase, done, total: total === undefined ? null : total }); } catch (_e) { /* page gone */ }
+  };
+}
+
 async function answerPort(event, work) {
   const port = (event.ports && event.ports[0]) || null;
   let reply;
@@ -1306,9 +1371,24 @@ async function answerPort(event, work) {
  * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
  * temp body can never be counted as staged.
  */
-async function storeStagedChunk(staging, url, start, res, contentType, tier) {
+async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes) {
   const tmpKey = new Request(`${stagePrefixFor(url, tier)}tmp-${start}`);
-  await staging.put(tmpKey, new Response(res.body, { status: 200, headers: { 'content-type': contentType } }));
+  let body = res.body;
+  if (onBytes && body && typeof body.getReader === 'function' && typeof ReadableStream === 'function') {
+    // Count bytes as they arrive so the page can show them mid-chunk.
+    const reader = body.getReader();
+    let seen = 0;
+    body = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) { controller.close(); return; }
+        if (value && value.length) { seen += value.length; try { onBytes(seen); } catch (_e) { /* noop */ } }
+        controller.enqueue(value);
+      },
+      cancel(reason) { try { return reader.cancel(reason); } catch (_e) { return undefined; } },
+    });
+  }
+  await staging.put(tmpKey, new Response(body, { status: 200, headers: { 'content-type': contentType } }));
   const tmp = await staging.match(tmpKey);
   const blob = tmp ? await tmp.blob() : null;
   const length = blob ? blob.size : 0;
@@ -1324,7 +1404,7 @@ async function storeStagedChunk(staging, url, start, res, contentType, tier) {
   return length;
 }
 
-async function stageChunk(msg, tier) {
+async function stageChunk(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
@@ -1422,7 +1502,8 @@ async function stageChunk(msg, tier) {
     }
     let stored;
     try {
-      stored = await storeStagedChunk(staging, url, offset, res, contentType, tier);
+      stored = await storeStagedChunk(staging, url, offset, res, contentType, tier,
+        report ? (n) => report('chunk', offset + n, total) : null);
     } catch (e) {
       return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
     }
@@ -1467,7 +1548,7 @@ function isSha256Hex(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
 }
 
-async function verifyStaged(msg, tier) {
+async function verifyStaged(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const expected = isSha256Hex(msg.sha256) ? msg.sha256.toLowerCase() : null;
@@ -1478,10 +1559,16 @@ async function verifyStaged(msg, tier) {
   if (!layout.ok) return { ok: false, reason: 'incomplete', nextOffset: layout.nextOffset, total };
   if (expected) {
     const hasher = new Sha256();
+    let hashed = 0;
+    if (report) report('verify', 0, layout.total, true);
     for (const c of layout.chunks) {
       const res = await staging.match(stageChunkKey(tier, url, c.start, c.length));
       if (!res || !res.body) return { ok: false, reason: 'incomplete', nextOffset: c.start, total };
-      await pumpStream(res.body, (bytes) => hasher.update(bytes));
+      await pumpStream(res.body, (bytes) => {
+        hasher.update(bytes);
+        hashed += bytes.length;
+        if (report) report('verify', hashed, layout.total);
+      });
     }
     if (hasher.digestHex() !== expected) {
       // Wrong bytes must never be promoted, and never be reused either.
