@@ -1,0 +1,243 @@
+# PR provenance — ATTRIBUTION, not authentication (Foundry Standard Articles 16, 17, 53).
+# Proves: every commit names a model + vendor in a Co-Authored-By trailer, or is a merge, a bot's, or the owner's,
+#   and the PR body has a filled-in Models line.
+# Cannot prove who wrote anything: a trailer or an author address can be typed by anyone, and agents commit under the
+#   owner's identity today, so an untrailered commit by the owner's address passes. Authentication of agent commits
+#   is the next step and needs signed commits per machine identity (docs/governance/IDENTITIES.md).
+name: PR Provenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited, reopened]
+  # NO `paths` / `paths-ignore`, on purpose. Almost every other workflow skips docs, and a required check that
+  # skips never reports, so a docs-only PR would sit "pending forever"
+  # (docs/governance/decisions/2026-10-31-required-checks-ruleset.md). This one must run on every PR.
+
+permissions:
+  contents: read
+  pull-requests: read   # to read the live PR body; nothing here writes anything
+
+concurrency:
+  group: pr-provenance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-provenance:
+    name: pr-provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # History only. The check reads commit metadata and never runs PR code, so a sparse working tree is enough.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: .github/workflows/pr-provenance.yml
+          sparse-checkout-cone-mode: false
+
+      # The event payload is frozen when the run is created, so "Re-run jobs" after editing the body would read the
+      # OLD text. Ask the API for the live body; use the payload only if that call fails. The body is untrusted
+      # text: it goes through the environment and a file, never into shell source.
+      - name: Read the current PR body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PAYLOAD_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          if gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.txt" 2>/dev/null; then
+            echo "PR body read live from the API."
+          else
+            printf '%s' "${PAYLOAD_BODY}" > "${RUNNER_TEMP}/pr-body.txt"
+            echo "::warning::Could not read the PR body from the API; using the event payload (stale if the body was edited after this run started)."
+          fi
+
+      # ── MODE ────────────────────────────────────────────────────────────────────────────────────────────────
+      # Report-only: the step below may fail without failing the job, and every finding is a WARNING.
+      # To enforce, change BOTH lines together: delete `continue-on-error: true` and set PROVENANCE_MODE to
+      # `blocking`. Why report-only today: replayed over the 20 PRs merged up to 2026-11-01, this logic fails 16,
+      # every one on the Models-line rule (the PR template that carries it landed 2026-10-31); see the pull request
+      # that added this file. Flip it once new PRs carry the line.
+      - name: Check commit attribution and the Models line
+        continue-on-error: true
+        shell: bash
+        env:
+          PROVENANCE_MODE: report-only
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OWNER_LOGIN: ${{ github.repository_owner }}
+          # Optional, comma-separated. Repository VARIABLE (not a secret). Unset today: the owner's address is
+          # then inferred from history (below). Set it to make the owner identity deterministic.
+          OWNER_EMAILS_EXTRA: ${{ vars.PROVENANCE_OWNER_EMAILS }}
+          PR_BODY_FILE: ${{ runner.temp }}/pr-body.txt
+        run: |
+          set +e
+          set +x
+          set -f
+          set -u
+
+          mode="${PROVENANCE_MODE:-blocking}"
+          level=error
+          if [ "$mode" = "report-only" ]; then level=warning; fi
+
+          lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+          # One line, no control characters, capped (by character, so a multibyte one is never cut in half), and
+          # safe inside a workflow command.
+          clean() { s=$(printf '%s' "$1" | tr -d '\000-\037\177'); printf '%s' "${s:0:110}" | sed -e 's/%/%25/g'; }
+          # Public log: GitHub noreply addresses are shown whole; any other mailbox as first letter + domain.
+          mask() {
+            case "$1" in
+              *@users.noreply.github.com) printf '%s' "$1" ;;
+              *@*) printf '%s***@%s' "${1:0:1}" "${1#*@}" ;;
+              *) printf '(none)' ;;
+            esac
+          }
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null || ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            echo "::error title=pr-provenance could not run::base or head commit is not in the checkout, so nothing was checked."
+            exit 2
+          fi
+
+          # ── Who counts as the owner? ────────────────────────────────────────────────────────────────────────
+          # (1) the most frequent non-bot author address among the last 50 commits on the base,
+          # (2) the owner's GitHub noreply form (<id>+<login>@users.noreply.github.com),
+          # (3) any address in the optional PROVENANCE_OWNER_EMAILS variable.
+          bot_re='(\[bot\]@users\.noreply\.github\.com$|^noreply@github\.com$|^actions?@github\.com$)'
+          vendor_re='@(anthropic\.com|openai\.com|x\.ai)$'
+          inferred_line=$(git log -n 50 --format='%ae' "$BASE_SHA" 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -v -E "$bot_re" | grep -v -E "$vendor_re" | sort | uniq -c | sort -k1,1nr -k2,2 | head -n 1)
+          inferred_n=$(printf '%s' "$inferred_line" | sed -E 's/^ *([0-9]+) .*/\1/')
+          inferred_email=$(printf '%s' "$inferred_line" | sed -E 's/^ *[0-9]+ +//')
+          owner_login=$(lc "${OWNER_LOGIN:-}")
+          owner_noreply_re="^([0-9]+[+])?${owner_login}@users[.]noreply[.]github[.]com\$"
+          extra_emails=$(printf '%s' "${OWNER_EMAILS_EXTRA:-}" | tr '[:upper:],' '[:lower:] ')
+
+          is_owner() {
+            e=$(lc "$1")
+            if [ -n "$inferred_email" ] && [ "$e" = "$inferred_email" ]; then return 0; fi
+            if [[ $e =~ $owner_noreply_re ]]; then return 0; fi
+            for x in $extra_emails; do if [ "$e" = "$x" ]; then return 0; fi; done
+            return 1
+          }
+          is_bot() { [[ $(lc "$1") =~ $bot_re ]]; }
+
+          # GitHub's own and git's own merge commits: two or more parents AND a merge subject.
+          is_merge() {
+            n=$(git show -s --format=%P "$1" | wc -w | tr -d ' ')
+            if [ "$n" -lt 2 ]; then return 1; fi
+            case "$2" in
+              "Merge branch"*|"Merge pull request"*|"Merge remote-tracking branch"*) return 0 ;;
+            esac
+            return 1
+          }
+
+          # Co-Authored-By: <Claude|Codex|Gemini|Grok ...> <address>   (case-insensitive, any model name or version).
+          trailer_re='^[[:space:]]*co-authored-by:[[:space:]]*(openai |google |anthropic |x[.]?ai )?(claude|codex|gemini|grok)([^[:alnum:]<][^<]*)?<[^<>[:space:]@]+@[^<>[:space:]]+>[[:space:]]*$'
+          model_of() { printf '%s\n' "$1" | grep -a -i -E "$trailer_re" | head -n 1 | sed -E 's/^[[:space:]]*[Cc][Oo]-[Aa][Uu][Tt][Hh][Oo][Rr][Ee][Dd]-[Bb][Yy]:[[:space:]]*//; s/[[:space:]]*<.*$//'; }
+
+          extra_note=""
+          if [ -n "$extra_emails" ]; then extra_note=", plus $(printf '%s' "$extra_emails" | wc -w | tr -d ' ') configured address(es)"; fi
+          echo "pr-provenance (${mode})"
+          echo "  range:  $(printf '%s' "$BASE_SHA" | cut -c1-9)..$(printf '%s' "$HEAD_SHA" | cut -c1-9)"
+          if [ -n "$inferred_email" ]; then
+            echo "  owner:  inferred $(mask "$inferred_email") (${inferred_n} of the last 50 commits on the base), plus the GitHub noreply form of '${owner_login}'${extra_note}"
+          else
+            echo "  owner:  nothing could be inferred from history; only the GitHub noreply form of '${owner_login}' counts${extra_note}"
+          fi
+
+          nl=$'\n'
+          checked=0; n_model=0; n_merge=0; n_bot=0; n_owner=0; n_fail=0
+          fail_lines=""; owner_lines=""
+          while IFS= read -r sha; do
+            [ -n "$sha" ] || continue
+            checked=$((checked + 1))
+            short=$(printf '%s' "$sha" | cut -c1-9)
+            meta=$(git show -s --format='%ae%n%s' "$sha")
+            email=$(lc "$(printf '%s\n' "$meta" | sed -n 1p)")
+            subject=$(printf '%s\n' "$meta" | sed -n 2p)
+            if is_merge "$sha" "$subject"; then n_merge=$((n_merge + 1)); continue; fi
+            body=$(git show -s --format=%B "$sha")
+            model=$(model_of "$body")
+            if [ -n "$model" ]; then n_model=$((n_model + 1)); continue; fi
+            if is_bot "$email"; then n_bot=$((n_bot + 1)); continue; fi
+            if is_owner "$email"; then
+              n_owner=$((n_owner + 1))
+              owner_lines="${owner_lines}${short} $(clean "$subject")${nl}"
+              continue
+            fi
+            n_fail=$((n_fail + 1))
+            fail_lines="${fail_lines}${short} $(clean "$subject")  [author $(mask "$email")]${nl}"
+          done < <(git log --reverse --format=%H "${BASE_SHA}..${HEAD_SHA}")
+
+          echo
+          echo "  commits checked: ${checked}  (model trailer: ${n_model}, merge: ${n_merge}, bot: ${n_bot}, owner identity without a trailer: ${n_owner}, OFFENDING: ${n_fail})"
+
+          if [ "$n_owner" -gt 0 ]; then
+            echo
+            echo "  Passing ONLY because they are authored under the owner's identity (no model trailer). If a model wrote any of these, it is unattributed:"
+            printf '%s' "$owner_lines" | sed -e 's/^/    /' -e '/^ *$/d'
+            echo "::notice title=Owner-identity commits without a model trailer::${n_owner} commit(s) pass only as the owner's identity. Attribution cannot tell a human from a model here."
+          fi
+
+          if [ "$n_fail" -gt 0 ]; then
+            echo
+            echo "  Commits with no Co-Authored-By trailer naming a model and vendor, from someone who is not the owner:"
+            printf '%s' "$fail_lines" | sed -e 's/^/    /' -e '/^ *$/d'
+            printf '%s' "$fail_lines" | sed -e '/^ *$/d' | head -n 10 | while IFS= read -r l; do
+              echo "::${level} title=Commit has no model trailer::${l}"
+            done
+          fi
+
+          # ── The Models line ─────────────────────────────────────────────────────────────────────────────────
+          # `Models involved` (the decision format) or `Models` (the pull request template), then a separator,
+          # then text that is not the template's `___` placeholder.
+          body_fail=""
+          label_re='^[[:space:]>|*_-]*models( involved)?[[:space:]*_]*(:|—|–|-|[|])[[:space:]*_]*[^[:space:]*_|]'
+          models_line=""
+          if [ -s "$PR_BODY_FILE" ]; then models_line=$(grep -a -i -E "$label_re" "$PR_BODY_FILE" | head -n 1); fi
+          if [ -z "$models_line" ]; then
+            body_fail="the PR body has no 'Models involved' line (the pull request template's 'Models' line also counts)"
+          else
+            case "$models_line" in
+              *___*) body_fail="the 'Models' line still contains the template placeholder ___" ;;
+            esac
+          fi
+          echo
+          if [ -n "$body_fail" ]; then
+            echo "  PR body: ${body_fail}"
+            echo "::${level} title=PR body has no Models line::${body_fail}"
+          else
+            echo "  PR body: Models line present ($(clean "$models_line"))"
+          fi
+
+          # ── Verdict ─────────────────────────────────────────────────────────────────────────────────────────
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### pr-provenance (${mode})"
+              echo
+              echo "| commits | model trailer | merge | bot | owner identity, no trailer | offending |"
+              echo "|---|---|---|---|---|---|"
+              echo "| ${checked} | ${n_model} | ${n_merge} | ${n_bot} | ${n_owner} | ${n_fail} |"
+              echo
+              if [ -n "$body_fail" ]; then echo "PR body: ${body_fail}"; else echo "PR body: Models line present."; fi
+              if [ "$n_fail" -gt 0 ]; then
+                echo
+                echo "Offending commits:"
+                echo
+                printf '%s' "$fail_lines" | sed -e '/^ *$/d' -e 's/^/- /'
+              fi
+              echo
+              echo "_Attribution, not authentication: a trailer or an author address can be typed by anyone. See docs/governance/IDENTITIES.md._"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$n_fail" -gt 0 ] || [ -n "$body_fail" ]; then
+            echo
+            if [ "$mode" = "report-only" ]; then
+              echo "::warning title=pr-provenance is REPORT-ONLY::This PR has the findings above. They do not block the merge yet. To enforce: delete 'continue-on-error: true' on this step and set PROVENANCE_MODE to blocking in .github/workflows/pr-provenance.yml."
+            fi
+            exit 1
+          fi
+          echo
+          echo "pr-provenance: clean."
+          exit 0
