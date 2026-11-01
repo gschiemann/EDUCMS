@@ -34,26 +34,13 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [master, main]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    # No paths-ignore here (2026-11-01, Foundry Standard Phase 1): the four
+    # REQUIRED checks live in this workflow, and a docs-only PR skipped by a
+    # trigger-level path filter never reports them, so it could never merge
+    # (seen on PRs #196 and #198). Instead the `changes` job classifies the PR
+    # and the build jobs SKIP on docs-only changes: a skipped job satisfies a
+    # required check, a missing one blocks forever. `push` keeps its
+    # paths-ignore — master needs no run for a docs-only commit.
 
 permissions:
   contents: read
@@ -64,6 +51,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed (docs-only PRs skip the build jobs)
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(git diff --name-only "$BASE_SHA...HEAD")
+          else
+            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          fi
+          # The same set as the push trigger's paths-ignore above.
+          if printf '%s\n' "$files" | grep -vE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' | grep -q .; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; echo "code changed: the build jobs run"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"; echo "docs-only: the build jobs are skipped and report as such"
+          fi
+
   apk-version-tag-sync:
     # The #1 recurring OTA failure: a developer bumps versionCode /
     # versionName in build.gradle.kts but forgets to push the matching
@@ -74,6 +86,8 @@ jobs:
     # failure into a red check that prints the exact `git tag` command.
     name: APK version is tagged
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -126,6 +140,8 @@ jobs:
   lockfile-check:
     name: pnpm lockfile drift
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -147,6 +163,8 @@ jobs:
     # author's machine. Database-free; see the script header.
     name: schema change ships a migration
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -169,6 +187,8 @@ jobs:
   api-build:
     name: API + workspace packages build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -207,6 +227,8 @@ jobs:
   web-jest:
     name: Web Jest (unit)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -259,6 +281,8 @@ jobs:
   web-build:
     name: Web typecheck + build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -328,6 +352,8 @@ jobs:
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -413,6 +439,8 @@ jobs:
     # has no network), and runs as a non-root user. Nothing is pushed.
     name: Renderer image build + render smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
