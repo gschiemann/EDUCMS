@@ -31,7 +31,7 @@ becomes the post-mortem). For VenueOS today the lead engineer is IC by default.
 | `prod-smoke.yml` / Vercel cron `/api/cron/keepwarm` | post-deploy smoke red; keepwarm non-200 |
 | Audit log (`/audit`) | unexpected `TRIGGER_EMERGENCY`, mass role changes, AI-key changes, license ops |
 | District report | "the screens are showing a lockdown and there's no emergency" / "we triggered and nothing happened" |
-| gitleaks (pre-commit + CI) | secret committed to the **public** repo |
+| GitHub push protection (server-side, pre-push) + gitleaks in CI — the git hooks themselves do NOT run gitleaks | secret committed to the **public** repo |
 
 **The `DROPPED unverified message` log line is a security signal** — it means
 something published to a `tenant:*`/`group:*`/`device:*` Redis channel without a
@@ -100,10 +100,10 @@ containment tool — it is faster and safer than a rollback.**
 
 The repo is **PUBLIC** — a committed secret is live to the world immediately.
 
-1. **Rotate the exposed secret NOW** (Railway/Vercel env):
+1. **Rotate the exposed secret** (Railway/Vercel env) — for the two device secrets ONLY through a rotation window (new value as primary, old value in `DEVICE_*_PREVIOUS`, per `docs/SECRET-ROTATION.md`); a straight swap stranded 14 screens on 2026-10-23:
    - `JWT_SECRET` / `SESSION_SECRET` → invalidates all sessions (users
      re-login); acceptable cost.
-   - `DEVICE_SECRET_KEY` (WS HMAC) / `DEVICE_JWT_SECRET` → re-pair/redeploy;
+   - `DEVICE_SECRET_KEY` (WS HMAC) / `DEVICE_JWT_SECRET` → windowed rotation (`docs/SECRET-ROTATION.md`, `node scripts/railway-rotation.mjs`): Resync the fleet inside the window and `finish` only when no live screen lacks a new-key token — NEVER a straight swap plus re-pair;
      this is the emergency-signing key, so prioritize it.
    - `STRIPE_*` → rotate in Stripe + env; re-point the webhook secret.
    - Provider keys (Resend / AI / Clever / Square) → rotate at the provider.
