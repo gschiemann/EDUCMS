@@ -35,6 +35,7 @@ function matches(row: Row, where: Row): boolean {
     if (v && typeof v === 'object' && !(v instanceof Date)) {
       const op = v as Row;
       if ('in' in op && !op.in.includes(cell)) return false;
+      if ('has' in op && !(Array.isArray(cell) && cell.includes(op.has))) return false;
       if ('gt' in op && !(cell instanceof Date && cell.getTime() > op.gt.getTime())) return false;
       continue;
     }
@@ -66,7 +67,7 @@ function world() {
   };
   const seenBy = async (id: string) => {
     const out: string[] = [];
-    for (const s of EVERY_SCREEN) if ((await sees(s)).includes(id)) out.push(s);
+    for (const s of EVERY_SCREEN) if ((await sees(s)).some((x) => x === id || x.startsWith(`${id}_`))) out.push(s);
     return out.sort();
   };
   return { ...w, rows, seenBy };
@@ -149,5 +150,72 @@ describe('targeted broadcast', () => {
     const w = world();
     const r: any = await w.emergency.broadcastText(bcast('device', 'other-1'), { user: { id: 'u-o', role: 'SCHOOL_ADMIN', tenantId: OTHER } });
     await expect(w.emergency.clearMessage(r.messageId, districtAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+const several = (screenIds: string[]) =>
+  ({ scopeType: 'tenant', scopeId: SCHOOL, screenIds, text: 'Rooms 3 and 4 closed', severity: 'WARN' }) as any;
+
+describe('broadcast to several hand-picked screens', () => {
+  it('reaches exactly the chosen screens, pushed per screen', async () => {
+    const w = world();
+    const r: any = await w.emergency.broadcastText(several(['lobby', 'office']), schoolAdmin);
+    expect(await w.seenBy(r.messageId)).toEqual(['lobby', 'office']);
+    expect(w.published.sort()).toEqual(['device:lobby', 'device:office']);
+    expect(w.rows[0]).toEqual(expect.objectContaining({ scopeType: 'devices', screenIds: ['lobby', 'office'] }));
+  });
+
+  it('checks EVERY id: one outside the sender subtree refuses the whole send and writes nothing', async () => {
+    const w = world();
+    await expect(w.emergency.broadcastText(several(['lobby', 'other-1']), schoolAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(w.emergency.broadcastText(several(['lobby', 'sib-1']), schoolAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(w.emergency.broadcastText(several(['lobby', 'stray']), schoolAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(w.emergency.broadcastText(several(['lobby', 'ghost']), schoolAdmin)).rejects.toBeInstanceOf(NotFoundException);
+    expect(w.rows).toHaveLength(0);
+    expect(w.published).toHaveLength(0);
+  });
+
+  it('a double-sided display named by one pane reaches both panes', async () => {
+    const w = world();
+    const r: any = await w.emergency.broadcastText(several(['front']), schoolAdmin);
+    expect(await w.seenBy(r.messageId)).toEqual(['back', 'front']);
+  });
+
+  it('a media alert takes the same set', async () => {
+    const w = world();
+    const r: any = await w.emergency.mediaAlert(
+      { scopeType: 'tenant', scopeId: SCHOOL, screenIds: ['gym-2'], mediaUrls: [], textBlob: 'Map', severity: 'CRITICAL' } as any,
+      schoolAdmin,
+    );
+    expect(await w.seenBy(r.messageId)).toEqual(['gym-2']);
+  });
+
+  it('a district admin can span schools; clearing takes it off exactly those screens', async () => {
+    const w = world();
+    const r: any = await w.emergency.broadcastText(several(['gym-1', 'sib-1', 'district-1']), districtAdmin);
+    expect(await w.seenBy(r.messageId)).toEqual(['district-1', 'gym-1', 'sib-1']);
+
+    const listed: any = await w.emergency.status(districtAdmin as any, DISTRICT);
+    expect(listed.active.filter((m: Row) => m.scopeId === r.messageId)).toHaveLength(1);
+
+    w.published.length = 0;
+    await w.emergency.clearMessage(r.messageId, districtAdmin);
+    expect(await w.seenBy(r.messageId)).toEqual([]);
+    expect(w.rows.every((x) => x.clearedAt)).toBe(true);
+    expect(w.published.sort()).toEqual(['device:district-1', 'device:gym-1', 'device:sib-1']);
+  });
+
+  it('a school admin clearing their own copy does not clear another school', async () => {
+    const w = world();
+    const r: any = await w.emergency.broadcastText(several(['gym-1', 'sib-1']), districtAdmin);
+    const schoolCopy = w.rows.find((x) => x.tenantId === SCHOOL)!;
+    await w.emergency.clearMessage(schoolCopy.id, schoolAdmin);
+    expect(await w.seenBy(r.messageId)).toEqual(['sib-1']);
+  });
+
+  it('a district admin may not include a screen of another organisation', async () => {
+    const w = world();
+    await expect(w.emergency.broadcastText(several(['gym-1', 'other-1']), districtAdmin)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(w.rows).toHaveLength(0);
   });
 });

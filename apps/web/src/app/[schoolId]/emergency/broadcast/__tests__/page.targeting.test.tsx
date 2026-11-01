@@ -49,7 +49,10 @@ const jsonResponse = (body: unknown, status = 200) =>
 const TARGETS = {
   tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 6,
   groups: [{ id: 'g-gym', name: 'Gym', tenantId: TENANT_UUID, tenantName: 'School', screenCount: 2 }],
-  screens: [{ id: 's-lobby', name: 'Lobby', location: null, online: true, groupId: null, groupName: null, tenantId: TENANT_UUID, tenantName: 'School', displayScreenCount: 1 }],
+  screens: [
+    { id: 's-lobby', name: 'Lobby', location: null, online: true, groupId: null, groupName: null, tenantId: TENANT_UUID, tenantName: 'School', displayScreenCount: 1 },
+    { id: 's-office', name: 'Office', location: null, online: true, groupId: null, groupName: null, tenantId: TENANT_UUID, tenantName: 'School', displayScreenCount: 1 },
+  ],
 };
 
 beforeEach(() => {
@@ -94,12 +97,43 @@ describe('Broadcast targeting', () => {
     expect(body).toEqual(expect.objectContaining({ scopeType: 'group', scopeId: 'g-gym', text: 'Gym closed' }));
   });
 
-  it('choosing one screen sends scopeType device with that id', async () => {
+  it('choosing one screen sends it as a one-screen set', async () => {
     await act(async () => { render(<BroadcastPage />); });
     await openPicker();
     fireEvent.click(await screen.findByTestId('target-option-screen-s-lobby'));
+    fireEvent.click(screen.getByTestId('target-done'));
     const body = await holdSend();
-    expect(body).toEqual(expect.objectContaining({ scopeType: 'device', scopeId: 's-lobby' }));
+    expect(body.screenIds).toEqual(['s-lobby']);
+  });
+
+  it('hand-picking several screens sends screenIds and counts them', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    await openPicker();
+    fireEvent.click(await screen.findByTestId('target-option-screen-s-lobby'));
+    fireEvent.click(screen.getByTestId('target-option-screen-s-office'));
+    expect(screen.getByTestId('target-selected-count').textContent).toContain('"count":2');
+    fireEvent.click(screen.getByTestId('target-done'));
+    const body = await holdSend();
+    expect(body.screenIds).toEqual(['s-lobby', 's-office']);
+    expect(body.scopeType).toBe('tenant');
+  });
+
+  it('closing the picker without Done keeps the previous choice', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    await openPicker();
+    fireEvent.click(await screen.findByTestId('target-option-screen-s-lobby'));
+    fireEvent.click(screen.getByLabelText('emergency.target.pickerClose'));
+    const body = await holdSend();
+    expect(body.screenIds).toBeUndefined();
+    expect(body.scopeId).toBe(TENANT_UUID);
+  });
+
+  it('screens search narrows the checkbox list', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    await openPicker();
+    fireEvent.change(await screen.findByPlaceholderText('emergency.target.searchPlaceholder'), { target: { value: 'offi' } });
+    expect(screen.queryByTestId('target-option-screen-s-lobby')).toBeNull();
+    expect(screen.getByTestId('target-option-screen-s-office')).toBeTruthy();
   });
 
   it('with no choice it still sends to the whole tenant', async () => {

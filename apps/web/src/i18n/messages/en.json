@@ -199,6 +199,7 @@
       "annDispatchedTo": "Broadcast dispatched to {target}.",
       "activeScope": "Sent to {name}",
       "activeScopeUnknown": "Sent to specific screens",
+      "activeScopeMany": "Sent to {count, plural, one {# screen} other {# screens}}",
       "composeTitle": "Create a broadcast",
       "composeHint": "Write your message, review the preview, then hold to send.",
       "mediaHint": "Media alerts fill the screen. Choose existing assets or upload new files.",
@@ -237,6 +238,8 @@
     "viewIncident": "View incident",
     "target": {
       "sendTo": "Send to",
+      "screensSelected": "{count, plural, one {# screen selected} other {# screens selected}}",
+      "done": "Done",
       "allScreens": "All screens",
       "allScreensCount": "All screens ({count})",
       "chipOne": "{name} · {count, plural, one {# screen} other {# screens}}",
