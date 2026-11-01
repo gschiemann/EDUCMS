@@ -21,6 +21,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenDeviceInventory: () => ({ data: undefined, isLoading: false, isError: false }),
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   useClearPlaybackDemotion: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/lib/store', () => ({

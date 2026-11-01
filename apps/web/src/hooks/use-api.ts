@@ -3823,6 +3823,30 @@ export function useScreenInterruptions(screenId: string | null, hours: 24 | 72, 
   });
 }
 
+/**
+ * What a screen last did with a USB drive (2026-10-26) — `GET
+ * /screens/:id/usb-events`, newest first. Outcomes: DETECTED, NEEDS_ACCESS,
+ * NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED (older players: ACCEPTED,
+ * REJECTED_SIGNATURE, REJECTED_HASH); `reason` starts with a stable code.
+ * Read when the drawer's Technical details is open — never polled.
+ */
+export interface ScreenUsbEvent {
+  id: string;
+  outcome: string;
+  reason: string | null;
+  bundleVersion: string | null;
+  assetCount: number;
+  createdAt: string;
+}
+export function useScreenUsbEvents(screenId: string | null, enabled = true) {
+  return useQuery<{ events: ScreenUsbEvent[] }>({
+    queryKey: ['screens', 'usb-events', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/usb-events?limit=5`),
+    enabled: !!screenId && enabled,
+    staleTime: 60_000,
+  });
+}
+
 // ─── Phase 2c — publish a playlist to screens across child locations ───
 // POST /playlists/:id/publish-to-fleet — copies the playlist (+ assets) down
 // into each target child and schedules it live there. Parent/corporate only.
