@@ -144,6 +144,8 @@ export interface BootOptions {
    * `api.invalid` catch-all) and before the page loads — e.g. a broken file.
    */
   extraRoutes?: (page: Page) => Promise<void>;
+  /** Extra query string appended to the player URL (e.g. `&face=1` — a double-sided unit's back face document). */
+  query?: string;
 }
 
 export interface BootedPlayer {
@@ -364,6 +366,6 @@ export async function bootMockPlayer(page: Page, opts: BootOptions): Promise<Boo
 
   if (opts.extraRoutes) await opts.extraRoutes(page);
 
-  await page.goto('/player?fp=' + id.fingerprint);
+  await page.goto('/player?fp=' + id.fingerprint + (opts.query ?? ''));
   return { telemetry, refreshAcks };
 }

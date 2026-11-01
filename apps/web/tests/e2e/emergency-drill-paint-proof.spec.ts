@@ -39,7 +39,10 @@ import { bootMockPlayer, ok, playerIds, playerManifest } from './helpers/mock-pl
  */
 
 const INDIGO = 'rgb(55, 48, 163)';
-const RED = 'rgb(185, 28, 28)';
+// The typed surface is the SYSTEM board's colour since 2026-10-31
+// (`systemEmergencyBoardColor('CRITICAL', false)` = #dc2626): the same red the
+// manifest's DEFAULT_EMERGENCY board brings, so nothing visibly changes.
+const RED = 'rgb(220, 38, 38)';
 /** EmergencyPaintPolicy.STEP_AT_MS[0] — the APK's first native step. */
 const NATIVE_FIRST_STEP_MS = 3_000;
 

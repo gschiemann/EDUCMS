@@ -11,6 +11,9 @@ import {
   emergencyBoardPayload,
   pickTenantPanicPlaylists,
   resolveEmergencyBoardSelection,
+  screenAssetBoard,
+  screenAssetUrlFor,
+  systemEmergencyBoard,
 } from './emergency-boards';
 import { emergencyLayoutIsPortrait } from '../screens/emergency-layout';
 
@@ -127,21 +130,25 @@ describe('resolveEmergencyBoardSelection', () => {
       locationModeOn: false,
       drillPairHasItems: () => true,
     });
-    expect(land.MEDICAL.live).toEqual({
+    expect(land.MEDICAL.live).toMatchObject({
       playlistId: 'pl-medical-land',
       perScreen: false,
     });
-    expect(port.MEDICAL.live).toEqual({
+    expect(port.MEDICAL.live).toMatchObject({
       playlistId: 'pl-medical-port',
       perScreen: false,
     });
     // Both-ways fallback: a portrait screen uses the landscape slot when no portrait one is set.
-    expect(port.LOCKDOWN.live).toEqual({
+    expect(port.LOCKDOWN.live).toMatchObject({
       playlistId: 'pl-lockdown-land',
       perScreen: false,
     });
     // A type with nothing configured resolves to no board (the manifest's system board).
-    expect(land.WEATHER.live).toEqual({ playlistId: null, perScreen: false });
+    expect(land.WEATHER.live).toMatchObject({
+      playlistId: null,
+      perScreen: false,
+      boardKey: 'system:WEATHER:live',
+    });
   });
 
   it('drill: the tenant drill pair when it has items, else the live pair', () => {
@@ -182,15 +189,15 @@ describe('resolveEmergencyBoardSelection', () => {
       locationModeOn: false,
       drillPairHasItems: () => false,
     });
-    expect(on.MEDICAL.live).toEqual({
+    expect(on.MEDICAL.live).toMatchObject({
       playlistId: 'pl-own-land',
       perScreen: true,
     });
-    expect(on.MEDICAL.drill).toEqual({
+    expect(on.MEDICAL.drill).toMatchObject({
       playlistId: 'pl-own-land',
       perScreen: true,
     });
-    expect(off.MEDICAL.live).toEqual({
+    expect(off.MEDICAL.live).toMatchObject({
       playlistId: 'pl-medical-port',
       perScreen: false,
     });
@@ -247,5 +254,230 @@ describe('resolveEmergencyBoardSelection', () => {
         hardwareModel: 'generic-android',
       }),
     ).toBe(false);
+  });
+});
+
+describe('boardKey — what the manifest WILL play (2026-10-31, "first frame is the final board")', () => {
+  // The launch site's live LANDSCAPE playlists have no items; every portrait
+  // and every drill playlist has one. The id still resolves (it is not null),
+  // but the manifest plays an empty playlist as "no playlist".
+  const hasItems = (id: string) =>
+    id !== 'pl-medical-land' && id !== 'pl-lockdown-land';
+
+  it('a landscape screen whose live board is EMPTY stages the SYSTEM board, not the empty playlist and not the portrait board', () => {
+    const land = resolveEmergencyBoardSelection({
+      screen: noScreenContent,
+      tenant,
+      isPortrait: false,
+      locationModeOn: true,
+      drillPairHasItems: () => true,
+      boardHasItems: hasItems,
+    });
+    expect(land.MEDICAL.live).toEqual({
+      playlistId: 'pl-medical-land',
+      perScreen: false,
+      boardKey: 'system:MEDICAL:live',
+    });
+    // The drill board has content: the drill stages it. Live and drill never cross.
+    expect(land.MEDICAL.drill).toEqual({
+      playlistId: 'pl-drill-medical-land',
+      perScreen: false,
+      boardKey: 'pl-drill-medical-land',
+    });
+  });
+
+  it('a portrait screen stages its own live board; the back face of a double-sided unit is a portrait screen', () => {
+    const back = {
+      resolution: '960×540',
+      orientation: 'PORTRAIT',
+      faceOfScreenId: 'front',
+      hardwareModel: 'generic-android',
+    };
+    const isPortrait = emergencyLayoutIsPortrait(back);
+    expect(isPortrait).toBe(true);
+    const sel = resolveEmergencyBoardSelection({
+      screen: back,
+      tenant,
+      isPortrait,
+      locationModeOn: true,
+      drillPairHasItems: () => true,
+      boardHasItems: hasItems,
+    });
+    expect(sel.MEDICAL.live.boardKey).toBe('pl-medical-port');
+    expect(sel.MEDICAL.drill.boardKey).toBe('pl-drill-medical-port');
+  });
+
+  it('a screen with only a single FILE for the type (location mode) stages the screen-asset board; off, the system board', () => {
+    const screen = {
+      emergencyEvacuateAssetUrl: 'https://files.example/evacuate.png',
+    };
+    const on = resolveEmergencyBoardSelection({
+      screen,
+      tenant,
+      isPortrait: false,
+      locationModeOn: true,
+      drillPairHasItems: () => false,
+      boardHasItems: () => false,
+    });
+    expect(on.EVACUATE.live).toEqual({
+      playlistId: null,
+      perScreen: false,
+      boardKey: 'asset:EVACUATE:live',
+    });
+    // A drill with no drill media of its own plays the screen's live file (the manifest's effectiveAsset order).
+    expect(on.EVACUATE.drill.boardKey).toBe('asset:EVACUATE:drill');
+    expect(screenAssetUrlFor(screen, 'EVACUATE', true, false)).toBe(
+      'https://files.example/evacuate.png',
+    );
+    const off = resolveEmergencyBoardSelection({
+      screen,
+      tenant,
+      isPortrait: false,
+      locationModeOn: false,
+      drillPairHasItems: () => false,
+      boardHasItems: () => false,
+    });
+    expect(off.EVACUATE.live.boardKey).toBe('system:EVACUATE:live');
+  });
+
+  it('with no boardHasItems the selection reads as before (every resolved playlist counts)', () => {
+    const sel = resolveEmergencyBoardSelection({
+      screen: noScreenContent,
+      tenant,
+      isPortrait: false,
+      locationModeOn: false,
+      drillPairHasItems: () => true,
+    });
+    expect(sel.MEDICAL.live.boardKey).toBe('pl-medical-land');
+  });
+});
+
+describe('the staged system board IS the manifest board', () => {
+  it('builds the DEFAULT_EMERGENCY template exactly as the manifest branch did, with a content revision', () => {
+    const live = systemEmergencyBoard({
+      type: 'MEDICAL',
+      severity: 'CRITICAL',
+      isDrill: false,
+      isPortrait: false,
+    });
+    expect(live.id).toBe('DEFAULT_EMERGENCY');
+    expect(live.name).toBe('SYSTEM DEFAULT - MEDICAL');
+    expect(live.items).toEqual([]);
+    expect(live.template.name).toBe('EMERGENCY OVERRIDE');
+    expect(live.template.bgColor).toBe('#dc2626');
+    expect(live.template.screenWidth).toBe(1920);
+    expect(live.template.screenHeight).toBe(1080);
+    const zone = live.template.zones[0] as any;
+    expect(zone.widgetType).toBe('TEXT');
+    expect(zone.defaultConfig).toEqual({
+      sizeMode: 'absolute',
+      content:
+        'MEDICAL EMERGENCY\n\nKeep this area clear.\nFollow staff directions.',
+      fontSize: 100,
+      fontWeight: 800,
+      color: 'white',
+      alignment: 'center',
+      lineHeight: 1.15,
+    });
+    expect(live.contentRev).toMatch(/^[0-9a-f]{8}$/);
+  });
+  it('a drill is indigo and says DRILL; portrait is 1080×1920 at 140; an LED canvas wins; each is a different revision', () => {
+    const drill = systemEmergencyBoard({
+      type: 'HOLD',
+      severity: 'CRITICAL',
+      isDrill: true,
+      isPortrait: true,
+    });
+    expect(drill.template.bgColor).toBe('#3730a3');
+    expect(drill.template.screenWidth).toBe(1080);
+    expect((drill.template.zones[0] as any).defaultConfig.fontSize).toBe(140);
+    expect(
+      (drill.template.zones[0] as any).defaultConfig.content.startsWith(
+        'DRILL — THIS IS A DRILL\n\nHOLD DRILL',
+      ),
+    ).toBe(true);
+    const led = systemEmergencyBoard({
+      type: 'HOLD',
+      severity: 'CRITICAL',
+      isDrill: true,
+      isPortrait: true,
+      canvasW: 320,
+      canvasH: 1080,
+    });
+    expect([led.template.screenWidth, led.template.screenHeight]).toEqual([
+      320, 1080,
+    ]);
+    const liveHold = systemEmergencyBoard({
+      type: 'HOLD',
+      severity: 'CRITICAL',
+      isDrill: false,
+      isPortrait: true,
+    });
+    const liveLockdown = systemEmergencyBoard({
+      type: 'LOCKDOWN',
+      severity: 'CRITICAL',
+      isDrill: false,
+      isPortrait: true,
+    });
+    expect(
+      new Set([
+        drill.contentRev,
+        led.contentRev,
+        liveHold.contentRev,
+        liveLockdown.contentRev,
+      ]).size,
+    ).toBe(4);
+    // The same inputs are the same revision — the staged board and the manifest board share one apply signature.
+    expect(
+      systemEmergencyBoard({
+        type: 'HOLD',
+        severity: 'CRITICAL',
+        isDrill: false,
+        isPortrait: true,
+      }).contentRev,
+    ).toBe(liveHold.contentRev);
+  });
+  it("the operator's text and a lesser severity change the board, as they do in the manifest", () => {
+    const typed = systemEmergencyBoard({
+      type: 'LOCKDOWN',
+      severity: 'MEDIUM',
+      isDrill: false,
+      isPortrait: false,
+      textBlob: 'Stay in place',
+    });
+    expect(typed.template.bgColor).toBe('#d97706');
+    expect((typed.template.zones[0] as any).defaultConfig.content).toBe(
+      'Stay in place',
+    );
+  });
+  it('the single-file board keeps its manifest shape (id per type, item per screen, 60 s, mime from the extension)', () => {
+    const b = screenAssetBoard({
+      screenId: 'scr-1',
+      typeKey: 'EVACUATE',
+      url: 'https://files.example/x/exit.JPG?t=1',
+    });
+    expect(b).toEqual({
+      id: 'screen-asset-evacuate',
+      name: 'EVACUATE (custom asset)',
+      items: [
+        {
+          item_id: 'screen-asset-scr-1-evacuate',
+          asset_id: null,
+          asset_hash: null,
+          url: 'https://files.example/x/exit.JPG?t=1',
+          duration_ms: 60_000,
+          sequence: 0,
+          mime_type: 'image/jpeg',
+          transition_type: null,
+        },
+      ],
+    });
+    expect(
+      screenAssetBoard({
+        screenId: 's',
+        typeKey: 'HOLD',
+        url: 'https://f/x.mov',
+      }).items[0].mime_type,
+    ).toBe('video/quicktime');
   });
 });

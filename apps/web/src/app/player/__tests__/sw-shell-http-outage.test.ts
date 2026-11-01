@@ -11,6 +11,8 @@ describe('player cold boot while its host returns an HTTP outage', () => {
     const w = loadWorker();
     w.setFetch(async () => new Response('DEPLOYMENT_DISABLED', { status }));
     await (await w.context.caches.open(SHELL)).put(ORIGIN + '/player', new Response(HTML, { headers: { 'content-type': 'text/html' } }));
+    // The saved document is served only with its chunks saved too (deploy skew, 2026-10-27).
+    await (await w.context.caches.open(SHELL)).put(ORIGIN + '/_next/static/chunks/last-good.js', new Response('js'));
     await w.seedLegacyEntry(PLAYLIST, ORIGIN + '/assets/clip.mp4', new Uint8Array([1, 2, 3]));
     const res = await w.fetchRequest(navigation());
     expect(res.status).toBe(200);
@@ -33,6 +35,7 @@ describe('player cold boot while its host returns an HTTP outage', () => {
   it('returns to the current hosted player after recovery', async () => {
     const w = loadWorker();
     await (await w.context.caches.open(SHELL)).put(ORIGIN + '/player', new Response(HTML));
+    await (await w.context.caches.open(SHELL)).put(ORIGIN + '/_next/static/chunks/last-good.js', new Response('js'));
     w.setFetch(async () => new Response('DEPLOYMENT_DISABLED', { status: 402 }));
     expect(await (await w.fetchRequest(navigation())).text()).toBe(HTML);
     const recovered = HTML.replace('LAST WORKING', 'RECOVERED');
