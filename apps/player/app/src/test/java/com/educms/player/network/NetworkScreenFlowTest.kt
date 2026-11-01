@@ -79,8 +79,8 @@ class NetworkScreenFlowTest {
     }
 
     @Test fun everyEmptyListReasonHasItsOwnFixButton() {
-        assertEquals(Fix.ALLOW, NetworkScreenPolicy.accessFix(Access.NEEDS_PERMISSION))
-        assertEquals(Fix.APP_SETTINGS, NetworkScreenPolicy.accessFix(Access.DENIED))
+        assertEquals(Fix.OPEN_SETUP, NetworkScreenPolicy.accessFix(Access.NEEDS_PERMISSION))
+        assertEquals(Fix.OPEN_SETUP, NetworkScreenPolicy.accessFix(Access.DENIED))
         assertEquals("Location off → Turn on Location", Fix.LOCATION_ON, NetworkScreenPolicy.accessFix(Access.LOCATION_OFF))
         assertEquals("Wi-Fi off → Turn on Wi-Fi", Fix.WIFI_ON, NetworkScreenPolicy.accessFix(Access.WIFI_OFF))
         assertNull(NetworkScreenPolicy.accessFix(Access.NO_WIFI))
@@ -293,11 +293,11 @@ class NetworkScreenFlowTest {
         // Android's own prompt still on top: not yet.
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.WAITING_APPROVAL, Stage.DONE, systemDialogUp = true, watchExpired = false))
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.SAVED, Stage.DONE, systemDialogUp = true, watchExpired = false))
-        // A save that never moves: "Saved" when the watch runs out — never "Connected".
-        assertEquals(NetworkScreenPolicy.Promotion.SAVED, p.promote(Words.SUGGESTED, Stage.JOINING, systemDialogUp = false, watchExpired = true))
+        // A save that never moves: "Not connected yet" when the watch runs out — never "Connected".
+        assertEquals(NetworkScreenPolicy.Promotion.NOT_YET, p.promote(Words.SUGGESTED, Stage.JOINING, systemDialogUp = false, watchExpired = true))
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.SAVED, Stage.CHECKING, systemDialogUp = false, watchExpired = false))
-        // An approval is never declared on a timer; a switch being proved ends with the engine's word.
-        assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.WAITING_APPROVAL, Stage.JOINING, systemDialogUp = false, watchExpired = true))
+        // An approval that never comes ends as "Not connected yet" when the watch runs out; a switch being proved ends with the engine's word.
+        assertEquals(NetworkScreenPolicy.Promotion.NOT_YET, p.promote(Words.WAITING_APPROVAL, Stage.JOINING, systemDialogUp = false, watchExpired = true))
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.JOINING, Stage.DONE, systemDialogUp = false, watchExpired = true))
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(Words.WAITING_DIALOG, Stage.DONE, systemDialogUp = false, watchExpired = true))
         assertEquals(NetworkScreenPolicy.Promotion.NONE, p.promote(null, Stage.DONE, systemDialogUp = false, watchExpired = true))

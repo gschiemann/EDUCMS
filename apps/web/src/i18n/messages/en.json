@@ -3096,6 +3096,25 @@
       "typeMedical": "Medical",
       "typeCustom": "Custom alert",
       "typeAlert": "Alert"
+    },
+    "usb": {
+      "title": "USB drive",
+      "loading": "Loading…",
+      "loadFailed": "Couldn’t load what this screen did with USB drives.",
+      "none": "No USB drive reported yet.",
+      "note": "As reported by the screen. Players before 1.1.55 report only a finished or refused import.",
+      "detected": "A USB drive was plugged in",
+      "needsAccess": "Needs permission to read USB drives — on the screen, choose Allow",
+      "noAccessPage": "This screen has no setting that lets it read USB drives",
+      "noPackage": "No VenueOS playlist on the drive",
+      "waitingKey": "Must connect to the internet once before it can check a USB playlist",
+      "otherOrg": "The drive held another organization’s playlist",
+      "unverified": "Couldn’t verify the files on the drive",
+      "noSpace": "Not enough room on the screen for the playlist",
+      "unreadable": "Couldn’t read the drive",
+      "rejected": "Refused the playlist on the drive",
+      "imported": "Playlist imported from the drive",
+      "unknown": "Reported {code}"
     }
   },
   "selection": {
@@ -8001,6 +8020,9 @@
     "failed": "We couldn’t save that. Check your connection and try again.",
     "version": "Version {version}",
     "signOut": "Not you? Sign out"
+  },
+  "playerMenu": {
+    "importFromUsb": "Import from USB"
   },
   "assetPicker": {
     "title": "Choose content",

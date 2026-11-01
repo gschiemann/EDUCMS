@@ -155,7 +155,11 @@ internal object WifiSetup {
     fun connect(ctx: Context, id: String, value: DesiredValue.WifiValue): DeviceSettingsPolicy.Outcome {
         val app = ctx.applicationContext
         val dialog = dialogAvailable(app)
-        return when (val route = WifiSetupPolicy.route(sdk, value, approval(app), dialog, wpa3Supported(app))) {
+        // A person's identity (`m<n>`) takes Android's save-and-connect dialog
+        // wherever this ROM has it (2026-10-26); the dashboard's keeps the
+        // silent suggestion — see WifiSetupPolicy.route.
+        val route = WifiSetupPolicy.route(sdk, value, approval(app), dialog, wpa3Supported(app), atScreen = WifiConnect.isLocal(id))
+        return when (route) {
             WifiSetupPolicy.Route.Legacy -> {
                 val outcome = legacyEngine(app).apply(id, value, SystemClock.elapsedRealtime(), bootCount(app))
                 if (outcome is DeviceSettingsPolicy.Outcome.Held && outcome.why == DeviceSettingCodes.WIFI_SWITCHING) {
