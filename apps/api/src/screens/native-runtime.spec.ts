@@ -180,6 +180,27 @@ describe('native power evidence and command freshness', () => {
       expect(nativePowerStateChanged(r, { ...r, sleep: next as typeof r.sleep })).toBe(true);
     }
   });
+  it('keeps the vendor backlight block (sleep.vb) the player sends — it used to be stripped', () => {
+    // 2026-10-31 GUQ field result: a panel turned off through the MCU keeps
+    // painting, so `vb.off` is the only evidence the dashboard has that it is dark.
+    const vbSleep = { blank: 'vendor-backlight', vb: { d: 'available', off: true } };
+    const r = parseNativeRuntime(JSON.stringify({ ...runtime, sleep: vbSleep }))!;
+    expect(r.sleep?.vb).toEqual({ d: 'available', off: true });
+    expect(
+      parseNativeRuntime(JSON.stringify({ ...runtime, sleep: { ...vbSleep, vb: { d: 'available', off: false, f: 'timeout' } } }))!.sleep?.vb,
+    ).toEqual({ d: 'available', off: false, f: 'timeout' });
+    // Going dark / lit is a power change that must reach the row promptly.
+    expect(nativePowerStateChanged(r, { ...r, sleep: { ...r.sleep, vb: { d: 'available', off: false } } })).toBe(true);
+    expect(nativePowerStateChanged(r, { ...r, elapsedRealtimeMs: r.elapsedRealtimeMs + 1 })).toBe(false);
+  });
+  it('a malformed vb block is dropped ON ITS OWN, never the whole report', () => {
+    for (const vb of [{ d: 'nope', off: true }, { d: 'available', off: 'yes' }, 'x', { d: 'available', off: true, f: 'x'.repeat(41) }]) {
+      const r = parseNativeRuntime(JSON.stringify({ ...runtime, sleep: { blank: 'vendor-backlight', vb } }));
+      expect(r).not.toBeNull();
+      expect(r!.sleep?.blank).toBe('vendor-backlight');
+      expect(r!.sleep?.vb).toBeUndefined();
+    }
+  });
 });
 
 describe('native-first §4.4 — nativePresenting on the status heartbeat (telemetry only)', () => {
