@@ -4,6 +4,7 @@ import com.educms.player.display.VendorBacklightEngine.Call
 import com.educms.player.display.VendorBacklightEngine.Connect
 import com.educms.player.display.VendorBacklightEngine.Step
 import com.educms.player.display.VendorBacklightPolicy.Detection
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,12 +13,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * THE VENDOR BACKLIGHT, END TO END, ON RECORDING FAKES (player 1.1.52).
+ * THE GUQ SLEEP / WAKE, END TO END, ON RECORDING FAKES.
  *
  * The GUQ panel cannot be reached from CI, so the only place the whole
- * sequence can be watched is here: detection and fallback, a blank, a wake,
- * a dead binder, a service that never answers, the alert path's ON, and the
+ * sequence can be watched is here: detection and fallback, a sleep, a wake,
+ * a dead binder, a service that never answers, the alert path's wake, and the
  * fault latch. Every port is a fake that records what was asked of it.
+ *
+ * The sequence under test is Goodview's own CMS on a t982 (`APITools
+ * .PowerOff` / `PowerOn`): read the power state, then `CmdPowerOff(-1)` to
+ * sleep, the power key `CmdSendKeyEvent(5000)` to wake — and never the
+ * MCU-only `CmdSetScreenStatus` that latched GUQs through 1.1.56.
  */
 class VendorBacklightEngineTest {
 
@@ -26,6 +32,7 @@ class VendorBacklightEngineTest {
     private val okVoid = """{"status":"SUCCESS","responseName":"RespVoidResult","paramsJson":"{}"}"""
     private val handlerNotFound = """{"status":"HANDLER_NOT_FOUND","responseName":"","paramsJson":""}"""
 
+    /** A recording panel: `CmdPowerOff` sleeps it, the power key TOGGLES it (as the real key does). */
     private class Fake : VendorBacklightEngine.Ports {
         var now = 0L
         var installed = true
@@ -34,14 +41,14 @@ class VendorBacklightEngineTest {
         val connectQueue = ArrayDeque<Connect>()
         var connects = 0
         var disconnects = 0
-        /** Each send consumes one; a reply is also looked up by request name when the queue is empty. */
+        /** Each send consumes one; a reply is otherwise derived from the panel state. */
         val sendQueue = ArrayDeque<Call>()
         var screenOn = true
-        var setStatusCall: Call? = null
         val sent = mutableListOf<String>()
         /** The budget each send was given, in order. */
         val budgets = mutableListOf<Long>()
         val submitted = mutableListOf<() -> Unit>()
+        val scheduled = mutableListOf<Pair<Long, () -> Unit>>()
         var submitAccepts = true
         val darkChanges = mutableListOf<Boolean>()
         var seen = 0
@@ -59,11 +66,16 @@ class VendorBacklightEngineTest {
         override fun send(requestJson: String, budgetMs: Long): Call {
             sent += requestJson
             budgets += budgetMs
+            if (budgetMs <= 0L) return Call.TimedOut // as the Android port does
             now += sendCostMs
             sendQueue.removeFirstOrNull()?.let { return it }
             return when {
-                requestJson.contains("CmdSetScreenStatus") -> setStatusCall ?: run {
-                    screenOn = requestJson.contains("\\\"on\\\":true")
+                requestJson.contains("CmdPowerOff") -> {
+                    screenOn = false
+                    Call.Reply("""{"status":"SUCCESS","responseName":"RespVoidResult","paramsJson":"{}"}""")
+                }
+                requestJson.contains("CmdSendKeyEvent") -> {
+                    screenOn = !screenOn
                     Call.Reply("""{"status":"SUCCESS","responseName":"RespVoidResult","paramsJson":"{}"}""")
                 }
                 requestJson.contains("CmdGetScreenStatus") -> Call.Reply(
@@ -77,12 +89,26 @@ class VendorBacklightEngineTest {
             submitted += work
             return true
         }
+        override fun schedule(delayMs: Long, work: () -> Unit): Boolean {
+            if (!submitAccepts) return false
+            scheduled += delayMs to work
+            return true
+        }
         override fun darkChanged(dark: Boolean) { darkChanges += dark }
         override fun seen() { seen++ }
         override fun log(level: VendorBacklightEngine.Level, message: String) { logs += "${level.name}: $message" }
+
+        /** The command name of every request sent, in order (short class names). */
+        fun names(): List<String> = sent.map { JSONObject(it).getString("requestName").substringAfterLast('.') }
+        fun params(i: Int): JSONObject = JSONObject(JSONObject(sent[i]).getString("paramsJson"))
+        fun keys(): Int = sent.count { it.contains("CmdSendKeyEvent") }
     }
 
+    /** Let our own last power command settle. */
+    private fun Fake.settle() { now += VendorBacklightPolicy.POWER_SETTLE_MS }
+
     // ─── detection and fallback ──────────────────────────────────────────
+
 
     @Test
     fun `a box without the vendor package is ABSENT without a single bind`() {
@@ -158,52 +184,160 @@ class VendorBacklightEngineTest {
         assertEquals(VendorBacklightPolicy.MAX_PROBES, f.connects)
     }
 
-    // ─── blank and wake ──────────────────────────────────────────────────
+
+    // ─── the exact call sequence (Goodview's CMS on a t982) ──────────────
 
     @Test
-    fun `a blank sends OFF, reads the status back, records dark and reports what the MCU said`() {
+    fun `sleep is read-state then CmdPowerOff(-1) then one readback — never CmdSetScreenStatus`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
-        e.probe()
         val step = e.blank()
         assertTrue(step is Step.Ok)
+        assertEquals(listOf("CmdGetScreenStatus", "CmdPowerOff", "CmdGetScreenStatus"), f.names())
+        assertEquals("com.seewo.sdk.internal.command.system.CmdPowerOff", JSONObject(f.sent[1]).getString("requestName"))
+        assertEquals(-1, f.params(1).getInt("timeCount"))
+        assertFalse(f.sent.any { it.contains("CmdSetScreenStatus") })
         assertEquals(true, (step as Step.Ok).backlightOff)
         assertTrue(e.dark)
         assertEquals(listOf(true), f.darkChanges)
-        // OFF then the readback, in that order.
-        assertTrue(f.sent[1].contains("CmdSetScreenStatus") && f.sent[1].contains("\\\"on\\\":false"))
-        assertTrue(f.sent[2].contains("CmdGetScreenStatus"))
         assertEquals(SleepProofPolicy.OUTCOME_OFF, VendorBacklightPolicy.blankOutcome(step.backlightOff))
     }
 
     @Test
-    fun `a wake sends ON, clears the dark record and the fault`() {
+    fun `wake is read-state then the power key 5000 then one readback — never CmdSetScreenStatus`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
-        e.probe()
         e.blank()
+        f.settle()
+        f.sent.clear()
         val step = e.wake()
         assertTrue(step is Step.Ok)
+        assertEquals(listOf("CmdGetScreenStatus", "CmdSendKeyEvent", "CmdGetScreenStatus"), f.names())
+        assertEquals("com.seewo.sdk.internal.command.system.CmdSendKeyEvent", JSONObject(f.sent[1]).getString("requestName"))
+        assertEquals(5000, f.params(1).getInt("keyCode"))
+        assertFalse(f.sent.any { it.contains("CmdSetScreenStatus") })
+        assertEquals(false, (step as Step.Ok).backlightOff)
         assertFalse(e.dark)
+        assertTrue(f.screenOn)
         assertEquals(listOf(true, false), f.darkChanges)
         assertNull(e.faulted)
-        assertTrue(f.sent.last { it.contains("CmdSetScreenStatus") }.contains("\\\"on\\\":true"))
     }
 
     @Test
-    fun `a readback that says the backlight is still on is reported honestly, never as off`() {
-        val f = Fake().apply { sendQueue += Call.Reply(okVoid); sendQueue += Call.Reply(okTrue) } // OFF accepted; status reads ON
+    fun `a sleep on a panel that already reads off sends nothing but records it dark`() {
+        val f = Fake().apply { screenOn = false }
+        val e = VendorBacklightEngine(f)
+        val step = e.blank() as Step.Ok
+        assertEquals(listOf("CmdGetScreenStatus"), f.names())
+        assertEquals(true, step.backlightOff)
+        assertTrue(e.dark)
+    }
+
+    @Test
+    fun `a wake on a panel that already reads on never presses the power key (it is a toggle)`() {
+        val f = Fake().apply { screenOn = true }
+        val e = VendorBacklightEngine(f)
+        val step = e.wake() as Step.Ok
+        assertEquals(listOf("CmdGetScreenStatus"), f.names())
+        assertEquals(0, f.keys())
+        assertEquals(false, step.backlightOff)
+        assertTrue(f.screenOn)
+    }
+
+    @Test
+    fun `an unreadable power state sends no command in either direction`() {
+        val f = Fake().apply { screenOn = false; sendQueue += Call.TimedOut }
+        val e = VendorBacklightEngine(f)
+        assertTrue(e.wake() is Step.Failed)
+        assertEquals(0, f.keys())
+        val g = Fake().apply { sendQueue += Call.Reply(handlerNotFound) }
+        assertTrue(VendorBacklightEngine(g).blank() is Step.Failed)
+        assertFalse(g.sent.any { it.contains("CmdPowerOff") })
+    }
+
+    // ─── the toggle guard: settle window ─────────────────────────────────
+
+    @Test
+    fun `two wakes back to back press the power key once, not twice`() {
+        val f = Fake()
+        val e = VendorBacklightEngine(f)
+        e.blank()
+        f.settle()
+        assertTrue(e.wake() is Step.Ok)
+        // The registry wake right behind the alert's wake — the panel may still read off.
+        f.screenOn = false
+        assertTrue(e.wake() is Step.Ok)
+        assertEquals(1, f.keys())
+    }
+
+    @Test
+    fun `a wake right after our own sleep presses nothing now and tries again once the panel has settled`() {
+        val f = Fake()
+        val e = VendorBacklightEngine(f)
+        e.blank()
+        f.screenOn = true // the panel still reads on while it goes down
+        val step = e.wake()
+        assertTrue(step is Step.Ok)
+        assertNull((step as Step.Ok).backlightOff)
+        assertEquals(0, f.keys())
+        assertTrue(e.dark) // still ours to wake: the alert watch keeps re-raising
+        val (delay, work) = f.scheduled.single()
+        assertTrue(delay >= VendorBacklightPolicy.POWER_SETTLE_MS)
+        // The panel has gone down; the deferred wake runs.
+        f.screenOn = false
+        f.now += delay
+        work()
+        assertEquals(1, f.keys())
+        assertTrue(f.screenOn)
+        assertFalse(e.dark)
+    }
+
+    @Test
+    fun `a deferred wake that a newer sleep superseded does nothing`() {
+        val f = Fake()
+        val e = VendorBacklightEngine(f)
+        e.blank()
+        e.wake() // deferred
+        val (delay, work) = f.scheduled.single()
+        f.now += delay
+        e.blank() // a newer request
+        val keysBefore = f.keys()
+        work()
+        assertEquals(keysBefore, f.keys())
+        assertTrue(e.dark)
+    }
+
+    @Test
+    fun `a sleep right after our own wake is refused, so the chain takes it`() {
+        val f = Fake()
+        val e = VendorBacklightEngine(f)
+        e.blank()
+        f.settle()
+        e.wake()
+        f.screenOn = false
+        assertTrue(e.blank() is Step.Failed)
+        assertEquals(1, f.sent.count { it.contains("CmdPowerOff") })
+    }
+
+    // ─── honest readback ─────────────────────────────────────────────────
+
+    @Test
+    fun `a readback that says the panel is still on is reported honestly, never as off`() {
+        val f = Fake().apply {
+            sendQueue += Call.Reply(okTrue) // reads on
+            sendQueue += Call.Reply(okVoid) // power off accepted
+            sendQueue += Call.Reply(okTrue) // still reads on
+        }
         val e = VendorBacklightEngine(f)
         val step = e.blank() as Step.Ok
         assertEquals(false, step.backlightOff)
         assertEquals(SleepProofPolicy.OUTCOME_ON, VendorBacklightPolicy.blankOutcome(step.backlightOff))
-        // The record still says dark — the command WAS accepted; the proof says what it saw.
         assertTrue(e.dark)
     }
 
     @Test
     fun `a readback that times out leaves the outcome unknown but keeps the record`() {
-        val f = Fake().apply { sendQueue += Call.Reply(okVoid); sendQueue += Call.TimedOut }
+        val f = Fake().apply { sendQueue += Call.Reply(okTrue); sendQueue += Call.Reply(okVoid); sendQueue += Call.TimedOut }
         val e = VendorBacklightEngine(f)
         val step = e.blank() as Step.Ok
         assertNull(step.backlightOff)
@@ -213,7 +347,7 @@ class VendorBacklightEngineTest {
 
     @Test
     fun `a refused command is a Failed step that changes no record`() {
-        val f = Fake().apply { sendQueue += Call.Reply(handlerNotFound) }
+        val f = Fake().apply { sendQueue += Call.Reply(okTrue); sendQueue += Call.Reply(handlerNotFound) }
         val e = VendorBacklightEngine(f)
         val step = e.blank()
         assertTrue(step is Step.Failed)
@@ -224,7 +358,7 @@ class VendorBacklightEngineTest {
 
     @Test
     fun `a reply that is not an SDK response fails the step`() {
-        val f = Fake().apply { sendQueue += Call.Reply("<html>oops</html>") }
+        val f = Fake().apply { sendQueue += Call.Reply(okTrue); sendQueue += Call.Reply("<html>oops</html>") }
         assertTrue(VendorBacklightEngine(f).blank() is Step.Failed)
     }
 
@@ -232,7 +366,7 @@ class VendorBacklightEngineTest {
 
     @Test
     fun `a command that outlives its budget is a failure, not a wait, and nothing is recorded`() {
-        val f = Fake().apply { sendQueue += Call.TimedOut }
+        val f = Fake().apply { sendQueue += Call.Reply(okTrue); sendQueue += Call.TimedOut }
         val e = VendorBacklightEngine(f)
         val step = e.blank()
         assertTrue(step is Step.Failed)
@@ -251,34 +385,38 @@ class VendorBacklightEngineTest {
 
     @Test
     fun `every call is asked within the remaining budget — a slow service cannot stretch the step`() {
-        // Each round trip eats 1 200 ms of a 1 900 ms budget: the command gets
-        // the per-call ceiling (1 500 ms), the readback only the 700 ms that
-        // are left — never a fresh budget.
+        // Each round trip eats 1 200 ms of a 1 900 ms budget: the read gets the
+        // per-call ceiling (1 500 ms), the command only the 700 ms left, and
+        // the readback nothing — never a fresh budget.
         val f = Fake().apply { sendCostMs = 1_200L }
-        val e = VendorBacklightEngine(f)
-        val step = e.blank(budgetMs = 1_900L)
+        val step = VendorBacklightEngine(f).blank(budgetMs = 1_900L)
         assertTrue(step is Step.Ok)
-        assertEquals(listOf(VendorBacklightPolicy.CALL_TIMEOUT_MS, 700L), f.budgets)
-        // And a service that eats the WHOLE budget on the command gets no readback at all.
+        assertEquals(VendorBacklightPolicy.CALL_TIMEOUT_MS, f.budgets[0])
+        assertEquals(700L, f.budgets[1])
+        assertNull((step as Step.Ok).backlightOff)
+        // A service that eats the WHOLE budget on the read gets no command.
         val g = Fake().apply { sendCostMs = 1_900L }
-        val s = VendorBacklightEngine(g).blank(budgetMs = 1_900L)
-        assertTrue(s is Step.Ok)
-        assertEquals(1, g.sent.size)
-        assertNull((s as Step.Ok).backlightOff)
+        assertTrue(VendorBacklightEngine(g).blank(budgetMs = 1_900L) is Step.Failed)
+        assertTrue(g.screenOn)
     }
 
-    // ─── a dead binder: one reconnect, inside the budget ────────────────
+    // ─── a dead binder: one reconnect, a fresh read, inside the budget ──
 
     @Test
-    fun `a dead binder is reconnected ONCE and the command retried`() {
-        val f = Fake().apply { sendQueue += Call.Failed("DeadObjectException", binderDead = true) }
+    fun `a dead binder on the power key is reconnected ONCE and the state read again before the key is resent`() {
+        val f = Fake().apply { screenOn = false }
+        f.sendQueue += Call.Reply(okFalse) // reads off
+        f.sendQueue += Call.Failed("DeadObjectException", binderDead = true) // key lost
         val e = VendorBacklightEngine(f)
         val step = e.wake()
         assertTrue(step is Step.Ok)
         assertEquals(1, f.disconnects)
         assertEquals(2, f.connects)
-        // The ON was sent twice (once to the dead binder, once after reconnecting).
-        assertEquals(2, f.sent.count { it.contains("CmdSetScreenStatus") })
+        assertEquals(
+            listOf("CmdGetScreenStatus", "CmdSendKeyEvent", "CmdGetScreenStatus", "CmdSendKeyEvent", "CmdGetScreenStatus"),
+            f.names(),
+        )
+        assertTrue(f.screenOn)
     }
 
     @Test
@@ -290,20 +428,22 @@ class VendorBacklightEngineTest {
         val e = VendorBacklightEngine(f)
         assertTrue(e.wake() is Step.Failed)
         assertEquals(2, f.connects)
+        assertEquals(0, f.keys())
     }
 
     // ─── rule 4: the fault latch ─────────────────────────────────────────
 
     @Test
-    fun `a failed ON after our own OFF latches the fault — no further blank, wake keeps trying`() {
+    fun `a failed wake after our own sleep latches the fault — no further blank, wake keeps trying`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
         e.probe()
         assertTrue(e.blank() is Step.Ok)
+        f.settle()
         f.sendQueue += Call.TimedOut
         assertTrue(e.wake() is Step.Failed)
         assertNotNull(e.faulted)
-        assertTrue(e.dark) // the record keeps telling the truth: we turned it off
+        assertTrue(e.dark) // the record keeps telling the truth: we put it to sleep
         assertEquals(setOf(Capability.WAKE), VendorBacklightPolicy.supports(e.detection, seenBefore = true, killSwitchOff = false, faulted = e.faulted != null))
         // The next wake that succeeds clears the fault.
         assertTrue(e.wake() is Step.Ok)
@@ -312,7 +452,7 @@ class VendorBacklightEngineTest {
     }
 
     @Test
-    fun `a failed ON while the backlight was never ours does not latch anything`() {
+    fun `a failed wake while the panel was never ours does not latch anything`() {
         val f = Fake().apply { sendQueue += Call.TimedOut }
         val e = VendorBacklightEngine(f)
         assertTrue(e.wake() is Step.Failed)
@@ -322,24 +462,43 @@ class VendorBacklightEngineTest {
     // ─── rule 3: emergency first — queued, never waited for ─────────────
 
     @Test
-    fun `the alert path queues the ON and returns before any binder call is made`() {
+    fun `an alert wakes a sleeping panel — queued off the caller's thread, then the power key`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
         e.probe()
         e.blank()
+        assertFalse(f.screenOn)
+        f.settle()
         val sentBefore = f.sent.size
         assertTrue(e.emergencyOn(quiet = false, seenBefore = true))
         // Nothing was sent on the caller's thread — the work sits on the worker.
         assertEquals(sentBefore, f.sent.size)
         assertEquals(1, f.submitted.size)
-        // When the worker runs it, the backlight comes on and the record clears.
         f.submitted.single().invoke()
+        assertEquals(listOf("CmdGetScreenStatus", "CmdSendKeyEvent", "CmdGetScreenStatus"), f.names().drop(sentBefore))
+        assertTrue(f.screenOn)
         assertFalse(e.dark)
-        assertTrue(f.sent.last { it.contains("CmdSetScreenStatus") }.contains("\\\"on\\\":true"))
     }
 
     @Test
-    fun `a quiet re-raise asks only while the backlight is off by our hand`() {
+    fun `an alert that lands while the panel is still going to sleep still wakes it`() {
+        val f = Fake()
+        val e = VendorBacklightEngine(f)
+        e.probe()
+        e.blank() // no settle: the alert arrives at once
+        assertTrue(e.emergencyOn(quiet = false, seenBefore = true))
+        f.submitted.single().invoke()
+        assertEquals(0, f.keys())
+        val (delay, work) = f.scheduled.single()
+        f.now += delay
+        work()
+        assertEquals(1, f.keys())
+        assertTrue(f.screenOn)
+        assertFalse(e.dark)
+    }
+
+    @Test
+    fun `the native alert watch's quiet re-raise asks only while the panel sleeps by our hand`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
         e.probe()
@@ -356,6 +515,10 @@ class VendorBacklightEngineTest {
         val e = VendorBacklightEngine(lit)
         e.probe()
         assertTrue(e.emergencyOn(quiet = false, seenBefore = true))
+        // Run it: the panel reads on, so the toggle is NOT pressed.
+        lit.submitted.single().invoke()
+        assertEquals(0, lit.keys())
+        assertTrue(lit.screenOn)
         val absent = Fake().apply { installed = false }
         val a = VendorBacklightEngine(absent)
         a.probe()
@@ -364,14 +527,14 @@ class VendorBacklightEngineTest {
     }
 
     @Test
-    fun `a hanging or throwing ON on the worker never reaches the caller`() {
+    fun `a hanging or throwing wake on the worker never reaches the caller`() {
         val f = Fake()
         val e = VendorBacklightEngine(f)
         e.probe()
         e.blank()
-        f.sendQueue += Call.TimedOut // the ON will time out when the worker runs it
+        f.settle()
+        f.sendQueue += Call.TimedOut // the state read will time out when the worker runs it
         assertTrue(e.emergencyOn(quiet = false, seenBefore = true))
-        // Running the queued work throws nothing; the fault is latched, the record stands.
         f.submitted.single().invoke()
         assertNotNull(e.faulted)
         assertTrue(e.dark)

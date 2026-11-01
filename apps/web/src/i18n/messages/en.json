@@ -2119,6 +2119,7 @@
         "display-schedule-off": "Off on its on/off schedule",
         "update-window": "In its update window",
         "maintenance": "Restarting or updating",
+        "daily-pattern": "Off at its usual time each day",
         "not-seen-30-days": "Not seen in 30+ days",
         "never-connected": "Never connected",
         "test-screen": "Test screen in a phone or computer browser"
