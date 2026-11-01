@@ -41,6 +41,14 @@ on:
     # and the build jobs SKIP on docs-only changes: a skipped job satisfies a
     # required check, a missing one blocks forever. `push` keeps its
     # paths-ignore — master needs no run for a docs-only commit.
+  # Merge queue (2026-11-01): a queued pull request is checked on a temporary
+  # merge-group commit, not on the PR, and a workflow with no `merge_group`
+  # trigger never reports there — the queue could not merge anything. The
+  # `changes` job classifies a merge group exactly as it classifies a PR. The
+  # concurrency group below is keyed on github.ref, which is unique per merge
+  # group, so queue runs never cancel each other.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -54,26 +62,51 @@ jobs:
   changes:
     name: What changed (docs-only PRs skip the build jobs)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       code: ${{ steps.classify.outputs.code }}
     steps:
+      # Only a pull request or a merge group has a diff to classify. Every other
+      # event (push, schedule, dispatch) needs no checkout: its answer is "code".
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         with:
           fetch-depth: 0
       - id: classify
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          # pull_request -> the PR's base; merge_group -> the group's base (the head
+          # of master, or of the entry ahead of it in the queue). Empty otherwise.
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          # merge_group -> the group's head; otherwise GITHUB_SHA (for a pull request,
+          # the test merge commit — what the checkout above has as HEAD).
+          HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            files=$(git diff --name-only "$BASE_SHA...HEAD")
-          else
-            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          set -eu
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          case "$EVENT_NAME" in
+            pull_request|merge_group) ;;
+            *) emit true "$EVENT_NAME is not a pull request or a merge group: the gated jobs always run"; exit 0 ;;
+          esac
+          # From here on a doubt is a code change, never a skip: a classifier that
+          # stands down on an error is how a green check ends up meaning nothing.
+          # --no-renames lists BOTH ends of a rename, so code moved into docs/ still
+          # shows its old path.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ] || ! files=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA"); then
+            emit true "::warning::cannot diff '$BASE_SHA...$HEAD_SHA': treated as a code change, the gated jobs run"
+            exit 0
           fi
-          # The same set as the push trigger's paths-ignore above.
-          if printf '%s\n' "$files" | grep -vE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' | grep -q .; then
-            echo "code=true" >> "$GITHUB_OUTPUT"; echo "code changed: the build jobs run"
+          if [ -z "$files" ]; then
+            emit true "no changed files found, so nothing can be proven docs-only: the gated jobs run"
+            exit 0
+          fi
+          # The same set as the push trigger's paths-ignore above. Counted with
+          # grep -c (not `grep -q`) so an early-closing pipe can never flip the answer.
+          code_files=$(printf '%s\n' "$files" | grep -vcE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' || true)
+          if [ "${code_files:-0}" -gt 0 ]; then
+            emit true "code changed: the gated jobs run"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"; echo "docs-only: the build jobs are skipped and report as such"
+            emit false "docs-only: the gated jobs are skipped and report as such"
           fi
 
   apk-version-tag-sync:
@@ -87,7 +120,7 @@ jobs:
     name: APK version is tagged
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -141,7 +174,7 @@ jobs:
     name: pnpm lockfile drift
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -164,7 +197,7 @@ jobs:
     name: schema change ships a migration
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -188,7 +221,7 @@ jobs:
     name: API + workspace packages build
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -228,7 +261,7 @@ jobs:
     name: Web Jest (unit)
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -282,7 +315,7 @@ jobs:
     name: Web typecheck + build
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -353,7 +386,7 @@ jobs:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -440,7 +473,7 @@ jobs:
     name: Renderer image build + render smoke test
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
