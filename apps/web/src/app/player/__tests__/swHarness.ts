@@ -116,7 +116,7 @@ export function loadWorker() {
   const send = (data: Record<string, unknown>) => new Promise<any>((resolvePort) => {
     handlers.message({
       data,
-      ports: [{ postMessage: (reply: any) => { if (!(reply && reply.started === true)) resolvePort(reply); } }],
+      ports: [{ postMessage: (reply: any) => { if (!(reply && (reply.started === true || reply.progress === true))) resolvePort(reply); } }],
       waitUntil: () => undefined,
     });
   });
