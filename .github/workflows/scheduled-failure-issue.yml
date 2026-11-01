@@ -34,6 +34,7 @@ on:
       - CI & Security
       - Cross-Browser
       - DB Backup
+      - DB Restore Drill
       - Deploy Reliability
       - Emergency Path
       - Field Scripts
