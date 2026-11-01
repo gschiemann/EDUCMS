@@ -3,36 +3,45 @@ import { deflateSync } from 'node:zlib';
 import { bootMockPlayer, ok, playerIds, playerManifest } from './helpers/mock-player';
 
 /**
- * INSTANT EMERGENCY BOARDS (2026-10-26) — the live alerts at a launch site:
- * every screen showed the built-in typed surface ("MEDICAL") for ~8 s and only
- * then the location's board, because the board definition travelled only with
- * the committed manifest (the fan-out precedes the commit) while
- * `emergency-assets` had pre-delivered the FILES alone. The same alert also
- * carried TWO paint identities (the push says `medical`, the manifest
- * `MEDICAL`), so the APK restarted its paint ladder for a "new" alert.
+ * INSTANT EMERGENCY BOARDS — "the first frame is the final board" (2026-10-26,
+ * strengthened 2026-10-31 after three field rounds still showed "a short
+ * built-in alert screen first, then the real board").
  *
- * Under test, against the mocked APK / timeline of the drill spec:
- *   1. LIVE, board staged: the location's board (the `media` emergency root,
- *      not the typed `fallback`) is on the glass within 1 s of the signed
- *      push; the committed manifest 3.5 s later, with the same board, changes
- *      neither the identity nor the mounted element (no re-mount); one native
- *      episode throughout; the all-clear goes straight to content.
- *   2. No staged board for the type: the typed surface, exactly as before.
- *   3. DRILL, board staged: the drill board, drill-marked, never red.
- *   4. Raise-only: staged boards alone never put an alert on the glass.
+ * What the field saw, and what each case here pins:
+ *   • a board's picture is DECODED at staging, so the board raised from the
+ *     signed push paints on its first frame — the image is served slowly here
+ *     (a stand-in for a 4K PNG decoding on a slow panel) and cached, so a page
+ *     that did not pre-decode shows its protective surface first;
+ *   • a LANDSCAPE screen whose own live playlist is EMPTY (the launch site's
+ *     live landscape playlists have no items) opens on the staged SYSTEM board
+ *     — the manifest's own text template, same signature — not on a typed
+ *     surface that the manifest then replaces;
+ *   • a DRILL opens on the DRILL board, indigo, never the live board;
+ *   • the BACK FACE of a double-sided unit (`?face=1`, a landscape panel mode,
+ *     a PORTRAIT screen) opens on the portrait board;
+ *   • a screen with only a single FILE for the type opens on that file;
+ *   • with nothing staged at all, the typed surface is the system board's own
+ *     words on the system board's own colour.
+ * In every case: nothing paints between the push and the board (no pending
+ * surface, no normal content, no other board), the committed manifest 3.5 s
+ * later re-mounts nothing, one native episode, one identity.
  *
- * NEGATIVE CONTROL for (1): with the staged-board raise disabled the board is
- * not on the glass within 1 s (the typed surface is), so the first assertion
- * fails on the old code. Per CLAUDE.md the repo is PUBLIC: fake ids, fake
- * tokens, no customer names.
+ * NEGATIVE CONTROL (run by hand against the previous page, 2026-10-31): the
+ * first-frame assertions of the live, drill, back-face and single-file cases
+ * fail there (the protective surface is the first frame while the picture
+ * loads), and the empty-landscape case fails on "no board staged". Per
+ * CLAUDE.md the repo is PUBLIC: fake ids, fake tokens, no customer names.
  */
 
 const INDIGO = 'rgb(55, 48, 163)';
+/** The system board's live colour (`systemEmergencyBoardColor('CRITICAL', false)`). */
+const SYSTEM_RED = 'rgb(220, 38, 38)';
 /** The real push shape: the dashboard's type, as the API signs it. */
 const PUSH_TYPE = 'medical';
-const BOARD_IMAGE = 'http://api.invalid/assets/board-slide.png';
-const BOARD_ID = 'pl-board-medical';
+const BOARD_ID = 'pl-board-medical-port';
 const DRILL_BOARD_ID = 'pl-board-medical-drill';
+/** How slowly the board's picture arrives from "storage" — a decode-sized gap. */
+const IMAGE_DELAY_MS = 400;
 
 type Episode = { challenge: string; identity: string | null; paintedAt: number | null; status: 'pending' | 'painted' };
 type MockState = { held: boolean; episodes: Episode[]; receipts: Array<{ at: number; painted: boolean; identity: string }> };
@@ -51,16 +60,64 @@ function solidPng(width: number, height: number, rgb: [number, number, number]):
 const PNG = solidPng(640, 360, [20, 90, 200]);
 
 /** The API's `emergencyBoardPayload` shape — what the manifest's emergency branch emits. */
-function board(id: string, name: string) {
+function board(id: string, name: string, image: string) {
   return {
     id, name,
-    items: [{ item_id: `${id}-item-1`, asset_id: `${id}-asset-1`, asset_hash: null, url: BOARD_IMAGE, duration_ms: 60_000, sequence: 0, mime_type: 'image/png', transition_type: null }],
+    items: [{ item_id: `${id}-item-1`, asset_id: `${id}-asset-1`, asset_hash: null, url: image, duration_ms: 60_000, sequence: 0, mime_type: 'image/png', transition_type: null }],
   };
 }
-const BOARDS = { [BOARD_ID]: board(BOARD_ID, 'Medical board'), [DRILL_BOARD_ID]: board(DRILL_BOARD_ID, 'Medical drill board') };
-const BOARD_FOR = { MEDICAL: { live: { playlistId: BOARD_ID, perScreen: false }, drill: { playlistId: DRILL_BOARD_ID, perScreen: false } } };
+/** The API's `screenAssetBoard` shape — a screen's single file for the type. */
+function assetBoard(screenId: string, image: string) {
+  return {
+    id: 'screen-asset-medical', name: 'MEDICAL (custom asset)',
+    items: [{ item_id: `screen-asset-${screenId}-medical`, asset_id: null, asset_hash: null, url: image, duration_ms: 60_000, sequence: 0, mime_type: 'image/png', transition_type: null }],
+  };
+}
+/** The API's `systemEmergencyBoard` shape — the manifest's own DEFAULT_EMERGENCY text template. */
+const SYSTEM_LIVE_TEXT = 'MEDICAL EMERGENCY\n\nKeep this area clear.\nFollow staff directions.';
+function systemBoard() {
+  return {
+    id: 'DEFAULT_EMERGENCY', name: 'SYSTEM DEFAULT - MEDICAL', contentRev: 'rev-fake-medical-live', items: [],
+    template: {
+      name: 'EMERGENCY OVERRIDE', bgColor: '#dc2626', screenWidth: 1920, screenHeight: 1080,
+      zones: [{ id: 'emergency-zone', x: 0, y: 0, width: 100, height: 100, zIndex: 1, widgetType: 'TEXT',
+        defaultConfig: { sizeMode: 'absolute', content: SYSTEM_LIVE_TEXT, fontSize: 100, fontWeight: 800, color: 'white', alignment: 'center', lineHeight: 1.15 } }],
+    },
+  };
+}
 
-function emergencyManifest(base: ReturnType<typeof playerManifest>, drill: boolean) {
+type Staging = { boards: Record<string, unknown>; boardFor: Record<string, unknown>; manifestBoard: unknown; drillManifestBoard?: unknown };
+
+/** A portrait (or back-face) screen: its own live and drill boards have content. */
+function stagingWithBoards(image: string): Staging {
+  const live = board(BOARD_ID, 'Medical board (portrait)', image);
+  const drill = board(DRILL_BOARD_ID, 'Medical drill board (portrait)', image);
+  return {
+    boards: { [BOARD_ID]: live, [DRILL_BOARD_ID]: drill },
+    boardFor: { MEDICAL: { live: { playlistId: BOARD_ID, perScreen: false, boardKey: BOARD_ID }, drill: { playlistId: DRILL_BOARD_ID, perScreen: false, boardKey: DRILL_BOARD_ID } } },
+    manifestBoard: live, drillManifestBoard: drill,
+  };
+}
+/** A landscape screen at the launch site: the live landscape playlist resolved but is EMPTY → the system board. */
+function stagingEmptyLandscape(): Staging {
+  const sys = systemBoard();
+  return {
+    boards: { 'system:MEDICAL:live': sys },
+    boardFor: { MEDICAL: { live: { playlistId: 'pl-landscape-empty', perScreen: false, boardKey: 'system:MEDICAL:live' }, drill: { playlistId: 'pl-landscape-empty', perScreen: false, boardKey: 'system:MEDICAL:drill' } } },
+    manifestBoard: sys,
+  };
+}
+/** A screen with only a single file for the type (location mode). */
+function stagingSingleFile(screenId: string, image: string): Staging {
+  const asset = assetBoard(screenId, image);
+  return {
+    boards: { 'asset:MEDICAL:live': asset },
+    boardFor: { MEDICAL: { live: { playlistId: null, perScreen: false, boardKey: 'asset:MEDICAL:live' }, drill: { playlistId: null, perScreen: false, boardKey: 'asset:MEDICAL:live' } } },
+    manifestBoard: asset,
+  };
+}
+
+function emergencyManifest(base: ReturnType<typeof playerManifest>, drill: boolean, playlist: unknown) {
   return {
     ...base,
     isEmergency: true,
@@ -71,7 +128,7 @@ function emergencyManifest(base: ReturnType<typeof playerManifest>, drill: boole
     emergencyExpiresAt: Math.floor(Date.now() / 1000) + 3_600,
     isDrill: drill,
     // The committed manifest carries the SAME board the player staged.
-    playlists: [drill ? BOARDS[DRILL_BOARD_ID] : BOARDS[BOARD_ID]],
+    playlists: [playlist],
   };
 }
 
@@ -128,7 +185,8 @@ async function installNativeMockAndTimeline(page: Page) {
         const cs = getComputedStyle(r);
         return cs.display !== 'none' && cs.visibility !== 'hidden' && r.getBoundingClientRect().width > 0;
       });
-      const alert = roots[roots.length - 1];
+      // The protective surface overlays the board (zIndex 9998): when it is up, IT is what the glass shows.
+      const alert = roots.find(r => r.getAttribute('data-edu-emergency-root') === 'fallback') ?? roots[roots.length - 1];
       if (alert) return `alert:${alert.getAttribute('data-edu-emergency-root')}:${alert.getAttribute('data-edu-emergency-drill') === 'true' ? 'drill' : 'live'}`;
       if (document.querySelector('[data-edu-emergency-hold="true"]')) return 'hold';
       const transition = document.querySelector('[data-edu-emergency-transition="true"]');
@@ -145,7 +203,10 @@ async function installNativeMockAndTimeline(page: Page) {
       try { sessionStorage.setItem('__eduGlassTimeline', JSON.stringify(timeline)); } catch { /* ignore */ }
     };
     const observe = () => {
-      new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(record); })
+      // Every DOM mutation is classified in the SAME task (a microtask), before
+      // the browser can paint it — so a surface that was up for one frame is
+      // in the timeline even if React removed it a frame later.
+      new MutationObserver(() => { if (scheduled) return; scheduled = true; queueMicrotask(record); })
         .observe(document.documentElement, { subtree: true, childList: true, attributes: true });
       record();
     };
@@ -168,136 +229,239 @@ async function push(page: Page, message: Record<string, unknown>) {
   await page.evaluate((m) => (window as unknown as { __eduTestRealtime: { deliver: (x: unknown) => void } }).__eduTestRealtime.deliver(m), message);
 }
 
-async function bootUnderTest(page: Page, tag: string, manifestRef: { value: unknown }, staged: boolean) {
+type Booted = { id: ReturnType<typeof playerIds>; image: string; imageRequests: { count: number; done: number } };
+
+async function bootUnderTest(page: Page, tag: string, manifestRef: { value: unknown }, staging: Staging | null, opts: { query?: string; orientation?: 'LANDSCAPE' | 'PORTRAIT' } = {}): Promise<Booted> {
   const id = playerIds(tag);
+  const image = `http://api.invalid/assets/board-${tag}.png`;
+  const imageRequests = { count: 0, done: 0 };
   await installNativeMockAndTimeline(page);
+  const normal = { ...playerManifest(id.screenId, 'images'), orientation: opts.orientation ?? 'LANDSCAPE' };
+  manifestRef.value = normal;
   await bootMockPlayer(page, {
     tag,
     kind: 'images',
     identity: id,
+    manifest: normal,
+    query: opts.query,
     extraRoutes: async (p) => {
       await p.route(`**/api/v1/screens/${id.screenId}/manifest*`, (route) => ok(route, manifestRef.value));
       await p.route(`**/api/v1/screens/${id.screenId}/render-proof`, (route) => ok(route, { ok: true, emergencyPaintAccepted: true }));
       // The staged boards ride the same authenticated response as the files.
       await p.route(`**/api/v1/screens/${id.screenId}/emergency-assets`, (route) =>
-        ok(route, staged ? { assets: [], setHash: 'boards-fake-hash', boards: BOARDS, boardFor: BOARD_FOR } : { assets: [], setHash: 'empty-fake-hash' }));
-      await p.route(BOARD_IMAGE, (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+        ok(route, staging ? { assets: [], setHash: `boards-fake-${tag}`, boards: staging.boards, boardFor: staging.boardFor } : { assets: [], setHash: 'empty-fake-hash' }));
+      // The board's picture: SLOW (a decode-sized gap) and cacheable, like storage.
+      await p.route(image, async (route) => {
+        imageRequests.count += 1;
+        await new Promise((r) => setTimeout(r, IMAGE_DELAY_MS));
+        await route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Cache-Control': 'public, max-age=600', 'Access-Control-Allow-Origin': '*' }, body: PNG });
+        imageRequests.done += 1;
+      });
     },
   });
-  return id;
+  return { id, image, imageRequests };
 }
 
 const boardRoot = (page: Page) => page.locator('[data-edu-emergency-root="media"]');
+const templateRoot = (page: Page) => page.locator('[data-edu-emergency-root="template"]');
 const typedRoot = (page: Page) => page.locator('[data-edu-emergency-root="fallback"]');
 
-test('LIVE with a staged board: the board is on the glass within 1 s of the push, the committed manifest re-mounts nothing, one identity, and the all-clear goes straight to content', async ({ page }) => {
-  test.setTimeout(90_000);
-  const tag = 'instant-live';
-  const id = playerIds(tag);
-  const normal = playerManifest(id.screenId, 'images');
-  const manifestRef: { value: unknown } = { value: normal };
-  await bootUnderTest(page, tag, manifestRef, true);
+/** Everything the glass showed since `sinceAt`, oldest first. */
+async function statesSince(page: Page, sinceAt: number): Promise<string[]> {
+  return (await readTimeline(page)).filter(e => e.at >= sinceAt).map(e => e.state);
+}
+
+/** THE assertion: from the push on, the glass showed the board and nothing else. */
+async function expectOnlyTheBoard(page: Page, pushedAt: number, expected: string) {
+  const since = await statesSince(page, pushedAt);
+  expect(since.length).toBeGreaterThan(0);
+  expect(since[0]).toBe(expected);
+  expect(since.filter(s => s !== expected)).toEqual([]);
+}
+
+async function waitForContentAndStaging(page: Page, booted: Booted, hasPicture = true) {
   await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 20_000 }).toBe('content');
   // The boards are staged (and persisted) before any alert — raise-only: no alert on the glass.
-  await expect.poll(() => page.evaluate((k) => !!localStorage.getItem(k), `edu_emergency_boards_v1:${id.screenId}`), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => page.evaluate((k) => !!localStorage.getItem(k), `edu_emergency_boards_v1:${booted.id.screenId}`), { timeout: 10_000 }).toBe(true);
+  // The board's picture was fetched ONCE, at staging, and has ARRIVED (pre-decoded);
+  // a trigger comes minutes after staging on a real screen, never mid-download.
+  if (hasPicture) await expect.poll(() => booted.imageRequests.done, { timeout: 10_000 }).toBe(1);
+  await page.waitForTimeout(250);
   expect((await readTimeline(page)).some(e => e.state.startsWith('alert:') || e.state.startsWith('pending:'))).toBe(false);
+}
 
-  const pushedAt = Date.now();
-  await push(page, {
-    type: 'OVERRIDE', eventId: 'ovr-evt-instant-1', timestamp: Date.now(), signature: 'fake-local-test-signature',
-    payload: { overrideId: 'ovr_instant_1', severity: 'CRITICAL', type: PUSH_TYPE, expiresAt: 0 },
+function pushOverride(page: Page, tag: string, drill = false) {
+  return push(page, {
+    type: 'OVERRIDE', eventId: `ovr-evt-${tag}`, timestamp: Date.now(), signature: 'fake-local-test-signature',
+    payload: { overrideId: `ovr_${tag}`, severity: 'CRITICAL', type: PUSH_TYPE, expiresAt: 0, ...(drill ? { isDrill: true } : {}) },
   });
+}
+
+async function expectManifestChangedNothing(page: Page, manifestRef: { value: unknown }, committed: unknown, rootSel: string, pushedAt: number, expected: string) {
   // The commit race: the manifest keeps reading NORMAL for 3.5 s after the push.
-  setTimeout(() => { manifestRef.value = emergencyManifest(normal, false); }, 3_500);
-
-  // (1) THE BOARD, within 1 s — the location's content, not the typed surface.
-  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
-  const shownAt = Date.now();
-  expect(shownAt - pushedAt).toBeLessThan(1_000 + 150);
-  const img = boardRoot(page).locator('img').first();
-  await expect(img).toBeVisible();
-  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await img.evaluate((el) => el.setAttribute('data-test-mounted-before-manifest', '1'));
-  // The typed surface is not what the glass settles on.
-  await expect(typedRoot(page)).toHaveCount(0);
-
-  // (2) Paint proof for THIS board reached the APK before its 3 s native step.
-  await expect.poll(async () => (await readMock(page)).episodes[0]?.paintedAt ?? null, { timeout: 10_000 }).not.toBeNull();
-  expect((await readMock(page)).episodes).toHaveLength(1);
-
-  // (3) The committed manifest lands with the same board: no identity change, no re-mount.
+  setTimeout(() => { manifestRef.value = committed; }, 3_500);
+  const root = page.locator(rootSel).first();
+  await expect(root).toBeVisible({ timeout: 1_500 });
+  await root.evaluate((el) => el.setAttribute('data-test-mounted-before-manifest', '1'));
+  // The committed manifest lands with the same board: no identity change, no re-mount.
   await expect.poll(async () => (await readEmergencyCache(page))?.payload?.scope, { timeout: 15_000 }).toBe('screen');
   await page.waitForTimeout(800);
-  await expect(page.locator('[data-edu-emergency-root="media"] img[data-test-mounted-before-manifest="1"]')).toBeVisible();
+  await expect(page.locator(`${rootSel}[data-test-mounted-before-manifest="1"]`)).toBeVisible();
   const confirmed = await readMock(page);
   expect(confirmed.episodes).toHaveLength(1);
   expect(new Set(confirmed.receipts.map(r => r.identity)).size).toBe(1);
-  // The push said `medical`, the manifest `MEDICAL`: ONE identity on the root throughout.
-  expect(await boardRoot(page).getAttribute('data-edu-emergency-identity')).toBe(confirmed.receipts[0].identity);
-  const sincePush = (await readTimeline(page)).filter(e => e.at >= pushedAt).map(e => e.state);
-  expect(sincePush).not.toContain('content');
-  expect(sincePush.filter(s => s.startsWith('pending:'))).toEqual([]);
-  expect(sincePush).toContain('alert:media:live');
+  expect(await root.getAttribute('data-edu-emergency-identity')).toBe(confirmed.receipts[0].identity);
+  await expectOnlyTheBoard(page, pushedAt, expected);
+}
 
-  // (4) ALL-CLEAR: straight to content — no typed surface, no pending, no second episode.
+test('PORTRAIT LIVE with a staged board: the FIRST frame after the push is the board, nothing else ever paints, the manifest re-mounts nothing, the all-clear goes straight to content', async ({ page }) => {
+  test.setTimeout(90_000);
+  const tag = 'instant-live';
+  const manifestRef: { value: unknown } = { value: null };
+  const id = playerIds(tag);
+  const staging = stagingWithBoards(`http://api.invalid/assets/board-${tag}.png`);
+  const booted = await bootUnderTest(page, tag, manifestRef, staging, { orientation: 'PORTRAIT' });
+  await waitForContentAndStaging(page, booted);
+
+  const pushedAt = Date.now();
+  await pushOverride(page, tag);
+  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
+  expect(Date.now() - pushedAt).toBeLessThan(1_000 + 150);
+  const img = boardRoot(page).locator('img').first();
+  await expect(img).toBeVisible();
+  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(typedRoot(page)).toHaveCount(0);
+  await expect.poll(async () => (await readMock(page)).episodes[0]?.paintedAt ?? null, { timeout: 10_000 }).not.toBeNull();
+  await expectManifestChangedNothing(page, manifestRef, emergencyManifest(manifestRef.value as ReturnType<typeof playerManifest>, false, staging.manifestBoard), '[data-edu-emergency-root="media"]', pushedAt, 'alert:media:live');
+
+  // ALL-CLEAR: straight to content — no typed surface, no pending, no second episode.
   const clearedAt = Date.now();
-  manifestRef.value = normal;
+  manifestRef.value = { ...playerManifest(id.screenId, 'images'), orientation: 'PORTRAIT' };
   await push(page, {
     type: 'ALL_CLEAR', eventId: 'clear-evt-instant-1', timestamp: Date.now(), signature: 'fake-local-test-signature',
-    payload: { overrideId: 'ovr_instant_1', clearedBy: 'test' },
+    payload: { overrideId: `ovr_${tag}`, clearedBy: 'test' },
   });
   await expect.poll(async () => (await readMock(page)).held, { timeout: 30_000 }).toBe(false);
   await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 20_000 }).toBe('content');
-  const sinceClear = (await readTimeline(page)).filter(e => e.at >= clearedAt).map(e => e.state);
+  const sinceClear = await statesSince(page, clearedAt);
   expect(sinceClear.filter(s => !['alert:media:live', 'content'].includes(s))).toEqual([]);
   expect((await readMock(page)).episodes).toHaveLength(1);
 });
 
-test('no staged board for the type: the typed surface, unchanged', async ({ page }) => {
+test('LANDSCAPE LIVE whose own live playlist is EMPTY: opens on the staged SYSTEM board — the manifest\'s own text template — and the manifest changes nothing', async ({ page }) => {
+  test.setTimeout(90_000);
+  const tag = 'instant-landscape-empty';
+  const manifestRef: { value: unknown } = { value: null };
+  const staging = stagingEmptyLandscape();
+  const booted = await bootUnderTest(page, tag, manifestRef, staging, { orientation: 'LANDSCAPE' });
+  await waitForContentAndStaging(page, booted, false);
+
+  const pushedAt = Date.now();
+  await pushOverride(page, tag);
+  setTimeout(() => { manifestRef.value = emergencyManifest(manifestRef.value as ReturnType<typeof playerManifest>, false, staging.manifestBoard); }, 3_500);
+  // The system board is a TEXT template; it is "the board" once its text is on
+  // the glass. Until then the typed surface shows — the SAME words on the SAME
+  // colour (one rule, @cms/api-types), so nothing visibly changes.
+  await expect(templateRoot(page)).toBeVisible({ timeout: 2_500 });
+  const template = templateRoot(page).first();
+  await expect(template).toContainText('Keep this area clear.');
+  await template.evaluate((el) => el.setAttribute('data-test-mounted-before-manifest', '1'));
+  const since = await statesSince(page, pushedAt);
+  expect(since[0] === 'alert:fallback:live' || since[0] === 'alert:template:live').toBe(true);
+  expect(since.filter(s => !['alert:fallback:live', 'alert:template:live'].includes(s))).toEqual([]);
+  // The bridge, if it was up, was the system board's colour and words.
+  const typedSeen = since.includes('alert:fallback:live');
+  if (typedSeen) {
+    const typed = typedRoot(page);
+    if (await typed.count()) {
+      await expect(typed.first()).toHaveCSS('background-color', SYSTEM_RED);
+      await expect(typed.first()).toContainText('MEDICAL EMERGENCY');
+    }
+  }
+  await expect.poll(async () => (await readMock(page)).episodes[0]?.paintedAt ?? null, { timeout: 10_000 }).not.toBeNull();
+  // The committed manifest lands with the same template (same contentRev): no re-mount, no new state.
+  await expect.poll(async () => (await readEmergencyCache(page))?.payload?.scope, { timeout: 15_000 }).toBe('screen');
+  await page.waitForTimeout(800);
+  await expect(page.locator('[data-edu-emergency-root="template"][data-test-mounted-before-manifest="1"]')).toBeVisible();
+  expect((await statesSince(page, pushedAt)).at(-1)).toBe('alert:template:live');
+  expect((await statesSince(page, pushedAt)).filter(s => !['alert:fallback:live', 'alert:template:live'].includes(s))).toEqual([]);
+  const confirmed = await readMock(page);
+  expect(confirmed.episodes).toHaveLength(1);
+  expect(new Set(confirmed.receipts.map(r => r.identity)).size).toBe(1);
+  await expect(typedRoot(page)).toHaveCount(0);
+});
+
+test('DRILL with a staged drill board: the first frame is the DRILL board, drill-marked, indigo, never the live board', async ({ page }) => {
+  test.setTimeout(90_000);
+  const tag = 'instant-drill';
+  const manifestRef: { value: unknown } = { value: null };
+  const staging = stagingWithBoards(`http://api.invalid/assets/board-${tag}.png`);
+  const booted = await bootUnderTest(page, tag, manifestRef, staging, { orientation: 'PORTRAIT' });
+  await waitForContentAndStaging(page, booted);
+  const pushedAt = Date.now();
+  await pushOverride(page, tag, true);
+  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
+  await expect(boardRoot(page)).toHaveAttribute('data-edu-emergency-drill', 'true');
+  // The drill board, not the live one: its item id names the drill playlist.
+  await expect(boardRoot(page).locator(`img[data-slide-id^="${DRILL_BOARD_ID}:"]`)).toHaveCount(1);
+  await expect(typedRoot(page)).toHaveCount(0);
+  await expectManifestChangedNothing(page, manifestRef, emergencyManifest(manifestRef.value as ReturnType<typeof playerManifest>, true, staging.drillManifestBoard), '[data-edu-emergency-root="media"]', pushedAt, 'alert:media:drill');
+  for (const sel of ['[data-edu-emergency-root="fallback"]', '[data-edu-emergency-transition="true"]']) {
+    const el = page.locator(sel);
+    if (await el.count()) await expect(el.first()).toHaveCSS('background-color', INDIGO);
+  }
+});
+
+test('BACK FACE of a double-sided unit (?face=1, landscape panel mode, PORTRAIT screen): the first frame is its portrait board', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 960, height: 540 });
+  const tag = 'instant-back-face';
+  const manifestRef: { value: unknown } = { value: null };
+  const staging = stagingWithBoards(`http://api.invalid/assets/board-${tag}.png`);
+  const booted = await bootUnderTest(page, tag, manifestRef, staging, { orientation: 'PORTRAIT', query: '&face=1' });
+  await waitForContentAndStaging(page, booted);
+  const pushedAt = Date.now();
+  await pushOverride(page, tag);
+  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
+  await expect(boardRoot(page).locator(`img[data-slide-id^="${BOARD_ID}:"]`)).toHaveCount(1);
+  await expect(typedRoot(page)).toHaveCount(0);
+  await expectManifestChangedNothing(page, manifestRef, emergencyManifest(manifestRef.value as ReturnType<typeof playerManifest>, false, staging.manifestBoard), '[data-edu-emergency-root="media"]', pushedAt, 'alert:media:live');
+});
+
+test('a screen with only a single FILE for the type: the first frame is that file, as the manifest will play it', async ({ page }) => {
+  test.setTimeout(90_000);
+  const tag = 'instant-single-file';
+  const manifestRef: { value: unknown } = { value: null };
+  const id = playerIds(tag);
+  const staging = stagingSingleFile(id.screenId, `http://api.invalid/assets/board-${tag}.png`);
+  const booted = await bootUnderTest(page, tag, manifestRef, staging, { orientation: 'LANDSCAPE' });
+  await waitForContentAndStaging(page, booted);
+  const pushedAt = Date.now();
+  await pushOverride(page, tag);
+  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
+  await expect(boardRoot(page).locator('img[data-slide-id^="screen-asset-medical:"]')).toHaveCount(1);
+  await expectManifestChangedNothing(page, manifestRef, emergencyManifest(manifestRef.value as ReturnType<typeof playerManifest>, false, staging.manifestBoard), '[data-edu-emergency-root="media"]', pushedAt, 'alert:media:live');
+});
+
+test('nothing staged for the type: the typed surface is the system board\'s words on the system board\'s colour (what the manifest brings next looks the same)', async ({ page }) => {
   test.setTimeout(60_000);
   const tag = 'instant-none';
-  const id = playerIds(tag);
-  const normal = playerManifest(id.screenId, 'images');
-  const manifestRef: { value: unknown } = { value: normal };
-  await bootUnderTest(page, tag, manifestRef, true);
+  const manifestRef: { value: unknown } = { value: null };
+  await bootUnderTest(page, tag, manifestRef, null, { orientation: 'LANDSCAPE' });
   await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 20_000 }).toBe('content');
+  const pushedAt = Date.now();
   await push(page, {
     type: 'OVERRIDE', eventId: 'ovr-evt-none-1', timestamp: Date.now(), signature: 'fake-local-test-signature',
     payload: { overrideId: 'ovr_none_1', severity: 'CRITICAL', type: 'secure', expiresAt: 0 },
   });
   await expect(typedRoot(page)).toBeVisible({ timeout: 3_000 });
   await expect(typedRoot(page)).toContainText('SECURE');
+  await expect(typedRoot(page)).toContainText('Get inside. Lock outside doors.');
+  await expect(typedRoot(page)).toHaveCSS('background-color', SYSTEM_RED);
   await expect(boardRoot(page)).toHaveCount(0);
+  // Never a pending surface and never normal content between the push and the typed surface.
+  const since = await statesSince(page, pushedAt);
+  expect(since[0]).toBe('alert:fallback:live');
+  expect(since.filter(s => s !== 'alert:fallback:live')).toEqual([]);
   await expect.poll(async () => (await readMock(page)).episodes[0]?.paintedAt ?? null, { timeout: 10_000 }).not.toBeNull();
-});
-
-test('DRILL with a staged drill board: the drill board, drill-marked, never red', async ({ page }) => {
-  test.setTimeout(60_000);
-  const tag = 'instant-drill';
-  const id = playerIds(tag);
-  const normal = playerManifest(id.screenId, 'images');
-  const manifestRef: { value: unknown } = { value: normal };
-  await bootUnderTest(page, tag, manifestRef, true);
-  await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 20_000 }).toBe('content');
-  const pushedAt = Date.now();
-  await push(page, {
-    type: 'OVERRIDE', eventId: 'ovr-evt-drill-1', timestamp: Date.now(), signature: 'fake-local-test-signature',
-    payload: { overrideId: 'ovr_drill_1', severity: 'CRITICAL', type: PUSH_TYPE, expiresAt: 0, isDrill: true },
-  });
-  setTimeout(() => { manifestRef.value = emergencyManifest(normal, true); }, 3_500);
-  await expect(boardRoot(page)).toBeVisible({ timeout: 1_000 });
-  await expect(boardRoot(page)).toHaveAttribute('data-edu-emergency-drill', 'true');
-  // A drill BOARD is the operator's own drill content: nothing is painted over
-  // it (owner, 2026-10-12) — exactly as the manifest-delivered drill board.
-  await expect(typedRoot(page)).toHaveCount(0);
-  await expect.poll(async () => (await readEmergencyCache(page))?.payload?.scope, { timeout: 15_000 }).toBe('screen');
-  const since = (await readTimeline(page)).filter(e => e.at >= pushedAt).map(e => e.state);
-  expect(since.filter(s => /:live$/.test(s))).toEqual([]);
-  expect(since).not.toContain('content');
-  // Whatever protective surface is up is indigo, never red.
-  for (const sel of ['[data-edu-emergency-root="fallback"]', '[data-edu-emergency-transition="true"]']) {
-    const el = page.locator(sel);
-    if (await el.count()) await expect(el.first()).toHaveCSS('background-color', INDIGO);
-  }
-  expect((await readMock(page)).episodes).toHaveLength(1);
 });
