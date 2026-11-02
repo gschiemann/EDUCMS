@@ -3177,6 +3177,25 @@
       "details": "Detalles del dispositivo",
       "sleepHeading": "Cómo funciona el reposo",
       "sleepHistory": "Actividad de reposo reciente"
+    },
+    "usb": {
+      "title": "Unidad USB",
+      "loading": "Cargando…",
+      "loadFailed": "No se pudo cargar lo que esta pantalla hizo con unidades USB.",
+      "none": "Aún no se ha informado ninguna unidad USB.",
+      "note": "Según lo informado por la pantalla. Los reproductores anteriores a 1.1.55 solo informan una importación terminada o rechazada.",
+      "detected": "Se conectó una unidad USB",
+      "needsAccess": "Necesita permiso para leer unidades USB: en la pantalla, elija Permitir",
+      "noAccessPage": "Esta pantalla no tiene ningún ajuste que le permita leer unidades USB",
+      "noPackage": "No hay ninguna lista de VenueOS en la unidad",
+      "waitingKey": "Debe conectarse a internet una vez antes de poder comprobar una lista desde USB",
+      "otherOrg": "La unidad tenía una lista de otra organización",
+      "unverified": "No se pudieron verificar los archivos de la unidad",
+      "noSpace": "No hay espacio suficiente en la pantalla para la lista",
+      "unreadable": "No se pudo leer la unidad",
+      "rejected": "Se rechazó la lista de la unidad",
+      "imported": "Lista importada desde la unidad",
+      "unknown": "Informó {code}"
     }
   },
   "selection": {
@@ -8139,6 +8158,9 @@
     "upload": "Subir nuevo",
     "loading": "Cargando biblioteca…",
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
+  },
+  "playerMenu": {
+    "importFromUsb": "Importar desde USB"
   },
   "ui": {
     "filter": "Filtrar",
