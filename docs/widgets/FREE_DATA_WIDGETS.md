@@ -54,3 +54,21 @@ Saved boards keep rendering; the builder shows "This widget has no live data sou
 | News Headlines (entered) | Removed | Newsroom (GDELT) and RSS widgets are the live replacements. |
 | Scores Board (entered) | Removed | Bound-game scoreboards are the live replacement. |
 | Air quality, Road conditions, Transit, Parking, Airport conditions, FX rates | Live | AirNow, CHP (California only), MBTA (Boston only), LADOT (Los Angeles only), FAA, ECB. Nationwide traffic/transit/parking still needs a source per region. |
+
+## Free coverage added 2026-11-01 (integrations wave, PR #221)
+
+**Road conditions** — CHP incidents (California) plus DOT work zones, lane closures and detours from the USDOT **WZDx** feeds (`apps/api/src/feeds/work-zones.service.ts`). Registry: <https://data.transportation.gov/d/69qe-yiui> (Public Domain U.S. Government). Each feed is listed only if it is keyless and its own `feed_info.license` is CC0 1.0 (<https://creativecommons.org/publicdomain/zero/1.0/>); the parser re-checks the licence on every fetch and refuses a feed that stops declaring it. Covered: Utah, Minnesota, Maryland, Missouri, Wisconsin, Hawaii, Washington, New Jersey, Kentucky, Kansas, Delaware, Louisiana, Indiana, Mississippi, North Dakota, Austin (TX) and Maricopa County (AZ). Not listed: feeds that need a key (CO, TX, VA, OH, OR, NC, IL, PA Turnpike, MI, MA, Bay Area 511), embed a token in the URL (OK, FL), or declare no licence (IA, ID, New England). Each feed refreshes every 10 minutes server-side, shared by every screen.
+
+**Transit** — a generic GTFS-realtime departures engine (`apps/api/src/feeds/gtfs/`: zip, CSV and protobuf readers with no new dependency). An agency is one reviewed entry in `GTFS_AGENCIES`, only if keyless and its licence allows redistribution:
+
+| Agency | Licence |
+|---|---|
+| MBTA (existing v3 integration) | MassDOT Developers License Agreement, via <https://www.mbta.com/developers> |
+| BART | <https://www.bart.gov/schedules/developers/developer-license-agreement> — "use, reproduce, and redistribute"; no BART marks |
+| RTD Denver | <https://www.rtd-denver.com/open-records/open-spatial-information/gtfs-realtime-license-agreement> — "use, reproduce, and redistribute"; no RTD marks; unofficial |
+
+Keyless but awaiting a licence read before listing: MTA NYC subway (commercial apps "may be charged a license fee"), King County Metro, Calgary, Edmonton, Halifax. SEPTA needs written permission.
+
+**Flights** — no further free source: FAA NAS status (already live as Airport conditions) is the public-domain airport data; FAA ASWS no longer answers; BTS on-time data is monthly history; OpenSky is non-commercial. The departures board stays hidden unless the paid AeroDataBox key is set.
+
+**Scores** — no official free feed allows commercial display (MLB's statsapi copyright notice: "non-commercial, non-bulk use"; NHL.com terms: "non-commercial, informational, personal use"). The scores board stays hidden unless the paid TheSportsDB key is set.

@@ -4,7 +4,7 @@ import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/PublicDa
 import { DEFAULT_CRYPTO_COINS, DEFAULT_STOCK_SYMBOLS, isIntegrationAutomatic } from '../widgets/IntegrationDataWidgets';
 import { INTEGRATION_GATED_WIDGETS, isWidgetDiscoverable } from '../widgets/widget-discovery';
 import { fetchLiveDataStatus, fetchScoreLeagues, type LiveDataStatus, type ScoreLeague } from '@/lib/live-data/live-data-client';
-import { useTransitStations } from '../widgets/use-public-data';
+import { useGtfsAgencies, useGtfsStations, useTransitStations } from '../widgets/use-public-data';
 import { isAutomaticPublicData, widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
 import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
@@ -7002,13 +7002,15 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         const publicKind = ['air-quality','transit-departures','airport-conditions','parking-availability','traffic-cam'].includes(String(cfg.variant));
         const publicAutomatic = isAutomaticPublicData(cfg);
         if (publicKind) {
-          if (cfg.variant !== 'airport-conditions') fields.push(<SelectField key="public-data-mode" label="Data" value={publicAutomatic ? 'automatic' : 'manual'} options={[["automatic",cfg.variant === 'traffic-cam' ? 'Automatic · road incidents' : cfg.variant === 'air-quality' ? 'Automatic · EPA AirNow' : cfg.variant === 'parking-availability' ? 'Automatic · LADOT (Los Angeles)' : 'Automatic · MBTA (Boston area)'],["manual","Enter my own values"]]} onChange={v=>setField({dataMode:v})} />);
+          if (cfg.variant !== 'airport-conditions') fields.push(<SelectField key="public-data-mode" label="Data" value={publicAutomatic ? 'automatic' : 'manual'} options={[["automatic",cfg.variant === 'traffic-cam' ? 'Automatic · road incidents' : cfg.variant === 'air-quality' ? 'Automatic · EPA AirNow' : cfg.variant === 'parking-availability' ? 'Automatic · LADOT (Los Angeles)' : 'Automatic · open transit data'],["manual","Enter my own values"]]} onChange={v=>setField({dataMode:v})} />);
           if (publicAutomatic) {
-            if (cfg.variant === 'traffic-cam') fields.push(<SmartLocationField key="road-location" value={cfg.location || ''} helpText="Reported road incidents near this location. Nationwide when this deploy has a TomTom key; otherwise free CHP incidents within 50 km of a California location. No commute ETAs or cameras." onChange={v=>setField({location:v})}/>);
-            if (cfg.variant === 'traffic-cam') fields.push(<TrafficRadiusField key="road-radius" value={Number(cfg.radiusKm) || 25} onChange={v=>setField({radiusKm:v})}/>);
+            if (cfg.variant === 'traffic-cam') fields.push(<SmartLocationField key="road-location" value={cfg.location || ''} helpText="Free reports near this location: CHP incidents in California, and DOT work zones, closures and detours in UT, MN, MD, MO, WI, HI, WA, NJ, KY, KS, DE, LA, IN, MS, ND, Austin and Maricopa County (public-domain WZDx feeds). Nationwide incidents when this deploy has a TomTom key. No commute ETAs or cameras." onChange={v=>setField({location:v})}/>);
+            if (cfg.variant === 'traffic-cam') fields.push(<SelectField key="road-radius" label="Show reports within" value={String(Number(cfg.radiusKm) || 25)} options={[["10","10 km"],["25","25 km"],["50","50 km"]]} onChange={v=>setField({radiusKm:Number(v)})}/>);
             if (cfg.variant === 'air-quality') fields.push(<SmartLocationField key="air-location" value={cfg.location || cfg.zip || ''} helpText="Choose a U.S. city, ZIP or coordinates. Shows the reporting area and observation time; unavailable coverage is labelled." onChange={v=>setField({location:v,zip:undefined})}/>);
             if (cfg.variant === 'parking-availability') fields.push(<SmartLocationField key="parking-location" value={cfg.location || ''} helpText="Free LADOT coverage: Los Angeles street meters. Shows last known sensor states, not private-garage availability." onChange={v=>setField({location:v})}/>);
-            if (cfg.variant === 'transit-departures') fields.push(<TransitStationPicker key="transit-station" value={cfg.stationId || ''} onChange={v=>setField({stationId:v})}/>);
+            if (cfg.variant === 'transit-departures') fields.push(<TransitAgencyPicker key="transit-agency" value={cfg.transitAgency || 'mbta'} onChange={v=>setField({transitAgency:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') === 'mbta') fields.push(<TransitStationPicker key="transit-station" value={cfg.stationId || ''} onChange={v=>setField({stationId:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') !== 'mbta') fields.push(<GtfsStationPicker key="gtfs-station" agency={cfg.transitAgency} value={cfg.gtfsStationId || ''} label={cfg.gtfsStationName || ''} onChange={(id,name)=>setField({gtfsStationId:id,gtfsStationName:name})}/>);
             if (cfg.variant === 'airport-conditions') fields.push(<TextField key="airport-code" label="Airport code (blank = all U.S. notices)" value={cfg.airport || ''} placeholder="SFO" onChange={v=>setField({airport:v.toUpperCase().slice(0,4)})}/>);
             fields.push(<SelectField key="public-data-layout" label="Layout" value={cfg.dataLayout || 'auto'} options={PUBLIC_DATA_LAYOUTS} onChange={v=>setField({dataLayout:v})}/>);
             fields.push(<StyleableField key="public-data-title" fieldName="title" styles={cfg._styles} label="Heading" value={cfg.title ?? (cfg.variant === 'traffic-cam' ? 'Road conditions' : cfg.variant === 'air-quality' ? 'Air quality' : cfg.variant === 'airport-conditions' ? 'Airport conditions' : cfg.variant === 'parking-availability' ? 'Parking nearby' : 'Next departures')} onChange={v=>setField({title:v})}/>);
@@ -12473,10 +12475,27 @@ function LiveDataSourceFields({ variant, cfg, automatic, setField }: { variant: 
   return <>{out}</>;
 }
 
-function TrafficRadiusField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const status = useLiveDataStatusOnce();
-  if (!status?.traffic?.enabled) return null;
-  return <SelectField label="Show incidents within" value={String(value)} options={[["10","10 km"],["25","25 km"],["50","50 km"]]} onChange={v => onChange(Number(v))} />;
+
+function TransitAgencyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const feed = useGtfsAgencies();
+  const opts: [string, string][] = [["mbta", "MBTA · Boston area"], ...(feed.data?.items || []).map(a => [a.id, `${a.name} · ${a.region}`] as [string, string])];
+  if (!opts.some(([id]) => id === value)) opts.push([value, value]);
+  return <SelectField label="Transit agency" value={value} options={opts} onChange={onChange} />;
+}
+
+function GtfsStationPicker({ agency, value, label, onChange }: { agency: string; value: string; label: string; onChange: (id: string, name: string) => void }) {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => { const t = setTimeout(() => setDebounced(q), 350); return () => clearTimeout(t); }, [q]);
+  const feed = useGtfsStations(agency, debounced, !!agency);
+  const items = feed.data?.items || [];
+  return (
+    <div className="space-y-2">
+      <TextField label="Find a station or stop" value={q} placeholder={label || 'Type a station name'} onChange={setQ} />
+      <SelectField label="Station" value={value} options={[["", feed.loading ? 'Loading stations…' : items.length ? 'Choose a station' : 'No matches'], ...(value && !items.some(i => i.id === value) ? [[value, label || value] as [string, string]] : []), ...items.map(i => [i.id, i.name] as [string, string])]} onChange={id => onChange(id, items.find(i => i.id === id)?.name || label)} />
+      <p className="text-xs text-slate-500">Real-time predictions from the agency’s open GTFS-realtime feed{feed.error ? ' · Station list temporarily unavailable' : ''}</p>
+    </div>
+  );
 }
 
 function TransitStationPicker({value,onChange}:{value:string;onChange:(value:string)=>void}) {

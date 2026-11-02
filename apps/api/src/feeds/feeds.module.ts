@@ -1,4 +1,7 @@
 import { RoadIncidentsService } from './road-incidents.service';
+import { RoadConditionsService } from './road-conditions.service';
+import { WorkZonesService } from './work-zones.service';
+import { GtfsDeparturesService } from './gtfs/gtfs-departures.service';
 import { ParkingReportsController } from './parking-reports.controller';
 import { ParkingReportsService } from './parking-reports.service';
 import { TravelConditionsController } from './travel-conditions.controller';
@@ -36,6 +39,9 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
   ],
   providers: [
     RoadIncidentsService,
+    RoadConditionsService,
+    WorkZonesService,
+    GtfsDeparturesService,
     ParkingReportsService,
     AirportConditionsService,
     TransitArrivalsService,

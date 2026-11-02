@@ -17,6 +17,7 @@ import {
   usePublicDataClock,
   useParkingReports,
   useRoadIncidents,
+  useGtfsDepartures,
 } from "./use-public-data";
 export const PUBLIC_DATA_TEXT_AREAS: [string, string][] = [
   ["title", "Heading"],
@@ -525,7 +526,118 @@ export function AirportConditionsWidget({
     </Frame>
   );
 }
-export function TransitArrivalsLiveWidget({
+/** Transit departures: MBTA (its own v3 API) or any open GTFS-realtime agency. */
+export function TransitArrivalsLiveWidget(props: { config?: any; live?: boolean }) {
+  const agency = String(props.config?.transitAgency || "mbta");
+  return agency === "mbta" ? (
+    <MbtaArrivalsLiveWidget {...props} />
+  ) : (
+    <GtfsArrivalsLiveWidget {...props} />
+  );
+}
+
+function ArrivalRows({
+  items,
+  size,
+  config,
+  now,
+}: {
+  items: { id: string; route: string; direction: string; platform: string; time: string; status: string; predictionKind: string }[];
+  size: { width: number; height: number; compact: boolean; font: number };
+  config: any;
+  now: number;
+}) {
+  return (
+    <Rows items={items} size={size} config={config}>
+      {(item) => (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            minWidth: 0,
+          }}
+        >
+          <div style={{ minWidth: 0, marginRight: 12 }}>
+            <div
+              data-field-jump="dataDetails"
+              style={{ fontWeight: 650, ...fieldStyle(config, "dataDetails") }}
+            >
+              {item.route}
+              {item.direction ? ` · ${item.direction}` : ""}
+            </div>
+            {!size.compact && (item.platform || item.status) && (
+              <div style={{ fontSize: ".72em", marginTop: 3 }}>
+                {item.platform ? `Platform ${item.platform}` : ""}
+                {item.platform && item.status ? " · " : ""}
+                {item.status}
+              </div>
+            )}
+          </div>
+          <div
+            data-field-jump="dataValue"
+            style={{
+              fontSize: "1.45em",
+              fontWeight: 750,
+              whiteSpace: "nowrap",
+              ...fieldStyle(config, "dataValue"),
+            }}
+          >
+            {Math.max(0, Math.ceil((Date.parse(item.time) - now) / 60000))}
+            <span style={{ fontSize: ".5em", marginLeft: 4 }}>min</span>
+          </div>
+        </div>
+      )}
+    </Rows>
+  );
+}
+
+function GtfsArrivalsLiveWidget({ config = {} }: { config?: any; live?: boolean }) {
+  const agency = String(config.transitAgency || "");
+  const station = String(config.gtfsStationId || "");
+  const feed = useGtfsDepartures(agency, station, !config._thumb),
+    now = usePublicDataClock(!config._thumb);
+  const data =
+    feed.data && now - Date.parse(feed.data.updatedAt) <= 5 * 60000
+      ? feed.data
+      : null;
+  const empty = !station
+    ? "Choose a station"
+    : !data
+      ? feed.loading
+        ? "Loading departures…"
+        : "Current predictions unavailable"
+      : undefined;
+  return (
+    <Frame
+      config={config}
+      setup={!station}
+      title="Next departures"
+      location={data?.station || config.gtfsStationName || ""}
+      credit={
+        <>
+          Data:{" "}
+          <a href={data?.sourceUrl} target="_blank" rel="noreferrer" style={sourceLink}>
+            {data?.source || "agency open data"}
+          </a>
+          {data ? ` · Updated ${clock(data.updatedAt)} · ${data.note}` : ""} · Estimates may change
+        </>
+      }
+      empty={empty}
+    >
+      {(size) => {
+        const items = data!.items.filter((i) => Date.parse(i.time) >= now - 15000);
+        return items.length ? (
+          <ArrivalRows items={items} size={size} config={config} now={now} />
+        ) : (
+          <div style={{ textAlign: "center" }}>No upcoming predictions for this station.</div>
+        );
+      }}
+    </Frame>
+  );
+}
+
+function MbtaArrivalsLiveWidget({
   config = {},
 }: {
   config?: any;
@@ -741,14 +853,17 @@ export function RoadIncidentsLiveWidget({
   live?: boolean;
 }) {
   const location = String(config.location || "").trim(),
-    feed = useRoadIncidents(location, !config._thumb),
+    radius = Math.max(5, Math.min(50, Number(config.radiusKm) || 25)),
+    feed = useRoadIncidents(location, !config._thumb, radius),
     now = usePublicDataClock(!config._thumb);
+  // Work-zone feeds are cached 10 minutes server-side; CHP for one.
   const data =
-    feed.data && now - Date.parse(feed.data.fetchedAt) < 3 * 60000
+    feed.data && now - Date.parse(feed.data.fetchedAt) < 15 * 60000
       ? feed.data
       : null;
+  const sources = data?.sources ?? [];
   const empty = !location
-    ? "Choose a California city or ZIP"
+    ? "Choose a U.S. city or ZIP"
     : !data
       ? feed.loading
         ? "Loading road reports…"
@@ -761,20 +876,22 @@ export function RoadIncidentsLiveWidget({
       config={config}
       setup={!location}
       title="Road conditions"
-      location={location ? `${location} · California` : "California"}
+      location={location}
       credit={
         <>
           Source:{" "}
-          <a
-            href="https://cad.chp.ca.gov/traffic.aspx"
-            target="_blank"
-            rel="noreferrer"
-            style={sourceLink}
-          >
-            California Highway Patrol
-          </a>
+          {sources.length
+            ? sources.map((s, i) => (
+                <span key={s.name}>
+                  {i ? ", " : ""}
+                  <a href={s.url} target="_blank" rel="noreferrer" style={sourceLink}>
+                    {s.name}
+                  </a>
+                </span>
+              ))
+            : "state and city transportation agencies"}
           {data ? ` · Checked ${clock(data.fetchedAt)}` : ""} · Reported
-          incidents within 50 km; not travel-time estimates
+          incidents and work zones within {radius} km; not travel-time estimates
         </>
       }
       empty={empty}
@@ -801,15 +918,15 @@ export function RoadIncidentsLiveWidget({
                     ...fieldStyle(config, "dataDetails"),
                   }}
                 >
-                  {item.area} · {item.distanceKm} km away
+                  {item.area ? `${item.area} · ` : ""}{item.distanceKm} km away
                 </div>
               </>
             )}
           </Rows>
         ) : (
           <div style={{ textAlign: "center" }}>
-            No listed CHP incidents with mapped locations within 50 km. This
-            does not confirm clear roads.
+            No listed incidents or work zones within {radius} km. This does not
+            confirm clear roads.
           </div>
         )
       }
