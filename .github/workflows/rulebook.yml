@@ -1,0 +1,52 @@
+# Rulebook guard.
+#
+# CLAUDE.md is now a short always-loaded core; the detail lives in nested CLAUDE.md files and in
+# documents of the same authority (docs/ENVIRONMENT.md, docs/DEPLOY.md, docs/governance/*.md,
+# docs/incidents/*.md). A rulebook is only worth loading if it stays true, so this job fails when:
+#   (a) a backticked repo path in a rule file does not exist,
+#   (b) a rule file points at a code line ("path:NNN", "line NNN"),
+#   (c) CLAUDE.md is over 3,000 words or AGENTS.md is over 1,800,
+#   (d) a template count stated in apps/web/public/templates/CLAUDE.md (presets, boards, shim
+#       version) no longer re-derives from the tree.
+# The self-test runs first as the negative control: it feeds the checker a dead path, a path:line
+# pointer and an oversize file and passes only if all three are reported (and a clean fixture passes).
+#
+# NO paths-ignore, deliberately. Most workflows skip docs/** and *.md (docs/governance/MECHANISMS.md
+# counts them), so a change that touches only the rulebook used to run no CI at all. This is the
+# one workflow that must run on exactly those changes.
+#
+# The script has no dependency; TypeScript is installed (the version in pnpm-lock.yaml) into a temp
+# directory only so check (d) can evaluate the preset files, exactly as the old rulebook command did.
+name: Rulebook
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  # Keyed on the REF for pull_request (a superseded PR run is cancelled) and on the individual SHA
+  # for push (every commit that lands on master keeps its own run to completion).
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+# Least privilege: this job only reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  rulebook:
+    name: rulebook
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Install TypeScript (for the preset count only)
+        run: npm install --prefix "$RUNNER_TEMP/rulebook-ts" --no-audit --no-fund --ignore-scripts --no-package-lock typescript@5.9.3
+      - name: Rulebook guard (self-test, then the real check)
+        env:
+          NODE_PATH: ${{ runner.temp }}/rulebook-ts/node_modules
+        run: node scripts/check-rulebook.cjs --self-test && node scripts/check-rulebook.cjs
