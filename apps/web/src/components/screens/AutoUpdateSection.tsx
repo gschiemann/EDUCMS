@@ -46,29 +46,12 @@ export function AutoUpdateSection({ screenId, readOnly }: { screenId: string; re
     { v: 'off', label: t('modeOff') },
   ];
 
-  const switchLine = !info
-    ? null
-    : info.override === 'on'
-      ? t('screenOn')
-      : info.override === 'off'
-        ? t('screenOff')
-        : info.orgEnabled
-          ? t('inheritOn')
-          : t('inheritOff');
-
-  const readinessLine = !info
-    ? null
-    : info.readiness === 'silent'
-      ? t('silent')
-      : info.readiness === 'needs-tap'
-        ? t('needsTap')
-        : t('unknown');
-  const reasonKey = info ? REASON_KEY[info.readinessReason] : null;
+  // One short line, only when it matters: someone must be at the screen.
+  const needsTap = info?.readiness === 'needs-tap';
 
   return (
     <div className="px-3.5 py-2.5 border-b border-slate-100" data-testid="auto-update-section">
       <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{t('title')}</p>
-      <p className="text-[10.5px] text-slate-500 mt-0.5">{t('hint')}</p>
       <div className="flex items-center gap-1 mt-1.5" role="group" aria-label={t('title')}>
         {options.map((o) => (
           <button
@@ -94,18 +77,8 @@ export function AutoUpdateSection({ screenId, readOnly }: { screenId: string; re
       </div>
       <div className="mt-1.5 space-y-0.5 text-[11px] leading-snug" aria-live="polite">
         {q.isLoading && <p className="text-slate-400">{t('loading')}</p>}
-        {switchLine && <p className="text-slate-700 font-semibold">{switchLine}</p>}
-        {info && info.enabled && info.readiness === 'silent' && info.window && (
-          <p className="text-emerald-700">
-            {t('willUpdate', { start: info.window.start, end: info.window.end, timezone: info.window.timezone })}
-          </p>
-        )}
-        {info && !info.enabled && <p className="text-slate-500">{t('off')}</p>}
-        {readinessLine && (
-          <p className={info?.readiness === 'silent' ? 'text-slate-600' : 'text-amber-700'}>{readinessLine}</p>
-        )}
-        {reasonKey && <p className="text-slate-500">{t(reasonKey)}</p>}
-        {info && info.enabled && !info.window && <p className="text-amber-700">{t('noTimezone')}</p>}
+        {needsTap && <p className="text-amber-700">{t('needsTap')}</p>}
+        {!needsTap && info && info.enabled && !info.window && <p className="text-amber-700">{t('noTimezone')}</p>}
         {set.isPending && <p className="text-slate-400">{t('saving')}</p>}
         {set.isError && <p className="text-rose-700">{t('saveFailed')}</p>}
       </div>
