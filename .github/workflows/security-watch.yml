@@ -53,3 +53,24 @@ jobs:
       - name: Node.js runtime security releases vs the pinned images
         if: always()
         run: node scripts/check-node-security.cjs
+
+      # REPORT-ONLY (2026-11-01). Every `uses:` in .github/workflows must name a full
+      # commit SHA: a tag is a mutable pointer to code that runs next to our GITHUB_TOKEN
+      # and, in the release workflow, the APK signing keystore. Every reference is pinned
+      # today (SUPPLY-02); this is what notices the first one that is not.
+      #
+      # Why HERE: of the two workflows that could host it, this is the one that checks
+      # the repository out and runs on an unconditional schedule. scheduled-failure-issue
+      # runs only AFTER another workflow has failed (and has no checkout), so it would
+      # never see a regression that merged green. Neither workflow runs on push or on a
+      # pull request, so this is a drift alarm that reports within the hour, not a PR
+      # gate — to gate PRs, run the same command in a workflow that triggers on them.
+      #
+      # `continue-on-error` is the whole report-only switch: findings appear as `::error`
+      # annotations on this run's summary, but the run stays green. Delete that one line to
+      # make a violation fail the run — which opens an `ops:` issue and fires the on-call
+      # routine via scheduled-failure-issue.yml, as for any other failure of this workflow.
+      - name: Workflow actions are pinned to a full commit SHA (report-only)
+        if: always()
+        continue-on-error: true
+        run: node .github/scripts/check-action-pins.cjs

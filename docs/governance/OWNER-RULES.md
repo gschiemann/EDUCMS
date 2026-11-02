@@ -4,6 +4,7 @@ Article 32. The owner's binding corrections, written where **every** vendor can 
 
 | Date | Rule (the owner's intent) | Scope | Mechanism or GAP |
 |---|---|---|---|
+| 2026-11-01 | The launch-week hold is lifted: finish all development; API restarts are acceptable; do not use the word "freeze" with the owner — say what is held and why, in plain words. | global | `FREEZE.md` removed; Phase 1 items proceed to merge |
 | 2026-10-31 | Adopt the Foundry Standard above every app; the lead reviews every other model's finding and must agree 100 % before it is implemented; cost-first routing — not everything is built with the frontier model; a full audit of the standard and the app on every new LLM. | global | `AGENTS.md`, `docs/governance/standard/`, `FRONTIER-INTAKE.md` |
 | 2026-10-31 | The owner does not operate GitHub or consoles: his approval is a written go in chat; the lead merges, applies approved settings, and reports what changed. | global | `MULTI-AGENT.md` roles; PR bodies say "owner approval = a written go; the lead merges" |
 | 2026-10-31 | Launch week: no disruption to the application or any account; explain each change's blast radius (does merging it deploy? does it touch accounts, data, screens?) before doing it; zero-runtime items first, deploy-causing items held as unmerged PRs until the owner says. | app, temporary (launch freeze) | `FREEZE.md` named exceptions |

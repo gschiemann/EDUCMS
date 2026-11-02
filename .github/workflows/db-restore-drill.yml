@@ -1,0 +1,483 @@
+# Weekly restore drill for the nightly database backup (2026-11-01).
+#
+# WHY: Foundry Standard Article 29 asks for "a rollback rehearsed, not just
+# described". db-backup.yml has written an encrypted pg_dump every night since
+# 2026-07-30 and, until this file, nobody had ever restored one (the mechanism
+# map, docs/governance/MECHANISMS.md row 29, listed it as the open item). A green
+# "DB Backup" run proves only that a file was written. It cannot show that the
+# newest artifact still decrypts with the current BACKUP_ENC_KEY (rotating the
+# key strands every older artifact, docs/SECRET-ROTATION.md), that this pg_restore
+# can still read what that pg_dump wrote (the server's major version has moved
+# once already, 2026-07-30), or that the application's tables came back with
+# rows in them. A backup that has never been restored is a hope, not a plan.
+#
+# WHAT: take the newest successful DB Backup run -> download its artifact with
+# the built-in GITHUB_TOKEN -> decrypt exactly as db-backup.yml encrypts ->
+# pg_restore into a Postgres SERVICE CONTAINER on this runner -> assert -> delete.
+# The evidence Article 29 asks for (backup date, size, restore time, per-table
+# verdicts) is written to the job summary.
+#
+# NEVER TOUCHES PRODUCTION: SUPABASE_DB_URL is not referenced anywhere in this
+# file. The one credential used is BACKUP_ENC_KEY, handed to the single step that
+# decrypts. The restored database exists only inside this runner and dies with it.
+# No third-party action runs here either (the job holds the decryption key): the
+# steps use the runner's own gh, jq, openssl and python3, and the official
+# postgres image that db-backup.yml already trusts.
+#
+# PUBLIC-REPO SECURITY MODEL (do not weaken): this repo is PUBLIC, so every log
+# line and job summary is world-readable, and the thing being restored is the
+# customer database.
+#   - Nothing derived from restored data is printed except a per-table VERDICT
+#     (rows present / zero rows / missing) for five application tables. Exact
+#     row counts stay out of the public log and summary (lead's decision,
+#     2026-11-01: a customer-count is not evidence the drill needs).
+#   - pg_restore's stderr is NEVER echoed. A failed COPY quotes the offending data
+#     row in its CONTEXT line, and DETAIL lines quote key values. Errors are
+#     parsed, and an unexpected one is printed as ONE masked line (quoted
+#     literals blanked, 160 characters) with no DETAIL/CONTEXT/HINT. To see the
+#     rest, reproduce locally with the artifact and the key (the restore command
+#     is in db-backup.yml's header).
+#   - The decrypted dump lives in $RUNNER_TEMP/restore-drill (mode 700), is
+#     deleted by the step that consumes it AND again by the final always() step,
+#     and nothing is uploaded: there is no upload-artifact or cache step.
+#
+# WHY AN ERROR ALLOWLIST: db-backup.yml dumps the WHOLE Supabase database,
+# platform schemas included, and a stock postgres image is not Supabase. So
+# pg_restore prints a few harmless errors for objects that only make sense there
+# (extensions this image does not ship, policies naming roles that do not exist
+# here) and, because of them, exits 1: "exit code 0" is unreachable and "ignore
+# errors" would hide the failure this drill exists to find. Instead EVERY error
+# is parsed and must match a rule in the ALLOW table in the "Restore" step: a named
+# Supabase-only extension that cannot be installed, the COMMENT on it, a policy
+# for a named Supabase role, the rows of a table owned by such an extension. Any
+# other error fails the drill, above all an error on an application object or any
+# COPY failure (that is data that did not load). The count pg_restore itself
+# reports ("errors ignored on restore: N") must equal the errors parsed, so none
+# can slip through unclassified. An extension we do NOT list (pgvector, postgis,
+# anything the app might one day depend on) fails loudly on purpose: either add the
+# right image to the service or, if it is platform-only, add its name to ALLOW.
+#
+# CHANGING THE POSTGRES MAJOR: the service image below cannot read env, so the
+# literal 'postgres:17-alpine' appears twice (service + PG_IMAGE) and must match
+# the image db-backup.yml dumps with. The "Restore" step compares the major the
+# archive says it was dumped by against the server it is restoring into and fails
+# with a plain message when they differ - bump all three together.
+#
+# SCHEDULE: weekly, Sundays 19:47 UTC. The nightly backup is cron'd for 09:17 but
+# GitHub has been starting it between 13:20 and 16:30 UTC (measured 2026-10-21 ->
+# 11-01), so this slot lands after the day's backup and tests it, while sitting
+# off the hour and clear of every other cron here (06:00, 07:00, 07:30, 08:43,
+# 09:17, :23 hourly, */5). Failure is routed by scheduled-failure-issue.yml (an
+# `ops` issue + the on-call routine).
+#
+# IF IT GOES RED: `gh run view <id> --log-failed`, then:
+#   "bad decrypt" / "No PGDMP header" -> BACKUP_ENC_KEY was rotated after the newest backup
+#       was written: `gh workflow run db-backup.yml`, then re-run this drill.
+#   "newest backup is N h old"        -> DB Backup has been failing; fix it first.
+#   "unexpected pg_restore errors"    -> read the masked lines; extend ALLOW only for
+#       an object that is genuinely platform-only.
+#   a zero or missing row count       -> the restore ran but the data did not come back.
+name: DB Restore Drill
+
+on:
+  schedule:
+    - cron: '47 19 * * 0'   # Sundays 19:47 UTC, after the day's backup (see SCHEDULE above)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read   # list the backup's runs and download its artifact with GITHUB_TOKEN
+
+concurrency:
+  group: db-restore-drill
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  restore:
+    name: Restore the newest backup into a throwaway Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same pattern as a11y.yml / ci.yml: ephemeral, health-checked, destroyed with
+    # the runner. The password is for a database nothing can reach and nothing
+    # real is in until the restore step puts a COPY of the backup there.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restore_drill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restore_drill"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # No checkout in this job, so gh cannot infer the repo from git.
+      GH_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'master' }}
+      BACKUP_WORKFLOW: db-backup.yml
+      # Two nights without a backup is an incident. One missed night (the DB
+      # Backup run is red and has its own ops issue) must not also fail this
+      # drill: with GitHub's start-time drift a single miss reads 40-45 h old.
+      BACKUP_MAX_AGE_HOURS: '48'
+      # The client that pg_restore / psql run in: the SAME image as the server and
+      # as db-backup.yml's pg_dump (the runner's apt client is 16, which cannot
+      # read a 17 archive). Run with --network host against the service's port.
+      PG_IMAGE: postgres:17-alpine
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: restore_drill
+    steps:
+      - name: Guard - the decryption key must exist
+        env:
+          ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
+        run: |
+          if [ -z "$ENC_KEY" ]; then
+            echo "::error::BACKUP_ENC_KEY repo secret is not set - the newest backup cannot be decrypted, so it cannot be restored."
+            exit 1
+          fi
+
+      - name: Find the newest successful backup and download it
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/restore-drill"
+          mkdir -p "$WORK/artifact"
+          chmod 700 "$WORK"
+          echo "WORK=$WORK" >> "$GITHUB_ENV"
+
+          # Newest SUCCESSFUL run of the backup workflow on the default branch (a
+          # dispatch from a feature branch is not the production backup).
+          runs=$(gh run list --workflow "$BACKUP_WORKFLOW" --branch "$DEFAULT_BRANCH" \
+                   --status success --limit 1 --json databaseId,createdAt,url)
+          run_id=$(jq -r '.[0].databaseId // empty' <<<"$runs")
+          created_at=$(jq -r '.[0].createdAt // empty' <<<"$runs")
+          run_url=$(jq -r '.[0].url // empty' <<<"$runs")
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful $BACKUP_WORKFLOW run exists on $DEFAULT_BRANCH - there is no backup to restore. Start one: gh workflow run $BACKUP_WORKFLOW"
+            exit 1
+          fi
+          # These reach GITHUB_ENV and the summary: accept only the exact shapes the API returns.
+          [[ "$run_id" =~ ^[0-9]+$ ]] || { echo "::error::unexpected run id from the API"; exit 1; }
+          [[ "$created_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "::error::unexpected createdAt from the API"; exit 1; }
+          [[ "$run_url" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/actions/runs/[0-9]+$ ]] || { echo "::error::unexpected run url from the API"; exit 1; }
+
+          age_h=$(jq -nr --arg t "$created_at" '(now - ($t | fromdateiso8601)) / 3600 | floor')
+          echo "Newest successful backup: run $run_id, $created_at ($age_h h old)"
+          if [ "$age_h" -gt "$BACKUP_MAX_AGE_HOURS" ]; then
+            echo "::error::The newest successful backup is $age_h h old (limit $BACKUP_MAX_AGE_HOURS h): DB Backup has stopped producing backups. Restoring an old one would say nothing about tonight's. Fix DB Backup first."
+            exit 1
+          fi
+
+          art_name="venueos-db-backup-${run_id}"
+          art=$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/artifacts" \
+                  | jq -c --arg n "$art_name" '[.artifacts[] | select(.name == $n)] | .[0] // empty')
+          if [ -z "$art" ]; then
+            echo "::error::Run $run_id succeeded but has no artifact named $art_name."
+            exit 1
+          fi
+          if [ "$(jq -r '.expired' <<<"$art")" != "false" ]; then
+            echo "::error::Artifact $art_name has expired (30-day retention) - the newest backup is gone."
+            exit 1
+          fi
+
+          gh run download "$run_id" --name "$art_name" --dir "$WORK/artifact"
+          # gh puts a single named artifact straight into --dir; do not depend on it.
+          enc=$(find "$WORK/artifact" -type f -name 'venueos-db.dump.enc' | head -n 1)
+          if [ -z "$enc" ] || [ ! -s "$enc" ]; then
+            echo "::error::Artifact $art_name downloaded but holds no venueos-db.dump.enc."
+            exit 1
+          fi
+          mv "$enc" "$WORK/venueos-db.dump.enc"
+          enc_bytes=$(wc -c < "$WORK/venueos-db.dump.enc" | tr -d ' ')
+          echo "Downloaded venueos-db.dump.enc ($enc_bytes bytes)"
+          {
+            echo "BACKUP_RUN_ID=$run_id"
+            echo "BACKUP_RUN_URL=$run_url"
+            echo "BACKUP_CREATED_AT=$created_at"
+            echo "BACKUP_AGE_H=$age_h"
+            echo "BACKUP_ENC_BYTES=$enc_bytes"
+          } >> "$GITHUB_ENV"
+
+      - name: Decrypt (same openssl command as db-backup.yml)
+        env:
+          BACKUP_ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          enc="$WORK/venueos-db.dump.enc"
+          dump="$WORK/venueos-db.dump"
+          # openssl enc -salt writes this 8-byte magic first.
+          if [ "$(head -c 8 "$enc")" != "Salted__" ]; then
+            echo "::error::The artifact is not an openssl-salted blob (no Salted__ header) - db-backup.yml's encrypt step has changed or the artifact is corrupt."
+            exit 1
+          fi
+          # Mirror of db-backup.yml's: openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt ... -pass env:BACKUP_ENC_KEY
+          # The key is read from the environment only; openssl never prints it.
+          if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+                 -in "$enc" -out "$dump" -pass env:BACKUP_ENC_KEY 2> "$WORK/openssl.err"; then
+            echo "::error::openssl could not decrypt the backup ($(head -c 200 "$WORK/openssl.err" | tr '\n' ' ')). Most likely BACKUP_ENC_KEY was rotated after this backup was written: run db-backup.yml, then re-run this drill."
+            exit 1
+          fi
+          # CBC with a wrong key still "decrypts" about 1 time in 256 and yields noise: a custom-format dump starts PGDMP.
+          if [ "$(head -c 5 "$dump")" != "PGDMP" ]; then
+            echo "::error::Decryption produced no PGDMP header - wrong BACKUP_ENC_KEY (rotated since this backup?) or not a pg_dump custom-format archive. Run db-backup.yml, then re-run this drill."
+            exit 1
+          fi
+          dump_bytes=$(wc -c < "$dump" | tr -d ' ')
+          rm -f "$enc"
+          echo "Decrypted: $dump_bytes bytes, PGDMP header present"
+          echo "DUMP_BYTES=$dump_bytes" >> "$GITHUB_ENV"
+
+      - name: Restore
+        id: restore
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          umask 077
+          # The plaintext dump goes the moment this step ends, pass or fail.
+          trap 'rm -f "$WORK/venueos-db.dump"' EXIT
+
+          pg17() {
+            docker run --rm --network host \
+              -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE \
+              -v "$WORK:/work:ro" "$PG_IMAGE" "$@"
+          }
+
+          for _ in $(seq 1 30); do pg17 pg_isready -q && break; sleep 2; done
+          pg17 pg_isready || { echo "::error::The throwaway Postgres service is not accepting connections."; exit 1; }
+
+          # 1. What is in the archive, and is the server we are restoring into the right major?
+          if ! pg17 pg_restore --list /work/venueos-db.dump > "$WORK/toc.txt" 2> "$WORK/toc.err"; then
+            echo "::error::pg_restore cannot read the archive header: $(head -c 300 "$WORK/toc.err" | tr '\n' ' ')"
+            exit 1
+          fi
+          dump_major=$(sed -n 's/^;[[:space:]]*Dumped by pg_dump version: \([0-9][0-9]*\)\..*/\1/p' "$WORK/toc.txt" | head -n 1)
+          dump_from=$(sed -n 's/^;[[:space:]]*Dumped from database version: \([0-9][0-9]*\.[0-9]*\).*/\1/p' "$WORK/toc.txt" | head -n 1)
+          toc_entries=$(sed -n 's/^;[[:space:]]*TOC Entries: \([0-9][0-9]*\).*/\1/p' "$WORK/toc.txt" | head -n 1)
+          data_entries=$(grep -c ' TABLE DATA ' "$WORK/toc.txt" || true)
+          srv_num=$(pg17 psql -X -qAt -c 'SHOW server_version_num')
+          srv_ver=$(pg17 psql -X -qAt -c 'SHOW server_version' | cut -d' ' -f1)
+          srv_major=$((srv_num / 10000))
+          echo "Archive: dumped by pg_dump ${dump_major:-?}, from a ${dump_from:-?} server; $toc_entries TOC entries, $data_entries tables with data"
+          echo "Target:  Postgres $srv_ver ($PG_IMAGE client)"
+          if [ -z "$dump_major" ] || [ "$dump_major" != "$srv_major" ]; then
+            echo "::error::The backup was written by pg_dump ${dump_major:-<unreadable>} but the restore target is Postgres $srv_major. Update the service image and PG_IMAGE in this file to the major db-backup.yml dumps with."
+            exit 1
+          fi
+
+          # 2. Restore into the empty database. No --clean: nothing exists to drop and
+          #    the extra DROP pass only adds noise. --no-owner --no-privileges match the dump.
+          #    NOT --exit-on-error / --single-transaction: every error must be read, not just the first.
+          rc=0
+          start=$SECONDS
+          pg17 pg_restore --no-owner --no-privileges -d "$PGDATABASE" /work/venueos-db.dump \
+            2> "$WORK/restore.err" || rc=$?
+          secs=$((SECONDS - start))
+          echo "pg_restore exit code $rc after ${secs}s"
+          {
+            echo "RESTORE_SECONDS=$secs"
+            echo "RESTORE_PG_VERSION=$srv_ver"
+            echo "DUMP_PG_VERSION=${dump_from:-?}"
+            echo "ARCHIVE_TOC_ENTRIES=${toc_entries:-?}"
+            echo "ARCHIVE_DATA_TABLES=${data_entries:-?}"
+          } >> "$GITHUB_ENV"
+          rm -f "$WORK/venueos-db.dump"
+
+          # 3. Classify every error.
+          verdict=0
+          python3 -I - "$WORK/restore.err" "$rc" "$WORK/classified.env" <<'PY' || verdict=$?
+          import collections, re, sys
+
+          err_path, rc, env_path = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+
+          # ---- the allowlist: Supabase PLATFORM objects only -------------------------
+          # None of these is used by the application (its migrations create no
+          # extension), so none of them can hide an application-data failure. To
+          # allow another, add a name to the lists or a rule to ALLOW - and say why.
+          EXT = r"pg_graphql|pgjwt|pgsodium|supabase_vault|pg_net|pg_cron|pgaudit|wrappers"
+          ROLE = r"anon|authenticated|service_role|authenticator|dashboard_user|pgbouncer|supabase_[a-z_]+|pgsodium_[a-z_]+"
+          SCH = r"vault|pgsodium|pgsodium_masks|net|cron|graphql"
+          # Each rule is a regex over "<ERROR text>\n<first line of the failing statement>".
+          ALLOW = [
+              ("Supabase-only extension cannot be installed in a stock image",
+               rf'extension "(?P<n>{EXT})" is not available\nCREATE EXTENSION IF NOT EXISTS "?(?P=n)"?[ ;]'),
+              ("COMMENT on that missing extension",
+               rf'extension "(?P<n>{EXT})" does not exist\nCOMMENT ON EXTENSION "?(?P=n)"? IS '),
+              ("policy naming a Supabase role this database does not have",
+               rf'role "(?:{ROLE})" does not exist\nCREATE POLICY '),
+              ("rows of a table owned by such an extension",
+               rf'(?:relation "(?:{SCH})\.[a-z_]+"|schema "(?:{SCH})") does not exist\nCOPY (?:{SCH})\.[a-z_]+ '),
+              ("schema public already exists in the fresh database",
+               r'schema "public" already exists\nCREATE SCHEMA public;'),
+          ]
+
+          def mask(s, n=160):
+              # Quoted literals can carry data or secrets: blank them, then cut.
+              s = re.sub(r"'[^']*'", "'..'", s)
+              return s if len(s) <= n else s[:n] + "..."
+
+          records, others, cur = [], [], None
+          with open(err_path, encoding="utf-8", errors="replace") as fh:
+              for line in fh.read().splitlines():
+                  if line.startswith("pg_restore: error:"):
+                      cur = {"head": line[len("pg_restore: error:"):].strip(), "body": []}
+                      records.append(cur)
+                  elif line.startswith("pg_restore:"):
+                      cur = None
+                      others.append(line)
+                  elif cur is not None:
+                      cur["body"].append(line)
+
+          def message(r):
+              m = re.search(r"ERROR:\s+(.*)", r["head"])
+              return m.group(1).strip() if m else ""
+
+          def statement(r):
+              for line in r["body"]:
+                  t = line.strip()
+                  if t.startswith("Command was:"):
+                      return t[len("Command was:"):].strip()
+              return ""
+
+          allowed, unexpected = collections.Counter(), []
+          for r in records:
+              rule = None
+              if r["head"].startswith("could not execute query:"):
+                  sig = message(r) + "\n" + statement(r)
+                  rule = next((name for name, rx in ALLOW if re.match(rx, sig)), None)
+              if rule:
+                  allowed[(rule, mask(message(r), 100))] += 1
+              else:
+                  unexpected.append(r)
+
+          reported = None
+          for line in others:
+              m = re.search(r"errors ignored on restore: (\d+)", line)
+              if m:
+                  reported = int(m.group(1))
+
+          print(f"pg_restore reported {reported if reported is not None else 'no'} ignored errors; parsed {len(records)}.")
+          for (rule, msg), n in sorted(allowed.items()):
+              print(f"  allowed x{n}: {rule}: {msg}")
+          for r in unexpected:
+              if r["head"].startswith("COPY failed for table"):
+                  # The message and CONTEXT of a failed COPY quote a data row.
+                  tbl = re.match(r'COPY failed for table "([^"]*)"', r["head"])
+                  print(f'  UNEXPECTED: COPY failed for table "{tbl.group(1) if tbl else "?"}" (message withheld: it can quote a row)')
+              else:
+                  print(f"  UNEXPECTED: {mask(r['head'])} || {mask(statement(r), 120)}")
+          for line in others:
+              if "errors ignored on restore" not in line:
+                  print(f"  pg_restore said: {mask(line)}")
+
+          problems = []
+          if unexpected:
+              problems.append(f"{len(unexpected)} unexpected pg_restore error(s)")
+          if rc != 0 and not records:
+              problems.append(f"pg_restore exited {rc} without reporting any error")
+          if reported is not None and reported != len(records):
+              problems.append(f"pg_restore counted {reported} errors but only {len(records)} were parsed - some are unaccounted for")
+          with open(env_path, "w") as fh:
+              fh.write(f"RESTORE_ERRORS_TOTAL={len(records)}\nRESTORE_ERRORS_ALLOWED={sum(allowed.values())}\n")
+          if problems:
+              for p in problems:
+                  print(f"::error::{p}. Read the masked lines above; extend ALLOW only for an object that is platform-only.")
+              sys.exit(1)
+          print("Every pg_restore error is on the allowlist." if records else "pg_restore reported no errors.")
+          PY
+          cat "$WORK/classified.env" >> "$GITHUB_ENV" 2>/dev/null || true
+          exit "$verdict"
+
+      - name: Assert the data came back
+        # Runs even after a failed restore: the counts say whether the APPLICATION
+        # data survived, which is what to know before reading the error list.
+        if: ${{ !cancelled() && steps.restore.outcome != 'skipped' }}
+        run: |
+          set -uo pipefail
+          set +e
+
+          pg17() {
+            docker run --rm --network host \
+              -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE \
+              -v "$WORK:/work:ro" "$PG_IMAGE" "$@"
+          }
+
+          fail=0
+          {
+            echo "| table | restored |"
+            echo "|---|---|"
+          } > "$WORK/counts.md"
+          echo "Application tables in the restored database (exact counts are deliberately not printed):"
+          for t in tenants users screens audit_logs playlists; do
+            n=$(pg17 psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$t\"" 2> "$WORK/psql.err")
+            if ! [[ "$n" =~ ^[0-9]+$ ]]; then
+              verdict="MISSING"
+              echo "::error::Could not count public.$t in the restored database (table absent or unreadable)."
+              fail=1
+            elif [ "$n" -eq 0 ]; then
+              verdict="ZERO ROWS"
+              echo "::error::public.$t restored with ZERO rows - the backup has no data for it."
+              fail=1
+            else
+              verdict="rows present"
+            fi
+            printf '  %-12s %s\n' "$t" "$verdict"
+            echo "| $t | $verdict |" >> "$WORK/counts.md"
+          done
+          tables=$(pg17 psql -X -qAt -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" 2> /dev/null)
+          [[ "$tables" =~ ^[0-9]+$ ]] || tables="?"
+          echo "  (public base tables restored: $tables)"
+          echo "PUBLIC_TABLES=$tables" >> "$GITHUB_ENV"
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All five tables restored with rows."
+
+      - name: Job summary (the Article 29 evidence)
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -uo pipefail
+          # A value this run never got to produce reads "n/a", never a made-up 0.
+          mb() { if [ -n "${1:-}" ]; then awk -v b="$1" 'BEGIN { printf "%.1f MB", b / 1048576 }'; else echo "n/a"; fi; }
+          {
+            if [ "$JOB_STATUS" = "success" ]; then
+              echo "## DB restore drill - PASSED"
+            else
+              echo "## DB restore drill - FAILED ($JOB_STATUS)"
+            fi
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Backup | ${BACKUP_RUN_URL:+[run ${BACKUP_RUN_ID:-?}](${BACKUP_RUN_URL}) - }${BACKUP_CREATED_AT:-not found}${BACKUP_AGE_H:+ (${BACKUP_AGE_H} h old)} |"
+            echo "| Size | $(mb "${BACKUP_ENC_BYTES:-}") encrypted, $(mb "${DUMP_BYTES:-}") decrypted |"
+            echo "| Archive | dumped from Postgres ${DUMP_PG_VERSION:-?}; ${ARCHIVE_TOC_ENTRIES:-?} TOC entries, ${ARCHIVE_DATA_TABLES:-?} tables with data |"
+            echo "| Restore | ${RESTORE_SECONDS:-?} s into Postgres ${RESTORE_PG_VERSION:-?} ($PG_IMAGE) |"
+            echo "| pg_restore errors | ${RESTORE_ERRORS_TOTAL:-?} total, ${RESTORE_ERRORS_ALLOWED:-?} on the Supabase-platform allowlist |"
+            echo "| Tables in public | ${PUBLIC_TABLES:-?} |"
+            echo
+            if [ -s "$RUNNER_TEMP/restore-drill/counts.md" ]; then
+              cat "$RUNNER_TEMP/restore-drill/counts.md"
+            else
+              echo "_The per-table check was not reached._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$JOB_STATUS" = "success" ]; then
+            echo "::notice::Restore drill passed - backup from ${BACKUP_CREATED_AT:-?} restored in ${RESTORE_SECONDS:-?} s."
+          fi
+
+      - name: Delete everything restored or decrypted
+        if: ${{ always() }}
+        run: |
+          rm -rf "$RUNNER_TEMP/restore-drill"
+          echo "Removed the working directory. The restored database goes with the runner."
