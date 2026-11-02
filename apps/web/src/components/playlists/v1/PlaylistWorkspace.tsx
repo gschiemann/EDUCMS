@@ -297,7 +297,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
               <button
                 type="button"
                 onClick={() => props.onTab('schedule')}
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-amber-200 bg-white text-[13px] font-bold text-amber-800 shadow-sm hover:bg-amber-50"
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg border border-amber-200 bg-white text-[13px] font-bold text-amber-800 shadow-sm hover:bg-amber-50"
               >
                 Review publishing
               </button>
@@ -311,8 +311,9 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                    rounded pill and color scheme and size as the others". Same
                    pill, border and height as Download beside it — the state is
                    carried by the icon and the word, not by a shape and a colour
-                   nothing else on the row uses. */
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                   nothing else on the row uses. Pill cleanup (2026-11-02):
+                   Download is now a rounded-lg button, so this matches it. */
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PlayCircle className="w-4 h-4" aria-hidden />
                 {props.pausePending ? pendingLabel : 'Play everywhere'}
@@ -322,7 +323,7 @@ export function PlaylistWorkspace(props: PlaylistWorkspaceProps) {
                 type="button"
                 onClick={props.onPauseEverywhere}
                 disabled={props.pausePending}
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg border border-slate-200 bg-white text-[13px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <PauseCircle className="w-4 h-4" aria-hidden />
                 {props.pausePending ? pendingLabel : row?.statusLabel === 'PREPARING 1080P' ? t('playlistsPage.stopCancelPublish') : 'Pause everywhere'}

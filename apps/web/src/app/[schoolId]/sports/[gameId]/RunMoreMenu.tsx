@@ -302,7 +302,7 @@ export function OnAirBar({ show }: { show: ReturnType<typeof useShowControl> }) 
         type="button"
         onClick={show.backToLive}
         title="Return the board to the live scoreboard"
-        className="min-h-[40px] max-md:min-h-[44px] short-land:min-h-[44px] px-3 rounded-full text-[13px] font-bold bg-red-600 text-white hover:bg-red-500 transition-colors shrink-0 flex items-center gap-1.5"
+        className="min-h-[40px] max-md:min-h-[44px] short-land:min-h-[44px] px-3 rounded-lg text-[13px] font-bold bg-red-600 text-white hover:bg-red-500 transition-colors shrink-0 flex items-center gap-1.5"
       >
         <Radio className="h-4 w-4" />
         Back to live

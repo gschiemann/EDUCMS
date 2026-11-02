@@ -21,6 +21,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { Segmented } from '@/components/ui/segmented';
 import {
   Sparkles,
   Loader2,
@@ -138,6 +140,7 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
   // 'wizard' (default, step-by-step) or 'advanced' (everything on one screen).
   const [mode, setMode_] = useState<'wizard' | 'advanced'>('wizard');
   const [step, setStep] = useState(0); // 0..5
+  const tp = useTranslations('pillWavePlaylists');
 
   // ── helpers to patch one answer field ──
   const patch = (p: Partial<AiIntakeAnswers>) => onChange({ ...answers, ...p });
@@ -197,7 +200,7 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
   );
 
   const ThemeChips = (
-    <div className="flex flex-wrap gap-2">
+    <div role="radiogroup" aria-label={tp('intakeTheme')} className="flex flex-wrap gap-2">
       {THEME_OPTIONS.map((t) => {
         const active = answers.theme === t.key;
         return (
@@ -206,7 +209,9 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
             type="button"
             onClick={() => patch({ theme: t.key as IntakeThemeKey })}
             disabled={isPending}
-            className={`flex items-center gap-2 rounded-full border-2 pl-1.5 pr-3 py-1 text-xs font-bold transition-colors disabled:opacity-50 ${
+            role="radio"
+            aria-checked={active}
+            className={`flex items-center gap-2 rounded-md border-2 pl-2 pr-3 py-2 text-xs font-bold transition-colors disabled:opacity-50 ${
               active
                 ? 'border-violet-500 bg-violet-50 text-violet-700'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300'
@@ -225,30 +230,17 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
 
   const PaletteRow = (
     <div className="space-y-2.5">
-      <div className="flex flex-wrap gap-2">
-        {([
-          { key: 'brand', label: 'Use my brand colors' },
-          { key: 'custom', label: 'Pick a palette' },
-          { key: 'auto', label: 'Let AI choose' },
-        ] as Array<{ key: IntakePaletteMode; label: string }>).map((o) => {
-          const active = answers.paletteMode === o.key;
-          return (
-            <button
-              key={o.key}
-              type="button"
-              onClick={() => patch({ paletteMode: o.key })}
-              disabled={isPending}
-              className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
-                active
-                  ? 'border-violet-500 bg-violet-50 text-violet-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300'
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
+      <Segmented<IntakePaletteMode>
+        ariaLabel={tp('intakePalette')}
+        value={answers.paletteMode}
+        onChange={(v) => { if (!isPending) patch({ paletteMode: v }); }}
+        fullWidthOnMobile
+        options={[
+          { value: 'brand', label: 'Use my brand colors' },
+          { value: 'custom', label: 'Pick a palette' },
+          { value: 'auto', label: 'Let AI choose' },
+        ]}
+      />
       {answers.paletteMode === 'custom' && (
         <div className="flex flex-wrap gap-2 pt-0.5">
           {PALETTE_PRESETS.map((p) => {
@@ -283,7 +275,7 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
   );
 
   const BackgroundChips = (
-    <div className="flex flex-wrap gap-2">
+    <div role="radiogroup" aria-label={tp('intakeBackground')} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {BACKGROUND_OPTIONS.map((b) => {
         const active = answers.background === b.key;
         return (
@@ -293,13 +285,16 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
             onClick={() => patch({ background: b.key as IntakeBackground })}
             disabled={isPending}
             title={b.hint}
-            className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+            role="radio"
+            aria-checked={active}
+            className={`flex flex-col items-start gap-0.5 rounded-lg border-2 px-3 py-2 text-left transition-colors disabled:opacity-50 ${
               active
                 ? 'border-violet-500 bg-violet-50 text-violet-700'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300'
             }`}
           >
-            {b.label}
+            <span className="text-xs font-bold">{b.label}</span>
+            <span className="text-[10px] font-medium text-slate-500 leading-tight">{b.hint}</span>
           </button>
         );
       })}
@@ -318,7 +313,7 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
             onClick={() => toggleWidget(w.key)}
             disabled={isPending}
             aria-pressed={active}
-            className={`flex items-center gap-1.5 rounded-full border-2 px-2.5 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+            className={`flex items-center gap-1.5 rounded-md border-2 px-2.5 py-2 text-xs font-bold transition-colors disabled:opacity-50 ${
               active
                 ? 'border-violet-500 bg-violet-600 text-white'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300'
@@ -352,7 +347,7 @@ export function AiIntakeWizard(props: AiIntakeWizardProps) {
               type="button"
               onClick={() => onPromptChange(c)}
               disabled={isPending}
-              className="text-[10px] px-2 py-1 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+              className="text-[11px] font-medium px-2 py-1 rounded-md border border-violet-100 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50"
             >
               {c}
             </button>

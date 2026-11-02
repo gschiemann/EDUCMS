@@ -3183,6 +3183,20 @@
     "selectItem": "Select {name}",
     "clearSelection": "Clear selection"
   },
+  "assetsLibV2": {
+    "uploadHint": "Drag files onto this page to upload · video up to {video}",
+    "dropTitle": "Drop to upload",
+    "dropSub": "We’ll ask which folder to put them in",
+    "typeTabs": "Media type",
+    "sort": "Sort",
+    "moreActions": "More actions",
+    "selectionActions": "Selection actions",
+    "selectedCount": "{count} selected",
+    "createPlaylist": "Create playlist",
+    "move": "Move",
+    "moveToFolder": "Move to folder",
+    "clearSelection": "Clear selection"
+  },
   "assetsLib": {
     "uploadFiles": "Upload files",
     "photoLibrary": "Photo library",
@@ -4926,7 +4940,16 @@
     "periodOverNext": "Next period",
     "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3).",
     "readStale": "Lost contact with the game: the last update was {seconds} s ago. The clocks here are held until the connection is back.",
-    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers."
+    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers.",
+    "cueTargetLabel": "Send to",
+    "cueTargetAria": "Send celebration cues to",
+    "cueTargetAll": "All",
+    "cueTargetBoard": "Board",
+    "cueTargetRibbon": "Ribbon",
+    "cueTargetRibbonHint": "2.5s crawl",
+    "statusConfigured": "Configured",
+    "statusArmed": "Armed",
+    "statusOnAir": "On air"
   },
   "studentPrivacy": {
     "title": "Student information on public screens",
@@ -5330,7 +5353,8 @@
     "regenerate": "Regenerate…",
     "regenerateTitle": "Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued",
     "confirmWarning": "This kills every credential already deployed for this game (including the original token) the moment you confirm — your vendor stops syncing until you paste in the new one.",
-    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token."
+    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token.",
+    "vendorAria": "Scoreboard vendor"
   },
   "sportsConsoleSetup": {
     "title": "Scoreboard console",
@@ -7097,7 +7121,8 @@
     "notInGroup": "Not in a group",
     "youreIn": "You’re in",
     "returnToFleet": "Return to {name} fleet",
-    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group."
+    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group.",
+    "filterStatus": "Status"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
@@ -7125,7 +7150,18 @@
       "newest": "Newest",
       "oldest": "Oldest"
     },
-    "showMore": "Show {count} more"
+    "showMore": "Show {count} more",
+    "filterLevel": "School level",
+    "filterHoliday": "Holiday",
+    "categoryTabs": "Category",
+    "selectTemplate": "Select {name}",
+    "selectAllShown": "Select all your templates shown",
+    "duplicate": "Duplicate",
+    "export": "Export",
+    "delete": "Delete",
+    "bulkDeleteTitle": "Delete {count, plural, one {# template} other {# templates}}?",
+    "bulkDeleteBody": "Templates that are showing on screens are skipped — delete those one at a time so you can see where they play.",
+    "bulkDeleteDone": "{deleted, plural, one {# template deleted} other {# templates deleted}}{skipped, plural, =0 {} one {, # skipped (in use)} other {, # skipped (in use)}}"
   },
   "acceptInvite": {
     "title": "Accept your invitation",
@@ -8103,5 +8139,39 @@
     "upload": "Upload new",
     "loading": "Loading library…",
     "empty": "No files here yet. Upload a file or choose another folder."
+  },
+  "ui": {
+    "filter": "Filter",
+    "filtersActive": "{count, plural, one {# filter} other {# filters}}",
+    "filterButton": "Filter, {count, plural, =0 {none active} one {# active} other {# active}}",
+    "clearFilters": "Clear filters",
+    "clear": "Clear",
+    "moreActions": "More actions",
+    "selectedCount": "{count} selected",
+    "selectAll": "Select all {count}",
+    "clearSelection": "Clear selection",
+    "selectionActions": "Selection actions",
+    "sort": "Sort",
+    "view": "View",
+    "gridView": "Grid view",
+    "listView": "List view",
+    "moreTabs": "More",
+    "sortValue": "Sort: {label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Look and feel",
+    "intakePalette": "Color source",
+    "intakeBackground": "Background style",
+    "mediaKind": "Media type",
+    "templateKind": "Template source",
+    "aiMenu": "AI rewrite options",
+    "opRewrite": "Rewrite",
+    "opShorten": "Shorten",
+    "opFitToZone": "Fit to zone",
+    "opExpand": "Expand",
+    "opPunch": "Punch it up",
+    "opFixGrammar": "Fix grammar",
+    "opTranslate": "Translate…",
+    "opTellMe": "Tell me…"
   }
 }
