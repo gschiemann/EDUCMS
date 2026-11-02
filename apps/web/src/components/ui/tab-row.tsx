@@ -72,13 +72,13 @@ export function fitTabs(widths: number[], room: number, moreWidth: number, activ
 
 const TAB_CLASS = 'shrink-0 min-h-11 flex items-center gap-1.5 whitespace-nowrap border-b-2 px-0.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500';
 
-function TabContent<T extends string>({ tab, active }: { tab: TabRowTab<T>; active: boolean }) {
+function TabContent<T extends string>({ tab }: { tab: TabRowTab<T> }) {
   return (
     <>
       {tab.icon}
       {tab.label}
       {tab.count != null && (
-        <span className={`text-xs tabular-nums ${active ? 'text-slate-500' : 'text-slate-400'}`}>{tab.count}</span>
+        <span className="text-xs tabular-nums text-slate-500">{tab.count}</span>
       )}
     </>
   );
@@ -137,11 +137,14 @@ export function TabRow<T extends string>({ value, onChange, tabs, ariaLabel, tes
 
   return (
     <div ref={wrapRef} className={`relative h-full min-w-0 ${className ?? ''}`}>
+      {/* With `overflow`, More sits BESIDE the tablist (a tablist may only
+          own tabs — axe aria-required-children); same row, same 20px gap. */}
+      <div className={overflow ? 'flex items-stretch gap-5 h-full -mb-px overflow-hidden' : 'contents'}>
       <div
         role="tablist"
         aria-label={ariaLabel}
         data-testid={testId}
-        className={`flex items-stretch gap-5 h-full -mb-px ${overflow ? 'overflow-hidden' : 'overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}`}
+        className={`flex items-stretch gap-5 ${overflow ? 'shrink-0' : 'h-full -mb-px overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}`}
       >
         {visible.map((tab, i) => {
           const active = tab.key === value;
@@ -161,10 +164,11 @@ export function TabRow<T extends string>({ value, onChange, tabs, ariaLabel, tes
                   : 'border-transparent text-slate-500 hover:text-slate-800 font-medium'
               }`}
             >
-              <TabContent tab={tab} active={active} />
+              <TabContent tab={tab} />
             </button>
           );
         })}
+      </div>
         {hiddenIdx.length > 0 && (
           <button
             ref={moreRef}
@@ -186,7 +190,7 @@ export function TabRow<T extends string>({ value, onChange, tabs, ariaLabel, tes
           <div ref={measureRef} className="flex gap-5">
             {tabs.map((tab) => (
               <span key={tab.key} className={`${TAB_CLASS} border-transparent font-semibold`}>
-                <TabContent tab={tab} active={false} />
+                <TabContent tab={tab} />
               </span>
             ))}
           </div>

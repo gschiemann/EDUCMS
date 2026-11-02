@@ -75,7 +75,7 @@ export function Segmented<T extends string>({
             className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
               iconOnly ? 'min-w-11 sm:min-w-8' : 'px-3'
             } ${fullWidthOnMobile ? 'flex-1 sm:flex-none' : ''} ${
-              active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-800'
             }`}
           >
             {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
