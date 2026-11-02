@@ -261,14 +261,14 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel(CAPABLE, {}, PAINTING);
     expect(pressed(/^Awake$/)).toBe('true');
     expect(pressed(/^Sleep$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toMatch(/Awake and showing/);
+    expect(rtl.queryByTestId('power-state')).toBeNull();
   });
 
   it('highlights Sleep when render proof says the glass is not lit', () => {
     renderPanel(CAPABLE, {}, DARK);
     expect(pressed(/^Sleep$/)).toBe('true');
     expect(pressed(/^Awake$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toMatch(/Sleeping/);
+    expect(rtl.queryByTestId('power-state')).toBeNull();
   });
 
   it('highlights Sleep from the native report even while the page still paints', () => {
@@ -285,7 +285,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel(CAPABLE, {}, UNPROVED);
     expect(pressed(/^Sleep$/)).toBe('false');
     expect(pressed(/^Awake$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toBe('State unknown');
+    expect(rtl.queryByText('State unknown')).toBeNull();
     // Both are still live: recovery is never gated.
     expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
   });
@@ -368,9 +368,9 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // that", which a blank that un-blanks itself after ten minutes is not.
   // What must never regress is that the copy describes what WE SENT, never a
   // device state we cannot observe.
-  it('describes what Sleep and Awake do, and never claims an unobserved state', () => {
+  it('shows no helper sentence under Sleep and Awake, and never claims an unobserved state', () => {
     renderPanel(CAPABLE, {}, UNPROVED);
-    expect(rtl.getByText(/An emergency alert always wakes it/i)).toBeTruthy();
+    expect(rtl.queryByText(/An emergency alert always wakes it/i)).toBeNull();
     expect(rtl.queryByText(/Wakes itself after 10 min/i)).toBeNull();
   });
 
