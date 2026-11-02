@@ -1,9 +1,11 @@
 "use client";
+
 /**
  * VenueOS · Live Data widgets — universal across every vertical.
  * Ported 1:1 from industry-widget-pack/lib/widgets-live-data.jsx.
  *
- * Nothing here fetches anything: every board renders from `config`. The
+ * Source-backed AQI, road reports and reference rates use automatic modes.
+ * The older manual components render saved config values. The original
  * header used to say the opposite ("the real fetch happens server-side per
  * widget") and the boards backed it up with sample quotes, prices, headlines
  * and readings on every real screen. Lane B4 (2026-09-27): a real screen shows
@@ -11,6 +13,7 @@
  * in the builder, stamped SAMPLE — see `_shared/live-data-truth.tsx`.
  */
 import React from 'react';
+import { AirQualityLiveWidget, RoadIncidentsLiveWidget } from '../PublicDataWidgets';
 import { useReferenceRates, DISPLAY_CURRENCIES } from '../use-reference-rates';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
@@ -392,7 +395,12 @@ function isSeededAirReading(c: AirQualityCfg): boolean {
     && c.o3 === AIR_SAMPLE.o3 && c.no2 === AIR_SAMPLE.no2;
 }
 
-export function AirQualityWidget({ config, live = true, height = 480 }: WidgetProps<AirQualityCfg>) {
+export function AirQualityWidget(props: WidgetProps<AirQualityCfg & {dataMode?:string}>) {
+  const c = props.config || {};
+  const automatic = c.dataMode === 'automatic' || (c.dataMode !== 'manual' && c.aqi == null);
+  return automatic ? <AirQualityLiveWidget config={c} live={props.live}/> : <ManualAirQualityWidget {...props}/>;
+}
+function ManualAirQualityWidget({ config, live = true, height = 480 }: WidgetProps<AirQualityCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0a0d12', textColor: '#22c55e', accentColor: '#22c55e', ...c.style });
   const realScreen = useRealScreen();
@@ -635,7 +643,8 @@ function camRows(value: unknown): TrafficCam[] {
     .map((cam) => ({ name: text(cam.name), note: text(cam.note), status: text(cam.status).toUpperCase(), tint: text(cam.tint) || undefined }));
 }
 
-export function TrafficCamWidget({ config, live = true, height = 480 }: WidgetProps<TrafficCamCfg>) {
+export function TrafficCamWidget(props:WidgetProps<TrafficCamCfg>){const c=props.config as any || {};return c.dataMode==='automatic'||(c.dataMode!=='manual'&&!c.cams?.length&&!c.city)?<RoadIncidentsLiveWidget {...props}/>:<ManualTrafficCamWidget {...props}/>;}
+function ManualTrafficCamWidget({ config, live = true, height = 480 }: WidgetProps<TrafficCamCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0e1320', textColor: '#22c55e', accentColor: '#dc2626', ...c.style });
   const realScreen = useRealScreen();
