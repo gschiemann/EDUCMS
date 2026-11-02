@@ -17,9 +17,13 @@ import { FieldBuildsService } from './field-builds.service';
  *   GET  candidates               the registered field builds + mirror presence
  *   GET  windows                  the open window, recent history, the variables' window
  *   GET  screens?tenantIds=a,b    those organisations' screens (reach-gated)
- *   POST windows                  arm   { candidate, tenantIds, screens: 'all' | ids, durationMinutes, note? }
+ *   POST windows                  arm   { candidate, tenantIds, screens: 'all' | ids, durationMinutes, note?, overrideMassPushRules? }
  *   POST windows/:id/cancel       cancel { reason? }
- *   POST windows/:id/push         push now { screenIds, overrideWindow? }
+ *   POST windows/:id/push         push now { screenIds, overrideWindow?, overrideMassPushRules? }
+ *
+ * `overrideMassPushRules` (the owner's explicit override of "one hardware
+ * class" and "off-hours" for more than one screen — player-ota/
+ * fleet-push-policy.ts) is not exposed by the dashboard; a used one is audited.
  */
 @Controller('api/v1/super/field-builds')
 @UseGuards(JwtAuthGuard, RbacGuard)

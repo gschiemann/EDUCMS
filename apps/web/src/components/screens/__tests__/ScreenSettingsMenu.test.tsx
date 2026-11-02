@@ -77,6 +77,13 @@ jest.mock('@/components/screens/ScreenDisplayControls', () => ({
 jest.mock('@/components/screens/ScreenSetupSection', () => ({
   ScreenSetupSection: () => <div data-testid="setup-section" />,
 }));
+// Inside Advanced (2026-11-01); each has its own suite.
+jest.mock('@/components/screens/ScreenDeviceSettings', () => ({
+  ScreenDeviceSettings: () => <div data-testid="device-settings-section" />,
+}));
+jest.mock('@/components/screens/ScreenSleepWakeSection', () => ({
+  ScreenSleepWakeSection: () => <div data-testid="sleep-wake-section" />,
+}));
 
 const ANDROID_SCREEN = {
   id: 'g43',
@@ -271,6 +278,7 @@ describe('player app row', () => {
       lastOtaMessage: 'v1.1.45 is downloaded and waiting for a person: on the screen press Back, choose Install v1.1.45, then tap Install.',
       lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
     });
+    fireEvent.click(rtl.getByRole('button', { name: /^Advanced/ }));
     fireEvent.click(rtl.getByRole('button', { name: /Device details/ }));
     expect(rtl.getByText(/At the screen: press Back, choose Install, then select Install in Android.s dialog \(OK on the remote, or tap it\)/)).toBeInTheDocument();
     expect(rtl.queryByText(/then tap Install/)).not.toBeInTheDocument();
@@ -283,6 +291,7 @@ describe('player app row', () => {
       lastOtaMessage: 'Download failed: HTTP 503',
       lastOtaAt: new Date(Date.now() - 60_000).toISOString(),
     });
+    fireEvent.click(rtl.getByRole('button', { name: /^Advanced/ }));
     fireEvent.click(rtl.getByRole('button', { name: /Device details/ }));
     expect(rtl.getByText('Download failed: HTTP 503')).toBeInTheDocument();
   });

@@ -321,3 +321,36 @@ describe('a window armed from the panel (field_build_windows)', () => {
     expect(isFieldCandidateTarget(id, tenant, env, now)).toBe(true);
   });
 });
+
+/**
+ * 2026-10-31 — PLAYER_FIELD_BENCH_SCREENS (fleet-push-policy.ts): the download
+ * ticket is minted and honoured only for a listed bench screen. Unset or blank,
+ * the ticket is exactly what it was before the variable existed.
+ */
+describe('the field download ticket and PLAYER_FIELD_BENCH_SCREENS', () => {
+  const other = '66666666-6666-4666-8666-666666666666';
+
+  it('UNSET or blank: the same ticket is minted and honoured as before', () => {
+    for (const bench of [undefined, '', '   ']) {
+      const e = { ...env, PLAYER_FIELD_BENCH_SCREENS: bench };
+      const ticket = mintFieldTicket(release, id, tenant, e, now, null);
+      expect(ticket).toBe(mintFieldTicket(release, id, tenant, env, now, null));
+      expect(verifyFieldTicket(ticket, release, e, now, null)?.screenId).toBe(id);
+    }
+  });
+
+  it('SET: never minted for a screen off the list, and a ticket minted earlier dies once the list no longer names it', () => {
+    const offList = { ...env, PLAYER_FIELD_BENCH_SCREENS: other };
+    expect(mintFieldTicket(release, id, tenant, offList, now, null)).toBeNull();
+    const earlier = mintFieldTicket(release, id, tenant, env, now, null)!;
+    expect(verifyFieldTicket(earlier, release, offList, now, null)).toBeNull();
+    // The gate's own admission is untouched: the screen is still a field target.
+    expect(isFieldCandidateTarget(id, tenant, offList, now, null)).toBe(true);
+  });
+
+  it('SET and listed (any case): minted and honoured', () => {
+    const listed = { ...env, PLAYER_FIELD_BENCH_SCREENS: `${other}, ${id.toUpperCase()}` };
+    const ticket = mintFieldTicket(release, id, tenant, listed, now, null)!;
+    expect(verifyFieldTicket(ticket, release, listed, now, null)?.screenId).toBe(id);
+  });
+});

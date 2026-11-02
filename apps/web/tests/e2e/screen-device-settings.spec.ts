@@ -110,8 +110,9 @@ async function openAndroidSettings(page: Page) {
   await page.getByRole('button', { name: /^GUQ55\b/ }).first().click();
   const drawer = page.getByRole('dialog').first();
   await drawer.getByRole('tab', { name: 'Settings', exact: true }).click();
+  // 2026-11-01: Android settings sit under the closed Advanced group.
+  await drawer.getByRole('button', { name: /^Advanced/ }).click();
   const section = drawer.getByTestId('device-settings-section');
-  await section.getByRole('button', { name: 'Android settings' }).click();
   await expect(section.getByLabel('Brightness')).toBeVisible();
   return section;
 }
@@ -120,9 +121,11 @@ test('controls only where the unit can set it, the reason elsewhere, and one PUT
   const state = await openScreens(page);
   const section = await openAndroidSettings(page);
 
-  await expect(section.getByTestId('device-setting-brightness')).toContainText('Android reports 70%');
+  await expect(section.getByTestId('device-setting-brightness')).toContainText('Currently 70%');
   await expect(section.getByTestId('device-setting-screenOffTimeoutMs')).toContainText('Set on the screen');
-  await expect(section.getByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveCount(4);
+  // What the unit cannot do is not drawn at all.
+  await expect(section.getByText(/Not possible on this unit/)).toHaveCount(0);
+  await expect(section.getByText(/adb/)).toHaveCount(0);
   await expect(section.getByRole('combobox', { name: 'Automatic date & time' })).toHaveCount(0);
   await expect(section.getByTestId('device-load-facts')).toContainText('Heat: normal');
 

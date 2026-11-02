@@ -58,3 +58,15 @@ class PromptTickPolicyTest {
         assertTrue(PromptTickPolicy.accept(nowMs = 40_000L, recentPromptTicksMs = ticks))
     }
 }
+
+class PromptTickPolicyUrgentTest {
+    /** 2026-11-02: the alert's accepted paint receipt lands < 5 s after the raise's prompt and must still tick. */
+    @Test
+    fun `an urgent request ignores the 5 s gap but not the window cap`() {
+        val justPrompted = listOf(99_600L)
+        assertFalse(PromptTickPolicy.accept(100_000L, justPrompted))
+        assertTrue(PromptTickPolicy.acceptUrgent(100_000L, justPrompted))
+        val saturated = (0 until PromptTickPolicy.MAX_PER_WINDOW).map { 50_000L + it * 100 }
+        assertFalse(PromptTickPolicy.acceptUrgent(100_000L, saturated))
+    }
+}
