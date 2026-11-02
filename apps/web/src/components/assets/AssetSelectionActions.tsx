@@ -1,23 +1,26 @@
 "use client";
 
 /**
- * Media Library DESIGN MOCK-UP (`?design=v2`, 2026-11-02) — the selection
- * actions under the "one primary action per context" rule.
+ * Media Library selection actions (2026-11-02, owner-approved redesign) —
+ * "one primary action per context".
  *
  *   - ONE filled action: Create playlist.
- *   - Quiet secondaries (no pill outline): Move, Download — desktop only.
- *   - Rare / destructive actions in "⋯": Delete (plus Move / Download on a
- *     phone, where the bar has room for one button and the menu).
+ *   - Quiet secondaries (no pill outline): Move, Download. On a phone they sit
+ *     in the "⋯" menu, because the bar has room for few buttons.
+ *   - Delete stays a VISIBLE danger button on both placements (owner,
+ *     2026-11-02, and Greg 2026-09-24: "just show delete"). The confirm
+ *     dialog behind `onDelete` is the safety, not a menu.
  *   - ✕ clears.
  *
- * Two placements, same actions (owner, option B for the web app):
+ * Two placements, same actions:
  *   - `AssetSelectionToolbar` — desktop. It REPLACES the filter row in place,
  *     at the same height, so the page never grows; the filters come back when
  *     the selection is cleared.
- *   - `AssetSelectionDock` — phone width. A full-width bar fixed above the
+ *   - `AssetSelectionDock` — phone width. A full-width bar on top of the
  *     mobile tab bar, thumb-reachable (iPhone Photos style).
  *
- * Production keeps `AssetBulkBar` until the owner approves this design.
+ * Both carry `data-testid="asset-bulk-bar"` (only one renders at a time), the
+ * contract the selection tests and e2e specs drive.
  * Mobile-perf standard: no blur, no pollers; the dock animates with a
  * transform only.
  */
@@ -33,6 +36,7 @@ export interface AssetSelectionActionsProps {
   count: number;
   selectAllCount?: number | null;
   selectingAll?: boolean;
+  selectAllDisabled?: boolean;
   onSelectAll?: () => void;
   /** Viewer gate for Create playlist / Move. */
   disabled?: boolean;
@@ -50,6 +54,8 @@ export interface AssetSelectionActionsProps {
 
 const QUIET =
   'min-h-11 sm:min-h-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const DANGER =
+  'min-h-11 sm:min-h-0 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-white text-xs font-bold text-rose-700 hover:bg-rose-50 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 const PRIMARY =
   'min-h-11 sm:min-h-0 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 const ICON =
@@ -57,7 +63,8 @@ const ICON =
 const MENU_ITEM =
   'w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed';
 
-function MoreMenu({ props, includeSecondaries }: { props: AssetSelectionActionsProps; includeSecondaries: boolean }) {
+/** Phone only: Move + Download behind "⋯". */
+function MoreMenu({ props }: { props: AssetSelectionActionsProps }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -76,7 +83,6 @@ function MoreMenu({ props, includeSecondaries }: { props: AssetSelectionActionsP
   }, [open]);
 
   const run = (fn: () => void) => () => { setOpen(false); fn(); };
-  const title = props.disabled ? props.disabledReason : undefined;
 
   return (
     <>
@@ -95,27 +101,12 @@ function MoreMenu({ props, includeSecondaries }: { props: AssetSelectionActionsP
       </button>
       <AnchoredMenu anchorRef={anchor} open={open} width={208}>
         <div role="menu" aria-label={t('assetsLibV2.moreActions')} className="py-1" data-testid="selection-more-menu">
-          {includeSecondaries && (
-            <>
-              <button type="button" role="menuitem" disabled={props.disabled} title={title} onClick={run(props.onMoveToFolder)} className={`${MENU_ITEM} text-slate-700 hover:bg-slate-50`}>
-                <FolderInput className="w-3.5 h-3.5 text-slate-500" aria-hidden /> {t('assetsLibV2.moveToFolder')}
-              </button>
-              <button type="button" role="menuitem" disabled={props.downloadPending} onClick={run(props.onDownload)} className={`${MENU_ITEM} text-slate-700 hover:bg-slate-50`}>
-                <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden />
-                {props.count > 1 ? t('assetsLib.downloadZip') : t('assetsLib.download')}
-              </button>
-              <div className="my-1 border-t border-slate-100" role="separator" />
-            </>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={props.deleteDisabled}
-            title={props.deleteDisabled ? props.deleteDisabledReason : undefined}
-            onClick={run(props.onDelete)}
-            className={`${MENU_ITEM} text-rose-700 hover:bg-rose-50`}
-          >
-            <Trash2 className="w-3.5 h-3.5" aria-hidden /> {t('assetsLib.delete')}
+          <button type="button" role="menuitem" disabled={props.disabled} title={props.disabled ? props.disabledReason : undefined} onClick={run(props.onMoveToFolder)} className={`${MENU_ITEM} text-slate-700 hover:bg-slate-50`}>
+            <FolderInput className="w-3.5 h-3.5 text-slate-500" aria-hidden /> {t('assetsLibV2.moveToFolder')}
+          </button>
+          <button type="button" role="menuitem" disabled={props.downloadPending} onClick={run(props.onDownload)} className={`${MENU_ITEM} text-slate-700 hover:bg-slate-50`}>
+            <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden />
+            {props.count > 1 ? t('assetsLib.downloadZip') : t('assetsLib.download')}
           </button>
         </div>
       </AnchoredMenu>
@@ -130,11 +121,29 @@ function SelectAllLink(props: AssetSelectionActionsProps) {
     <button
       type="button"
       onClick={props.onSelectAll}
-      disabled={props.selectingAll}
+      disabled={props.selectingAll || props.selectAllDisabled}
       aria-busy={props.selectingAll}
+      data-testid="bulk-select-all"
       className="min-h-11 sm:min-h-0 px-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 hover:underline underline-offset-2 disabled:opacity-50 whitespace-nowrap"
     >
       {props.selectingAll ? t('assetsLib.selecting') : t('playlistsPage.bulkSelectAll', { count: props.selectAllCount })}
+    </button>
+  );
+}
+
+function DeleteButton({ props, iconOnly }: { props: AssetSelectionActionsProps; iconOnly?: boolean }) {
+  const t = useTranslations();
+  return (
+    <button
+      type="button"
+      onClick={props.onDelete}
+      disabled={props.deleteDisabled}
+      title={props.deleteDisabled ? props.deleteDisabledReason : iconOnly ? t('assetsLib.delete') : undefined}
+      aria-label={iconOnly ? t('assetsLib.delete') : undefined}
+      className={`${DANGER} ${iconOnly ? 'min-w-11' : ''}`}
+    >
+      <Trash2 className={iconOnly ? 'w-4 h-4' : 'w-3.5 h-3.5'} aria-hidden />
+      {!iconOnly && t('assetsLib.delete')}
     </button>
   );
 }
@@ -147,7 +156,8 @@ export function AssetSelectionToolbar(props: AssetSelectionActionsProps) {
     <div
       role="region"
       aria-label={t('assetsLibV2.selectionActions')}
-      data-testid="asset-selection-toolbar"
+      data-testid="asset-bulk-bar"
+      data-placement="toolbar"
       className="flex items-center gap-1 h-full"
     >
       <button type="button" onClick={props.onClear} aria-label={t('assetsLibV2.clearSelection')} title={t('assetsLibV2.clearSelection')} className={ICON}>
@@ -158,14 +168,14 @@ export function AssetSelectionToolbar(props: AssetSelectionActionsProps) {
       </p>
       <SelectAllLink {...props} />
       <div className="flex-1" />
-      <button type="button" onClick={props.onMoveToFolder} disabled={props.disabled} title={title} className={QUIET}>
+      <button type="button" onClick={props.onMoveToFolder} disabled={props.disabled} title={title} aria-label={t('assetsLibV2.moveToFolder')} className={QUIET}>
         <FolderInput className="w-3.5 h-3.5" aria-hidden /> {t('assetsLibV2.move')}
       </button>
       <button type="button" onClick={props.onDownload} disabled={props.downloadPending} aria-busy={props.downloadPending} className={QUIET}>
         {props.downloadPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Download className="w-3.5 h-3.5" aria-hidden />}
-        {props.downloadPending ? t('assetsLib.preparingZip') : t('assetsLib.download')}
+        {props.downloadPending ? t('assetsLib.preparingZip') : props.count > 1 ? t('assetsLib.downloadZip') : t('assetsLib.download')}
       </button>
-      <MoreMenu props={props} includeSecondaries={false} />
+      <div className="ml-1"><DeleteButton props={props} /></div>
       <button type="button" onClick={props.onCreatePlaylist} disabled={props.disabled} title={title} className={`${PRIMARY} ml-2`}>
         <ListPlus className="w-3.5 h-3.5" aria-hidden /> {t('assetsLibV2.createPlaylist')}
       </button>
@@ -173,18 +183,17 @@ export function AssetSelectionToolbar(props: AssetSelectionActionsProps) {
   );
 }
 
-/** Phone width: full-width, thumb-reachable bar fixed above the tab bar. */
+/** Phone width: full-width, thumb-reachable bar on top of the tab bar. */
 export function AssetSelectionDock(props: AssetSelectionActionsProps) {
   const t = useTranslations();
   const shown = props.count > 0;
   const setDockShown = useUIStore((s) => s.setSelectionDockShown);
-  // Sit exactly on top of the mobile tab bar: its height (labels + safe
-  // area) is measured, not guessed. Re-measured only on resize.
+  // Sit exactly on top of the mobile tab bar: its top edge is measured, not
+  // guessed. Re-measured only on resize.
   const [tabBarH, setTabBarH] = useState<number | null>(null);
   useEffect(() => {
     if (!shown) return;
     const measure = () => {
-      // The visible bottom bar's top edge, whichever mobile nav is mounted.
       let top = window.innerHeight;
       document.querySelectorAll('nav[aria-label="Primary"]').forEach((nav) => {
         const r = nav.getBoundingClientRect();
@@ -198,8 +207,8 @@ export function AssetSelectionDock(props: AssetSelectionActionsProps) {
   }, [shown]);
   // The bug-report FAB floats where the primary button sits — it yields.
   useEffect(() => {
-    setDockShown(shown);
-    return () => setDockShown(false);
+    setDockShown?.(shown);
+    return () => setDockShown?.(false);
   }, [shown, setDockShown]);
   if (!shown || typeof document === 'undefined') return null;
   // Portal to <body>: an ancestor in the dashboard shell creates a containing
@@ -208,20 +217,27 @@ export function AssetSelectionDock(props: AssetSelectionActionsProps) {
     <div
       role="region"
       aria-label={t('assetsLibV2.selectionActions')}
-      data-testid="asset-selection-dock"
+      data-testid="asset-bulk-bar"
+      data-placement="dock"
       style={tabBarH != null ? { bottom: tabBarH } : undefined}
       className="md:hidden fixed left-0 right-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-[59] bg-white border-t border-slate-200 shadow-[0_-6px_20px_rgba(15,23,42,0.08)] animate-in slide-in-from-bottom duration-200 will-change-transform"
     >
-      <div className="flex items-center px-2 py-1.5">
+      <div className="flex items-center gap-1 px-2 py-1.5">
         <button type="button" onClick={props.onClear} aria-label={t('assetsLibV2.clearSelection')} className={ICON}>
           <X className="w-5 h-5" aria-hidden />
         </button>
-        <div className="flex-1 min-w-0 px-1">
-          <p className="text-sm font-bold text-slate-900 truncate" aria-live="polite">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-slate-900 truncate leading-tight" aria-live="polite">
             {t('assetsLibV2.selectedCount', { count: props.count })}
           </p>
+          {/* "Select all N" reaches files that were never loaded — the only
+              way to, so it stays on the phone too, under the count. */}
+          {props.onSelectAll && props.selectAllCount != null && (
+            <div className="-ml-1 -my-2"><SelectAllLink {...props} /></div>
+          )}
         </div>
-        <MoreMenu props={props} includeSecondaries />
+        <MoreMenu props={props} />
+        <DeleteButton props={props} iconOnly />
         <button
           type="button"
           onClick={props.onCreatePlaylist}

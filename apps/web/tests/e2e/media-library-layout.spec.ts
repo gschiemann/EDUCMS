@@ -1,13 +1,14 @@
 /**
- * Media Library DESIGN MOCK-UP (`?design=v2`, 2026-11-02).
+ * Media Library layout (2026-11-02 redesign, owner-approved): one primary
+ * action, quiet secondaries, filters as tabs, the selection bar in place on
+ * desktop and at the bottom on a phone — with Delete always visible.
  *
- * Proves the mock-up's behaviour against a fully mocked API, and — with
- * `MEDIA_MOCKUP_SHOTS=1` — writes the comparison screenshots into
- * docs/research/2026-11-02-media-redesign/ (current page vs v2, desktop and
- * iPhone width, with 3 files selected and the "⋯" menu open).
+ * Runs against a fully mocked API. With `MEDIA_MOCKUP_SHOTS=1` it writes the
+ * screenshots into docs/research/2026-11-02-media-redesign/ (05–11; 01–04
+ * are the pre-redesign page, kept for comparison).
  *
  *   MEDIA_MOCKUP_SHOTS=1 E2E_PORT=3123 pnpm --filter web exec playwright test \
- *     tests/e2e/media-library-design-v2.spec.ts --project=webkit
+ *     tests/e2e/media-library-layout.spec.ts --project=webkit
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 import path from 'node:path';
@@ -52,7 +53,7 @@ const FOLDERS = [
   { id: 'f3', name: 'Menus', parentId: null, updatedAt: '2026-10-20T10:00:00Z', _count: { assets: 6, children: 0 } },
 ];
 
-async function open(page: Page, opts: { v2: boolean; mobile: boolean }) {
+async function open(page: Page, opts: { mobile: boolean }) {
   await page.addInitScript(user => {
     sessionStorage.setItem('edu_cms_token', 'e2e-token'); sessionStorage.setItem('edu_cms_user', JSON.stringify(user)); localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
   }, USER);
@@ -74,9 +75,8 @@ async function open(page: Page, opts: { v2: boolean; mobile: boolean }) {
     return json(route, p.endsWith('s') ? [] : {});
   });
   await page.setViewportSize(opts.mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
-  await page.goto(`/${TENANT}/assets${opts.v2 ? '?design=v2' : ''}`);
+  await page.goto(`/${TENANT}/assets`);
   await expect(page.getByRole('checkbox', { name: `Select ${NAMES[0]}` })).toBeAttached();
-  // Let the thumbnails paint.
   // Let the on-screen thumbnails paint (lazy ones below the fold never load).
   await page.waitForFunction(() => Array.from(document.images)
     .filter(i => i.src.includes('files.example.test') && i.getBoundingClientRect().top < window.innerHeight)
@@ -101,51 +101,42 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(OUT, name) });
 }
 
-test.describe('Media Library design v2 mock-up', () => {
-  test('current page (comparison)', async ({ page }) => {
-    await open(page, { v2: false, mobile: false });
-    await expect(page.getByTestId('upload-strip')).toBeVisible();
-    await shot(page, '01-current-desktop.png');
-    await selectThree(page);
-    await expect(page.getByTestId('asset-bulk-bar')).toBeVisible();
-    await shot(page, '02-current-desktop-3-selected.png');
-  });
-
-  test('current page at iPhone width (comparison)', async ({ page }) => {
-    await open(page, { v2: false, mobile: true });
-    await shot(page, '03-current-iphone.png');
-    await selectThree(page);
-    await shot(page, '04-current-iphone-3-selected.png');
-  });
-
-  test('v2 desktop: one primary, tabs, toolbar turns into the selection bar in place', async ({ page }) => {
-    await open(page, { v2: true, mobile: false });
+test.describe('Media Library layout (2026-11-02 redesign)', () => {
+  test('desktop: one primary, tabs; the toolbar row becomes the selection bar in place, Delete visible', async ({ page }) => {
+    await open(page, { mobile: false });
     await expect(page.getByTestId('upload-strip')).toHaveCount(0);
     await expect(page.getByTestId('upload-hint')).toBeVisible();
     await expect(page.getByRole('tab', { name: /All/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('Search the media library')).toHaveCount(1);
     const toolbar = page.getByTestId('library-toolbar');
     const before = await toolbar.boundingBox();
     await shot(page, '05-v2-desktop.png');
 
     await selectThree(page);
-    await expect(page.getByTestId('asset-selection-toolbar')).toContainText('3 selected');
+    const bar = page.locator('[data-testid="asset-bulk-bar"][data-placement="toolbar"]');
+    await expect(bar).toContainText('3 selected');
     await expect(page.getByTestId('media-type-tabs')).toHaveCount(0);
-    await expect(page.getByTestId('asset-bulk-bar')).toHaveCount(0);
+    for (const name of ['Create playlist', 'Move to folder', 'Download ZIP', 'Delete']) {
+      await expect(bar.getByRole('button', { name, exact: true })).toBeVisible();
+    }
+    await expect(bar.getByTestId('selection-more')).toHaveCount(0);
     const after = await toolbar.boundingBox();
     expect(Math.round(after!.height)).toBe(Math.round(before!.height)); // the page does not grow
     await shot(page, '06-v2-desktop-3-selected.png');
 
-    await page.getByTestId('selection-more').click();
-    await expect(page.getByTestId('selection-more-menu').getByRole('menuitem', { name: 'Delete' })).toBeVisible();
-    await shot(page, '07-v2-desktop-more-menu.png');
-    await page.keyboard.press('Escape');
+    // Delete still goes through the existing confirm.
+    await bar.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await shot(page, '07-v2-desktop-delete-confirm.png');
+    await page.getByRole('dialog').getByText('Cancel', { exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Clear selection' }).click();
     await expect(page.getByTestId('media-type-tabs')).toBeVisible();
   });
 
-  test('v2 desktop: the drop overlay appears only while dragging', async ({ page }) => {
-    await open(page, { v2: true, mobile: false });
+  test('desktop: the drop overlay appears only while dragging', async ({ page }) => {
+    await open(page, { mobile: false });
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
     await page.evaluate(() => {
       const dt = new DataTransfer();
@@ -156,16 +147,18 @@ test.describe('Media Library design v2 mock-up', () => {
     await shot(page, '08-v2-desktop-dragging.png');
   });
 
-  test('v2 iPhone: bottom selection bar, Move/Download/Delete under ⋯', async ({ page }) => {
-    await open(page, { v2: true, mobile: true });
+  test('iPhone: bottom selection bar with Delete visible; Move/Download under ⋯', async ({ page }) => {
+    await open(page, { mobile: true });
+    await expect(page.getByLabel('Search the media library')).toHaveCount(1);
     await shot(page, '09-v2-iphone.png');
     await selectThree(page);
-    const dock = page.getByTestId('asset-selection-dock');
+    const dock = page.locator('[data-testid="asset-bulk-bar"][data-placement="dock"]');
     await expect(dock).toContainText('3 selected');
     await expect(dock.getByRole('button', { name: 'Create playlist' })).toBeVisible();
+    await expect(dock.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
     // Flush on top of the tab bar — no strip of page content between them.
     await expect.poll(() => page.evaluate(() => {
-      const d = document.querySelector('[data-testid="asset-selection-dock"]')!.getBoundingClientRect();
+      const d = document.querySelector('[data-testid="asset-bulk-bar"][data-placement="dock"]')!.getBoundingClientRect();
       const tops = Array.from(document.querySelectorAll('nav[aria-label="Primary"]')).map(n => n.getBoundingClientRect()).filter(r => r.height > 0).map(r => r.top);
       return Math.abs(d.bottom - Math.min(...tops));
     })).toBeLessThan(2);
@@ -174,7 +167,8 @@ test.describe('Media Library design v2 mock-up', () => {
     await shot(page, '10-v2-iphone-3-selected.png');
     await dock.getByTestId('selection-more').click();
     const menu = page.getByTestId('selection-more-menu');
-    for (const item of ['Move to folder', 'Download ZIP', 'Delete']) await expect(menu.getByRole('menuitem', { name: item })).toBeVisible();
+    for (const item of ['Move to folder', 'Download ZIP']) await expect(menu.getByRole('menuitem', { name: item })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
     await shot(page, '11-v2-iphone-more-menu.png');
   });
 });

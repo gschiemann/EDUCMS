@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Media Library DESIGN MOCK-UP (`?design=v2`, 2026-11-02) — filters are not
+ * Media Library (2026-11-02 redesign) — filters are not
  * buttons. The media type is an underlined tab row (one quiet line, the
  * active tab carries a 2px brand underline); counts are plain grey numbers.
  * Horizontally scrollable at phone width.

@@ -210,7 +210,7 @@ interface AppState {
   moreSheetOpen: boolean;
   /** The "Install VenueOS" banner is on screen; the bug FAB yields to it. */
   installBannerShown: boolean;
-  /** A bottom selection bar (Media Library `?design=v2` mock-up) is on screen; the bug FAB yields to it. */
+  /** The Media Library bottom selection bar is on screen (phone width); the bug FAB yields to it. */
   selectionDockShown: boolean;
   activeTenant: string | null;
   isEmergencyActive: boolean;
