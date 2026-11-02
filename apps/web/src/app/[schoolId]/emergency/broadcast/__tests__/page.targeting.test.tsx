@@ -24,6 +24,8 @@ jest.mock('next-intl', () => ({
 const storeState = {
   token: 'tok',
   user: { id: 'u1', email: 'admin@school.test', role: 'SCHOOL_ADMIN', tenantId: TENANT_UUID, canTriggerPanic: false },
+  pushOverlay: () => undefined,
+  popOverlay: () => undefined,
 };
 jest.mock('@/store/ui-store', () => ({
   useUIStore: (selector?: (s: unknown) => unknown) => (selector ? selector(storeState) : storeState),

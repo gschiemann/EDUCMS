@@ -77,10 +77,16 @@ describe('Broadcast banner colour', () => {
     expect(body.banner).toEqual({ mode: 'static', speed: 'normal' });
   });
 
-  it('a curated colour paints the real preview with an automatic readable text colour and is sent', async () => {
+  const pickHex = (hex: string) => {
+    if (!screen.queryByLabelText('Hex color code')) fireEvent.click(screen.getByRole('button', { name: 'emergency.broadcast.bannerColor' }));
+    fireEvent.change(screen.getByLabelText('Hex color code'), { target: { value: hex } });
+  };
+
+  it('one compact colour control: no chip block, the builder picker paints the preview and is sent', async () => {
     await mount();
     write();
-    fireEvent.click(screen.getByTestId('banner-color-preset-green'));
+    expect(screen.queryByTestId('banner-color-preset-green')).toBeNull();
+    pickHex('#15803d');
     expect(bar().style.backgroundColor).toBe('rgb(21, 128, 61)');
     expect(bar().style.color).toBe('rgb(255, 255, 255)');
     const body = await holdSend();
@@ -90,35 +96,26 @@ describe('Broadcast banner colour', () => {
   it('light colours get dark text', async () => {
     await mount();
     write();
-    fireEvent.click(screen.getByTestId('banner-color-preset-amber'));
+    pickHex('#f59e0b');
     expect(bar().style.color).toBe('rgb(15, 23, 42)');
   });
 
-  it('offers the brand primary and accent when the workspace has them', async () => {
-    await mount();
-    await waitFor(() => expect(screen.getByTestId('banner-color-brand-primary')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('banner-color-brand-accent'));
-    expect(bar().style.backgroundColor).toBe('rgb(225, 29, 72)');
-  });
-
-  it('a custom colour that cannot reach AA shows a warning; a good one does not', async () => {
-    await mount();
-    fireEvent.click(screen.getByTestId('banner-color-custom'));
-    fireEvent.change(document.getElementById('banner-custom-hex') as HTMLInputElement, { target: { value: '#777777' } });
-    expect(screen.getByTestId('banner-contrast').textContent).toContain('emergency.broadcast.contrastWarn');
-    fireEvent.change(document.getElementById('banner-custom-hex') as HTMLInputElement, { target: { value: '#1d4ed8' } });
-    expect(screen.getByTestId('banner-contrast').textContent).toContain('emergency.broadcast.contrastAuto');
-  });
-
-  it('an invalid custom hex blocks the send with a message', async () => {
+  it('Standard puts the severity colour back', async () => {
     await mount();
     write();
-    fireEvent.click(screen.getByTestId('banner-color-custom'));
-    fireEvent.change(document.getElementById('banner-custom-hex') as HTMLInputElement, { target: { value: '#12' } });
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
-    await act(async () => { jest.advanceTimersByTime(3_100); });
-    expect(screen.getByRole('alert').textContent).toContain('emergency.broadcast.errBannerColor');
-    expect(sendCalls()).toHaveLength(0);
+    pickHex('#15803d');
+    fireEvent.click(screen.getByTestId('banner-color-default'));
+    expect(bar().style.backgroundColor).toBe('rgb(249, 115, 22)');
+    expect(screen.queryByTestId('banner-color-default')).toBeNull();
+  });
+
+  it('the AA warning shows inline only when a colour cannot reach AA', async () => {
+    await mount();
+    expect(screen.queryByTestId('banner-contrast')).toBeNull();
+    pickHex('#777777');
+    expect(screen.getByTestId('banner-contrast').textContent).toContain('emergency.broadcast.contrastWarn');
+    pickHex('#1d4ed8');
+    expect(screen.queryByTestId('banner-contrast')).toBeNull();
   });
 
   it('Critical hides the style options and sends none', async () => {

@@ -20,27 +20,30 @@ export interface EmergencyTargetBarProps {
   onChoose: () => void;
   onReset: () => void;
   disabled?: boolean;
+  /** 'light' = the dashboard's own card/field style (broadcast composer); default stays dark for /panic + modal. */
+  variant?: 'dark' | 'light';
 }
 
-export function EmergencyTargetBar({ target, onChoose, onReset, disabled }: EmergencyTargetBarProps) {
+export function EmergencyTargetBar({ target, onChoose, onReset, disabled, variant = 'dark' }: EmergencyTargetBarProps) {
   const t = useTranslations();
   const all = isAllScreens(target);
+  const light = variant === 'light';
   const Icon = target.scopeType === 'group' ? Users : MonitorSmartphone;
   return (
     <div
-      className="flex items-center gap-2 rounded-2xl border px-3 py-2 min-h-[56px]"
-      style={{
+      className={`flex items-center gap-2 border px-3 py-2 min-h-[56px] ${light ? `rounded-xl ${all ? 'border-slate-200 bg-white' : 'border-red-300 bg-red-50'}` : 'rounded-2xl'}`}
+      style={light ? undefined : {
         background: all ? 'rgba(255,255,255,0.03)' : 'rgba(239,68,68,0.12)',
         borderColor: all ? 'rgba(255,255,255,0.10)' : 'rgba(248,113,113,0.70)',
       }}
       data-testid="emergency-target-bar"
     >
-      <Icon className="w-5 h-5 shrink-0 text-white/70" aria-hidden />
+      <Icon className={`w-5 h-5 shrink-0 ${light ? 'text-slate-500' : 'text-white/70'}`} aria-hidden />
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
+        <div className={`text-[10px] font-bold uppercase tracking-[0.18em] ${light ? 'text-slate-500' : 'text-white/55'}`}>
           {t('emergency.target.sendTo')}
         </div>
-        <div className="text-sm font-bold text-white truncate" data-testid="emergency-target-label">
+        <div className={`text-sm font-bold truncate ${light ? 'text-slate-900' : 'text-white'}`} data-testid="emergency-target-label">
           {targetChipLabel(t, target)}
         </div>
       </div>
@@ -48,7 +51,7 @@ export function EmergencyTargetBar({ target, onChoose, onReset, disabled }: Emer
         type="button"
         onClick={onChoose}
         disabled={disabled}
-        className="shrink-0 min-h-[44px] px-3 rounded-xl bg-white/[0.06] border border-white/15 text-xs font-bold text-white/90 hover:bg-white/[0.12] disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        className={`shrink-0 min-h-[44px] px-3 rounded-xl border text-xs font-bold disabled:opacity-40 focus:outline-none focus-visible:ring-2 ${light ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 focus-visible:ring-indigo-400' : 'bg-white/[0.06] border-white/15 text-white/90 hover:bg-white/[0.12] focus-visible:ring-white/60'}`}
         data-testid="emergency-choose-screens"
       >
         {all ? t('emergency.target.chooseScreens') : t('emergency.target.change')}
@@ -60,7 +63,7 @@ export function EmergencyTargetBar({ target, onChoose, onReset, disabled }: Emer
           disabled={disabled}
           aria-label={t('emergency.target.resetToAll')}
           title={t('emergency.target.resetToAll')}
-          className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-xl text-white/75 hover:text-white hover:bg-white/10 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          className={`shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-xl disabled:opacity-40 focus:outline-none focus-visible:ring-2 ${light ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 focus-visible:ring-indigo-400' : 'text-white/75 hover:text-white hover:bg-white/10 focus-visible:ring-white/60'}`}
           data-testid="emergency-target-reset"
         >
           <X className="w-4 h-4" aria-hidden />
