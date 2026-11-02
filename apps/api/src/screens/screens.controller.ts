@@ -61,6 +61,7 @@ import {
   normalizeFaceContentMode,
   reportsSecondDisplay,
   resolveFaceContentTarget,
+  unitLastAliveAt,
 } from './screen-faces';
 
 /**
@@ -2582,6 +2583,35 @@ export class ScreensController {
   }
 
   // ─── ADMIN: List all screens in tenant ───
+  /**
+   * For every FACE row in `rows`, when its unit last proved it was alive
+   * (`unitLastAliveAt`: its own ping or the front face's ping / native
+   * heartbeat). Faces only; one extra read at most, for primaries not in
+   * `rows`; a failed read leaves the face on its own ping.
+   */
+  private async unitAliveByFace(
+    rows: Array<{ id: string; tenantId?: string | null; lastPingAt?: Date | null; faceOfScreenId?: string | null }>,
+  ): Promise<Map<string, Date | null>> {
+    const out = new Map<string, Date | null>();
+    const faces = rows.filter((r) => !!r.faceOfScreenId);
+    if (faces.length === 0) return out;
+    const byId = new Map<string, any>(rows.map((r) => [r.id, r]));
+    const missing = [...new Set(faces.map((f) => f.faceOfScreenId as string).filter((id) => !byId.has(id)))];
+    if (missing.length) {
+      try {
+        const extra = await this.prisma.client.screen.findMany({
+          where: { id: { in: missing }, tenantId: { in: [...new Set(faces.map((f) => f.tenantId).filter(Boolean) as string[])] } },
+          select: { id: true, lastPingAt: true, nativeRuntimeReportAt: true },
+        });
+        for (const e of extra) byId.set(e.id, e);
+      } catch {
+        // fall through: those faces keep their own ping
+      }
+    }
+    for (const f of faces) out.set(f.id, unitLastAliveAt(f, byId.get(f.faceOfScreenId as string)));
+    return out;
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -2638,6 +2668,7 @@ export class ScreensController {
     // ping will recover by the next 30s tick.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     return rows.map((s) => {
       // If a device is actively pinging, mark ONLINE regardless of
       // stored column. If stale, flip to OFFLINE unless the stored
@@ -2645,7 +2676,10 @@ export class ScreensController {
       // REVOKED trumps all; ONLINE that's gone stale becomes OFFLINE).
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        // A back face is alive while its UNIT is (unitLastAliveAt) — the same
+        // rule the alert emails use.
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
@@ -2964,10 +2998,12 @@ export class ScreensController {
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     const screens = rows.map((s) => {
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';

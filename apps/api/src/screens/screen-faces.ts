@@ -296,3 +296,26 @@ export function reportsSecondDisplay(inventoryReport: unknown): boolean {
     return row.isPresentation === true && row.isPrivate !== true;
   });
 }
+
+/**
+ * The instant a FACE's physical unit last proved it is alive (2026-11-02).
+ *
+ * A back face is a Screen row of its own, but it has no machine of its own:
+ * the front face's app hosts both pages. The back page's ping can stop (its
+ * WebView paused or reloading, its own credential recovering) while the unit
+ * is up and the front keeps checking in. "Offline" is a statement about the
+ * UNIT, so a face's liveness is the newest of its own ping and its primary's
+ * ping / native heartbeat. A primary is its own unit: pass `null` and this
+ * returns its own ping unchanged.
+ *
+ * Whether the face SHOWS anything is a different question, answered by its own
+ * render proof (a NO_CONTENT problem, never OFFLINE).
+ */
+export function unitLastAliveAt(
+  own: { lastPingAt?: Date | string | null },
+  primary: { lastPingAt?: Date | string | null; nativeRuntimeReportAt?: Date | string | null } | null | undefined,
+): Date | null {
+  const ms = (v: Date | string | null | undefined): number => (v ? new Date(v).getTime() : NaN);
+  const times = [ms(own.lastPingAt), ms(primary?.lastPingAt), ms(primary?.nativeRuntimeReportAt)].filter((t) => Number.isFinite(t));
+  return times.length ? new Date(Math.max(...times)) : null;
+}
