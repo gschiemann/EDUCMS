@@ -161,4 +161,18 @@
     <string name="wifi_card_body">Your VenueOS dashboard asked this screen to save “%1$s”. Press OK on the remote (or tap Save network), then choose Save.</string>
     <string name="wifi_card_save">Save network</string>
     <string name="wifi_card_later">Not now</string>
+    <string name="net_banner_notyet">Not connected yet: “%1$s”</string>
+    <string name="net_wait_suggestion_allow">If Android asks, press Allow on the remote.</string>
+    <string name="net_wait_android_dialog">Android is asking whether to save this network. Press Save on the remote.</string>
+    <string name="net_noserver_yet_title">On “%1$s”, VenueOS not reached yet</string>
+    <string name="net_notyet_title">Not connected yet</string>
+    <string name="net_noserver_yet_body">The screen has an address on this network, but VenueOS has not answered over it yet. Check the network, then press Check again.</string>
+    <string name="net_notyet_already">“%1$s” is already saved in Android, so Android did not connect to it. Choose it in Android’s Wi-Fi list to connect.</string>
+    <string name="net_notyet_other">The screen is still on %1$s, which Android prefers. Choose the new network in Android’s Wi-Fi list to switch.</string>
+    <string name="net_notyet_timeout">Android has not moved the screen onto “%1$s” yet. Choose it in Android’s Wi-Fi list to connect.</string>
+    <string name="net_notyet_how_saved">Android saved “%1$s”. Open Android’s Wi-Fi list and choose it once to connect.</string>
+    <string name="net_notyet_how_suggested">Android accepted “%1$s” as a suggestion. Open Android’s Wi-Fi list and choose it once to connect.</string>
+    <string name="net_open_setup">Open setup</string>
+    <string name="net_fix_check_again">Check again</string>
+    <string name="net_connect_in_android">Connect in Android</string>
 </resources>

@@ -21,6 +21,14 @@ export interface ScreenAlertItem {
   locationName: string;
   /** How long the problem has lasted / lasted, in whole minutes. */
   minutes?: number;
+  /**
+   * OFFLINE / NO_CONTENT (2026-11-02): when the problem began. With the
+   * render's `nowMs` the line says "offline since 4:39 PM (3 h 12 min)" - the
+   * TRUE elapsed time at send, never a number frozen when the incident opened.
+   */
+  sinceMs?: number;
+  /** IANA zone the location's clock shows `sinceMs` in; UTC (labelled) when absent or unknown. */
+  timeZone?: string | null;
   /** NO_CONTENT only: the player itself says its files could not be loaded. */
   contentUnavailable?: boolean;
   /**
@@ -42,6 +50,20 @@ export function onTimeLabel(locale: AlertLocale, m: { onAtMs: number; timeZone: 
   }
 }
 
+/** A moment as the location's clock shows it ("4:39 PM"); labelled UTC when the zone is unknown. */
+export function sinceTimeLabel(locale: AlertLocale, ms: number, timeZone?: string | null): string {
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  const lang = locale === 'zh' ? 'zh-CN' : locale === 'es' ? 'es' : 'en-US';
+  if (timeZone) {
+    try {
+      return new Intl.DateTimeFormat(lang, { ...opts, timeZone }).format(ms);
+    } catch {
+      /* unknown zone: fall through to UTC */
+    }
+  }
+  return `${new Intl.DateTimeFormat(lang, { ...opts, timeZone: 'UTC' }).format(ms)} UTC`;
+}
+
 export interface AlertLinks {
   screensUrl: string;
   manageUrl: string;
@@ -61,7 +83,15 @@ const T = {
     manage: 'Manage alert emails',
     open: 'Open your screens',
     more: (n: number) => `…and ${n} more`,
-    min: (m: number) => (m === 1 ? '1 minute' : `${m} minutes`),
+    min: (m: number) => {
+      if (m < 60) return m === 1 ? '1 minute' : `${m} minutes`;
+      const h = Math.floor(m / 60), r = m % 60;
+      return r === 0 ? `${h} h` : `${h} h ${r} min`;
+    },
+    since: {
+      OFFLINE: (time: string, dur: string) => `offline since ${time} (${dur})`,
+      NO_CONTENT: (time: string, dur: string) => `no picture confirmed since ${time} (${dur})`,
+    },
     subj: {
       OFFLINE: (one: string | null, n: number, loc: string) =>
         one ? `VenueOS: ${one} is offline at ${loc}` : `VenueOS: ${n} screens offline at ${loc}`,
@@ -117,7 +147,15 @@ const T = {
     manage: 'Administrar los correos de alerta',
     open: 'Abrir tus pantallas',
     more: (n: number) => `…y ${n} más`,
-    min: (m: number) => (m === 1 ? '1 minuto' : `${m} minutos`),
+    min: (m: number) => {
+      if (m < 60) return m === 1 ? '1 minuto' : `${m} minutos`;
+      const h = Math.floor(m / 60), r = m % 60;
+      return r === 0 ? `${h} h` : `${h} h ${r} min`;
+    },
+    since: {
+      OFFLINE: (time: string, dur: string) => `sin conexión desde las ${time} (${dur})`,
+      NO_CONTENT: (time: string, dur: string) => `sin imagen confirmada desde las ${time} (${dur})`,
+    },
     subj: {
       OFFLINE: (one: string | null, n: number, loc: string) =>
         one ? `VenueOS: ${one} está sin conexión en ${loc}` : `VenueOS: ${n} pantallas sin conexión en ${loc}`,
@@ -179,7 +217,15 @@ const T = {
     manage: '管理提醒邮件',
     open: '打开屏幕列表',
     more: (n: number) => `……另有 ${n} 块`,
-    min: (m: number) => `${m} 分钟`,
+    min: (m: number) => {
+      if (m < 60) return `${m} 分钟`;
+      const h = Math.floor(m / 60), r = m % 60;
+      return r === 0 ? `${h} 小时` : `${h} 小时 ${r} 分钟`;
+    },
+    since: {
+      OFFLINE: (time: string, dur: string) => `自 ${time} 起离线（${dur}）`,
+      NO_CONTENT: (time: string, dur: string) => `自 ${time} 起未确认画面（${dur}）`,
+    },
     subj: {
       OFFLINE: (one: string | null, n: number, loc: string) =>
         one ? `VenueOS：${loc} 的 ${one} 已离线` : `VenueOS：${loc} 有 ${n} 块屏幕离线`,
@@ -241,7 +287,7 @@ function listLines<I>(items: readonly I[], fmt: (i: I) => string, more: (n: numb
 /** One location, one kind of event: "3 screens offline at Lincoln Elementary". */
 export function renderScreenAlertEmail(
   locale: AlertLocale,
-  input: { kind: ScreenItemKind; locationName: string; items: readonly ScreenAlertItem[]; siteWide?: boolean },
+  input: { kind: ScreenItemKind; locationName: string; items: readonly ScreenAlertItem[]; siteWide?: boolean; nowMs?: number },
   links: AlertLinks,
 ): RenderedEmail {
   const t = T[locale];
@@ -254,12 +300,21 @@ export function renderScreenAlertEmail(
   const subject =
     missed && times.length === 1 ? t.missed.subj(one, n, input.locationName, times[0]) : t.subj[input.kind](one, n, input.locationName);
   const line = (i: ScreenAlertItem): string => {
+    // True elapsed time AT SEND (this render), from when the problem began.
+    const elapsed =
+      i.sinceMs !== undefined && input.nowMs !== undefined ? Math.max(1, Math.round((input.nowMs - i.sinceMs) / 60_000)) : i.minutes;
+    const since =
+      (i.kind === 'OFFLINE' || i.kind === 'NO_CONTENT') && !i.contentUnavailable && i.sinceMs !== undefined && elapsed !== undefined
+        ? t.since[i.kind](sinceTimeLabel(locale, i.sinceMs, i.timeZone), t.min(elapsed))
+        : null;
     const detail =
       i.kind === 'OFFLINE' && i.missedOnTime
         ? t.missed.line(onTimeLabel(locale, i.missedOnTime))
-        : i.kind === 'NO_CONTENT'
-          ? t.line.NO_CONTENT(i.minutes, i.contentUnavailable)
-          : t.line[i.kind](i.minutes);
+        : since
+          ? since
+          : i.kind === 'NO_CONTENT'
+            ? t.line.NO_CONTENT(elapsed, i.contentUnavailable)
+            : t.line[i.kind](elapsed);
     return `${i.screenName} — ${detail}`;
   };
   const intro = missed ? t.missed.intro(input.locationName) : t.intro[input.kind](input.locationName);
@@ -273,12 +328,16 @@ export function renderScreenAlertEmail(
 /** The org's held alerts, in one email, once it is under its hourly limit again. */
 export function renderDigestEmail(
   locale: AlertLocale,
-  input: { orgName: string; items: readonly ScreenAlertItem[] },
+  input: { orgName: string; items: readonly ScreenAlertItem[]; nowMs?: number },
   links: AlertLinks,
 ): RenderedEmail {
   const t = T[locale];
-  const line = (i: ScreenAlertItem) =>
-    `${i.kind === 'OFFLINE' && i.missedOnTime ? t.missed.digest(onTimeLabel(locale, i.missedOnTime)) : t.digestKind[i.kind]}: ${i.screenName} (${i.locationName})`;
+  const line = (i: ScreenAlertItem) => {
+    const base = `${i.kind === 'OFFLINE' && i.missedOnTime ? t.missed.digest(onTimeLabel(locale, i.missedOnTime)) : t.digestKind[i.kind]}: ${i.screenName} (${i.locationName})`;
+    if ((i.kind !== 'OFFLINE' && i.kind !== 'NO_CONTENT') || i.missedOnTime || i.sinceMs === undefined || input.nowMs === undefined) return base;
+    const mins = Math.max(1, Math.round((input.nowMs - i.sinceMs) / 60_000));
+    return `${base} - ${t.since[i.kind](sinceTimeLabel(locale, i.sinceMs, i.timeZone), t.min(mins))}`;
+  };
   return {
     subject: t.digestSubj(input.items.length, input.orgName),
     body: [

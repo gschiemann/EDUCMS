@@ -41,26 +41,22 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    # No paths-ignore here (2026-11-01, Foundry Standard Phase 1): this workflow
+    # hosts checks the ruleset REQUIRES ("chromium · Emergency path", "webkit ·
+    # Emergency path"), and a docs-only PR skipped by a trigger-level path filter
+    # never reports them — "pending" for ever, so it could never merge (seen on
+    # PRs #196 and #198). The `changes` job classifies the PR instead and the
+    # jobs below SKIP on docs-only changes: a skipped job satisfies a required
+    # check, a missing one blocks. `push` keeps its paths-ignore — master needs
+    # no run for a docs-only commit.
+  # Merge queue (2026-11-01): a queued pull request is checked on a temporary
+  # merge-group commit, not on the PR, and a workflow with no `merge_group`
+  # trigger never reports there — the queue could not merge anything. The
+  # `changes` job classifies a merge group exactly as it classifies a PR. The
+  # concurrency group below is keyed on github.ref, which is unique per merge
+  # group, so queue runs never cancel each other.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   # Nightly synthetic run (Foundry Standard Art. 20 / 44, Phase 1, 2026-10-31):
   # the alert path is exercised every night even when nothing was pushed, so a
@@ -107,6 +103,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed (docs-only PRs skip the emergency-path suite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      # Only a pull request or a merge group has a diff to classify. Every other
+      # event (push, schedule, dispatch) needs no checkout: its answer is "code".
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # pull_request -> the PR's base; merge_group -> the group's base (the head
+          # of master, or of the entry ahead of it in the queue). Empty otherwise.
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          # merge_group -> the group's head; otherwise GITHUB_SHA (for a pull request,
+          # the test merge commit — what the checkout above has as HEAD).
+          HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -eu
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          case "$EVENT_NAME" in
+            pull_request|merge_group) ;;
+            *) emit true "$EVENT_NAME is not a pull request or a merge group: the gated jobs always run"; exit 0 ;;
+          esac
+          # From here on a doubt is a code change, never a skip: a classifier that
+          # stands down on an error is how a green check ends up meaning nothing.
+          # --no-renames lists BOTH ends of a rename, so code moved into docs/ still
+          # shows its old path.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ] || ! files=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA"); then
+            emit true "::warning::cannot diff '$BASE_SHA...$HEAD_SHA': treated as a code change, the gated jobs run"
+            exit 0
+          fi
+          if [ -z "$files" ]; then
+            emit true "no changed files found, so nothing can be proven docs-only: the gated jobs run"
+            exit 0
+          fi
+          # The same set as the push trigger's paths-ignore above. Counted with
+          # grep -c (not `grep -q`) so an early-closing pipe can never flip the answer.
+          code_files=$(printf '%s\n' "$files" | grep -vcE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' || true)
+          if [ "${code_files:-0}" -gt 0 ]; then
+            emit true "code changed: the gated jobs run"
+          else
+            emit false "docs-only: the gated jobs are skipped and report as such"
+          fi
+
   emergency-path:
     name: ${{ matrix.browser }} · Emergency path
     # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
@@ -117,6 +163,11 @@ jobs:
     # change). Unpin only after a Playwright upgrade whose WebKit build passes
     # this job on ubuntu-latest.
     runs-on: ubuntu-24.04
+    needs: [changes]
+    # Skipped on a docs-only PR / merge group. A MATRIX job skipped by its own `if`
+    # is never expanded, so it reports neither "chromium · Emergency path" nor
+    # "webkit · Emergency path": `emergency-path-docs-only` below reports them then.
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -239,3 +290,28 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
           if-no-files-found: ignore
+
+  # Reports the two REQUIRED contexts when the real job above is skipped (a docs-only
+  # PR or merge group). A MATRIX job skipped by its job-level `if` never expands its
+  # matrix, so the per-browser check names ("chromium · Emergency path", "webkit ·
+  # Emergency path") are never created, and a required check waiting on them stays
+  # "Waiting for status to be reported" for ever (actions/runner#952) — a docs-only PR
+  # could not merge. This job has the same name template and the same matrix, and runs
+  # ONLY when `changes` positively says docs-only, which is exactly when the real job is
+  # skipped, so each context is reported by exactly one of the two. If `changes` gave no
+  # answer neither runs and the contexts stay pending: the safe direction. It runs no
+  # test and builds nothing — a few seconds of runner time per browser. Keep the
+  # `name:` and the matrix list identical to the real job's.
+  emergency-path-docs-only:
+    name: ${{ matrix.browser }} · Emergency path
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.code == 'false' }}
+    timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - name: Docs-only change
+        run: echo "Docs-only change - the ${{ matrix.browser }} emergency-path suite is skipped. It runs for every change to code, configuration or workflows, on every push to master and nightly."

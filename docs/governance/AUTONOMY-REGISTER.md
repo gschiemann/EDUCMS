@@ -51,7 +51,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Signage transcode (incompatible video converted) | on | **confirm** | original kept when not smaller / failed | `transcode-profile` spec | — |
 | Upload content check | on | `UPLOAD_CONTENT_CHECK_DISABLED=1` | **fail open** — a check that cannot run accepts | `upload-content-verdict` specs | — |
 | HEIC → JPEG conversion | on | budget `UPLOAD_HEIC_BUDGET_MS` | fail closed (503) | specs | — |
-| Playback gate (video a screen cannot play) | warn | `VIDEO_PLAYBACK_GATE=off` | unknown never warns; never for two-sided units | `PlaybackGateService` specs | operator toast |
+| Playback gate (video a screen cannot play) | off | `VIDEO_PLAYBACK_GATE=off` | unknown never warns; never for two-sided units | `PlaybackGateService` specs | API response only |
 | Playback demotion (serve the 1080p copy after bad minutes) | on | `VIDEO_PLAYBACK_DEMOTION=off` / `observe` | no lighter copy → keep playing + notify | specs | tenant + platform, once/day |
 | AI model catalog sync (adopts new vendor model versions, no deploy) | on | `AI_MODEL_SYNC_DISABLED=1` | catalog stays where it is | canary test on our key | super-admin page |
 | Proof-of-play rollup + raw purge | on | `PROOF_OF_PLAY_ROLLUP_DISABLED=1` | purge never ahead of the rollup watermark | sampler specs | — |

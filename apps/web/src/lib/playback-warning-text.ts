@@ -2,8 +2,8 @@
  * The words for the publish-time VIDEO gate (video guarantee step 5,
  * 2026-10-12), in the operator's language.
  *
- * The API answers a publish with `playbackWarnings` (VIDEO_PLAYBACK_GATE=warn,
- * the default — the publish went through) or refuses it with 422
+ * The API answers a publish with `playbackWarnings` (VIDEO_PLAYBACK_GATE=warn, opt-in —
+ * the publish went through; the dashboard shows no toast for them) or refuses it with 422
  * `VIDEO_SCREEN_CANNOT_PLAY` (=enforce). Each warning names the file and the
  * screen(s) and carries a machine-readable `reason`; the API's own English
  * `message` is kept only as a fallback for a reason this bundle does not know.

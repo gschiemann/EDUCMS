@@ -29,6 +29,7 @@ import java.io.RandomAccessFile
  */
 object UsbWebResponses {
     const val PACKAGE_PATH = "/__venueos/usb/package.json"
+    const val IMPORTED_AT_HEADER = "X-VenueOS-USB-Imported-At"
 
     fun intercept(request: WebResourceRequest, playerHost: String?): WebResourceResponse? {
         if (request.method != "GET") return null
@@ -51,9 +52,14 @@ object UsbWebResponses {
                 responseHeaders = mapOf("Cache-Control" to "no-store")
             }
         }
+        // The signed manifest is served byte-for-byte; when a person last
+        // brought it in rides beside it (usbPackage.ts reads it — a new value
+        // plays the stick again even over a newer server publish).
+        val headers = mutableMapOf("Cache-Control" to "no-store", "Content-Length" to f.length().toString())
+        UsbCacheIndex.importedAt()?.let { headers[IMPORTED_AT_HEADER] = it.toString() }
         return WebResourceResponse("application/json", "UTF-8", f.inputStream()).apply {
             setStatusCodeAndReasonPhrase(200, "OK")
-            responseHeaders = mapOf("Cache-Control" to "no-store", "Content-Length" to f.length().toString())
+            responseHeaders = headers
         }
     }
 

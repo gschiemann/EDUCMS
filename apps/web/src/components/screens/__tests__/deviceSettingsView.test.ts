@@ -50,7 +50,8 @@ describe('buildSection — the honesty rules', () => {
     );
     if (m.kind !== 'ready') throw new Error(m.kind);
     const row = (k: string) => m.rows.find((r) => r.key === k)!;
-    expect(row('autoTime')).toMatchObject({ editable: false, state: { kind: 'not-possible', why: 'no-secure-settings' } });
+    // 2026-11-01: a setting the unit cannot change is not a row at all.
+    expect(row('autoTime')).toBeUndefined();
     expect(row('autoTimeZone')).toMatchObject({ editable: true, state: { kind: 'not-possible-now', why: 'no-secure-settings' } });
     expect(row('brightness')).toMatchObject({ editable: true, state: { kind: 'not-managed' }, observed: 70 });
   });
