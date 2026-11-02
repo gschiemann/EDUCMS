@@ -331,4 +331,14 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2750062,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41321768888',
   },
+  // Signed CI 41376422724, source fix/ep6n-wake-loop (PR #222): 1.1.59 +
+  // EP6N wake no longer re-blanks after the box's wake reboot.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.60-field.1': {
+    versionName: '1.1.60-field.1',
+    versionCode: 10160,
+    sha256: 'd033680696504a9e7404b947a657a6970a042ad49a82fc17ff89954fb5682e5d', // gitleaks:allow -- verified public APK integrity digest
+    size: 2766830,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41376422724',
+  },
 };
