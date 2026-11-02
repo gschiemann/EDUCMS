@@ -2790,6 +2790,12 @@
         "notDelivered": "no se pudo entregar",
         "noLiveConnection": "sin conexión en vivo ahora — inténtelo cuando se vuelva a conectar",
         "error": "algo salió mal"
+      },
+      "refusal": {
+        "mixedHardware": "estas pantallas son de más de un tipo de hardware — envíe la actualización a un solo tipo a la vez",
+        "hardwareUnknown": "no se puede confirmar que estas pantallas sean del mismo tipo de hardware — envíe la actualización a una pantalla a la vez",
+        "outsideOffHours": "una actualización a más de una pantalla solo sale entre las 10 p. m. y las 6 a. m. en la zona horaria de cada pantalla — envíela a una pantalla a la vez o espere hasta entonces",
+        "timeZoneUnknown": "una pantalla de esta actualización no tiene zona horaria, así que no se puede comprobar su hora local — envíele la actualización por separado"
       }
     },
     "sleepWake": {
@@ -6772,6 +6778,11 @@
       "FIELD_BUILD_WINDOW_SETTLING": "La ventana todavía se está propagando a todos los servidores. Inténtalo de nuevo en unos segundos.",
       "FIELD_BUILD_MIRROR_MISSING": "La copia privada de esta versión no está en el almacenamiento, así que la pantalla seguiría con su versión actual.",
       "FIELD_BUILD_SCREEN_OUTSIDE_WINDOW": "Esa pantalla no está en esta ventana.",
+      "FIELD_BUILD_SCREEN_NOT_BENCH": "Las versiones de prueba solo van a las pantallas del banco de pruebas, y esa pantalla no es una de ellas.",
+      "FIELD_BUILD_MIXED_HARDWARE": "Estas pantallas son de más de un tipo de hardware. Elige pantallas de un solo tipo a la vez.",
+      "FIELD_BUILD_HARDWARE_UNKNOWN": "No se puede confirmar que estas pantallas sean del mismo tipo de hardware. Elige una pantalla a la vez.",
+      "FIELD_BUILD_OUTSIDE_OFF_HOURS": "Un envío a más de una pantalla solo sale entre las 10 p. m. y las 6 a. m. en la zona horaria de cada pantalla. Envía la actualización a una pantalla a la vez o espera hasta entonces.",
+      "FIELD_BUILD_TIME_ZONE_UNKNOWN": "Una pantalla de este envío no tiene zona horaria, así que no se puede comprobar su hora local. Envíale la actualización por separado.",
       "SUPPORT_ACCESS_REQUIRED": "El soporte de VenueOS no tiene acceso a una de estas organizaciones."
     }
   },

@@ -56,6 +56,9 @@ function harness(row: Record<string, unknown> = {}) {
       screen: {
         findUnique: jest.fn().mockResolvedValue(screen),
         findFirst: jest.fn().mockResolvedValue(screen),
+        // (2026-10-31) POST /screens/force-update reads the screens it will mark
+        // for the fleet push rules first (update-push-rules.ts): here, the one.
+        findMany: jest.fn().mockResolvedValue([screen]),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },

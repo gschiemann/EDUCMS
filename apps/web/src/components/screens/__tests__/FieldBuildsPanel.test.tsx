@@ -232,6 +232,33 @@ describe('/super/field-builds panel', () => {
     expect(post?.body).not.toHaveProperty('note');
   });
 
+  it('the fleet push rules refuse through the same error path, in words — and the panel never sends the override', async () => {
+    for (const code of [
+      'FIELD_BUILD_SCREEN_NOT_BENCH',
+      'FIELD_BUILD_MIXED_HARDWARE',
+      'FIELD_BUILD_HARDWARE_UNKNOWN',
+      'FIELD_BUILD_OUTSIDE_OFF_HOURS',
+      'FIELD_BUILD_TIME_ZONE_UNKNOWN',
+    ]) {
+      expect(errorKey({ code })).toBe(code);
+    }
+    armError = Object.assign(new Error('These screens are more than one kind of hardware: goodview-ep6n, maxhub-l55vec.'), {
+      code: 'FIELD_BUILD_MIXED_HARDWARE',
+      status: 422,
+    });
+    wrap(<FieldBuildsPanel />);
+    const form = (await screen.findByRole('heading', { name: 'Arm a window' })).closest('section')!;
+    await waitFor(() => expect((within(form).getByRole('combobox', { name: 'Build' }) as HTMLSelectElement).value).toBe('1.1.41-field.1'));
+    fireEvent.click(await within(form).findByRole('checkbox', { name: 'Bench' }));
+    fireEvent.click(within(form).getByRole('radio', { name: 'Every screen of these organizations' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Arm window' }));
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      'These screens are more than one kind of hardware. Choose screens of one kind at a time.',
+    );
+    const post = calls.find((c) => c.method === 'POST' && c.path === '/super/field-builds/windows');
+    expect(post?.body).not.toHaveProperty('overrideMassPushRules');
+  });
+
   it('says when the Railway variables are what is being offered', async () => {
     windows = {
       ...windows,

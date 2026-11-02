@@ -45,6 +45,18 @@
  * candidate, its digest, the screens and the actor, on each organisation the
  * action touches. Arm and cancel rows commit with the window change itself;
  * a push row is written before the push is armed, and no row means no push.
+ *
+ * THE OWNER'S FLEET PUSH RULES (2026-10-31, player-ota/fleet-push-policy.ts),
+ * checked after reach so a refusal never describes another organisation's
+ * screens to a caller who cannot reach them:
+ *   - a window or push of more than one screen must be ONE hardware class;
+ *   - a push of more than one screen goes out only 22:00–06:00 in every
+ *     screen's own time zone;
+ *   - a push goes only to a bench screen when PLAYER_FIELD_BENCH_SCREENS is
+ *     set (the update check holds any other screen on its build as well).
+ * The first two yield to `overrideMassPushRules: true` on the request — the
+ * dashboard does not send it — and the arm and push rows record the override
+ * and the rules it set aside. The bench list has no override.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,7 +71,14 @@ import {
   type FieldBuildWindow,
 } from '../player-ota/field-candidate';
 import { evaluateReleaseForFleet } from '../player-ota/release-policy';
+import {
+  evaluateHardwareClasses,
+  evaluateOffHours,
+  isFieldBenchScreen,
+  type MassPushRule,
+} from '../player-ota/fleet-push-policy';
 import { armScreenApkUpdate, cancelScreenApkUpdate, newCorrId } from '../screens/screen-commands';
+import { manifestTimeZone } from '../screens/screen-time-zone';
 import { assertSupportReach, hasSupportReach } from '../support-access/support-access.context';
 import type { Principal } from '../support-access/support-access.service';
 import { SCREEN_ONLINE_GRACE_MS } from '../telemetry/online-grace';
@@ -72,14 +91,19 @@ import {
   MAX_WINDOW_TENANTS,
   MIN_WINDOW_MINUTES,
   PUSH_SETTLE_MS,
+  benchRefusal,
   envWindowView,
+  hardwareClassRefusal,
+  offHoursRefusal,
   parseArmInput,
+  parseMassPushOverride,
   parseNote,
   parsePushInput,
   parseUuidList,
   pushReadyAt,
   windowState,
   type EnvWindowView,
+  type PushRuleRefusal,
   type WindowState,
 } from './field-builds.policy';
 
@@ -223,6 +247,39 @@ function http(status: HttpStatus, code: string, message: string, extra?: Record<
 function asHttp(e: unknown): never {
   if (e instanceof FieldBuildInputError) throw http(HttpStatus.BAD_REQUEST, e.code, e.message);
   throw e;
+}
+
+/** A fleet push rule's refusal (field-builds.policy.ts), in the same `{ code, message, ...extra }` body. */
+function refusal(r: PushRuleRefusal): HttpException {
+  return http(r.status, r.code, r.message, r.extra);
+}
+
+/**
+ * The columns the fleet push rules read (player-ota/fleet-push-policy.ts):
+ * the hardware class (rule 1) and, for a push, the screen's effective time
+ * zone — screens/screen-time-zone.ts, the same resolver the manifest uses
+ * (rule 3).
+ */
+const CLASS_SELECT = { hardwareModel: true, lastVideoReport: true } as const;
+const ZONE_SELECT = {
+  timezone: true,
+  latitude: true,
+  longitude: true,
+  screenGroup: { select: { latitude: true, longitude: true } },
+  tenant: { select: { timezone: true, latitude: true, longitude: true } },
+} as const;
+
+/** A target screen as the fleet push rules read it. */
+interface RuleScreen {
+  id: string;
+  name?: string | null;
+  hardwareModel?: string | null;
+  lastVideoReport?: unknown;
+  timezone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  screenGroup?: { latitude?: number | null; longitude?: number | null } | null;
+  tenant?: { timezone?: string | null; latitude?: number | null; longitude?: number | null } | null;
 }
 
 export function toGateWindow(row: WindowRow): FieldBuildWindow {
@@ -551,8 +608,10 @@ export class FieldBuildsService {
 
   async arm(user: Principal, body: unknown): Promise<WindowView> {
     let input: ReturnType<typeof parseArmInput>;
+    let override: boolean;
     try {
       input = parseArmInput(body);
+      override = parseMassPushOverride(body);
     } catch (e) {
       asHttp(e);
     }
@@ -574,11 +633,15 @@ export class FieldBuildsService {
       throw http(HttpStatus.UNPROCESSABLE_ENTITY, 'FIELD_BUILD_TENANT_NOT_FOUND', 'One of those organizations does not exist.');
     }
     for (const id of input.tenantIds) await assertSupportReach(user, id);
+    // The window's screens, for the one-hardware-class rule: the named ones,
+    // or every screen of the listed organisations a push could reach.
+    let targets: RuleScreen[];
+    let incomplete = false;
     if (!input.allScreens) {
       const screens = (await client.screen.findMany({
         where: { id: { in: input.screenIds }, tenantId: { in: input.tenantIds } },
-        select: { id: true, status: true },
-      })) as Array<{ id: string; status: string }>;
+        select: { id: true, name: true, status: true, ...CLASS_SELECT },
+      })) as Array<RuleScreen & { status: string }>;
       if (screens.length !== input.screenIds.length) {
         throw http(
           HttpStatus.UNPROCESSABLE_ENTITY,
@@ -589,7 +652,19 @@ export class FieldBuildsService {
       if (screens.some((s) => s.status === 'REVOKED')) {
         throw http(HttpStatus.UNPROCESSABLE_ENTITY, 'FIELD_BUILD_SCREEN_REVOKED', 'A revoked screen cannot be in a window.');
       }
+      targets = input.screenIds.map((sid) => screens.find((s) => s.id === sid)!);
+    } else {
+      const rows = (await client.screen.findMany({
+        where: { tenantId: { in: input.tenantIds } },
+        select: { id: true, name: true, status: true, ...CLASS_SELECT },
+        orderBy: [{ id: 'asc' }],
+        take: SCREEN_LIST_CAP + 1,
+      })) as Array<RuleScreen & { status: string }>;
+      // More than can be read at once cannot be shown to be one class.
+      incomplete = rows.length > SCREEN_LIST_CAP;
+      targets = rows.slice(0, SCREEN_LIST_CAP).filter((s) => s.status !== 'REVOKED');
     }
+    const overridden = this.massPushRules('window', targets, { override, now, incomplete });
 
     const armedAt = new Date(now);
     const expiresAt = new Date(now + input.durationMinutes * 60_000);
@@ -634,6 +709,9 @@ export class FieldBuildsService {
           expiresAt: expiresAt.toISOString(),
           durationMinutes: input.durationMinutes,
           note: input.note,
+          // The owner's explicit override, and the rules it set aside (none = not needed).
+          overrideMassPushRules: override,
+          massPushRulesOverridden: overridden,
           actorEmail: email,
         });
         for (const tenantId of input.tenantIds) {
@@ -657,6 +735,11 @@ export class FieldBuildsService {
         `tenants=${row.tenantIds.length} screens=${row.allScreens ? 'all' : row.screenIds.length} ` +
         `expires=${row.expiresAt.toISOString()} by=${by ?? '-'}`,
     );
+    if (overridden.length) {
+      this.logger.warn(
+        `[field-builds] window=${row.id} armed with the mass-push rules OVERRIDDEN (${overridden.join(', ')}) by=${by ?? '-'}`,
+      );
+    }
     await this.refreshGateWindow(true);
     return this.view(row, new Map(tenants.map((t) => [t.id, t.name])), Date.now());
   }
@@ -825,8 +908,10 @@ export class FieldBuildsService {
 
   async push(user: Principal, id: string, body: unknown): Promise<{ results: PushResult[] }> {
     let input: ReturnType<typeof parsePushInput>;
+    let override: boolean;
     try {
       input = parsePushInput(body);
+      override = parseMassPushOverride(body);
     } catch (e) {
       asHttp(e);
     }
@@ -873,8 +958,8 @@ export class FieldBuildsService {
     }
     const screens = (await client.screen.findMany({
       where: { id: { in: input.screenIds }, tenantId: { in: w.tenantIds } },
-      select: { id: true, tenantId: true, name: true, status: true },
-    })) as Array<{ id: string; tenantId: string; name: string; status: string }>;
+      select: { id: true, tenantId: true, name: true, status: true, ...CLASS_SELECT, ...ZONE_SELECT },
+    })) as Array<RuleScreen & { tenantId: string; name: string; status: string }>;
     // Inside the window is decided by the gate itself, not re-derived here.
     const inside = screens.filter((s) => s.status !== 'REVOKED' && isFieldCandidateTarget(s.id, s.tenantId, {}, now, gate));
     if (inside.length !== input.screenIds.length) {
@@ -885,9 +970,22 @@ export class FieldBuildsService {
       );
     }
     for (const s of inside) await assertSupportReach(user, s.tenantId);
+    const targets = input.screenIds.map((sid) => inside.find((x) => x.id === sid)!);
+    // A field build goes only to a bench screen (PLAYER_FIELD_BENCH_SCREENS;
+    // unset = every screen, as before). No override: the variable is the switch.
+    const offBench = targets.filter((s) => !isFieldBenchScreen(s.id));
+    if (offBench.length) throw refusal(benchRefusal(offBench.map((s) => ({ id: s.id, name: s.name ?? null }))));
+    // One hardware class, off-hours — for a push to more than one screen.
+    const overridden = this.massPushRules('push', targets, { override, now });
 
     const by = actorId(user);
     const email = actorEmail(user);
+    if (overridden.length) {
+      this.logger.warn(
+        `[field-builds] push window=${w.id} screens=${input.screenIds.length} with the mass-push rules ` +
+          `OVERRIDDEN (${overridden.join(', ')}) by=${by ?? '-'}`,
+      );
+    }
     const deps = { prisma: this.prisma, signer: this.signer, redis: this.redis };
     const results: PushResult[] = [];
     for (const id of input.screenIds) {
@@ -911,6 +1009,10 @@ export class FieldBuildsService {
             corrId,
             pushAt: pushAt.toISOString(),
             overrideWindow: input.overrideWindow,
+            // The owner's explicit override, and the rules it set aside (none = not needed).
+            overrideMassPushRules: override,
+            massPushRulesOverridden: overridden,
+            screensInPush: input.screenIds.length,
             actorEmail: email,
           }),
         },
@@ -934,6 +1036,32 @@ export class FieldBuildsService {
       });
     }
     return { results };
+  }
+
+  /**
+   * The owner's rules for more than one screen at once
+   * (player-ota/fleet-push-policy.ts): one hardware class, and — for a push —
+   * off-hours in every screen's own time zone. Throws the first rule's
+   * refusal; with the explicit override, returns the rules it set aside so
+   * the audit rows can say so. A single screen never breaks either rule.
+   */
+  private massPushRules(
+    what: 'window' | 'push',
+    screens: RuleScreen[],
+    opts: { override: boolean; now: number; incomplete?: boolean },
+  ): MassPushRule[] {
+    const broken: Array<[MassPushRule, PushRuleRefusal]> = [];
+    const hardware = evaluateHardwareClasses(screens, { incomplete: opts.incomplete });
+    if (!hardware.ok) broken.push(['hardware-class', hardwareClassRefusal(what, hardware)]);
+    if (what === 'push') {
+      const hours = evaluateOffHours(
+        screens.map((s) => ({ id: s.id, name: s.name, timeZone: manifestTimeZone(s, s.screenGroup, s.tenant) })),
+        new Date(opts.now),
+      );
+      if (!hours.ok) broken.push(['off-hours', offHoursRefusal(hours)]);
+    }
+    if (broken.length && !opts.override) throw refusal(broken[0][1]);
+    return broken.map(([rule]) => rule);
   }
 
   // ─── Shape ───────────────────────────────────────────────────────────────
