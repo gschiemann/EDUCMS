@@ -49,7 +49,7 @@ describe('EmergencyTargetPicker multiple', () => {
     const { onSelect, onSelectScreens, onClose } = setup({ multiple: true });
     fireEvent.click(screen.getByTestId('target-option-screen-a'));
     fireEvent.click(screen.getByTestId('target-option-screen-c'));
-    expect(screen.getByTestId('target-option-screen-a').getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByTestId('target-option-screen-a') as HTMLInputElement).checked).toBe(true);
     expect(screen.getByTestId('target-selected-count').textContent).toContain('"count":2');
     fireEvent.click(screen.getByTestId('target-option-screen-a'));
     expect(screen.getByTestId('target-selected-count').textContent).toContain('"count":1');
@@ -62,7 +62,7 @@ describe('EmergencyTargetPicker multiple', () => {
 
   it('multiple: starts from the current selection', () => {
     setup({ multiple: true, selectedScreenIds: ['b'] });
-    expect(screen.getByTestId('target-option-screen-b').getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByTestId('target-option-screen-b') as HTMLInputElement).checked).toBe(true);
     expect(screen.getByTestId('target-selected-count').textContent).toContain('"count":1');
   });
 });

@@ -1,5 +1,5 @@
 import { emergencyLayoutIsPortrait, emergencyLayoutOrientation } from './emergency-layout';
-import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
+import { emergencyPaintSchema, emergencyRenderEvidence, nativePaintedTransition, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
@@ -8,6 +8,7 @@ import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaits
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
+import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
@@ -60,6 +61,7 @@ import {
   normalizeFaceContentMode,
   reportsSecondDisplay,
   resolveFaceContentTarget,
+  unitLastAliveAt,
 } from './screen-faces';
 
 /**
@@ -82,9 +84,6 @@ import { verifyDeviceJwt } from '../security/device-jwt';
 import { clientIpFromRequest } from '../security/client-ip';
 import { noteRegisterDeviceCredentialRefusal } from '../notifications/fleet-alarms/device-credential-refusals';
 import {
-  getTenantState,
-  setTenantState,
-  tenantStateEpoch,
   shouldSkipLastPingWrite,
   markLastPingWritten,
   shouldSkipEmergencyAudit,
@@ -108,10 +107,26 @@ import type { ManifestScreenRow } from './manifest-hot-cache';
 // every 10 s just to learn that nothing happened.
 import {
   emergencySignature,
+  evidenceSafe,
+  formatDescriptorRefusalLine,
   noteScreenEmergencyState,
   noteScreenScheduleBoundary,
+  renderDescriptorRefusalAlert,
   resolveEmergencyRev,
+  type EmergencyRevDeps,
+  type EmergencyRevRefusal,
 } from './emergency-rev';
+// 2026-11-01 — THE read of a tenant's tenant-wide emergency state (own row
+// through the 2 s cache + district inheritance), shared by the manifest's
+// emergency branch and the emergency-rev raise confirmation so the two can
+// never disagree. The rev poll signs a raise only when this read confirms it.
+import {
+  confirmTenantWideAlert,
+  resolveTenantEmergencyState,
+  tenantEmergencyActive,
+} from './tenant-emergency-state';
+// Owner-only alert mail for a refused (possibly forged) raise descriptor.
+import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 // 2026-08-30 — deterministic manifest schedule ordering (reliability W1-8):
 // effective replace winner first, labeled mode/pin, replica-stable ties.
 import { orderSchedulesForManifest } from './effective-schedule';
@@ -224,11 +239,8 @@ import {
 // header before changing the cap.
 import { acceptStatusPoll } from './status-poll-throttle';
 import { mintStreamTicket } from './stream-ticket';
-// 2026-08-03 — district-wide emergency propagation. The emergency branch of
-// the manifest resolves a screen's alert from its OWN tenant row; this bound
-// lets it fall back to the nearest ANCESTOR tenant that is in emergency. See
-// `resolveAncestorEmergencyState` below and `emergency/tenant-hierarchy.ts`.
-import { MAX_TENANT_TREE_DEPTH } from '../emergency/tenant-hierarchy';
+// (2026-08-03 district-wide emergency inheritance — the ancestor walk — moved
+// to `tenant-emergency-state.ts` on 2026-11-01, unchanged.)
 import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
 // K-12 sports launch, lane B4 (2026-09-27): a student name TYPED into a
 // template (a relay leg, a CTS announcement, a player card…) is blanked on the
@@ -543,6 +555,10 @@ export class ScreensController {
     // Interruption ledger (2026-10-18, screens/events/screen-events.ts).
     // Optional: the ~60 specs that build this controller by hand record nothing.
     @Optional() private readonly ledger?: ScreenEventsService,
+    // 2026-11-01 — owner-only mail when the emergency-rev raise refuses a
+    // descriptor the database does not confirm (a forgery signal). Optional
+    // for the same reason as `ledger`: hand-built specs send nothing.
+    @Optional() private readonly platformAlerts?: PlatformAlertMailer,
   ) {
     // 2026-09-02 (efficiency P0-2) — hand `device-auth.ts` a cross-replica
     // home for the credential snapshot. This is where a Redis handle and that
@@ -1754,6 +1770,22 @@ export class ScreensController {
       if (episode && episode.status !== 'painted' && (prior?.challenge !== episode.challenge || prior?.status !== episode.status)) {
         data.lastRenderedHash = `pending|em:${episode.challenge}`;
       }
+      // 2026-11-02 — the APK's own PAINTED verdict completes the record. The
+      // page's post raced this heartbeat and lost on every screen of the
+      // SECURE drill (the heartbeat rides a 5-minute floor while the page
+      // reports); whichever of the two arrives second now finishes it.
+      const painted = nativePaintedTransition(episode, prior, (screen as any).lastRenderedHash);
+      if (painted && credential.proved) {
+        data.lastRenderedHash = painted.hash;
+        data.lastRenderedAt = new Date();
+        if (screen.tenantId) {
+          await this.prisma.client.auditLog.create({ data: {
+            tenantId: screen.tenantId, userId: null, action: 'PLAYER_EMERGENCY_PAINTED',
+            targetType: 'Screen', targetId: screen.id,
+            details: JSON.stringify({ identity: painted.identity, challenge: painted.challenge, evidence: 'native-validated-page-overlay-paint' }),
+          }});
+        }
+      }
     }
     // Basic Android settings (2026-10-18, device-settings/): the unit's report
     // in, its desired set out — the same credential gate as the native report.
@@ -2581,6 +2613,35 @@ export class ScreensController {
   }
 
   // ─── ADMIN: List all screens in tenant ───
+  /**
+   * For every FACE row in `rows`, when its unit last proved it was alive
+   * (`unitLastAliveAt`: its own ping or the front face's ping / native
+   * heartbeat). Faces only; one extra read at most, for primaries not in
+   * `rows`; a failed read leaves the face on its own ping.
+   */
+  private async unitAliveByFace(
+    rows: Array<{ id: string; tenantId?: string | null; lastPingAt?: Date | null; faceOfScreenId?: string | null }>,
+  ): Promise<Map<string, Date | null>> {
+    const out = new Map<string, Date | null>();
+    const faces = rows.filter((r) => !!r.faceOfScreenId);
+    if (faces.length === 0) return out;
+    const byId = new Map<string, any>(rows.map((r) => [r.id, r]));
+    const missing = [...new Set(faces.map((f) => f.faceOfScreenId as string).filter((id) => !byId.has(id)))];
+    if (missing.length) {
+      try {
+        const extra = await this.prisma.client.screen.findMany({
+          where: { id: { in: missing }, tenantId: { in: [...new Set(faces.map((f) => f.tenantId).filter(Boolean) as string[])] } },
+          select: { id: true, lastPingAt: true, nativeRuntimeReportAt: true },
+        });
+        for (const e of extra) byId.set(e.id, e);
+      } catch {
+        // fall through: those faces keep their own ping
+      }
+    }
+    for (const f of faces) out.set(f.id, unitLastAliveAt(f, byId.get(f.faceOfScreenId as string)));
+    return out;
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -2637,6 +2698,7 @@ export class ScreensController {
     // ping will recover by the next 30s tick.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     return rows.map((s) => {
       // If a device is actively pinging, mark ONLINE regardless of
       // stored column. If stale, flip to OFFLINE unless the stored
@@ -2644,7 +2706,10 @@ export class ScreensController {
       // REVOKED trumps all; ONLINE that's gone stale becomes OFFLINE).
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        // A back face is alive while its UNIT is (unitLastAliveAt) — the same
+        // rule the alert emails use.
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
@@ -2963,10 +3028,12 @@ export class ScreensController {
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     const screens = rows.map((s) => {
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
@@ -3430,6 +3497,41 @@ export class ScreensController {
   // (screens/events/screen-events.ts). Without `hours` the timeline answers
   // exactly as before: ledger rows are left out of it, so they can never
   // crowd its newest-N window (the History tab reads its refresh ack there).
+  // GET /screens/:id/usb-events (2026-10-26, M43 on site: "inserted a USB …
+  // nothing happens"). The newest USB-drive states this screen reported —
+  // DETECTED, NEEDS_ACCESS, NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED (older
+  // APKs: ACCEPTED, REJECTED_*) — for the drawer's Technical details. Before
+  // 1.1.55 a screen reported only after verification, so "nothing happened"
+  // left no row at all. Admins only; ownership is proven against the SCREEN
+  // row exactly like `:id/events`; read-only and never polled.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get(':id/usb-events')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async screenUsbEvents(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const rootId = req.user.tenantId as string;
+    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 5, 1), 20);
+    const tenantIds = await this.readableTenantIds(rootId);
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: tenantIds } },
+      select: { id: true, tenantId: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    const events = await this.prisma.client.usbIngestEvent.findMany({
+      // tenantId first: it is the table's index ([tenantId, createdAt]). Never
+      // null here — the screen matched a readable tenant above.
+      where: { tenantId: screen.tenantId as string, screenId: id },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, outcome: true, reason: true, bundleVersion: true, assetCount: true, createdAt: true },
+    });
+    return { events };
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get(':id/events')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -4903,9 +5005,24 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Post('force-update')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async forceUpdateAll(@Request() req: any) {
+  async forceUpdateAll(@Request() req: any, @Body() body?: { overrideMassPushRules?: unknown }) {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    // 2026-10-31 — this is the purest mass push there is: ONE write marks every
+    // screen of the location. The owner's fleet push rules (update-push-rules.ts
+    // → player-ota/fleet-push-policy.ts) run over exactly the screens it marks:
+    // one hardware class, and 22:00–06:00 in every screen's own time zone. A
+    // refusal marks, publishes and audits nothing; the explicit
+    // `overrideMassPushRules: true` (never sent by the dashboard) sets both
+    // aside and is recorded on the audit row below.
+    const override = updatePushOverride(body);
+    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override });
+    if (overridden.length) {
+      console.warn(
+        `[force-update] tenant=${tenantId} every screen, with the mass-push rules OVERRIDDEN ` +
+          `(${overridden.join(', ')}) by=${req.user.userId || req.user.id || '-'}`,
+      );
+    }
     // Mark every screen in the tenant as force-pending so the next
     // /update-check from each one gets the latest APK (gated 30 min).
     // Safe even when tenant.autoUpdatePlayerEnabled is false — the
@@ -4943,7 +5060,8 @@ export class ScreensController {
         targetId: tenantId,
         tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ scope: 'tenant' }),
+        // The owner's explicit override, and the rules it set aside (none = not needed).
+        details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
       },
     }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'tenant' };
@@ -5796,118 +5914,6 @@ export class ScreensController {
     }];
   }
 
-  /**
-   * The exact Tenant columns the manifest's emergency branch reads. Shared
-   * between the screen's own tenant lookup and the ancestor walk so both
-   * populate the SAME shape into the 2s `getTenantState` cache — a cache
-   * entry written by one path and read by the other must never be missing a
-   * field the reader depends on.
-   *
-   * `parentId` is what makes district inheritance possible; `id` is carried
-   * so a resolved ancestor can be named in the manifest for diagnostics.
-   */
-  private static readonly MANIFEST_TENANT_EMERGENCY_SELECT = {
-    id: true,
-    parentId: true,
-    // `archivedAt` keeps inheritance consistent with the fan-out, which
-    // excludes archived (soft-deleted) locations. Without it a district
-    // lockdown would light up every archived test tenant's leftover screens
-    // — 120 of them exist in production — while the audit trail and the
-    // pub/sub fan-out say those tenants were never involved.
-    archivedAt: true,
-    emergencyStatus: true,
-    emergencyType: true,
-    emergencyPlaylistId: true,
-    emergencyPortraitPlaylistId: true,
-    // 2026-10-10 — is the active tenant-wide alert a DRILL? Rides the
-    // manifest as `isDrill` (inside the hashed payload) so the player paints
-    // the drill banner; inherited from an ancestor like the rest.
-    emergencyIsDrill: true,
-    locationBasedEmergencyEnabled: true,
-    // 2026-10-10 — the tenant's drill playlists, so the manifest can tell
-    // whether a drill's `emergencyPlaylistId` came from the drill columns
-    // (`tenantAlertPlaysDrillContent`): then it beats a screen's live
-    // per-type content; otherwise the screen's live content comes first.
-    drillLockdownPlaylistId: true,
-    drillEvacuatePlaylistId: true,
-    drillWeatherPlaylistId: true,
-    drillHoldPlaylistId: true,
-    drillSecurePlaylistId: true,
-    drillMedicalPlaylistId: true,
-    drillLockdownPortraitPlaylistId: true,
-    drillEvacuatePortraitPlaylistId: true,
-    drillWeatherPortraitPlaylistId: true,
-    drillHoldPortraitPlaylistId: true,
-    drillSecurePortraitPlaylistId: true,
-    drillMedicalPortraitPlaylistId: true,
-  } as const;
-
-  /**
-   * DISTRICT-WIDE EMERGENCY INHERITANCE — the manifest-side safety net
-   * (2026-08-03).
-   *
-   * The authoritative mechanism for a district lockdown is the FAN-OUT in
-   * `emergency.controller.ts`: a district trigger writes every descendant
-   * tenant's own row, so a screen booting mid-lockdown reads its own tenant
-   * and sees the alert with zero extra work. This walk exists for the cases
-   * the fan-out provably cannot cover:
-   *
-   *   - a school tenant CREATED after the district trigger fired;
-   *   - a school row reset out-of-band (Studio edit, seed script, a partial
-   *     restore) while the district is still in emergency;
-   *   - a SCHOOL_ADMIN clearing their own school during a DISTRICT-wide
-   *     lockdown. That must NOT drop the district alert — one building's
-   *     admin does not get to cancel a district-wide incident — and this
-   *     walk is what re-asserts it on the very next poll.
-   *
-   * COST: only runs when the screen's own tenant is INACTIVE **and** has a
-   * parent, and every hop goes through the same 2s `getTenantState` cache
-   * that the screen's own tenant read uses. A 38-screen / 7-school district
-   * polling every 5s adds at most one cached district read per 2s — far
-   * below the fan-out savings, and nowhere near the manifest content
-   * fan-out that caused the July-2026 Supabase overage.
-   *
-   * Depth-bounded and cycle-guarded: `Tenant.parentId` is an unconstrained
-   * self-FK, and the life-safety path must never be what discovers a cycle.
-   *
-   * Returns the nearest ancestor tenant row that is in an active emergency,
-   * or null.
-   */
-  private async resolveAncestorEmergencyState(parentId: string | null | undefined): Promise<any | null> {
-    let cursor: string | null = parentId ?? null;
-    const seen = new Set<string>();
-
-    for (let hop = 0; hop < MAX_TENANT_TREE_DEPTH && cursor; hop++) {
-      if (seen.has(cursor)) break; // cycle guard
-      seen.add(cursor);
-
-      let ancestor = getTenantState(cursor) as any;
-      if (!ancestor) {
-        // The epoch BEFORE the read: a trigger / all-clear that invalidates
-        // while this read is in flight makes the row uncacheable (2026-10-26).
-        const readEpoch = tenantStateEpoch(cursor);
-        ancestor = (await this.prisma.client.tenant.findUnique({
-          where: { id: cursor },
-          select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
-        })) as any;
-        if (ancestor) setTenantState(cursor, ancestor, readEpoch);
-      }
-      if (!ancestor) return null;
-      // Stop at an archived ancestor for the same reason the fan-out skips
-      // archived tenants: a retired location is not part of the live
-      // hierarchy, and inheriting THROUGH one would contradict the audit
-      // trail, which records no involvement for it.
-      if (ancestor.archivedAt) return null;
-
-      if (ancestor.emergencyStatus && ancestor.emergencyStatus !== 'INACTIVE') {
-        return ancestor;
-      }
-      cursor = ancestor.parentId ?? null;
-    }
-
-    return null;
-  }
-
   // ─── Cheap emergency revision (the HTTP backstop's change detector) ───
   //
   // WHAT IT REPLACES (efficiency audit 2026-09-02, P0-2/P0-3). The web player
@@ -6008,6 +6014,10 @@ export class ScreensController {
     // comes from the LIVE screen row (the DT-03 defence), the per-screen
     // record is rejected unless its recorded tenant matches, and the epoch is
     // read from a per-tenant key. A screen can only ever read its own.
+    //
+    // This pass carries NO database confirmer, so its `alert` is always null
+    // and is never signed (2026-11-01): it decides only 304-or-not, and the
+    // 304 path must stay free of Postgres.
     const answer = await resolveEmergencyRev({ redis: this.redisService }, id, cheap.tenantId, now);
     res.setHeader('ETag', answer.rev);
 
@@ -6027,13 +6037,17 @@ export class ScreensController {
         message: `Device auth required (${fresh.reason})`,
       });
     }
-    // A re-home between the two passes invalidates the revision we computed
-    // from the old tenant — recompute rather than answer for a tenant this
-    // screen no longer belongs to.
-    const finalAnswer =
-      fresh.tenantId === cheap.tenantId
-        ? answer
-        : await resolveEmergencyRev({ redis: this.redisService }, id, fresh.tenantId, now);
+    // Recompute for the tenant this screen belongs to NOW (a re-home between
+    // the two passes invalidates the revision computed from the old tenant),
+    // this time WITH the database confirmation: the only answer whose `alert`
+    // may be signed. The confirmation runs only inside the raise window, is
+    // bounded to 300 ms and is cached per tenant (emergency-rev.ts rule 6).
+    const finalAnswer = await resolveEmergencyRev(
+      this.emergencyRevConfirmingDeps(),
+      id,
+      fresh.tenantId,
+      now,
+    );
     res.setHeader('ETag', finalAnswer.rev);
 
     // ── RAISE FAST PATH (P0-7 #2, 2026-09-05) ───────────────────────────
@@ -6045,13 +6059,34 @@ export class ScreensController {
     // and this screen is not already showing one, the descriptor rides THIS
     // response — the round trip the player is already making.
     //
-    // SIGNED AT THE BOUNDARY, not stored signed: a stored envelope minted at
-    // trigger time would be minutes old by the time a rebooting screen asked
-    // for it, and the player's shared push gate would (correctly) drop it as
-    // stale. Minting here gives a fresh `timestamp`, a unique `eventId` for
-    // the player's replay LRU, and the same HMAC every WS/SSE push carries,
-    // so the player can run it through `checkSensitivePush` unchanged rather
-    // than through a bespoke trust rule.
+    // SIGNED AT THE BOUNDARY, AFTER DATABASE CONFIRMATION — never stored
+    // signed, and never signed on Redis's word alone. Not stored signed: an
+    // envelope minted at trigger time would be minutes old by the time a
+    // rebooting screen asked for it, and the player's shared push gate would
+    // (correctly) drop it as stale. Minting here gives a fresh `timestamp`, a
+    // unique `eventId` for the player's replay LRU, and the same HMAC every
+    // WS/SSE push carries, so the player runs it through `checkSensitivePush`
+    // unchanged rather than through a bespoke trust rule.
+    //
+    // That HMAC is exactly why the descriptor must be CONFIRMED first
+    // (2026-11-01). It arrives inside the tenant epoch, and the epoch is read
+    // from Redis — shared mutable state that anyone holding `REDIS_URL` can
+    // write (it was in the 2026-10-21 Railway environment leak). Signing it
+    // unconfirmed made this endpoint a signing oracle: plant
+    // `<stamp>:1:<descriptor>` and every screen of the tenant received a
+    // correctly signed lockdown, repeatedly, with no signing key.
+    // `finalAnswer.alert` is now non-null only when the manifest's own read of
+    // the tenant (`confirmTenantWideAlert`) has a live tenant-wide alert of the
+    // same type, severity and drill flag. Unreadable, slow (> 300 ms) or
+    // disagreeing → no descriptor, and the refusal is logged and, when it looks
+    // forged, mailed to the owner and audited (`reportEmergencyRevRefusal`).
+    // `active` is NOT affected: the player still learns an alert is up and
+    // fetches the manifest, the unchanged source of truth — so a real alert
+    // the database has not confirmed yet (the trigger bumps the epoch before
+    // its commit) reaches the screen at worst one poll later, by the delivery
+    // path that existed before this fast path. This closes the oracle for
+    // every player bundle already in the field; asymmetric alert signing (the
+    // private standard repo's design) closes the class on the device later.
     //
     // RAISE ONLY. There is no "clear" descriptor; `resolveEmergencyRev`
     // withholds this whenever the screen's own last manifest build already
@@ -6083,6 +6118,86 @@ export class ScreensController {
       active: finalAnswer.active,
       ...(alertEnvelope ? { alert: alertEnvelope } : {}),
     });
+  }
+
+  /**
+   * `resolveEmergencyRev` dependencies for the post-304 pass (2026-11-01):
+   * the Redis port, the DATABASE confirmation — the manifest's own read of
+   * the tenant via `confirmTenantWideAlert` — and the refusal evidence hook.
+   * Built per call so the Prisma delegate is resolved at use; a confirmer
+   * that throws reads as "unavailable" (no descriptor) inside emergency-rev.
+   */
+  private emergencyRevConfirmingDeps(): EmergencyRevDeps {
+    return {
+      redis: this.redisService,
+      confirmTenantAlert: (tenantId: string) =>
+        confirmTenantWideAlert(this.prisma.client.tenant as any, tenantId),
+      onDescriptorRefused: (refusal: EmergencyRevRefusal) => this.reportEmergencyRevRefusal(refusal),
+    };
+  }
+
+  /**
+   * Evidence for a refused raise descriptor. On the request path, so it does
+   * only the cheap part synchronously — one throttled log line — and pushes
+   * the owner mail and the audit row (forgery signals only, at most once per
+   * tenant per hour; emergency-rev.ts decides both) onto a later turn of the
+   * event loop. Never throws, never awaited by the poll.
+   */
+  private reportEmergencyRevRefusal(refusal: EmergencyRevRefusal): void {
+    try {
+      if (refusal.log) console.warn(formatDescriptorRefusalLine(refusal));
+      if (!refusal.notifyOwner) return;
+      setImmediate(() => {
+        // Independent of each other: a stalled audit write must not hold the
+        // owner's mail back, and a failed mail must not lose the audit row.
+        void this.auditEmergencyRevForgerySignal(refusal);
+        void this.mailEmergencyRevForgerySignal(refusal);
+      });
+    } catch {
+      // Evidence must never be able to fail a poll.
+    }
+  }
+
+  private async auditEmergencyRevForgerySignal(refusal: EmergencyRevRefusal): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: refusal.tenantId,
+          // No person did this: the actor is whatever wrote the Redis epoch.
+          userId: null,
+          action: 'EMERGENCY_REV_DESCRIPTOR_REFUSED',
+          targetType: 'tenant',
+          targetId: refusal.tenantId,
+          details: JSON.stringify({
+            reason: refusal.reason,
+            source: refusal.origin,
+            descriptor: {
+              type: evidenceSafe(refusal.descriptor.type),
+              severity: evidenceSafe(refusal.descriptor.severity),
+              isDrill: refusal.descriptor.isDrill,
+            },
+            database: refusal.confirmed,
+            epochStamp: refusal.epochStamp,
+            epochAgeMs: refusal.epochAgeMs,
+            screenId: refusal.screenId,
+          }),
+        },
+      });
+    } catch (e) {
+      console.warn(
+        `[emergency-rev] EMERGENCY_REV_DESCRIPTOR_REFUSED audit row failed for tenant ${evidenceSafe(refusal.tenantId, 128)}: ${(e as Error)?.message ?? e}`,
+      );
+    }
+  }
+
+  private async mailEmergencyRevForgerySignal(refusal: EmergencyRevRefusal): Promise<void> {
+    try {
+      if (!this.platformAlerts) return;
+      const { subject, body } = renderDescriptorRefusalAlert(refusal);
+      await this.platformAlerts.sendAlert(subject, body, 'emergency-rev-descriptor-refused');
+    } catch (e) {
+      console.warn(`[emergency-rev] owner alert failed: ${(e as Error)?.message ?? e}`);
+    }
   }
 
   /**
@@ -6415,63 +6530,31 @@ export class ScreensController {
       // `tenant.emergencyType` is undefined and the manifest silently
       // falls back to the severity, rendering "CRITICAL PROTOCOL ACTIVE"
       // instead of LOCKDOWN), the Sprint-8b `locationBasedEmergencyEnabled`
-      // toggle, and `parentId` for the district-inheritance walk below.
-      // Cast through `any` so the controller compiles even before
-      // @prisma/client picks up the emergency_portrait_playlist_id column.
-      let tenant = getTenantState(screen.tenantId) as any;
-      if (!tenant) {
-        // 2026-10-26 — the epoch BEFORE the read. The emergency controller
-        // invalidates this cache before its fan-out and again after its
-        // commit; a read that began before the latter may carry the
-        // pre-commit row (the all-clear's "override rows gone, tenant still
-        // ACTIVE" phantom alert) and is refused by setTenantState.
-        const readEpoch = tenantStateEpoch(screen.tenantId);
-        tenant = await this.prisma.client.tenant.findUnique({
-          where: { id: screen.tenantId },
-          select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
-        }) as any;
-        if (tenant) setTenantState(screen.tenantId, tenant, readEpoch);
-      }
-
+      // toggle, and `parentId` for the district-inheritance walk.
+      //
+      // 2026-10-26 — the epoch is captured BEFORE the read. The emergency
+      // controller invalidates this cache before its fan-out and again after
+      // its commit; a read that began before the latter may carry the
+      // pre-commit row (the all-clear's "override rows gone, tenant still
+      // ACTIVE" phantom alert) and is refused by setTenantState.
+      //
       // ── DISTRICT INHERITANCE SAFETY NET (2026-08-03) ────────────────────
       // A district trigger FANS OUT and writes this school's own row, so in
-      // the normal case the check below finds an active emergency already
-      // and this walk never runs. It exists for the cases fan-out cannot
-      // reach — see resolveAncestorEmergencyState for the full list. The
-      // inherited state is merged into a LOCAL copy: never write the merged
-      // object back through setTenantState or we would poison this school's
-      // cache entry with its district's status.
-      // An ARCHIVED (soft-deleted) location never inherits — the fan-out
-      // skips it, so inheriting would put a district lockdown on the
-      // leftover screens of a retired/test tenant that no audit row, no
-      // webhook and no pub/sub message ever named.
-      let inheritedFromTenantId: string | null = null;
-      if (
-        tenant &&
-        !tenant.archivedAt &&
-        (!tenant.emergencyStatus || tenant.emergencyStatus === 'INACTIVE') &&
-        tenant.parentId
-      ) {
-        const ancestor = await this.resolveAncestorEmergencyState(tenant.parentId);
-        if (ancestor) {
-          inheritedFromTenantId = ancestor.id ?? tenant.parentId;
-          tenant = {
-            ...tenant,
-            emergencyStatus: ancestor.emergencyStatus,
-            emergencyType: ancestor.emergencyType,
-            emergencyPlaylistId: ancestor.emergencyPlaylistId,
-            emergencyPortraitPlaylistId: ancestor.emergencyPortraitPlaylistId,
-            emergencyIsDrill: ancestor.emergencyIsDrill === true,
-            // 2026-10-10 — whether the inherited drill's playlist is the
-            // ancestor's DRILL content, decided against the ANCESTOR's drill
-            // columns (the pointer is theirs, so the comparison must be too).
-            emergencyAlertPlaysDrillContent: tenantAlertPlaysDrillContent(ancestor),
-            // NOT inherited: locationBasedEmergencyEnabled stays this
-            // school's own opt-in, because the per-screen emergency config
-            // it gates lives on THIS school's screens.
-          };
-        }
-      }
+      // the normal case the own row already carries the alert and the walk
+      // never runs. It exists for the cases fan-out cannot reach (see
+      // `resolveAncestorEmergencyState`). The inherited state is merged into a
+      // LOCAL copy, never written back through setTenantState, and an ARCHIVED
+      // location never inherits.
+      //
+      // 2026-11-01 — all of the above lives in ONE function,
+      // `resolveTenantEmergencyState` (tenant-emergency-state.ts), moved here
+      // from this controller unchanged. The emergency-rev raise confirmation
+      // calls the same function, so the rev poll can only sign an alert this
+      // manifest would assert.
+      const { tenant, inheritedFromTenantId } = await resolveTenantEmergencyState(
+        this.prisma.client.tenant as any,
+        screen.tenantId,
+      );
 
       // Sprint 8b — per-screen override wins over tenant-wide. If we
       // found a non-expired ScreenEmergencyOverride for this screen
@@ -6485,8 +6568,7 @@ export class ScreensController {
       // override because of a localized incident. The gym renders
       // LOCKDOWN, every other screen renders WEATHER.
       const emergencyActiveForThisScreen =
-        !!activeScreenOverride ||
-        (tenant?.emergencyStatus && tenant.emergencyStatus !== 'INACTIVE');
+        !!activeScreenOverride || tenantEmergencyActive(tenant);
 
       // ── Record the decision for GET /:id/emergency-rev (2026-09-02) ──────
       // Placed HERE, before the branch split, so every branch — emergency,

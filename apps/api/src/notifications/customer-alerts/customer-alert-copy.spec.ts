@@ -130,3 +130,35 @@ describe('"didn’t come back on at its scheduled on time" (2026-10-25)', () => 
     expect(d.body).toContain("Didn't come back on at 7:00 AM: G24 (Brookfield)");
   });
 });
+
+describe('offline duration is the true elapsed time at send (2026-11-02)', () => {
+  const sinceMs = Date.UTC(2026, 10, 1, 16, 39);
+  const nowMs = sinceMs + (3 * 60 + 12) * 60_000;
+  const it1 = { kind: 'OFFLINE' as const, screenName: 'Lobby', locationName: 'Lincoln', minutes: 16, sinceMs, timeZone: 'UTC' };
+
+  it('states "since <time> (<h> h <m> min)" computed from nowMs, ignoring the stale minutes field', () => {
+    const e = renderScreenAlertEmail('en', { kind: 'OFFLINE', locationName: 'Lincoln', items: [it1], nowMs }, links);
+    expect(e.body).toContain('Lobby — offline since 4:39 PM (3 h 12 min)');
+    expect(e.body).not.toContain('16 minutes');
+  });
+
+  it('two sends of the same incident at different times state different durations', () => {
+    const a = renderScreenAlertEmail('en', { kind: 'OFFLINE', locationName: 'Lincoln', items: [it1], nowMs: sinceMs + 16 * 60_000 }, links);
+    const b = renderScreenAlertEmail('en', { kind: 'OFFLINE', locationName: 'Lincoln', items: [it1], nowMs }, links);
+    expect(a.body).toContain('(16 minutes)');
+    expect(b.body).toContain('(3 h 12 min)');
+  });
+
+  it('works in es and zh, in the location time zone, and in the digest', () => {
+    const tz = { ...it1, timeZone: 'America/Chicago' };
+    expect(renderScreenAlertEmail('es', { kind: 'OFFLINE', locationName: 'L', items: [tz], nowMs }, links).body).toContain('(3 h 12 min)');
+    expect(renderScreenAlertEmail('zh', { kind: 'OFFLINE', locationName: 'L', items: [tz], nowMs }, links).body).toContain('3 小时 12 分钟');
+    expect(renderScreenAlertEmail('en', { kind: 'OFFLINE', locationName: 'L', items: [tz], nowMs }, links).body).toContain('since 10:39 AM (3 h 12 min)');
+    expect(renderDigestEmail('en', { orgName: 'O', items: [it1], nowMs }, links).body).toContain('since 4:39 PM (3 h 12 min)');
+  });
+
+  it('NO_CONTENT says picture, not offline', () => {
+    const e = renderScreenAlertEmail('en', { kind: 'NO_CONTENT', locationName: 'L', items: [{ ...it1, kind: 'NO_CONTENT' }], nowMs }, links);
+    expect(e.body).toContain('no picture confirmed since 4:39 PM (3 h 12 min)');
+  });
+});

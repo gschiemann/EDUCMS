@@ -321,4 +321,34 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2749998,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41282358157',
   },
+  // Signed CI 41321768888, source fix/ep6n-sleep-like-cloudsign (PR #203):
+  // 1.1.57 + EP6N/RK3576 sleep through the box's sdkapi service.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.58-field.1': {
+    versionName: '1.1.58-field.1',
+    versionCode: 10158,
+    sha256: '23803f6c90a39a6ecb20ba4eb934747d568204cdfd5f1f65bdfbd5f10080c997', // gitleaks:allow -- verified public APK integrity digest
+    size: 2750062,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41321768888',
+  },
+  // Signed CI 41376422724, source fix/ep6n-wake-loop (PR #222): 1.1.59 +
+  // EP6N wake no longer re-blanks after the box's wake reboot.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.60-field.1': {
+    versionName: '1.1.60-field.1',
+    versionCode: 10160,
+    sha256: 'd033680696504a9e7404b947a657a6970a042ad49a82fc17ff89954fb5682e5d', // gitleaks:allow -- verified public APK integrity digest
+    size: 2766830,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41376422724',
+  },
+  // Signed CI 41458604627, source field/1.1.62: 1.1.60 + manual on/off holds
+  // until the next schedule trigger (#225) + emergency confirm/no mid-alert
+  // reload (#229). Hardware qualification pending.
+  '1.1.62-field.1': {
+    versionName: '1.1.62-field.1',
+    versionCode: 10162,
+    sha256: '1be758d77af166d3a0e46de67327973b62c9a73cd552cdb20bae86c2ba861a2b', // gitleaks:allow -- verified public APK integrity digest
+    size: 2766822,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41458604627',
+  },
 };

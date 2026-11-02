@@ -55,7 +55,7 @@ pnpm install
 # 2. Configure env (copy the template, fill in DATABASE_URL etc.)
 cp .env.example .env
 
-# 3a. Local DB via Docker (optional — skip if you point .env at Supabase)
+# 3a. Local DB via Docker — needed for db:setup: every db:* script that writes data or schema refuses a non-local DATABASE_URL / DIRECT_URL (scripts/guard-destructive-db.cjs), so pointing .env at Supabase no longer works for these commands
 docker compose up db redis -d
 
 # 4. Push the Prisma schema and seed test data

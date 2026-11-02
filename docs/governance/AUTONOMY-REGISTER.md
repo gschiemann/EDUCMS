@@ -36,6 +36,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Destructive DB operation | L0 | L0 | `scripts/guard-destructive-db.cjs` | — | — | 2026-10-31 | |
 | Platform asset wipe | L0 | L0 | disabled in production | — | `PLATFORM_ASSET_WIPE_ENABLED` unset | 2026-10-31 | |
 | CI-failure triage routine (`scheduled-failure-issue.yml` → Claude session) | L1 | L1 | triage and comment only — **GAP: prompt not in the repo, no dedupe** | — | disable the workflow | 2026-10-31 | |
+| Weekly review routine (Monday scheduled session; prompt `docs/governance/reviews/WEEKLY-REVIEW-PROMPT.md`) | L1 | L1 | prepares one review PR; reads GitHub + public health only; never merges | close the PR | disable the task in the app | 2026-10-31 | |
 | Standing mitigations (revert last deploy; flip a named kill switch; pause OTA / field pushes) | L3 | L3 | subtractive only; logged; owner notified | — | — | 2026-10-31 | |
 
 ## Register B — product automations
@@ -50,7 +51,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Signage transcode (incompatible video converted) | on | **confirm** | original kept when not smaller / failed | `transcode-profile` spec | — |
 | Upload content check | on | `UPLOAD_CONTENT_CHECK_DISABLED=1` | **fail open** — a check that cannot run accepts | `upload-content-verdict` specs | — |
 | HEIC → JPEG conversion | on | budget `UPLOAD_HEIC_BUDGET_MS` | fail closed (503) | specs | — |
-| Playback gate (video a screen cannot play) | warn | `VIDEO_PLAYBACK_GATE=off` | unknown never warns; never for two-sided units | `PlaybackGateService` specs | operator toast |
+| Playback gate (video a screen cannot play) | off | `VIDEO_PLAYBACK_GATE=off` | unknown never warns; never for two-sided units | `PlaybackGateService` specs | API response only |
 | Playback demotion (serve the 1080p copy after bad minutes) | on | `VIDEO_PLAYBACK_DEMOTION=off` / `observe` | no lighter copy → keep playing + notify | specs | tenant + platform, once/day |
 | AI model catalog sync (adopts new vendor model versions, no deploy) | on | `AI_MODEL_SYNC_DISABLED=1` | catalog stays where it is | canary test on our key | super-admin page |
 | Proof-of-play rollup + raw purge | on | `PROOF_OF_PLAY_ROLLUP_DISABLED=1` | purge never ahead of the rollup watermark | sampler specs | — |
@@ -64,8 +65,8 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 
 | Scope | Granted by | Date | Expiry |
 |---|---|---|---|
-| Launch-tracker work (`docs/research/2026-10-24-launch-week/00-PLAN.md`): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
+| Launch-tracker work (docs/research/2026-10-24-launch-week/00-PLAN.md): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
 
 ## Freeze
 
-`FREEZE.md` is present: launch.
+None. The launch-week hold was lifted by the owner on 2026-11-01 ("the freeze can lift … we need to finish all our development"); `FREEZE.md` is absent.

@@ -115,13 +115,13 @@ it('vendor chips swap ONLY the instructions — the credential stays identical',
   // Default chip: Sportzcast instructions.
   expect(screen.getByText(/Sportzcast cloud portal/i)).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('button', { name: 'Scorebird' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Scorebird' }));
   expect(screen.getByText(/Scorebird dashboard/i)).toBeInTheDocument();
   expect(screen.queryByText(/Sportzcast cloud portal/i)).not.toBeInTheDocument();
   // Same token still shown — one credential for every vendor.
   expect(screen.getAllByText(tokenRe(CREDS.token)).length).toBeGreaterThan(0);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Anything else' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Anything else' }));
   expect(screen.getByText(/Anything that can POST JSON works/i)).toBeInTheDocument();
   expect(screen.getAllByText(tokenRe(CREDS.token)).length).toBeGreaterThan(0);
   // Exactly one mint — chip swaps are client-side only.

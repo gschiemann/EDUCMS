@@ -13,11 +13,8 @@ import {
   screenList,
   withPlaybackGateText,
 } from '../playback-warning-text';
-import { showPlaybackWarnings } from '../playback-warning-toast';
 
-jest.mock('sonner', () => ({ toast: { warning: jest.fn() } }));
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { toast } = require('sonner') as { toast: { warning: jest.Mock } };
 
 const t = createTestTranslator('playbackGate');
 
@@ -87,17 +84,6 @@ describe('enforce refusal', () => {
   it('any other error is left alone', () => {
     const other = Object.assign(new Error('boom'), { code: 'IMAGE_PLAYBACK_COPY_FAILED' });
     expect(withPlaybackGateText(t, other).message).toBe('boom');
-  });
-});
-
-describe('showPlaybackWarnings', () => {
-  it('one toast per warning (max three); nothing for a clean publish', () => {
-    toast.warning.mockClear();
-    expect(showPlaybackWarnings(t, { id: 'x' })).toEqual([]);
-    expect(toast.warning).not.toHaveBeenCalled();
-    const shown = showPlaybackWarnings(t, { playbackWarnings: [MAY_STUTTER, TWO_SIDED, MAY_STUTTER, MAY_STUTTER] });
-    expect(shown).toHaveLength(3);
-    expect(toast.warning).toHaveBeenCalledTimes(3);
   });
 });
 

@@ -176,6 +176,62 @@ class OtaAttemptPolicyTest {
         null
     }
 
+    // ── 1.1.56 — Android 9 panels: a failed or impossible silent install
+    //    always falls back to the Install button (NEEDS_TAP) ────────────
+
+    @Test
+    fun `an unattended commit the ROM refused waits for the Install button, it is not a dead FAILED`() {
+        for (s in listOf(OtaAttemptPolicy.Status.FAILURE, OtaAttemptPolicy.Status.FAILURE_ABORTED, OtaAttemptPolicy.Status.FAILURE_BLOCKED)) {
+            assertEquals("unattended $s", Outcome.NEEDS_TAP, OtaAttemptPolicy.outcomeForStatus(s, userRaised = false))
+            assertEquals("a person's own press $s", Outcome.FAILED, OtaAttemptPolicy.outcomeForStatus(s, userRaised = true))
+        }
+        // A tap cannot fix these — FAILED_<CODE>, which still shows the button on the glass.
+        for (s in listOf(OtaAttemptPolicy.Status.FAILURE_INVALID, OtaAttemptPolicy.Status.FAILURE_CONFLICT, OtaAttemptPolicy.Status.FAILURE_STORAGE, OtaAttemptPolicy.Status.FAILURE_INCOMPATIBLE)) {
+            assertEquals(Outcome.FAILED, OtaAttemptPolicy.outcomeForStatus(s, userRaised = false))
+        }
+        assertEquals(Outcome.NEEDS_TAP, OtaAttemptPolicy.outcomeForStatus(OtaAttemptPolicy.Status.PENDING_USER_ACTION, userRaised = false))
+        assertEquals(null, OtaAttemptPolicy.outcomeForStatus(OtaAttemptPolicy.Status.SUCCESS, userRaised = false))
+        assertEquals("not a finished session", null, OtaAttemptPolicy.outcomeForStatus(-999, userRaised = false))
+        // And the unattended route after it holds for a person — never a timer re-commit.
+        val held = attempt(vc = 10156).copy(commits = 1, outcome = OtaAttemptPolicy.outcomeForStatus(OtaAttemptPolicy.Status.FAILURE_ABORTED, false)!!)
+        assertEquals(Route.HOLD_NEEDS_TAP, OtaAttemptPolicy.route(Facts(Trigger.UNATTENDED, selfSilent = false, attempt = held)))
+        assertEquals(Route.COMMIT, OtaAttemptPolicy.route(Facts(Trigger.USER, selfSilent = false, attempt = held)))
+    }
+
+    @Test
+    fun `a commit that could not start is NEEDS_TAP unattended, FAILED_START for a person`() {
+        assertEquals(Outcome.NEEDS_TAP, OtaAttemptPolicy.outcomeForStartFailure(userRaised = false))
+        assertEquals(Outcome.FAILED, OtaAttemptPolicy.outcomeForStartFailure(userRaised = true))
+        assertEquals("FAILED_START", OtaAttemptPolicy.failedState(OtaAttemptPolicy.START_FAILURE_CODE))
+        val src = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
+        val catchAt = src.indexOf("PackageInstaller.Session path failed")
+        assertTrue(catchAt > 0)
+        val after = src.substring(catchAt, src.indexOf("private fun postFallbackInstallNotification("))
+        assertTrue("the start failure goes through the rule", after.contains("OtaAttemptPolicy.outcomeForStartFailure(userInitiated)"))
+        assertFalse("never ERROR, which shows no Install button", after.contains("\"ERROR\""))
+    }
+
+    @Test
+    fun `a commit whose status never came back becomes NEEDS_TAP`() {
+        val committed = attempt(vc = 10156).copy(commits = 1, outcome = Outcome.COMMITTED)
+        assertTrue(OtaAttemptPolicy.stalledCommit(committed, versionCode = 10156, installedVersionCode = 10155, dialogOpen = false))
+        assertFalse("the dialog is up — a person may be reading it", OtaAttemptPolicy.stalledCommit(committed, 10156, 10155, dialogOpen = true))
+        assertFalse("it installed", OtaAttemptPolicy.stalledCommit(committed, 10156, installedVersionCode = 10156, dialogOpen = false))
+        assertFalse("a status did come back", OtaAttemptPolicy.stalledCommit(committed.copy(outcome = Outcome.NEEDS_TAP), 10156, 10155, false))
+        assertFalse("another build", OtaAttemptPolicy.stalledCommit(committed, 10157, 10155, false))
+        // A check that holds re-states the button for a stalled or drifted state.
+        assertTrue(OtaAttemptPolicy.restateNeedsTap(committed, dialogOpen = false))
+        assertTrue(OtaAttemptPolicy.restateNeedsTap(committed.copy(outcome = Outcome.NEEDS_TAP), dialogOpen = false))
+        assertFalse(OtaAttemptPolicy.restateNeedsTap(committed, dialogOpen = true))
+        assertFalse(OtaAttemptPolicy.restateNeedsTap(committed.copy(outcome = Outcome.FAILED), dialogOpen = false))
+        assertFalse(OtaAttemptPolicy.restateNeedsTap(null, dialogOpen = false))
+        val worker = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
+        assertTrue("every commit arms the watchdog", worker.contains("OtaCommitWatchdogWorker.schedule(ctx, versionCode)"))
+        val dog = source("src/main/java/com/educms/player/ota/OtaCommitWatchdogWorker.kt")
+        assertTrue(dog.contains("OtaAttemptPolicy.stalledCommit(") && dog.contains("\"NEEDS_TAP\""))
+        assertFalse("no device-owner API, ever", dog.contains("DevicePolicyManager") || worker.contains("isDeviceOwnerApp"))
+    }
+
     private fun source(relative: String): String {
         val root = moduleRoot
         Assume.assumeTrue("module root not on disk", root != null)
@@ -210,7 +266,7 @@ class OtaAttemptPolicyTest {
         val receiver = source("src/main/java/com/educms/player/ota/OtaInstallReceiver.kt")
         assertTrue(receiver.contains("intent.getIntExtra(EXTRA_SELF_OTA_VERSION_CODE, 0)"))
         assertTrue(receiver.contains("recordSelfOtaOutcome(context, selfOtaVc, status, intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false))"))
-        assertTrue("NEEDS_TAP comes from PENDING_USER_ACTION", receiver.contains("OtaAttemptPolicy.Outcome.NEEDS_TAP to \"NEEDS_TAP\""))
+        assertTrue("the outcome comes from the one status rule", receiver.contains("OtaAttemptPolicy.outcomeForStatus(status, userRaised)"))
         val worker = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
         assertTrue(
             "the worker's own session names the build it installs",

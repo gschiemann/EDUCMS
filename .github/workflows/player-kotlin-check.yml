@@ -36,12 +36,14 @@ on:
       - 'apps/player/**'
       - 'scripts/check-player-test-execution.cjs'
       - '.github/workflows/player-kotlin-check.yml'
+      - '.github/scripts/osv-gradle-lock.init.gradle'
   pull_request:
     branches: [master]
     paths:
       - 'apps/player/**'
       - 'scripts/check-player-test-execution.cjs'
       - '.github/workflows/player-kotlin-check.yml'
+      - '.github/scripts/osv-gradle-lock.init.gradle'
   workflow_dispatch:
 
 concurrency:
@@ -168,3 +170,114 @@ jobs:
             apps/player/*/build/reports/lint-results-debug.*
           retention-days: 14
           if-no-files-found: ignore
+
+      # ── Dependency scan: OSV-Scanner on what the APKs ship — REPORT-ONLY ──────
+      #
+      # Nothing scanned the player's Gradle dependencies: the API image has Trivy
+      # (ci.yml) and the npm graph has the advisory gate, but an Android library with a
+      # published CVE (androidx, okio, kotlin-stdlib ...) reached a screen unseen. This
+      # exports the RESOLVED release runtime classpath of both APKs as `gradle.lockfile`
+      # (generated here, never committed — see the init script) and asks OSV.dev about
+      # every package in it.
+      #
+      # It cannot block anything, on purpose: the three steps below are continue-on-error
+      # and run only after the gate above has passed, so they cannot change the job's
+      # result. It reports the graph as of THIS commit and has no schedule, so a CVE
+      # published against an unchanged graph shows up on the next player change or a
+      # manual run (workflow_dispatch).
+      #
+      # ⚠️ Read the verdict from "Summarise the dependency scan", not from step colours:
+      #   · the OSV action turns "no lockfiles found" (exit 128) into SUCCESS, so a green
+      #     scan step on its own does not prove anything was scanned;
+      #   · a red scan step means vulnerabilities were found OR the scan broke.
+      # The summary therefore reads the JSON result file: osv-scanner writes none when it
+      # does not complete (cmd/osv-scanner/scan/source/command.go). Never add
+      # --allow-no-lockfiles to the scan args — it would write an empty result for an
+      # empty scan and turn exactly that case into a false "clean".
+      #
+      # To promote it to a gate: drop continue-on-error from the scan step, and triage the
+      # baseline first (an osv-scanner.toml with dated, justified ignores — same rules as
+      # .trivyignore.yaml) so the first red is a real finding, not an accepted risk.
+      - name: Export the shipped dependency graph (Gradle lockfiles)
+        id: osvlock
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          ( cd apps/player && ./gradlew --no-daemon --stacktrace \
+              --init-script "$GITHUB_WORKSPACE/.github/scripts/osv-gradle-lock.init.gradle" \
+              osvResolve --write-locks )
+          total=0
+          args=""
+          while IFS= read -r f; do
+            n=$(grep -cvE '^(#|empty=)' "$f" || true)
+            echo "$f: $n resolved packages"
+            total=$((total + n))
+            args="${args}--lockfile=${f}"$'\n'
+          done < <(find apps/player -path '*/build/osv-lock/gradle.lockfile' -type f | sort)
+          if [ "$total" -eq 0 ]; then
+            echo "::error::Gradle wrote no resolved packages - there is nothing to scan"
+            exit 1
+          fi
+          {
+            echo "packages=$total"
+            echo "scan_args<<OSV_SCAN_ARGS_EOF"
+            echo "--no-ignore"
+            printf '%s' "$args"
+            echo "OSV_SCAN_ARGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: OSV-Scanner on the Gradle lockfiles (report-only)
+        id: osv
+        if: ${{ success() && steps.osvlock.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          # --no-ignore: the lockfiles sit under a git-ignored build/ directory.
+          # One argument per line (the action's entrypoint splits on whitespace).
+          scan-args: |-
+            --format=json
+            --output=osv-gradle-results.json
+            ${{ steps.osvlock.outputs.scan_args }}
+
+      - name: Summarise the dependency scan
+        if: ${{ !cancelled() && steps.osvlock.outcome != 'skipped' }}
+        continue-on-error: true
+        env:
+          LOCK: ${{ steps.osvlock.outcome }}
+          PACKAGES: ${{ steps.osvlock.outputs.packages }}
+        run: |
+          set -uo pipefail
+          result=osv-gradle-results.json
+          {
+            echo "### Gradle dependency scan (OSV-Scanner) — report-only"
+            echo ""
+            if [ "$LOCK" != "success" ]; then
+              echo "The dependency graph could not be exported, so **nothing was scanned**."
+              echo "See the \"Export the shipped dependency graph\" step."
+            elif [ ! -s "$result" ] || ! jq -e '.results | type == "array"' "$result" >/dev/null 2>&1; then
+              echo "OSV-Scanner did **not** produce a readable result, so **nothing is reported**"
+              echo "— this is not a clean bill of health. See the \"OSV-Scanner\" step log."
+            else
+              # One entry per package: the app and the manager share most of their graph.
+              hits=$(jq '[.results[]?.packages[]?
+                          | select((.vulnerabilities // []) | length > 0)
+                          | { key: (.package.name + "@" + .package.version),
+                              ids: [.vulnerabilities[]?.id] }]
+                         | group_by(.key)
+                         | map({ key: .[0].key, ids: (map(.ids[]) | unique | join(", ")) })' "$result")
+              vulnerable=$(printf '%s' "$hits" | jq 'length')
+              if [ -z "$vulnerable" ]; then
+                echo "OSV-Scanner's result could not be summarised — see the \"OSV-Scanner\" step log."
+              elif [ "$vulnerable" = "0" ]; then
+                echo "OSV.dev reports **no known vulnerabilities** in the ${PACKAGES} resolved packages of the"
+                echo "Player and Manager \`releaseRuntimeClasspath\` (as of this run)."
+              else
+                echo "OSV.dev reports known vulnerabilities in **${vulnerable}** of the ${PACKAGES} resolved packages"
+                echo "the Player and Manager APKs ship. The scan step is red for that reason; the job is not."
+                echo ""
+                printf '%s' "$hits" | jq -r '.[] | "- `\(.key)` — \(.ids)"' | head -60 || true
+              fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"

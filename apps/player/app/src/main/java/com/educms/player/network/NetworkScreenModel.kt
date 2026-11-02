@@ -261,8 +261,11 @@ object NetworkScreenPolicy {
 
     /**
      * After Android accepted a network (saved / suggested) the screen watches
-     * this long for it to actually move onto it before saying "Saved" instead
-     * of "Connected" — Android, not VenueOS, decides when to switch.
+     * this long for it to actually move onto it before saying so — "Not
+     * connected yet", with Android's own Wi-Fi list as the next press
+     * (2026-10-26; it used to say "Saved", which the owner read as done).
+     * Android's own page connects within seconds; a suggestion is Android's
+     * call, and this is as long as a person is asked to stand and watch.
      */
     const val WATCH_JOIN_MS = 25_000L
 
@@ -296,6 +299,30 @@ object NetworkScreenPolicy {
         NAME_TAKEN,
         NOT_SUPPORTED,
         FAILED,
+
+        /**
+         * THE SCREEN'S OWN VERDICTS (2026-10-26) — never an engine code.
+         * Android took the network but has not moved onto it: the screen says
+         * so and hands over to Android's Wi-Fi list, where one press on the
+         * saved network connects. "Saved" was never a success and is no
+         * longer shown as one.
+         */
+        NOT_YET,
+
+        /** On the network, with an address, and VenueOS's server has not answered over it. The screen stays on it. */
+        NO_SERVER_YET,
+    }
+
+    /** Why Android has not moved onto the network — the first sentence of "Not connected yet". */
+    enum class NotYetReason {
+        /** The watch ran out. */
+        TIMEOUT,
+
+        /** Android's save page found it already saved, so it connected to nothing. */
+        ALREADY_SAVED,
+
+        /** The screen is on ANOTHER Wi-Fi network Android considers good enough; a suggestion never displaces that. */
+        ON_OTHER_WIFI,
     }
 
     /**
@@ -433,22 +460,34 @@ object NetworkScreenPolicy {
 
     /** Every next step the screen can offer, as the button that does it. */
     enum class Fix {
-        ALLOW,
-        APP_SETTINGS,
+        /**
+         * Location access is asked ONCE, at setup, with every other grant
+         * (2026-10-26 — the owner: "make sure we have all permissions allowed
+         * right at the install … and don't be asking for more"). The Network
+         * screen never raises Android's permission dialog itself any more; a
+         * missing or declined grant is a row on the setup checklist, and this
+         * opens it.
+         */
+        OPEN_SETUP,
         LOCATION_ON,
         WIFI_ON,
         EDIT_PASSWORD,
         TRY_AGAIN,
+
+        /** Ask VenueOS's server again over the network the screen is on (no reconnect). */
+        CHECK_AGAIN,
         SCAN_AGAIN,
         CHOOSE_ANOTHER,
         ANDROID_SETTINGS,
+
+        /** Android's own Wi-Fi list, where one press on the saved network connects NOW. */
+        CONNECT_IN_ANDROID,
         DONE,
     }
 
     /** Why the list is empty → the one button that fixes it (null: nothing on this screen can). */
     fun accessFix(access: WifiScanPolicy.Access): Fix? = when (access) {
-        WifiScanPolicy.Access.NEEDS_PERMISSION -> Fix.ALLOW
-        WifiScanPolicy.Access.DENIED -> Fix.APP_SETTINGS
+        WifiScanPolicy.Access.NEEDS_PERMISSION, WifiScanPolicy.Access.DENIED -> Fix.OPEN_SETUP
         WifiScanPolicy.Access.LOCATION_OFF -> Fix.LOCATION_ON
         WifiScanPolicy.Access.WIFI_OFF -> Fix.WIFI_ON
         WifiScanPolicy.Access.NO_WIFI, WifiScanPolicy.Access.EMERGENCY, WifiScanPolicy.Access.GRANTED -> null
@@ -478,34 +517,77 @@ object NetworkScreenPolicy {
     }
 
     /** What the screen's own eyes add to the engine's word while a join is open. */
-    enum class Promotion { NONE, SUCCESS, SAVED }
+    enum class Promotion { NONE, SUCCESS, NOT_YET, NO_SERVER_YET }
+
+    /** The engine's words after which the screen WATCHES — Android took the network; whether it moves is Android's call. */
+    fun watched(words: Words?): Boolean =
+        words == Words.SAVED || words == Words.SUGGESTED || words == Words.WAITING_APPROVAL
 
     /**
-     * The engine says "saved" / "waiting for Android's approval" and goes
-     * quiet; whether the screen MOVES is Android's call. So the screen
-     * watches: on the network, an address, VenueOS answered → success (what
-     * the evidence proves — player rule 10). Never under a system dialog
-     * (Android's approval or save prompt still on top of the screen), never
-     * for a switch the engine is still proving ([Words.JOINING] ends with
-     * the engine's own word). A save that never moves becomes "Saved" once
-     * the watch runs out; an approval is never declared — it keeps waiting.
+     * The engine says "saved" / "suggested" / "waiting for Android's
+     * approval" and goes quiet; whether the screen MOVES is Android's call.
+     * So the screen watches: on the network, an address, VenueOS answered →
+     * success (what the evidence proves — player rule 10). Never under a
+     * system dialog (Android's approval or save prompt still on top of the
+     * screen), never for a switch the engine is still proving
+     * ([Words.JOINING] ends with the engine's own word).
+     *
+     * When the watch runs out the screen says what it SEES (2026-10-26): on
+     * the network with an address but no answer from VenueOS → "on it, but
+     * VenueOS can't be reached"; anything else → "not connected yet", with
+     * Android's own Wi-Fi list as the next press. Nothing waits forever any
+     * more — an approval Android never asks for on a signage ROM used to.
      */
-    fun promote(words: Words?, stage: Stage, systemDialogUp: Boolean, watchExpired: Boolean): Promotion = when (words) {
-        Words.SAVED, Words.SUGGESTED -> when {
-            stage == Stage.DONE && !systemDialogUp -> Promotion.SUCCESS
-            watchExpired -> Promotion.SAVED
-            else -> Promotion.NONE
-        }
-        Words.WAITING_APPROVAL -> if (stage == Stage.DONE && !systemDialogUp) Promotion.SUCCESS else Promotion.NONE
-        else -> Promotion.NONE
+    fun promote(words: Words?, stage: Stage, systemDialogUp: Boolean, watchExpired: Boolean): Promotion = when {
+        !watched(words) -> Promotion.NONE
+        stage == Stage.DONE && !systemDialogUp -> Promotion.SUCCESS
+        !watchExpired -> Promotion.NONE
+        stage == Stage.CHECKING -> Promotion.NO_SERVER_YET
+        else -> Promotion.NOT_YET
     }
+
+    /**
+     * Must the screen hand over to Android's Wi-Fi list RIGHT NOW, without
+     * watching? Two cases where waiting is a lie (2026-10-26):
+     *
+     *  • [alreadySaved] — Android's save page found the network already saved
+     *    and connected to nothing (it calls `connect()` only for a network it
+     *    saved just now).
+     *  • a SUGGESTION while the screen is on another named Wi-Fi network —
+     *    Android keeps a network it considers sufficient; a suggestion never
+     *    displaces it. Not for the dialog route ([viaDialog]): there Android
+     *    itself is switching, and being on the old network for a second is
+     *    normal.
+     *
+     * Null when the screen should watch (or is already on the network).
+     */
+    fun handoffNow(
+        words: Words?,
+        viaDialog: Boolean,
+        alreadySaved: Boolean,
+        onNetwork: Boolean?,
+        transport: String?,
+    ): NotYetReason? = when {
+        !watched(words) -> null
+        onNetwork == true -> null
+        alreadySaved -> NotYetReason.ALREADY_SAVED
+        !viaDialog && transport == NetworkStatusPolicy.T_WIFI && onNetwork == false -> NotYetReason.ON_OTHER_WIFI
+        else -> null
+    }
+
+    /**
+     * Ask Android for one scan right after a SUGGESTION (never after the
+     * dialog — Settings is already connecting), so network selection runs now
+     * instead of on Android's own backed-off schedule.
+     */
+    fun shouldNudgeScan(words: Words?, viaDialog: Boolean): Boolean = watched(words) && !viaDialog
 
     /** What a result does to the screen. */
     enum class Outcome {
         /** The big check — VenueOS answered over the new network. */
         SUCCESS,
 
-        /** Android took the network but has not moved onto it (yet): watch, then "Saved". */
+        /** Android took the network but has not moved onto it (yet): watch, then say which. */
         SAVED,
 
         /** Still in progress (Android's dialog, Android's approval, the switch being proved). */
@@ -530,10 +612,11 @@ object NetworkScreenPolicy {
 
     fun plan(words: Words, secured: Boolean): Plan = when (words) {
         Words.CONNECTED -> Plan(Fix.DONE, null)
-        Words.SAVED, Words.SUGGESTED -> Plan(Fix.DONE, Fix.CHOOSE_ANOTHER)
-        // Still in progress: the screen's own "Stop waiting" is the first button; where
-        // Android's approval prompt may never show on a signage ROM, its settings are the second.
-        Words.WAITING_APPROVAL -> Plan(Fix.CHOOSE_ANOTHER, Fix.ANDROID_SETTINGS)
+        // Watched words reach a result only through promote(): as NOT_YET / NO_SERVER_YET.
+        Words.SAVED, Words.SUGGESTED -> Plan(Fix.CONNECT_IN_ANDROID, Fix.CHOOSE_ANOTHER)
+        // Still in progress: the screen's own "Stop waiting" is the first button; the second
+        // is Android's own Wi-Fi list, where one press on the network connects.
+        Words.WAITING_APPROVAL -> Plan(Fix.CHOOSE_ANOTHER, Fix.CONNECT_IN_ANDROID)
         Words.WAITING_DIALOG, Words.JOINING -> Plan(Fix.CHOOSE_ANOTHER, null)
         // An open network has no password to fix: a rejection there is a plain retry.
         Words.WRONG_PASSWORD -> if (secured) Plan(Fix.EDIT_PASSWORD, null) else Plan(Fix.TRY_AGAIN, Fix.CHOOSE_ANOTHER)
@@ -544,6 +627,12 @@ object NetworkScreenPolicy {
         Words.NAME_TAKEN, Words.NOT_SUPPORTED -> Plan(Fix.ANDROID_SETTINGS, Fix.CHOOSE_ANOTHER)
         Words.ALERT -> Plan(Fix.DONE, null)
         Words.FAILED -> Plan(Fix.TRY_AGAIN, Fix.CHOOSE_ANOTHER)
+        // Not connected yet: Android's Wi-Fi list is the press that connects; a wrong
+        // password is the other likely cause on a secured network.
+        Words.NOT_YET -> if (secured) Plan(Fix.CONNECT_IN_ANDROID, Fix.EDIT_PASSWORD) else Plan(Fix.CONNECT_IN_ANDROID, Fix.TRY_AGAIN)
+        // On it, no VenueOS: ask the server again (the hotspot may just have come up) — never a
+        // reconnect, the screen IS on the network — or pick another.
+        Words.NO_SERVER_YET -> Plan(Fix.CHECK_AGAIN, Fix.CHOOSE_ANOTHER)
     }
 }
 

@@ -637,12 +637,14 @@ class HeartbeatService : Service() {
          * [PromptTickPolicy]; a refused request is folded into the periodic
          * tick. Safe from any thread, never throws.
          */
-        fun requestPromptTick(ctx: Context, reason: String) {
+        fun requestPromptTick(ctx: Context, reason: String, urgent: Boolean = false) {
             try {
                 val now = SystemClock.elapsedRealtime()
                 val accepted = synchronized(promptLock) {
                     promptTicks = PromptTickPolicy.prune(now, promptTicks)
-                    PromptTickPolicy.accept(now, promptTicks)
+                    // 2026-11-02: an URGENT request (the emergency paint receipt) skips the
+                    // 5 s gap only — the per-window cap still bounds a flapping source.
+                    if (urgent) PromptTickPolicy.acceptUrgent(now, promptTicks) else PromptTickPolicy.accept(now, promptTicks)
                 }
                 if (!accepted) return
                 if (promptReason == null) promptReason = reason

@@ -29,7 +29,7 @@ jest.mock('@/lib/store', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { ScreenPlaybackCard, capabilityKey, excludedReasonKey } = require('../ScreenPlaybackCard') as typeof import('../ScreenPlaybackCard');
+const { ScreenPlaybackCard, capabilityKey, excludedReasonKey, panelFromResolution } = require('../ScreenPlaybackCard') as typeof import('../ScreenPlaybackCard');
 
 const cap = (over: Partial<ScreenPlaybackCapabilityResponse['capability']> = {}): ScreenPlaybackCapabilityResponse['capability'] => ({
   deviceClass: 'goodview/m65guq/t982/sdk30',
@@ -77,8 +77,9 @@ describe('ScreenPlaybackCard', () => {
   it('says "Not checked yet" when nothing is measured, and never invents a capability', () => {
     state.data = { screenId: 's', summary: 'unknown', capability: cap(), declared: null, files: [] };
     render(<ScreenPlaybackCard screenId="s" enabled />);
-    expect(screen.getByTestId('screen-playback-summary').textContent).toBe('Not checked yet');
-    expect(screen.queryByText(/Video up to/)).toBeNull();
+    // Nothing measured: no smoothness claim at all, and no decoder claim either.
+    expect(screen.queryByTestId('screen-playback-summary')).toBeNull();
+    expect(screen.queryByText(/decoder/)).toBeNull();
     expect(screen.queryByTestId('screen-playback-files')).toBeNull();
   });
 
@@ -92,10 +93,70 @@ describe('ScreenPlaybackCard', () => {
     };
     render(<ScreenPlaybackCard screenId="s" enabled />);
     expect(screen.getByTestId('screen-playback-summary').textContent).toBe('Plays video smoothly');
-    expect(screen.getByText(/Video up to 4K · One video at a time on this display/)).toBeTruthy();
+    expect(screen.getByText(/can handle video up to 4K · The decoder plays one video at a time/)).toBeTruthy();
     expect(screen.getByText(/Measured on this screen/)).toBeTruthy();
     expect(screen.getByText('Fall promo.mp4')).toBeTruthy();
     expect(screen.getByText(/0.1% of frames dropped over 10 min · 2160 × 3338/)).toBeTruthy();
+  });
+
+  describe('panel resolution (not decoder capability) leads the card', () => {
+    const unknownData = (): ScreenPlaybackCapabilityResponse => ({
+      screenId: 's',
+      summary: 'unknown',
+      // The browser claims 4K; the panel is 1080p. The claim must not lead.
+      capability: cap({ maxShortEdge: 2160, evidence: 'declared', maxUnitConcurrentVideos: 2, concurrencyEvidence: 'declared' }),
+      declared: null,
+      files: [],
+    });
+
+    it('1080p screen: says so, says videos play at 1080p, and no smoothness claim without reports', () => {
+      state.data = unknownData();
+      render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution="1920x1080" />);
+      expect(screen.getByTestId('screen-playback-panel-line').textContent).toBe('1080p screen');
+      expect(screen.getByText('Videos play at 1080p on this screen')).toBeTruthy();
+      expect(screen.queryByTestId('screen-playback-summary')).toBeNull();
+      expect(screen.queryByText(/4K/)).toBeNull();
+      expect(screen.queryByText(/at once/)).toBeNull();
+    });
+
+    it('4K screen: full 4K', () => {
+      state.data = unknownData();
+      render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution="3840 × 2160" />);
+      expect(screen.getByTestId('screen-playback-panel-line').textContent).toBe('4K screen');
+      expect(screen.getByText('Videos play at full 4K on this screen')).toBeTruthy();
+    });
+
+    it('portrait 1080p counts as 1080p; an odd size shows the real size and promises nothing', () => {
+      state.data = unknownData();
+      const { unmount } = render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution="1080x1920" />);
+      expect(screen.getByTestId('screen-playback-panel-line').textContent).toBe('1080p screen');
+      unmount();
+      render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution="1280x720" />);
+      expect(screen.getByTestId('screen-playback-panel-line').textContent).toBe('1280 × 720 screen');
+      expect(screen.queryByText(/Videos play at/)).toBeNull();
+    });
+
+    it('unknown resolution: no panel claim, card stays quiet; decoder facts live in Technical details', () => {
+      state.data = unknownData();
+      const { container, unmount } = render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution={null} />);
+      expect(container.innerHTML).toBe('');
+      unmount();
+      render(<ScreenPlaybackCard screenId="s" enabled part="files" resolution={null} />);
+      expect(screen.getByText(/can handle video up to 4K · The decoder can play 2 videos at once/)).toBeTruthy();
+    });
+
+    it('measured playback still reports smoothness beside the panel line', () => {
+      state.data = { ...unknownData(), summary: 'smooth', files: [file()] };
+      render(<ScreenPlaybackCard screenId="s" enabled part="summary" resolution="1920x1080" />);
+      expect(screen.getByTestId('screen-playback-summary').textContent).toBe('Plays video smoothly');
+    });
+  });
+
+  it('panelFromResolution', () => {
+    expect(panelFromResolution('1920x1080')?.kind).toBe('1080p');
+    expect(panelFromResolution('3840x2160')?.kind).toBe('4k');
+    expect(panelFromResolution('garbage')).toBeNull();
+    expect(panelFromResolution(undefined)).toBeNull();
   });
 
   it('a double-sided unit stuttering on its 1080p copy says so, file by file', () => {

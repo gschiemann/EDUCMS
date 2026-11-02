@@ -27,8 +27,8 @@ describe('<ScreenSleepWakeSection />', () => {
   it('an Android 13 device-admin screen: real off, every path, on now', () => {
     render(<ScreenSleepWakeSection screen={base} nowMs={NOW} />);
     expect(rtl.getByText('Android 13')).toBeTruthy();
-    expect(rtl.getByTestId('sleep-wake-mechanism').textContent).toBe('Turns the panel off for real (Android lock).');
-    expect(rtl.getByTestId('sleep-wake-now').textContent).toBe('On now: Android reports the panel on.');
+    expect(rtl.getByTestId('sleep-wake-mechanism').textContent).toBe('Sleep turns the screen off for real.');
+    expect(rtl.getByTestId('sleep-wake-now').textContent).toBe('Awake now.');
     expect(rtl.getAllByText('Yes')).toHaveLength(3);
   });
 
@@ -40,7 +40,7 @@ describe('<ScreenSleepWakeSection />', () => {
       />,
     );
     const text = rtl.getByTestId('sleep-wake-section').textContent ?? '';
-    expect(text).toContain('Can only cover the screen with black. The backlight stays on.');
+    expect(text).toContain('Sleep shows a black screen. The backlight stays on.');
     expect(text).toContain('They never cut power.');
     expect(text).not.toMatch(/turned off \(seen\)/);
   });
@@ -85,7 +85,7 @@ describe('<ScreenSleepWakeSection />', () => {
     const proof = rtl.getByTestId('sleep-wake-proof').textContent ?? '';
     expect(proof).toMatch(/Last turn-off: turned off \(seen\)/);
     expect(proof).toMatch(/Last all-clear: turned off \(seen\), because it was off before the alert/);
-    expect(rtl.getByTestId('sleep-wake-now').textContent).toMatch(/^Asleep now: Android reports the panel off since /);
+    expect(rtl.getByTestId('sleep-wake-now').textContent).toMatch(/^Asleep now, since /);
   });
 
   it('names Android as the cause when the off matches the box inactivity sleep', () => {
@@ -145,5 +145,20 @@ describe('<ScreenSleepWakeSection />', () => {
   it('renders nothing without a screen', () => {
     const { container } = render(<ScreenSleepWakeSection screen={null} nowMs={NOW} />);
     expect(container.textContent).toBe('');
+  });
+
+  it('summary view: plain words, no engineer terms, lists only what works', () => {
+    render(<ScreenSleepWakeSection screen={base} nowMs={NOW} view="summary" />);
+    const text = rtl.getByTestId('sleep-wake-section').textContent ?? '';
+    expect(text).toContain('How sleep works');
+    expect(text).not.toMatch(/Android lock|Android reports|Needs player|Unknown|Yes/);
+    // History evidence is a separate view.
+    expect(rtl.queryByTestId('sleep-wake-proof')).toBeNull();
+  });
+
+  it('history view carries only the evidence lines', () => {
+    render(<ScreenSleepWakeSection screen={base} nowMs={NOW} view="history" />);
+    expect(rtl.getByTestId('sleep-wake-proof')).toBeTruthy();
+    expect(rtl.queryByTestId('sleep-wake-mechanism')).toBeNull();
   });
 });
