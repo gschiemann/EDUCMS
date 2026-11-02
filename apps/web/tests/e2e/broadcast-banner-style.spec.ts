@@ -7,6 +7,8 @@ import { bootMockPlayer, playerManifest, playerIds, ok } from './helpers/mock-pl
  * them (`banner` in the TEXT_BROADCAST payload).
  */
 async function push(page: Page, type: string, payload: unknown = {}) {
+  // A slow runner may not have opened the (stubbed) realtime socket yet.
+  await page.waitForFunction(() => !!(window as unknown as { __eduTestRealtime?: unknown }).__eduTestRealtime, undefined, { timeout: 60000 });
   await page.evaluate(({ type, payload }) => {
     const socket = (window as unknown as { __eduTestRealtime: { deliver(message: unknown): void } }).__eduTestRealtime;
     socket.deliver({ type, timestamp: Date.now(), signature: 'test-signature', eventId: `${type}-${Date.now()}`, payload });
