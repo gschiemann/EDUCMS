@@ -4,9 +4,9 @@ import { PublicSourceCache } from './public-source-cache';
 const array = (v: any): any[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const text = (v: any) =>
   String(v?.['#text'] ?? v ?? '')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .slice(0, 1000);
 export interface AirportNotice {
   airport: string;
