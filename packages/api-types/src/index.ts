@@ -126,6 +126,7 @@ import { z } from 'zod';
 // The Concierge's POS selection + website POS detection (2026-09-22) — defined
 // beside the rest of the POS-aware Concierge contract, used by the chat schema.
 import { ConciergePosSelectionSchema, ConciergeDetectedPosSchema } from './concierge-pos';
+import { BannerStyleInputSchema } from './broadcast-banner';
 
 export const ScopeType = z.enum(['tenant', 'group', 'device']);
 export type ScopeType = z.infer<typeof ScopeType>;
@@ -232,6 +233,8 @@ export const BroadcastInputSchema = z
     screenIds: z.array(Id).min(1).max(500).optional(),
     durationMs: z.number().int().positive().max(24 * 60 * 60 * 1000).optional(),
     expiresAt: EpochSecondsOrIso.optional(),
+    /** Banner colour / scroll options (INFO + WARN only; see broadcast-banner.ts). */
+    banner: BannerStyleInputSchema.optional(),
   })
   .strict();
 export type BroadcastInput = z.infer<typeof BroadcastInputSchema>;
@@ -1039,6 +1042,9 @@ export const TemplateReplaceZonesSchema = z
   .passthrough();
 export type TemplateReplaceZonesInput = z.infer<typeof TemplateReplaceZonesSchema>;
 
+
+// Broadcast banner colour + scroll options (2026-11-01).
+export * from './broadcast-banner';
 
 // VenueOS — multi-industry vertical taxonomy (2026-05-02).
 // Drives Tenant.vertical, Template.vertical, terminology, defaults.
