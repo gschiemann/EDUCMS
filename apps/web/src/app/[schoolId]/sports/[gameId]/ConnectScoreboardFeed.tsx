@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { Segmented } from '@/components/ui/segmented';
 import { computeFeedStatus, type FeedStatus } from '@/lib/cts-merge';
 import { serverClock } from '@/lib/server-clock';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
@@ -267,23 +268,20 @@ export function ConnectScoreboardFeed({
       <div className="text-[13px] font-bold text-slate-900">{t('title')}</div>
       <p className="mt-0.5 text-[11px] text-slate-500">{t('intro')}</p>
 
-      {/* Vendor recipe chips — swap ONLY the instruction text. */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {VENDORS.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => setVendor(v.key)}
-            aria-pressed={vendor === v.key}
-            className={`min-h-[32px] rounded-full border px-3 py-1 text-[12px] font-bold transition-colors ${
-              vendor === v.key
-                ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-            }`}
-          >
-            {v.label ?? t('vendorOther')}
-          </button>
-        ))}
+      {/* Vendor recipe — swap ONLY the instruction text. One Segmented
+          control (pill audit 2026-11-02): a choose-one, not a row of pills. */}
+      <div className="mt-2">
+        <Segmented<VendorKey>
+          value={vendor}
+          onChange={setVendor}
+          ariaLabel={t('vendorAria')}
+          testId="feed-vendor"
+          options={[
+            { value: VENDORS[0].key, label: VENDORS[0].label ?? t('vendorOther') },
+            { value: VENDORS[1].key, label: VENDORS[1].label ?? t('vendorOther') },
+            { value: VENDORS[2].key, label: VENDORS[2].label ?? t('vendorOther') },
+          ] as const}
+        />
       </div>
       <p className="mt-1.5 text-[10px] text-slate-400" data-testid="feed-vendor-note">
         {t('vendorNote')}
