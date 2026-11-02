@@ -20,6 +20,7 @@
  * district).
  */
 
+import { StatusPill } from '@/components/ui/status-pill';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CreditCard, Loader2, AlertTriangle, ArrowUpCircle } from 'lucide-react';
@@ -80,13 +81,9 @@ export function LicenseCard() {
         </div>
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
           <span className="text-sm font-bold text-slate-800 shrink-0">{t('settings.license.title')}</span>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
-            {tierLabel}
-          </span>
+          <StatusPill tone="brand">{tierLabel}</StatusPill>
           {data.status !== 'ACTIVE' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-[11px] font-bold text-rose-700">
-              <AlertTriangle className="w-3 h-3" /> {data.status}
-            </span>
+            <StatusPill tone="danger" icon={<AlertTriangle className="w-3 h-3" aria-hidden />}>{data.status}</StatusPill>
           )}
           <span className={`text-[11px] truncate ${data.atLimit ? 'text-rose-700 font-bold' : isWarning ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
             <span className="font-bold">{data.seatsUsed}</span>

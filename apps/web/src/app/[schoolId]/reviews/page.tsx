@@ -27,6 +27,8 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { Segmented } from '@/components/ui/segmented';
+import { StatusPill } from '@/components/ui/status-pill';
 import { use } from 'react';
 import { Check, X, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
 import { useSubmissions, useSubmission, useDecideSubmission, type SubmissionRow } from '@/hooks/use-api';
@@ -84,19 +86,17 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
             {t('reviewsPage.reviewsHeading')}
           </h1>
           <p className="text-xs text-slate-500 mt-1">{t('reviewsPage.reviewsSubtitle')}</p>
-          <div className="mt-3 inline-flex rounded-lg border border-slate-200 overflow-hidden">
-            {(['PENDING', 'APPROVED', 'REJECTED'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => { setStatusFilter(s); setSelectedId(null); }}
-                className={`px-3 py-2 text-[11px] font-bold transition-colors min-h-[44px] ${
-                  statusFilter === s ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {t('reviewsPage.tabLabel', { status: s })}
-              </button>
-            ))}
+          <div className="mt-3">
+            <Segmented
+              value={statusFilter}
+              onChange={(s) => { setStatusFilter(s); setSelectedId(null); }}
+              ariaLabel={t('reviewsPage.reviewsHeading')}
+              options={[
+                { value: 'PENDING', label: t('reviewsPage.tabLabel', { status: 'PENDING' }) },
+                { value: 'APPROVED', label: t('reviewsPage.tabLabel', { status: 'APPROVED' }) },
+                { value: 'REJECTED', label: t('reviewsPage.tabLabel', { status: 'REJECTED' }) },
+              ] as const}
+            />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -159,20 +159,16 @@ function SubmissionRowCard({ submission, selected, onClick }: { submission: Subm
             <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{submission.note}</div>
           )}
         </div>
-        <StatusPill status={submission.status} />
+        <ReviewStatusPill status={submission.status} />
       </div>
     </button>
   );
 }
 
-function StatusPill({ status }: { status: SubmissionRow['status'] }) {
+function ReviewStatusPill({ status }: { status: SubmissionRow['status'] }) {
   const t = useTranslations();
-  const cls = status === 'PENDING'
-    ? 'bg-amber-100 text-amber-700'
-    : status === 'APPROVED'
-      ? 'bg-emerald-100 text-emerald-700'
-      : 'bg-rose-100 text-rose-700';
-  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{t('reviewsPage.statusBadge', { status })}</span>;
+  const tone = status === 'PENDING' ? 'warning' : status === 'APPROVED' ? 'success' : 'danger';
+  return <StatusPill tone={tone}>{t('reviewsPage.statusBadge', { status })}</StatusPill>;
 }
 
 function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => void; statusFilter: string }) {
@@ -215,7 +211,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
           <h2 className="text-xl font-bold text-slate-800">{t('reviewsPage.submissionFrom', { submitter })}</h2>
           <p className="text-xs text-slate-500 mt-1">{t('reviewsPage.detailMeta', { count: itemCount, date: new Date(submission.createdAt).toLocaleString() })}</p>
         </div>
-        <StatusPill status={submission.status} />
+        <ReviewStatusPill status={submission.status} />
       </div>
 
       {submission.note && (

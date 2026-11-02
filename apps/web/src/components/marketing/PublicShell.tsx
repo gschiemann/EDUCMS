@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { BrandMark } from './BrandMark';
 import { Footer } from './Footer';
 import { PublicT } from './PublicText';
+import { SIGNUP_OPEN, signupHref } from '@/lib/signup-gate';
 
 /** Header labels follow the reader's language through the same client leaf the footer uses. */
 const h = (k: string) => <PublicT k={`header.${k}`} />;
@@ -45,10 +46,10 @@ export function PublicHeader() {
             {h('signIn')}
           </Link>
           <Link
-            href="/signup"
+            href={signupHref()}
             className="text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-colors"
           >
-            {h('startTrial')}
+            {h(SIGNUP_OPEN ? 'startTrial' : 'requestInfo')}
           </Link>
         </div>
       </div>

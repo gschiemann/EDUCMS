@@ -378,6 +378,14 @@ internal class OtaCheck(
                         if (confirmAction == PendingInstallConfirmation.CheckAction.KEEP_NEEDS_TAP) {
                             PlayerLogger.i(TAG, "OTA check: push held — $target is waiting for a person to tap Install (kept file: ${stored != null})")
                             reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage(target))
+                        } else if (stored != null && OtaAttemptPolicy.restateNeedsTap(stored, dialogOpen = false)) {
+                            // 1.1.56 — no dialog is open, but the kept build waits for
+                            // the Back menu's Install button: say so (staged wording).
+                            if (stored.outcome == OtaAttemptPolicy.Outcome.COMMITTED) {
+                                OtaAttemptStore.recordOutcome(applicationContext, stored.versionCode, OtaAttemptPolicy.Outcome.NEEDS_TAP)
+                            }
+                            PlayerLogger.i(TAG, "OTA check: push held — $target waits for the Back menu's Install button")
+                            reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, OtaAttemptPolicy.stagedNeedsTapMessage(target))
                         } else {
                             PlayerLogger.i(TAG, "OTA check: push held for a tap, but no install dialog is open — not re-reporting NEEDS_TAP (confirm=$confirmAction)")
                         }
@@ -597,6 +605,14 @@ internal class OtaCheck(
                     // launched is fresh. An unanswered one was expired above.
                     if (confirmAction == PendingInstallConfirmation.CheckAction.KEEP_NEEDS_TAP) {
                         reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, needsTapMessage("v$latestVn"))
+                    } else if (OtaAttemptPolicy.restateNeedsTap(attempt, dialogOpen = false)) {
+                        // 1.1.56 — a commit whose status never came back (or a state
+                        // that drifted to ERROR / INSTALLING): the Install button.
+                        if (attempt.outcome == OtaAttemptPolicy.Outcome.COMMITTED) {
+                            OtaAttemptStore.recordOutcome(applicationContext, latestVc, OtaAttemptPolicy.Outcome.NEEDS_TAP)
+                        }
+                        PlayerLogger.i(TAG, "OTA: v$latestVn waits for the Back menu's Install button (outcome=${attempt.outcome})")
+                        reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, OtaAttemptPolicy.stagedNeedsTapMessage("v$latestVn"))
                     } else {
                         PlayerLogger.i(TAG, "OTA: v$latestVn waits for a push or a person — no install dialog is open (confirm=$confirmAction)")
                     }
@@ -794,6 +810,8 @@ internal class OtaCheck(
                 PendingInstallStore.noteCommitted(ctx, sessionId, pushKey)
                 session.commit(statusPi.intentSender)
                 PlayerLogger.i(TAG, "OTA install committed via PackageInstaller.Session (sessionId=$sessionId)")
+                // 1.1.56 — if no status ever comes back, offer the Install button.
+                OtaCommitWatchdogWorker.schedule(ctx, versionCode)
             } finally {
                 session.close()
             }
@@ -803,10 +821,21 @@ internal class OtaCheck(
             // v1.0.68 — surface the install failure to the dashboard.
             // Previously this fell through to a notification the OEM
             // battery-saver often eats, leaving the operator no signal.
-            reportOtaState(
-                apiRoot, deviceFingerprint, "ERROR", null,
-                "Install could not start automatically: ${ex.message?.take(160) ?: "unknown error"}",
-            )
+            // 1.1.56 — never ERROR (which shows no button): an unattended commit
+            // that could not start waits for the Back menu's Install button; a
+            // person's own press that failed is FAILED_START (button still shown).
+            val outcome = OtaAttemptPolicy.outcomeForStartFailure(userInitiated)
+            val target = OtaAttemptStore.read(ctx)?.takeIf { it.versionCode == versionCode }?.versionName?.let { "v$it" } ?: "the update"
+            if (outcome == OtaAttemptPolicy.Outcome.NEEDS_TAP) {
+                OtaAttemptStore.recordOutcome(ctx, versionCode, outcome)
+                reportOtaState(apiRoot, deviceFingerprint, "NEEDS_TAP", null, OtaAttemptPolicy.stagedNeedsTapMessage(target))
+            } else {
+                OtaAttemptStore.recordOutcome(ctx, versionCode, outcome, OtaAttemptPolicy.START_FAILURE_CODE)
+                reportOtaState(
+                    apiRoot, deviceFingerprint, OtaAttemptPolicy.failedState(OtaAttemptPolicy.START_FAILURE_CODE), null,
+                    "Installing $target could not start: ${ex.message?.take(160) ?: "unknown error"}",
+                )
+            }
             postFallbackInstallNotification(ctx, apk, forced)
         }
     }

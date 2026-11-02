@@ -185,8 +185,8 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     await expect(page.getByRole('dialog', { name: 'Screen options' })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('button', { name: 'Exit to launcher' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry now' })).toBeVisible();
-    // Browser boot (no Android bridge): Device setup must NOT be offered.
-    await expect(page.getByRole('button', { name: 'Device setup' })).toHaveCount(0);
+    // Browser boot (no Android bridge): Finish screen setup must NOT be offered.
+    await expect(page.getByRole('button', { name: 'Finish screen setup' })).toHaveCount(0);
     // The failure reason surfaces once the register loop has been failing.
     await expect(page.getByText(/Not connected —/)).toBeVisible({ timeout: 45_000 });
 
