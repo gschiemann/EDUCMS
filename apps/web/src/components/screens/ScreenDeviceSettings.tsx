@@ -80,15 +80,29 @@ export function ScreenDeviceSettings({
   screenId,
   readOnly,
   nowMs,
+  embedded,
 }: {
   screenId: string;
   /** RESTRICTED_VIEWER — every control inert. */
   readOnly?: boolean;
   /** Test clock; the real one otherwise. */
   nowMs?: number;
+  /**
+   * Mounted inside the drawer's Advanced section (2026-11-01): no toggle of
+   * its own — the body shows at once, and nothing at all when the unit has
+   * no Android settings to offer.
+   */
+  embedded?: boolean;
 }) {
   const t = useTranslations('screens.deviceSettings');
   const [open, setOpen] = useState(false);
+  if (embedded) {
+    return (
+      <div data-testid="device-settings-section">
+        <DeviceSettingsBody screenId={screenId} readOnly={!!readOnly} nowMs={nowMs} heading />
+      </div>
+    );
+  }
   return (
     <div className="border-t border-slate-100" data-testid="device-settings-section">
       <button
@@ -109,7 +123,7 @@ export function ScreenDeviceSettings({
   );
 }
 
-function DeviceSettingsBody({ screenId, readOnly, nowMs }: { screenId: string; readOnly: boolean; nowMs?: number }) {
+function DeviceSettingsBody({ screenId, readOnly, nowMs, heading }: { screenId: string; readOnly: boolean; nowMs?: number; heading?: boolean }) {
   const t = useTranslations('screens.deviceSettings');
   const locale = useLocale();
   const q = useDeviceSettings(screenId);
@@ -158,32 +172,21 @@ function DeviceSettingsBody({ screenId, readOnly, nowMs }: { screenId: string; r
     </div>
   );
 
-  if (model.kind === 'not-reported') {
-    return (
-      <div className="pb-3" data-testid="device-settings-not-reported">
-        <p className="px-3.5 text-[10px] text-slate-500 leading-snug">{t('notReported')}</p>
-      </div>
-    );
-  }
-  if (model.kind === 'old-android') {
-    return (
-      <div className="pb-3" data-testid="device-settings-old-android">
-        <p className="px-3.5 text-[10px] text-slate-500 leading-snug">
-          {t('needsAndroid13', { sdk: model.sdk ?? '?' })}
-        </p>
-      </div>
-    );
-  }
+  // A unit that has not reported, or is too old for these settings, shows
+  // nothing: no "needs Android 13" / "not reported" explainer (2026-11-01).
+  if (model.kind !== 'ready') return null;
+  if (model.rows.length === 0 && !model.net && !hasLoadFacts(model.load)) return null;
 
   return (
     <div className="pb-2">
-      {header}
-      <NetworkLine net={model.net} />
-      {model.olderAndroidSdk !== null && (
-        <p className="px-3.5 pb-1 text-[10px] text-slate-400 leading-snug" data-testid="device-settings-older-android">
-          {t('olderAndroidNote', { sdk: model.olderAndroidSdk })}
-        </p>
+      {heading && (
+        <h4 className="flex items-center gap-2 px-3.5 pt-3 pb-1 text-[13px] font-bold text-slate-700">
+          <Settings2 className="w-3.5 h-3.5 text-slate-400" />
+          {t('title')}
+        </h4>
       )}
+      {model.rows.length > 0 && header}
+      <NetworkLine net={model.net} />
       {model.rows.map((row) => (
         <SettingRow
           key={row.key}
@@ -392,7 +395,8 @@ function stateLine(t: T, row: DeviceSettingRow): { text: string; tone: string } 
     case 'not-managed':
       return null;
     case 'not-possible':
-      return { text: t('state.notPossible', { reason: why(s.why) }), tone: 'text-slate-400' };
+      // Never drawn (2026-11-01): a unit that cannot do this says nothing.
+      return null;
     case 'sending':
       return { text: t('state.sending'), tone: 'text-amber-700' };
     case 'applied':

@@ -25,7 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, Power, PowerOff, RefreshCw, Download, X, XCircle, MinusCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useBulkScreenAction, type BulkScreenResponse } from '@/hooks/use-api';
-import { groupResults, reasonKey, requestFor, type BulkKind } from './bulkSelection';
+import { groupResults, reasonKey, refusalKey, requestFor, type BulkKind } from './bulkSelection';
 
 const BRAND = { background: 'var(--brand-primary, #4f46e5)' } as const;
 const BTN = 'min-h-11 sm:min-h-0 sm:h-9 px-3.5 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -108,11 +108,17 @@ const CONFIRM_KEY: Record<BulkKind, string> = {
 
 type Phase =
   | { k: 'planning' }
-  | { k: 'plan-error'; message: string }
+  | { k: 'plan-error'; message: string; code?: string }
   | { k: 'confirm'; plan: BulkScreenResponse }
   | { k: 'sending'; plan: BulkScreenResponse }
-  | { k: 'send-error'; plan: BulkScreenResponse; message: string }
+  | { k: 'send-error'; plan: BulkScreenResponse; message: string; code?: string }
   | { k: 'done'; result: BulkScreenResponse };
+
+/** The server's error code, when it sent one (apiFetch puts it on the thrown error). */
+const errorCode = (e: unknown): string | undefined => {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : undefined;
+};
 
 export interface BulkActionSheetProps {
   kind: BulkKind;
@@ -141,7 +147,7 @@ export function BulkActionSheet({ kind, screenIds, onClose, onRetry, onSent }: B
     let live = true;
     mutateRef.current({ ...request, dryRun: true })
       .then((plan) => { if (live) setPhase({ k: 'confirm', plan }); })
-      .catch((e: unknown) => { if (live) setPhase({ k: 'plan-error', message: e instanceof Error ? e.message : String(e) }); });
+      .catch((e: unknown) => { if (live) setPhase({ k: 'plan-error', message: e instanceof Error ? e.message : String(e), code: errorCode(e) }); });
     return () => { live = false; };
   }, [request]);
 
@@ -161,13 +167,19 @@ export function BulkActionSheet({ kind, screenIds, onClose, onRetry, onSent }: B
       setPhase({ k: 'done', result });
       onSent?.(result);
     } catch (e) {
-      setPhase({ k: 'send-error', plan, message: e instanceof Error ? e.message : String(e) });
+      setPhase({ k: 'send-error', plan, message: e instanceof Error ? e.message : String(e), code: errorCode(e) });
     }
   };
 
   const reasonText = (reason?: string, message?: string) => {
     const key = reasonKey(reason);
     return key ? t(key) : message ?? t('screens.bulk.reason.error');
+  };
+  // A refusal by the owner's fleet push rules is worded in the operator's
+  // language; any other failure keeps the server's own message.
+  const errorText = (p: { message: string; code?: string }) => {
+    const key = refusalKey(p.code);
+    return key ? t(key) : p.message;
   };
   const what = () => {
     switch (kind) {
@@ -217,7 +229,7 @@ export function BulkActionSheet({ kind, screenIds, onClose, onRetry, onSent }: B
 
         {phase.k === 'plan-error' && (
           <>
-            <p role="alert" className="mt-4 text-sm font-semibold text-rose-600">{t('screens.bulk.planError', { message: phase.message })}</p>
+            <p role="alert" className="mt-4 text-sm font-semibold text-rose-600">{t('screens.bulk.planError', { message: errorText(phase) })}</p>
             <div className="mt-5 flex justify-end">
               <button type="button" onClick={onClose} className={BTN_QUIET}>{t('screens.bulk.close')}</button>
             </div>
@@ -250,7 +262,7 @@ export function BulkActionSheet({ kind, screenIds, onClose, onRetry, onSent }: B
               </ul>
               {willSend === 0 && <p className="mt-3 text-sm font-semibold text-slate-500">{t('screens.bulk.nothingToSend')}</p>}
               {phase.k === 'send-error' && (
-                <p role="alert" className="mt-3 text-sm font-semibold text-rose-600">{t('screens.bulk.sendError', { message: phase.message })}</p>
+                <p role="alert" className="mt-3 text-sm font-semibold text-rose-600">{t('screens.bulk.sendError', { message: errorText(phase) })}</p>
               )}
               <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button type="button" onClick={onClose} disabled={sending} className={`${BTN_QUIET} justify-center`}>{t('screens.bulk.cancel')}</button>

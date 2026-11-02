@@ -458,8 +458,8 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(dialog).getByRole('button', { name: 'Portrait' })).toBeInTheDocument();
     // The app-update control, with the popover's real push reporting behind it.
     expect(await within(dialog).findByTestId('apk-push')).toBeInTheDocument();
-    // Device details — the read-only diagnostics drawer.
-    expect(within(dialog).getByRole('button', { name: /Device details/i })).toBeInTheDocument();
+    // Advanced (closed) holds the diagnostics: Android settings, network, device details.
+    expect(within(dialog).getByRole('button', { name: /^Advanced/i })).toBeInTheDocument();
   });
 
   /**

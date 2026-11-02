@@ -161,6 +161,20 @@ export function describeStep(step: SetupStep): {
  */
 export const SETUP_PUSH_MIN_VERSION = '1.1.6';
 
+/**
+ * The one-line summary the Settings tab shows (2026-11-01): how many
+ * REQUIRED steps still need doing. Optional steps and the
+ * `managerInstallPromptShown` row (whose `held` is always false — Android
+ * cannot be asked) never count, so a fully-provisioned panel reads
+ * "Setup complete" instead of nagging about things that may already be done.
+ */
+export function summarizeSetup(setup: SetupTelemetry): { needed: number; complete: boolean } {
+  const needed = setup.steps.filter(
+    (s) => s.applies && !s.optional && describeStep(s).label === 'Needed',
+  ).length;
+  return { needed, complete: needed === 0 };
+}
+
 export function supportsSetupPush(playerVersion: unknown): boolean {
   const v = str(playerVersion);
   if (!v) return false;

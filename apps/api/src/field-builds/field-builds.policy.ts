@@ -14,6 +14,16 @@
  *              pushed screen is ever offered the candidate.
  */
 import type { FieldBuildWindow } from '../player-ota/field-candidate';
+import {
+  OFF_HOURS,
+  listScreenNames,
+  type HardwareClassVerdict,
+  type NamedScreen,
+  type OffHoursVerdict,
+} from '../player-ota/fleet-push-policy';
+
+// Shared with the bulk "Send update" route's refusals (screens/bulk).
+export { listScreenNames };
 
 /** The arm form's durations are minutes; the ceiling is the gate's own 24 h. */
 export const MIN_WINDOW_MINUTES = 5;
@@ -161,6 +171,96 @@ export function parsePushInput(body: unknown): PushInput {
     throw new FieldBuildInputError('FIELD_BUILD_PUSH_OVERRIDE_INVALID', 'overrideWindow must be true or false.');
   }
   return { screenIds, overrideWindow: b.overrideWindow === true };
+}
+
+// ─── The fleet push rules (player-ota/fleet-push-policy.ts) ────────────────
+
+/**
+ * `overrideMassPushRules` on an arm or a push body: the owner's explicit
+ * override of "one hardware class at a time" and "off-hours" for a set of more
+ * than one screen. Optional, a real boolean or nothing — like `overrideWindow`
+ * — and the dashboard does not send it. A used override is recorded in the
+ * window's and the push's audit rows. It never sets aside the bench list.
+ */
+export function parseMassPushOverride(body: unknown): boolean {
+  const v = asRecord(body).overrideMassPushRules;
+  if (v !== undefined && typeof v !== 'boolean') {
+    throw new FieldBuildInputError('FIELD_BUILD_MASS_PUSH_OVERRIDE_INVALID', 'overrideMassPushRules must be true or false.');
+  }
+  return v === true;
+}
+
+/** A refusal in the service's `{ code, message, ...extra }` shape; the web words each code in en / es / zh. */
+export interface PushRuleRefusal {
+  status: 409 | 422;
+  code: string;
+  message: string;
+  extra: Record<string, unknown>;
+}
+
+/** Rule 1, for a window being armed or a push. Only call with a verdict that is not ok. */
+export function hardwareClassRefusal(what: 'window' | 'push', v: HardwareClassVerdict): PushRuleRefusal {
+  if (v.reason === 'mixed') {
+    return {
+      status: 422,
+      code: 'FIELD_BUILD_MIXED_HARDWARE',
+      message:
+        `These screens are more than one kind of hardware: ${v.classes.join(', ')}. ` +
+        (what === 'window' ? 'Arm a window for one kind at a time.' : 'Push one kind at a time.'),
+      extra: { classes: v.classes, unknownScreens: v.unknown },
+    };
+  }
+  const n = v.unknown.length;
+  return {
+    status: 422,
+    code: 'FIELD_BUILD_HARDWARE_UNKNOWN',
+    message: v.incomplete
+      ? 'These organizations have too many screens to show they are one kind of hardware. Name the screens instead.'
+      : `${listScreenNames(v.unknown)} ${n === 1 ? 'has' : 'have'} no known hardware model, so ` +
+        (what === 'window'
+          ? 'this window cannot be shown to be one kind of hardware. Name screens of one known kind, or a single screen.'
+          : 'this push cannot be shown to be one kind of hardware. Push one screen at a time.'),
+    extra: { classes: v.classes, unknownScreens: v.unknown, incomplete: v.incomplete },
+  };
+}
+
+/** Rule 3, for a push. Only call with a verdict that is not ok. */
+export function offHoursRefusal(v: OffHoursVerdict): PushRuleRefusal {
+  const hours = `${OFF_HOURS.start} and ${OFF_HOURS.end}`;
+  if (v.reason === 'no-time-zone') {
+    const one = v.noZone.length === 1;
+    return {
+      status: 422,
+      code: 'FIELD_BUILD_TIME_ZONE_UNKNOWN',
+      message:
+        `${listScreenNames(v.noZone)} ${one ? 'has' : 'have'} no time zone, so a push to more than one screen ` +
+        `cannot be checked against the off-hours (${hours} local). Set ${one ? 'its' : 'their'} time zone, ` +
+        `or push ${one ? 'it on its' : 'them on their'} own.`,
+      extra: { screens: v.noZone, offHours: OFF_HOURS },
+    };
+  }
+  const shown = v.outside.slice(0, 3).map((s) => `${s.localTime ?? '?'} at ${s.name ?? s.id.slice(0, 8)} (${s.timeZone})`);
+  const more = v.outside.length > shown.length ? ` and ${v.outside.length - shown.length} more` : '';
+  return {
+    status: 409,
+    code: 'FIELD_BUILD_OUTSIDE_OFF_HOURS',
+    message:
+      `A push to more than one screen goes out only between ${hours} in each screen's own time zone. ` +
+      `It is ${shown.join(', ')}${more}. Push one screen at a time, or wait.`,
+    extra: { screens: v.outside, offHours: OFF_HOURS },
+  };
+}
+
+/** Rule 2, for a push. */
+export function benchRefusal(offBench: ReadonlyArray<NamedScreen>): PushRuleRefusal {
+  return {
+    status: 422,
+    code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+    message:
+      `Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and ` +
+      `${listScreenNames(offBench)} ${offBench.length === 1 ? 'is' : 'are'} not on that list.`,
+    extra: { screens: offBench },
+  };
 }
 
 // ─── The window's own state ────────────────────────────────────────────────

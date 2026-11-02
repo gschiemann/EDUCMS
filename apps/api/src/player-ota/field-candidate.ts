@@ -5,6 +5,7 @@ import {
   type FieldCandidateRelease,
 } from './field-candidate-releases';
 import { evaluateReleaseForFleet } from './release-policy';
+import { isFieldBenchScreen } from './fleet-push-policy';
 import { supabaseOrigin } from '../storage/supabase-origin';
 
 const uuid = (v: unknown): v is string =>
@@ -196,6 +197,12 @@ function macMatches(payload: string, signature: Buffer, env: NodeJS.ProcessEnv):
     return signature.length === expected.length && timingSafeEqual(signature, expected);
   });
 }
+/**
+ * The ticket is minted — and honoured — only for a screen the gate admits
+ * AND, when PLAYER_FIELD_BENCH_SCREENS is set, a listed bench screen
+ * (fleet-push-policy.ts). Unset, the bench check admits every screen, so the
+ * ticket is exactly what it was before the variable existed.
+ */
 export function mintFieldTicket(
   r: FieldCandidateRelease,
   screenId: string,
@@ -206,7 +213,8 @@ export function mintFieldTicket(
 ): string | null {
   if (
     !env.DEVICE_SECRET_KEY ||
-    !isFieldCandidateTarget(screenId, tenantId, env, now, window)
+    !isFieldCandidateTarget(screenId, tenantId, env, now, window) ||
+    !isFieldBenchScreen(screenId, env)
   )
     return null;
   const exp = Math.min(now + TICKET_MS, admission(env, now, window).end);
@@ -244,7 +252,8 @@ export function verifyFieldTicket(
       !Number.isSafeInteger(v.exp) ||
       v.exp <= now ||
       v.exp > now + TICKET_MS ||
-      !isFieldCandidateTarget(v.screenId, v.tenantId, env, now, window)
+      !isFieldCandidateTarget(v.screenId, v.tenantId, env, now, window) ||
+      !isFieldBenchScreen(v.screenId, env)
     )
       return null;
     return v;

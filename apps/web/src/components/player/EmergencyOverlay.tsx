@@ -18,10 +18,12 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
+import { ShieldAlert, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 import { isBannerEmergencyMessage } from '@/app/player/emergencySurface';
+import { sanitizeBannerOptions, type BannerOptions } from '@cms/api-types';
+import { BroadcastBannerBar, BANNER_SEVERITY_STYLES } from './BroadcastBannerBar';
 import { updateBroadcastBannerInset } from '@/app/player/emergencyHold';
 import type { BroadcastLayout } from '@/app/player/broadcastLayout';
 
@@ -193,6 +195,8 @@ export interface EmergencyMessageView {
   audioUrl: string | null;
   expiresAt: number | null;
   createdAt: string;
+  /** INFO / WARN text broadcasts only: sender's colour + scrolling choice. */
+  banner?: BannerOptions;
 }
 
 interface Props {
@@ -244,22 +248,8 @@ interface Props {
 // values match the Tailwind classes (yellow-400 / orange-500 / red-700) at
 // FULL opacity — a life-safety takeover must never be see-through.
 const severityStyles = {
-  INFO: {
-    bg: 'bg-yellow-400',
-    solidBg: '#facc15',
-    border: 'border-yellow-600',
-    text: 'text-slate-900',
-    icon: Megaphone,
-    animate: '',
-  },
-  WARN: {
-    bg: 'bg-orange-500',
-    solidBg: '#f97316',
-    border: 'border-orange-700',
-    text: 'text-white',
-    icon: AlertTriangle,
-    animate: '',
-  },
+  INFO: BANNER_SEVERITY_STYLES.INFO,
+  WARN: BANNER_SEVERITY_STYLES.WARN,
   CRITICAL: {
     bg: 'bg-red-700',
     solidBg: '#b91c1c',
@@ -306,7 +296,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); bodyObserver.disconnect(); window.removeEventListener('resize', measure); onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); };
-  }, [bannerVisible, displayed?.textBlob, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
+  }, [bannerVisible, displayed?.textBlob, displayed?.banner?.mode, displayed?.banner?.speed, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
 
   useEffect(() => {
     if (message || !apiUrl) return;
@@ -363,6 +353,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           audioUrl: r.audioUrl,
           expiresAt: r.expiresAt,
           createdAt: r.createdAt,
+          ...(sanitizeBannerOptions(r.banner) ? { banner: sanitizeBannerOptions(r.banner)! } : {}),
         }));
         // Highest severity first, then newest.
         const order = { CRITICAL: 0, WARN: 1, INFO: 2 } as const;
@@ -426,38 +417,37 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     //     URL wraps instead of running off a narrow ribbon edge.
     // Taurus-safe (no `inset`, no flex `gap` — the ml-4 stands in for a row
     // gap; vh on a top-anchored fixed bar is fine).
+    const stageWidth = faceStage?.width ?? canvas.w ?? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--led-w')) || window.innerWidth);
     return createPortal(
-      <div
-        ref={bannerRef}
-        role="alert"
-        aria-live="assertive"
-        data-edu-emergency-root="banner"
-        data-edu-emergency-identity={emergencyPaintIdentity(active)}
-        className={`fixed top-0 left-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
+      <BroadcastBannerBar
+        barRef={bannerRef}
+        severity={active.severity === 'INFO' ? 'INFO' : 'WARN'}
+        text={active.textBlob ?? ''}
+        options={active.banner}
+        stageWidth={stageWidth}
+        className={`fixed top-0 left-0 z-[9999]`}
+        rootProps={{
+          role: 'alert',
+          'aria-live': 'assertive',
+          'data-edu-emergency-root': 'banner',
+          'data-edu-emergency-identity': emergencyPaintIdentity(active),
+        }}
         // Width pinned to the LED canvas (960 etc.) so the banner spans only the
         // visible panel, not the 1920 frame buffer. maxHeight in px off canvasH
         // when known (vh is unreliable in a rotated Taurus preview body).
         style={{
           // 2026-09-01 (G-fleet P0): never the layout viewport. A `right: 0`
-          // fixed bar spans the LAYOUT viewport, which on the 3× 2160×3840
-          // WebViews is ~720 CSS px — one third of the pinned document. The
-          // canonical canvas (--led-w/--led-h, published by player/layout.tsx
-          // on every boot) is the width; the operator's LED canvas override
-          // still wins when set.
+          // fixed bar spans the LAYOUT viewport, which on the 3x 2160x3840
+          // WebViews is ~720 CSS px. The canonical canvas (--led-w/--led-h,
+          // published by player/layout.tsx on every boot) is the width; the
+          // operator's LED canvas override still wins when set.
           width: faceStage?.width ?? (canvas.w ? `${canvas.w}px` : 'var(--led-w, 100vw)'),
           maxHeight: faceStage ? faceStage.height * 0.4 : canvas.h
             ? `${Math.round(canvas.h * 0.4)}px`
             : 'calc(var(--led-h, 100vh) * 0.4)',
-          backgroundColor: style.solidBg,
           ...(faceStage ? { overflowY: 'auto' as const } : {}),
         }}
-      >
-        <Icon className="w-8 h-8 flex-shrink-0" />
-        {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only). min-w-0 lets
-            the text column actually shrink below its content width so wrapping
-            kicks in on a narrow ribbon instead of overflowing the flex row. */}
-        <div className="flex-1 min-w-0 text-xl font-bold leading-snug ml-4 whitespace-pre-wrap break-words">{active.textBlob}</div>
-      </div>, document.body
+      />, document.body
     );
   }
 

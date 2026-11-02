@@ -6,6 +6,6 @@
 **Risk** — (and the Article 3 priority served if two collided)
 **Validation** — (what was tested, how; "unverified" where true)
 **Rollback** —
-**Consequential?** — yes / no (if yes: owner approval attached; different-vendor review by ___)
+**Consequential?** — yes / no (if yes: the owner's written go, quoted — the lead merges; different-vendor review by ___)
 **Models** — builder: ___ (version, harness) · reviewer: ___
 **Decision requested** — approve / reject / modify · one-way or two-way door
