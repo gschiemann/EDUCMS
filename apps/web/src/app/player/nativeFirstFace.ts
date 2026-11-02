@@ -1,4 +1,4 @@
-import { signalDisplayEmergencyHold } from './emergencyHold';
+import { noteNativeEmergencyHeld } from './emergencyHold';
 /**
  * NATIVE-FIRST — this page document's controller of its face's native
  * session (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.5 / §4).
@@ -146,8 +146,14 @@ export class NativeFirstFace {
         this.current = facts;
         // Native watch can win the race against the page. Observe the EDGE:
         // the saved intent stays suspended until a fresh intend after clear.
-        // Re-reading it must never re-raise a server-cleared hold.
-        if (!wasHeld && facts.intent?.suspended === 'hold') signalDisplayEmergencyHold(true);
+        // Re-reading it must never re-suppress after a server-confirmed clear.
+        // PAGE-LOCAL suppression only, never a bridge raise (2026-11-02: on a
+        // double-sided unit the suspension can be the OTHER face's hold, and a
+        // raise here re-seeded the hold after every all-clear). Only a
+        // manifest / signed push raises the native hold.
+        const heldNow = facts.intent?.suspended === 'hold';
+        if (!wasHeld && heldNow) noteNativeEmergencyHeld(true);
+        else if (wasHeld && !heldNow) noteNativeEmergencyHeld(false);
         this.listeners.forEach((fn) => {
           try { fn(facts); } catch { /* a listener never breaks the poll */ }
         });
