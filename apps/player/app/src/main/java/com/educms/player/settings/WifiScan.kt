@@ -101,6 +101,25 @@ object WifiScan {
             .getOrDefault(false)
     }
 
+    /**
+     * 1.1.59 — the setup list asked for location (in its one permission
+     * dialog). Recorded so [access] tells "never asked" from "refused".
+     */
+    fun markAsked(ctx: Context) {
+        prefs(ctx.applicationContext).edit().putBoolean(KEY_ASKED, true).apply()
+    }
+
+    /**
+     * First launch: ask for location once, so no Wi-Fi join ever raises the dialog (2026-10-26).
+     * ⚠️ 1.1.59: NO LONGER CALLED. Location is the setup list's one permission
+     * dialog now (SetupCeremony STEP_RUNTIME), together with every other grant.
+     */
+    fun requestAtFirstLaunch(activity: Activity) {
+        val app = activity.applicationContext
+        if (!WifiScanPolicy.shouldAskAtLaunch(granted(app), prefs(app).getBoolean(KEY_ASKED, false))) return
+        requestPermission(activity, "first launch")
+    }
+
     /** List nearby networks; [onResult] runs on the main thread. */
     fun scan(activity: Activity?, ctx: Context, onResult: (Result) -> Unit) {
         val app = ctx.applicationContext
@@ -183,6 +202,28 @@ object WifiScan {
     }
 
     private fun prefs(app: Context) = app.getSharedPreferences(PrefsWifiStateStore.PREFS, Context.MODE_PRIVATE)
+
+    /**
+     * ONE scan request right after a network was suggested (2026-10-26), so
+     * Android runs network selection now rather than on its own disconnected
+     * schedule — which backs off to minutes on a box that has sat without
+     * Wi-Fi (`WifiConnectivityManager`'s 20 → 40 → 80 → 160 s ladder). Every
+     * scan result, ours included, feeds that selection. Same throttle as the
+     * list ([WifiScanPolicy.MIN_SCAN_GAP_MS]); nothing while a scan is in
+     * flight; never over an alert. Returns whether a scan was asked for.
+     */
+    fun nudge(ctx: Context, source: String): Boolean {
+        val app = ctx.applicationContext
+        if (runCatching { DisplayEmergency.isHeld(app) }.getOrDefault(true)) return false
+        synchronized(waiting) { if (inFlight) return false }
+        val now = SystemClock.elapsedRealtime()
+        if (!WifiScanPolicy.shouldStartScan(lastStartElapsedMs, now)) return false
+        lastStartElapsedMs = now
+        @Suppress("DEPRECATION") // still the only way to ask; Android throttles it, and so do we.
+        val started = runCatching { wm(app)?.startScan() == true }.getOrDefault(false)
+        PlayerLogger.i(TAG, "scan nudge ($source): ${if (started) "asked" else "refused by Android"}")
+        return started
+    }
 
     /** Android's own location page, for a person who chose "don't ask again" or switched Location off. */
     fun locationSettingsIntent(): Intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)

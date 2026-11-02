@@ -233,7 +233,7 @@ export class MediaPublicationService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   /**
-   * The video gate for one activation (VIDEO_PLAYBACK_GATE, default `warn`).
+   * The video gate for one activation (VIDEO_PLAYBACK_GATE, default `off`).
    * Runs BEFORE any copy is queued so an `enforce` refusal writes nothing.
    * Warnings land in `opts.warnings`; a file that may stutter on a big screen
    * and has no 1080p copy yet gets one queued (the publish never waits for it —

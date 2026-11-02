@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Bell, CheckCheck, WifiOff, FileCheck2, Info, ChevronRight, Loader2, RefreshCw,
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import {
   type InboxCategory, type InboxNotification,
 } from './notificationInbox';
 import { useNotificationText } from './useNotificationText';
+import { TabRow } from '@/components/ui/tab-row';
 import { NotificationHealthChip } from './NotificationHealthChip';
 import { cn } from '@/lib/utils';
 
@@ -61,7 +62,6 @@ export function NotificationsInbox({
   const tn = useTranslations('notifications');
   const { text, age } = useNotificationText();
   const [tab, setTab] = useState<InboxCategory | 'all'>('all');
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const inbox = useMemo(() => buildInbox(items), [items]);
   const visible = tab === 'all' ? inbox.rows : inbox.rows.filter((r) => r.category === tab);
@@ -84,25 +84,6 @@ export function NotificationsInbox({
   const countsKnown = Array.isArray(items);
   const hasCached = countsKnown && inbox.rows.length > 0;
   const showStaleBanner = isError && hasCached;
-
-  /**
-   * §18 / the 2026-09-01 audit's a11y note: the app's other tab strips have
-   * no arrow-key contract. This one does — roving tabindex, Home/End, and
-   * wrap-around, so a keyboard reaches every category without tabbing through
-   * the rows in between.
-   */
-  const onTabKey = (e: React.KeyboardEvent, i: number) => {
-    const n = inbox.tabs.length;
-    let next = -1;
-    if (e.key === 'ArrowRight') next = (i + 1) % n;
-    else if (e.key === 'ArrowLeft') next = (i - 1 + n) % n;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = n - 1;
-    if (next < 0) return;
-    e.preventDefault();
-    setTab(inbox.tabs[next].key);
-    tabRefs.current[next]?.focus();
-  };
 
   return (
     <div className="max-w-3xl mx-auto pb-4">
@@ -128,51 +109,30 @@ export function NotificationsInbox({
         </button>
       </header>
 
-      {/* Category tabs. Horizontally scrollable so four chips survive 360px
-          without wrapping the header (§7 / §M21). */}
-      <div
-        role="tablist"
-        aria-label={tr('categoriesLabel')}
-        className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
-      >
-        {inbox.tabs.map((t, i) => {
-          const active = t.key === tab;
-          return (
-            <button
-              key={t.key}
-              ref={(el) => { tabRefs.current[i] = el; }}
-              role="tab"
-              aria-selected={active}
-              tabIndex={active ? 0 : -1}
-              onKeyDown={(e) => onTabKey(e, i)}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'shrink-0 inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border text-[13px] font-bold transition-colors',
-                active
-                  ? 'bg-slate-900 border-slate-900 text-white'
-                  : 'bg-white border-slate-200 text-slate-600 active:bg-slate-50',
-              )}
-            >
-              {tn(`categories.${t.key}`)}
-              {countsKnown && (
-                <span
-                  className={cn(
-                    'text-[11px] font-black tabular-nums',
-                    active ? 'text-white/60' : 'text-slate-400',
-                  )}
-                >
-                  {t.count}
-                </span>
-              )}
-              {countsKnown && t.unread > 0 && (
-                <span
-                  className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-white' : 'bg-indigo-500')}
-                  aria-label={tr('unreadCount', { count: t.unread })}
-                />
-              )}
-            </button>
-          );
-        })}
+      {/* Category tabs (pill cleanup 2026-11-02): the shared underline TabRow
+          (roving tabindex + arrow keys live there). Scrolls sideways at 360px. */}
+      <div className="mt-4 h-12 border-b border-slate-200">
+        <TabRow
+          value={tab}
+          onChange={setTab}
+          ariaLabel={tr('categoriesLabel')}
+          testId="notifications-tabs"
+          tabs={inbox.tabs.map((t) => ({
+            key: t.key,
+            label: (
+              <>
+                {tn(`categories.${t.key}`)}
+                {countsKnown && t.unread > 0 && (
+                  <span
+                    className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 align-middle"
+                    aria-label={tr('unreadCount', { count: t.unread })}
+                  />
+                )}
+              </>
+            ),
+            count: countsKnown ? t.count : undefined,
+          }))}
+        />
       </div>
 
       {/* §13 API unavailable, WITH last-known data: keep the list, say plainly

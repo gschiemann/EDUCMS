@@ -1,9 +1,9 @@
 /**
  * The publish-time video gate (video guarantee step 5, 2026-10-12).
- *   warn (default): publish goes through; warnings name the file and screens.
+ *   off (default): nothing evaluated. warn: publish goes through; warnings name the file and screens.
  *   enforce: a file no copy fixes is refused 422 before anything is written —
  *            except on a two-sided unit (owner decision B: warning only).
- *   off: nothing evaluated. Unknown never warns. Emergency never evaluated.
+ *   Unknown never warns. Emergency never evaluated.
  *   A gate that cannot run says nothing and blocks nothing.
  */
 import { PlaybackGateService, playbackGateMessage } from './playback-gate.service';
@@ -74,6 +74,9 @@ const stutteredAt4K = (screenId: string): Row => ({
 });
 
 const ENV = { ...process.env };
+beforeEach(() => {
+  process.env = { ...ENV, VIDEO_PLAYBACK_GATE: 'warn' }; // the shipped default is off; most cases exercise warn
+});
 afterEach(() => {
   process.env = { ...ENV };
 });
@@ -84,7 +87,7 @@ describe('PlaybackGateService', () => {
     expect((await gate.evaluate(T, 'pl-1', 's1')).warnings).toEqual([]);
   });
 
-  it('warn (default): a 4K screen measured stuttering at 4K → "may stutter … we will switch to the 1080p copy", publish not refused', async () => {
+  it('warn: a 4K screen measured stuttering at 4K → "may stutter … we will switch to the 1080p copy", publish not refused', async () => {
     const { gate } = make({ playback: [stutteredAt4K('s1')] });
     const r = await gate.evaluate(T, 'pl-1', 's1');
     expect(r.mode).toBe('warn');
@@ -162,12 +165,19 @@ describe('PlaybackGateService', () => {
     expect(r.warnings[0].screens.map((s) => s.id)).toEqual(['s1', 's2']);
   });
 
+  it('default (unset) is off: nothing is evaluated', async () => {
+    delete process.env.VIDEO_PLAYBACK_GATE;
+    const d = make({ playback: [stutteredAt4K('s1')] });
+    expect((await d.gate.evaluate(T, 'pl-1', 's1')).warnings).toEqual([]);
+    expect(d.db.playlist.findFirst).not.toHaveBeenCalled();
+  });
+
   it('off: nothing is read; protected / emergency playlists are never evaluated', async () => {
     process.env.VIDEO_PLAYBACK_GATE = 'off';
     const off = make({ playback: [stutteredAt4K('s1')] });
     expect((await off.gate.evaluate(T, 'pl-1', 's1')).warnings).toEqual([]);
     expect(off.db.playlist.findFirst).not.toHaveBeenCalled();
-    delete process.env.VIDEO_PLAYBACK_GATE;
+    process.env.VIDEO_PLAYBACK_GATE = 'warn';
     const prot = make({ playback: [stutteredAt4K('s1')] });
     prot.w.playlist!.isProtected = true;
     expect((await prot.gate.evaluate(T, 'pl-1', 's1')).warnings).toEqual([]);

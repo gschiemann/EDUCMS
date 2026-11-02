@@ -20,8 +20,12 @@
  *   • "The last thing you did wins": the USB playlists keep playing until the
  *     server PUBLISHES something new to this screen — a change in the set of
  *     playlists its manifest names, measured against what it named when the
- *     stick went in. Then the stick is retired and stays retired (re-reading
- *     the same package does not bring it back; a NEW package does).
+ *     stick went in. Then the stick is retired and stays retired: a stick
+ *     LEFT IN (re-read every minute, or after a reboot) does not bring it
+ *     back; a NEW package does, and so does a PERSON bringing the same one in
+ *     again (2026-10-26) — re-inserting the drive, or "Import from USB" in the
+ *     Back menu. The APK says so with a new import time on the package
+ *     response (`X-VenueOS-USB-Imported-At`, its state.json `ingestedAt`).
  *   • A package from another organization is ignored.
  *   • Fields that would drive the native video engine or lockstep sync from
  *     the SERVER's content are dropped while the stick plays, so the glass
@@ -31,12 +35,16 @@
 export const USB_PACKAGE_PATH = '/__venueos/usb/package.json';
 export const USB_IMPORTED_EVENT = 'venueos-usb-imported';
 export const LS_USB_OVERLAY = 'edu_usb_overlay_v1';
+/** The APK's import time for the served package (UsbWebResponses.IMPORTED_AT_HEADER). */
+export const USB_IMPORTED_AT_HEADER = 'X-VenueOS-USB-Imported-At';
 
 export interface UsbPackage {
   bundleVersion: string;
   tenantId: string;
   label: string | null;
   playlists: Array<Record<string, unknown>>;
+  /** When a person last brought this package in (epoch ms); null from an APK that does not say. */
+  importedAt?: number | null;
 }
 
 /** What persists across reloads: which package, and the server state it beat. */
@@ -45,6 +53,8 @@ export interface UsbOverlayMemo {
   /** Playlist set the server named when the stick went in; null = not yet seen. */
   baseSig: string | null;
   retired: boolean;
+  /** The import time this memo was made for (absent on a memo written before 2026-10-26). */
+  importedAt?: number;
 }
 
 export interface UsbOverlayState {
@@ -61,8 +71,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
+/** `X-VenueOS-USB-Imported-At` → epoch ms, or null when absent or not a time. */
+export function parseImportedAt(header: string | null | undefined): number | null {
+  if (!header) return null;
+  const n = Number(header.trim());
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
 /** The verified manifest the APK serves → a package, or null when unusable. */
-export function parseUsbPackage(json: unknown): UsbPackage | null {
+export function parseUsbPackage(json: unknown, importedAt: number | null = null): UsbPackage | null {
   if (!isRecord(json)) return null;
   if (json.schema !== 'edu-cms-usb-bundle/v1') return null;
   const bundleVersion = typeof json.bundleVersion === 'string' ? json.bundleVersion : '';
@@ -78,6 +95,7 @@ export function parseUsbPackage(json: unknown): UsbPackage | null {
     tenantId,
     label: typeof json.bundleLabel === 'string' ? json.bundleLabel : null,
     playlists,
+    importedAt,
   };
 }
 
@@ -91,13 +109,25 @@ export function serverPlaylistSig(manifest: unknown): string {
     .join(',');
 }
 
-/** A package has arrived (boot read or a fresh import). */
+/**
+ * A package has arrived (boot read or a fresh import). The same package keeps
+ * its memo — retired stays retired — unless a person brought it in again: a
+ * NEW import time beside an import time already on record. A memo with no
+ * import time yet (written before 2026-10-26) adopts the package's, so the
+ * NEXT re-import is recognised and this first read changes nothing.
+ */
 export function adoptUsbPackage(state: UsbOverlayState, pkg: UsbPackage | null): UsbOverlayState {
   if (!pkg) return { ...state, pkg: null };
+  const at = pkg.importedAt ?? null;
   const same = state.memo?.bundleVersion === pkg.bundleVersion;
-  const memo: UsbOverlayMemo = same && state.memo
-    ? state.memo
-    : { bundleVersion: pkg.bundleVersion, baseSig: state.lastLiveSig, retired: false };
+  const broughtInAgain = same && at !== null && typeof state.memo?.importedAt === 'number' && state.memo.importedAt !== at;
+  let memo: UsbOverlayMemo;
+  if (same && state.memo && !broughtInAgain) {
+    memo = at !== null && state.memo.importedAt === undefined ? { ...state.memo, importedAt: at } : state.memo;
+  } else {
+    memo = { bundleVersion: pkg.bundleVersion, baseSig: state.lastLiveSig, retired: false };
+    if (at !== null) memo.importedAt = at;
+  }
   return { ...state, pkg, memo };
 }
 
@@ -153,6 +183,7 @@ export function readUsbMemo(storage: Pick<Storage, 'getItem'> | null | undefined
       bundleVersion: j.bundleVersion,
       baseSig: typeof j.baseSig === 'string' ? j.baseSig : null,
       retired: j.retired === true,
+      ...(typeof j.importedAt === 'number' && Number.isFinite(j.importedAt) ? { importedAt: j.importedAt } : {}),
     };
   } catch {
     return null;

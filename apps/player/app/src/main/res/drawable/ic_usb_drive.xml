@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- VenueOS USB card icon (2026-10-26): a USB drive. White; tinted at run time. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- the connector -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9,3.4h6v5.6h-6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.5,5.2h1.2v1.2h-1.2zM12.3,5.2h1.2v1.2h-1.2z" />
+    <!-- the body -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8.6,9h6.8a1.6,1.6 0,0 1,1.6 1.6v8.4a2,2 0,0 1,-2 2h-6a2,2 0,0 1,-2 -2v-8.4a1.6,1.6 0,0 1,1.6 -1.6z" />
+    <!-- its light -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,15.1a1.25,1.25 0,1 1,0 2.5a1.25,1.25 0,1 1,0 -2.5z" />
+</vector>

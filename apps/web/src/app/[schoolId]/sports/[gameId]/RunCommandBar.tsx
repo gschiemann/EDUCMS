@@ -22,14 +22,7 @@
  * mobile-perf GPU guard.
  */
 import { ReactNode } from 'react';
-
-const STATUS_CHIP: Record<string, { label: string; cls: string; dot: string }> = {
-  SCHEDULED: { label: 'Scheduled', cls: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
-  PRE_GAME: { label: 'Pre-game', cls: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
-  LIVE: { label: 'Live', cls: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500 animate-pulse' },
-  HALFTIME: { label: 'Halftime', cls: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
-  FINAL: { label: 'Final', cls: 'bg-slate-800 text-white border-slate-700', dot: 'bg-slate-400' },
-};
+import { GameStatusPill } from './GameStatusPill';
 
 export type ViewPill = { key: string; label: string; title: string };
 
@@ -54,7 +47,6 @@ export function RunCommandBar({
    *  kept for screen readers only, so the actions fit one row. */
   landscape?: boolean;
 }) {
-  const chip = STATUS_CHIP[status] || STATUS_CHIP.SCHEDULED;
   return (
     // K12-F15 — below md the bar WRAPS instead of scrolling sideways: at
     // 390 px "End game" was cut in half and More sat off-screen inside a
@@ -74,13 +66,7 @@ export function RunCommandBar({
         >
           {gameName}
         </span>
-        <span
-          aria-live="polite"
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border shrink-0 ${chip.cls}`}
-        >
-          <span className={`w-2 h-2 rounded-full ${chip.dot}`} />
-          {chip.label}
-        </span>
+        <GameStatusPill status={status} />
       </div>
 
       {/* Right cluster: the only live-essential actions — game-state
