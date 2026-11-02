@@ -8138,5 +8138,21 @@
     "view": "视图",
     "gridView": "网格视图",
     "listView": "列表视图"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "外观风格",
+    "intakePalette": "配色来源",
+    "intakeBackground": "背景样式",
+    "mediaKind": "媒体类型",
+    "templateKind": "模板来源",
+    "aiMenu": "AI 改写选项",
+    "opRewrite": "改写",
+    "opShorten": "缩短",
+    "opFitToZone": "适应区域",
+    "opExpand": "扩写",
+    "opPunch": "更有力",
+    "opFixGrammar": "修正语法",
+    "opTranslate": "翻译…",
+    "opTellMe": "告诉我怎么改…"
   }
 }
