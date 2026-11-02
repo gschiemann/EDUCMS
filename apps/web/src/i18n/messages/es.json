@@ -4939,7 +4939,16 @@
     "periodOverNext": "Siguiente periodo",
     "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3).",
     "readStale": "Se perdió el contacto con el partido: la última actualización fue hace {seconds} s. Los relojes aquí se detienen hasta que vuelva la conexión.",
-    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda."
+    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda.",
+    "cueTargetLabel": "Enviar a",
+    "cueTargetAria": "Enviar las celebraciones a",
+    "cueTargetAll": "Todo",
+    "cueTargetBoard": "Marcador",
+    "cueTargetRibbon": "Cinta",
+    "cueTargetRibbonHint": "texto de 2,5 s",
+    "statusConfigured": "Configurado",
+    "statusArmed": "Preparado",
+    "statusOnAir": "Al aire"
   },
   "studentPrivacy": {
     "title": "Información de estudiantes en pantallas públicas",
@@ -5343,7 +5352,8 @@
     "regenerate": "Regenerar…",
     "regenerateTitle": "Revocar y reemplazar: todas las credenciales ya instaladas para este partido dejan de funcionar y se emite un token nuevo",
     "confirmWarning": "Esto invalida todas las credenciales ya instaladas para este partido (incluido el token original) en cuanto confirmes: tu proveedor deja de sincronizar hasta que pegues el nuevo.",
-    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token."
+    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token.",
+    "vendorAria": "Proveedor del marcador"
   },
   "sportsConsoleSetup": {
     "title": "Consola del marcador",
@@ -7109,7 +7119,8 @@
     "notInGroup": "Sin grupo",
     "youreIn": "Estás en",
     "returnToFleet": "Volver a la flota de {name}",
-    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo."
+    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo.",
+    "filterStatus": "Estado"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
@@ -7137,7 +7148,18 @@
       "newest": "Más recientes",
       "oldest": "Más antiguas"
     },
-    "showMore": "Mostrar {count} más"
+    "showMore": "Mostrar {count} más",
+    "filterLevel": "Nivel escolar",
+    "filterHoliday": "Festividad",
+    "categoryTabs": "Categoría",
+    "selectTemplate": "Seleccionar {name}",
+    "selectAllShown": "Seleccionar todas tus plantillas mostradas",
+    "duplicate": "Duplicar",
+    "export": "Exportar",
+    "delete": "Eliminar",
+    "bulkDeleteTitle": "¿Eliminar {count, plural, one {# plantilla} other {# plantillas}}?",
+    "bulkDeleteBody": "Las plantillas que se muestran en pantallas se omiten: elimínalas una por una para ver dónde se reproducen.",
+    "bulkDeleteDone": "{deleted, plural, one {# plantilla eliminada} other {# plantillas eliminadas}}{skipped, plural, =0 {} one {, # omitida (en uso)} other {, # omitidas (en uso)}}"
   },
   "acceptInvite": {
     "title": "Acepta tu invitación",
@@ -8110,5 +8132,39 @@
     "upload": "Subir nuevo",
     "loading": "Cargando biblioteca…",
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
+  },
+  "ui": {
+    "filter": "Filtrar",
+    "filtersActive": "{count, plural, one {# filtro} other {# filtros}}",
+    "filterButton": "Filtrar, {count, plural, =0 {ninguno activo} one {# activo} other {# activos}}",
+    "clearFilters": "Quitar filtros",
+    "clear": "Quitar",
+    "moreActions": "Más acciones",
+    "selectedCount": "{count} seleccionados",
+    "selectAll": "Seleccionar los {count}",
+    "clearSelection": "Borrar selección",
+    "selectionActions": "Acciones de la selección",
+    "sort": "Ordenar",
+    "view": "Vista",
+    "gridView": "Vista de cuadrícula",
+    "listView": "Vista de lista",
+    "moreTabs": "Más",
+    "sortValue": "Ordenar: {label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Estilo visual",
+    "intakePalette": "Origen de los colores",
+    "intakeBackground": "Estilo de fondo",
+    "mediaKind": "Tipo de contenido",
+    "templateKind": "Origen de la plantilla",
+    "aiMenu": "Opciones de reescritura con IA",
+    "opRewrite": "Reescribir",
+    "opShorten": "Acortar",
+    "opFitToZone": "Ajustar a la zona",
+    "opExpand": "Ampliar",
+    "opPunch": "Dar más fuerza",
+    "opFixGrammar": "Corregir gramática",
+    "opTranslate": "Traducir…",
+    "opTellMe": "Dime cómo…"
   }
 }
