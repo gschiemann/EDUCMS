@@ -108,6 +108,9 @@ const NO_DEVICE_OWNER = {
   deviceOwnerPath: 'provisionable-after-factory-reset',
 };
 
+const pressed = (name: RegExp) =>
+  rtl.getByRole('button', { name }).getAttribute('aria-pressed');
+
 beforeEach(() => apiFetchMock.mockClear());
 
 describe('ScreenDisplayControls — what actually reaches the DOM', () => {
@@ -129,17 +132,12 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // panel POWER — which is genuinely hardware.
   it('offers ONLY the actions the API accepts on a screen that never reported', () => {
     renderPanel(null);
-    // Recovery + soft: present and live.
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).not.toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).not.toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
     expect(rtl.getByLabelText(/Brightness/)).toBeTruthy();
     expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
-    // Hardware: no control at all — not an enabled one, not a greyed-out
-    // one. A disabled button still reads as "this exists and something is
-    // wrong with me"; the truth is "this screen hasn't said".
-    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
-    expect(rtl.getByText(/Not available until this screen reports/i)).toBeTruthy();
+    // ONE pair: no other power wording anywhere.
+    expect(rtl.queryByRole('button', { name: /Turn panel|Blank|Wake$/ })).toBeNull();
   });
 
   // The brightness slider on an unreported screen must not be able to
@@ -168,8 +166,8 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   it('renders both sliders, blank/wake and reboot on a fully-capable device', () => {
     renderPanel(CAPABLE);
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /Restart device/ })).toBeTruthy();
   });
 
@@ -189,8 +187,8 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
     // Everything else survives.
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
     // No empty section: every direct child of the panel has content.
     const panel = container.firstElementChild as HTMLElement;
@@ -206,15 +204,12 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   it('renders the real fleet’s REGISTRY verdict as fully reported, reboot absent', () => {
     const { container } = renderPanel(REGISTRY_FLEET);
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
     expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
     expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
-    // screen-timeout cannot reach panel power, so the power row is a
-    // sentence rather than a button — and Blank still works, softly.
+    // screen-timeout has no hard power: Sleep still works, via the soft blank.
     expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    expect(rtl.getByText(/no remote power control/i)).toBeTruthy();
-    expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
     // Real backlight control, so no "image only" label.
     expect(rtl.getByLabelText('Brightness')).toBeTruthy();
     // No empty section, no dangling divider anywhere in the reboot-absent
@@ -241,98 +236,48 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // THE BLANK/POWER SPLIT, AT THE DOM (live field incident, 2026-08-25)
-  //
-  // Operator contract: "wake and blank should just do that and turn on and
-  // off should do that, keep them separate and make them work perfectly on
-  // all our models."
-  //
-  // ⚠️ These REPLACE 'says the backlight stays lit…' and 'hedges the
-  // device-admin blank claim…'. Both described BLANK's per-mechanism copy,
-  // which no longer exists: blank is soft and identical on every model. And
-  // hedged copy is exactly what shipped the night a device-admin blank
-  // latched a Goodview G43 and a Mobile A-Frame into an unrecoverable vendor
-  // standby — so the hard direction now REFUSES rather than hedges.
+  // ONE Sleep / Awake pair, state highlighted (owner spec)
   // ═══════════════════════════════════════════════════════════════════
-  it('says what the soft blank actually does, on every mechanism', () => {
-    for (const screenBlank of ['none', 'device-admin', 'vendor-recipe', 'software-dim']) {
-      const { unmount } = renderPanel({ ...CAPABLE, screenBlank });
-      expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-      expect(rtl.getByText(/The panel stays powered/i)).toBeTruthy();
-      // No hardware claim survives anywhere on the blank row.
-      expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
-      unmount();
-    }
+  it('highlights Awake when the screen is online and showing', () => {
+    renderPanel(CAPABLE, {}, PAINTING);
+    expect(pressed(/^Awake$/)).toBe('true');
+    expect(pressed(/^Sleep$/)).toBe('false');
+    expect(rtl.getByTestId('power-state').textContent).toMatch(/Awake and showing/);
   });
 
-  it('renders NO "Turn panel off" on the admin-lock family, and says what to use', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
-    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    // ⚠️ REVERSED 2026-08-25 (second pass). This used to REQUIRE the incident
-    // narrative on screen — "both directions", "woke itself back up" — and
-    // that is precisely what the operator read in his popover and called
-    // out. One calm sentence that names the alternative; the evidence lives
-    // in a code comment on `powerOffNote`.
-    expect(rtl.getByText(/can’t be switched off remotely/i)).toBeTruthy();
-    expect(rtl.queryByText(/woke itself back up/i)).toBeNull();
-    expect(rtl.queryByText(/2026-08-25/)).toBeNull();
+  it('highlights Sleep when render proof says the glass is not lit', () => {
+    renderPanel(CAPABLE, {}, DARK);
+    expect(pressed(/^Sleep$/)).toBe('true');
+    expect(pressed(/^Awake$/)).toBe('false');
+    expect(rtl.getByTestId('power-state').textContent).toMatch(/Sleeping/);
   });
 
-  // ── THE STATE-AWARE POWER ROW ───────────────────────────────────────
-  //
-  // Operator, on a screen that was ONLINE and actively painting and was
-  // offered exactly one button, "Turn panel on": *"thats not correct really,
-  // the screen is already on...it should know that and say power off....or
-  // sleep, or whatever its doing."* These four cases are that complaint,
-  // pinned at the DOM.
-
-  it('PAINTING + proven power → offers "Turn panel off", never "on"', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, PAINTING);
-    expect(rtl.getByRole('button', { name: /Turn panel off/ })).toBeTruthy();
-    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
-  });
-
-  it('PAINTING + unproven power → offers NO power button at all', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' }, {}, PAINTING);
-    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
-  });
-
-  it('NOT PAINTING → offers "Turn panel on" — recovery is never gated', () => {
-    // Both hardware classes: on the admin-lock panels POWER_ON is the only
-    // hardware control left, and a panel darkened by its own nightly
-    // schedule has no other way back from this dashboard.
-    for (const screenBlank of ['vendor-recipe', 'device-admin']) {
-      const { unmount } = renderPanel({ ...CAPABLE, screenBlank }, {}, DARK);
-      expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
-      expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-      unmount();
-    }
-  });
-
-  // 2026-10-31 GUQ field result: "Turn off" darkened the MCU backlight, the
-  // page kept painting behind it, and the row kept offering only "Turn off".
-  it('GUQ vendor backlight off (sleep.vb.off) while painting → offers "Turn panel on" only', () => {
+  it('highlights Sleep from the native report even while the page still paints', () => {
     renderPanel({ ...CAPABLE, screenBlank: 'vendor-backlight' }, {}, {
       ...PAINTING,
       nativeRuntimeReport: { sleep: { blank: 'vendor-backlight', vb: { d: 'available', off: true } } },
       nativeRuntimeReportAt: new Date().toISOString(),
     });
-    expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
-    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    expect(pressed(/^Sleep$/)).toBe('true');
+    expect(pressed(/^Awake$/)).toBe('false');
   });
 
-  it('GUQ vendor backlight, painting, no vb evidence → both verbs stay offered', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-backlight' }, {}, PAINTING);
-    expect(rtl.getByRole('button', { name: /Turn panel on/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /Turn panel off/ })).toBeTruthy();
+  it('highlights NEITHER and says "State unknown" when there is no evidence', () => {
+    renderPanel(CAPABLE, {}, UNPROVED);
+    expect(pressed(/^Sleep$/)).toBe('false');
+    expect(pressed(/^Awake$/)).toBe('false');
+    expect(rtl.getByTestId('power-state').textContent).toBe('State unknown');
+    // Both are still live: recovery is never gated.
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
   });
 
-  it('UNKNOWN panel state → no power buttons, one honest line', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, UNPROVED);
-    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
-    expect(rtl.getByText(/can’t tell whether this panel is on/i)).toBeTruthy();
+  it('never renders a mechanism name or the old power wording', () => {
+    for (const screenBlank of ['none', 'device-admin', 'vendor-recipe', 'vendor-backlight']) {
+      const { container, unmount } = renderPanel({ ...CAPABLE, screenBlank }, {}, PAINTING);
+      const text = container.textContent ?? '';
+      expect(text).not.toMatch(/Turn panel|Panel power|\bBlank\b|vendor|device-admin/i);
+      unmount();
+    }
   });
 
   // ── THE BRIGHTNESS SPLIT, AT THE DOM ────────────────────────────────
@@ -404,9 +349,9 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // that", which a blank that un-blanks itself after ten minutes is not.
   // What must never regress is that the copy describes what WE SENT, never a
   // device state we cannot observe.
-  it('says what ends the blank, and never claims an observed screen state', () => {
-    renderPanel(CAPABLE);
-    expect(rtl.getByText(/Wake brings it back/i)).toBeTruthy();
+  it('describes what Sleep and Awake do, and never claims an unobserved state', () => {
+    renderPanel(CAPABLE, {}, UNPROVED);
+    expect(rtl.getByText(/An emergency alert always wakes it/i)).toBeTruthy();
     expect(rtl.queryByText(/Wakes itself after 10 min/i)).toBeNull();
   });
 
@@ -425,55 +370,57 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   it('renders every control inert for a role that cannot drive display control', () => {
     renderPanel(CAPABLE, { readOnly: true });
     rtl.getAllByRole('slider').forEach((s) => expect(s).toBeDisabled());
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeDisabled();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeDisabled();
     expect(rtl.getByRole('button', { name: /Restart device/ })).toBeDisabled();
   });
 });
 
 describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
-  it('posts SCREAMING_CASE actions the API’s z.enum actually accepts', async () => {
-    renderPanel(CAPABLE);
+  it('Sleep posts the soft BLANK where the hardware has no proven power-off', async () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Blank$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Sleep$/ }));
     });
-    expect(apiFetchMock).toHaveBeenCalled();
-
     const [path, init] = apiFetchMock.mock.calls[0];
     expect(path).toBe('/screens/s1/display-control');
     const body = JSON.parse(init.body);
     expect(body.action).toBe('BLANK');
     expect(DISPLAY_ACTIONS).toContain(body.action);
-    // NO dead-man revert since the 2026-08-25 split. A soft blank cannot
-    // strand a panel, so "blank" means blank until Wake — sending a revert
-    // the overlay does not honour would put a promise on the wire that
-    // nothing keeps.
     expect(body.revertAfterMs).toBeUndefined();
   });
 
-  it('posts POWER_OFF / POWER_ON as their OWN verbs — the split is on the wire', async () => {
-    // The dashboard never sends the legacy verb for a power action; the
-    // SERVER translates on the way out to the device. If this panel posted
-    // 'BLANK' for "Turn panel off" the whole split would collapse back into
-    // the bug it was written to fix.
-    // A DARK screen is the state where "Turn panel on" is the offered verb.
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, DARK);
+  it('Sleep posts POWER_OFF where the hardware proves it — the mechanism is hidden', async () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' });
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /Turn panel on/ }));
-    });
-    const on = JSON.parse(apiFetchMock.mock.calls[0][1].body);
-    expect(on.action).toBe('POWER_ON');
-    expect(DISPLAY_ACTIONS).toContain(on.action);
-  });
-
-  it('posts WAKE, not "wake"', async () => {
-    renderPanel(CAPABLE);
-    await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Sleep$/ }));
     });
     const body = JSON.parse(apiFetchMock.mock.calls[0][1].body);
-    expect(body.action).toBe('WAKE');
+    expect(body.action).toBe('POWER_OFF');
     expect(DISPLAY_ACTIONS).toContain(body.action);
+  });
+
+  it('Awake posts POWER_ON then WAKE (recovery on both layers)', async () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, DARK);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Awake$/ }));
+    });
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    const actions = apiFetchMock.mock.calls.map((c) => JSON.parse(c[1].body).action);
+    expect(actions).toEqual(['POWER_ON', 'WAKE']);
+    actions.forEach((a) => expect(DISPLAY_ACTIONS).toContain(a));
+  });
+
+  it('shows a pending spinner on the pressed button until the screen confirms', async () => {
+    renderPanel(CAPABLE, {}, PAINTING);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Sleep$/ }));
+    });
+    // Accepted, but render proof still says "painting": Sleep is pending,
+    // Awake stays highlighted — we do not move the highlight on our own say-so.
+    expect(rtl.getByRole('button', { name: /^Sleep$/ }).getAttribute('aria-busy')).toBe('true');
+    expect(pressed(/^Awake$/)).toBe('true');
+    expect(rtl.getByText(/Putting the screen to sleep/i)).toBeTruthy();
   });
 
   it('posts SET_BRIGHTNESS with the clamped percent', async () => {
@@ -514,13 +461,13 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Awake$/ }));
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
     expect(row.textContent).toMatch(/Couldn't reach this screen/i);
     expect(row.className).toMatch(/rose/);
-    expect(rtl.queryByText(/Wake sent\./)).toBeNull();
+    expect(rtl.queryByText(/Awake sent/)).toBeNull();
   });
 
   // THE SECOND HALF OF THE LIE (2026-08-25). `delivered` used to be graded
@@ -537,7 +484,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Awake$/ }));
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
@@ -550,7 +497,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     // automatic retry would be a fresh lie inside the fix for one.
     expect(row.textContent).toMatch(/won't be sent later/i);
     // Never claims success.
-    expect(rtl.queryByText(/Wake sent\./)).toBeNull();
+    expect(rtl.queryByText(/Awake sent/)).toBeNull();
     // Explanation styling, not alarm styling.
     expect(row.className).not.toMatch(/rose/);
     expect(row.className).toMatch(/slate/);
@@ -566,7 +513,7 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Awake$/ }));
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
@@ -578,10 +525,10 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     apiFetchMock.mockResolvedValueOnce({ success: true, delivered: true, deliveryReason: null });
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Awake$/ }));
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
-    expect(rtl.getByRole('status').textContent).toMatch(/Wake sent/i);
+    expect(rtl.getByRole('status').textContent).toMatch(/Awake sent/i);
   });
 
   /**
@@ -594,36 +541,36 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
    * nothing-happened, on the one action where the screen may in fact now be
    * dark. The row must instead say we cannot tell, and name Wake.
    */
-  it('renders a timed-out Blank as UNKNOWN, pointing at Wake — not as browser jargon', async () => {
+  it('renders a timed-out Sleep as UNKNOWN, pointing at Awake — not as browser jargon', async () => {
     const abort = new Error('The user aborted a request.');
     abort.name = 'AbortError';
     apiFetchMock.mockRejectedValueOnce(abort);
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Blank$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Sleep$/ }));
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     const row = rtl.getByRole('status');
     expect(row.textContent).toMatch(/can't tell if it worked/i);
-    expect(row.textContent).toMatch(/press Wake/i);
+    expect(row.textContent).toMatch(/press Awake/i);
     expect(row.textContent).not.toMatch(/aborted/i);
     expect(row.className).toMatch(/rose/);
     // …and the recovery control is live, not stuck behind the dead request.
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
   });
 
-  // Wake is the recovery control for Blank. Gating it on the action it
+  // Awake is the recovery control for Blank. Gating it on the action it
   // recovers from is how a wedged API leaves a dark screen dark.
-  it('leaves Wake enabled while a Blank is still in flight', async () => {
+  it('leaves Awake enabled while a Sleep is still in flight', async () => {
     let release: (v: unknown) => void = () => {};
     apiFetchMock.mockImplementationOnce(() => new Promise((r) => { release = r; }));
     renderPanel(CAPABLE);
     await act(async () => {
-      fireEvent.click(rtl.getByRole('button', { name: /^Blank$/ }));
+      fireEvent.click(rtl.getByRole('button', { name: /^Sleep$/ }));
     });
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeDisabled();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
     await act(async () => {
       release({ success: true });
     });
