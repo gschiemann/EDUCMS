@@ -504,7 +504,8 @@
     "phoneSetupSignedInTitle": "You're signed in",
     "phoneSetupLater": "You can add a passkey for this device later in My account.",
     "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
-    "security": "Security"
+    "security": "Security",
+    "requestInfo": "Request info"
   },
   "account": {
     "title": "My account",
@@ -7006,7 +7007,8 @@
       "pricing": "Pricing",
       "help": "Help",
       "signIn": "Sign in",
-      "startTrial": "Start free trial"
+      "startTrial": "Start free trial",
+      "requestInfo": "Request info"
     }
   },
   "usbDelivery": {
@@ -7428,6 +7430,11 @@
         "namePlaceholder": "Grace Community Church",
         "where": "whole ministry"
       }
+    },
+    "closed": {
+      "title": "Sign-up isn't open yet",
+      "body": "VenueOS isn't taking new sign-ups online right now. Email us and we'll send you more information.",
+      "cta": "Request info by email"
     }
   },
   "notifications": {

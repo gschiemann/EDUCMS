@@ -504,7 +504,8 @@
     "phoneSetupSignedInTitle": "你已登录",
     "phoneSetupLater": "你可以稍后在“我的账户”中为这台设备添加通行密钥。",
     "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
-    "security": "安全"
+    "security": "安全",
+    "requestInfo": "索取信息"
   },
   "account": {
     "title": "我的账户",
@@ -7006,7 +7007,8 @@
       "pricing": "价格",
       "help": "帮助",
       "signIn": "登录",
-      "startTrial": "免费试用"
+      "startTrial": "免费试用",
+      "requestInfo": "索取信息"
     }
   },
   "usbDelivery": {
@@ -7428,6 +7430,11 @@
         "namePlaceholder": "恩典社区教会",
         "where": "整个事工"
       }
+    },
+    "closed": {
+      "title": "暂未开放注册",
+      "body": "VenueOS 目前暂不接受在线注册。请给我们发邮件，我们会向您发送更多信息。",
+      "cta": "通过电子邮件索取信息"
     }
   },
   "notifications": {

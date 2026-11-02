@@ -78,6 +78,7 @@ import {
 } from '@/lib/eula-acceptance';
 import { keepSignedInForPasskey, rememberKeepSignedInChoice } from '@/lib/keep-signed-in';
 import { takeSetupTwoStep } from '@/lib/setup-two-step-handoff';
+import { SIGNUP_OPEN, signupHref } from '@/lib/signup-gate';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -3228,7 +3229,7 @@ function LoginContent() {
             a workspace". */}
         {step.name !== 'method' && signInFormShowing && (
           <p className="text-center text-xs text-slate-500 mt-6">
-            {t('newHere')} <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">{t('createWorkspace')}</Link>
+            {t('newHere')} <Link href={signupHref()} className="text-indigo-600 hover:text-indigo-700 font-semibold">{t(SIGNUP_OPEN ? 'createWorkspace' : 'requestInfo')}</Link>
           </p>
         )}
 

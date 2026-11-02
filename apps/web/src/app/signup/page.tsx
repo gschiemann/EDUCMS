@@ -32,6 +32,7 @@ import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
 import { signupErrorFor, type SignupErrorKey } from './signup-errors';
+import { SIGNUP_OPEN, REQUEST_INFO_HREF } from '@/lib/signup-gate';
 
 const NAVY = '#070a14';
 
@@ -81,7 +82,42 @@ const legalLink = (href: string) => function LegalLink(chunks: ReactNode) {
   return <Link href={href} className="text-indigo-600 hover:underline">{chunks}</Link>;
 };
 
+/**
+ * 2026-11-02 — self-serve sign-up is closed (owner: the public site is for
+ * information only). The form below is kept intact; `NEXT_PUBLIC_SIGNUP_OPEN=1`
+ * brings it back — see `lib/signup-gate.ts`.
+ */
 export default function SignupPage() {
+  return SIGNUP_OPEN ? <SignupForm /> : <SignupClosed />;
+}
+
+function SignupClosed() {
+  const t = useTranslations('signup');
+  return (
+    <div className="min-h-screen bg-white flex flex-col px-6 py-7 sm:px-10 lg:px-14">
+      <div className="flex items-center justify-between gap-4">
+        <BrandMark />
+        <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-slate-900 text-right">
+          {t('haveWorkspace')} <span className="text-indigo-600">{t('signIn')}</span>
+        </Link>
+      </div>
+      <div className="flex-1 flex flex-col justify-center py-10">
+        <div className="w-full max-w-md mx-auto text-center" data-testid="signup-closed">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">{t('closed.title')}</h1>
+          <p className="mt-3 text-sm text-slate-600 leading-relaxed">{t('closed.body')}</p>
+          <a
+            href={REQUEST_INFO_HREF}
+            className="mt-8 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+          >
+            {t('closed.cta')} <ArrowRight className="w-4 h-4" />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignupForm() {
   const t = useTranslations('signup');
   const [districtName, setDistrictName] = useState('');
   const [slug, setSlug] = useState('');
