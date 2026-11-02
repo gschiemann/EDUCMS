@@ -407,9 +407,9 @@ export function deriveScreenStatus({
   if (grade === 'alert-not-painted') {
     return {
       key: 'alert-not-painted', tone: 'bad',
-      label: 'Alert raised · no on-glass proof',
+      label: 'Alert sent · waiting for this screen to confirm',
       action: 'Troubleshoot', needsAttention: true,
-      detail: 'The alert was raised, but the page has not confirmed painting its overlay. Delivery is not confirmed.',
+      detail: "This screen hasn't confirmed it is showing the alert yet. If it doesn't confirm within a minute, check it in person.",
       messages: {
         label: { key: 'screens.trust.alertNotPainted' },
         detail: { key: 'screens.trust.alertNotPaintedTitle' },

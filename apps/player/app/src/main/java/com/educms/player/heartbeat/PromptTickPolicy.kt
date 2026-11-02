@@ -38,6 +38,15 @@ object PromptTickPolicy {
         return prune(nowMs, recentPromptTicksMs).size < MAX_PER_WINDOW
     }
 
+    /**
+     * An URGENT request (2026-11-02: the alert's accepted paint receipt) ignores
+     * [MIN_GAP_MS] — it always lands < 5 s after the raise's own prompt and was
+     * folded into the 5-minute floor on every screen of a drill, so the API
+     * never learned the alert was on the glass. The window cap still holds.
+     */
+    fun acceptUrgent(nowMs: Long, recentPromptTicksMs: List<Long>): Boolean =
+        prune(nowMs, recentPromptTicksMs).size < MAX_PER_WINDOW
+
     /** The ticks still inside the window. A backwards clock keeps nothing. */
     fun prune(nowMs: Long, recentPromptTicksMs: List<Long>): List<Long> =
         recentPromptTicksMs.filter { it <= nowMs && nowMs - it < WINDOW_MS }

@@ -147,7 +147,9 @@ object EmergencyPaintRecovery {
                     pending.remove(face)?.let(main::removeCallbacks)
                     save(ctx)
                     marker(face, "painted", e.step)
-                    prompt(ctx)
+                    // 2026-11-02: the ONE report that says "the alert is on the glass" must not be
+                    // folded into a 5-minute tick because the raise's own prompt was < 5 s ago.
+                    prompt(ctx, urgent = true)
                 }
             }
         }
@@ -301,6 +303,8 @@ object EmergencyPaintRecovery {
         PlayerLogger.durable("ERROR", "EmergencyPaint", "PLAYER_EMERGENCY_ENFORCE_STEP step=paint-$outcome face=$face attempt=$step — alert raised; " +
             if (outcome == "painted") "page reported overlay paint" else "no on-glass proof")
     }
-    private fun prompt(ctx: Context) { runCatching { HeartbeatService.requestPromptTick(ctx.applicationContext, "emergency-paint") } }
+    private fun prompt(ctx: Context, urgent: Boolean = false) {
+        runCatching { HeartbeatService.requestPromptTick(ctx.applicationContext, "emergency-paint", urgent) }
+    }
     private inline fun safely(body: () -> Unit) { runCatching(body).onFailure { PlayerLogger.w("EmergencyPaint", "paint recovery failed: ${it.javaClass.simpleName}") } }
 }

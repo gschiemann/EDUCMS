@@ -1,5 +1,5 @@
 import { emergencyLayoutIsPortrait, emergencyLayoutOrientation } from './emergency-layout';
-import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
+import { emergencyPaintSchema, emergencyRenderEvidence, nativePaintedTransition, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
@@ -1769,6 +1769,22 @@ export class ScreensController {
       const prior = (screen.nativeRuntimeReport as any)?.emergencyProof?.faces?.find((f: {face: number}) => f.face === ((screen as any).faceIndex ?? 0));
       if (episode && episode.status !== 'painted' && (prior?.challenge !== episode.challenge || prior?.status !== episode.status)) {
         data.lastRenderedHash = `pending|em:${episode.challenge}`;
+      }
+      // 2026-11-02 — the APK's own PAINTED verdict completes the record. The
+      // page's post raced this heartbeat and lost on every screen of the
+      // SECURE drill (the heartbeat rides a 5-minute floor while the page
+      // reports); whichever of the two arrives second now finishes it.
+      const painted = nativePaintedTransition(episode, prior, (screen as any).lastRenderedHash);
+      if (painted && credential.proved) {
+        data.lastRenderedHash = painted.hash;
+        data.lastRenderedAt = new Date();
+        if (screen.tenantId) {
+          await this.prisma.client.auditLog.create({ data: {
+            tenantId: screen.tenantId, userId: null, action: 'PLAYER_EMERGENCY_PAINTED',
+            targetType: 'Screen', targetId: screen.id,
+            details: JSON.stringify({ identity: painted.identity, challenge: painted.challenge, evidence: 'native-validated-page-overlay-paint' }),
+          }});
+        }
       }
     }
     // Basic Android settings (2026-10-18, device-settings/): the unit's report
