@@ -25,26 +25,21 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [ master ]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    # No paths-ignore here (2026-11-01, Foundry Standard Phase 1): this workflow
+    # hosts a check the ruleset REQUIRES ("Build, Lint & Test"), and a docs-only
+    # PR skipped by a trigger-level path filter never reports it — "pending" for
+    # ever, so it could never merge (seen on PRs #196 and #198). The `changes`
+    # job classifies the PR instead and the jobs below SKIP on docs-only
+    # changes: a skipped job satisfies a required check, a missing one blocks.
+    # `push` keeps its paths-ignore — master needs no run for a docs-only commit.
+  # Merge queue (2026-11-01): a queued pull request is checked on a temporary
+  # merge-group commit, not on the PR, and a workflow with no `merge_group`
+  # trigger never reports there — the queue could not merge anything. The
+  # `changes` job classifies a merge group exactly as it classifies a PR. The
+  # concurrency group below is keyed on github.ref, which is unique per merge
+  # group, so queue runs never cancel each other.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -83,9 +78,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed (docs-only PRs skip the CI jobs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      # Only a pull request or a merge group has a diff to classify. Every other
+      # event (push, schedule, dispatch) needs no checkout: its answer is "code".
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # pull_request -> the PR's base; merge_group -> the group's base (the head
+          # of master, or of the entry ahead of it in the queue). Empty otherwise.
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          # merge_group -> the group's head; otherwise GITHUB_SHA (for a pull request,
+          # the test merge commit — what the checkout above has as HEAD).
+          HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -eu
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          case "$EVENT_NAME" in
+            pull_request|merge_group) ;;
+            *) emit true "$EVENT_NAME is not a pull request or a merge group: the gated jobs always run"; exit 0 ;;
+          esac
+          # From here on a doubt is a code change, never a skip: a classifier that
+          # stands down on an error is how a green check ends up meaning nothing.
+          # --no-renames lists BOTH ends of a rename, so code moved into docs/ still
+          # shows its old path.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ] || ! files=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA"); then
+            emit true "::warning::cannot diff '$BASE_SHA...$HEAD_SHA': treated as a code change, the gated jobs run"
+            exit 0
+          fi
+          if [ -z "$files" ]; then
+            emit true "no changed files found, so nothing can be proven docs-only: the gated jobs run"
+            exit 0
+          fi
+          # The same set as the push trigger's paths-ignore above. Counted with
+          # grep -c (not `grep -q`) so an early-closing pipe can never flip the answer.
+          code_files=$(printf '%s\n' "$files" | grep -vcE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' || true)
+          if [ "${code_files:-0}" -gt 0 ]; then
+            emit true "code changed: the gated jobs run"
+          else
+            emit false "docs-only: the gated jobs are skipped and report as such"
+          fi
+
   build-and-test:
     name: Build, Lint & Test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -204,6 +251,8 @@ jobs:
   accessibility:
     name: Accessibility Lint (jsx-a11y)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -333,6 +382,8 @@ jobs:
     # node_modules (hence the install step this job previously skipped); the
     # job still runs in parallel, off the build-and-test critical path.
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -381,6 +432,14 @@ jobs:
     # against this repo size; fails the job on any HIGH-confidence
     # finding so a tagged secret can't merge without explicit override.
     runs-on: ubuntu-latest
+    needs: [changes]
+    # Never on a merge group: the pinned gitleaks-action (v2, ff98106e…) supports
+    # only push / pull_request / workflow_dispatch / schedule and exits 1 on any
+    # other event ("ERROR: The [merge_group] event is not yet supported" — its
+    # dist/index.js at that commit), which would redden every queue entry. Nothing
+    # is lost: the queued commits are the PR's own, already scanned when the
+    # pull_request run diffed them.
+    if: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -407,7 +466,8 @@ jobs:
     name: Container Security Scanning
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: build-and-test
+    needs: [build-and-test, changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     permissions:
       contents: read
     steps:
@@ -589,6 +649,8 @@ jobs:
     # this job on ubuntu-latest. (The build job follows the shards' image so
     # the bundle is made on the OS that serves it.)
     runs-on: ubuntu-24.04
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -692,7 +754,11 @@ jobs:
 
   e2e:
     name: E2E shard (Playwright / ${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.of }})
-    needs: e2e-build
+    needs: [e2e-build, changes]
+    # Skipped along with e2e-build on a docs-only PR / merge group; stated here too so
+    # the rule reads the same on every job. (Not a required check: a matrix job skipped
+    # by its own `if` is never expanded — see the note on e2e-report.)
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-24.04 # see e2e-build for why this is pinned
     # Sized so a shard finishes in ~20 minutes, setup included. The cap exists
     # so a hang fails legibly (2026-08-04: an uncapped job ran 49 minutes and
@@ -802,11 +868,19 @@ jobs:
     # The check names the single-job layout used, kept on purpose: each means
     # "every test of this browser ran, and none failed".
     name: E2E Tests (Playwright / ${{ matrix.browser }})
-    needs: [e2e-build, e2e]
+    needs: [e2e-build, e2e, changes]
     # Runs when a shard fails (that is when the merged report matters), and
     # when e2e-build fails (so the check says so instead of being skipped).
-    # Not on a superseded, cancelled run.
-    if: ${{ !cancelled() }}
+    # Not on a superseded, cancelled run, and not on a docs-only PR / merge
+    # group: there e2e-build is skipped, so this job's verdict step would find
+    # "e2e-build did not succeed (skipped)" and redden a PR that built nothing.
+    #
+    # ⚠️ A MATRIX job skipped by its own `if` is never expanded, so on a docs-only
+    # change "E2E Tests (Playwright / chromium|webkit)" are NOT reported at all
+    # (actions/runner#952). That is fine while they are not required checks. If the
+    # ruleset ever requires them, give them the stub pattern of
+    # `emergency-path-docs-only` in emergency-path.yml.
+    if: ${{ !cancelled() && ((github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
