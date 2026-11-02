@@ -136,7 +136,8 @@ test.describe('desktop (a mouse, the operator\'s 1325 × 758 window)', () => {
     await openAs(page, 'assets', OWNER_WINDOW);
     await expect(page.getByRole('button', { name: /^Select all/ })).toHaveCount(0);
     const w = OWNER_WINDOW.width;
-    for (const loc of [page.getByLabel('Sort files'), page.getByRole('button', { name: 'List view' })]) {
+    // Media Library v2 (2026-11-02): the sort is a plain "Sort:" dropdown.
+    for (const loc of [page.getByRole('combobox', { name: /^Sort/ }), page.getByRole('button', { name: 'List view' })]) {
       const box = await loc.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
@@ -221,20 +222,15 @@ test.describe('a phone (390 × 844, touch)', () => {
     expect(head!.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('Media Library, list view: the header box and the row boxes are 44 px targets and the header row does not grow', async ({ page }) => {
+  // Media Library v2 (owner-approved 2026-11-02, docs/research/2026-11-02-media-redesign/09-v2-iphone.png):
+  // a phone shows the tile grid only — the grid/list toggle is desktop chrome (`hidden md:flex`).
+  // The 44 px tile and select-all boxes are held by the test above.
+  test('Media Library on a phone is the tile grid only — no list view toggle, no table', async ({ page }) => {
     test.setTimeout(120_000);
     await openAs(page, 'assets', PHONE);
-    await page.getByRole('button', { name: 'List view' }).evaluate((el) => (el as HTMLElement).click());
-    const table = page.getByRole('table');
-    await table.waitFor();
-    for (const box of [page.getByTestId('select-shown'), table.getByRole('checkbox', { name: 'Select Demo photo 0.png' })]) {
-      const hit = await box.locator('xpath=ancestor::label[1]').boundingBox();
-      expect(hit!.width).toBeGreaterThanOrEqual(44);
-      expect(hit!.height).toBeGreaterThanOrEqual(44);
-    }
-    // the extra reach is a negative margin, not extra height: the header row stays one text line plus its padding
-    const headerRow = await table.locator('thead tr').boundingBox();
-    expect(headerRow!.height).toBeLessThan(44);
+    await expect(page.getByTestId('files-grid')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'List view' })).toBeHidden();
+    await expect(page.getByRole('table')).toHaveCount(0);
   });
 
   test('Playlists: the card list has the heading box (the only select-all a phone has), 44 px, and ticking a card needs no hover', async ({ page }) => {
