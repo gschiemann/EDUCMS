@@ -7109,7 +7109,8 @@
     "notInGroup": "Sin grupo",
     "youreIn": "Estás en",
     "returnToFleet": "Volver a la flota de {name}",
-    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo."
+    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo.",
+    "filterProblems": "Problema"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
@@ -7137,7 +7138,18 @@
       "newest": "Más recientes",
       "oldest": "Más antiguas"
     },
-    "showMore": "Mostrar {count} más"
+    "showMore": "Mostrar {count} más",
+    "filterLevel": "Nivel escolar",
+    "filterHoliday": "Festividad",
+    "categoryTabs": "Categoría",
+    "selectTemplate": "Seleccionar {name}",
+    "selectAllShown": "Seleccionar todas tus plantillas mostradas",
+    "duplicate": "Duplicar",
+    "export": "Exportar",
+    "delete": "Eliminar",
+    "bulkDeleteTitle": "¿Eliminar {count, plural, one {# plantilla} other {# plantillas}}?",
+    "bulkDeleteBody": "Las plantillas que se muestran en pantallas se omiten: elimínalas una por una para ver dónde se reproducen.",
+    "bulkDeleteDone": "{deleted, plural, one {# plantilla eliminada} other {# plantillas eliminadas}}{skipped, plural, =0 {} one {, # omitida (en uso)} other {, # omitidas (en uso)}}"
   },
   "acceptInvite": {
     "title": "Acepta tu invitación",
@@ -8110,5 +8122,21 @@
     "upload": "Subir nuevo",
     "loading": "Cargando biblioteca…",
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
+  },
+  "ui": {
+    "filter": "Filtrar",
+    "filtersActive": "{count, plural, one {# filtro} other {# filtros}}",
+    "filterButton": "Filtrar, {count, plural, =0 {ninguno activo} one {# activo} other {# activos}}",
+    "clearFilters": "Quitar filtros",
+    "clear": "Quitar",
+    "moreActions": "Más acciones",
+    "selectedCount": "{count} seleccionados",
+    "selectAll": "Seleccionar los {count}",
+    "clearSelection": "Borrar selección",
+    "selectionActions": "Acciones de la selección",
+    "sort": "Ordenar",
+    "view": "Vista",
+    "gridView": "Vista de cuadrícula",
+    "listView": "Vista de lista"
   }
 }

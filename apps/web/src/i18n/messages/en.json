@@ -7109,7 +7109,8 @@
     "notInGroup": "Not in a group",
     "youreIn": "You’re in",
     "returnToFleet": "Return to {name} fleet",
-    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group."
+    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group.",
+    "filterProblems": "Problem"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
@@ -7137,7 +7138,18 @@
       "newest": "Newest",
       "oldest": "Oldest"
     },
-    "showMore": "Show {count} more"
+    "showMore": "Show {count} more",
+    "filterLevel": "School level",
+    "filterHoliday": "Holiday",
+    "categoryTabs": "Category",
+    "selectTemplate": "Select {name}",
+    "selectAllShown": "Select all your templates shown",
+    "duplicate": "Duplicate",
+    "export": "Export",
+    "delete": "Delete",
+    "bulkDeleteTitle": "Delete {count, plural, one {# template} other {# templates}}?",
+    "bulkDeleteBody": "Templates that are showing on screens are skipped — delete those one at a time so you can see where they play.",
+    "bulkDeleteDone": "{deleted, plural, one {# template deleted} other {# templates deleted}}{skipped, plural, =0 {} one {, # skipped (in use)} other {, # skipped (in use)}}"
   },
   "acceptInvite": {
     "title": "Accept your invitation",
@@ -8110,5 +8122,21 @@
     "upload": "Upload new",
     "loading": "Loading library…",
     "empty": "No files here yet. Upload a file or choose another folder."
+  },
+  "ui": {
+    "filter": "Filter",
+    "filtersActive": "{count, plural, one {# filter} other {# filters}}",
+    "filterButton": "Filter, {count, plural, =0 {none active} one {# active} other {# active}}",
+    "clearFilters": "Clear filters",
+    "clear": "Clear",
+    "moreActions": "More actions",
+    "selectedCount": "{count} selected",
+    "selectAll": "Select all {count}",
+    "clearSelection": "Clear selection",
+    "selectionActions": "Selection actions",
+    "sort": "Sort",
+    "view": "View",
+    "gridView": "Grid view",
+    "listView": "List view"
   }
 }

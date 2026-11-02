@@ -134,6 +134,13 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { DateField } from '@/components/ui/date-field';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { useDesignV2, usePhoneWidth } from '@/lib/design-preview';
+import { TabRow } from '@/components/ui/tab-row';
+import { FilterMenu, type FilterGroup } from '@/components/ui/filter-menu';
+import { PageToolbar } from '@/components/ui/page-toolbar';
+import { Segmented } from '@/components/ui/segmented';
+import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
+import { SelectionCheckbox, SelectionTileCheckbox, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─────────────────────────────────────────────────────
@@ -1060,6 +1067,16 @@ export default function TemplatesPage() {
     aiBusyRef.current = aiBusy;
   }, [aiBusy]);
   const exportTemplate = useExportTemplate();
+
+  // ── Pill cleanup v2 preview (`?design=v2`, 2026-11-02) ──────────────
+  // Off unless the URL asks; production renders exactly as before. v2 adds
+  // the shared toolbar (category tabs · search · Filter · Sort · view) and
+  // a multi-select on YOUR templates so the selection bar can be judged.
+  const designV2 = useDesignV2();
+  const tUi = useTranslations('ui');
+  const isMobileV2 = usePhoneWidth();
+  const [tplSelected, setTplSelected] = useState<Set<string>>(() => new Set());
+  const [tplBulkBusy, setTplBulkBusy] = useState(false);
   const importTemplate = useImportTemplate();
   // Express lane — "Put on a screen". Creates a one-item playlist FROM this
   // board/template (same path the New-Playlist "From Template" mode uses) and
@@ -2382,6 +2399,67 @@ export default function TemplatesPage() {
     input.click();
   }
 
+  // v2 selection — only templates the operator can SEE stay selected.
+  const v2SelectableIds = designV2 && !isViewer && viewMode === 'grid' ? visibleCustom.map((t: Template) => t.id) : [];
+  const v2SelectedTemplates = visibleCustom.filter((t: Template) => tplSelected.has(t.id));
+  const v2SelState = selectionState(v2SelectedTemplates.length, v2SelectableIds.length);
+  const toggleTpl = (id: string) => setTplSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  async function v2BulkDuplicate() {
+    if (tplBulkBusy) return;
+    setTplBulkBusy(true);
+    try {
+      for (const t of v2SelectedTemplates) await duplicateTemplate.mutateAsync({ id: t.id });
+      setTplSelected(new Set());
+    } finally { setTplBulkBusy(false); }
+  }
+  async function v2BulkExport() {
+    for (const t of v2SelectedTemplates) await handleExport(t);
+  }
+  async function v2BulkDelete() {
+    if (!isAdmin || tplBulkBusy) return;
+    const targets = v2SelectedTemplates;
+    if (targets.length === 1) { void handleDeleteTemplate(targets[0]); return; }
+    const ok = await appConfirm({
+      title: tTpl('bulkDeleteTitle', { count: targets.length }),
+      message: tTpl('bulkDeleteBody'),
+      tone: 'danger',
+      confirmLabel: tTpl('delete'),
+    });
+    if (!ok) return;
+    setTplBulkBusy(true);
+    let deleted = 0, skipped = 0;
+    try {
+      // Never forced: a template that is on a screen answers 409 and is skipped.
+      for (const t of targets) {
+        try { await deleteTemplate.mutateAsync({ id: t.id }); deleted += 1; }
+        catch { skipped += 1; }
+      }
+    } finally {
+      setTplBulkBusy(false);
+      setTplSelected(new Set());
+    }
+    toast.success(tTpl('bulkDeleteDone', { deleted, skipped }));
+  }
+  const v2BarProps: SelectionBarProps = {
+    count: v2SelectedTemplates.length,
+    onClear: () => setTplSelected(new Set()),
+    testId: 'templates-bulk-bar',
+    moreTestId: 'templates-bulk-more',
+    moreMenuTestId: 'templates-bulk-more-menu',
+    selectAll: v2SelectableIds.length > v2SelectedTemplates.length
+      ? { label: tUi('selectAll', { count: v2SelectableIds.length }), onSelect: () => setTplSelected(new Set(v2SelectableIds)) }
+      : null,
+    actions: [
+      { id: 'export', label: tTpl('export'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void v2BulkExport(); }, disabled: tplBulkBusy },
+      { id: 'duplicate', label: tTpl('duplicate'), icon: <Copy className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void v2BulkDuplicate(); }, disabled: tplBulkBusy, busy: tplBulkBusy },
+      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void v2BulkDelete(); }, disabled: tplBulkBusy }] : []),
+    ],
+  };
+
   if (editingTemplate) {
     return createPortal(
       <TemplateBuilder template={editingTemplate} onBack={() => setEditingTemplate(null)} onSaved={(u) => setEditingTemplate(u)} />,
@@ -3278,6 +3356,116 @@ export default function TemplatesPage() {
           category, plus the K-12-only grade-level row and the holiday
           sub-filter — both distinct DIMENSIONS, which is why §5.3 gives
           them their own secondary row rather than crowding tier one. */}
+      {designV2 ? (() => {
+        // Same data, same callbacks as the chip rows below — only the drawing
+        // changes. Category stays the page's main axis (tabs); school level
+        // and the Holidays sub-filter move behind ONE Filter button.
+        const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+          ? tenantCopy.templateCategories
+          : CATEGORY_TABS;
+        const countFor = (key: string): number => {
+          let n = 0;
+          for (const t of (templates || [])) {
+            if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
+            if (t.id.endsWith('-portrait')) continue;
+            if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
+          }
+          return n;
+        };
+        const cats = catsRaw
+          .map((cat) => ({ ...cat, count: cat.key ? countFor(cat.key) : totalCount }))
+          .filter((cat) => !cat.key || cat.count > 0);
+        const filterGroups: FilterGroup[] = [];
+        if (!tenantCopy.vertical || tenantCopy.vertical === 'K12') {
+          filterGroups.push({
+            id: 'level', label: tTpl('filterLevel'), type: 'single',
+            options: SCHOOL_LEVEL_CHIPS.map((c) => ({ value: c.key, label: tTpl(`level.${c.key || 'ALL'}`) })),
+          });
+        }
+        if (activeCategory === 'HOLIDAYS') {
+          filterGroups.push({
+            id: 'holiday', label: tTpl('filterHoliday'), type: 'single',
+            options: HOLIDAY_SUB_FILTERS.map((h) => ({ value: h.key, label: h.label })),
+          });
+        }
+        const selecting = !isMobileV2 && v2SelectedTemplates.length > 0;
+        return (
+          <>
+            <PageToolbar
+              testId="templates-toolbar"
+              tabsBelow
+              compact={isMobileV2}
+              selection={selecting ? <SelectionToolbar {...v2BarProps} /> : undefined}
+              tabs={
+                <TabRow
+                  value={activeCategory}
+                  ariaLabel={tTpl('categoryTabs')}
+                  testId="templates-category-tabs"
+                  onChange={(key) => {
+                    setActiveCategory(key);
+                    // leaving the Holidays category clears its sub-filter
+                    if (key !== 'HOLIDAYS') setActiveHoliday('');
+                    // a new filter is a new result set — back to the first page
+                    setPresetPages(1);
+                  }}
+                  tabs={cats.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+                />
+              }
+              search={
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search templates..."
+                    aria-label="Search templates"
+                    className="min-h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 md:min-h-9"
+                  />
+                </div>
+              }
+              filters={filterGroups.length > 0 ? (
+                <FilterMenu
+                  testId="templates-filter-menu"
+                  groups={filterGroups}
+                  value={{ level: activeLevel, holiday: activeHoliday }}
+                  onChange={(group, next) => {
+                    if (group === 'level') setActiveLevel(next as string);
+                    if (group === 'holiday') setActiveHoliday(next as string);
+                  }}
+                  onClear={() => { setActiveLevel(''); setActiveHoliday(''); }}
+                />
+              ) : undefined}
+              sort={
+                <>
+                  <label className="sr-only" htmlFor="tpl-sort-v2">{tTpl('sortLabel')}</label>
+                  <select
+                    id="tpl-sort-v2"
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
+                    className="min-h-11 max-w-[6.5rem] md:max-w-[10rem] rounded-lg border-0 bg-transparent px-1 text-[13px] font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:min-h-9"
+                  >
+                    {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tTpl(`sort.${o.key}`)}</option>)}
+                  </select>
+                </>
+              }
+              trailing={isMobileV2 ? undefined : (
+                <Segmented
+                  value={viewMode}
+                  onChange={setViewMode}
+                  ariaLabel="View"
+                  iconOnly
+                  options={[
+                    { value: 'grid', label: 'Grid view', icon: Grid3X3 },
+                    { value: 'list', label: 'List view', icon: AlignLeft },
+                  ] as const}
+                />
+              )}
+            />
+            {isMobileV2 && <ActionDock {...v2BarProps} />}
+          </>
+        );
+      })() : (
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative min-w-[220px] max-w-xs flex-1">
@@ -3467,6 +3655,7 @@ export default function TemplatesPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Gallery body ───────────────────────────────────────────────
           Four states, in the order the operator can actually hit them:
@@ -3578,6 +3767,16 @@ export default function TemplatesPage() {
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
+                {v2SelectableIds.length > 0 && (
+                  <SelectionCheckbox
+                    checked={v2SelState === 'all'}
+                    indeterminate={v2SelState === 'some'}
+                    label={tTpl('selectAllShown')}
+                    title={selectAllTitle(v2SelState, tTpl('selectAllShown'), tUi('clearSelection'))}
+                    onChange={() => setTplSelected(v2SelState === 'all' ? new Set() : new Set(v2SelectableIds))}
+                    testId="templates-select-all"
+                  />
+                )}
                 {tTpl('yourTemplates')}
                 {customTemplates.length > 0 && (
                   <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500 tabular-nums">
@@ -3622,8 +3821,17 @@ export default function TemplatesPage() {
             ) : (
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
+                  <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
+                    {v2SelectableIds.length > 0 && (
+                      <SelectionTileCheckbox
+                        checked={tplSelected.has(t.id)}
+                        anySelected={v2SelectedTemplates.length > 0}
+                        label={tTpl('selectTemplate', { name: t.name })}
+                        onChange={() => toggleTpl(t.id)}
+                        testId={`templates-select-${t.id}`}
+                      />
+                    )}
                   <GalleryCard
-                    key={t.id}
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
@@ -3641,6 +3849,7 @@ export default function TemplatesPage() {
                     isViewerDisabled={isViewer}
                     {...ownedCardProps(t)}
                   />
+                  </div>
                 ))}
               </div>
             )}

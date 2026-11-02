@@ -47,6 +47,13 @@ import { AddScreensToGroupDialog } from './AddScreensToGroupDialog';
 import { SelectionCheckbox, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import { BulkActionBar, BulkActionSheet } from './BulkScreenActions';
 import { pruneTo, stateFor, toggleMany, toggleOne, type BulkKind } from './bulkSelection';
+import { useDesignV2, usePhoneWidth } from '@/lib/design-preview';
+import { Segmented } from '@/components/ui/segmented';
+import { TabRow } from '@/components/ui/tab-row';
+import { FilterMenu } from '@/components/ui/filter-menu';
+import { PageToolbar } from '@/components/ui/page-toolbar';
+import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
+import { Power, PowerOff } from 'lucide-react';
 
 /**
  * "Full settings" — the SAME popover the classic Screens page has always shown
@@ -555,6 +562,31 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   };
 
   const brand = { background: 'var(--brand-primary, #4f46e5)' };
+  // Pill cleanup v2 preview (`?design=v2`) — off unless the URL asks.
+  const designV2 = useDesignV2();
+  const isMobile = usePhoneWidth();
+  /** The bulk actions as ONE list for the v2 selection bar and the phone dock. */
+  const bulkBarProps: SelectionBarProps = {
+    count: selectedIds.length,
+    countLabel: t('screens.bulk.selectedCount', { count: selectedIds.length }),
+    onClear: () => setBulkSelected(new Set()),
+    ariaLabel: t('screens.bulk.barLabel'),
+    testId: 'screens-bulk-bar',
+    moreTestId: 'screens-bulk-more',
+    moreMenuTestId: 'screens-bulk-more-menu',
+    selectAll: visibleCount > selectedIds.length
+      ? { label: t('screens.bulk.selectAllCount', { count: visibleCount }), onSelect: () => setBulkSelected(new Set(visibleIds)) }
+      : null,
+    actions: [
+      { id: 'update', label: t('screens.bulk.update'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('update', selectedIds), testId: 'screens-bulk-update' },
+      { id: 'power-on', label: t('screens.bulk.powerOn'), icon: <Power className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('power-on', selectedIds), testId: 'screens-bulk-power-on' },
+      { id: 'power-off', label: t('screens.bulk.powerOff'), icon: <PowerOff className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('power-off', selectedIds), testId: 'screens-bulk-power-off' },
+      { id: 'auto-on', label: t('screens.bulk.autoOn'), overflow: true, onSelect: () => startBulk('auto-on', selectedIds) },
+      { id: 'auto-off', label: t('screens.bulk.autoOff'), overflow: true, onSelect: () => startBulk('auto-off', selectedIds) },
+      { id: 'auto-inherit', label: t('screens.bulk.autoInherit'), overflow: true, onSelect: () => startBulk('auto-inherit', selectedIds) },
+      { id: 'resync', variant: 'primary', label: t('screens.bulk.resync'), icon: <RefreshCw className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('resync', selectedIds), testId: 'screens-bulk-resync' },
+    ],
+  };
   const params = useParams<{ schoolId: string }>();
   const schoolSlug = params?.schoolId ?? '';
 
@@ -647,6 +679,24 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {designV2 ? (
+            // Pill cleanup v2 (`?design=v2`): a view is a Segmented, not tabs.
+            <Segmented
+              value={viewMode}
+              onChange={onViewMode}
+              ariaLabel={t('screensOps.viewsAria')}
+              fullWidthOnMobile
+              testId="screens-view-switch"
+              options={floorSlot ? [
+                { value: 'list', label: t('screensOps.viewList'), icon: ListIcon },
+                { value: 'map', label: t('screensOps.viewMap'), icon: MapIcon },
+                { value: 'floor', label: t('screensOps.viewFloor'), icon: MapPin },
+              ] as const : [
+                { value: 'list', label: t('screensOps.viewList'), icon: ListIcon },
+                { value: 'map', label: t('screensOps.viewMap'), icon: MapIcon },
+              ] as const}
+            />
+          ) : (
           <div role="tablist" aria-label={t('screensOps.viewsAria')} className="flex w-full sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             {([
               ['list', t('screensOps.viewList'), ListIcon],
@@ -670,6 +720,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
               );
             })}
           </div>
+          )}
 
           {/* 2026-09-14 (Greg): "adding a new group should not be hidden behind
               the 3 dots — an obvious button". A quiet secondary next to the one
@@ -787,6 +838,81 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
       {viewMode !== 'floor' && (
         <>
+          {designV2 ? (
+            <>
+              {/* ─── Pill cleanup v2 (`?design=v2`, 2026-11-02) ─────────
+                  ONE toolbar: the main filter as underlined tabs (All /
+                  Needs attention / Offline), search, and the secondary
+                  problems behind Filter. Same single FilterKey as the chips
+                  — same semantics, zero-count problems still hidden or
+                  disabled unless active. While screens are selected, the
+                  desktop row becomes the selection bar in place; on a
+                  phone the selection lives in the bottom dock. */}
+              <PageToolbar
+                testId="screens-toolbar"
+                compact={isMobile}
+                selection={!isMobile && selectable && selectedIds.length > 0 ? <SelectionToolbar {...bulkBarProps} /> : undefined}
+                tabs={
+                  <TabRow
+                    value={filter}
+                    onChange={setFilter}
+                    ariaLabel={t('screensOps.filterAria')}
+                    testId="screens-filter-tabs"
+                    tabs={ops.chips
+                      .filter((c) => c.key === 'all' || c.key === 'attention' || c.key === 'offline')
+                      .filter((c) => c.key !== 'offline' || c.count > 0 || c.key === filter)
+                      .map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+                  />
+                }
+                search={
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
+                    <input
+                      ref={searchRef}
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
+                      placeholder={t('screensOps.searchPlaceholder')}
+                      aria-label={t('screensOps.searchAria')}
+                      className="w-full md:w-60 min-h-11 md:min-h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </div>
+                }
+                filters={
+                  <FilterMenu
+                    testId="screens-filter-menu"
+                    groups={[{
+                      id: 'problem',
+                      label: t('screensOps.filterProblems'),
+                      type: 'single',
+                      options: ops.chips
+                        .filter((c) => c.key === 'content-behind' || c.key === 'push-delayed')
+                        .map((c) => ({ value: c.key, label: c.label, count: c.count, disabled: c.count === 0 })),
+                    }]}
+                    value={{ problem: filter === 'content-behind' || filter === 'push-delayed' ? filter : '' }}
+                    onChange={(_g, next) => setFilter(((next as string) || 'all') as FilterKey)}
+                    onClear={() => { if (filter === 'content-behind' || filter === 'push-delayed') setFilter('all'); }}
+                  />
+                }
+              />
+              {selectable && !isLoading && !isError && visibleCount > 0 && selectedIds.length === 0 && (
+                <div className="flex items-center gap-1 -my-2 pl-1" data-testid="screens-select-heading">
+                  <SelectionCheckbox
+                    checked={pageSelState === 'all'}
+                    indeterminate={pageSelState === 'some'}
+                    label={t('screens.bulk.selectAllShown')}
+                    title={selectAllTitle(pageSelState, t('screens.bulk.selectAllShown'), t('selection.clearSelection'))}
+                    onChange={() => setBulkSelected((prev) => toggleMany(prev, visibleIds))}
+                    testId="screens-select-all"
+                  />
+                  <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
+                </div>
+              )}
+              {isMobile && selectable && <ActionDock {...bulkBarProps} />}
+            </>
+          ) : (
+            <>
           {/* ─── Search (§7) ─────────────────────────────────── */}
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
@@ -869,6 +995,8 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
               </div>
             )
+          )}
+            </>
           )}
 
           {/* Map view — the same rows the list would show, as pins (§5). */}
