@@ -505,8 +505,8 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
   { name: 'VIDEO_PLAYBACK_DEMOTION', type: 'enum', values: ['on', 'observe', 'off', '0', 'false', 'no'], default: 'on', failureDirection: 'open', killSwitch: true,
     purpose: 'Sticky demotion of a stuttering screen to its validated 1080p copy: on (default), observe (logs only), off | 0 | false | no.',
     note: 'Read in packages/api-types (playbackDemotionMode). Never for emergency content; two-sided units are recorded only.' },
-  { name: 'VIDEO_PLAYBACK_GATE', type: 'enum', values: ['warn', 'enforce', 'off', '0', 'false', 'no'], default: 'warn', failureDirection: 'open', killSwitch: true,
-    purpose: 'What publishing does with a video a target screen cannot play: warn (default, and for anything unrecognised), enforce (422 before any write), or off.',
+  { name: 'VIDEO_PLAYBACK_GATE', type: 'enum', values: ['warn', 'enforce', 'off', '0', 'false', 'no'], default: 'off', failureDirection: 'open', killSwitch: true,
+    purpose: 'What publishing does with a video a target screen cannot play: off (default, and for anything unrecognised; nothing is evaluated), warn (response carries playbackWarnings), or enforce (422 before any write).',
     note: 'Read in packages/api-types (playbackGateMode). Enforce never applies to a two-sided unit; unknown never warns; emergency playlists are never evaluated.' },
 
   // ─── Screen monitoring, fleet alarms and history ───────────────────────────────────────────
