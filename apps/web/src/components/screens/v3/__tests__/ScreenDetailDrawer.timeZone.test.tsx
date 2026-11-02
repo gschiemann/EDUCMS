@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe('ScreenDetailDrawer → Time zone', () => {
-  it('shows the automatic zone, its source, the local time, and says the device disagrees in plain words', () => {
+  it('shows the automatic zone, its source and the local time, with no device-zone warning', () => {
     renderDrawer(screenRow({
       timeZone: 'America/Los_Angeles', timeZoneSource: 'auto', timeZoneAuto: 'America/Los_Angeles', timeZoneAutoFrom: 'location',
       timezone: null, deviceTimeZone: 'Asia/Shanghai',
@@ -88,8 +88,9 @@ describe('ScreenDetailDrawer → Time zone', () => {
     const row = rtl.getByTestId('screen-time-zone');
     expect(within(row).getByTestId('screen-time-zone-effective').textContent).toBe('America/Los_Angeles · PDT (UTC−7) · 12:00 PM there now');
     expect(row.textContent).toContain('Automatic, from the address');
-    expect(within(row).getByTestId('screen-time-zone-device').textContent)
-      .toBe('The screen itself is set to Asia/Shanghai. Clocks, dates and overnight updates on it follow America/Los_Angeles anyway.');
+    // No device-zone warning at all: the screen follows the location's zone.
+    expect(within(row).queryByTestId('screen-time-zone-device')).not.toBeInTheDocument();
+    expect(row.textContent).not.toContain('anyway');
     // The picker's first option names the automatic zone; nothing is selected over it.
     const select = within(row).getByRole('combobox') as HTMLSelectElement;
     expect(select.value).toBe('');
@@ -100,7 +101,7 @@ describe('ScreenDetailDrawer → Time zone', () => {
     renderDrawer(screenRow({ timeZone: 'America/Los_Angeles', timeZoneSource: 'location', timeZoneAuto: 'America/Los_Angeles', deviceTimeZone: 'US/Pacific' }));
     const row = rtl.getByTestId('screen-time-zone');
     expect(row.textContent).toContain('From the location’s setting');
-    expect(within(row).getByTestId('screen-time-zone-device').textContent).toBe('The screen’s own clock setting agrees.');
+    expect(within(row).queryByTestId('screen-time-zone-device')).not.toBeInTheDocument();
   });
 
   it('with no zone known it says the screen uses its device’s zone, and offers the picker', () => {
