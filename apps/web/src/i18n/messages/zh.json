@@ -3177,6 +3177,20 @@
     "selectItem": "选择 {name}",
     "clearSelection": "清除选择"
   },
+  "assetsLibV2": {
+    "uploadHint": "将文件拖到此页面即可上传 · 视频最大 {video}",
+    "dropTitle": "松开即可上传",
+    "dropSub": "我们会询问存放到哪个文件夹",
+    "typeTabs": "媒体类型",
+    "sort": "排序",
+    "moreActions": "更多操作",
+    "selectionActions": "所选项操作",
+    "selectedCount": "已选择 {count} 项",
+    "createPlaylist": "创建播放列表",
+    "move": "移动",
+    "moveToFolder": "移动到文件夹",
+    "clearSelection": "清除选择"
+  },
   "assetsLib": {
     "uploadFiles": "上传文件",
     "photoLibrary": "照片图库",

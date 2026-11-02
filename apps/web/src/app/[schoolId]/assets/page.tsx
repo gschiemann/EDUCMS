@@ -36,7 +36,8 @@
 
 import { WebsitePreviewThumb } from '@/components/assets/WebsitePreviewThumb';
 import { websitePreviewUrl } from '@/lib/website-preview';
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -64,6 +65,8 @@ import type { UploadPhase } from '@/lib/upload-job-store';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
 import { AssetActionsMenu, buildAssetMenuActions } from '@/components/assets/AssetActionsMenu';
 import { AssetBulkBar } from '@/components/assets/AssetBulkBar';
+import { AssetSelectionToolbar, AssetSelectionDock } from '@/components/assets/AssetSelectionActions';
+import { MediaTypeTabs } from '@/components/assets/MediaTypeTabs';
 import { SelectionCheckbox, SelectionTileCheckbox, SELECTED_TILE_CLASS, selectAllTitle, selectionState } from '@/components/common/SelectionCheckbox';
 import { AssetUsageSection, AssetInUseBlock } from '@/components/assets/AssetUsageSection';
 import { AiImageModal, useAiImageAvailable } from '@/components/ai/AiImageGenerateButton';
@@ -121,6 +124,9 @@ import { formatStorageBytes } from '@/lib/storage-bytes';
 const PAGE_SIZE = 50;
 const FULL_SCAN_TAKE = 500;
 
+
+// The `?design=v2` mock-up flag never changes without a navigation.
+const noopSubscribe = () => () => {};
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'all' | 'images' | 'videos' | 'audio' | 'urls' | 'documents';
@@ -290,6 +296,16 @@ function statusBadge(a: any): { label: string; className: string } | null {
 export default function AssetsPage() {
   const t = useTranslations();
   const isMobile = useIsMobile();
+  // DESIGN MOCK-UP (2026-11-02): `?design=v2` renders the proposed
+  // "one primary action, quiet secondaries" toolbar + selection bar for the
+  // owner to approve. Without the flag the page is byte-for-byte production.
+  // Read on the client only (no useSearchParams → no Suspense boundary
+  // needed; the server snapshot is v1, so hydration always matches).
+  const designV2 = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get('design') === 'v2',
+    () => false,
+  );
   // The two outcomes the browser itself reports are translated here; a
   // refusal from the server keeps the server's own sentence.
   const deleteFailureText = (item: AssetDeleteResult) =>
@@ -1270,6 +1286,17 @@ export default function AssetsPage() {
               </span>
             ) : null}
           </p>
+          {/* v2: the upload hint is ONE quiet line; the full format list is
+              the tooltip, and the drop overlay appears only while dragging. */}
+          {designV2 && !isViewer && (
+            <p
+              className="hidden md:block text-xs text-slate-400 mt-1"
+              data-testid="upload-hint"
+              title={t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()), ...uploadFormatsCopy() })}
+            >
+              {t('assetsLibV2.uploadHint', { video: formatUploadCap(videoUploadLimitBytes()) })}
+            </p>
+          )}
         </div>
         <div className="flex gap-2 items-center">
           <div className="relative" ref={addMenuRef}>
@@ -1396,7 +1423,24 @@ export default function AssetsPage() {
       {/* ── Compact upload strip (§6). Desktop-only: you can't drag a file on
           a phone and the header already has Add asset. The whole page is
           the drop target; this strip is the affordance that says so. */}
-      <button
+      {designV2 && dragOver && !isViewer && createPortal(
+        // pointer-events-none: the drag/drop events keep landing on the page
+        // wrapper underneath, so the existing drop handler does the work.
+        // Portalled to <body> so no shell ancestor can clip the fixed layer.
+        <div
+          data-testid="drop-overlay"
+          className="fixed top-0 right-0 bottom-0 left-0 z-[70] pointer-events-none flex items-center justify-center bg-indigo-50/90 p-6 animate-in fade-in duration-100"
+        >
+          <div className="w-full max-w-xl rounded-2xl border-2 border-dashed border-indigo-400 bg-white px-8 py-12 text-center shadow-lg">
+            <UploadCloud className="w-10 h-10 mx-auto text-indigo-500" aria-hidden />
+            <p className="mt-3 text-lg font-bold text-slate-900">{t('assetsLibV2.dropTitle')}</p>
+            <p className="mt-1 text-sm text-slate-500">{t('assetsLibV2.dropSub')}</p>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {!designV2 && <button
         type="button"
         disabled={isViewer}
         aria-label={isViewer ? t('assetsLib.uploadDisabledViewer') : t('assetsLib.uploadAria')}
@@ -1420,7 +1464,7 @@ export default function AssetsPage() {
           </span>
           <span className="block text-[11px] text-slate-500 mt-0.5">{t('assetsLib.supportedCopy', { video: formatUploadCap(videoUploadLimitBytes()), ...uploadFormatsCopy() })}</span>
         </span>
-      </button>
+      </button>}
 
       {picker.ios && <p className="text-xs text-slate-500">{t('assetsLib.iosVideoHint')}</p>}
 
@@ -1533,8 +1577,92 @@ export default function AssetsPage() {
         </div>
       )}
 
+      {/* ── v2 mock-up: search + underlined type tabs + plain Sort; on desktop
+          the SAME row becomes the selection bar while files are selected. */}
+      {designV2 && (
+        <div className="space-y-3">
+          <div className="flex gap-2 items-center md:hidden">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                aria-label="Search the media library"
+                placeholder={t('assetsLib.searchPlaceholder')}
+                className="w-full min-h-11 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label={t('assetsLibV2.sort')}
+              className="min-h-11 max-w-[7.5rem] bg-transparent border-0 px-1 text-sm font-semibold text-slate-700 outline-none"
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                <option key={k} value={k}>{SORT_LABELS[k]}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4 h-12 border-b border-slate-200" data-testid="library-toolbar">
+            {selectedIds.length > 0 && !isMobile ? (
+              <div className="flex-1 h-full">
+                <AssetSelectionToolbar
+                  count={selectedIds.length}
+                  selectAllCount={selectAllOffer}
+                  selectingAll={selectingAll}
+                  onSelectAll={() => void selectAllFiles()}
+                  disabled={isViewer}
+                  disabledReason={readOnlyReason}
+                  deleteDisabled={!canDelete || deletingCount > 0}
+                  deleteDisabledReason={deleteDeniedReason}
+                  onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
+                  onMoveToFolder={() => setShowFolderPicker('bulk-move')}
+                  downloadPending={downloadPending}
+                  onDownload={downloadSelectedAssets}
+                  onDelete={handleBulkDelete}
+                  onClear={clearSelection}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex-1 min-w-0 h-full">
+                  <MediaTypeTabs value={filter} onChange={setFilter} counts={typeCounts} showCounts={allLoaded} />
+                </div>
+                <div className="relative hidden md:block w-56 shrink-0">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden />
+                  <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); } }}
+                    aria-label="Search the media library"
+                    placeholder={t('assetsLib.searchPlaceholder')}
+                    className="w-full h-8 pl-8 pr-2 bg-slate-100/80 border border-transparent rounded-md text-xs text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-slate-300"
+                  />
+                </div>
+                <label className="hidden md:flex items-center gap-1 text-xs text-slate-500 shrink-0">
+                  <span>{t('assetsLibV2.sort')}:</span>
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as SortKey)}
+                    className="bg-transparent border-0 py-1 pr-1 text-xs font-semibold text-slate-800 outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+                  >
+                    {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                      <option key={k} value={k}>{SORT_LABELS[k]}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="hidden md:flex items-center shrink-0">
+                  <button onClick={()=>setViewMode('grid')} aria-label={t('assetsLib.gridView')} aria-pressed={viewMode==='grid'} className={`w-8 h-8 rounded-md flex items-center justify-center ${viewMode==='grid'?'text-slate-900 bg-slate-100':'text-slate-400 hover:text-slate-700'}`}><Grid3X3 className="w-4 h-4" /></button>
+                  <button onClick={()=>setViewMode('list')} aria-label={t('assetsLib.listView')} aria-pressed={viewMode==='list'} className={`w-8 h-8 rounded-md flex items-center justify-center ${viewMode==='list'?'text-slate-900 bg-slate-100':'text-slate-400 hover:text-slate-700'}`}><List className="w-4 h-4" /></button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Search / filters / sort / view (§7) ──────────────────────── */}
-      <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+      {!designV2 && <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
         <div className="relative w-full lg:w-[340px] lg:shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden />
           <input
@@ -1606,7 +1734,7 @@ export default function AssetsPage() {
             <button onClick={()=>setViewMode('list')} aria-label={t('assetsLib.listView')} aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-2 border-l border-slate-200 ${viewMode==='list'?'bg-indigo-50 text-indigo-700':'text-slate-500 hover:text-slate-700'}`}><List className="w-3.5 h-3.5" /></button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── Breadcrumb + New folder (§8) ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -1642,9 +1770,12 @@ export default function AssetsPage() {
           onClick={() => setShowNewFolder(true)}
           disabled={isViewer}
           title={isViewer ? readOnlyReason : undefined}
-          className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 hover:border-indigo-300 text-slate-700 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          className={designV2
+            // v2: a secondary action is quiet text, no pill outline.
+            ? 'min-h-11 sm:min-h-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed'
+            : 'min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-300 hover:border-indigo-300 text-slate-700 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed'}
         >
-          <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.newFolder')}
+          <FolderPlus className={designV2 ? 'w-3.5 h-3.5' : 'w-3.5 h-3.5 text-indigo-500'} /> {t('assetsLib.newFolder')}
         </button>
       </div>
 
@@ -1676,7 +1807,26 @@ export default function AssetsPage() {
       {/* ── Selection bar (§13) — contextual, never in the header ────── */}
       {deletingCount > 0 && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">{t('assetsLib.deletingFiles', { count: deletingCount })}</p>}
 
-      <AssetBulkBar
+      {designV2 && isMobile && (
+        <AssetSelectionDock
+          count={selectedIds.length}
+          selectAllCount={selectAllOffer}
+          selectingAll={selectingAll}
+          onSelectAll={() => void selectAllFiles()}
+          disabled={isViewer}
+          disabledReason={readOnlyReason}
+          deleteDisabled={!canDelete || deletingCount > 0}
+          deleteDisabledReason={deleteDeniedReason}
+          onCreatePlaylist={() => startPlaylistFrom(selectedIds)}
+          onMoveToFolder={() => setShowFolderPicker('bulk-move')}
+          downloadPending={downloadPending}
+          onDownload={downloadSelectedAssets}
+          onDelete={handleBulkDelete}
+          onClear={clearSelection}
+        />
+      )}
+
+      {!designV2 && <AssetBulkBar
         count={selectedIds.length}
         selectAllCount={selectAllOffer}
         selectingAll={selectingAll}
@@ -1692,7 +1842,7 @@ export default function AssetsPage() {
         onDownload={downloadSelectedAssets}
         onDelete={handleBulkDelete}
         onClear={clearSelection}
-      />
+      />}
 
       {/* ── Folders (§9) ────────────────────────────────────────────── */}
       {showFolderSection && (

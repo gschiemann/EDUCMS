@@ -3177,6 +3177,20 @@
     "selectItem": "Seleccionar {name}",
     "clearSelection": "Borrar selección"
   },
+  "assetsLibV2": {
+    "uploadHint": "Arrastra archivos a esta página para subirlos · vídeo de hasta {video}",
+    "dropTitle": "Suelta para subir",
+    "dropSub": "Te preguntaremos en qué carpeta guardarlos",
+    "typeTabs": "Tipo de medio",
+    "sort": "Ordenar",
+    "moreActions": "Más acciones",
+    "selectionActions": "Acciones de la selección",
+    "selectedCount": "{count} seleccionados",
+    "createPlaylist": "Crear lista",
+    "move": "Mover",
+    "moveToFolder": "Mover a carpeta",
+    "clearSelection": "Borrar selección"
+  },
   "assetsLib": {
     "uploadFiles": "Subir archivos",
     "photoLibrary": "Fototeca",

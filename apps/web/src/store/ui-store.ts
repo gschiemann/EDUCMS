@@ -210,6 +210,8 @@ interface AppState {
   moreSheetOpen: boolean;
   /** The "Install VenueOS" banner is on screen; the bug FAB yields to it. */
   installBannerShown: boolean;
+  /** A bottom selection bar (Media Library `?design=v2` mock-up) is on screen; the bug FAB yields to it. */
+  selectionDockShown: boolean;
   activeTenant: string | null;
   isEmergencyActive: boolean;
   /** 2026-05-23 launch audit P2 #3 — store the overrideId returned from
@@ -268,6 +270,7 @@ interface AppState {
   popOverlay: () => void;
   setMoreSheetOpen: (open: boolean) => void;
   setInstallBannerShown: (shown: boolean) => void;
+  setSelectionDockShown: (shown: boolean) => void;
   setActiveTenant: (tenantId: string) => void;
   setEmergencyActive: (active: boolean, overrideId?: string | null) => void;
   setEmergencyDrillOnly: (drillOnly: boolean | null) => void;
@@ -285,6 +288,7 @@ export const useUIStore = create<AppState>((set) => ({
   overlayOpenCount: 0,
   moreSheetOpen: false,
   installBannerShown: false,
+  selectionDockShown: false,
   activeTenant: initial.user?.tenantSlug || initial.user?.tenantId || null,
   isEmergencyActive: false,
   activeEmergencyOverrideId: null,
@@ -381,6 +385,7 @@ export const useUIStore = create<AppState>((set) => ({
   popOverlay: () => set((state) => ({ overlayOpenCount: Math.max(0, state.overlayOpenCount - 1) })),
   setMoreSheetOpen: (open) => set({ moreSheetOpen: open }),
   setInstallBannerShown: (shown) => set({ installBannerShown: shown }),
+  setSelectionDockShown: (shown) => set({ selectionDockShown: shown }),
   setActiveTenant: (tenantId) => set({ activeTenant: tenantId }),
   setEmergencyActive: (active, overrideId) =>
     set({

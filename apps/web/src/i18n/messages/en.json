@@ -3177,6 +3177,20 @@
     "selectItem": "Select {name}",
     "clearSelection": "Clear selection"
   },
+  "assetsLibV2": {
+    "uploadHint": "Drag files onto this page to upload · video up to {video}",
+    "dropTitle": "Drop to upload",
+    "dropSub": "We’ll ask which folder to put them in",
+    "typeTabs": "Media type",
+    "sort": "Sort",
+    "moreActions": "More actions",
+    "selectionActions": "Selection actions",
+    "selectedCount": "{count} selected",
+    "createPlaylist": "Create playlist",
+    "move": "Move",
+    "moveToFolder": "Move to folder",
+    "clearSelection": "Clear selection"
+  },
   "assetsLib": {
     "uploadFiles": "Upload files",
     "photoLibrary": "Photo library",
