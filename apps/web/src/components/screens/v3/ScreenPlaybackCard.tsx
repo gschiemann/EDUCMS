@@ -99,6 +99,24 @@ export function capabilityKey(cap: ScreenPlaybackCapabilityResponse['capability'
   return cap.evidence === 'unknown' ? null : 'capNone';
 }
 
+/**
+ * What the PANEL is, from the screen's own reported resolution (never the
+ * browser's decoder claim). `kind` drives the "what we send it" line: our
+ * pipeline serves the 1080p copy to 1080p screens and the full file to 4K.
+ */
+export function panelFromResolution(raw: string | null | undefined): { kind: '1080p' | '4k' | 'other'; size: string } | null {
+  if (!raw) return null;
+  const m = /(\d{3,5})\s*[x×X]\s*(\d{3,5})/.exec(raw);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  const short = Math.min(w, h);
+  const size = `${w} × ${h}`;
+  if (short >= 2000) return { kind: '4k', size };
+  if (short >= 1000 && short <= 1200) return { kind: '1080p', size };
+  return { kind: 'other', size };
+}
+
 /** One demotion: what happened, in plain words, and the one way back. */
 function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: ScreenPlaybackDemotion }) {
   const t = useTranslations('screens.playback');
@@ -154,7 +172,7 @@ function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: Sc
  */
 export type PlaybackCardPart = 'all' | 'summary' | 'files';
 
-export function ScreenPlaybackCard({ screenId, enabled, part = 'all' }: { screenId: string; enabled: boolean; part?: PlaybackCardPart }) {
+export function ScreenPlaybackCard({ screenId, enabled, part = 'all', resolution = null }: { screenId: string; enabled: boolean; part?: PlaybackCardPart; resolution?: string | null }) {
   const t = useTranslations('screens.playback');
   const q = useScreenPlaybackCapability(screenId, enabled);
   if (!enabled) return null;
@@ -172,40 +190,51 @@ export function ScreenPlaybackCard({ screenId, enabled, part = 'all' }: { screen
   if (!data) return null;
   const demotions = data.demotions ?? [];
   // Nothing measured and nothing moved: the Overview has nothing to say.
-  if (part === 'summary' && data.summary === 'unknown' && demotions.length === 0) return null;
-  if (part === 'files' && data.files.length === 0) return null;
-  const showSummary = part !== 'files';
-  const showFiles = part !== 'summary';
+  const panel = panelFromResolution(resolution);
   const cap = data.capability;
-  const summary = SUMMARY[data.summary];
   const capKey = capabilityKey(cap);
-  const evidenceText = t(EVIDENCE[cap.evidence], { count: cap.classScreens });
   const concurrency =
     cap.maxUnitConcurrentVideos === null
       ? null
       : cap.maxUnitConcurrentVideos <= 1
         ? t('concurrencyOne')
         : t('concurrencyMany', { count: cap.maxUnitConcurrentVideos });
+  const hasDecoderFacts = !!(capKey || concurrency);
+  if (part === 'summary' && data.summary === 'unknown' && demotions.length === 0 && !panel) return null;
+  if (part === 'files' && data.files.length === 0 && !hasDecoderFacts) return null;
+  const showSummary = part !== 'files';
+  const showFiles = part !== 'summary';
+  const summary = SUMMARY[data.summary];
+  const evidenceText = t(EVIDENCE[cap.evidence], { count: cap.classScreens });
+  const panelKey = panel ? (panel.kind === '4k' ? 'panel4k' : panel.kind === '1080p' ? 'panel1080' : 'panelSize') : null;
+  const sendsKey = panel?.kind === '4k' ? 'sends4k' : panel?.kind === '1080p' ? 'sends1080' : null;
 
   return (
     <div className="rounded-xl border border-slate-200 p-3.5" data-testid={part === 'files' ? 'screen-playback-files-card' : 'screen-playback-card'} data-summary={data.summary} data-part={part}>
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t(part === 'files' ? 'filesTitle' : 'title')}</p>
-      {showSummary && (
+      {showSummary && panelKey && (
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" data-testid="screen-playback-panel">
+          <p className="text-[12px] font-bold leading-snug text-slate-700" data-testid="screen-playback-panel-line">
+            {t(panelKey, { size: panel?.size ?? '' })}
+          </p>
+          {sendsKey && <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug">{t(sendsKey)}</p>}
+        </div>
+      )}
+      {showSummary && data.summary !== 'unknown' && (
       <div className={`mt-2 rounded-lg border px-2.5 py-2 ${TONE[summary.tone].wrap}`}>
         <p className={`text-[12px] font-bold leading-snug ${TONE[summary.tone].ink}`} data-testid="screen-playback-summary">
           {t(summary.key)}
         </p>
-        {data.summary === 'unknown' && (
-          <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('unknownHint')}</p>
-        )}
-        {(capKey || concurrency) && (
-          <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
+      </div>
+      )}
+      {showFiles && hasDecoderFacts && (
+        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" data-testid="screen-playback-decoder">
+          <p className="text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
             {[capKey ? t(capKey) : null, concurrency].filter(Boolean).join(' · ')}
             {capKey && <span className="text-slate-400"> — {evidenceText}</span>}
           </p>
-        )}
-        {cap.stale && <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('stale')}</p>}
-      </div>
+          {cap.stale && <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('stale')}</p>}
+        </div>
       )}
       {showSummary && demotions.map((d) => (
         <DemotionNotice key={d.id} screenId={screenId} demotion={d} />
