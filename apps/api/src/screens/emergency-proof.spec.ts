@@ -9,7 +9,13 @@ const runtime = { schema: 1, interactive: true, foreground: true, standbySinceMs
 it('never grades selecting an alert, ordinary content, or a stale challenge as delivered', () => {
   expect(emergencyRenderEvidence('em:lockdown')).toEqual({ hash: 'pending|em:lockdown', painted: false });
   expect(emergencyRenderEvidence('em:abcdef01', { ...paint, painted: false })).toMatchObject({ painted: false });
-  expect(emergencyRenderEvidence('pl:old', undefined, episode)).toMatchObject({ painted: false });
+  // 2026-11-02: a stored episode outlives the alert by up to one heartbeat; it never grades ordinary content.
+  expect(emergencyRenderEvidence('pl:old', undefined, episode)).toBeNull();
+  // The page relaying the APK's own verdict for THIS challenge is accepted — unless a native verdict for the same challenge contradicts it.
+  expect(emergencyRenderEvidence('em:abcdef01', { ...paint, nativeAccepted: true })).toEqual({ hash: 'em:abcdef01', painted: true });
+  expect(emergencyRenderEvidence('em:abcdef01', { ...paint, nativeAccepted: true }, episode)).toEqual({ hash: 'em:abcdef01', painted: true });
+  expect(emergencyRenderEvidence('em:abcdef01', { ...paint, nativeAccepted: true }, { ...episode, status: 'unconfirmed' })).toMatchObject({ painted: false });
+  expect(emergencyRenderEvidence('em:abcdef01', { ...paint, nativeAccepted: true, challenge: undefined })).toEqual({ hash: 'em:abcdef01', painted: true });
   expect(emergencyRenderEvidence('em:abcdef01', { ...paint, challenge: '00000000-0000-4000-8000-000000000002' }, episode)).toMatchObject({ painted: false });
   expect(emergencyRenderEvidence('em:abcdef01', paint, episode)).toMatchObject({ painted: false });
   expect(emergencyRenderEvidence('em:abcdef01', paint)).toMatchObject({ painted: false });
