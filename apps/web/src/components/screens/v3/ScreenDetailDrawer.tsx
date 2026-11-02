@@ -747,7 +747,7 @@ export function ScreenDetailDrawer({
               {/* Video playback (2026-10-11, video guarantee step 4): the
                   verdict and any demotion here; the per-file measurements
                   under Technical details (2026-10-22). */}
-              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" />
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" resolution={screen.resolution} />
 
               {/* ── Technical details (2026-10-22) ─────────────────────
                   Greg, on this tab: "the overview screen has so much shit in
@@ -779,7 +779,7 @@ export function ScreenDetailDrawer({
                       </p>
                     )}
                     {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
-                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" />
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" resolution={screen.resolution} />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
                     {/* Device — the facts the screen reported about itself

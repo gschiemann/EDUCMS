@@ -161,7 +161,8 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
   it('a screen with nothing measured says nothing about video on the Overview', () => {
     playbackData = { ...SMOOTH, summary: 'unknown', files: [] };
     renderDrawer(screenRow());
-    expect(rtl.queryByTestId('screen-playback-card')).not.toBeInTheDocument();
+    // The panel's own size is a fact and may show; a smoothness claim may not.
+    expect(rtl.queryByTestId('screen-playback-summary')).not.toBeInTheDocument();
   });
 
   it('Technical details start closed and fetch nothing until opened', () => {
