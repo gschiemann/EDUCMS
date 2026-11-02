@@ -17,6 +17,20 @@ export const EVENT_COPY: Record<ScreenEventKind, string> = {
   'refresh-acked': 'Screen confirmed the update',
   'repair-required': 'Screen needs re-pairing',
   'credential-restored': 'Screen’s trust restored',
+  'app-relaunch': 'The player app restarted',
+  'page-reload': 'The player reloaded its page',
+  'update-applied': 'Screen loaded the latest player page',
+  'ota-download': 'Player update downloading',
+  'ota-install': 'Player update installing',
+  'ota-installed': 'Player update installed',
+  'ota-failed': 'Player update failed',
+  'emergency-start': 'Emergency alert started on this screen',
+  'emergency-clear': 'Emergency alert cleared',
+  'engine-start': 'Video started playing',
+  'engine-stop': 'Video stopped playing',
+  'engine-swap': 'Video player switched for smoother playback',
+  'rendition-swap': 'Switched to a lighter copy of the video',
+  'display-schedule': 'On/off schedule turned the screen on or off',
 };
 
 /** Never blank: an unrecognised kind still gets an honest, non-technical line. */
