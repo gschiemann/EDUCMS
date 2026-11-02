@@ -80,7 +80,17 @@ export const LIVE_DATA_FAMILIES = Object.keys(
 
 /** The key for a family, or null when the family is dormant. */
 export function providerKey(family: LiveDataFamily): string | null {
-  const raw = process.env[LIVE_DATA_PROVIDERS[family].env];
+  // Literal reads (not process.env[name]) so the env schema's scanner sees each one.
+  const raw =
+    family === 'traffic'
+      ? process.env.TOMTOM_API_KEY
+      : family === 'flights'
+        ? process.env.AERODATABOX_API_KEY
+        : family === 'scores'
+          ? process.env.THESPORTSDB_API_KEY
+          : family === 'stocks'
+            ? process.env.TWELVE_DATA_API_KEY
+            : process.env.COINGECKO_API_KEY;
   const key = typeof raw === 'string' ? raw.trim() : '';
   return key.length >= 8 ? key : null;
 }
