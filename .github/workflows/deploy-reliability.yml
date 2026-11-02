@@ -479,6 +479,69 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build the renderer image Railway will build
         run: docker build -f apps/renderer/Dockerfile -t venueos-renderer:ci .
+
+      # ── Image security: SBOM + vulnerability scan — REPORT-ONLY (2026-11-01) ─────
+      #
+      # The API image has both (ci.yml, "Container Security Scanning": a CycloneDX SBOM,
+      # then a BLOCKING Trivy scan since SEC-005). The renderer image had neither, and it
+      # ships a full Chromium plus font packages from Alpine — a large, fast-moving CVE
+      # surface to leave unwatched.
+      #
+      # The three steps below mirror the API job's: the same trivy-action and
+      # upload-artifact commit SHAs, the same DB mirrors, the same ignore-unfixed /
+      # os,library / CRITICAL,HIGH / .trivyignore.yaml, SBOM first. ONE deliberate
+      # difference: they cannot fail this job — `exit-code: '0'` on both Trivy steps, and
+      # `continue-on-error` on all three, so a DB-download or action-install hiccup can
+      # never red the smoke test below, which is what this job exists for. The API scan
+      # blocks; this one reports, so the first runs measure the baseline before anything
+      # depends on it.
+      #
+      # ⚠️ A red step here means the step could not run — read its log. It is not a verdict
+      # on the image; findings, if any, are the table printed by the Trivy scan step.
+      #
+      # TO PROMOTE IT TO A GATE (what SEC-005 did for the API): set `exit-code: '1'` on the
+      # scan step and delete its `continue-on-error`, after triaging whatever the baseline
+      # shows — fix it, or add a dated, justified entry to .trivyignore.yaml (its header
+      # has the rules).
+      - name: Software bill of materials (CycloneDX)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: 'venueos-renderer:ci'
+          format: 'cyclonedx'
+          output: 'sbom-renderer.cdx.json'
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
+      - name: Keep the SBOM
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-renderer-${{ github.sha }}
+          path: sbom-renderer.cdx.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Trivy vulnerability scan (report-only)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'venueos-renderer:ci'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          trivyignores: '.trivyignore.yaml'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
       - name: Boot, health, render, non-root
         run: |
           docker run -d --name renderer-smoke -p 18081:8080 -e PORT=8080 --memory=2g venueos-renderer:ci
