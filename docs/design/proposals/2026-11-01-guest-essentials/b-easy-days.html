@@ -46,7 +46,7 @@ to relax.</div><div class="ticket"><div class="shuttle-block"><div class="foot-l
    while(fs>floor&&exceeds()){fs=Math.max(floor,fs-1);el.style.fontSize=fs+'px';}
  });window.__guestStudyReady=true;}
  size();theme();media();addEventListener('resize',size);
- Promise.all([document.fonts.ready].concat(Array.from(document.querySelectorAll('[data-img]')).map(function(el){return new Promise(function(resolve){var src=el.getAttribute('data-img');if(!src)return resolve();var i=new Image();i.onload=i.onerror=resolve;i.src=src;});}))).then(function(){requestAnimationFrame(function(){fit();});});
+ Promise.all([document.fonts.ready].concat(Array.from(document.querySelectorAll('[data-img]')).map(function(el){return new Promise(function(resolve){var src=el.getAttribute('data-img');if(!src)return resolve();var i=new Image();i.onload=i.onerror=resolve;i.src=src;});}))).then(fit);
  window.guestStudy={setText:function(key,value){var el=document.querySelector('[data-field="'+key+'"]');if(el){el.textContent=value;theme();fit();}},refit:fit};
 })();
 </script></body></html>

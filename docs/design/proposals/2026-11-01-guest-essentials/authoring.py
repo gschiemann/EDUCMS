@@ -69,7 +69,7 @@ runtime = r'''
    while(fs>floor&&exceeds()){fs=Math.max(floor,fs-1);el.style.fontSize=fs+'px';}
  });window.__guestStudyReady=true;}
  size();theme();media();addEventListener('resize',size);
- Promise.all([document.fonts.ready].concat(Array.from(document.querySelectorAll('[data-img]')).map(function(el){return new Promise(function(resolve){var src=el.getAttribute('data-img');if(!src)return resolve();var i=new Image();i.onload=i.onerror=resolve;i.src=src;});}))).then(function(){requestAnimationFrame(function(){fit();});});
+ Promise.all([document.fonts.ready].concat(Array.from(document.querySelectorAll('[data-img]')).map(function(el){return new Promise(function(resolve){var src=el.getAttribute('data-img');if(!src)return resolve();var i=new Image();i.onload=i.onerror=resolve;i.src=src;});}))).then(fit);
  window.guestStudy={setText:function(key,value){var el=document.querySelector('[data-field="'+key+'"]');if(el){el.textContent=value;theme();fit();}},refit:fit};
 })();
 '''
@@ -131,6 +131,7 @@ descriptions=['Warm editorial typography, an architectural photo, and a quiet co
 for (slug,title,_,_),desc in zip(directions,descriptions):
     review+=f'<section><div class="section-head"><h2>{title}</h2><a class="open" href="{slug}.html?o=landscape" target="_blank" rel="noopener">Open full screen ↗</a></div><div class="screen"><iframe title="{title}" src="{slug}.html?o=landscape"></iframe></div><p class="caption">{desc}</p></section>'
 review+='''<footer>Design approval stage · Not published. Each direction has its own landscape and portrait composition. Final CMS editing, saved-content and player verification follow the selected design.</footer></main><script>document.querySelectorAll('[data-mode]').forEach(function(b){b.addEventListener('click',function(){var p=b.dataset.mode==='portrait';document.body.classList.toggle('portrait',p);document.querySelectorAll('[data-mode]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});document.querySelectorAll('iframe').forEach(function(x){x.src=x.src.split('?')[0]+'?o='+b.dataset.mode});document.querySelectorAll('a.open').forEach(function(x){x.href=x.href.split('?')[0]+'?o='+b.dataset.mode});});});</script></body></html>'''
+review=review.replace('</style>','.section-head{flex-wrap:wrap}</style>')
 (DEST/'index.html').write_text(review)
 (DEST/'README.md').write_text('''# Guest Essentials — first approval chunk
 

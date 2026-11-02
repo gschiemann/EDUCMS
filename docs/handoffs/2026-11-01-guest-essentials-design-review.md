@@ -46,3 +46,11 @@ Partial: 2 (source assets only), 14 (one hospitality workflow), 15 (Chromium/Web
 - Initial/intermediate browser failures remain in this chat's tool records; final evidence does not call those earlier runs passes.
 
 Status: **designs ready for owner review; not published; final CMS integration unverified.**
+
+## November 2 final review checkpoint
+
+The owner requested cheaper agents for mechanical work while Codex retains UI/UX control. GPT-6 Luna performed a read-only field/asset/claim audit; no concrete issues were found. Its bounded report is preserved as `contract-review.md`. Codex retained layout decisions and visual inspection.
+
+Fixed offscreen preview initialization: initial fitting no longer waits for requestAnimationFrame, which Chromium can defer in below-the-fold iframes. All 12 default browser/orientation cases were rerun and pass with zero recorded errors, boundary violations or text collisions. The delivered comparison page loads all three previews and switches Landscape → Portrait → Landscape correctly, with no page errors. The section header now wraps on narrow screens.
+
+The previous automatic approval review failure was a usage-limit error; the same authorized action succeeded on retry after the owner asked to continue. Nothing was deployed. Owner selection of A, B or C remains pending.
