@@ -196,7 +196,7 @@ class SleepProofTest {
 
     @Test
     fun `every successful native blank is checked, after the mirror is recorded`() {
-        val record = registry.indexOf("if (result.ok) recordState(app, action)")
+        val record = registry.indexOf("if (result.ok) {\n            recordState(app, action)")
         val expect = registry.indexOf("SleepProof.expect(app, blankedVia)")
         assertTrue(record in 0 until expect)
     }

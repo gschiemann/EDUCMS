@@ -39,10 +39,19 @@ import org.json.JSONObject
  *   tx [TX_SET_SHALLOW_ONOFF] `void setDeviceShallowOnoff(boolean)`
  *
  * Sleep = `setDeviceShallowOnoff(false)`, wake = `setDeviceShallowOnoff(true)`,
- * each followed by one readback of the getter. A SETTER, not a toggle: the
- * wake is sent whatever the reading says, so a stale or unreadable state can
- * never leave a panel dark under an alert ([VendorBacklightPolicy.powerStep]
- * `idempotent`). Wake never reboots — an alert must not wait minutes.
+ * each followed by one readback of the getter. A SETTER, not a toggle: an
+ * UNREADABLE state still sends, so it can never leave a panel dark under an
+ * alert ([VendorBacklightPolicy.powerStep] `idempotent`).
+ *
+ * 1.1.60 — FIELD FINDING (2026-11-02, player 1.1.58): on this box the wake
+ * setter brings the panel back by REBOOTING (Android `BOOT_COUNT` stepped
+ * 18703 → 18704 22 s after Turn on, pid restarted low) — the same thing
+ * CloudSign's `PowerOn()` does on purpose. Two consequences, both fixed:
+ * the ON intent is committed BEFORE the setter runs ([PowerIntentPolicy]),
+ * so the new boot never re-applies the OFF; and a setter whose reading
+ * already matches is NOT sent (the getter is the one CloudSign trusts), so a
+ * box that came back on is never rebooted again by a retry or an alert
+ * re-assert.
  *
  * Auto-detected like the GUQ backend: used only when the package is
  * installed, binds, and the GETTER answers (a read-only probe). A service

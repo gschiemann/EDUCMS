@@ -90,13 +90,13 @@ class RkSdkApiBackendTest {
     }
 
     @Test
-    fun `a setter backend always sends, whatever the reading or the settle window`() {
+    fun `a setter backend sends unless the reading already matches, whatever the settle window`() {
         for (read in listOf(true, false, null)) for (since in listOf(null, 0L, 100L, 10_000L)) for (wantOn in listOf(true, false)) {
-            assertEquals(
-                VendorBacklightPolicy.PowerStep.SEND,
-                VendorBacklightPolicy.powerStep(wantOn, read, since, !wantOn, idempotent = true),
-            )
+            val expected = if (read == wantOn) VendorBacklightPolicy.PowerStep.ALREADY else VendorBacklightPolicy.PowerStep.SEND
+            assertEquals(expected, VendorBacklightPolicy.powerStep(wantOn, read, since, !wantOn, idempotent = true))
         }
+        // An unreadable box is still woken (never dark under an alert).
+        assertEquals(VendorBacklightPolicy.PowerStep.SEND, VendorBacklightPolicy.powerStep(true, null, null, null, idempotent = true))
         // The GUQ toggle keeps its guards.
         assertEquals(VendorBacklightPolicy.PowerStep.UNKNOWN, VendorBacklightPolicy.powerStep(true, null, null, null))
     }
@@ -150,7 +150,7 @@ class RkSdkApiBackendTest {
     }
 
     @Test
-    fun `wake is read, set true, readback — never a reboot, never a key`() {
+    fun `wake is read, set true, readback — never a key`() {
         val b = Box()
         val e = VendorBacklightEngine(b)
         e.blank(); b.calls.clear()
@@ -175,13 +175,28 @@ class RkSdkApiBackendTest {
     }
 
     @Test
-    fun `a stale getter that still reads ON never swallows a wake`() {
+    fun `a wake to a box that already reads ON sends nothing — the setter reboots this box`() {
+        val b = Box()
+        val e = VendorBacklightEngine(b)
+        e.probe(); b.calls.clear()
+        // The box came back from the wake's reboot: on, and our process is new.
+        assertEquals(Step.Ok(backlightOff = false), e.wake())
+        assertEquals(listOf("get"), b.calls)
+        assertTrue(b.on)
+    }
+
+    @Test
+    fun `an unreadable box is still sent the wake`() {
         val b = Box()
         val e = VendorBacklightEngine(b)
         e.blank()
-        b.getterOverride = true // the service still says "on" while the box is in standby
         b.calls.clear()
-        e.wake()
+        val failingGet = object : VendorBacklightEngine.Ports by b {
+            override fun send(requestJson: String, budgetMs: Long): Call =
+                if (RkSdkApiPolicy.opFor(requestJson) == RkSdkApiPolicy.Op.Read) Call.Failed("read failed") else b.send(requestJson, budgetMs)
+        }
+        val e2 = VendorBacklightEngine(failingGet)
+        e2.wake()
         assertTrue("set:true" in b.calls)
         assertTrue(b.on)
     }

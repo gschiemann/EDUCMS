@@ -322,10 +322,14 @@ object VendorBacklightPolicy {
     ): PowerStep {
         // A backend whose commands are SETTERS (the RK3576 box's
         // `setDeviceShallowOnoff`, [RkSdkApiPolicy]) cannot be toggled the
-        // wrong way: send every time, so a stale or unreadable state never
-        // leaves a panel dark under an alert, and nothing waits out a settle
-        // window.
-        if (idempotent) return PowerStep.SEND
+        // wrong way, so an UNREADABLE state still sends (never dark under an
+        // alert) and nothing waits out a settle window. But a reading that
+        // already matches sends NOTHING (1.1.60): on that box the wake setter
+        // brings the panel back by REBOOTING it, so a wake sent to a box that
+        // reads on — every process start under an alert hold, every
+        // heartbeat power-on retry after the reboot — rebooted it again.
+        // Goodview's own CMS guards on the same getter.
+        if (idempotent) return if (screenOn != null && screenOn == wantOn) PowerStep.ALREADY else PowerStep.SEND
         if (screenOn == null) return PowerStep.UNKNOWN
         val settling = msSinceLastCommand != null && msSinceLastCommand in 0 until POWER_SETTLE_MS
         if (settling && lastCommandOn != wantOn) return PowerStep.SETTLING

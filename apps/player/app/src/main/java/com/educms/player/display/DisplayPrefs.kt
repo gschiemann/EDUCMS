@@ -124,8 +124,14 @@ object DisplayPrefs {
         prefs(ctx).getBoolean(KEY_BLANKED, false)
     }.getOrDefault(false)
 
+    /**
+     * SYNCHRONOUS since 1.1.60 (`commit()`): this is the record a process start
+     * re-applies, and a wake that reboots the box (the RK3576's shallow-onoff
+     * wake) died before an `apply()` flushed — the restart then restored the
+     * OFF the operator had just replaced. See [PowerIntentPolicy].
+     */
     fun setBlanked(ctx: Context, value: Boolean) {
-        runCatching { prefs(ctx).edit().putBoolean(KEY_BLANKED, value).apply() }
+        runCatching { prefs(ctx).edit().putBoolean(KEY_BLANKED, value).commit() }
             .onFailure { PlayerLogger.w(TAG, "setBlanked failed: ${it.message}") }
     }
 
