@@ -2,7 +2,7 @@ import { render, cleanup } from '@testing-library/react';
 import { Component, type ReactNode } from 'react';
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { EmergencyPaintWatcher, emergencyPaintIdentity, emergencyRenderHash, visibleEmergencyRoot, type EmergencyPaintProof, type NativeEmergencyPaintState } from '../emergencyPaintProof';
-import { useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../emergencyPaintMonitor';
+import { PAINT_POST_RETRY_MS, useEmergencyPaintMonitor, type EmergencyPaintMonitorRefs } from '../emergencyPaintMonitor';
 import { apkVersionFromUserAgent, hasNativeBridge } from '../nativeBridge';
 
 jest.mock('../nativeBridge', () => ({ nativeHas: () => false, hasNativeBridge: jest.fn(() => false), apkVersionFromUserAgent: jest.fn(() => null), nativeCall: jest.fn(), nativeFire: jest.fn() }));
@@ -346,7 +346,7 @@ it('bounds unacknowledged native receipts to forty and ten seconds without flood
   h.watcher.stop();
 });
 
-it('retries an HTTP 200 whose emergency proof was not yet accepted, with a three-attempt bound', async () => {
+it('re-offers an HTTP 200 whose emergency proof was not yet accepted for about a minute, then stops (2026-11-02: three tries in 1.5 s lost the heartbeat race on every screen)', async () => {
   jest.useFakeTimers();
   jest.spyOn(console, 'info').mockImplementation(() => {});
   const refs: EmergencyPaintMonitorRefs = { watcher: { current: null }, expectedIdentity: { current: 'pending-alert' }, screenId: { current: 'test-screen' }, manifestOkAt: { current: 0 } };
@@ -354,9 +354,11 @@ it('retries an HTTP 200 whose emergency proof was not yet accepted, with a three
   function Monitor() { useEmergencyPaintMonitor(refs, { disabled: () => false, post }); return null; }
   const mounted = render(<Monitor />);
   await jest.advanceTimersByTimeAsync(3000);
-  expect(post).toHaveBeenCalledTimes(3);
-  await jest.advanceTimersByTimeAsync(20_000);
-  expect(post).toHaveBeenCalledTimes(3);
+  expect(post).toHaveBeenCalledTimes(3); // the old bound — the offer used to end here
+  await jest.advanceTimersByTimeAsync(70_000);
+  expect(post).toHaveBeenCalledTimes(1 + PAINT_POST_RETRY_MS.length);
+  await jest.advanceTimersByTimeAsync(120_000);
+  expect(post).toHaveBeenCalledTimes(1 + PAINT_POST_RETRY_MS.length); // bounded: never forever
   mounted.unmount();
   jest.useRealTimers();
 });
@@ -380,4 +382,28 @@ it('invalidates previous alert and native challenge evidence before accepting ne
   h.setIdentity('replacement'); root.dataset.eduEmergencyIdentity = 'replacement'; h.watcher.scan();
   expect(h.watcher.current()).toMatchObject({ painted: false, identity: 'replacement' });
   h.watcher.stop();
+});
+
+// ─── 2026-11-02: the SECURE drill where not one screen confirmed ─────────────
+describe('relaying the APK verdict and re-offering a refused proof (2026-11-02)', () => {
+  it('the proof carries nativeAccepted once the bridge says this challenge is painted under this document', async () => {
+    mountMessage();
+    const h = harness(emergencyPaintIdentity(alert), true);
+    h.setChallenge({ challenge: 'current-hold', status: 'pending' });
+    h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
+    h.watcher.scan(); h.frame(); h.frame();
+    expect(h.watcher.current()).toMatchObject({ painted: false });
+    expect(h.watcher.current()).not.toHaveProperty('nativeAccepted');
+    await new Promise(resolve => setTimeout(resolve, 0)); // the pending read settles
+    h.setChallenge({ challenge: 'current-hold', status: 'painted', identity: emergencyPaintIdentity(alert), documentId: 'test-document' });
+    h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.watcher.current()).toMatchObject({ painted: true, challenge: 'current-hold', nativeAccepted: true });
+    expect(h.proofs.at(-1)).toMatchObject({ painted: true, nativeAccepted: true });
+    // Another challenge (a reload, a new episode) drops the relay until the APK speaks again.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    h.setChallenge({ challenge: 'next-hold', status: 'pending' });
+    h.watcher.scan(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.watcher.current()).not.toHaveProperty('nativeAccepted');
+    h.watcher.stop();
+  });
 });
