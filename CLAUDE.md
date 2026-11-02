@@ -30,7 +30,7 @@ VenueOS runs everyday signage, native life-safety alerts (lockdown, weather, eva
 
 - Every change to `schema.prisma` that alters the database ships a migration file in the same commit — additive, idempotent (`ADD COLUMN IF NOT EXISTS`, constraint guards, `lock_timeout` on hot tables), never an edit to an applied migration. Production applies migration files at boot (`scripts/railway-start.sh` → `prisma migrate deploy`) and nothing else. *Mechanism:* `scripts/check-schema-has-migration.cjs` (reports; required status is the open ruleset decision).
 - `db:push`, `db:seed`, `db:migrate`, `db:reset` and the backfills refuse a non-local `DATABASE_URL` / `DIRECT_URL`. *Mechanism:* `scripts/guard-destructive-db.cjs` (PR #197).
-- Content reads go through `prisma.client` so the manifest cache invalidates; a new high-frequency `Screen` telemetry column joins `SCREEN_TELEMETRY_ONLY_FIELDS` or it thrashes the cache. *Mechanism:* prose + `manifest-hot-cache.ts`.
+- Content writes go through `prisma.client` so the manifest cache invalidates; a new high-frequency `Screen` telemetry column joins `SCREEN_TELEMETRY_ONLY_FIELDS` or it thrashes the cache. *Mechanism:* prose + `manifest-hot-cache.ts`.
 - `audit_logs` is append-only at the database level. *Mechanism:* migrations `audit_logs_immutable` / `audit_logs_block_truncate`, pinned by `audit-immutability.spec.ts`.
 
 ## 3. Configuration
