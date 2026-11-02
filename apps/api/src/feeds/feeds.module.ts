@@ -1,3 +1,15 @@
+import { RoadIncidentsService } from './road-incidents.service';
+import { RoadConditionsService } from './road-conditions.service';
+import { WorkZonesService } from './work-zones.service';
+import { GtfsDeparturesService } from './gtfs/gtfs-departures.service';
+import { ParkingReportsController } from './parking-reports.controller';
+import { ParkingReportsService } from './parking-reports.service';
+import { TravelConditionsController } from './travel-conditions.controller';
+import { AirportConditionsService } from './airport-conditions.service';
+import { TransitArrivalsService } from './transit-arrivals.service';
+import { PublicSourceCache } from './public-source-cache';
+import { AirQualityService } from './air-quality.service';
+import { AirQualityController } from './air-quality.controller';
 import { CurrentWeatherController } from './current-weather.controller';
 import { CurrentWeatherService } from './current-weather.service';
 import { ReferenceRatesController } from './reference-rates.controller';
@@ -16,6 +28,9 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
 // feature modules (e.g. auth.module.ts) consume it for free.
 @Module({
   controllers: [
+    ParkingReportsController,
+    TravelConditionsController,
+    AirQualityController,
     FeedsController,
     ForecastController,
     NewsController,
@@ -23,6 +38,15 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
     CurrentWeatherController,
   ],
   providers: [
+    RoadIncidentsService,
+    RoadConditionsService,
+    WorkZonesService,
+    GtfsDeparturesService,
+    ParkingReportsService,
+    AirportConditionsService,
+    TransitArrivalsService,
+    PublicSourceCache,
+    AirQualityService,
     FeedsService,
     FeedsRateLimiter,
     ForecastService,
@@ -30,5 +54,8 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
     ReferenceRatesService,
     CurrentWeatherService,
   ],
+  // The integrations/live-data module geocodes with the same rate-leased
+  // Nominatim client the weather boards use — one lease, one cache.
+  exports: [ForecastService],
 })
 export class FeedsModule {}

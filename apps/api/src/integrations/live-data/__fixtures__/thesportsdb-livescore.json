@@ -1,0 +1,48 @@
+{
+ "livescore": [
+  {
+   "idLiveScore": "267125786",
+   "idEvent": "2250886",
+   "strSport": "Soccer",
+   "idLeague": "4626",
+   "strLeague": "Bulgarian First League",
+   "idHomeTeam": "134343",
+   "idAwayTeam": "134088",
+   "strHomeTeam": "Botev Plovdiv",
+   "strAwayTeam": "CSKA Sofia",
+   "strHomeTeamBadge": "https://r2.thesportsdb.com/images/media/team/badge/owfvww1512067986.png",
+   "strAwayTeamBadge": "https://r2.thesportsdb.com/images/media/team/badge/ew8fe51579033368.png",
+   "intHomeScore": "0",
+   "intAwayScore": "4",
+   "intEventScore": null,
+   "intEventScoreTotal": null,
+   "strStatus": "2H",
+   "strProgress": "85",
+   "strEventTime": "17:45:00",
+   "dateEvent": "2025-05-26",
+   "updated": "2025-05-26 20:33:22"
+  },
+  {
+   "idLiveScore": "267125787",
+   "idEvent": "2250885",
+   "strSport": "Soccer",
+   "idLeague": "4626",
+   "strLeague": "Bulgarian First League",
+   "idHomeTeam": "134351",
+   "idAwayTeam": "142832",
+   "strHomeTeam": "Beroe",
+   "strAwayTeam": "Spartak Varna",
+   "strHomeTeamBadge": "https://r2.thesportsdb.com/images/media/team/badge/dq7lft1512067730.png",
+   "strAwayTeamBadge": "https://r2.thesportsdb.com/images/media/team/badge/y2j4f31626443568.png",
+   "intHomeScore": "3",
+   "intAwayScore": "1",
+   "intEventScore": null,
+   "intEventScoreTotal": null,
+   "strStatus": "2H",
+   "strProgress": "90",
+   "strEventTime": "17:45:00",
+   "dateEvent": "2025-05-26",
+   "updated": "2025-05-26 20:33:22"
+  }
+ ]
+}

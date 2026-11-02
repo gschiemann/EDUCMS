@@ -1,4 +1,8 @@
 "use client";
+import { AirportConditionsWidget } from '../PublicDataWidgets';
+import { isWidgetDiscoverable } from '../widget-discovery';
+import { CryptoTickerSwitch, DeparturesBoardSwitch, ScoresBoardSwitch, StockTickerSwitch } from './IntegrationSwitchWidgets';
+
 /**
  * v2 widget pack — central registry.
  * ────────────────────────────────────
@@ -628,10 +632,9 @@ export const BACKGROUNDS_WIDGETS: RegisteredWidget[] = [
 ];
 
 /* ─── LIVE DATA — universal data boards (EDU CMS-7) ──────────────────
- * Markets, news, air quality, traffic — rendered from config. NONE of them
- * is connected to a feed (lane B4, 2026-09-27): the descriptions say so, the
- * sample content shows only in the builder (stamped SAMPLE) and a real screen
- * shows what the template holds or a dash. World Clocks is genuinely live.
+ * Source-backed air quality, reference rates and California traffic share
+ * native controls. Authored boards retain their saved renderers and labels;
+ * unqualified market feeds stay out of new discovery.
  * Each Component sizes off a pixel `height`.
  * (variants-register.ts maps 'Live Data' → LIVE_DATA.) */
 const CAT_LIVE_DATA = 'Live Data';
@@ -640,14 +643,14 @@ export const LIVE_DATA_WIDGETS: RegisteredWidget[] = [
   // K-12 launch audit F28 — there is no score feed behind this board; it used
   // to present hardcoded NBA games as LIVE on every screen. The rows are
   // the school's own, stamped with when they were updated.
-  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Scores Board',     'Scores from other games that you enter — stamped with the time you updated them (not a live feed)', 'universal', Tv, withMeasuredHeight(LiveSportsScoreboardWidget), { accent: '#ffd23a' }),
-  W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Stock tiles + ticker band — not a live market feed', 'universal', TrendingUp,  withMeasuredHeight(StockTickerWidget),         { exchange: 'NYSE / NASDAQ' }),
-  W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    'Crypto price board — not a live price feed',         'universal', Coins,       withMeasuredHeight(CryptoTickerWidget),        {}),
+  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Scores Board',     'Live league scores from TheSportsDB — offered only when this deploy has a scores key', 'universal', Tv, withMeasuredHeight(ScoresBoardSwitch), { accent: '#ffd23a' }),
+  W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Live stock quotes from Twelve Data — offered only when this deploy has a market-data key', 'universal', TrendingUp,  withMeasuredHeight(StockTickerSwitch),         { exchange: 'NYSE / NASDAQ' }),
+  W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    'Live crypto prices from CoinGecko — offered only when this deploy has a CoinGecko key', 'universal', Coins,       withMeasuredHeight(CryptoTickerSwitch),        {}),
   W('NEWS_HEADLINES',    CAT_LIVE_DATA, 'News Headlines',   'Headline list — not a news feed (News Feed reads RSS)', 'universal', Newspaper,   withMeasuredHeight(NewsHeadlinesWidget),       { source: 'AP · Reuters · BBC', accent: '#e7142b' }),
-  W('AIR_QUALITY',       CAT_LIVE_DATA, 'Air Quality',      'Air-quality gauge for a reading you enter — no sensor feed', 'universal', Wind,        withMeasuredHeight(AirQualityWidget),          { location: 'Springfield, IL', aqi: 62, pm25: 14, pm10: 28, o3: 52, no2: 12 }),
+  W('AIR_QUALITY',       CAT_LIVE_DATA, 'Air Quality',      'Current preliminary U.S. reporting-area AQI from EPA AirNow — free source', 'universal', Wind,        withMeasuredHeight(AirQualityWidget),          { dataMode: 'automatic', location: '', dataLayout: 'auto', title: 'Air quality' }),
   W('WORLD_CLOCKS',      CAT_LIVE_DATA, 'World Clocks',     'Live multi-timezone clock cards',                     'universal', Globe,       withMeasuredHeight(WorldClocksWidget),         { hour12: false }),
   W('FX_RATES',          CAT_LIVE_DATA, 'Daily Exchange Rates',         'Automatic ECB daily reference rates (free source data), or rates you enter',        'universal', DollarSign,  withMeasuredHeight(FxRatesWidget),             { base: 'USD' }),
-  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Road Conditions Board',  'Traffic tiles with congestion labels — no camera feed', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { city: 'I-5 Corridor' }),
+  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Road Conditions Board',  'Free road incidents and work zones near a location — CHP in California, DOT feeds in 15 more states', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { dataMode: 'automatic', location: '', dataLayout: 'auto', title: 'Road conditions' }),
 ];
 
 /* ─── TOUCH & ENGAGE — interactive kiosk surfaces (EDU CMS-7) ────────
@@ -671,16 +674,17 @@ export const TOUCH_ENGAGE_WIDGETS: RegisteredWidget[] = [
 
 /* ─── TRANSIT — airport / transit boards (EDU CMS-7) ─────────────────
  * Universal transit widgets — departures, flight status, transit
- * arrivals, parking. No flight, transit or parking feed exists: same rule
- * as Live Data above. Each Component sizes off a pixel `height`.
+ * arrivals and parking. MBTA and LADOT have regional free connections;
+ * FAA conditions is distinct from individual flight tracking.
  * (variants-register.ts maps 'Transit' → LIVE_DATA.) */
 const CAT_TRANSIT = 'Transit';
 
 export const TRANSIT_WIDGETS: RegisteredWidget[] = [
-  W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Split-flap departures board — not a flight feed',  'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardWidget),     { airport: 'SFO · TERMINAL 2' }),
+  W('AIRPORT_CONDITIONS', CAT_TRANSIT, 'Airport Conditions', 'Actual FAA airport notices and delays — no individual flight tracking', 'universal', PlaneTakeoff, AirportConditionsWidget, {dataMode:'automatic',airport:'',title:'Airport conditions',dataLayout:'auto'}),
+  W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Live airport departures or arrivals from AeroDataBox — offered only when this deploy has a flights key',  'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardSwitch),     { airport: 'SFO · TERMINAL 2' }),
   W('FLIGHT_STATUS_HERO',   CAT_TRANSIT, 'Flight Information Board',   'Single-flight status hero for a flight you enter',  'universal', Plane,         withMeasuredHeight(FlightStatusHeroWidget),    { flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York', depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50', terminal: '2', aircraft: 'Boeing 737-900' }),
-  W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Schedule Board',   'Next-trains board — not a transit feed',            'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   { station: 'EMBARCADERO' }),
-  W('PARKING_AVAILABILITY', CAT_TRANSIT, 'Parking Availability', 'Parking availability bars — not a live occupancy feed', 'universal', SquareParking, withMeasuredHeight(ParkingAvailabilityWidget), { facility: 'SFO TERMINAL 2' }),
+  W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Departures',   'Real-time departures from open transit feeds (MBTA, BART, RTD Denver), or an entered schedule',            'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   {dataMode:'automatic',stationId:'',dataLayout:'auto',title:'Next departures'}),
+  W('PARKING_AVAILABILITY', CAT_TRANSIT, 'Parking Availability', 'Actual LADOT street-meter reports for Los Angeles, or entered garage counts', 'universal', SquareParking, withMeasuredHeight(ParkingAvailabilityWidget), {dataMode:'automatic',location:'',dataLayout:'auto',title:'Parking nearby'}),
 ];
 
 /* ─── ALL ───────────────────────────────────────────────────────────── */
@@ -746,6 +750,7 @@ export const V2_BY_TYPE: Record<string, RegisteredWidget> = Object.fromEntries(
 export const V2_GROUPS: { label: string; types: { type: string; label: string; desc: string; icon: LucideIcon }[] }[] = (() => {
   const byCat = new Map<string, RegisteredWidget[]>();
   for (const w of ALL_V2_WIDGETS) {
+    if (!isWidgetDiscoverable(w.type.toLowerCase().replace(/_/g,'-'))) continue;
     if (!byCat.has(w.category)) byCat.set(w.category, []);
     byCat.get(w.category)!.push(w);
   }

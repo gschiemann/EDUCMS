@@ -222,10 +222,10 @@ describe('simple automatic widget typography', () => {
   expect(screen.queryByLabelText('Font size')).toBeNull();
   expect(screen.queryByLabelText(/text size.*%/i)).toBeNull();
  });
- it('labels a flight board as entered content before offering its fields', () => {
+ it('tells the builder a saved flight board has no live data source', () => {
   render(<ContentFields zone={makeZone('LIVE_DATA', {variant:'flight-status-hero'})} updateZone={jest.fn()} />);
-  expect(screen.getByText('Manually updated')).toBeTruthy();
-  expect(screen.getByText(/not live flight tracking/)).toBeTruthy();
+  expect(screen.getByText('This widget has no live data source.')).toBeTruthy();
+  expect(screen.getByText(/no longer offered for new screens/)).toBeTruthy();
  });
  it('adds typed flight rows using the existing row editor, without seeding a fake flight', () => {
   const updateZone=jest.fn();
@@ -234,5 +234,18 @@ describe('simple automatic widget typography', () => {
   fireEvent.click(screen.getByRole('button',{name:/Add row/}));
   const flights=lastCfg(updateZone).flights as Record<string,unknown>[];
   expect(flights).toHaveLength(1); expect(flights[0]).toEqual({flight:'',time:'',dest:'',gate:'',status:'',note:''});
+ });
+});
+
+describe('free public data native controls',()=>{
+ it.each(['air-quality','airport-conditions','parking-availability','traffic-cam'])('%s has source, layout and one typography workflow',variant=>{
+  const updateZone=jest.fn();render(<ContentFields zone={makeZone('LIVE_DATA',{variant,dataMode:'automatic'})} updateZone={updateZone}/>);
+  expect(selectFor('Layout')).toBeTruthy();expect(selectFor('Text to format')).toBeTruthy();expect(screen.queryByLabelText('Font size')).toBeNull();
+  expect(screen.queryByText('Highlight / glow')).toBeNull();
+  fireEvent.change(selectFor('Layout'),{target:{value:'banner'}});expect(lastCfg(updateZone).dataLayout).toBe('banner');
+ });
+ it('keeps manually entered parking counts editable instead of converting a saved garage to Los Angeles',()=>{
+  render(<ContentFields zone={makeZone('LIVE_DATA',{variant:'parking-availability',facility:'Private garage',lots:[{name:'North',avail:7,total:10}]})} updateZone={jest.fn()}/>);
+  expect(selectFor('Data').value).toBe('manual');expect(screen.getByDisplayValue('Private garage')).toBeTruthy();
  });
 });

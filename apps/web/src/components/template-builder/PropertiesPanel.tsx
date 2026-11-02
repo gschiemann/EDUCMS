@@ -1,5 +1,11 @@
 "use client";
-import { widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
+
+import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/PublicDataWidgets';
+import { DEFAULT_CRYPTO_COINS, DEFAULT_STOCK_SYMBOLS, isIntegrationAutomatic } from '../widgets/IntegrationDataWidgets';
+import { INTEGRATION_GATED_WIDGETS, isWidgetDiscoverable } from '../widgets/widget-discovery';
+import { fetchLiveDataStatus, fetchScoreLeagues, type LiveDataStatus, type ScoreLeague } from '@/lib/live-data/live-data-client';
+import { useGtfsAgencies, useGtfsStations, useTransitStations } from '../widgets/use-public-data';
+import { isAutomaticPublicData, widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
 import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
 import { NEWSROOM_LAYOUTS, NEWSROOM_TEXT_AREAS, NEWSROOM_SCOPES, NEWSROOM_PUBLISHERS, NEWSROOM_PALETTES, newsroomScopes } from '../widgets/newsroom-model';
@@ -375,6 +381,7 @@ const V2_GRADIENT_OPTIONS: [string, string][] = [
 function buildV2StyleFields(
   cfg: Record<string, any>,
   setField: (patch: Record<string, any>) => void,
+  simplePublic = false,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   const SHv2 = (k: string, label: string) => (
@@ -500,6 +507,10 @@ function buildV2StyleFields(
       onChange={(v) => setStyle({ bgGradient: v })}
     />,
   );
+  if (simplePublic) {
+    const supported = new Set(['v2-bg','v2-text','v2-font','v2-weight','v2-align','v2-bgimage','v2-bggradient']);
+    for(let i=out.length-1;i>=0;i--)if(!supported.has(String((out[i] as any)?.key)))out.splice(i,1);
+  }
   const basicKeys = new Set(['v2-bg', 'v2-text', 'v2-accent', 'v2-font']);
   const basic = out.filter((field: any) => basicKeys.has(field?.key));
   const more = out.filter((field: any) => !basicKeys.has(field?.key) && !String(field?.key || '').startsWith('shv2-'));
@@ -6958,7 +6969,23 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // K-12 launch audit F28/F30 — the universal Live Data "Scores Board"
       // (`sports-scoreboard`, canonical LIVE_DATA) has nested game rows the
       // generic editor below cannot express; it shares the venue schema.
-      if (cfg.variant && SPORTS_VENUE_VARIANTS.has(String(cfg.variant))) {
+      // Paid live-data families (integrations/live-data, 2026-11-01): the
+      // query, layout and heading for a board whose data comes from a
+      // provider. Only meaningful while the deploy has that provider's key;
+      // the component says so when it does not.
+      const integrationVariant = cfg.variant && INTEGRATION_GATED_WIDGETS[String(cfg.variant)] ? String(cfg.variant) : undefined;
+      // Inferred-automatic counts only while the family is live here (the
+      // picker's discovery state); otherwise the manual row editor stays.
+      const integrationAuto = !!integrationVariant && isIntegrationAutomatic(integrationVariant, cfg) && (cfg.dataMode === 'automatic' || isWidgetDiscoverable(integrationVariant));
+      if (integrationVariant) {
+        fields.push(<LiveDataSourceFields key="live-data-source" variant={integrationVariant} cfg={cfg} automatic={integrationAuto} setField={setField} />);
+        if (integrationAuto) {
+          fields.push(<SelectField key="live-data-layout" label="Layout" value={cfg.dataLayout || 'auto'} options={PUBLIC_DATA_LAYOUTS} onChange={v=>setField({dataLayout:v})}/>);
+          fields.push(<StyleableField key="live-data-title" fieldName="title" styles={cfg._styles} label="Heading" value={cfg.title ?? ''} onChange={v=>setField({title:v})}/>);
+          fields.push(<SelectField key="live-data-text" label="Text to format" value={PUBLIC_DATA_TEXT_AREAS.some(([id])=>id===activeForecastTextArea)?activeForecastTextArea!:'dataValue'} options={PUBLIC_DATA_TEXT_AREAS} onChange={v=>useBuilderStore.getState().setActiveFieldName(v)}/>);
+        }
+      }
+      if (cfg.variant && SPORTS_VENUE_VARIANTS.has(String(cfg.variant)) && !(cfg.variant === 'sports-scoreboard' && integrationAuto)) {
         fields.push(<SportsVenueEditor key="sports-venue" variant={String(cfg.variant)} cfg={cfg} setField={setField} />);
         break;
       }
@@ -6972,12 +6999,31 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             {label}
           </div>
         );
+        const publicKind = ['air-quality','transit-departures','airport-conditions','parking-availability','traffic-cam'].includes(String(cfg.variant));
+        const publicAutomatic = isAutomaticPublicData(cfg);
+        if (publicKind) {
+          if (cfg.variant !== 'airport-conditions') fields.push(<SelectField key="public-data-mode" label="Data" value={publicAutomatic ? 'automatic' : 'manual'} options={[["automatic",cfg.variant === 'traffic-cam' ? 'Automatic · road incidents' : cfg.variant === 'air-quality' ? 'Automatic · EPA AirNow' : cfg.variant === 'parking-availability' ? 'Automatic · LADOT (Los Angeles)' : 'Automatic · open transit data'],["manual","Enter my own values"]]} onChange={v=>setField({dataMode:v})} />);
+          if (publicAutomatic) {
+            if (cfg.variant === 'traffic-cam') fields.push(<SmartLocationField key="road-location" value={cfg.location || ''} helpText="Free reports near this location: CHP incidents in California, and DOT work zones, closures and detours in UT, MN, MD, MO, WI, HI, WA, NJ, KY, KS, DE, LA, IN, MS, ND, Austin and Maricopa County (public-domain WZDx feeds). Nationwide incidents when this deploy has a TomTom key. No commute ETAs or cameras." onChange={v=>setField({location:v})}/>);
+            if (cfg.variant === 'traffic-cam') fields.push(<SelectField key="road-radius" label="Show reports within" value={String(Number(cfg.radiusKm) || 25)} options={[["10","10 km"],["25","25 km"],["50","50 km"]]} onChange={v=>setField({radiusKm:Number(v)})}/>);
+            if (cfg.variant === 'air-quality') fields.push(<SmartLocationField key="air-location" value={cfg.location || cfg.zip || ''} helpText="Choose a U.S. city, ZIP or coordinates. Shows the reporting area and observation time; unavailable coverage is labelled." onChange={v=>setField({location:v,zip:undefined})}/>);
+            if (cfg.variant === 'parking-availability') fields.push(<SmartLocationField key="parking-location" value={cfg.location || ''} helpText="Free LADOT coverage: Los Angeles street meters. Shows last known sensor states, not private-garage availability." onChange={v=>setField({location:v})}/>);
+            if (cfg.variant === 'transit-departures') fields.push(<TransitAgencyPicker key="transit-agency" value={cfg.transitAgency || 'mbta'} onChange={v=>setField({transitAgency:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') === 'mbta') fields.push(<TransitStationPicker key="transit-station" value={cfg.stationId || ''} onChange={v=>setField({stationId:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') !== 'mbta') fields.push(<GtfsStationPicker key="gtfs-station" agency={cfg.transitAgency} value={cfg.gtfsStationId || ''} label={cfg.gtfsStationName || ''} onChange={(id,name)=>setField({gtfsStationId:id,gtfsStationName:name})}/>);
+            if (cfg.variant === 'airport-conditions') fields.push(<TextField key="airport-code" label="Airport code (blank = all U.S. notices)" value={cfg.airport || ''} placeholder="SFO" onChange={v=>setField({airport:v.toUpperCase().slice(0,4)})}/>);
+            fields.push(<SelectField key="public-data-layout" label="Layout" value={cfg.dataLayout || 'auto'} options={PUBLIC_DATA_LAYOUTS} onChange={v=>setField({dataLayout:v})}/>);
+            fields.push(<StyleableField key="public-data-title" fieldName="title" styles={cfg._styles} label="Heading" value={cfg.title ?? (cfg.variant === 'traffic-cam' ? 'Road conditions' : cfg.variant === 'air-quality' ? 'Air quality' : cfg.variant === 'airport-conditions' ? 'Airport conditions' : cfg.variant === 'parking-availability' ? 'Parking nearby' : 'Next departures')} onChange={v=>setField({title:v})}/>);
+            fields.push(<SelectField key="public-data-text" label="Text to format" value={PUBLIC_DATA_TEXT_AREAS.some(([id])=>id===activeForecastTextArea)?activeForecastTextArea!:'dataValue'} options={PUBLIC_DATA_TEXT_AREAS} onChange={v=>useBuilderStore.getState().setActiveFieldName(v)}/>);
+            fields.push(<p key="public-data-text-help" className="text-xs text-slate-500">Use the floating text toolbar to format the selected text. Resize normally; layout adapts. Source values update automatically.</p>);
+          }
+        }
         if (cfg.variant === 'fx-rates') fields.push(<SelectField key="fx-data-mode" label="Rates" value={cfg.dataMode || (cfg.pairs?.length ? 'manual' : 'automatic')} options={[["automatic","Automatic · ECB daily reference rates"],["manual","Enter my own rates"]]} onChange={v=>setField({dataMode:v})} />);
-        const defs = { ...(v2w.defaults || {}), ...MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)] } as Record<string, unknown>;
+        const defs = { ...(v2w.defaults || {}), ...MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)], ...(cfg.variant === 'air-quality' && !publicAutomatic ? {aqi:0,pm25:0,pm10:0,o3:0,no2:0} : {}) } as Record<string, unknown>;
         const dataCapability = widgetDataCapability(zone.widgetType, cfg.variant, cfg);
         if (dataCapability) fields.push(<p key="data-behavior" className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600"><strong className="block text-slate-800 mb-1">{dataCapability.label}</strong>{dataCapability.detail}</p>);
         const contentKeys = Object.keys(defs).filter(
-          (k) => k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
+          (k) => !integrationAuto && !(publicKind && (publicAutomatic || ['dataMode','dataLayout','title','stationId'].includes(k))) && k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
         );
         // 2026-05-29 — operator: "upload logos when needed or images." An
         // image/logo/photo content field used to render as a plain URL
@@ -7407,7 +7453,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // STYLE, so the two compose instead of competing.
   const isV2Variant = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
   if (isV2Variant) {
-    fields.push(...buildV2StyleFields(cfg, setField));
+    fields.push(...buildV2StyleFields(cfg, setField, fields.some((f:any)=>f?.key==='public-data-text')));
   }
 
   // ── Universal "make it your brand" text-style section ─────────────
@@ -7462,7 +7508,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // prevent.
     const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML', 'ANIMATED_BACKGROUND']);
     const isV2Widget = isV2Variant;
-    const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily') || cfg.variant === 'weather-outlook' || (zone.widgetType === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    const alreadyStyleable = fields.some((f: any) => f && (f.key === 'fontFamily' || f.key === 'public-data-text')) || cfg.variant === 'weather-outlook' || (zone.widgetType === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
     if (!alreadyStyleable && !MEDIA_ONLY.has(zone.widgetType)) {
       fields.push(
         <div key="_uts-hdr" className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
@@ -12301,7 +12347,7 @@ function PosItemBindControls({
 // 2026-05-04 — operator: "i should be able to type a location or
 // zipcode or it should know where i am automatically and set it
 // but its a bunch of free text fields".
-function SmartLocationField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SmartLocationField({ value, onChange, helpText }: { value: string; onChange: (v: string) => void; helpText?: string }) {
   // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
   const locationFieldId = useId();
   const [draft, setDraft] = useState(value);
@@ -12374,7 +12420,7 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
         </button>
       </div>
       <div className="text-[10px] text-slate-500 leading-relaxed">
-        Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Weather uses free, automatically refreshed forecasts: National Weather Service for the U.S. multi-day outlook; MET Norway for current-hour forecasts. Set the location once for each widget.
+        {helpText || <>Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Weather uses free, automatically refreshed forecasts: National Weather Service for the U.S. multi-day outlook; MET Norway for current-hour forecasts. Set the location once for each widget.</>}
       </div>
       {geoError && (
         <div className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
@@ -12383,6 +12429,78 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
       )}
     </div>
   );
+}
+
+/** Builder-only status of the paid data families; `null` until known. */
+function useLiveDataStatusOnce(): LiveDataStatus | null {
+  const [status, setStatus] = useState<LiveDataStatus | null>(null);
+  useEffect(() => { let off = false; void fetchLiveDataStatus().then(s => { if (!off) setStatus(s); }); return () => { off = true; }; }, []);
+  return status;
+}
+
+const LIVE_FAMILY_FOR: Record<string, 'stocks' | 'crypto' | 'flights' | 'scores'> = INTEGRATION_GATED_WIDGETS;
+
+function LiveDataSourceFields({ variant, cfg, automatic, setField }: { variant: string; cfg: any; automatic: boolean; setField: (patch: Record<string, any>) => void }) {
+  const status = useLiveDataStatusOnce();
+  const family = LIVE_FAMILY_FOR[variant];
+  const fam = status?.[family];
+  const [leagues, setLeagues] = useState<ScoreLeague[]>([]);
+  useEffect(() => { if (variant === 'sports-scoreboard' && fam?.enabled) void fetchScoreLeagues().then(setLeagues); }, [variant, fam?.enabled]);
+  const source = fam?.source || '';
+  // Dormant (or not yet known) on this deploy: the existing manual editor is
+  // the whole story. Say why only to someone who chose Automatic.
+  if (!fam?.enabled) {
+    return cfg.dataMode === 'automatic' && fam
+      ? <p className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">Live data for this board is not set up on this deploy. Ask your administrator to add <code>{fam.missing.join(', ')}</code>. Until then the board shows what you enter. <button type="button" className="underline" onClick={() => setField({ dataMode: 'manual' })}>Enter my own values</button></p>
+      : null;
+  }
+  const out: React.ReactNode[] = [];
+  out.push(<SelectField key="mode" label="Data" value={automatic ? 'automatic' : 'manual'} options={[["automatic", source ? `Automatic · ${source}` : 'Automatic'], ["manual", "Enter my own values"]]} onChange={v => setField({ dataMode: v })} />);
+  if (automatic) {
+    if (variant === 'stock-ticker') out.push(<TextField key="symbols" label="Ticker symbols (up to 8, comma-separated)" value={cfg.symbolList ?? DEFAULT_STOCK_SYMBOLS} placeholder={DEFAULT_STOCK_SYMBOLS} onChange={v => setField({ symbolList: v.toUpperCase().replace(/[^A-Z0-9.,\s-]/g, '').slice(0, 90) })} />);
+    if (variant === 'crypto-ticker') {
+      out.push(<TextField key="coins" label="Coins (names or symbols, up to 8)" value={cfg.coinList ?? DEFAULT_CRYPTO_COINS} placeholder={DEFAULT_CRYPTO_COINS} onChange={v => setField({ coinList: v.toLowerCase().replace(/[^a-z0-9,\s-]/g, '').slice(0, 200) })} />);
+      out.push(<SelectField key="currency" label="Currency" value={cfg.currency || 'usd'} options={[["usd","US dollar"],["eur","Euro"],["gbp","Pound sterling"],["cad","Canadian dollar"]]} onChange={v => setField({ currency: v })} />);
+    }
+    if (variant === 'departures-board') {
+      out.push(<TextField key="airport" label="Airport code" value={cfg.airportCode || ''} placeholder="SFO" onChange={v => setField({ airportCode: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) })} />);
+      out.push(<SelectField key="direction" label="Show" value={cfg.direction === 'arrivals' ? 'arrivals' : 'departures'} options={[["departures","Departures"],["arrivals","Arrivals"]]} onChange={v => setField({ direction: v })} />);
+    }
+    if (variant === 'sports-scoreboard') {
+      out.push(<SelectField key="league" label="League" value={cfg.leagueId || ''} options={[["", leagues.length ? 'Choose a league' : 'Loading leagues…'], ...leagues.map(l => [l.id, l.name] as [string, string])]} onChange={v => setField({ leagueId: v })} />);
+      out.push(<TextField key="team" label="Only games with (optional team name)" value={cfg.teamFilter || ''} placeholder="e.g. Chicago" onChange={v => setField({ teamFilter: v.slice(0, 40) })} />);
+    }
+    if (variant === 'stock-ticker' || variant === 'crypto-ticker') out.push(<p key="colors-help" className="text-xs text-slate-500">Rising and falling values use green and red; background, text colour and font follow the Style section.</p>);
+  }
+  return <>{out}</>;
+}
+
+
+function TransitAgencyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const feed = useGtfsAgencies();
+  const opts: [string, string][] = [["mbta", "MBTA · Boston area"], ...(feed.data?.items || []).map(a => [a.id, `${a.name} · ${a.region}`] as [string, string])];
+  if (!opts.some(([id]) => id === value)) opts.push([value, value]);
+  return <SelectField label="Transit agency" value={value} options={opts} onChange={onChange} />;
+}
+
+function GtfsStationPicker({ agency, value, label, onChange }: { agency: string; value: string; label: string; onChange: (id: string, name: string) => void }) {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => { const t = setTimeout(() => setDebounced(q), 350); return () => clearTimeout(t); }, [q]);
+  const feed = useGtfsStations(agency, debounced, !!agency);
+  const items = feed.data?.items || [];
+  return (
+    <div className="space-y-2">
+      <TextField label="Find a station or stop" value={q} placeholder={label || 'Type a station name'} onChange={setQ} />
+      <SelectField label="Station" value={value} options={[["", feed.loading ? 'Loading stations…' : items.length ? 'Choose a station' : 'No matches'], ...(value && !items.some(i => i.id === value) ? [[value, label || value] as [string, string]] : []), ...items.map(i => [i.id, i.name] as [string, string])]} onChange={id => onChange(id, items.find(i => i.id === id)?.name || label)} />
+      <p className="text-xs text-slate-500">Real-time predictions from the agency’s open GTFS-realtime feed{feed.error ? ' · Station list temporarily unavailable' : ''}</p>
+    </div>
+  );
+}
+
+function TransitStationPicker({value,onChange}:{value:string;onChange:(value:string)=>void}) {
+  const feed=useTransitStations();
+  return <div className="space-y-2"><SelectField label="MBTA station" value={value} options={[["",feed.loading ? "Loading stations…" : "Choose a station"],...(feed.data?.items || []).map(s=>[s.id,s.name] as [string,string])]} onChange={onChange}/><p className="text-xs text-slate-500">Boston-area MBTA predictions · MassDOT open data{feed.error?' · Station list temporarily unavailable':''}</p></div>;
 }
 
 // WeatherOverrideAdvanced — collapsible section containing the

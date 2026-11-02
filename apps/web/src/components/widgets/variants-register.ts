@@ -1248,7 +1248,7 @@ function celebrationSeed(defaults: Record<string, unknown> | undefined): Record<
  * SAMPLE — v2/_shared/live-data-truth.tsx) and the Properties panel still
  * lists every field (it reads the registry, not this seed).
  */
-const LIVE_DATA_SETTING_KEYS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange']);
+const LIVE_DATA_SETTING_KEYS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange', 'dataMode', 'dataLayout', 'title', 'stationId', 'airport', 'location']);
 function liveDataSeed(defaults: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(defaults || {})) {
