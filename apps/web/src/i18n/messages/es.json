@@ -2701,8 +2701,11 @@
       }
     },
     "trust": {
-      "alertNotPainted": "Alerta activada · sin prueba en pantalla",
-      "alertNotPaintedTitle": "La alerta se activó, pero la página no ha confirmado que dibujó la alerta. La entrega no está confirmada.",
+      "alertNotPainted": "Alerta enviada · esperando a que esta pantalla confirme",
+      "alertNotPaintedTitle": "Esta pantalla aún no ha confirmado que muestra la alerta. Si no confirma en un minuto, revísala en persona.",
+      "alertShowingOn": "Alerta visible en {confirmed} de {total} pantallas",
+      "alertWaitingFor": "Esperando a que {count, plural, one {# pantalla confirme} other {# pantallas confirmen}}",
+      "alertNotConfirmed": "{count, plural, one {# pantalla no confirmó} other {# pantallas no confirmaron}} — {count, plural, one {revísala} other {revísalas}}: {names}",
       "repairTitle": "Es necesario reparar la confianza del dispositivo. Restablece la confianza desde la configuración de esta pantalla.",
       "stalledTitle": "El video se detuvo. La pantalla lo está corrigiendo por su cuenta; si sigue pasando, revisa el archivo.",
       "paintingTitleAt": "Esta pantalla informó una imagen; última comprobación: {time}",

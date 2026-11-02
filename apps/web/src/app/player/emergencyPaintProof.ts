@@ -7,6 +7,13 @@ export interface EmergencyPaintProof {
   challenge?: string;
   /** Native window validation is required even when its state read fails. */
   nativeRequired?: boolean;
+  /**
+   * The APK's own verdict for `challenge`, read over the bridge: it accepted
+   * this document's receipt under this identity (2026-11-02). Relayed to the
+   * API because the heartbeat that carries the same verdict can be minutes
+   * away while the page is reporting.
+   */
+  nativeAccepted?: boolean;
 }
 
 /** Paint and live server confirmation are independent emergency facts. */
@@ -172,7 +179,13 @@ export class EmergencyPaintWatcher {
     // native surface covering the WebView.
     this.nativeRequired ||= !!this.challenge || !!this.options.requiresNativeValidation?.();
     if (!this.proof || !this.identity) return null;
-    const proof = this.nativeRequired ? { ...this.proof, nativeRequired: true } : this.proof;
+    const proof: EmergencyPaintProof = {
+      ...this.proof,
+      ...(this.nativeRequired ? { nativeRequired: true } : {}),
+      // The APK's own verdict for this challenge, read over the bridge:
+      // relayed so the API need not wait for the heartbeat that carries it.
+      ...(this.nativeAccepted && this.challenge && this.proof.challenge === this.challenge ? { nativeAccepted: true } : {}),
+    };
     if (proof.painted && ((this.nativeRequired && (!this.challenge || !this.nativeAccepted)) ||
       nowMs - this.sampledAt > 1500 || !visibleEmergencyRoot(this.options.document, this.identity))) {
       return { ...proof, painted: false };
