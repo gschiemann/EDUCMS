@@ -14,8 +14,8 @@ import {
   FlightsLiveWidget,
   ScoresLiveWidget,
   StocksLiveWidget,
-  isIntegrationAutomatic,
-} from '../IntegrationDataWidgets';
+} from '../LiveDataLazy';
+import { isIntegrationAutomatic } from '../data-widget-meta';
 
 /** Widget zone config — free-form JSON authored in the builder. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

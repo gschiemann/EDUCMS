@@ -1,5 +1,5 @@
 "use client";
-import { AirportConditionsWidget } from '../PublicDataWidgets';
+import { AirportConditionsWidget } from '../LiveDataLazy';
 import { isWidgetDiscoverable } from '../widget-discovery';
 import { CryptoTickerSwitch, DeparturesBoardSwitch, ScoresBoardSwitch, StockTickerSwitch } from './IntegrationSwitchWidgets';
 

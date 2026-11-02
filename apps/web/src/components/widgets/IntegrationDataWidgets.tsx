@@ -36,8 +36,8 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Cfg = Record<string, any>;
 
-export const DEFAULT_STOCK_SYMBOLS = "AAPL,MSFT,NVDA,AMZN";
-export const DEFAULT_CRYPTO_COINS = "bitcoin,ethereum,solana";
+import { DEFAULT_STOCK_SYMBOLS, DEFAULT_CRYPTO_COINS, isIntegrationAutomatic } from "./data-widget-meta";
+export { DEFAULT_STOCK_SYMBOLS, DEFAULT_CRYPTO_COINS, isIntegrationAutomatic };
 
 const q = encodeURIComponent;
 
@@ -368,20 +368,3 @@ export function TrafficLiveWidget({ config = {}, fallback }: { config?: Cfg; fal
 
 // ── Mode inference (shared with the editor) ─────────────────────────────
 
-/** Live when the operator chose it, or when nothing manual was ever entered. */
-export function isIntegrationAutomatic(variant: string | undefined, config: Cfg = {}): boolean {
-  if (config.dataMode === "manual") return false;
-  if (config.dataMode === "automatic") return true;
-  switch (variant) {
-    case "stock-ticker":
-      return !(Array.isArray(config.symbols) && config.symbols.length);
-    case "crypto-ticker":
-      return !(Array.isArray(config.coins) && config.coins.length);
-    case "departures-board":
-      return !(Array.isArray(config.flights) && config.flights.length);
-    case "sports-scoreboard":
-      return !(Array.isArray(config.games) && config.games.length);
-    default:
-      return false;
-  }
-}

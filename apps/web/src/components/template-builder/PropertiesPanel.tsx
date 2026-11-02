@@ -1,10 +1,11 @@
 "use client";
 
-import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/PublicDataWidgets';
-import { DEFAULT_CRYPTO_COINS, DEFAULT_STOCK_SYMBOLS, isIntegrationAutomatic } from '../widgets/IntegrationDataWidgets';
+import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/data-widget-meta';
+import { DEFAULT_CRYPTO_COINS, DEFAULT_STOCK_SYMBOLS, isIntegrationAutomatic } from '../widgets/data-widget-meta';
 import { INTEGRATION_GATED_WIDGETS, isWidgetDiscoverable } from '../widgets/widget-discovery';
-import { fetchLiveDataStatus, fetchScoreLeagues, type LiveDataStatus, type ScoreLeague } from '@/lib/live-data/live-data-client';
+import dynamic from 'next/dynamic';
 import { useGtfsAgencies, useGtfsStations, useTransitStations } from '../widgets/use-public-data';
+import { TextField, SelectField } from './field-controls';
 import { isAutomaticPublicData, widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
 import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
@@ -217,6 +218,11 @@ import { appZoneInfo } from '@/components/apps/app-zone';
 import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
 import { GoToPageSelect, WhenTappedGoToPage } from './GoToPage';
 import { isInteractiveTemplate, isTapTargetZone, sortPages } from './pages';
+
+// Lazy: provider pickers pull in the live-data client + GTFS hooks; keep them out of the builder chunk.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const LiveDataSourceFields = dynamic<{ variant: string; cfg: any; automatic: boolean; setField: (patch: Record<string, any>) => void }>(() => import('./LiveDataEditorFields').then(m => m.LiveDataSourceFields));
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -9396,38 +9402,6 @@ function SettingNumber({ label, value, min, max, onChange }: {
   );
 }
 
-function TextField({ label, value, placeholder, onChange, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; onFocus?: () => void }) {
-  const [local, setLocal] = useState(value);
-  useEffect(() => { setLocal(value); }, [value]);
-  // A2 — undo keystroke coalescing. Every TextField's onChange ultimately
-  // calls a caller-supplied setField/setMeta that commits with
-  // commit=true on EVERY keystroke; the store's activeTransaction guard
-  // (see useBuilderStore.ts) turns those into a no-op re-commit as long
-  // as a transaction is open, so wrapping focus/blur here — once, in the
-  // shared component — coalesces all 285 TextField/TextAreaField call
-  // sites into "one undo step per edit session" with zero call-site
-  // changes. beginTransaction() is idempotent (no-ops if already open),
-  // so nested/rapid focus doesn't push extra snapshots.
-  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
-  const endTransaction = useBuilderStore((s) => s.endTransaction);
-  // Label ↔ input association (same fix SelectField got in the 2026-08-24
-  // a11y wave): screen readers announce the field, getByLabelText finds it.
-  const inputId = useId();
-  return (
-    <div>
-      <label htmlFor={inputId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <input
-        id={inputId}
-        type="text"
-        value={local}
-        placeholder={placeholder}
-        onFocus={() => { beginTransaction(); onFocus?.(); }}
-        onBlur={endTransaction}
-        onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm" />
-    </div>
-  );
-}
 
 function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; rows?: number; onFocus?: () => void }) {
   // Controlled textarea — local state mirrors the incoming value so we
@@ -9687,24 +9661,6 @@ function HolidayPanelExtras({
   );
 }
 
-function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string,string][]; onChange: (v: string) => void }) {
-  // a11y wave (2026-08-24) — axe-core: "Select element must have an
-  // accessible name" (critical). The label text was visible but never
-  // programmatically associated with the <select> (no htmlFor/id pairing,
-  // no aria-label) — every widget field that renders through this shared
-  // component was affected. useId() matches this file's existing
-  // convention (see `nameId` above).
-  const id = useId();
-  return (
-    <div>
-      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer">
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  );
-}
 
 /**
  * GameBindField — "Bind to game" picker (Sports Wave S2-2, 2026-07-02).
@@ -12431,77 +12387,6 @@ function SmartLocationField({ value, onChange, helpText }: { value: string; onCh
   );
 }
 
-/** Builder-only status of the paid data families; `null` until known. */
-function useLiveDataStatusOnce(): LiveDataStatus | null {
-  const [status, setStatus] = useState<LiveDataStatus | null>(null);
-  useEffect(() => { let off = false; void fetchLiveDataStatus().then(s => { if (!off) setStatus(s); }); return () => { off = true; }; }, []);
-  return status;
-}
-
-const LIVE_FAMILY_FOR: Record<string, 'stocks' | 'crypto' | 'flights' | 'scores'> = INTEGRATION_GATED_WIDGETS;
-
-function LiveDataSourceFields({ variant, cfg, automatic, setField }: { variant: string; cfg: any; automatic: boolean; setField: (patch: Record<string, any>) => void }) {
-  const status = useLiveDataStatusOnce();
-  const family = LIVE_FAMILY_FOR[variant];
-  const fam = status?.[family];
-  const [leagues, setLeagues] = useState<ScoreLeague[]>([]);
-  useEffect(() => { if (variant === 'sports-scoreboard' && fam?.enabled) void fetchScoreLeagues().then(setLeagues); }, [variant, fam?.enabled]);
-  const source = fam?.source || '';
-  // Dormant (or not yet known) on this deploy: the existing manual editor is
-  // the whole story. Say why only to someone who chose Automatic.
-  if (!fam?.enabled) {
-    return cfg.dataMode === 'automatic' && fam
-      ? <p className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">Live data for this board is not set up on this deploy. Ask your administrator to add <code>{fam.missing.join(', ')}</code>. Until then the board shows what you enter. <button type="button" className="underline" onClick={() => setField({ dataMode: 'manual' })}>Enter my own values</button></p>
-      : null;
-  }
-  const out: React.ReactNode[] = [];
-  out.push(<SelectField key="mode" label="Data" value={automatic ? 'automatic' : 'manual'} options={[["automatic", source ? `Automatic · ${source}` : 'Automatic'], ["manual", "Enter my own values"]]} onChange={v => setField({ dataMode: v })} />);
-  if (automatic) {
-    if (variant === 'stock-ticker') out.push(<TextField key="symbols" label="Ticker symbols (up to 8, comma-separated)" value={cfg.symbolList ?? DEFAULT_STOCK_SYMBOLS} placeholder={DEFAULT_STOCK_SYMBOLS} onChange={v => setField({ symbolList: v.toUpperCase().replace(/[^A-Z0-9.,\s-]/g, '').slice(0, 90) })} />);
-    if (variant === 'crypto-ticker') {
-      out.push(<TextField key="coins" label="Coins (names or symbols, up to 8)" value={cfg.coinList ?? DEFAULT_CRYPTO_COINS} placeholder={DEFAULT_CRYPTO_COINS} onChange={v => setField({ coinList: v.toLowerCase().replace(/[^a-z0-9,\s-]/g, '').slice(0, 200) })} />);
-      out.push(<SelectField key="currency" label="Currency" value={cfg.currency || 'usd'} options={[["usd","US dollar"],["eur","Euro"],["gbp","Pound sterling"],["cad","Canadian dollar"]]} onChange={v => setField({ currency: v })} />);
-    }
-    if (variant === 'departures-board') {
-      out.push(<TextField key="airport" label="Airport code" value={cfg.airportCode || ''} placeholder="SFO" onChange={v => setField({ airportCode: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) })} />);
-      out.push(<SelectField key="direction" label="Show" value={cfg.direction === 'arrivals' ? 'arrivals' : 'departures'} options={[["departures","Departures"],["arrivals","Arrivals"]]} onChange={v => setField({ direction: v })} />);
-    }
-    if (variant === 'sports-scoreboard') {
-      out.push(<SelectField key="league" label="League" value={cfg.leagueId || ''} options={[["", leagues.length ? 'Choose a league' : 'Loading leagues…'], ...leagues.map(l => [l.id, l.name] as [string, string])]} onChange={v => setField({ leagueId: v })} />);
-      out.push(<TextField key="team" label="Only games with (optional team name)" value={cfg.teamFilter || ''} placeholder="e.g. Chicago" onChange={v => setField({ teamFilter: v.slice(0, 40) })} />);
-    }
-    if (variant === 'stock-ticker' || variant === 'crypto-ticker') out.push(<p key="colors-help" className="text-xs text-slate-500">Rising and falling values use green and red; background, text colour and font follow the Style section.</p>);
-  }
-  return <>{out}</>;
-}
-
-
-function TransitAgencyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const feed = useGtfsAgencies();
-  const opts: [string, string][] = [["mbta", "MBTA · Boston area"], ...(feed.data?.items || []).map(a => [a.id, `${a.name} · ${a.region}`] as [string, string])];
-  if (!opts.some(([id]) => id === value)) opts.push([value, value]);
-  return <SelectField label="Transit agency" value={value} options={opts} onChange={onChange} />;
-}
-
-function GtfsStationPicker({ agency, value, label, onChange }: { agency: string; value: string; label: string; onChange: (id: string, name: string) => void }) {
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => { const t = setTimeout(() => setDebounced(q), 350); return () => clearTimeout(t); }, [q]);
-  const feed = useGtfsStations(agency, debounced, !!agency);
-  const items = feed.data?.items || [];
-  return (
-    <div className="space-y-2">
-      <TextField label="Find a station or stop" value={q} placeholder={label || 'Type a station name'} onChange={setQ} />
-      <SelectField label="Station" value={value} options={[["", feed.loading ? 'Loading stations…' : items.length ? 'Choose a station' : 'No matches'], ...(value && !items.some(i => i.id === value) ? [[value, label || value] as [string, string]] : []), ...items.map(i => [i.id, i.name] as [string, string])]} onChange={id => onChange(id, items.find(i => i.id === id)?.name || label)} />
-      <p className="text-xs text-slate-500">Real-time predictions from the agency’s open GTFS-realtime feed{feed.error ? ' · Station list temporarily unavailable' : ''}</p>
-    </div>
-  );
-}
-
-function TransitStationPicker({value,onChange}:{value:string;onChange:(value:string)=>void}) {
-  const feed=useTransitStations();
-  return <div className="space-y-2"><SelectField label="MBTA station" value={value} options={[["",feed.loading ? "Loading stations…" : "Choose a station"],...(feed.data?.items || []).map(s=>[s.id,s.name] as [string,string])]} onChange={onChange}/><p className="text-xs text-slate-500">Boston-area MBTA predictions · MassDOT open data{feed.error?' · Station list temporarily unavailable':''}</p></div>;
-}
 
 // WeatherOverrideAdvanced — collapsible section containing the
 // manual override fields (tempF / high / low / condition / icon).
@@ -13639,4 +13524,31 @@ export function StringListEditor({
       </div>
     </div>
   );
+}
+
+function TransitAgencyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const feed = useGtfsAgencies();
+  const opts: [string, string][] = [["mbta", "MBTA · Boston area"], ...(feed.data?.items || []).map(a => [a.id, `${a.name} · ${a.region}`] as [string, string])];
+  if (!opts.some(([id]) => id === value)) opts.push([value, value]);
+  return <SelectField label="Transit agency" value={value} options={opts} onChange={onChange} />;
+}
+
+function GtfsStationPicker({ agency, value, label, onChange }: { agency: string; value: string; label: string; onChange: (id: string, name: string) => void }) {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => { const t = setTimeout(() => setDebounced(q), 350); return () => clearTimeout(t); }, [q]);
+  const feed = useGtfsStations(agency, debounced, !!agency);
+  const items = feed.data?.items || [];
+  return (
+    <div className="space-y-2">
+      <TextField label="Find a station or stop" value={q} placeholder={label || 'Type a station name'} onChange={setQ} />
+      <SelectField label="Station" value={value} options={[["", feed.loading ? 'Loading stations…' : items.length ? 'Choose a station' : 'No matches'], ...(value && !items.some(i => i.id === value) ? [[value, label || value] as [string, string]] : []), ...items.map(i => [i.id, i.name] as [string, string])]} onChange={id => onChange(id, items.find(i => i.id === id)?.name || label)} />
+      <p className="text-xs text-slate-500">Real-time predictions from the agency’s open GTFS-realtime feed{feed.error ? ' · Station list temporarily unavailable' : ''}</p>
+    </div>
+  );
+}
+
+function TransitStationPicker({value,onChange}:{value:string;onChange:(value:string)=>void}) {
+  const feed=useTransitStations();
+  return <div className="space-y-2"><SelectField label="MBTA station" value={value} options={[["",feed.loading ? "Loading stations…" : "Choose a station"],...(feed.data?.items || []).map(s=>[s.id,s.name] as [string,string])]} onChange={onChange}/><p className="text-xs text-slate-500">Boston-area MBTA predictions · MassDOT open data{feed.error?' · Station list temporarily unavailable':''}</p></div>;
 }

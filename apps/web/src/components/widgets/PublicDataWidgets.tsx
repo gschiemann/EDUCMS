@@ -19,19 +19,8 @@ import {
   useRoadIncidents,
   useGtfsDepartures,
 } from "./use-public-data";
-export const PUBLIC_DATA_TEXT_AREAS: [string, string][] = [
-  ["title", "Heading"],
-  ["dataLocation", "Location / station"],
-  ["dataValue", "Main values"],
-  ["dataDetails", "Details"],
-  ["dataSource", "Source and time"],
-];
-export const PUBLIC_DATA_LAYOUTS: [string, string][] = [
-  ["auto", "Automatic"],
-  ["cards", "Cards"],
-  ["list", "List"],
-  ["banner", "Horizontal banner"],
-];
+import { PUBLIC_DATA_TEXT_AREAS, PUBLIC_DATA_LAYOUTS } from "./data-widget-meta";
+export { PUBLIC_DATA_TEXT_AREAS, PUBLIC_DATA_LAYOUTS };
 export function clock(at: string) {
   const date = new Date(at);
   return Number.isFinite(date.getTime())

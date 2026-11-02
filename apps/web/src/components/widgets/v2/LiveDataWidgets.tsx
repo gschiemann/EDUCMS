@@ -13,8 +13,8 @@
  * in the builder, stamped SAMPLE — see `_shared/live-data-truth.tsx`.
  */
 import React from 'react';
-import { AirQualityLiveWidget, RoadIncidentsLiveWidget } from '../PublicDataWidgets';
-import { TrafficLiveWidget } from '../IntegrationDataWidgets';
+import { AirQualityLiveWidget, RoadIncidentsLiveWidget } from '../LiveDataLazy';
+import { TrafficLiveWidget } from '../LiveDataLazy';
 import { useReferenceRates, DISPLAY_CURRENCIES } from '../use-reference-rates';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
