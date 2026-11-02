@@ -674,11 +674,11 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     expect(playlistRenderSignature({ id: 'x', items: [{ sequenceOrder: 0, durationMs: 1, asset: null }] })).toBeNull();
   });
 
-  it('a proof that matches the schedule → "Playing <name>", confirmed and dated', () => {
+  it('a proof that matches the schedule → "Playing <name>", confirmed, one line', () => {
     const r = deriveReportedContent(scr({ lastRenderedHash: SIG }), SHA, NOW, undefined, expected());
     expect(r.state).toBe('confirmed');
     expect(r.line).toBe('Playing Pro Series Video 1');
-    expect(r.detail).toMatch(/Confirmed 20 seconds ago/);
+    expect(r.detail).toBeUndefined();
   });
 
   it('the API keeps only a prefix of a long proof — a prefix past the first item still matches', () => {
@@ -705,13 +705,21 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     expect(idle.line).toBe('Nothing playing');
   });
 
-  it('an outstanding update outranks the glass: "Update not confirmed"', () => {
-    const r = deriveReportedContent(
-      scr({ lastRenderedHash: SIG, pendingRefreshAt: new Date(NOW - 2 * MIN).toISOString() }),
+  it('a pending resync under 2 minutes is "Updating…" (not a warning); past 2 minutes it is "Still updating"', () => {
+    const pending = (ms: number) => deriveReportedContent(
+      scr({ lastRenderedHash: SIG, pendingRefreshAt: new Date(NOW - ms).toISOString() }),
       SHA, NOW, undefined, expected(),
     );
-    expect(r.state).toBe('behind');
-    expect(r.line).toBe('Update not confirmed');
+    const fresh = pending(12_000);
+    expect(fresh.state).toBe('updating');
+    expect(fresh.line).toBe('Updating…');
+    expect(fresh.detail).toBeUndefined();
+    const stuck = pending(3 * MIN);
+    expect(stuck.state).toBe('behind');
+    expect(stuck.line).toBe('Still updating — check the screen');
+    expect(stuck.detail).toBeUndefined();
+    // Confirmed: the pending marker clears and the normal state returns.
+    expect(deriveReportedContent(scr({ lastRenderedHash: SIG }), SHA, NOW, undefined, expected()).state).toBe('confirmed');
   });
 
   it('a board proof is matched on the template id', () => {
@@ -752,7 +760,6 @@ describe('deriveRecovery — states come from events, never from a timer', () =>
       screen: scr(over), status: status(over), sending: false, justSent: false, now: NOW,
     })!;
     expect(card.state).toBe('waiting-ack');
-    expect(card.body).toContain('2 minutes');
     // Never claims the player fetched anything it did not report.
     expect(card.body).not.toMatch(/fetched/i);
   });
