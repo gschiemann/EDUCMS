@@ -33,7 +33,23 @@ import {
   previewOf,
   imageUrlOfPreview,
   syncStatusFor,
+  isCurrentVideo,
 } from '../screenOps';
+
+describe('isCurrentVideo (Technical details show only the playing file)', () => {
+  const current = [{ assetId: 'a1', hash: 'h1', url: 'https://x.test/m/clip.mp4', name: 'clip.mp4' }];
+  it('matches on hash, asset id, url (query ignored) or name', () => {
+    expect(isCurrentVideo({ sha256: 'h1' }, current)).toBe(true);
+    expect(isCurrentVideo({ assetId: 'a1' }, current)).toBe(true);
+    expect(isCurrentVideo({ url: 'https://x.test/m/clip.mp4?v=2' }, current)).toBe(true);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, current)).toBe(true);
+  });
+  it('a stale measurement and an empty schedule are never current', () => {
+    expect(isCurrentVideo({ sha256: 'zz', name: 'old.mp4' }, current)).toBe(false);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, [])).toBe(false);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, undefined)).toBe(false);
+  });
+});
 
 const NOW = Date.parse('2026-08-31T17:00:00.000Z');
 const MIN = 60_000;

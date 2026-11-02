@@ -4,7 +4,7 @@
  * included), drills are said and not counted, rows that do not count are
  * marked, copy says what the evidence proves, admins only, never polled.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ScreenInterruptionsResponse } from '@/hooks/use-api';
 import en from '@/i18n/messages/en.json';
 import es from '@/i18n/messages/es.json';
@@ -71,26 +71,48 @@ describe('ScreenInterruptionsSection', () => {
     expect(screen.getByTestId('screen-interruptions-window-72').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('lists what happened in plain words, marks what does not count, and says drills are not counted', async () => {
+  it('counts and lists only what a viewer would notice; planned events never reach the headline', async () => {
     state.data = response(
       [
         ev({ id: 'a', kind: 'page-reload', cause: 'wedge-detector', source: 'system' }),
         ev({ id: 'b', kind: 'engine-stop', cause: 'activity-paused', source: 'device' }),
         ev({ id: 'c', kind: 'engine-start', cause: 'native', interruption: false }),
         ev({ id: 'd', kind: 'emergency-start', cause: 'lockdown', drill: true, interruption: false }),
+        ev({ id: 'e', kind: 'page-reload', cause: 'bundle-apply', source: 'device' }),
+        ev({ id: 'f', kind: 'app-relaunch', cause: 'update-install', source: 'device' }),
+        ev({ id: 'g', kind: 'engine-start', cause: 'native', interruption: true }),
       ],
-      { interruptions: 2, drills: 1 },
+      { interruptions: 5, drills: 1 },
     );
     await mount();
+    // Only the wedge reload and the app pause are real: 2, not the server's 5.
     expect(screen.getByTestId('screen-interruptions-count').textContent).toBe('2 in 24 h');
-    expect(screen.getByTestId('screen-interruptions-drills').textContent).toBe('1 emergency drill — not counted');
+    expect(screen.queryByTestId('screen-interruptions-drills')).toBeNull();
     const items = screen.getAllByRole('listitem');
-    expect(items.map((li) => li.getAttribute('data-counted'))).toEqual(['true', 'true', 'false', 'false']);
+    expect(items.map((li) => li.getAttribute('data-kind'))).toEqual(['page-reload', 'engine-stop']);
     expect(items[0].textContent).toContain('Page reload — asked by VenueOS: the screen stopped reporting');
     expect(items[1].textContent).toContain('Hardware video stopped — the app was paused');
-    expect(items[2].textContent).toContain('Hardware video started');
-    expect(items[2].textContent).toContain('not counted');
-    expect(items[3].textContent).toContain('Emergency drill started — Lockdown');
+    expect(screen.queryByText(/not counted/)).toBeNull();
+    expect(screen.queryByText(/we can’t see the panel itself/)).toBeNull();
+  });
+
+  it('the support list holds the planned events, plainly labelled', async () => {
+    state.data = response([
+      ev({ id: 'e', kind: 'page-reload', cause: 'bundle-apply', source: 'device' }),
+      ev({ id: 'c', kind: 'engine-start', cause: 'native', interruption: false }),
+      ev({ id: 'd', kind: 'emergency-start', cause: 'lockdown', drill: true, interruption: false }),
+      ev({ id: 'r', kind: 'page-reload', cause: 'wedge-detector' }),
+    ]);
+    let out: ReturnType<typeof render> | undefined;
+    await act(async () => {
+      out = render(<ScreenInterruptionsSection screenId="scr-1" enabled part="support" />);
+    });
+    const rows = within(out!.container).getAllByRole('listitem');
+    expect(rows.map((li) => li.getAttribute('data-kind'))).toEqual(['page-reload', 'engine-start', 'emergency-start']);
+    expect(rows[0].textContent).toContain('Planned update');
+    expect(rows[0].textContent).not.toContain('software update applied');
+    expect(rows[1].textContent).toContain('Hardware video started');
+    expect(rows[2].textContent).toContain('Emergency drill started');
   });
 
   it('an answer it cannot read renders nothing and never throws (a stubbed API, an older API)', async () => {
