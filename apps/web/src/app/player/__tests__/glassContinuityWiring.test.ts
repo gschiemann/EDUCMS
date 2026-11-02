@@ -154,7 +154,7 @@ describe('the service worker offline page', () => {
 
 describe('6 — an alert still paints over every new state', () => {
   it('every emergency surface carries data-edu-emergency-root (live overlay + crash fallback)', () => {
-    expect(OVERLAY).toContain('data-edu-emergency-root="banner"');
+    expect(OVERLAY).toMatch(/'data-edu-emergency-root': 'banner'/);
     expect(OVERLAY).toContain('data-edu-emergency-root="full"');
     expect(PAGE).toContain('data-edu-emergency-root="crash"');
   });
