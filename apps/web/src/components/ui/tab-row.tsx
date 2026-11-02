@@ -34,11 +34,13 @@ export function TabRow<T extends string>({ value, onChange, tabs, ariaLabel, tes
   const activeIndex = tabs.findIndex((tab) => tab.key === value);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (tabs.length === 0) return;
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-    if (!step || tabs.length === 0) return;
+    const edge = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+    if (!step && edge < 0) return;
     e.preventDefault();
     const from = activeIndex < 0 ? 0 : activeIndex;
-    const next = (from + step + tabs.length) % tabs.length;
+    const next = edge >= 0 ? edge : (from + step + tabs.length) % tabs.length;
     onChange(tabs[next].key);
     refs.current[next]?.focus();
   };
