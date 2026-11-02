@@ -3,7 +3,7 @@
  * actually reaches the DOM for each kind of unit, and what goes on the wire.
  * The view-model rules have their own pure test next door; this one proves
  * the panel obeys them — no control where the unit cannot set the setting,
- * the unit's own reason instead, "Android reports …" from the read-back, and
+ * the unit's own reason instead, "Currently …" from the read-back, and
  * a passphrase that is never shown or pre-filled.
  */
 
@@ -94,7 +94,10 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
       expect(rtl.queryByRole('combobox', { name: label })).not.toBeInTheDocument();
     }
     expect(rtl.queryByRole('textbox', { name: 'Time server' })).not.toBeInTheDocument();
-    expect(rtl.getAllByText('Not possible on this unit: needs the one-time install command (adb) on this unit')).toHaveLength(4);
+    // 2026-11-01: what the unit cannot do is not drawn — no reason rows, no jargon.
+    expect(rtl.queryByText(/Not possible on this unit/)).toBeNull();
+    expect(rtl.queryByText(/adb/)).toBeNull();
+    expect(rtl.queryByTestId('device-setting-autoTime')).toBeNull();
     expect(rtl.queryByRole('combobox', { name: 'Sleep after no remote use' })).not.toBeInTheDocument();
   });
 
@@ -102,13 +105,13 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
     renderSection(READY);
     await open();
     const volume = rtl.getByTestId('device-setting-volume');
-    expect(volume).toHaveTextContent('Android reports 50%');
+    expect(volume).toHaveTextContent('Currently 50%');
     // Saved 30 %, not yet acknowledged by identity: honest about it.
     expect(volume).toHaveTextContent('Saved — waiting for the screen to pick it up');
-    expect(rtl.getByTestId('device-setting-screenOffTimeoutMs')).toHaveTextContent('Android reports Never');
+    expect(rtl.getByTestId('device-setting-screenOffTimeoutMs')).toHaveTextContent('Currently Never');
     expect(rtl.getByTestId('device-setting-screenOffTimeoutMs')).toHaveTextContent('Set on the screen');
-    expect(rtl.getByTestId('device-setting-ntpServer')).toHaveTextContent('Android reports Android’s own server');
-    expect(rtl.getByTestId('device-setting-autoTime')).toHaveTextContent('Android doesn’t report this value');
+    expect(rtl.queryByTestId('device-setting-ntpServer')).toBeNull(); // unit cannot set it: not drawn
+    expect(rtl.queryByTestId('device-setting-autoTime')).toBeNull();
   });
 
   it('a select change stores exactly that setting', async () => {
@@ -166,9 +169,9 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
     await open();
     const select = rtl.getByLabelText('Sleep after no remote use') as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
-      'Not managed', 'Never', '24 hours', '12 hours', '8 hours', '4 hours',
+      'Leave as is', 'Never', '24 hours', '12 hours', '8 hours', '4 hours',
     ]);
-    expect(rtl.getByTestId('device-setting-attentiveTimeoutMs')).toHaveTextContent('Android reports 4 hours');
+    expect(rtl.getByTestId('device-setting-attentiveTimeoutMs')).toHaveTextContent('Currently 4 hours');
     expect(rtl.getByTestId('device-setting-attentiveTimeoutMs')).toHaveTextContent('whatever VenueOS is showing');
     await act(async () => {
       fireEvent.change(select, { target: { value: '-1' } });
@@ -199,7 +202,9 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
   it('a unit that has never reported gets an explanation, not controls', async () => {
     renderSection({ ...READY, report: null });
     await open();
-    expect(rtl.getByTestId('device-settings-not-reported')).toHaveTextContent('hasn’t reported its Android settings yet');
+    // Nothing drawn at all — no "not reported" explainer.
+    expect(rtl.queryByTestId('device-settings-not-reported')).toBeNull();
+    expect(rtl.queryByText(/hasn’t reported/)).toBeNull();
     expect(rtl.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
@@ -207,7 +212,8 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
     const cap = Object.fromEntries(Object.keys(READY.report!.cap!).map((k) => [k, 'api-level']));
     renderSection({ ...READY, report: { schema: 1, rev: 0, sdk: 30, cap } });
     await open();
-    expect(rtl.getByTestId('device-settings-old-android')).toHaveTextContent('Android API level 30');
+    expect(rtl.queryByTestId('device-settings-old-android')).toBeNull();
+    expect(rtl.queryByText(/API level/)).toBeNull();
   });
 
   // ── Wi-Fi on every Android class (2026-10-23) ─────────────────────────
@@ -232,7 +238,7 @@ describe('ScreenDeviceSettings — what reaches the DOM', () => {
   it('an Android 7 screen gets Wi-Fi, says it joins with no one touching it, and one note for the rest', async () => {
     renderSection(legacy);
     await open();
-    expect(rtl.getByTestId('device-settings-older-android')).toHaveTextContent('API level 25');
+    expect(rtl.queryByTestId('device-settings-older-android')).toBeNull();
     expect(rtl.queryByTestId('device-setting-brightness')).not.toBeInTheDocument();
     expect(rtl.getByTestId('device-setting-wifi-plan')).toHaveTextContent('Joins automatically — no one needs to touch the screen');
     // No WPA3 below Android 10, and no "save permanently" (every network is saved there anyway).
