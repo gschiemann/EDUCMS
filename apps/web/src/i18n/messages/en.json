@@ -2531,6 +2531,10 @@
     },
     "setLocation": "Set address",
     "contentState": {
+      "sleeping": "Sleeping",
+      "sleepingSchedule": "Sleeping · on/off schedule",
+      "sleepingDetail": "This screen is asleep on purpose (a Sleep command or the panel's standby). It wakes with Awake, an alert, or its schedule.",
+      "sleepingScheduleDetail": "This screen is asleep on purpose because its on/off schedule says off right now. It wakes by itself when the schedule turns it on.",
       "downloading": "Downloading new content",
       "downloadingProgress": "Downloading new content · {percent}% of {size}",
       "downloadingSoFar": "Downloading new content · {loaded} so far",
