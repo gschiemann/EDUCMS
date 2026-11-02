@@ -927,12 +927,12 @@ export function playbackDemotionMode(env: Record<string, string | undefined> = {
 
 export type PlaybackGateMode = 'warn' | 'enforce' | 'off';
 
-/** `VIDEO_PLAYBACK_GATE`: `warn` (default, and for anything unrecognised), `enforce`, `off`. */
+/** `VIDEO_PLAYBACK_GATE`: `off` (default, and for anything unrecognised), `warn`, `enforce`. */
 export function playbackGateMode(env: Record<string, string | undefined> = {}): PlaybackGateMode {
   const v = (env.VIDEO_PLAYBACK_GATE ?? '').trim().toLowerCase();
   if (v === 'enforce') return 'enforce';
-  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
-  return 'warn';
+  if (v === 'warn') return 'warn';
+  return 'off';
 }
 
 export type StutterAction =

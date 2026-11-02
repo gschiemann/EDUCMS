@@ -54,6 +54,7 @@ import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
+import { ScreenUsbSection } from '../ScreenUsbSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -757,7 +758,7 @@ export function ScreenDetailDrawer({
               {/* Video playback (2026-10-11, video guarantee step 4): the
                   verdict and any demotion here; the per-file measurements
                   under Technical details (2026-10-22). */}
-              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" />
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" resolution={screen.resolution} />
 
               {/* ── Technical details (2026-10-22) ─────────────────────
                   Greg, on this tab: "the overview screen has so much shit in
@@ -789,8 +790,10 @@ export function ScreenDetailDrawer({
                       </p>
                     )}
                     {video && videoCurrent && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
-                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" current={currentVideoFiles} />
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" current={currentVideoFiles} resolution={screen.resolution} />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="main" />
+                    {/* 2026-10-26 — what this screen last did with a USB drive (its own reports). */}
+                    <ScreenUsbSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
                     {/* For support (collapsed): raw counters, planned events
                         and the one "we can't see the panel" note. */}

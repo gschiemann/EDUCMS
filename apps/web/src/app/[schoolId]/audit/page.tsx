@@ -11,6 +11,8 @@ import { useUIStore } from '@/store/ui-store';
 import { useAppStore } from '@/lib/store';
 import { appAlert } from '@/components/ui/app-dialog';
 import { DateTimeField } from '@/components/ui/date-time-field';
+import { TabRow } from '@/components/ui/tab-row';
+import { Segmented } from '@/components/ui/segmented';
 import { activityLines, type ActivityTranslate } from '@/lib/activity/activityFeed';
 import { ActivityIconChip } from '@/components/activity/ActivityIcon';
 import { useActivityTime } from '@/components/activity/RecentActivityCard';
@@ -158,20 +160,15 @@ function AuditViewer() {
       {isOwner && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
           <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" aria-hidden />
-          <div role="radiogroup" aria-label={tp('ownerToggle')} className="inline-flex rounded-lg bg-white border border-amber-200 p-0.5">
-            {(['activity', 'all'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="radio"
-                aria-checked={view === v}
-                onClick={() => { setView(v); resetPage(); }}
-                className={`min-h-[36px] px-3 rounded-md text-[12px] font-bold ${view === v ? 'bg-amber-600 text-white' : 'text-amber-800'}`}
-              >
-                {v === 'activity' ? tp('customerView') : tp('ownerToggle')}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={view}
+            onChange={(v) => { setView(v); resetPage(); }}
+            ariaLabel={tp('ownerToggle')}
+            options={[
+              { value: 'activity', label: tp('customerView') },
+              { value: 'all', label: tp('ownerToggle') },
+            ] as const}
+          />
           <span className="text-[12px] text-amber-900">{tp('ownerNote')}</span>
         </div>
       )}
@@ -179,24 +176,14 @@ function AuditViewer() {
       {/* Filters */}
       <div className="space-y-3">
         {view === 'activity' && (
-          <div role="tablist" aria-label={tp('kind')} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {CATEGORIES.map((c) => {
-              const active = c === category;
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => { setCategory(c); resetPage(); }}
-                  className={`shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-xl border text-[13px] font-bold transition-colors ${
-                    active ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {tCategory(c)}
-                </button>
-              );
-            })}
+          <div className="h-12 border-b border-slate-200">
+            <TabRow
+              value={category}
+              onChange={(c) => { setCategory(c); resetPage(); }}
+              ariaLabel={tp('kind')}
+              testId="audit-category-tabs"
+              tabs={CATEGORIES.map((c) => ({ key: c, label: tCategory(c) }))}
+            />
           </div>
         )}
         {/* Phones: the list comes first; person and dates sit behind one

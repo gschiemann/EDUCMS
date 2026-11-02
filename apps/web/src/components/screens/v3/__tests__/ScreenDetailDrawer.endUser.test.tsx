@@ -16,6 +16,7 @@ import { buildScreenOps, type OpsScreen } from '../screenOps';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let playbackData: any;
 const interruptionsCalls: unknown[][] = [];
+const usbCalls: unknown[][] = [];
 
 jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: jest.fn(), isPending: false }),
@@ -28,6 +29,8 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: (_id: string, enabled: boolean) => ({ data: enabled ? playbackData : undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: (...args: unknown[]) => { interruptionsCalls.push(args); return { data: undefined, isLoading: false, isError: false }; },
+  // The USB drive line (2026-10-26): nothing reported yet.
+  useScreenUsbEvents: (...args: unknown[]) => { usbCalls.push(args); return { data: undefined, isLoading: false, isError: false }; },
   useClearPlaybackDemotion: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/lib/store', () => ({
@@ -117,6 +120,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
   playbackData = undefined;
   interruptionsCalls.length = 0;
+  usbCalls.length = 0;
 });
 
 describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
@@ -217,7 +221,8 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
   it('a screen with nothing measured says nothing about video on the Overview', () => {
     playbackData = { ...SMOOTH, summary: 'unknown', files: [] };
     renderDrawer(screenRow());
-    expect(rtl.queryByTestId('screen-playback-card')).not.toBeInTheDocument();
+    // The panel's own size is a fact and may show; a smoothness claim may not.
+    expect(rtl.queryByTestId('screen-playback-summary')).not.toBeInTheDocument();
   });
 
   it('Technical details start closed and fetch nothing until opened', () => {
@@ -225,7 +230,9 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
     const d = rtl.getByTestId('screen-technical-details') as HTMLDetailsElement;
     expect(d.open).toBe(false);
     expect(interruptionsCalls).toHaveLength(0);
+    expect(usbCalls).toHaveLength(0);
     openTechnicalDetails();
     expect(interruptionsCalls.length).toBeGreaterThan(0);
+    expect(usbCalls.length).toBeGreaterThan(0);
   });
 });

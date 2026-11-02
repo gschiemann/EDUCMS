@@ -504,7 +504,8 @@
     "phoneSetupSignedInTitle": "你已登录",
     "phoneSetupLater": "你可以稍后在“我的账户”中为这台设备添加通行密钥。",
     "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
-    "security": "安全"
+    "security": "安全",
+    "requestInfo": "索取信息"
   },
   "account": {
     "title": "我的账户",
@@ -3066,11 +3067,16 @@
       "evidenceDeclared": "这块屏幕的浏览器声明可播放的内容",
       "evidenceClassDefault": "该型号的典型表现",
       "evidenceUnknown": "暂无数据",
-      "cap2160": "可播放最高 4K 视频",
-      "cap1080": "可播放最高 1080p 视频",
+      "panel1080": "1080p 屏幕",
+      "panel4k": "4K 屏幕",
+      "panelSize": "{size} 屏幕",
+      "sends1080": "这块屏幕上的视频以 1080p 播放",
+      "sends4k": "这块屏幕上的视频以完整 4K 播放",
+      "cap2160": "这块屏幕的解码器最高可处理 4K 视频",
+      "cap1080": "这块屏幕的解码器最高可处理 1080p 视频",
       "capNone": "尚无经证实可流畅播放的视频尺寸",
-      "concurrencyOne": "这台显示器一次只能播放一个视频",
-      "concurrencyMany": "这台显示器可同时播放 {count} 个视频",
+      "concurrencyOne": "解码器一次只能播放一个视频",
+      "concurrencyMany": "解码器可同时播放 {count} 个视频",
       "stale": "测量时间早于上次播放器更新，将会重新检测。",
       "fileSmooth": "流畅",
       "fileHitching": "偶有卡顿",
@@ -3183,10 +3189,43 @@
       "details": "设备详情",
       "sleepHeading": "休眠方式",
       "sleepHistory": "近期休眠记录"
+    },
+    "usb": {
+      "title": "U 盘",
+      "loading": "正在加载…",
+      "loadFailed": "无法加载此屏幕对 U 盘的处理记录。",
+      "none": "尚未报告任何 U 盘。",
+      "note": "由屏幕自行报告。1.1.55 之前的播放器只报告导入完成或被拒绝。",
+      "detected": "插入了一个 U 盘",
+      "needsAccess": "需要读取 U 盘的权限：请在屏幕上选择“允许”",
+      "noAccessPage": "此屏幕没有允许读取 U 盘的设置",
+      "noPackage": "U 盘中没有 VenueOS 播放列表",
+      "waitingKey": "需要先连接一次互联网，才能检查 U 盘播放列表",
+      "otherOrg": "U 盘中是其他组织的播放列表",
+      "unverified": "无法验证 U 盘中的文件",
+      "noSpace": "屏幕空间不足，无法存放此播放列表",
+      "unreadable": "无法读取 U 盘",
+      "rejected": "已拒绝 U 盘中的播放列表",
+      "imported": "已从 U 盘导入播放列表",
+      "unknown": "报告了 {code}"
     }
   },
   "selection": {
     "selectItem": "选择 {name}",
+    "clearSelection": "清除选择"
+  },
+  "assetsLibV2": {
+    "uploadHint": "将文件拖到此页面即可上传 · 视频最大 {video}",
+    "dropTitle": "松开即可上传",
+    "dropSub": "我们会询问存放到哪个文件夹",
+    "typeTabs": "媒体类型",
+    "sort": "排序",
+    "moreActions": "更多操作",
+    "selectionActions": "所选项操作",
+    "selectedCount": "已选择 {count} 项",
+    "createPlaylist": "创建播放列表",
+    "move": "移动",
+    "moveToFolder": "移动到文件夹",
     "clearSelection": "清除选择"
   },
   "assetsLib": {
@@ -4932,7 +4971,16 @@
     "periodOverNext": "下一节",
     "clockEntryHint": "输入准确的剩余时间：分:秒（7:42），或秒和十分之一秒（4.3、0.3）。",
     "readStale": "与比赛的连接已中断：上次更新是 {seconds} 秒前。连接恢复前，此处的计时器将保持暂停。",
-    "readStaleNever": "暂时无法连接到比赛。在其响应之前，此处的计时器将保持暂停。"
+    "readStaleNever": "暂时无法连接到比赛。在其响应之前，此处的计时器将保持暂停。",
+    "cueTargetLabel": "发送到",
+    "cueTargetAria": "庆祝提示发送到",
+    "cueTargetAll": "全部",
+    "cueTargetBoard": "记分牌",
+    "cueTargetRibbon": "横幅",
+    "cueTargetRibbonHint": "2.5 秒滚动",
+    "statusConfigured": "已配置",
+    "statusArmed": "已就绪",
+    "statusOnAir": "播出中"
   },
   "studentPrivacy": {
     "title": "公共屏幕上的学生信息",
@@ -5336,7 +5384,8 @@
     "regenerate": "重新生成…",
     "regenerateTitle": "撤销并替换：本场比赛此前部署的所有凭据都将失效，并签发新令牌",
     "confirmWarning": "确认后，本场比赛已部署的所有凭据（包括最初的令牌）将立即失效——在您粘贴新令牌之前，供应商将停止同步。",
-    "perGame": "凭据按比赛区分：下一场比赛时，请在该比赛中打开此卡片，并将新的网址和令牌提供给供应商。"
+    "perGame": "凭据按比赛区分：下一场比赛时，请在该比赛中打开此卡片，并将新的网址和令牌提供给供应商。",
+    "vendorAria": "记分牌供应商"
   },
   "sportsConsoleSetup": {
     "title": "记分牌控制台",
@@ -6989,7 +7038,8 @@
       "pricing": "价格",
       "help": "帮助",
       "signIn": "登录",
-      "startTrial": "免费试用"
+      "startTrial": "免费试用",
+      "requestInfo": "索取信息"
     }
   },
   "usbDelivery": {
@@ -7102,7 +7152,8 @@
     "notInGroup": "未分组",
     "youreIn": "当前位置：",
     "returnToFleet": "返回 {name} 的设备总览",
-    "groupNameTaken": "已存在名为“{name}”的分组。请换个名称，或将屏幕添加到该分组。"
+    "groupNameTaken": "已存在名为“{name}”的分组。请换个名称，或将屏幕添加到该分组。",
+    "filterStatus": "状态"
   },
   "templatesPage": {
     "summaryYours": "{count} 个模板 · {owned} 个属于你",
@@ -7130,7 +7181,18 @@
       "newest": "最新",
       "oldest": "最早"
     },
-    "showMore": "再显示 {count} 个"
+    "showMore": "再显示 {count} 个",
+    "filterLevel": "学段",
+    "filterHoliday": "节日",
+    "categoryTabs": "类别",
+    "selectTemplate": "选择 {name}",
+    "selectAllShown": "选择显示的所有模板",
+    "duplicate": "复制",
+    "export": "导出",
+    "delete": "删除",
+    "bulkDeleteTitle": "删除 {count} 个模板？",
+    "bulkDeleteBody": "正在屏幕上显示的模板将被跳过——请逐个删除，以便查看它们在哪里播放。",
+    "bulkDeleteDone": "已删除 {deleted} 个模板{skipped, plural, =0 {} other {，跳过 # 个（使用中）}}"
   },
   "acceptInvite": {
     "title": "接受邀请",
@@ -7399,6 +7461,11 @@
         "namePlaceholder": "恩典社区教会",
         "where": "整个事工"
       }
+    },
+    "closed": {
+      "title": "暂未开放注册",
+      "body": "VenueOS 目前暂不接受在线注册。请给我们发邮件，我们会向您发送更多信息。",
+      "cta": "通过电子邮件索取信息"
     }
   },
   "notifications": {
@@ -8103,5 +8170,42 @@
     "upload": "上传新文件",
     "loading": "正在加载媒体库…",
     "empty": "此处暂无文件。请上传文件或选择其他文件夹。"
+  },
+  "playerMenu": {
+    "importFromUsb": "从 U 盘导入"
+  },
+  "ui": {
+    "filter": "筛选",
+    "filtersActive": "{count} 个筛选条件",
+    "filterButton": "筛选，已启用 {count} 个",
+    "clearFilters": "清除筛选",
+    "clear": "清除",
+    "moreActions": "更多操作",
+    "selectedCount": "已选择 {count} 项",
+    "selectAll": "全选 {count} 项",
+    "clearSelection": "取消选择",
+    "selectionActions": "所选项操作",
+    "sort": "排序",
+    "view": "视图",
+    "gridView": "网格视图",
+    "listView": "列表视图",
+    "moreTabs": "更多",
+    "sortValue": "排序：{label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "外观风格",
+    "intakePalette": "配色来源",
+    "intakeBackground": "背景样式",
+    "mediaKind": "媒体类型",
+    "templateKind": "模板来源",
+    "aiMenu": "AI 改写选项",
+    "opRewrite": "改写",
+    "opShorten": "缩短",
+    "opFitToZone": "适应区域",
+    "opExpand": "扩写",
+    "opPunch": "更有力",
+    "opFixGrammar": "修正语法",
+    "opTranslate": "翻译…",
+    "opTellMe": "告诉我怎么改…"
   }
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Check, ArrowRight, Sparkles } from 'lucide-react';
 import { PublicShell } from '@/components/marketing/PublicShell';
+import { SIGNUP_OPEN, signupHref } from '@/lib/signup-gate';
 
 export const metadata = {
   title: 'Pricing — VenueOS',
@@ -92,7 +93,9 @@ const FAQ = [
   },
   {
     q: 'Can we try it before we pay?',
-    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens, use every feature, and try the AI (2 board designs and 2 images). Add billing when you’re ready to go live.',
+    a: SIGNUP_OPEN
+      ? 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens, use every feature, and try the AI (2 board designs and 2 images). Add billing when you’re ready to go live.'
+      : 'Yes — email us and we’ll get you more information, including a trial.',
   },
   {
     q: 'Is annual billing cheaper?',
@@ -130,7 +133,9 @@ export default function PricingPage() {
           <p className="mt-6 text-base md:text-lg text-slate-400 leading-relaxed max-w-xl mx-auto">
             Signage, kiosks, live scoreboards and emergency alerts on every plan —
             $20 per screen a month, or $200 a year. Add AI for $5 more per screen.
-            Start with a 14-day free trial, AI included — no credit card.
+            {SIGNUP_OPEN
+              ? 'Start with a 14-day free trial, AI included — no credit card.'
+              : 'Email us and we’ll send you more information.'}
           </p>
         </div>
       </section>
@@ -168,14 +173,14 @@ export default function PricingPage() {
               <p className="mt-4 text-sm font-semibold text-slate-900">{t.range}</p>
               <p className="mt-1 text-sm text-slate-600 leading-relaxed flex-1">{t.blurb}</p>
               <Link
-                href="/signup"
+                href={signupHref()}
                 className={`mt-6 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold transition-colors ${
                   t.featured
                     ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                     : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
               >
-                Start 14-day free trial <ArrowRight className="w-4 h-4" />
+                {SIGNUP_OPEN ? 'Start 14-day free trial' : 'Request info'} <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           ))}

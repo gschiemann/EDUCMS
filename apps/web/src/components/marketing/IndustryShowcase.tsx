@@ -17,6 +17,7 @@ import { ArrowRight, Check } from 'lucide-react';
 import { VERTICAL_TEMPLATE_CATEGORIES, type Vertical } from '@cms/api-types';
 import { TemplateEmbed } from './TemplateEmbed';
 import { VERTICAL_ICONS } from '@/lib/vertical-icons';
+import { SIGNUP_OPEN, signupHref } from '@/lib/signup-gate';
 
 interface Industry {
   vertical: Vertical;
@@ -425,10 +426,10 @@ export function IndustryShowcase() {
                 ))}
               </div>
               <Link
-                href={`/signup?vertical=${active.vertical}`}
+                href={signupHref(`?vertical=${active.vertical}`)}
                 className="group mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
               >
-                Start your free {active.name} trial
+                {SIGNUP_OPEN ? <>Start your free {active.name} trial</> : <>Request info</>}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </div>
