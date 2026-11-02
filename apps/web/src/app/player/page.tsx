@@ -12294,7 +12294,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
   // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
-  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet ? (
+  // A dashboard preview has no device credential by design: never warn there (2026-11-02).
+  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet && !isPreviewMode() ? (
     <div
       data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
