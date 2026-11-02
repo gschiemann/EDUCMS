@@ -563,6 +563,9 @@ class MainActivity : ComponentActivity() {
         if (runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(true)) return
         when (source) {
             "boot diagnostic" -> com.educms.player.boot.BootDiagnostics.retryNow("the Network screen connected")
+            // 2026-10-26 — opened from the USB card's "Network settings": online
+            // now, so the screen can fetch its USB key — read the drive again.
+            "usb card" -> com.educms.player.usb.UsbAutoImport.importNow("the Network screen connected")
             "back menu" -> runCatching {
                 val pageLoadNow = com.educms.player.boot.BootDiagnostics.tracker.facts().loadStartedAtMs
                 if (pageLoadNow != pageLoadAtOpen) {
@@ -614,6 +617,8 @@ class MainActivity : ComponentActivity() {
         // 2026-10-23 — a person is fixing the network on VenueOS's Network
         // screen: the card must not raise itself over what they are typing.
         if (com.educms.player.network.NetworkScreen.isShowing()) "the network screen is open" else
+        // 2026-10-26 — a person is reading the USB card (it closes by itself).
+        if (com.educms.player.usb.UsbImportCard.isShowing()) "the USB card is open" else
         com.educms.player.boot.bootDiagnosticSuppression(
             emergencyHeld = runCatching {
                 DisplayEmergency.isHeld(applicationContext)
@@ -631,6 +636,8 @@ class MainActivity : ComponentActivity() {
         )
 
     companion object {
+        /** The storage permission dialog the USB card's Allow raises on Android 10 and older. */
+
         /**
          * SEC-002 (re-audit) — spacing and cap for the bridge-nonce
          * re-delivery pump. 24 × 250 ms ≈ 6 s of trying per main-frame
@@ -1513,6 +1520,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         liveInstances.incrementAndGet()
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
+        // 1.1.59 — location for the Wi-Fi list is no longer asked here: it is
+        // part of the setup list's ONE permission dialog (SetupCeremony
+        // STEP_RUNTIME), with notifications and storage. Two dialogs from two
+        // owners on first launch is what that list exists to stop.
         // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
         // expanded so support can answer "what's the kiosk's actual
         // hardware / WebView / ABI / network state?" from a single
@@ -1886,6 +1897,10 @@ class MainActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 2026-10-26 — the USB card sits above everything of ours and
+                // Back always closes it (its own key handler normally consumes
+                // the key — this is the belt for focus that escaped behind it).
+                if (runCatching { com.educms.player.usb.UsbImportCard.back() }.getOrDefault(false)) return
                 // 2026-10-23 — the Network screen owns Back while it is up
                 // (one step back; its own key handler normally consumes the
                 // key — this is the belt for focus that escaped behind it).
@@ -3235,6 +3250,8 @@ class MainActivity : ComponentActivity() {
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
                 onOpenNetworkScreen = { runOnUiThread { openNetworkScreen("back menu") } },
+                // 2026-10-26 — the Back menu's "Import from USB": read the drive now, on the card.
+                onImportFromUsb = { runOnUiThread { com.educms.player.usb.UsbAutoImport.importNow("back menu") } },
                 // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────
                 // The three facts an HTTP 200 + onPageFinished cannot give
                 // us. Bridge callbacks arrive on the bridge worker thread;
@@ -3487,16 +3504,52 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * USB sticks (2026-10-22). Idempotent — runs on every (re)configured
-     * WebView. The page learns of a fresh import through a DOM event (no new
-     * bridge method); the service worker's media fetches are answered from the
-     * import; the one-time file-access screen is never opened over an alert.
+     * USB sticks (2026-10-22; on the glass since 2026-10-26). Idempotent —
+     * runs on every (re)configured WebView. The page learns of a fresh import
+     * through a DOM event; the service worker's media fetches are answered
+     * from the import; the USB card (usb.UsbImportCard) says what the screen
+     * is doing with a stick and never opens over an alert, and Android's
+     * file-access page opens only from a person's press on the card's Allow.
      */
     private fun installUsbHooks() {
         val ref = java.lang.ref.WeakReference(this)
         com.educms.player.usb.UsbAutoImport.onImported = { ref.get()?.notifyPageUsbImported() }
-        com.educms.player.usb.UsbAutoImport.onNeedsFileAccess = { ref.get()?.requestUsbFileAccess() }
+        val host = usbHost ?: object : com.educms.player.usb.UsbAutoImport.Host {
+            override fun show(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean =
+                ref.get()?.showUsbCard(state, allowOpening) ?: false
+
+            override fun driveRemoved() {
+                com.educms.player.usb.UsbImportCard.driveRemoved()
+            }
+        }
+        usbHost = host
+        com.educms.player.usb.UsbAutoImport.host = host
         com.educms.player.usb.UsbServiceWorkerHook.install()
+    }
+
+    /** This Activity's USB card host (so a destroyed instance only ever clears its own). */
+    private var usbHost: com.educms.player.usb.UsbAutoImport.Host? = null
+
+    private fun showUsbCard(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean {
+        if (isFinishing || isDestroyed) return false
+        if (!allowOpening && !com.educms.player.usb.UsbImportCard.isShowing()) return false
+        // A suppressed card must not interrupt video beneath a text banner.
+        if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return false
+        sharedVideoHost?.yieldToUi()
+        return com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
+    }
+
+    /** A press on the USB card. Main thread. */
+    private fun onUsbCardAction(action: com.educms.player.usb.UsbAction, state: com.educms.player.usb.UsbCardState) {
+        when (action) {
+            com.educms.player.usb.UsbAction.ALLOW -> openUsbFileAccess()
+            com.educms.player.usb.UsbAction.LOOK_AGAIN -> com.educms.player.usb.UsbAutoImport.importNow("look again on the card (${state.stage})")
+            com.educms.player.usb.UsbAction.NETWORK -> {
+                com.educms.player.usb.UsbImportCard.hide("network settings")
+                if (!openNetworkScreen("usb card")) openNetworkSettings()
+            }
+            com.educms.player.usb.UsbAction.CLOSE -> com.educms.player.usb.UsbImportCard.hide("closed by a person (${state.stage})")
+        }
     }
 
     private fun notifyPageUsbImported() {
@@ -3509,21 +3562,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestUsbFileAccess() {
-        if (DisplayEmergency.isHeld(this)) return
-        if (Build.VERSION.SDK_INT >= 30) {
-            if (android.os.Environment.isExternalStorageManager()) return
-            runCatching {
-                startActivity(
-                    Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                        .setData(Uri.parse("package:$packageName")),
-                )
-            }.onFailure { PlayerLogger.w("MainActivity", "usb: all-files access screen unavailable: ${it.message}") }
-        } else if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            runCatching { requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 4711) }
+    /**
+     * The USB card's "Finish screen setup" (1.1.59; was "Allow" since
+     * 2026-10-26) — a PERSON's press. The card no longer opens a permission
+     * page of its own: every grant lives on the one setup list, so this opens
+     * THAT list, where "Play from a USB drive" (Android 11+) or the permission
+     * dialog (older Android) is a row. The card reads the drive again when the
+     * person comes back (UsbAutoImport.hostResumed). Never over an alert,
+     * never inside a pinned task (the list refuses both itself).
+     */
+    private fun openUsbFileAccess() {
+        if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return
+        val usb = com.educms.player.usb.UsbAutoImport
+        if (usb.hasFileAccess()) {
+            usb.importNow("access already granted")
+            return
         }
+        if (runCatching { LockTaskController.isActive(this) }.getOrDefault(false)) {
+            PlayerLogger.w("UsbImportCard", "setup list not opened — the kiosk is pinned")
+            usb.noAccessPage()
+            return
+        }
+        com.educms.player.usb.UsbImportCard.hide("finish screen setup")
+        usb.awaitingAccess()
+        openSetupChecklistNow("usb card")
     }
 
     /**
@@ -4465,9 +4527,10 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
-        // Back from the one-time file-access screen (or any system screen):
+        // Back from Android's file-access page (the USB card's Allow): read
+        // the drive again and say what happened. From any other system screen:
         // look at a stick that may already be in.
-        com.educms.player.usb.UsbAutoImport.scanSoon(1_000)
+        if (!com.educms.player.usb.UsbAutoImport.hostResumed()) com.educms.player.usb.UsbAutoImport.scanSoon(1_000)
         sharedVideoHost?.refreshReadiness()
         // 1.1.23 — whoever left the setup card for a system screen is back.
         runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }
@@ -4485,6 +4548,7 @@ class MainActivity : ComponentActivity() {
                         com.educms.player.setup.SetupCeremony.isShowing() ||
                         com.educms.player.boot.BootDiagnostics.isShowing() ||
                         com.educms.player.network.NetworkScreen.isShowing() ||
+                        com.educms.player.usb.UsbImportCard.isShowing() ||
                         managerGateShown || installPromptOutstanding
                 },
                 lastPausedAt = { lastPausedAtElapsedMs },
@@ -4717,6 +4781,11 @@ class MainActivity : ComponentActivity() {
         // 2026-10-23 — the Wi-Fi card and the Network screen go with their host.
         runCatching { com.educms.player.settings.WifiSavePrompt.detach(this) }
         runCatching { com.educms.player.network.NetworkScreen.close("host destroyed") }
+        // 2026-10-26 — the USB card goes with its host too (only if it is
+        // THIS Activity's — a recreate starts the new one first); the import
+        // itself carries on.
+        runCatching { com.educms.player.usb.UsbImportCard.detach(this) }
+        if (com.educms.player.usb.UsbAutoImport.host === usbHost) com.educms.player.usb.UsbAutoImport.host = null
         // Same reasoning for the boot diagnostic: drop the card and the
         // host callbacks so a destroyed Activity is never retained, and
         // stop its ticker (the staleness watchdog's is stopped below).
@@ -5440,7 +5509,9 @@ class MainActivity : ComponentActivity() {
             runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false) ||
             // 2026-10-23 — VenueOS's Network screen and the Wi-Fi save card.
             com.educms.player.settings.WifiSavePrompt.isShowing() ||
-            com.educms.player.network.NetworkScreen.isShowing()
+            com.educms.player.network.NetworkScreen.isShowing() ||
+            // 2026-10-26 — the USB card.
+            com.educms.player.usb.UsbImportCard.isShowing()
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Website Tabs (2026-09-28): a remote key while a site is up is

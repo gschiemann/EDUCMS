@@ -325,7 +325,11 @@ object DisplayControlApi {
             // EVERY process start — so a screen that died mid-lockdown
             // came back black over the alert. The hold is persisted for
             // exactly this moment.
-            if (DisplayEmergency.isHeld(app)) {
+            val restore = PowerIntentPolicy.atWindowAttached(
+                emergencyHeld = DisplayEmergency.isHeld(app),
+                blanked = DisplayPrefs.blanked(app),
+            )
+            if (restore == PowerIntentPolicy.Restore.ENFORCE_EMERGENCY) {
                 PlayerLogger.e(
                     TAG,
                     "window attached during an ACTIVE EMERGENCY — forcing a visible screen, not the persisted blank",
@@ -333,7 +337,9 @@ object DisplayControlApi {
                 DisplayEmergency.enforceNow(app)
                 return@runCatching
             }
-            if (DisplayPrefs.blanked(app)) {
+            // The persisted intent is the LAST command (committed before its
+            // provider ran — PowerIntentPolicy): an ON is never undone here.
+            if (restore == PowerIntentPolicy.Restore.REBLANK) {
                 PlayerLogger.i(TAG, "window attached while blanked — re-applying blank")
                 DisplayControlRegistry.apply(app, DisplayAction.Blank, revertAfterMs = null)
                 return@runCatching

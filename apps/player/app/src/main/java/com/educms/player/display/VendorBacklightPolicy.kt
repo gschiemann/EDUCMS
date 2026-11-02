@@ -20,11 +20,30 @@ import org.json.JSONObject
  *
  * The panel vendor's own player does neither. On a t982 it binds the IFPDOS
  * OpenSDK control service that ships on the panel (`com.seewo.mcuservice`,
- * exported action `com.ifpdos.opensdk.SERVICE_MANAGER`) and asks the MCU to
- * switch the panel's backlight off — `SDKDeviceHelper.setScreenStatus(false)`
- * — while Android, the app and its WebView keep running. That is what the
- * glass needs: DARK, with the page alive and the native alert watch polling,
- * so an alert turns the backlight back on in well under a second.
+ * exported action `com.ifpdos.opensdk.SERVICE_MANAGER`) and drives the OS's
+ * OWN power state — the same standby the remote's power key enters:
+ *
+ *   SLEEP  `APITools.PowerOff()`, t982 branch:
+ *            if (SDKDeviceHelper.I.isScreenOn()) SDKSystemHelper.I.powerOff();
+ *          → `CmdGetScreenStatus`, then `CmdPowerOff(-1)`.
+ *   WAKE   `APITools.PowerOn()`, t982 branch:
+ *            if (!SDKDeviceHelper.I.isScreenOn()) sendKeyEvent(KEYCODE_SEEWO_POWER);
+ *          → `CmdGetScreenStatus`, then `CmdSendKeyEvent(5000)`.
+ *
+ * Their app keeps running through that standby (their on-schedule is a
+ * `java.util.Timer` in their own process, and their cloud "power on" arrives
+ * over the network), so the page and the native alert watch stay alive.
+ *
+ * 1.1.52–1.1.56 sent `CmdSetScreenStatus(false)` instead: the MCU backlight
+ * switched off behind the OS's back. On a GUQ that left the power LED
+ * blinking blue/red and the panel recoverable only by unplugging it (fleet
+ * kill switch `PLAYER_VENDOR_BACKLIGHT=off`, 2026-10-30). Goodview's CMS never
+ * sends that command on this panel family, and neither does this file now.
+ *
+ * Deliberately NOT copied: Goodview's `onScreenStateChanged(isScreenOn=true)`
+ * REBOOTS the device (`SDKSystemHelper.I.reboot()`) every time the panel
+ * comes back on. A reboot on an alert wake would cost minutes; we keep the
+ * process and its page.
  *
  * The wire shapes below were reconstructed statically from the vendor's own
  * player (jadx over CloudSign-V3.1.8-GVBOX, never run), as cited in
@@ -96,8 +115,41 @@ object VendorBacklightPolicy {
     /** `ISDKService.sendMessage(String token, String requestJson): String`. */
     const val TX_SEND_MESSAGE = 3
 
-    const val CMD_SET_SCREEN_STATUS = "com.seewo.sdk.internal.command.device.CmdSetScreenStatus"
+    /**
+     * The power state query. Goodview's CMS reads it before EVERY power call
+     * (`APITools.PowerOff` / `PowerOn`: `SDKDeviceHelper.I.isScreenOn()`).
+     */
     const val CMD_GET_SCREEN_STATUS = "com.seewo.sdk.internal.command.device.CmdGetScreenStatus"
+
+    /**
+     * SLEEP, as Goodview's CMS does it on a t982: `SDKSystemHelper.I.powerOff()`
+     * → `new CmdPowerOff(-1)` (`timeCount = -1`: no countdown dialog). This is
+     * the OS's own power-off — the IFPDOS standby the remote's power key
+     * enters — not a backlight switch behind the OS's back.
+     */
+    const val CMD_POWER_OFF = "com.seewo.sdk.internal.command.system.CmdPowerOff"
+
+    /** `CmdPowerOff.timeCount` as `SDKSystemHelper.powerOff()` sends it. */
+    const val POWER_OFF_TIME_COUNT = -1
+
+    /**
+     * WAKE, as Goodview's CMS does it on a t982: `SDKSystemHelper.I
+     * .sendKeyEvent(SDKKeyEvent.KEYCODE_SEEWO_POWER)` → `new CmdSendKeyEvent(5000)`.
+     * The power key is a TOGGLE, which is why it is only ever sent after the
+     * status query read OFF.
+     */
+    const val CMD_SEND_KEY_EVENT = "com.seewo.sdk.internal.command.system.CmdSendKeyEvent"
+
+    /** `SDKKeyEvent.KEYCODE_SEEWO_POWER`. */
+    const val KEYCODE_SEEWO_POWER = 5000
+
+    /**
+     * After one of OUR power commands the panel takes a moment to change state
+     * and the status query can still read the old one. Inside this window no
+     * second power command is sent on a stale reading — a second power KEY
+     * would toggle the panel straight back.
+     */
+    const val POWER_SETTLE_MS = 6_000L
 
     const val STATUS_SUCCESS = "SUCCESS"
     const val STATUS_HANDLER_NOT_FOUND = "HANDLER_NOT_FOUND"
@@ -173,18 +225,16 @@ object VendorBacklightPolicy {
 
     // ─── the wire ────────────────────────────────────────────────────
 
-    /**
-     * `SDKRequest` for `CmdSetScreenStatus(isOn, isAllowIntercept = true)`.
-     *
-     * fastjson names the command's properties from its getters: `isOn()` →
-     * `on`, `isIsAllowIntercept()` → `isAllowIntercept`. `isOn` is written as
-     * well: fastjson's deserialiser smart-matches an `is`-prefixed key onto
-     * the same property, so a firmware that serialised the field name instead
-     * of the getter name still reads the value, and an unknown key is ignored.
-     */
-    fun setScreenStatusRequest(on: Boolean): String = request(
-        CMD_SET_SCREEN_STATUS,
-        JSONObject().put("on", on).put("isOn", on).put("isAllowIntercept", true),
+    /** `SDKRequest` for `CmdPowerOff(-1)` — fastjson writes the public field `timeCount`. */
+    fun powerOffRequest(): String = request(
+        CMD_POWER_OFF,
+        JSONObject().put("timeCount", POWER_OFF_TIME_COUNT),
+    )
+
+    /** `SDKRequest` for `CmdSendKeyEvent(5000)` — fastjson names it from `getKeyCode()`. */
+    fun powerKeyRequest(): String = request(
+        CMD_SEND_KEY_EVENT,
+        JSONObject().put("keyCode", KEYCODE_SEEWO_POWER),
     )
 
     /** `SDKRequest` for `CmdGetScreenStatus` — no fields. */
@@ -237,6 +287,54 @@ object VendorBacklightPolicy {
         probe.ok -> Detection.AVAILABLE
         probe.status == STATUS_HANDLER_NOT_FOUND -> Detection.UNSUPPORTED
         else -> Detection.UNREACHABLE
+    }
+
+    // ─── the power sequence ──────────────────────────────────────────
+
+    enum class PowerStep {
+        /** The panel already reads the wanted state: send nothing (Goodview's own guard). */
+        ALREADY,
+        /** Send the power command (OFF: `CmdPowerOff`, ON: the power key). */
+        SEND,
+        /** One of our own commands is still taking effect: send nothing now. */
+        SETTLING,
+        /** The state could not be read: send nothing — the power key is a toggle. */
+        UNKNOWN,
+    }
+
+    /**
+     * What to do for one sleep / wake, from the status read just before it.
+     *
+     * Goodview's CMS: OFF only `if (isScreenOn())`, ON only `if (!isScreenOn())`.
+     * Two additions, both refusals: an unreadable state sends nothing (their
+     * client would press the toggle blind), and inside [POWER_SETTLE_MS] of
+     * our own last command a reading is not trusted to justify another one.
+     *
+     * @param msSinceLastCommand since OUR last power command, or null if none.
+     * @param lastCommandOn the direction of that command.
+     */
+    fun powerStep(
+        wantOn: Boolean,
+        screenOn: Boolean?,
+        msSinceLastCommand: Long?,
+        lastCommandOn: Boolean?,
+        idempotent: Boolean = false,
+    ): PowerStep {
+        // A backend whose commands are SETTERS (the RK3576 box's
+        // `setDeviceShallowOnoff`, [RkSdkApiPolicy]) cannot be toggled the
+        // wrong way, so an UNREADABLE state still sends (never dark under an
+        // alert) and nothing waits out a settle window. But a reading that
+        // already matches sends NOTHING (1.1.60): on that box the wake setter
+        // brings the panel back by REBOOTING it, so a wake sent to a box that
+        // reads on — every process start under an alert hold, every
+        // heartbeat power-on retry after the reboot — rebooted it again.
+        // Goodview's own CMS guards on the same getter.
+        if (idempotent) return if (screenOn != null && screenOn == wantOn) PowerStep.ALREADY else PowerStep.SEND
+        if (screenOn == null) return PowerStep.UNKNOWN
+        val settling = msSinceLastCommand != null && msSinceLastCommand in 0 until POWER_SETTLE_MS
+        if (settling && lastCommandOn != wantOn) return PowerStep.SETTLING
+        if (screenOn == wantOn) return PowerStep.ALREADY
+        return if (settling) PowerStep.SETTLING else PowerStep.SEND
     }
 
     // ─── emergency ───────────────────────────────────────────────────

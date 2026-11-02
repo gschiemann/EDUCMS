@@ -97,7 +97,9 @@ class FaceBridgeIsolationTest {
             // includes the APK that implements them.
             // 36 -> 37 (2026-10-23): openNetworkScreen, the Back menu's Network entry — the
             // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.53.
-            37, // Native media has face-bound closures, not face-selecting public methods.
+            // 37 -> 38 (2026-10-26): importFromUsb, the Back menu's "Import from USB" — the
+            // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.55.
+            38, // Native media has face-bound closures, not face-selecting public methods.
             names.size,
         )
         assertFalse("a face-specific bridge method appeared", names.any { it.startsWith("face") })

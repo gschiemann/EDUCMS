@@ -415,6 +415,12 @@ object SetupCeremony {
         val beforeLaunch: ((Activity) -> Unit)? = null,
         val viaDeviceAdminEnrollment: Boolean = false,
         val optional: Boolean = false,
+        /**
+         * 1.1.59 — a RUNTIME-permission step: the permissions this box still
+         * lacks, asked for in ONE in-app dialog. `direct` is then the app's own
+         * page in Settings, used only once Android stops showing the dialog.
+         */
+        val runtimePermissions: ((Context) -> List<String>)? = null,
         // ⚠️ `promptKeys` REMOVED IN 1.1.15. It carried "Press OK · Back to
         // skip" into the LED-poster banner, and the only hardware that
         // banner runs on has NO REMOTE — a NovaStar poster's sole input is a
@@ -434,6 +440,31 @@ object SetupCeremony {
     // ─────────────────────────────────────────────────────────────────
 
     private val STEPS: List<Step> = listOf(
+        // 0 ─ 1.1.59: the ONE in-app permission dialog, first because it is the
+        //     cheapest tap on the list (no Settings page at all). Location
+        //     where the box has Wi-Fi (the Network screen's list of nearby
+        //     networks), notifications on Android 13+, storage below 11 (USB
+        //     sticks). Which of those THIS box asks for is SetupNeeds' matrix.
+        //     Before 1.1.59 location was a separate dialog fired from onCreate
+        //     and storage a dialog fired from the USB card, mid-use.
+        Step(
+            prefKey = SetupCeremonyMath.STEP_RUNTIME,
+            name = "Wi-Fi list and notifications",
+            why = "Lets $PLAYER_TOKEN list nearby Wi-Fi networks, read USB drives on older Android, " +
+                "and keep its status notification. It never reads your location",
+            hint = "Choose Allow on each question. Already refused? The button opens $PLAYER_TOKEN's " +
+                "page in Settings → Permissions; switch them on, then press Back.",
+            appliesTo = { true },
+            isSatisfied = { ctx -> SetupNeeds.missingRuntime(needsDevice(ctx), grantedRuntime(ctx)).isEmpty() },
+            direct = { ctx ->
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:${ctx.packageName}"))
+            },
+            fallback = { appsSettings() },
+            fallbackNote = "This screen has no direct page — the button opens Apps; " +
+                "pick $PLAYER_TOKEN → Permissions.",
+            runtimePermissions = { ctx -> SetupNeeds.missingRuntime(needsDevice(ctx), grantedRuntime(ctx)) },
+        ),
         // 1 ─ Player installs its own updates. Everything OTA depends on it.
         Step(
             prefKey = "installPromptShown",
@@ -562,8 +593,46 @@ object SetupCeremony {
             fallbackNote = "This screen has no direct page — the button opens the battery list; " +
                 "switch to All apps and pick $PLAYER_TOKEN.",
         ),
+        // 4b ─ 1.1.59: "All files access", Android 11+ only (SetupNeeds). The
+        //      USB playlist stick reader. Before 1.1.59 the USB card opened
+        //      this page mid-use; now it is asked here, once.
+        Step(
+            prefKey = SetupCeremonyMath.STEP_ALL_FILES,
+            name = "Play from a USB drive",
+            why = "Lets $PLAYER_TOKEN read playlists from a USB drive plugged into this screen",
+            hint = "Switch on $PLAYER_TOKEN, then press Back. Can't find it? On many panels: " +
+                "Settings → Apps → Special app access → All files access → $PLAYER_TOKEN.",
+            appliesTo = { true },
+            isSatisfied = { ctx -> hasAllFilesAccess(ctx) },
+            direct = { ctx ->
+                Intent(ACTION_MANAGE_APP_ALL_FILES)
+                    .setData(Uri.parse("package:${ctx.packageName}"))
+            },
+            fallback = { Intent(ACTION_MANAGE_ALL_FILES) },
+            fallbackNote = "This screen has no direct page — the button opens the list; " +
+                "pick $PLAYER_TOKEN and switch it on.",
+        ),
+        // 4c ─ 1.1.59: the "VenueOS sleep" accessibility service — asked ONLY
+        //      where this box ships a vendor sleep service that refuses us
+        //      (SetupNeeds.sleepHelperApplies). Android has no public page for
+        //      ONE accessibility service, so this opens the Accessibility list.
+        Step(
+            prefKey = SetupCeremonyMath.STEP_SLEEP_HELPER,
+            name = "Turn the screen off on schedule",
+            why = "This screen's own sleep control refused $PLAYER_TOKEN. \"VenueOS sleep\" turns it off " +
+                "the way the power button does. It reads nothing on the screen",
+            hint = "Pick \"VenueOS sleep\", switch it on, then press Back. Can't find it? On many panels: " +
+                "Settings → Accessibility → Downloaded apps (or Services) → VenueOS sleep.",
+            appliesTo = { true },
+            isSatisfied = { ctx -> sleepHelperEnabled(ctx) },
+            direct = { Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) },
+            fallback = { Intent(Settings.ACTION_SETTINGS) },
+            fallbackNote = "This screen has no direct page — the button opens Settings; " +
+                "look for Accessibility → VenueOS sleep.",
+        ),
         // 5 ─ ADVANCED (demoted 2026-08-25 — see the header's per-grant
-        //     table). Device ADMIN, never owner. It turns a scheduled Blank
+        //     table). Device ADMIN, never owner. 1.1.59: hidden where the
+        //     vendor's own sleep works (SetupNeeds.deviceAdminApplies). It turns a scheduled Blank
         //     from a black overlay on a lit backlight into a real
         //     `lockNow()` panel sleep.
         //
@@ -720,6 +789,11 @@ object SetupCeremony {
         val permissions: List<PermissionRow> = emptyList(),
         /** The installed Manager package, or null. */
         val managerPackage: String? = null,
+        /**
+         * 1.1.59 — this install's first-run window is over: the list never
+         * opens by itself again, only when a person asks for it.
+         */
+        val firstRunClosed: Boolean = false,
     ) {
         val states: List<StepState> get() = inputs.map { it.state }
     }
@@ -770,9 +844,14 @@ object SetupCeremony {
                 ?.let { key to it }
         }.toMap()
 
+        // 1.1.59 — the needs matrix: which of the matrix-decided steps this
+        // box needs at all (device × Android version × vendor sleep service).
+        val device = needsDevice(app)
         val inputs = STEPS.map { step ->
             val notApplicable = SetupCeremonyMath.notApplicableReason(hardware, step.prefKey)
-            val applies = notApplicable == null && safeBool { step.appliesTo(app) }
+            val applies = notApplicable == null &&
+                (SetupNeeds.applies(step.prefKey, device) ?: true) &&
+                safeBool { step.appliesTo(app) }
             val satisfied = safeBool { step.isSatisfied(app) }
             val route = if (applies && !satisfied) routeFor(app, step, browsers, own) else null
             if (route != null) routes[step.prefKey] = route
@@ -824,6 +903,7 @@ object SetupCeremony {
             readAtElapsedMs = SystemClock.elapsedRealtime(),
             permissions = permissions,
             managerPackage = manager,
+            firstRunClosed = firstRunClosed(app),
         )
     }
 
@@ -982,7 +1062,11 @@ object SetupCeremony {
             // and an open that a resume superseded keeps its force) and it
             // hands back to the normal render whenever it is not due, so a
             // boot that has nothing to offer behaves exactly as before.
-            if (!forced) {
+            // 1.1.59 — the offer is a prompt over a screen in service, so it
+            // only runs inside the first-run window (where it never applies:
+            // it is for UPGRADED screens). Kept wired, not deleted, so the
+            // decision can be reversed in one line if the owner wants it back.
+            if (!forced && !facts.firstRunClosed) {
                 if (maybeOfferRelaunchGrant(activity, decorate)) return@requestFacts
             }
             renderWith(activity, decorate, forced = forced, afterLaunch = false, facts = facts)
@@ -1095,6 +1179,14 @@ object SetupCeremony {
             // working signage on every boot of a healthy fleet.
             if (armed == null && !alreadyUp && !forced) {
                 logCompletionOnce(activity, facts)
+                return
+            }
+            // 1.1.59 — NOTHING MID-USE. After the first-run window the list
+            // only ever opens because a person asked (Back menu "Finish screen
+            // setup", the dashboard, the corner hold, a feature's own button).
+            // A grant that is still missing is reported as "needs setup".
+            if (!SetupNeeds.mayAutoOpen(forced, alreadyUp, facts.firstRunClosed)) {
+                PlayerLogger.i(TAG, "first run is over — not opening by itself; ${statusLine(facts)}")
                 return
             }
             // v1.1.23 — Back holds until the screen restarts, across a
@@ -1453,6 +1545,46 @@ object SetupCeremony {
             return
         }
 
+        // ── 1.1.59: THE ONE IN-APP PERMISSION DIALOG ──
+        // Every runtime permission this box still lacks, in ONE request. Our
+        // Activity pauses under Android's dialog and resumes when it closes,
+        // and that resume re-reads every grant and arms the next row — the
+        // same auto-advance every Settings round-trip gets. Only once Android
+        // will no longer show the dialog does the button fall through to the
+        // app's own page in Settings (the route below).
+        val runtime = step.runtimePermissions
+        if (runtime != null && state?.unavailable != true) {
+            val wanted = try { runtime(activity) } catch (_: Throwable) { emptyList() }
+            val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val askedBefore = prefs.getBoolean(KEY_RUNTIME_ASKED, false)
+            val rationale = wanted.any {
+                try { activity.shouldShowRequestPermissionRationale(it) } catch (_: Throwable) { false }
+            }
+            if (wanted.isNotEmpty() &&
+                SetupNeeds.runtimeFire(askedBefore, rationale) == SetupNeeds.RuntimeFire.DIALOG
+            ) {
+                markOffered(activity, key)
+                prefs.edit().putBoolean(KEY_RUNTIME_ASKED, true).apply()
+                if (SetupNeeds.PERM_FINE_LOCATION in wanted) {
+                    runCatching { com.educms.player.settings.WifiScan.markAsked(activity) }
+                }
+                val asked = try {
+                    activity.requestPermissions(wanted.toTypedArray(), RUNTIME_REQUEST_CODE)
+                    true
+                } catch (t: Throwable) {
+                    PlayerLogger.w(TAG, "step $key: permission dialog would not open: ${t.message}")
+                    false
+                }
+                if (asked) {
+                    notes.remove(key)
+                    recordLaunch(activity, key, LAUNCH_DIRECT)
+                    PlayerLogger.i(TAG, "step $key: asked Android for ${wanted.joinToString(",")}")
+                    render(activity, decorate, forced = true, afterLaunch = true)
+                    return
+                }
+            }
+        }
+
         // ── v1.1.23: NOTHING TO OPEN IS NOT A BUTTON ──
         // The model never makes an unavailable row tappable, but a key press
         // can race a re-render. Say so and stay on the card — never open a
@@ -1582,7 +1714,8 @@ object SetupCeremony {
         } catch (t: Throwable) {
             PlayerLogger.w(TAG, "could not record the dismissal: ${t.message}")
         }
-        PlayerLogger.i(TAG, "checklist closed by Back — armed step unchanged, re-offers after the next restart")
+        PlayerLogger.i(TAG, "checklist closed by Back — armed step unchanged; reopen it from the Back menu")
+        closeFirstRun(activity, "closed by Back")
         hiddenForSession = true
         detach(activity)
     }
@@ -1630,6 +1763,7 @@ object SetupCeremony {
         } catch (t: Throwable) {
             PlayerLogger.w(TAG, "could not record the dismissal: ${t.message}")
         }
+        closeFirstRun(activity, "closed by Done")
         hiddenForSession = true
         detach(activity)
     }
@@ -1707,13 +1841,23 @@ object SetupCeremony {
                     .put("launch", prefs.getString(launchKey(step.prefKey), null) ?: JSONObject.NULL)
                     .put("skipped", prefs.getBoolean(KEY_SKIPPED_PREFIX + step.prefKey, false))
                     .put("unavailable", state?.unavailableReason ?: JSONObject.NULL)
-                    .put("opens", routeJson(route)),
+                    .put("opens", routeJson(route))
+                    // 1.1.59 — the feature this grant serves, so "needs setup"
+                    // can say WHAT does not work yet (usb-import, sleep, …).
+                    .put("feature", SetupNeeds.featureFor(step.prefKey)),
             )
         }
+        // 1.1.59 — NOTHING IS ASKED MID-USE, so a missing core grant is
+        // REPORTED instead: the features that wait for "Finish screen setup".
+        val needsSetup = org.json.JSONArray(
+            SetupCeremonyMath.core(states).filterNot { it.satisfied }.map { SetupNeeds.featureFor(it.key) }.distinct(),
+        )
         JSONObject()
             .put("granted", done)
             .put("required", total)
             .put("complete", done >= total)
+            .put("needsSetup", needsSetup)
+            .put("firstRunClosed", facts.firstRunClosed)
             // Which applicability table produced the rows above. "GENERIC"
             // on every box that is not a NovaStar poster — i.e. the answer
             // every existing screen in the fleet reports.
@@ -1789,6 +1933,7 @@ object SetupCeremony {
     }
 
     private fun logCompletionOnce(ctx: Context, facts: SetupFacts) {
+        closeFirstRun(ctx, "nothing outstanding")
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean("setupCeremonyLogged", false)) return
         prefs.edit().putBoolean("setupCeremonyLogged", true).apply()
@@ -1961,8 +2106,9 @@ object SetupCeremony {
                 PlayerLogger.i(
                     TAG,
                     "checklist stood down — untouched for ${idleFor / 1000}s; " +
-                        "it will offer the same step on the next boot",
+                        "what is left is reported to the dashboard as needs setup",
                 )
+                closeFirstRun(activity, "untouched for ${idleFor / 1000}s")
                 hiddenForSession = true
                 detach(activity)
                 return
@@ -2067,6 +2213,102 @@ object SetupCeremony {
         body()
     } catch (_: Throwable) {
         false
+    }
+
+    // ── 1.1.59: the needs matrix's facts, and the first-run window ──────
+
+    /** `Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` (API 30), spelled out. */
+    private const val ACTION_MANAGE_APP_ALL_FILES = "android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION"
+
+    /** `Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION` (API 30), spelled out. */
+    private const val ACTION_MANAGE_ALL_FILES = "android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION"
+
+    /** The checklist has raised Android's permission dialog once. */
+    private const val KEY_RUNTIME_ASKED = "setupRuntimeAsked"
+
+    /** Persisted [SetupNeeds.firstRunClosed]. Absent = never decided. */
+    private const val KEY_FIRST_RUN_CLOSED = "setupFirstRunClosed"
+
+    /** requestPermissions code for the checklist's dialog (MainActivity uses 4711, WifiScan 4712). */
+    const val RUNTIME_REQUEST_CODE = 4713
+
+    /**
+     * Pre-1.1.59 markers. Any of them present on the first read of a 1.1.59
+     * build means this is an UPGRADE of a screen already in service.
+     */
+    private val LEGACY_MARKERS = listOf(
+        SetupCeremonyMath.STEP_INSTALL_UNKNOWN, SetupCeremonyMath.STEP_MANAGER_INSTALL,
+        SetupCeremonyMath.STEP_WRITE_SETTINGS, SetupCeremonyMath.STEP_BATTERY_EXEMPT,
+        SetupCeremonyMath.STEP_DEVICE_ADMIN, SetupCeremonyMath.STEP_OVERLAY, SetupCeremonyMath.STEP_HOME,
+        "setupCeremonyLogged", KEY_DISMISSED_AT, "device_token",
+    )
+
+    /** The facts the needs matrix reads. Background thread (binder reads). */
+    internal fun needsDevice(ctx: Context): SetupNeeds.Device {
+        val app = ctx.applicationContext
+        return SetupNeeds.Device(
+            sdk = Build.VERSION.SDK_INT,
+            hasWifi = safeBool { com.educms.player.settings.WifiSetup.hasWifi(app) },
+            vendorSleep = SetupNeeds.vendorSleepFromWire(
+                try {
+                    com.educms.player.display.VendorBacklightProvider.detectionWire()
+                } catch (_: Throwable) {
+                    null
+                },
+            ),
+        )
+    }
+
+    private fun grantedRuntime(ctx: Context): Set<String> {
+        val app = ctx.applicationContext
+        return SetupNeeds.runtimePermissions(needsDevice(app)).filter {
+            safeBool { app.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        }.toSet()
+    }
+
+    private fun hasAllFilesAccess(ctx: Context): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && safeBool { android.os.Environment.isExternalStorageManager() }
+
+    /** Is "VenueOS sleep" switched on? The secure setting is the truth; a live bind counts too. */
+    private fun sleepHelperEnabled(ctx: Context): Boolean {
+        if (safeBool { com.educms.player.display.SleepAccessibilityService.isConnected() }) return true
+        val app = ctx.applicationContext
+        val ours = ComponentName(app, com.educms.player.display.SleepAccessibilityService::class.java)
+        val enabled = try {
+            Settings.Secure.getString(app.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+        return enabled.split(':').any { entry ->
+            val cn = ComponentName.unflattenFromString(entry.trim())
+            cn != null && cn.packageName == ours.packageName && cn.className == ours.className
+        }
+    }
+
+    /** Read (and, on the first 1.1.59 read, decide) whether the first-run window is over. */
+    private fun firstRunClosed(ctx: Context): Boolean = try {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = if (prefs.contains(KEY_FIRST_RUN_CLOSED)) prefs.getBoolean(KEY_FIRST_RUN_CLOSED, false) else null
+        val closed = SetupNeeds.firstRunClosed(stored, LEGACY_MARKERS.any { prefs.contains(it) })
+        if (stored == null) {
+            prefs.edit().putBoolean(KEY_FIRST_RUN_CLOSED, closed).apply()
+            if (closed) PlayerLogger.i(TAG, "upgrade of a screen in service — new setup rows are reported, never shown by themselves")
+        }
+        closed
+    } catch (_: Throwable) {
+        // Unreadable prefs: the safe direction is "do not prompt by itself".
+        true
+    }
+
+    private fun closeFirstRun(ctx: Context, why: String) {
+        try {
+            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_FIRST_RUN_CLOSED, false)) return
+            prefs.edit().putBoolean(KEY_FIRST_RUN_CLOSED, true).apply()
+            PlayerLogger.i(TAG, "first run over ($why) — the list opens again only when a person asks")
+        } catch (t: Throwable) {
+            PlayerLogger.w(TAG, "could not record the end of first run: ${t.message}")
+        }
     }
 
     /** The Apps list — the broadest page every "Special app access" lives under. */

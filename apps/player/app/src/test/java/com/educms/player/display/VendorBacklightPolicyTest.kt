@@ -1,6 +1,7 @@
 package com.educms.player.display
 
 import com.educms.player.display.VendorBacklightPolicy.Detection
+import com.educms.player.display.VendorBacklightPolicy.PowerStep
 import com.educms.player.standby.RestoreBlankPolicy
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -96,15 +97,17 @@ class VendorBacklightPolicyTest {
     }
 
     @Test
-    fun `a set-screen-status request is an SDKRequest naming CmdSetScreenStatus with its fastjson fields`() {
-        val off = JSONObject(VendorBacklightPolicy.setScreenStatusRequest(false))
-        assertEquals("com.seewo.sdk.internal.command.device.CmdSetScreenStatus", off.getString("requestName"))
-        val params = JSONObject(off.getString("paramsJson"))
-        assertEquals(false, params.getBoolean("on"))
-        assertEquals(false, params.getBoolean("isOn"))
-        assertEquals(true, params.getBoolean("isAllowIntercept"))
-        val on = JSONObject(JSONObject(VendorBacklightPolicy.setScreenStatusRequest(true)).getString("paramsJson"))
-        assertEquals(true, on.getBoolean("on"))
+    fun `sleep and wake are the SDKRequests Goodview's CMS sends on a t982, with their fastjson fields`() {
+        // SDKSystemHelper.powerOff() → new CmdPowerOff(-1); public field `timeCount`.
+        val off = JSONObject(VendorBacklightPolicy.powerOffRequest())
+        assertEquals("com.seewo.sdk.internal.command.system.CmdPowerOff", off.getString("requestName"))
+        assertEquals("""{"timeCount":-1}""", off.getString("paramsJson"))
+        // SDKSystemHelper.sendKeyEvent(KEYCODE_SEEWO_POWER) → new CmdSendKeyEvent(5000); getter `getKeyCode()`.
+        val on = JSONObject(VendorBacklightPolicy.powerKeyRequest())
+        assertEquals("com.seewo.sdk.internal.command.system.CmdSendKeyEvent", on.getString("requestName"))
+        assertEquals("""{"keyCode":5000}""", on.getString("paramsJson"))
+        // The MCU-only backlight command that latched GUQs is gone from the wire.
+        assertFalse(off.toString().contains("ScreenStatus") || on.toString().contains("ScreenStatus"))
 
         val get = JSONObject(VendorBacklightPolicy.getScreenStatusRequest())
         assertEquals("com.seewo.sdk.internal.command.device.CmdGetScreenStatus", get.getString("requestName"))
@@ -194,5 +197,27 @@ class VendorBacklightPolicyTest {
         // The other mechanisms are untouched.
         assertEquals(SleepProofPolicy.OUTCOME_BLACK, SleepProofPolicy.immediateOutcomeFor("software-dim"))
         assertNull(SleepProofPolicy.immediateOutcomeFor("device-admin"))
+    }
+
+    @Test
+    fun `the power step follows Goodview's isScreenOn guard and never trusts a stale reading after our own command`() {
+        val settle = VendorBacklightPolicy.POWER_SETTLE_MS
+        // Goodview: OFF only if on, ON only if off.
+        assertEquals(PowerStep.SEND, VendorBacklightPolicy.powerStep(wantOn = false, screenOn = true, msSinceLastCommand = null, lastCommandOn = null))
+        assertEquals(PowerStep.ALREADY, VendorBacklightPolicy.powerStep(false, false, null, null))
+        assertEquals(PowerStep.SEND, VendorBacklightPolicy.powerStep(true, false, null, null))
+        assertEquals(PowerStep.ALREADY, VendorBacklightPolicy.powerStep(true, true, null, null))
+        // Unreadable: nothing, either way (the key is a toggle).
+        assertEquals(PowerStep.UNKNOWN, VendorBacklightPolicy.powerStep(true, null, null, null))
+        assertEquals(PowerStep.UNKNOWN, VendorBacklightPolicy.powerStep(false, null, settle * 10, false))
+        // Just after our OWN sleep, a wake is never decided on the reading.
+        assertEquals(PowerStep.SETTLING, VendorBacklightPolicy.powerStep(true, true, 0L, false))
+        assertEquals(PowerStep.SETTLING, VendorBacklightPolicy.powerStep(true, false, settle - 1, false))
+        // Just after our own power KEY, a second key is never pressed on a stale "off".
+        assertEquals(PowerStep.SETTLING, VendorBacklightPolicy.powerStep(true, false, 100L, true))
+        assertEquals(PowerStep.ALREADY, VendorBacklightPolicy.powerStep(true, true, 100L, true))
+        // Settled: the reading decides again.
+        assertEquals(PowerStep.SEND, VendorBacklightPolicy.powerStep(true, false, settle, false))
+        assertEquals(PowerStep.SEND, VendorBacklightPolicy.powerStep(false, true, settle, true))
     }
 }

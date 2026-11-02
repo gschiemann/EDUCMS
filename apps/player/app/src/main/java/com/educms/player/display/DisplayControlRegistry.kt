@@ -221,6 +221,17 @@ object DisplayControlRegistry {
             }
         }
 
+        // ── 1.1.60 — THE INTENT IS ON DISK BEFORE THE PANEL MOVES ──
+        // After the dead-man arm (it snapshots the prior state) and before the
+        // provider: a wake that reboots the box (the RK3576's shallow-onoff
+        // wake does) or a process killed mid-apply must never come back to an
+        // OFF the newer command replaced. Committed synchronously. Last
+        // command wins. PowerIntentPolicy.
+        val priorBlanked = DisplayPrefs.blanked(app)
+        if (action == DisplayAction.Wake || action == DisplayAction.Blank) {
+            DisplayPrefs.setBlanked(app, PowerIntentPolicy.beforeApply(action, priorBlanked))
+        }
+
         // Snapshot the mirror BEFORE the apply mutates it — the post-apply
         // re-assert below has to ask "was THIS action a darkening one",
         // and after recordState every request compares equal to itself.
@@ -333,7 +344,12 @@ object DisplayControlRegistry {
                 .onFailure { PlayerLogger.w(TAG, "wake foreground check could not start: ${it.message}") }
         }
 
-        if (result.ok) recordState(app, action)
+        if (result.ok) {
+            recordState(app, action)
+        } else if (action == DisplayAction.Blank) {
+            // Nothing in the chain delivered the OFF: it is not the command that won.
+            DisplayPrefs.setBlanked(app, PowerIntentPolicy.afterApply(action, ok = false, prior = priorBlanked, current = true))
+        }
 
         // 2026-10-11 — a BLANK that claims a real sleep is CHECKED afterwards
         // (SleepProof): did Android actually go non-interactive, or did a

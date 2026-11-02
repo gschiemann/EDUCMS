@@ -222,6 +222,15 @@ object SetupCeremonyMath {
     const val STEP_OVERLAY = "overlayPromptShown"
     const val STEP_HOME = "homeSetupPromptShown"
 
+    /** 1.1.59 — the one in-app runtime-permission dialog (location, notifications, storage). */
+    const val STEP_RUNTIME = "runtimePermissionsPromptShown"
+
+    /** 1.1.59 — "All files access" for USB playlist sticks, Android 11+. */
+    const val STEP_ALL_FILES = "allFilesPromptShown"
+
+    /** 1.1.59 — the "VenueOS sleep" accessibility service, only where the vendor sleep refuses us. */
+    const val STEP_SLEEP_HELPER = "sleepHelperPromptShown"
+
     /**
      * The reason a NovaStar poster is not asked for a given grant.
      *
@@ -237,6 +246,9 @@ object SetupCeremonyMath {
         STEP_DEVICE_ADMIN to "novastar-taurus: brightness/power are NovaStar-layer",
         STEP_OVERLAY to "novastar-taurus: ViPlex auto-launch brings the player back",
         STEP_HOME to "novastar-taurus: launcher is NovaStar's",
+        STEP_RUNTIME to "novastar-taurus: ViPlex provisions this box; Android's dialog draws off the LED",
+        STEP_ALL_FILES to "novastar-taurus: ViPlex provisions this box; Android system pages draw off the LED",
+        STEP_SLEEP_HELPER to "novastar-taurus: brightness/power are NovaStar-layer",
     )
 
     /**
@@ -336,7 +348,7 @@ object SetupCeremonyMath {
     // ─────────────────────────────────────────────────────────────────
 
     /** Copy shown on the checklist when there is still work to do. */
-    const val HEADING_GRANTING = "Finish setting up this screen"
+    const val HEADING_GRANTING = "Set up this screen"
 
     /**
      * Copy shown when every step has been OFFERED but some were declined
