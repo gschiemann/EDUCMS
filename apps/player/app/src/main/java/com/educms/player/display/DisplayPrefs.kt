@@ -32,6 +32,9 @@ object DisplayPrefs {
     /** Whether the screen is currently blanked BY US. */
     private const val KEY_BLANKED = "display_blanked"
 
+    /** 1.1.61 — wall ms of the latest accepted manual Turn on / Turn off (ScheduleTriggerPolicy). */
+    private const val KEY_MANUAL_POWER_AT = "display_manual_power_at_wall_ms"
+
     /**
      * Encoded [PendingRevert] SET — one record per line, at most one per
      * capability. Written with commit(), before the apply.
@@ -133,6 +136,17 @@ object DisplayPrefs {
     fun setBlanked(ctx: Context, value: Boolean) {
         runCatching { prefs(ctx).edit().putBoolean(KEY_BLANKED, value).commit() }
             .onFailure { PlayerLogger.w(TAG, "setBlanked failed: ${it.message}") }
+    }
+
+    /** 1.1.61 — when the latest manual power command was accepted (0 = never). [ScheduleTriggerPolicy]. */
+    fun manualPowerAtMs(ctx: Context): Long = runCatching {
+        prefs(ctx).getLong(KEY_MANUAL_POWER_AT, 0L)
+    }.getOrDefault(0L)
+
+    /** Synchronous, like [setBlanked]: it travels with the intent across a wake that reboots the box. */
+    fun setManualPowerAtMs(ctx: Context, wallMs: Long) {
+        runCatching { prefs(ctx).edit().putLong(KEY_MANUAL_POWER_AT, wallMs).commit() }
+            .onFailure { PlayerLogger.w(TAG, "setManualPowerAtMs failed: ${it.message}") }
     }
 
     // ─── dead-man revert ───────────────────────────────────────────

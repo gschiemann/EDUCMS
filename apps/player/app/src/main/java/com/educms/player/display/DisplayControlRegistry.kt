@@ -140,6 +140,11 @@ object DisplayControlRegistry {
      *        `command`, `schedule-on`, `emergency`, `power-on`, `standby-end`).
      *        Every Wake, named or not, starts [WakeRecovery]'s bounded
      *        foreground check once the provider and the backstop have run.
+     * @param manual (1.1.61) a PERSON's power command — the dashboard's Turn
+     *        on / Turn off (bridge command or the heartbeat's POWER_ON). Its
+     *        accept time is recorded so the on/off schedule leaves it alone
+     *        until the schedule's next trigger ([ScheduleTriggerPolicy]).
+     *        Ignored for a test action (one with a dead-man revert).
      */
     fun apply(
         ctx: Context,
@@ -147,6 +152,7 @@ object DisplayControlRegistry {
         revertAfterMs: Long? = null,
         allowProvider: ((String) -> Boolean)? = null,
         wakeSource: String? = null,
+        manual: Boolean = false,
     ): ActionResult {
         val app = ctx.applicationContext
         val action = DisplayLimits.normalize(rawAction)
@@ -230,6 +236,10 @@ object DisplayControlRegistry {
         val priorBlanked = DisplayPrefs.blanked(app)
         if (action == DisplayAction.Wake || action == DisplayAction.Blank) {
             DisplayPrefs.setBlanked(app, PowerIntentPolicy.beforeApply(action, priorBlanked))
+            // 1.1.61 — a person's command holds until the schedule's next trigger.
+            if (manual && revertAfterMs == null) {
+                DisplayPrefs.setManualPowerAtMs(app, System.currentTimeMillis())
+            }
         }
 
         // Snapshot the mirror BEFORE the apply mutates it — the post-apply
