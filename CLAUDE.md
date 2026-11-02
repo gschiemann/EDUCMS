@@ -6,10 +6,10 @@ This is the always-loaded rulebook: the rules every session must know, each with
 
 | Working in… | Read |
 |---|---|
-| `packages/database/` | `packages/database/CLAUDE.md` — the migration story, the guard, seeds |
-| `apps/api/src/emergency/` | `apps/api/src/emergency/CLAUDE.md` — routes, drills, paint proof, the native alert watch |
+| `packages/database/` | `packages/database/CLAUDE.md` — the migration story, the manifest cache |
+| `apps/api/src/emergency/` | `apps/api/src/emergency/CLAUDE.md` — routes, safeguards, emergency content, broadcasts |
 | `apps/web/src/app/player/` | `apps/web/src/app/player/CLAUDE.md` — the 17 reliability rules in full, sync, caching, readiness |
-| `apps/player/` | `apps/player/CLAUDE.md` — the APK, hardware qualification, OTA rings, native video |
+| `apps/player/` | `apps/player/CLAUDE.md` — the APK, hardware qualification, the release recipe, native video |
 | `apps/web/public/templates/` | `apps/web/public/templates/CLAUDE.md` — boards, shims, counts, posters |
 | `apps/web/` | `apps/web/CLAUDE.md` — cross-browser, mobile performance, Taurus CSS |
 | configuration | `docs/ENVIRONMENT.md` — every variable, default, failure direction, kill switch |
@@ -71,7 +71,7 @@ Boards are self-contained HTML rendered in a null-origin sandboxed iframe; all e
 
 ## 9. Browsers, mobile, Taurus
 
-Test in WebKit before "done"; never `.remove()` a node React rendered; the player and widgets ship to Chromium 83 LED controllers — no `inset` shorthand, no flex `gap` (pre-commit grep + `taurus-safety.yml` + `check-inset-serialization.cjs`); the admin dashboard is not dumbed down for it. No background polling, no global refetch-on-focus, no ungated blur on the mobile chrome (`pnpm mobile-perf-guard`). Every user-facing string ships in en + es + zh (`check-i18n-parity.cjs`). Detail: `apps/web/CLAUDE.md`.
+Test in WebKit before "done"; never `.remove()` a node React rendered; the player and widgets also ship to Chromium 83 LED controllers (NovaStar Taurus), so that code has no `inset` shorthand, no flex `gap` (pre-commit grep + `taurus-safety.yml` + `check-inset-serialization.cjs`); the admin dashboard is not dumbed down for it. No background polling, no global refetch-on-focus, no ungated blur on the mobile chrome (`pnpm mobile-perf-guard`). Every user-facing string ships in en + es + zh (`check-i18n-parity.cjs`). Detail: `apps/web/CLAUDE.md`.
 
 ## 10. Gates, deploys, health, rollback
 
