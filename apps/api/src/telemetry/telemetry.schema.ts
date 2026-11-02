@@ -494,6 +494,9 @@ export const screenTelemetrySchema = z.strictObject({
   nativeVideo: nativeVideoSchema.optional(),
   loop: loopBoundarySchema.optional(),
   update: updateAppliedSchema.optional(),
+  // Soft BLANK overlay on the glass (2026-11-02). Optional: an older bundle
+  // never sends it and still validates.
+  softBlank: z.boolean().optional(),
 });
 
 export type ScreenTelemetryBody = z.infer<typeof screenTelemetrySchema>;

@@ -3,6 +3,9 @@ import {
   COMMAND_RELEVANCE_MS,
   deriveSleepAwakeState,
   nativeReportAsleep,
+  observedState,
+  softBlankFresh,
+  SOFT_BLANK_FRESH_MS,
   type SleepAwakeInput,
 } from '../sleep-awake';
 
@@ -80,5 +83,37 @@ describe('nativeReportAsleep', () => {
     expect(nativeReportAsleep({ interactive: true }, at, NOW)).toBe(false);
     expect(nativeReportAsleep({ interactive: false }, new Date(NOW - 3_600_000).toISOString(), NOW)).toBe(false);
     expect(nativeReportAsleep(null, at, NOW)).toBe(false);
+  });
+});
+
+describe('soft blank (2026-11-02)', () => {
+  it('a fresh soft blank reads as sleep even while render proof says painting', () => {
+    expect(observedState({ panelState: 'on', hardOff: false, softBlank: true })).toBe('sleep');
+    expect(observedState({ panelState: 'on', hardOff: false, softBlank: false })).toBe('awake');
+  });
+
+  it('a soft Sleep is confirmed (no spinner) once the report lands', () => {
+    const s = deriveSleepAwakeState({
+      ...base, panelState: 'on', softBlank: true,
+      lastCommand: { target: 'sleep', at: NOW - 5_000 },
+    });
+    expect(s).toEqual({ current: 'sleep', pending: null, unconfirmed: null });
+  });
+
+  it('WAKE: the report says false and the row flips back to awake', () => {
+    const s = deriveSleepAwakeState({
+      ...base, panelState: 'on', softBlank: false,
+      lastCommand: { target: 'awake', at: NOW - 5_000 },
+    });
+    expect(s).toEqual({ current: 'awake', pending: null, unconfirmed: null });
+  });
+
+  it('softBlankFresh: a stamp within 10 minutes counts, older or absent does not', () => {
+    expect(softBlankFresh(new Date(NOW - 60_000).toISOString(), NOW)).toBe(true);
+    expect(softBlankFresh(new Date(NOW - SOFT_BLANK_FRESH_MS).toISOString(), NOW)).toBe(true);
+    expect(softBlankFresh(new Date(NOW - SOFT_BLANK_FRESH_MS - 1).toISOString(), NOW)).toBe(false);
+    expect(softBlankFresh(null, NOW)).toBe(false);
+    expect(softBlankFresh(undefined, NOW)).toBe(false);
+    expect(softBlankFresh('not a date', NOW)).toBe(false);
   });
 });

@@ -309,7 +309,7 @@ export class TelemetryController {
     const screenId = auth.sub;
 
     // ── GATE 4: per-screen accept limit, BEFORE any database work ───────
-    if (!acceptTelemetryPost(screenId)) {
+    if (!acceptTelemetryPost(screenId, body.softBlank)) {
       throw new HttpException(
         {
           code: 'TELEMETRY_TOO_FREQUENT',
@@ -352,6 +352,8 @@ export class TelemetryController {
             // The last page load (every proven register rotates it) — a video
             // sample inside the 3 minutes after it is recorded, never graded.
             credentialEpochRotatedAt: true,
+            // Only read to skip a no-op clear of the soft-blank stamp.
+            softBlankAt: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -557,6 +559,18 @@ export class TelemetryController {
       // the flag changes what the manifest says, so this write MUST bust the
       // per-screen manifest cache — identical to /render-proof today.
       data.pendingRefreshAt = null;
+    }
+
+    // ── 6. SOFT BLANK (2026-11-02) ───────────────────────────────────────
+    // The web player's soft BLANK overlay is in the DOM (never an emergency
+    // overlay — that one is never rendered as the blank). True re-stamps the
+    // server clock on every report, so a stamp older than 10 minutes reads as
+    // stale on the dashboard; false clears it. Absent key (an older bundle) =
+    // no opinion, the column is left alone.
+    if (body.softBlank === true) {
+      data.softBlankAt = now;
+    } else if (body.softBlank === false && screen.softBlankAt != null) {
+      data.softBlankAt = null;
     }
 
     // ── ONE write (or none) ─────────────────────────────────────────────
@@ -847,6 +861,7 @@ export const TELEMETRY_COLUMNS: ReadonlySet<string> = new Set([
   'lastVideoReport',
   'lastVideoReportAt',
   'pendingRefreshAt',
+  'softBlankAt',
 ]);
 
 function assertColumnsAllowed(data: Record<string, unknown>): void {
@@ -895,11 +910,35 @@ function acceptRefreshAck(screenId: string): boolean {
   return true;
 }
 
-function acceptTelemetryPost(screenId: string): boolean {
+/**
+ * A report whose `softBlank` CHANGED (2026-11-02) may pass the 30 s floor, no
+ * more than once per this spacing. The dashboard's Sleep/Awake pair waits 30 s
+ * for a soft Sleep to be confirmed, and the player posts the moment the overlay
+ * goes on or off — under the plain floor that post was almost always refused.
+ * Bounded: only a change passes, so a looping device that keeps sending the
+ * SAME value is held at the floor, and a flapping one at one report per 2 s
+ * (the same spacing as the refresh-ack route). An unknown previous value
+ * (fresh process) reads as false — the overwhelming default — so only a
+ * `true` passes once after a restart.
+ */
+export const SOFT_BLANK_CHANGE_MIN_ACCEPT_INTERVAL_MS = 2_000;
+const lastSoftBlank = new Map<string, boolean>();
+
+export function acceptTelemetryPost(screenId: string, softBlank?: boolean): boolean {
   const prev = lastAccepted.get(screenId);
   const now = Date.now();
-  if (prev !== undefined && now - prev < TELEMETRY_MIN_ACCEPT_INTERVAL_MS) return false;
+  const softBlankChanged =
+    typeof softBlank === 'boolean' && softBlank !== (lastSoftBlank.get(screenId) ?? false);
+  const floor = softBlankChanged ? SOFT_BLANK_CHANGE_MIN_ACCEPT_INTERVAL_MS : TELEMETRY_MIN_ACCEPT_INTERVAL_MS;
+  if (prev !== undefined && now - prev < floor) return false;
   lastAccepted.set(screenId, now);
+  if (typeof softBlank === 'boolean') {
+    lastSoftBlank.set(screenId, softBlank);
+    if (lastSoftBlank.size > 50_000) {
+      const oldest = lastSoftBlank.keys().next().value;
+      if (oldest) lastSoftBlank.delete(oldest);
+    }
+  }
   if (lastAccepted.size > 50_000) {
     const oldest = lastAccepted.keys().next().value;
     if (oldest) lastAccepted.delete(oldest);
@@ -1074,5 +1113,6 @@ function capsHashChanged(screenId: string, hash: string | undefined): boolean {
 export function resetTelemetryStateForTests(): void {
   capsHashes.clear();
   lastAccepted.clear();
+  lastSoftBlank.clear();
   lastAckAccepted.clear();
 }

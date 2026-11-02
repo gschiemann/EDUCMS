@@ -1560,6 +1560,17 @@ model Screen {
   // one leaves it null, and the dashboard falls back to the SHA comparison
   // exactly as it behaves today.
   lastBundleId                        String?      @map("last_bundle_id")
+  // ── softBlankAt (2026-11-02) — the soft BLANK overlay is on the glass.
+  // A soft BLANK draws the web player's black overlay; nothing reported it, so
+  // the dashboard's Sleep/Awake pair kept reading "Awake" and its Sleep button
+  // spun until the confirm window ran out. The player now reports `softBlank`
+  // on every telemetry post (true only while the overlay node is in the DOM —
+  // an emergency overlay is never one). Server clock of the latest report that
+  // said true; NULL as soon as a report says false. Re-stamped on every report
+  // while blank, so a value older than 10 minutes means the screen stopped
+  // saying so and the dashboard treats it as stale. Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
+  softBlankAt                         DateTime?    @map("soft_blank_at")
   // ── Device-credential trust state (2026-08-30 reliability program) ────
   // Stamped SERVER-SIDE at register time (never client-reported):
   //   'PROVEN'          — last re-registration presented a valid proven
