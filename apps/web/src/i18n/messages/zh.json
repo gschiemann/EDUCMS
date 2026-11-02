@@ -3177,6 +3177,25 @@
       "details": "设备详情",
       "sleepHeading": "休眠方式",
       "sleepHistory": "近期休眠记录"
+    },
+    "usb": {
+      "title": "U 盘",
+      "loading": "正在加载…",
+      "loadFailed": "无法加载此屏幕对 U 盘的处理记录。",
+      "none": "尚未报告任何 U 盘。",
+      "note": "由屏幕自行报告。1.1.55 之前的播放器只报告导入完成或被拒绝。",
+      "detected": "插入了一个 U 盘",
+      "needsAccess": "需要读取 U 盘的权限：请在屏幕上选择“允许”",
+      "noAccessPage": "此屏幕没有允许读取 U 盘的设置",
+      "noPackage": "U 盘中没有 VenueOS 播放列表",
+      "waitingKey": "需要先连接一次互联网，才能检查 U 盘播放列表",
+      "otherOrg": "U 盘中是其他组织的播放列表",
+      "unverified": "无法验证 U 盘中的文件",
+      "noSpace": "屏幕空间不足，无法存放此播放列表",
+      "unreadable": "无法读取 U 盘",
+      "rejected": "已拒绝 U 盘中的播放列表",
+      "imported": "已从 U 盘导入播放列表",
+      "unknown": "报告了 {code}"
     }
   },
   "selection": {
@@ -8103,5 +8122,8 @@
     "upload": "上传新文件",
     "loading": "正在加载媒体库…",
     "empty": "此处暂无文件。请上传文件或选择其他文件夹。"
+  },
+  "playerMenu": {
+    "importFromUsb": "从 U 盘导入"
   }
 }

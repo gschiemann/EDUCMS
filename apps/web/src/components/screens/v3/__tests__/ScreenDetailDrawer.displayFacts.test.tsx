@@ -21,6 +21,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   useClearPlaybackDemotion: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/lib/store', () => ({

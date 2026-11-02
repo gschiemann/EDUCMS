@@ -87,3 +87,62 @@ describe('DT-07 — usb-ingest event must be bound to the caller', () => {
     await expect(controller.recordUsbIngestEvent(superAdmin as any, BODY as any)).resolves.toEqual({ ok: true });
   });
 });
+
+/**
+ * 2026-10-26 (M43 on site: "inserted a USB … nothing happens"): the APK now
+ * reports every state a stick reaches, not only REJECTED / ACCEPTED. The
+ * column stays free text (no migration); the route takes the new vocabulary,
+ * keeps the old one, and caps what a device can write into a forensic table.
+ */
+describe('USB ingest event — the 1.1.55 vocabulary, and caps on device text', () => {
+  const own = () => reqAs({ kind: 'device', sub: VICTIM_SCREEN, tenantId: 'tenant-U' });
+
+  it('records every state the screen can report, and the older APKs’ codes', async () => {
+    for (const outcome of ['DETECTED', 'NEEDS_ACCESS', 'NO_PACKAGE', 'WAITING_KEY', 'REJECTED', 'IMPORTED', 'ACCEPTED', 'REJECTED_SIGNATURE', 'REJECTED_HASH']) {
+      const { controller, prisma } = harness();
+      await expect(controller.recordUsbIngestEvent(own() as any, { outcome, reason: 'drive: a USB drive was found' } as any)).resolves.toEqual({ ok: true });
+      expect(prisma.client.usbIngestEvent.create.mock.calls[0][0].data.outcome).toBe(outcome);
+    }
+  });
+
+  it('refuses an outcome that is not an UPPER_SNAKE code (400), writing nothing', async () => {
+    for (const outcome of ['imported', 'IMPORTED; DROP TABLE', 'A'.repeat(41), '_LEADING', 42]) {
+      const { controller, prisma } = harness();
+      await expect(controller.recordUsbIngestEvent(own() as any, { outcome } as any)).rejects.toMatchObject({ status: 400 });
+      expect(prisma.client.usbIngestEvent.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('caps device text, and a non-numeric size no longer throws inside BigInt', async () => {
+    const { controller, prisma } = harness();
+    await controller.recordUsbIngestEvent(own() as any, {
+      outcome: 'REJECTED',
+      reason: 'x'.repeat(1000),
+      bundleVersion: '9'.repeat(200),
+      deviceSerial: 's'.repeat(500),
+      totalBytes: 'lots',
+      assetCount: -4,
+    } as any);
+    const row = prisma.client.usbIngestEvent.create.mock.calls[0][0].data;
+    expect(row.reason).toHaveLength(300);
+    expect(row.bundleVersion).toHaveLength(64);
+    expect(row.deviceSerial).toHaveLength(128);
+    expect(row.totalBytes).toBe(BigInt(0));
+    expect(row.assetCount).toBe(0);
+  });
+
+  it('keeps a well-formed report exactly as sent', async () => {
+    const { controller, prisma } = harness();
+    await controller.recordUsbIngestEvent(own() as any, {
+      outcome: 'IMPORTED',
+      reason: 'imported: 6 files',
+      bundleVersion: '1761495599000',
+      assetCount: 6,
+      totalBytes: '4121154',
+      emergencyAssets: false,
+    } as any);
+    const row = prisma.client.usbIngestEvent.create.mock.calls[0][0].data;
+    expect(row).toMatchObject({ outcome: 'IMPORTED', reason: 'imported: 6 files', bundleVersion: '1761495599000', assetCount: 6, emergencyAssets: false });
+    expect(row.totalBytes).toBe(BigInt(4121154));
+  });
+});
