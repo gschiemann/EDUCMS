@@ -21,6 +21,10 @@ describe('emergency incident type survives a tenant-scope trigger', () => {
   const read = (rel: string) => readFileSync(join(__dirname, '..', rel), 'utf8');
   const emergency = read('emergency/emergency.controller.ts');
   const screens = read('screens/screens.controller.ts');
+  // 2026-11-01 — the manifest's tenant read (its select, the cache, the
+  // district walk) moved to one module shared with the emergency-rev raise
+  // confirmation. The select guard follows it there.
+  const tenantState = read('screens/tenant-emergency-state.ts');
   const schema = readFileSync(
     join(__dirname, '../../../../packages/database/prisma/schema.prisma'),
     'utf8',
@@ -46,9 +50,13 @@ describe('emergency incident type survives a tenant-scope trigger', () => {
   it('the manifest SELECTS the column (or the read is silently undefined)', () => {
     // The manifest uses an explicit Prisma `select`; omitting the field makes
     // tenant.emergencyType undefined and the fix a no-op with no error anywhere.
-    const idx = screens.indexOf('emergencyStatus: true');
+    const idx = tenantState.indexOf('emergencyStatus: true');
     expect(idx).toBeGreaterThan(-1);
-    expect(screens.slice(idx, idx + 400)).toMatch(/emergencyType:\s*true/);
+    expect(tenantState.slice(idx, idx + 400)).toMatch(/emergencyType:\s*true/);
+    // …and that select IS the manifest's: the manifest reads its tenant
+    // through the shared module, not through a select of its own.
+    expect(screens).toMatch(/await resolveTenantEmergencyState\(/);
+    expect(screens).not.toMatch(/MANIFEST_TENANT_EMERGENCY_SELECT = \{/);
   });
 
   it('the manifest PREFERS the incident type over the severity', () => {
