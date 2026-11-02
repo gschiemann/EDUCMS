@@ -49,7 +49,6 @@ import type { OpsMessage } from '../contentDownload';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
 // 2026-10-24 — the screen's time zone row: the effective zone, where it came
 // from, the device's own setting when it disagrees, and the override picker.
-import { deviceTimeZoneDiffers } from '@cms/api-types';
 import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-label';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
@@ -494,7 +493,6 @@ export function ScreenDetailDrawer({
   })();
   // Two names for the same rules (America/Los_Angeles vs US/Pacific) never
   // read as a disagreement; a GUQ left on Asia/Shanghai in Los Angeles does.
-  const deviceZoneDiffers = deviceTimeZoneDiffers(effectiveTimeZone, screen.deviceTimeZone ?? null);
 
   const removeScreen = async () => {
     const ok = await appConfirm({
@@ -953,8 +951,8 @@ export function ScreenDetailDrawer({
                     set), the location's setting when there is one, or an
                     override picked here. Rendered only when the API answered
                     the field — an older payload shows nothing rather than a
-                    guess. If the device's own clock setting disagrees (a GUQ
-                    shipped on Asia/Shanghai), it says so in plain words. */}
+                    guess. The device's own clock setting is not shown here: the
+                    screen follows this zone regardless. */}
                 {screen.timeZoneSource !== undefined && (
                   <div className="mt-3" data-testid="screen-time-zone">
                     <label htmlFor="v3-drawer-timezone" className="block text-[11px] font-bold text-slate-500">
@@ -970,16 +968,6 @@ export function ScreenDetailDrawer({
                     </p>
                     {timeZoneSourceLine && (
                       <p className="text-[11px] text-slate-500">{timeZoneSourceLine}</p>
-                    )}
-                    {effectiveTimeZone && screen.deviceTimeZone && (
-                      <p
-                        className={`mt-1 text-[11px] font-semibold leading-snug ${deviceZoneDiffers ? 'text-amber-800' : 'text-slate-400'}`}
-                        data-testid="screen-time-zone-device"
-                      >
-                        {deviceZoneDiffers
-                          ? t('screens.drawer.timeZoneDeviceDiffers', { zone: screen.deviceTimeZone, effective: effectiveTimeZone })
-                          : t('screens.drawer.timeZoneDeviceMatches')}
-                      </p>
                     )}
                     <select
                       id="v3-drawer-timezone"

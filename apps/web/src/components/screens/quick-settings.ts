@@ -108,3 +108,31 @@ export function summarizeScheduleLine(
   }
   return { kind: 'none' };
 }
+
+// ─── Which schedule actually applies (screen's own, else its group's) ────
+
+export type AppliedScheduleSource = 'screen' | 'group' | 'none';
+
+export interface AppliedSchedule {
+  source: AppliedScheduleSource;
+  line: ScheduleLine;
+}
+
+/**
+ * Mirrors the API's manifest rule (display-manifest.ts): only ACTIVE rows
+ * count, and any active screen-level row wins outright over the group's.
+ * Paused-only rows read "paused" (not "none") so the line never lies.
+ */
+export function resolveAppliedSchedule(
+  screenRows: readonly ScheduleLike[] | null | undefined,
+  groupRows: readonly ScheduleLike[] | null | undefined,
+  locale: string,
+): AppliedSchedule {
+  const own = summarizeScheduleLine(screenRows, locale);
+  if (own.kind === 'window') return { source: 'screen', line: own };
+  const inherited = summarizeScheduleLine(groupRows, locale);
+  if (inherited.kind === 'window') return { source: 'group', line: inherited };
+  if (own.kind === 'paused') return { source: 'screen', line: own };
+  if (inherited.kind === 'paused') return { source: 'group', line: inherited };
+  return { source: 'none', line: { kind: 'none' } };
+}
