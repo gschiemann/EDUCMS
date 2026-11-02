@@ -69,4 +69,4 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 
 ## Freeze
 
-`FREEZE.md` is present: launch.
+None. The launch-week hold was lifted by the owner on 2026-11-01 ("the freeze can lift … we need to finish all our development"); `FREEZE.md` is absent.
