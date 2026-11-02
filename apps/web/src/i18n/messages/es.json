@@ -469,7 +469,8 @@
     "phoneSetupSignedInTitle": "Ya iniciaste sesión",
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Mi cuenta.",
     "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
-    "security": "Seguridad"
+    "security": "Seguridad",
+    "requestInfo": "Solicitar información"
   },
   "account": {
     "title": "Mi cuenta",
@@ -6897,7 +6898,8 @@
       "pricing": "Precios",
       "help": "Ayuda",
       "signIn": "Iniciar sesión",
-      "startTrial": "Prueba gratis"
+      "startTrial": "Prueba gratis",
+      "requestInfo": "Solicitar información"
     }
   },
   "usbDelivery": {
@@ -7307,6 +7309,11 @@
         "namePlaceholder": "Iglesia Comunidad de Gracia",
         "where": "todo tu ministerio"
       }
+    },
+    "closed": {
+      "title": "El registro aún no está abierto",
+      "body": "VenueOS no acepta registros en línea por ahora. Escríbanos y le enviaremos más información.",
+      "cta": "Solicitar información por correo"
     }
   },
   "notifications": {
