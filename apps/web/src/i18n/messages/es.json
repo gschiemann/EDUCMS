@@ -2530,6 +2530,10 @@
     },
     "setLocation": "Añadir dirección",
     "contentState": {
+      "sleeping": "En reposo",
+      "sleepingSchedule": "En reposo · horario de encendido/apagado",
+      "sleepingDetail": "Esta pantalla está en reposo a propósito (un comando de reposo o el modo de espera del panel). Se despierta con Activa, una alerta o su horario.",
+      "sleepingScheduleDetail": "Esta pantalla está en reposo a propósito porque su horario de encendido/apagado indica apagada ahora. Se despierta sola cuando el horario la enciende.",
       "downloading": "Descargando contenido nuevo",
       "downloadingProgress": "Descargando contenido nuevo · {percent} % de {size}",
       "downloadingSoFar": "Descargando contenido nuevo · {loaded} hasta ahora",

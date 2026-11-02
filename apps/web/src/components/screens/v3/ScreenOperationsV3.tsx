@@ -24,12 +24,14 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon, Info,
+  Moon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { OpsMessage } from '../contentDownload';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
   useUpdateScreenGroup, useUploadFloorPlan,
+  useAllDisplaySchedules,
 } from '@/hooks/use-api';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { useParams } from 'next/navigation';
@@ -87,6 +89,7 @@ function StatusIcon({ tone, statusKey }: { tone: string; statusKey?: string }) {
   const cls = `w-4 h-4 shrink-0 ${statusToneClasses(tone)}`;
   // A download in flight reads as one at a glance (2026-09-27).
   if (statusKey === 'downloading' || statusKey === 'showing-previous') return <Download className={cls} aria-hidden />;
+  if (statusKey === 'sleeping') return <Moon className={cls} aria-hidden />;
   if (tone === 'bad') return <AlertCircle className={cls} aria-hidden />;
   if (tone === 'warn') return <AlertTriangle className={cls} aria-hidden />;
   if (tone === 'ok') return <CheckCircle2 className={cls} aria-hidden />;
@@ -104,10 +107,10 @@ function fullDateTime(ms: number) {
 }
 
 /** §8 last-contact cell: wall clock while fresh, relative age once stale. */
-function lastContact(row: OpsRow, now: number): { primary: string; secondary: string; title: string } {
+function lastContact(row: OpsRow, now: number, sleepingLabel?: string): { primary: string; secondary: string; title: string } {
   const ms = msOf(row.screen.lastPingAt);
   const online = row.screen.status === 'ONLINE';
-  const secondary = online ? 'Online' : row.screen.status === 'PENDING' ? 'Checking' : 'Offline';
+  const secondary = online ? (row.status.key === 'sleeping' && sleepingLabel ? sleepingLabel : 'Online') : row.screen.status === 'PENDING' ? 'Checking' : 'Offline';
   if (ms == null) return { primary: 'Never', secondary, title: 'This screen has never checked in.' };
   const age = now - ms;
   if (online && age >= 0 && age < FRESH_CONTACT_MS) {
@@ -347,14 +350,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const updateGroup = useUpdateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
 
+  const { data: displaySchedules } = useAllDisplaySchedules();
   const ops = useMemo(
     () => buildScreenOps({
-      screens, schedules, playlists, deployedSha, deployedBundleId,
+      screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules,
       selectedScreenId: selectedId, now,
     }),
     // `now` is deliberately in the deps: a new render instant is a new
     // derivation, and every age on one paint must come from one instant.
-    [screens, schedules, playlists, deployedSha, deployedBundleId, selectedId, now],
+    [screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules, selectedId, now],
   );
 
   // ── one-shot deep links ────────────────────────────────────────
@@ -1047,7 +1051,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         {g.rows.map((row) => {
                           const s = row.screen;
                           const selected = selectedId === s.id;
-                          const lc = lastContact(row, now);
+                          const lc = lastContact(row, now, t('screens.contentState.sleeping'));
                           const actionable = row.status.action === 'Resync' || row.status.action === 'Retry';
                           return (
                             <tr
@@ -1246,7 +1250,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                           <ul>
                             {g.rows.map((row) => {
                               const s = row.screen;
-                              const lc = lastContact(row, now);
+                              const lc = lastContact(row, now, t('screens.contentState.sleeping'));
                               const actionable = row.status.action === 'Resync' || row.status.action === 'Retry';
                               return (
                                 <li

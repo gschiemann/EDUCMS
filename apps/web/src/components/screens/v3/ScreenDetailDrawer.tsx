@@ -30,7 +30,7 @@ import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } fr
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, ArrowRight, ChevronDown, ChevronRight,
-  ExternalLink, Loader2, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
+  ExternalLink, Loader2, Moon, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { apiFetch } from '@/lib/api-client';
@@ -537,8 +537,17 @@ export function ScreenDetailDrawer({
               <p className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-bold">
                 {online ? (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
-                    <span className="text-emerald-700">Online</span>
+                    {status.key === 'sleeping' ? (
+                      <>
+                        <Moon className="w-3.5 h-3.5 text-slate-500" aria-hidden />
+                        <span className="text-slate-600">{text(status.label, status.messages?.label)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
+                        <span className="text-emerald-700">Online</span>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
