@@ -61,6 +61,7 @@ jest.mock('@/hooks/use-api', () => ({
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ schoolId: 'demo' }),
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 jest.mock('@/store/ui-store', () => ({

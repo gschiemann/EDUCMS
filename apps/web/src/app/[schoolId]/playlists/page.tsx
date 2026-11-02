@@ -31,7 +31,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { normalizeVertical } from '@cms/api-types';
 import {
@@ -45,6 +45,7 @@ import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizar
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
 import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
+import { PlaylistGalleryV2 } from '@/components/playlists/v2/PlaylistGalleryV2';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
   buildPlaylistRow, describeRemoveManyOutcome, pauseEverywhereCopy, removePlaylistCopy, removePlaylistCopyFromServer,
@@ -74,6 +75,9 @@ export default function PlaylistsPage() {
   const [publishToLocationsOpen, setPublishToLocationsOpen] = useState(false);
   // Which row opened the sheet — it used to open with no playlist chosen.
   const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
+  // Design preview (2026-11-02): `?design=v2` shows the gallery redesign for
+  // the owner to approve. Without the param the page is exactly as before.
+  const designV2 = useSearchParams()?.get('design') === 'v2';
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -410,6 +414,32 @@ export default function PlaylistsPage() {
 
   return (
     <>
+      {designV2 ? (
+      <PlaylistGalleryV2
+        rows={rows}
+        rawById={rawById}
+        templateLookup={templateLookup}
+        schedules={schedules}
+        screens={screens}
+        groups={groups}
+        loading={playlistsQuery.isLoading}
+        error={playlistsQuery.isError}
+        onRetry={() => {
+          playlistsQuery.refetch();
+          screensQuery.refetch();
+          schedulesQuery.refetch();
+        }}
+        onOpen={(id) => openWorkspace(id)}
+        onReviewDelivery={(id) => openWorkspace(id, 'screens')}
+        onNew={() => setWizardOpen(true)}
+        onDuplicate={handleDuplicate}
+        onExport={(id) => { void runUsbExport(id); }}
+        onRemove={handleRemove}
+        onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
+        onSetActive={(row, next) => { void handleSetActive(row, next); }}
+        isViewer={isViewer}
+      />
+      ) : (
       <PlaylistLibraryV1
         rows={rows}
         rawById={rawById}
@@ -443,6 +473,7 @@ export default function PlaylistsPage() {
         // rollup of each target screen's own reported state.
         deliveryDerived
       />
+      )}
 
       {/* §5 — the five-step wizard, unchanged, mounted on the v1 surface so
           the ?newPlaylist=1 contract keeps landing somewhere real. */}
