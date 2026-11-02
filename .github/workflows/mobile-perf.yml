@@ -86,5 +86,7 @@ jobs:
           node-version: '22'
       - name: Check mobile-perf standard (no bg polling / focus storm / mobile-chrome blur)
         run: node apps/web/tools/check-mobile-perf.cjs
+      - name: Pill rules (no new clickable pills / chip rows outside components/ui; baseline only goes down)
+        run: node apps/web/tools/check-pill-rules.cjs
       - name: i18n catalog parity (en/es/zh keys + ICU shapes)
         run: node apps/web/tools/check-i18n-parity.cjs

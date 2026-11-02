@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Bulk screen actions (2026-10-11) — the bar and the confirm / results sheet.
+ * Bulk screen actions (2026-10-11) — the confirm / results sheet. The bar is
+ * the shared SelectionToolbar / ActionDock since the pill cleanup (2026-11-02).
  *
  * Greg: "If I want to manually push a resync, an update of the player, allow
  * me to do a select-all and push — by group at least. Doing one at a time is
@@ -22,7 +23,7 @@
  * started by a tap.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, Power, PowerOff, RefreshCw, Download, X, XCircle, MinusCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, X, XCircle, MinusCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useBulkScreenAction, type BulkScreenResponse } from '@/hooks/use-api';
 import { groupResults, reasonKey, refusalKey, requestFor, type BulkKind } from './bulkSelection';
@@ -30,72 +31,6 @@ import { groupResults, reasonKey, refusalKey, requestFor, type BulkKind } from '
 const BRAND = { background: 'var(--brand-primary, #4f46e5)' } as const;
 const BTN = 'min-h-11 sm:min-h-0 sm:h-9 px-3.5 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed';
 const BTN_QUIET = `${BTN} bg-white text-slate-700 border border-slate-200 hover:bg-slate-50`;
-
-export interface BulkActionBarProps {
-  selectedCount: number;
-  /** Screens the current filter + search shows — what "Select all N" selects. */
-  visibleCount: number;
-  onSelectAll: () => void;
-  onClear: () => void;
-  onAction: (kind: BulkKind) => void;
-  disabled?: boolean;
-}
-
-export function BulkActionBar({ selectedCount, visibleCount, onSelectAll, onClear, onAction, disabled }: BulkActionBarProps) {
-  const t = useTranslations();
-  return (
-    <div
-      role="region"
-      aria-label={t('screens.bulk.barLabel')}
-      data-testid="screens-bulk-bar"
-      className="sticky top-0 z-20 bg-white rounded-2xl border border-slate-200 shadow-sm px-3 py-2 flex flex-wrap items-center gap-2"
-    >
-      <span className="text-[13px] font-bold text-slate-800 tabular-nums" aria-live="polite" data-testid="screens-bulk-count">
-        {t('screens.bulk.selectedCount', { count: selectedCount })}
-      </span>
-      {visibleCount > selectedCount && (
-        <button type="button" onClick={onSelectAll} className="min-h-11 sm:min-h-0 text-[13px] font-semibold underline underline-offset-2 px-1" style={{ color: 'var(--brand-primary, #4f46e5)' }}>
-          {t('screens.bulk.selectAllCount', { count: visibleCount })}
-        </button>
-      )}
-      <button type="button" onClick={onClear} className="min-h-11 sm:min-h-0 text-[13px] font-semibold text-slate-500 hover:underline px-1">
-        {t('screens.bulk.clear')}
-      </button>
-      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
-        <button type="button" disabled={disabled} onClick={() => onAction('resync')} className={`${BTN} text-white`} style={BRAND} data-testid="screens-bulk-resync">
-          <RefreshCw className="w-4 h-4" aria-hidden /> {t('screens.bulk.resync')}
-        </button>
-        <button type="button" disabled={disabled} onClick={() => onAction('update')} className={BTN_QUIET} data-testid="screens-bulk-update">
-          <Download className="w-4 h-4" aria-hidden /> {t('screens.bulk.update')}
-        </button>
-        <button type="button" disabled={disabled} onClick={() => onAction('power-on')} className={BTN_QUIET} data-testid="screens-bulk-power-on">
-          <Power className="w-4 h-4" aria-hidden /> {t('screens.bulk.powerOn')}
-        </button>
-        <button type="button" disabled={disabled} onClick={() => onAction('power-off')} className={BTN_QUIET} data-testid="screens-bulk-power-off">
-          <PowerOff className="w-4 h-4" aria-hidden /> {t('screens.bulk.powerOff')}
-        </button>
-        {/* A native select: the right control on an iPhone, and no popover to manage. */}
-        <select
-          aria-label={t('screens.bulk.autoUpdate')}
-          disabled={disabled}
-          value=""
-          data-testid="screens-bulk-auto"
-          onChange={(e) => {
-            const v = e.target.value as BulkKind;
-            e.currentTarget.value = '';
-            if (v) onAction(v);
-          }}
-          className={`${BTN_QUIET} pr-2`}
-        >
-          <option value="">{t('screens.bulk.autoUpdate')}…</option>
-          <option value="auto-on">{t('screens.bulk.autoOn')}</option>
-          <option value="auto-off">{t('screens.bulk.autoOff')}</option>
-          <option value="auto-inherit">{t('screens.bulk.autoInherit')}</option>
-        </select>
-      </div>
-    </div>
-  );
-}
 
 const TITLE_KEY: Record<BulkKind, string> = {
   resync: 'titleResync', update: 'titleUpdate', 'power-on': 'titlePowerOn', 'power-off': 'titlePowerOff',
