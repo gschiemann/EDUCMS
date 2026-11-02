@@ -8148,5 +8148,21 @@
     "view": "Vista",
     "gridView": "Vista de cuadrícula",
     "listView": "Vista de lista"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Estilo visual",
+    "intakePalette": "Origen de los colores",
+    "intakeBackground": "Estilo de fondo",
+    "mediaKind": "Tipo de contenido",
+    "templateKind": "Origen de la plantilla",
+    "aiMenu": "Opciones de reescritura con IA",
+    "opRewrite": "Reescribir",
+    "opShorten": "Acortar",
+    "opFitToZone": "Ajustar a la zona",
+    "opExpand": "Ampliar",
+    "opPunch": "Dar más fuerza",
+    "opFixGrammar": "Corregir gramática",
+    "opTranslate": "Traducir…",
+    "opTellMe": "Dime cómo…"
   }
 }

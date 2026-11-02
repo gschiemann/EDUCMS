@@ -8148,5 +8148,21 @@
     "view": "View",
     "gridView": "Grid view",
     "listView": "List view"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Look and feel",
+    "intakePalette": "Color source",
+    "intakeBackground": "Background style",
+    "mediaKind": "Media type",
+    "templateKind": "Template source",
+    "aiMenu": "AI rewrite options",
+    "opRewrite": "Rewrite",
+    "opShorten": "Shorten",
+    "opFitToZone": "Fit to zone",
+    "opExpand": "Expand",
+    "opPunch": "Punch it up",
+    "opFixGrammar": "Fix grammar",
+    "opTranslate": "Translate…",
+    "opTellMe": "Tell me…"
   }
 }
