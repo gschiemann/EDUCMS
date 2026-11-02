@@ -23,6 +23,8 @@
  * PURE — no React, no DOM.
  */
 
+import { sanitizeBannerOptions, type BannerOptions } from '@cms/api-types';
+
 export type PushedEmergencyType = 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT';
 export type PushedEmergencySeverity = 'INFO' | 'WARN' | 'CRITICAL';
 
@@ -35,6 +37,8 @@ export interface PushedEmergencyMessage {
   audioUrl: string | null;
   expiresAt: number | null;
   createdAt: string;
+  /** INFO / WARN text broadcasts: the sender's colour + scrolling choice. */
+  banner?: BannerOptions;
 }
 
 export function pushedEmergencyFromPayload(
@@ -51,6 +55,13 @@ export function pushedEmergencyFromPayload(
     str(eventId) ??
     `msg-${now()}`;
   const severity = p.severity;
+  // Banner options (2026-11-01) apply to an INFO / WARN TEXT_BROADCAST only;
+  // anything else (SOS, media, CRITICAL) ignores them. Absent -> key omitted,
+  // so the paint identity of every existing message is unchanged.
+  const banner =
+    type === 'TEXT_BROADCAST' && (severity === 'INFO' || severity === 'WARN')
+      ? sanitizeBannerOptions(p.banner)
+      : null;
   return {
     id,
     type,
@@ -61,5 +72,6 @@ export function pushedEmergencyFromPayload(
     audioUrl: typeof p.audioUrl === 'string' ? p.audioUrl : null,
     expiresAt: typeof p.expiresAt === 'number' ? p.expiresAt : null,
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date(now()).toISOString(),
+    ...(banner ? { banner } : {}),
   };
 }
