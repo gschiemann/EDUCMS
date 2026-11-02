@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof, type NativeEmergencyPaintState } from './emergencyPaintProof';
-import { reassertDisplayEmergencyHold } from './emergencyHold';
+import { bannerRefusalFromState, noteNativeBannerRefused, reassertDisplayEmergencyHold } from './emergencyHold';
 import { apkVersionFromUserAgent, hasNativeBridge, nativeCall, nativeFire, nativeHas } from './nativeBridge';
 
 type ValueRef<T> = { current: T };
@@ -64,6 +64,10 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
         if (!nativeHas('sharedVideoState')) return undefined;
         const reply = await nativeCall<unknown>('sharedVideoState');
         const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
+        // 2026-11-02: the app refused banner posture (its live native video
+        // could not be proven correct under a banner) — show the full alert.
+        const refusal = bannerRefusalFromState(state);
+        if (refusal) noteNativeBannerRefused(refusal);
         const proof = (state as { emergencyProof?: NativeEmergencyPaintState } | null)?.emergencyProof;
         return typeof proof?.challenge === 'string' && proof.challenge.length <= 64 ? proof : undefined;
       },

@@ -112,6 +112,11 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         // 1.1.41: the resolved device class and what it does (DeviceClassPolicy), bounded, on every reply.
         j.put("device", policy.toJson())
         j.put("broadcastBannerVersion", 1)
+        // 2026-11-02: this face could not PROVE a live native video correct under the banner
+        // (BannerPosturePolicy), so the hold is a full takeover; the page renders the full
+        // broadcast presentation instead of a banner over a stopped video. Additive key on an
+        // existing value method (no new bridge method — player rule 9).
+        BroadcastBanner.refusal(face)?.let { j.put("broadcastBannerPosture", JSONObject().put("posture", "refused").put("reason", it)) }
         // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
         DeviceClassPolicy.displayFacts(ctx)?.writeTo(j.getJSONObject("device"))
         // 1.1.43: plus what the panel firmware itself lists (sysfs, read-only, bounded, refreshed every 30 s).
