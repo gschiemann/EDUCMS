@@ -19,7 +19,6 @@ import { apiFetch } from '@/lib/api-client';
 import { useTranslations } from 'next-intl';
 import { translateFailedPublications, withPlaybackCopyText } from '@/lib/playback-copy-text';
 import { withPlaybackGateText } from '@/lib/playback-warning-text';
-import { showPlaybackWarnings } from '@/lib/playback-warning-toast';
 import { removePlaylistsSequentially, type PlaylistSummaryRow } from '@/components/playlists/v1/playlistOps';
 import { API_URL } from '@/lib/api-url';
 // The job poll's "this id is gone" rule (the page settles on the same rule).
@@ -1332,8 +1331,6 @@ export function useSetPlaylistScreenActive() {
         method: 'PUT',
         body: JSON.stringify({ active }),
       }).then((data: unknown) => {
-        // The video gate's warnings (2026-10-12): the switch went through.
-        showPlaybackWarnings(tGate, data);
         return data;
       }, (e: unknown) => {
         // A screen whose 1080p copy cannot be made names the files (2026-10-05).
@@ -1368,7 +1365,6 @@ export function useSetPlaylistActive() {
         method: 'PUT',
         body: JSON.stringify({ active }),
       }).then((data: unknown) => {
-        showPlaybackWarnings(tGate, data);
         return data;
       }, (e: unknown) => {
         throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
@@ -1460,7 +1456,6 @@ export function useCreateSchedule() {
       apiFetch('/schedules', { method: 'POST', body: JSON.stringify(data) }).then((res: unknown) => {
         // The video gate (2026-10-12): the publish went through; say which
         // screen(s) a video may stutter on, in plain words.
-        showPlaybackWarnings(tGate, res);
         return res;
       }, (e: unknown) => {
         // A refused publish names the files it could not prepare (2026-10-05);
@@ -1481,7 +1476,6 @@ export function useUpdateSchedule() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; screenGroupId?: string; screenId?: string; daysOfWeek?: string | null; timeStart?: string | null; timeEnd?: string | null; priority?: number; mutedOverride?: boolean | null }) =>
       apiFetch(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then((res: unknown) => {
-        showPlaybackWarnings(tGate, res);
         return res;
       }, (e: unknown) => {
         throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
@@ -1500,7 +1494,6 @@ export function useToggleSchedule() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/schedules/${id}/toggle`, { method: 'PUT' }).then((res: unknown) => {
-        showPlaybackWarnings(tGate, res);
         return res;
       }, (e: unknown) => {
         throw withPlaybackGateText(tGate, withPlaybackCopyText(tCopy, e));
@@ -3832,6 +3825,30 @@ export function useScreenInterruptions(screenId: string | null, hours: 24 | 72, 
   return useQuery<ScreenInterruptionsResponse>({
     queryKey: ['screens', 'interruptions', screenId, hours],
     queryFn: () => apiFetch(`/screens/${screenId}/events?hours=${hours}`),
+    enabled: !!screenId && enabled,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * What a screen last did with a USB drive (2026-10-26) — `GET
+ * /screens/:id/usb-events`, newest first. Outcomes: DETECTED, NEEDS_ACCESS,
+ * NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED (older players: ACCEPTED,
+ * REJECTED_SIGNATURE, REJECTED_HASH); `reason` starts with a stable code.
+ * Read when the drawer's Technical details is open — never polled.
+ */
+export interface ScreenUsbEvent {
+  id: string;
+  outcome: string;
+  reason: string | null;
+  bundleVersion: string | null;
+  assetCount: number;
+  createdAt: string;
+}
+export function useScreenUsbEvents(screenId: string | null, enabled = true) {
+  return useQuery<{ events: ScreenUsbEvent[] }>({
+    queryKey: ['screens', 'usb-events', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/usb-events?limit=5`),
     enabled: !!screenId && enabled,
     staleTime: 60_000,
   });

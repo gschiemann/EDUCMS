@@ -1,6 +1,9 @@
 "use client";
 
 import { SelectionCheckbox } from '@/components/common/SelectionCheckbox';
+import { StatusPill } from '@/components/ui/status-pill';
+import { Segmented } from '@/components/ui/segmented';
+import { TabRow } from '@/components/ui/tab-row';
 
 /**
  * PlaylistCreateWizard — operator's primary creation flow.
@@ -1577,22 +1580,20 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
             )}
             {isCorporate && (
               <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div role="group" aria-label={tc('scopeLabel')} className="flex rounded-xl border border-slate-200 p-1 bg-slate-50">
-                  {[{ local: false, label: tc('scopeAll') }, { local: true, label: tc('scopeLocal') }].map((scope) => (
-                    <button key={scope.label} type="button" aria-pressed={localScreensOnly === scope.local}
-                      onClick={() => {
-                        if (localScreensOnly === scope.local) return;
-                        setLocalScreensOnly(scope.local);
-                        setScreenLocations([]);
-                        setScreenSearch('');
-                        setSelectedScreenIds(new Set());
-                        setSelectedGroupIds(new Set());
-                      }}
-                      className={`min-h-[44px] px-3 rounded-lg text-xs font-bold ${localScreensOnly === scope.local ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
-                      {scope.label}
-                    </button>
-                  ))}
-                </div>
+                <Segmented<'all' | 'local'>
+                  ariaLabel={tc('scopeLabel')}
+                  value={localScreensOnly ? 'local' : 'all'}
+                  options={[{ value: 'all', label: tc('scopeAll') }, { value: 'local', label: tc('scopeLocal') }]}
+                  onChange={(next) => {
+                    const local = next === 'local';
+                    if (localScreensOnly === local) return;
+                    setLocalScreensOnly(local);
+                    setScreenLocations([]);
+                    setScreenSearch('');
+                    setSelectedScreenIds(new Set());
+                    setSelectedGroupIds(new Set());
+                  }}
+                />
               </div>
             )}
             {fleetTemplateBlocked && (
@@ -2038,6 +2039,7 @@ function Step2Media({
   onUploaded: (asset: CompletedAsset) => void;
   onUploadBusy: (busy: boolean) => void;
 }) {
+  const tp = useTranslations('pillWavePlaylists');
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'images', label: 'Images' },
@@ -2054,12 +2056,9 @@ function Step2Media({
             Tap any tile to add it. You can re-order, set per-slide timing, and add more later in the editor.
           </p>
         </div>
-        <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100">
-          <Check className="w-3.5 h-3.5 text-indigo-600 mr-1.5" />
-          <span className="text-xs font-bold text-indigo-700">
-            {selectedIds.size} selected
-          </span>
-        </div>
+        <StatusPill tone="brand" icon={<Check className="w-3 h-3" aria-hidden />}>
+          {selectedIds.size} selected
+        </StatusPill>
       </div>
 
       {canUpload && <WizardMediaUpload folderId={currentFolderId} folderName={breadcrumb[breadcrumb.length - 1]?.name ?? 'All files'} onUploaded={onUploaded} onBusy={onUploadBusy} />}
@@ -2115,21 +2114,13 @@ function Step2Media({
         </div>
       </div>
 
-      <div className="flex flex-wrap mb-4">
-        {filterChips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setFilter(c.id)}
-            className={`mr-2 mb-2 px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
-              filter === c.id
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {c.label}
-          </button>
-        ))}
+      <div className="h-11 border-b border-slate-200 mb-4">
+        <TabRow
+          ariaLabel={tp('mediaKind')}
+          value={filter}
+          onChange={setFilter}
+          tabs={filterChips.map((c) => ({ key: c.id, label: c.label }))}
+        />
       </div>
 
       {/* Folder tiles — sit above the asset grid. Click opens the folder
@@ -2349,9 +2340,7 @@ export function SelectedMediaDrawer({
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
         <p className="text-sm font-bold text-slate-800 inline-flex items-center gap-2">
           Selected media
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
-            {items.length}
-          </span>
+          <StatusPill tone="brand">{items.length}</StatusPill>
           <span className="text-[11px] font-medium text-slate-500">— drag to reorder · plays top to bottom</span>
         </p>
         {/* Bulk "Set all" control */}
@@ -2594,6 +2583,7 @@ function Step2Template({
    *  drives whether the "Show touch kiosks too" toggle is worth showing. */
   touchHiddenCount: number;
 }) {
+  const tp = useTranslations('pillWavePlaylists');
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'custom', label: 'My templates' },
@@ -2609,10 +2599,7 @@ function Step2Template({
           </p>
         </div>
         {selectedId && (
-          <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-violet-50 border border-violet-100">
-            <Check className="w-3.5 h-3.5 text-violet-600 mr-1.5" />
-            <span className="text-xs font-bold text-violet-700">Template selected</span>
-          </div>
+          <StatusPill tone="brand" icon={<Check className="w-3 h-3" aria-hidden />}>Template selected</StatusPill>
         )}
       </div>
 
@@ -2629,21 +2616,17 @@ function Step2Template({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center mb-4">
-        {filterChips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setFilter(c.id)}
-            className={`mr-2 mb-2 px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
-              filter === c.id
-                ? 'bg-violet-600 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {c.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Segmented<typeof filter>
+          ariaLabel={tp('templateKind')}
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: filterChips[0].id, label: filterChips[0].label },
+            { value: filterChips[1].id, label: filterChips[1].label },
+            { value: filterChips[2].id, label: filterChips[2].label },
+          ]}
+        />
         {/* 2026-07-01 — touch kiosk templates (tap menus, check-in flows)
             are hidden by default: a playlist plays on a passive display,
             so mixing in touch-only experiences was the operator's exact
@@ -2651,7 +2634,7 @@ function Step2Template({
             hard exclusion — some operators DO want a kiosk template in
             rotation. */}
         {(includeTouchTemplates || touchHiddenCount > 0) && (
-          <label className="mb-2 ml-1 inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 cursor-pointer select-none">
+          <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={includeTouchTemplates}
@@ -2996,12 +2979,9 @@ export function Step3Screens({
               <button type="button" onClick={onToggleAll} disabled={!selectable.length} className="min-h-[44px] disabled:opacity-50">Select all</button>
             </div>
           )}
-        <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
-          <Monitor className="w-3.5 h-3.5 text-emerald-600 mr-1.5" />
-          <span className="text-xs font-bold text-emerald-700">
-            {selectedCount ?? selectedIds.size} of {total} screens
-          </span>
-        </div>
+        <StatusPill tone="success" icon={<Monitor className="w-3 h-3" aria-hidden />}>
+          {selectedCount ?? selectedIds.size} of {total} screens
+        </StatusPill>
         </div>
       </div>
 
@@ -3570,13 +3550,10 @@ export function Step4Publish({
             </p>
             {activate && (
               <div className="flex flex-wrap mt-2">
-                <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full mr-2 mb-1">
-                  <Play className="w-2.5 h-2.5 mr-1" />
+                <StatusPill tone="success" className="mr-2 mb-1" icon={<Play className="w-2.5 h-2.5" aria-hidden />}>
                   Starts now
-                </span>
-                <span className="inline-flex items-center text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-full mr-2 mb-1">
-                  Ends never
-                </span>
+                </StatusPill>
+                <StatusPill tone="neutral" className="mr-2 mb-1">Ends never</StatusPill>
               </div>
             )}
           </div>
