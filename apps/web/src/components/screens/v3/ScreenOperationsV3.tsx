@@ -45,9 +45,10 @@ import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
 import { AddScreensToGroupDialog } from './AddScreensToGroupDialog';
 import { SelectionCheckbox, selectAllTitle } from '@/components/common/SelectionCheckbox';
-import { BulkActionBar, BulkActionSheet } from './BulkScreenActions';
+import { BulkActionSheet } from './BulkScreenActions';
 import { pruneTo, stateFor, toggleMany, toggleOne, type BulkKind } from './bulkSelection';
-import { useDesignV2, usePhoneWidth } from '@/lib/design-preview';
+import { usePhoneWidth } from '@/lib/use-phone-width';
+import { statusFilterView } from './statusFilterView';
 import { Segmented } from '@/components/ui/segmented';
 import { TabRow } from '@/components/ui/tab-row';
 import { FilterMenu } from '@/components/ui/filter-menu';
@@ -562,10 +563,9 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   };
 
   const brand = { background: 'var(--brand-primary, #4f46e5)' };
-  // Pill cleanup v2 preview (`?design=v2`) — off unless the URL asks.
-  const designV2 = useDesignV2();
+  const statusView = statusFilterView(ops.chips, filter);
   const isMobile = usePhoneWidth();
-  /** The bulk actions as ONE list for the v2 selection bar and the phone dock. */
+  /** The bulk actions as ONE list for the desktop selection bar and the phone dock. */
   const bulkBarProps: SelectionBarProps = {
     count: selectedIds.length,
     countLabel: t('screens.bulk.selectedCount', { count: selectedIds.length }),
@@ -574,6 +574,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
     testId: 'screens-bulk-bar',
     moreTestId: 'screens-bulk-more',
     moreMenuTestId: 'screens-bulk-more-menu',
+    countTestId: 'screens-bulk-count',
     selectAll: visibleCount > selectedIds.length
       ? { label: t('screens.bulk.selectAllCount', { count: visibleCount }), onSelect: () => setBulkSelected(new Set(visibleIds)) }
       : null,
@@ -679,8 +680,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {designV2 ? (
-            // Pill cleanup v2 (`?design=v2`): a view is a Segmented, not tabs.
+          {/* The view is a Segmented, not tabs (pill cleanup 2026-11-02). */}
             <Segmented
               value={viewMode}
               onChange={onViewMode}
@@ -696,31 +696,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 { value: 'map', label: t('screensOps.viewMap'), icon: MapIcon },
               ] as const}
             />
-          ) : (
-          <div role="tablist" aria-label={t('screensOps.viewsAria')} className="flex w-full sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-            {([
-              ['list', t('screensOps.viewList'), ListIcon],
-              ['map', t('screensOps.viewMap'), MapIcon],
-              ['floor', t('screensOps.viewFloor'), MapPin],
-            ] as const).filter(([key]) => key !== 'floor' || floorSlot).map(([key, label, Icon]) => {
-              const active = viewMode === key;
-              return (
-                <button
-                  key={key}
-                  role="tab"
-                  type="button"
-                  aria-selected={active}
-                  onClick={() => onViewMode(key)}
-                  className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${
-                    active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" aria-hidden /> {label}
-                </button>
-              );
-            })}
-          </div>
-          )}
 
           {/* 2026-09-14 (Greg): "adding a new group should not be hidden behind
               the 3 dots — an obvious button". A quiet secondary next to the one
@@ -838,9 +813,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
       {viewMode !== 'floor' && (
         <>
-          {designV2 ? (
-            <>
-              {/* ─── Pill cleanup v2 (`?design=v2`, 2026-11-02) ─────────
+              {/* ─── Pill cleanup (2026-11-02, owner-approved) ─────────
                   ONE toolbar: the main filter as underlined tabs (All /
                   Needs attention / Offline), search, and the secondary
                   problems behind Filter. Same single FilterKey as the chips
@@ -854,14 +827,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 selection={!isMobile && selectable && selectedIds.length > 0 ? <SelectionToolbar {...bulkBarProps} /> : undefined}
                 tabs={
                   <TabRow
-                    value={filter}
+                    // A status with no tab (Content behind, Push delayed)
+                    // underlines NO tab — the Filter button counts it instead.
+                    value={(statusView.activeTab ?? '') as FilterKey}
                     onChange={setFilter}
                     ariaLabel={t('screensOps.filterAria')}
                     testId="screens-filter-tabs"
-                    tabs={ops.chips
-                      .filter((c) => c.key === 'all' || c.key === 'attention' || c.key === 'offline')
-                      .filter((c) => c.key !== 'offline' || c.count > 0 || c.key === filter)
-                      .map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+                    tabs={statusView.tabs.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
                   />
                 }
                 search={
@@ -869,30 +841,41 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
                     <input
                       ref={searchRef}
-                      type="search"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
                       placeholder={t('screensOps.searchPlaceholder')}
                       aria-label={t('screensOps.searchAria')}
-                      className="w-full md:w-60 min-h-11 md:min-h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
+                      className="w-full md:w-60 min-h-11 md:min-h-9 pl-9 pr-9 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
                     />
+                    {query && (
+                      <button
+                        type="button"
+                        onClick={() => { setQuery(''); searchRef.current?.focus(); }}
+                        aria-label={t('screensOps.clearSearch')}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 md:w-9 md:h-9 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" aria-hidden />
+                      </button>
+                    )}
                   </div>
                 }
                 filters={
                   <FilterMenu
                     testId="screens-filter-menu"
+                    // Every status is here. One with a tab (Needs attention,
+                    // Offline) underlines that tab when picked and is not
+                    // counted on this button; one without a tab is the count.
+                    activeCount={statusView.menuCount}
                     groups={[{
-                      id: 'problem',
-                      label: t('screensOps.filterProblems'),
+                      id: 'status',
+                      label: t('screensOps.filterStatus'),
                       type: 'single',
-                      options: ops.chips
-                        .filter((c) => c.key === 'content-behind' || c.key === 'push-delayed')
-                        .map((c) => ({ value: c.key, label: c.label, count: c.count, disabled: c.count === 0 })),
+                      options: statusView.menu.map((c) => ({ value: c.key, label: c.label, count: c.count, disabled: c.disabled })),
                     }]}
-                    value={{ problem: filter === 'content-behind' || filter === 'push-delayed' ? filter : '' }}
+                    value={{ status: filter === 'all' ? '' : filter }}
                     onChange={(_g, next) => setFilter(((next as string) || 'all') as FilterKey)}
-                    onClear={() => { if (filter === 'content-behind' || filter === 'push-delayed') setFilter('all'); }}
+                    onClear={() => setFilter('all')}
                   />
                 }
               />
@@ -910,94 +893,6 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                 </div>
               )}
               {isMobile && selectable && <ActionDock {...bulkBarProps} />}
-            </>
-          ) : (
-            <>
-          {/* ─── Search (§7) ─────────────────────────────────── */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); }
-              }}
-              placeholder={t('screensOps.searchPlaceholder')}
-              aria-label={t('screensOps.searchAria')}
-              className="w-full h-12 pl-10 pr-12 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => { setQuery(''); searchRef.current?.focus(); }}
-                aria-label={t('screensOps.clearSearch')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" aria-hidden />
-              </button>
-            )}
-          </div>
-
-          {/* ─── Filter chips (§7 — single-select, "All" always there) ── */}
-          <div role="group" aria-label={t('screensOps.filterAria')} className="flex flex-wrap gap-2">
-            {/* A problem chip with nothing behind it is a dead button (2026-09-14,
-                Greg: "make sure these filters are legit and useful"): All and
-                Needs attention always show; Content behind / Push delayed /
-                Offline only when they have screens to show — or while active. */}
-            {ops.chips.filter((c) => c.key === 'all' || c.key === 'attention' || c.count > 0 || c.key === filter).map((chip) => {
-              const active = filter === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setFilter(chip.key)}
-                  className={`min-h-11 sm:min-h-0 sm:h-9 px-3.5 text-[12.5px] font-bold rounded-xl border inline-flex items-center gap-2 transition-colors ${
-                    active ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                  style={active ? brand : undefined}
-                >
-                  {chip.key === 'attention' && (
-                    <AlertCircle className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-rose-500'}`} aria-hidden />
-                  )}
-                  {chip.label}
-                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>
-                    {chip.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ─── Bulk selection (2026-10-11) ─────────────────────
-              The heading box covers every screen SHOWN (filter + search);
-              the bar appears once something is checked. */}
-          {selectable && !isLoading && !isError && visibleCount > 0 && (
-            selectedIds.length > 0 ? (
-              <BulkActionBar
-                selectedCount={selectedIds.length}
-                visibleCount={visibleCount}
-                onSelectAll={() => setBulkSelected(new Set(visibleIds))}
-                onClear={() => setBulkSelected(new Set())}
-                onAction={(kind) => startBulk(kind, selectedIds)}
-              />
-            ) : (
-              <div className="flex items-center gap-1 -my-2 pl-1" data-testid="screens-select-heading">
-                <SelectionCheckbox
-                  checked={pageSelState === 'all'}
-                  indeterminate={pageSelState === 'some'}
-                  label={t('screens.bulk.selectAllShown')}
-                  title={selectAllTitle(pageSelState, t('screens.bulk.selectAllShown'), t('selection.clearSelection'))}
-                  onChange={() => setBulkSelected((prev) => toggleMany(prev, visibleIds))}
-                  testId="screens-select-all"
-                />
-                <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
-              </div>
-            )
-          )}
-            </>
-          )}
 
           {/* Map view — the same rows the list would show, as pins (§5). */}
           {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), isFiltered: filtering, onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}

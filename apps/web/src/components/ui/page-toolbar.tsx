@@ -11,7 +11,9 @@
  * phone the page renders `ActionDock` instead and the toolbar stays.
  *
  * At phone width (`compact`) the tabs get their own line under search +
- * filter, because the row has no room for both.
+ * filter, because the row has no room for both. A long tab row stays on the
+ * one desktop line through `TabRow overflow` (a "More" menu), never a
+ * second line.
  */
 import type { ReactNode } from 'react';
 
@@ -25,38 +27,11 @@ export interface PageToolbarProps {
   selection?: ReactNode;
   /** Phone layout (from `useIsMobile`) — each control renders ONCE, never twice. */
   compact?: boolean;
-  /**
-   * Desktop: tabs on their own line UNDER search · Filter · Sort. For a page
-   * whose category row is long (Templates has 7+ tabs) — on one line at
-   * 1325px the last tabs were cut off. The selection bar then replaces the
-   * TOP line only, at the same height, so the page still never grows.
-   */
-  tabsBelow?: boolean;
   testId?: string;
   className?: string;
 }
 
-export function PageToolbar({ tabs, search, filters, sort, trailing, selection, compact, tabsBelow, testId, className }: PageToolbarProps) {
-  if (tabsBelow && !compact) {
-    return (
-      <div className={className} data-testid={testId}>
-        <div className="flex items-center gap-2 h-12">
-          {selection ? (
-            <div className="flex-1 min-w-0 h-full">{selection}</div>
-          ) : (
-            <>
-              <div className="w-full max-w-sm">{search}</div>
-              <div className="flex-1" />
-              {filters}
-              {sort}
-              {trailing}
-            </>
-          )}
-        </div>
-        <div className="h-12 border-b border-slate-200">{tabs}</div>
-      </div>
-    );
-  }
+export function PageToolbar({ tabs, search, filters, sort, trailing, selection, compact, testId, className }: PageToolbarProps) {
   if (selection) {
     return (
       <div className={`flex items-center h-12 border-b border-slate-200 ${className ?? ''}`} data-testid={testId}>

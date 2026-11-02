@@ -7,12 +7,12 @@ import * as React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { StatusPill } from '../status-pill';
 import { Segmented } from '../segmented';
-import { TabRow } from '../tab-row';
+import { TabRow, fitTabs } from '../tab-row';
 import { FilterMenu, activeFilterCount, type FilterGroup } from '../filter-menu';
 import { OverflowMenu } from '../overflow-menu';
 import { ActionDock, SelectionToolbar } from '../selection-toolbar';
 import { PageToolbar } from '../page-toolbar';
-import { isDesignV2Search } from '@/lib/design-preview';
+import { statusFilterView } from '@/components/screens/v3/statusFilterView';
 
 describe('StatusPill', () => {
   it('is a plain span: not focusable, no button role', () => {
@@ -46,7 +46,7 @@ describe('TabRow', () => {
     expect(screen.getByRole('tab', { name: /Offline/ })).toHaveTextContent('3');
     fireEvent.click(screen.getByRole('tab', { name: /Offline/ }));
     expect(onChange).toHaveBeenLastCalledWith('off');
-    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowLeft' });
+    fireEvent.keyDown(screen.getByRole('tab', { name: /All/ }), { key: 'ArrowLeft' });
     expect(onChange).toHaveBeenLastCalledWith('off');
   });
   it('a value no tab matches selects none (a secondary filter is on)', () => {
@@ -144,19 +144,56 @@ describe('PageToolbar', () => {
     expect(screen.queryByText('TABS')).toBeNull();
     expect(screen.getByText('SEL')).toBeInTheDocument();
   });
-  it('tabsBelow keeps the tabs while the top line becomes the selection', () => {
-    render(<PageToolbar tabsBelow tabs={<span>TABS</span>} search={<input aria-label="Search" />} selection={<span>SEL</span>} />);
-    expect(screen.getByText('TABS')).toBeInTheDocument();
-    expect(screen.getByText('SEL')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Search')).toBeNull();
+});
+
+describe('TabRow overflow (fitTabs)', () => {
+  // widths 100 each, gap 20: 3 tabs = 340, 4 tabs = 460.
+  const w = [100, 100, 100, 100, 100, 100];
+  it('keeps every tab when they all fit', () => {
+    expect(fitTabs([100, 100], 300, 60, 0)).toEqual([0, 1]);
+  });
+  it('fits as many as leave room for More', () => {
+    // room 500, More 60 -> budget 420 -> 3 tabs (340), a 4th would be 460
+    expect(fitTabs(w, 500, 60, 0)).toEqual([0, 1, 2]);
+  });
+  it('the active tab always stays on the line, replacing the last that fits', () => {
+    expect(fitTabs(w, 500, 60, 5)).toEqual([0, 1, 5]);
+  });
+  it('never returns an empty line', () => {
+    expect(fitTabs(w, 50, 60, -1)).toEqual([0]);
+    expect(fitTabs(w, 50, 60, 3)).toEqual([3]);
   });
 });
 
-describe('?design=v2', () => {
-  it('only the exact param turns the preview on', () => {
-    expect(isDesignV2Search('?design=v2')).toBe(true);
-    expect(isDesignV2Search('?x=1&design=v2')).toBe(true);
-    expect(isDesignV2Search('')).toBe(false);
-    expect(isDesignV2Search('?design=v1')).toBe(false);
+describe('Screens status filter: one place says what is filtered', () => {
+  const chips = [
+    { key: 'all' as const, label: 'All', count: 20 },
+    { key: 'attention' as const, label: 'Needs attention', count: 4 },
+    { key: 'content-behind' as const, label: 'Content behind', count: 1 },
+    { key: 'push-delayed' as const, label: 'Push delayed', count: 0 },
+    { key: 'offline' as const, label: 'Offline', count: 3 },
+  ];
+  it('All: the All tab, no Filter count', () => {
+    const v = statusFilterView(chips, 'all');
+    expect(v.activeTab).toBe('all');
+    expect(v.menuCount).toBe(0);
+  });
+  it('a status with a tab (picked in the menu or the tab) underlines it and is not counted', () => {
+    expect(statusFilterView(chips, 'offline')).toMatchObject({ activeTab: 'offline', menuCount: 0 });
+    expect(statusFilterView(chips, 'attention')).toMatchObject({ activeTab: 'attention', menuCount: 0 });
+  });
+  it('a status with no tab underlines none and is the Filter count', () => {
+    expect(statusFilterView(chips, 'content-behind')).toMatchObject({ activeTab: null, menuCount: 1 });
+  });
+  it('the menu lists every status; empty ones are disabled unless active', () => {
+    const v = statusFilterView(chips, 'all');
+    expect(v.menu.map((m) => m.key)).toEqual(['attention', 'content-behind', 'push-delayed', 'offline']);
+    expect(v.menu.find((m) => m.key === 'push-delayed')?.disabled).toBe(true);
+    expect(statusFilterView(chips, 'push-delayed').menu.find((m) => m.key === 'push-delayed')?.disabled).toBe(false);
+  });
+  it('the Offline tab hides at zero unless active', () => {
+    const none = chips.map((c) => (c.key === 'offline' ? { ...c, count: 0 } : c));
+    expect(statusFilterView(none, 'all').tabs.map((t) => t.key)).toEqual(['all', 'attention']);
+    expect(statusFilterView(none, 'offline').tabs.map((t) => t.key)).toEqual(['all', 'attention', 'offline']);
   });
 });

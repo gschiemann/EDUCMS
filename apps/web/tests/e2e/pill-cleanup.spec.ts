@@ -1,24 +1,31 @@
 /**
- * Pill cleanup preview (2026-11-02) — Screens and Templates, before (no
- * param) and after (`?design=v2`), on a fully mocked API with realistic demo
- * content: 20 screens in six groups with mixed states, and the real K-12
- * ready-made catalog (transpiled from apps/api/src/templates at test time,
- * so every card shows its real poster) plus six of "your" templates.
+ * Pill cleanup (2026-11-02, owner-approved — the default design since the
+ * `?design=v2` gate was removed) — Screens and Templates on a fully mocked
+ * API with realistic demo content: 20 screens in six groups with mixed
+ * states, playlists with real pictures, and the real K-12 ready-made catalog
+ * (transpiled from apps/api/src/templates at test time, so every card shows
+ * its real poster) plus six of "your" templates.
  *
  * What it proves on every run (Chromium + WebKit):
- *   - without the param both pages render the production chip rows;
- *   - with it, the main filter is a TabRow, secondaries sit behind ONE
- *     Filter button, and selecting 3 items turns the toolbar into the
- *     selection bar on desktop and a bottom dock on an iPhone;
- *   - the Templates category tab still resets paging, and the Holiday
+ *   - the main filter is a TabRow, secondaries sit behind ONE Filter button,
+ *     and selecting 3 items turns the toolbar into the selection bar on
+ *     desktop and a bottom dock on an iPhone;
+ *   - Screens: a status picked in Filter that has a tab underlines that tab
+ *     (no Filter count); one with no tab underlines none and is the count;
+ *   - Templates: the category tabs share ONE row with search · Filter · Sort
+ *     at 1325px, the rest under "More"; a category picked from More becomes
+ *     the underlined tab; the tab still resets paging and the Holiday
  *     sub-filter appears in the Filter menu only under Holidays;
- *   - the Screens tabs + Filter drive the same single filter as the chips.
+ *   - Templates on an iPhone: the Sort control fits (an icon, its full value
+ *     in the accessible name), nothing scrolls sideways;
+ *   - the Screens content column shows real thumbnails.
  *
- * With `PILL_SHOTS=1` it writes the screenshots the owner reviews into
- * docs/research/2026-11-02-pill-audit/screens/ (WebKit only):
+ * With `PILL_SHOTS=1` it writes screenshots 03–16 the owner reviews into
+ * docs/research/2026-11-02-pill-audit/screens/ (WebKit only; 01/02/09/10
+ * are the "before" shots and are not retaken):
  *
  *   PILL_SHOTS=1 E2E_BASE=http://localhost:3123 pnpm --filter web exec playwright test \
- *     -c playwright.sandbox.config.ts tests/e2e/pill-cleanup-preview.spec.ts --project=webkit
+ *     -c playwright.sandbox.config.ts tests/e2e/pill-cleanup.spec.ts --project=webkit
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 import path from 'node:path';
@@ -65,10 +72,14 @@ const SCREEN_SPECS: Array<[string, string, string, State]> = [
   ['s19', 'Hallway Countdown', 'g-hall', 'ok'],
   ['s20', 'Bus Loop Departures', null as unknown as string, 'offline'],
 ];
+const img = (id: string, fileUrl: string, i: number) => ({ id, sequenceOrder: i, durationMs: 10_000, asset: { fileUrl, mimeType: 'image/jpeg' } });
 const PLAYLISTS = [
-  { id: 'pl-welcome', name: 'Morning Welcome Loop', tenantId: TENANT, isActive: true, items: [] },
-  { id: 'pl-lunch', name: 'Lunch Menu · Week 45', tenantId: TENANT, isActive: true, items: [] },
-  { id: 'pl-athletics', name: 'Friday Night Lights', tenantId: TENANT, isActive: true, items: [] },
+  { id: 'pl-welcome', name: 'Morning Welcome Loop', tenantId: TENANT, isActive: true, items: [
+    img('it-w1', '/templates/hs/news-assets/student-hallway-study-poster.jpg', 0), img('it-w2', '/demo/templates/rainbow.jpg', 1)] },
+  { id: 'pl-lunch', name: 'Lunch Menu · Week 45', tenantId: TENANT, isActive: true, items: [
+    img('it-l1', '/demo/templates/qsr-morning-window.jpg', 0), img('it-l2', '/demo/templates/qsr-coffee.jpg', 1)] },
+  { id: 'pl-athletics', name: 'Friday Night Lights', tenantId: TENANT, isActive: true, items: [
+    img('it-a1', '/templates/hs/assets/hs-biggame-under-the-lights-v1.jpg', 0), img('it-a2', '/demo/templates/sports-gameday.jpg', 1)] },
 ];
 const SCHEDULES = [
   { id: 'sc-1', tenantId: TENANT, playlistId: 'pl-welcome', playlist: PLAYLISTS[0], screenGroupId: 'g-lobby', isActive: true, priority: 1, startTime: ago(60 * 24 * 7) },
@@ -203,35 +214,48 @@ const mainTop = (page: Page) => page.evaluate(() => { document.getElementById('m
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(180_000);
 
-// ── Screens ──────────────────────────────────────────────────────────────
-test('Screens — before (production chips), desktop + iPhone', async ({ page, browserName }) => {
-  await open(page, 'screens', DESKTOP);
-  await expect(page.getByRole('group', { name: 'Filter screens' }).or(page.locator('[aria-label="Filter screens"]')).first()).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId('screens-filter-tabs')).toHaveCount(0);
-  await shot(page, '01-screens-before-desktop.png', browserName);
-  await page.setViewportSize(PHONE);
-  await mainTop(page);
-  await shot(page, '02-screens-before-iphone.png', browserName);
-});
+/** Click a Templates category whether it is on the line or under "More". */
+async function pickCategory(page: Page, name: RegExp) {
+  const tabs = page.getByTestId('templates-category-tabs');
+  const tab = tabs.getByRole('tab', { name });
+  if (await tab.count()) return tab.click();
+  await page.getByTestId('templates-category-tabs-more').click();
+  await page.getByTestId('templates-category-tabs-more-menu').getByRole('menuitemradio', { name }).click();
+}
 
-test('Screens — after (?design=v2): tabs + Filter, 3 selected, Filter open', async ({ page, browserName }) => {
-  await open(page, 'screens?design=v2', DESKTOP);
+// ── Screens ──────────────────────────────────────────────────────────────
+test('Screens — tabs + Filter (tab sync), real thumbnails, 3 selected', async ({ page, browserName }) => {
+  await open(page, 'screens', DESKTOP);
   const tabs = page.getByTestId('screens-filter-tabs');
   await expect(tabs).toBeVisible({ timeout: 120_000 });
   await expect(tabs.getByRole('tab', { name: /All/ })).toHaveAttribute('aria-selected', 'true');
+  // Content thumbnails are real pictures, not blank tiles.
+  const thumb = page.locator('td img').first();
+  await expect(thumb).toBeVisible();
+  await expect.poll(() => thumb.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0);
   await shot(page, '03-screens-after-desktop.png', browserName);
 
-  // Filter menu: the secondary problems, same single filter key.
-  await page.getByTestId('screens-filter-menu').click();
+  // Filter menu lists every status.
+  const filterBtn = page.getByTestId('screens-filter-menu');
+  await filterBtn.click();
   const panel = page.getByTestId('screens-filter-menu-panel');
   await expect(panel.getByRole('radio', { name: /Content behind/ })).toBeVisible();
+  await expect(panel.getByRole('radio', { name: /^Offline/ })).toBeVisible();
   await shot(page, '04-screens-after-desktop-filter-open.png', browserName);
+
+  // A status WITH a tab: the tab underlines, the Filter button adds no count.
+  await panel.getByRole('radio', { name: /^Offline/ }).click();
+  await expect(tabs.getByRole('tab', { name: /^Offline/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(filterBtn).toHaveAccessibleName(/none active/);
+  // A status with NO tab: no tab underlined, the Filter button counts it.
   await panel.getByRole('radio', { name: /Content behind/ }).click();
   await expect(page.getByRole('button', { name: 'Lunch Line Menu B', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Lobby Welcome Wall', exact: true })).toHaveCount(0);
   await expect(tabs.getByRole('tab', { selected: true })).toHaveCount(0);
+  await expect(filterBtn).toHaveAccessibleName(/1 active/);
   await page.keyboard.press('Escape');
   await tabs.getByRole('tab', { name: /All/ }).click();
+  await expect(filterBtn).toHaveAccessibleName(/none active/);
   await expect(page.getByRole('button', { name: 'Lobby Welcome Wall', exact: true })).toBeVisible();
 
   // Select 3 → the toolbar becomes the selection bar in place.
@@ -246,8 +270,8 @@ test('Screens — after (?design=v2): tabs + Filter, 3 selected, Filter open', a
   await shot(page, '05-screens-after-desktop-3-selected.png', browserName);
 });
 
-test('Screens — after (?design=v2) on iPhone: dock + Filter open', async ({ page, browserName }) => {
-  await open(page, 'screens?design=v2', PHONE);
+test('Screens on iPhone: dock + Filter open', async ({ page, browserName }) => {
+  await open(page, 'screens', PHONE);
   await expect(page.getByTestId('screens-filter-tabs')).toBeVisible({ timeout: 120_000 });
   await shot(page, '06-screens-after-iphone.png', browserName);
   await page.getByTestId('screens-filter-menu').click();
@@ -267,39 +291,40 @@ test('Screens — after (?design=v2) on iPhone: dock + Filter open', async ({ pa
 });
 
 // ── Templates ────────────────────────────────────────────────────────────
-test('Templates — before (production chips), desktop + iPhone', async ({ page, browserName }) => {
+test('Templates — one toolbar row with More, Filter, holiday sub-filter, 3 selected', async ({ page, browserName }) => {
   await open(page, 'templates', DESKTOP);
-  await expect(page.getByRole('group', { name: 'Filter by category' })).toBeVisible({ timeout: 120_000 });
-  await postersLoaded(page);
-  await shot(page, '09-templates-before-desktop.png', browserName);
-  await page.setViewportSize(PHONE);
-  await mainTop(page);
-  await postersLoaded(page);
-  await shot(page, '10-templates-before-iphone.png', browserName);
-});
-
-test('Templates — after (?design=v2): tabs + Filter, holiday sub-filter, 3 selected', async ({ page, browserName }) => {
-  await open(page, 'templates?design=v2', DESKTOP);
   const tabs = page.getByTestId('templates-category-tabs');
   await expect(tabs).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole('group', { name: 'Filter by category' })).toHaveCount(0);
+  // ONE row: the tabs share a line with search, Filter and Sort.
+  const rowOf = (l: ReturnType<Page['locator']>) => l.evaluate((el) => { const r = el.getBoundingClientRect(); return Math.round(r.top + r.height / 2); });
+  const tabsMid = await rowOf(tabs);
+  for (const l of [page.getByLabel('Search templates'), page.getByTestId('templates-filter-menu'), page.getByTestId('templates-sort')]) {
+    expect(Math.abs((await rowOf(l)) - tabsMid)).toBeLessThanOrEqual(6);
+  }
+  // The tabs that do not fit are under More, and no tab is clipped.
+  await expect(page.getByTestId('templates-category-tabs-more')).toBeVisible();
+  const clipped = await tabs.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(clipped).toBeLessThanOrEqual(0);
   await postersLoaded(page);
   await shot(page, '11-templates-after-desktop.png', browserName);
 
-  // Filter menu (school level), then Holidays adds the holiday group.
+  // Filter menu (school level), then Holidays (from More) adds the holiday group.
   await page.getByTestId('templates-filter-menu').click();
   const panel = page.getByTestId('templates-filter-menu-panel');
   await expect(panel.getByRole('radio', { name: 'High School' })).toBeVisible();
   await expect(panel.getByRole('radiogroup', { name: 'Holiday' })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await tabs.getByRole('tab', { name: /Holidays/ }).click();
+  await pickCategory(page, /Holidays/);
+  // Picked from More, it is now an underlined tab on the line.
+  await expect(tabs.getByRole('tab', { name: /Holidays/ })).toHaveAttribute('aria-selected', 'true');
   await page.getByTestId('templates-filter-menu').click();
   await expect(panel.getByRole('radio', { name: 'Halloween' })).toBeVisible();
   await shot(page, '12-templates-after-desktop-filter-open.png', browserName);
   await panel.getByRole('radio', { name: 'Halloween' }).click();
   await expect(page.getByTestId('templates-filter-menu')).toHaveAccessibleName(/1 active/);
   await page.keyboard.press('Escape');
-  // Leaving Holidays clears the holiday sub-filter (same rule as the chips).
+  // Leaving Holidays clears the holiday sub-filter.
   await tabs.getByRole('tab', { name: /^All/ }).click();
   await expect(page.getByTestId('templates-filter-menu')).toHaveAccessibleName(/none active/);
 
@@ -309,7 +334,7 @@ test('Templates — after (?design=v2): tabs + Filter, holiday sub-filter, 3 sel
     const before = await page.locator('section[aria-labelledby="ready-made-heading"] img').count();
     await more.click();
     await expect.poll(() => page.locator('section[aria-labelledby="ready-made-heading"] img').count()).toBeGreaterThan(before);
-    await tabs.getByRole('tab', { name: /Welcome/ }).click();
+    await pickCategory(page, /Welcome/);
     await tabs.getByRole('tab', { name: /^All/ }).click();
     await expect.poll(() => page.locator('section[aria-labelledby="ready-made-heading"] img').count()).toBe(before);
   }
@@ -326,9 +351,15 @@ test('Templates — after (?design=v2): tabs + Filter, holiday sub-filter, 3 sel
   await shot(page, '13-templates-after-desktop-3-selected.png', browserName);
 });
 
-test('Templates — after (?design=v2) on iPhone: Filter open + dock', async ({ page, browserName }) => {
-  await open(page, 'templates?design=v2', PHONE);
+test('Templates on iPhone: Sort fits, Filter open + dock', async ({ page, browserName }) => {
+  await open(page, 'templates', PHONE);
   await expect(page.getByTestId('templates-category-tabs')).toBeVisible({ timeout: 120_000 });
+  // Sort is an icon whose accessible name carries the whole choice; it sits
+  // inside the viewport, beside Filter.
+  const sort = page.getByTestId('templates-sort');
+  await expect(sort).toHaveAccessibleName(/Recently edited/);
+  const box = await sort.boundingBox();
+  expect(box && box.x + box.width).toBeLessThanOrEqual(PHONE.width);
   await postersLoaded(page);
   await shot(page, '14-templates-after-iphone.png', browserName);
   await page.getByTestId('templates-filter-menu').click();
@@ -344,4 +375,6 @@ test('Templates — after (?design=v2) on iPhone: Filter open + dock', async ({ 
   await mainTop(page);
   await postersLoaded(page);
   await shot(page, '16-templates-after-iphone-3-selected.png', browserName);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });

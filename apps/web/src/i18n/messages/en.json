@@ -7110,7 +7110,7 @@
     "youreIn": "You’re in",
     "returnToFleet": "Return to {name} fleet",
     "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group.",
-    "filterProblems": "Problem"
+    "filterStatus": "Status"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
@@ -8137,6 +8137,8 @@
     "sort": "Sort",
     "view": "View",
     "gridView": "Grid view",
-    "listView": "List view"
+    "listView": "List view",
+    "moreTabs": "More",
+    "sortValue": "Sort: {label}"
   }
 }

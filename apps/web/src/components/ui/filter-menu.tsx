@@ -46,6 +46,12 @@ export interface FilterMenuProps {
   label?: string;
   testId?: string;
   width?: number;
+  /**
+   * What the button counts, when the page shows part of the filter elsewhere
+   * (Screens: a status that has its own tab is shown BY the tab, so the
+   * button does not count it too). Defaults to `activeFilterCount`.
+   */
+  activeCount?: number;
 }
 
 /** How many groups are narrowing the list right now. Exported for tests. */
@@ -59,13 +65,14 @@ export function activeFilterCount(groups: FilterGroup[], value: FilterValue): nu
   return n;
 }
 
-export function FilterMenu({ groups, value, onChange, onClear, label, testId, width = 280 }: FilterMenuProps) {
+export function FilterMenu({ groups, value, onChange, onClear, label, testId, width = 280, activeCount }: FilterMenuProps) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, anchor, close);
-  const count = activeFilterCount(groups, value);
+  const selectedCount = activeFilterCount(groups, value);
+  const count = activeCount ?? selectedCount;
   const visible = groups.filter((g) => g.options.length > 0);
 
   return (
@@ -137,7 +144,7 @@ export function FilterMenu({ groups, value, onChange, onClear, label, testId, wi
             <button
               type="button"
               onClick={() => { onClear(); }}
-              disabled={count === 0}
+              disabled={selectedCount === 0}
               className="min-h-11 sm:min-h-0 px-2 py-1 rounded-md text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:text-slate-300 disabled:hover:bg-transparent"
             >
               {t('ui.clearFilters')}

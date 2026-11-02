@@ -63,6 +63,8 @@ export interface SelectionBarProps {
   testId?: string;
   moreTestId?: string;
   moreMenuTestId?: string;
+  /** Test id on the "N selected" text (both placements). */
+  countTestId?: string;
   /** Extra controls placed before the actions (e.g. a native <select>). */
   extra?: ReactNode;
 }
@@ -138,7 +140,7 @@ export function SelectionToolbar(props: SelectionBarProps) {
       <button type="button" onClick={props.onClear} aria-label={t('ui.clearSelection')} title={t('ui.clearSelection')} className={OVERFLOW_ICON_BUTTON}>
         <X className="w-4 h-4" aria-hidden />
       </button>
-      <p className="text-sm font-bold text-slate-900 mr-2 whitespace-nowrap" aria-live="polite">
+      <p className="text-sm font-bold text-slate-900 mr-2 whitespace-nowrap" aria-live="polite" data-testid={props.countTestId}>
         {props.countLabel ?? t('ui.selectedCount', { count: props.count })}
       </p>
       <SelectAllLink offer={props.selectAll} />
@@ -197,7 +199,7 @@ export function ActionDock(props: SelectionBarProps) {
           <X className="w-5 h-5" aria-hidden />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-900 truncate leading-tight" aria-live="polite">
+          <p className="text-sm font-bold text-slate-900 truncate leading-tight" aria-live="polite" data-testid={props.countTestId}>
             {props.countLabel ?? t('ui.selectedCount', { count: props.count })}
           </p>
           {props.selectAll && <div className="-ml-1 -my-2"><SelectAllLink offer={props.selectAll} /></div>}

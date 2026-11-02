@@ -7110,7 +7110,7 @@
     "youreIn": "当前位置：",
     "returnToFleet": "返回 {name} 的设备总览",
     "groupNameTaken": "已存在名为“{name}”的分组。请换个名称，或将屏幕添加到该分组。",
-    "filterProblems": "问题"
+    "filterStatus": "状态"
   },
   "templatesPage": {
     "summaryYours": "{count} 个模板 · {owned} 个属于你",
@@ -8137,6 +8137,8 @@
     "sort": "排序",
     "view": "视图",
     "gridView": "网格视图",
-    "listView": "列表视图"
+    "listView": "列表视图",
+    "moreTabs": "更多",
+    "sortValue": "排序：{label}"
   }
 }

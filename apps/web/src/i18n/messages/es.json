@@ -7110,7 +7110,7 @@
     "youreIn": "Estás en",
     "returnToFleet": "Volver a la flota de {name}",
     "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo.",
-    "filterProblems": "Problema"
+    "filterStatus": "Estado"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
@@ -8137,6 +8137,8 @@
     "sort": "Ordenar",
     "view": "Vista",
     "gridView": "Vista de cuadrícula",
-    "listView": "Vista de lista"
+    "listView": "Vista de lista",
+    "moreTabs": "Más",
+    "sortValue": "Ordenar: {label}"
   }
 }
