@@ -29,11 +29,12 @@ import java.util.concurrent.atomic.AtomicReference
  * panel is reachable through one exported bound service, exactly the way the
  * vendor's own player reaches it: `bindService("com.ifpdos.opensdk
  * .SERVICE_MANAGER" @ com.seewo.mcuservice)` → `getService("opensdk")` →
- * `getToken(ourPackage)` → `sendMessage(token, json)`. `CmdSetScreenStatus
- * (false)` switches the BACKLIGHT off while Android, this process, the
- * WebView and the native alert watch keep running; `(true)` lights it again.
- * That is a dark panel whose page is ALIVE — the thing the standby-alert hole
- * (`project_standby_alert_hole_2026_10_05`) needed.
+ * `getToken(ourPackage)` → `sendMessage(token, json)`. Sleep and wake are
+ * Goodview's CMS sequence (see [VendorBacklightPolicy]): read the power state,
+ * then `CmdPowerOff(-1)` to sleep / the power key `CmdSendKeyEvent(5000)` to
+ * wake — the OS's own standby, which this process, the WebView and the native
+ * alert watch stay alive through. (Through 1.1.56 this sent the MCU-only
+ * `CmdSetScreenStatus`, which latched GUQs into a blinking-LED state.)
  *
  * ─────────────────────────────────────────────────────────────────────
  * WHAT THIS FILE DOES AND DOES NOT DO
@@ -458,6 +459,11 @@ object VendorBacklightProvider : DisplayControlProvider {
 
         override fun submit(work: () -> Unit): Boolean = runCatching {
             synchronized(lock) { worker.execute { work() } }
+            true
+        }.getOrDefault(false)
+
+        override fun schedule(delayMs: Long, work: () -> Unit): Boolean = runCatching {
+            synchronized(lock) { worker.schedule({ work() }, delayMs, TimeUnit.MILLISECONDS) }
             true
         }.getOrDefault(false)
 
