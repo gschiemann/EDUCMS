@@ -35,6 +35,7 @@ import {
   type ScreenPlaybackDemotion,
   type ScreenPlaybackFile,
 } from '@/hooks/use-api';
+import { isCurrentVideo, type CurrentVideoFile } from './screenOps';
 import { RoleGate } from '@/components/RoleGate';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN'];
@@ -164,6 +165,45 @@ function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: Sc
   );
 }
 
+
+function FileList({ files, testId }: { files: ScreenPlaybackFile[]; testId: string }) {
+  const t = useTranslations('screens.playback');
+  return (
+    <ul className="mt-2 flex flex-col gap-1.5" data-testid={testId}>
+          {files.map((f) => {
+            const v = FILE_VERDICT[f.verdict];
+            const detail =
+              f.verdict === 'insufficient' || f.droppedPct === null
+                ? t('fileChecking', { count: f.samples })
+                : t('fileDetail', { pct: f.droppedPct, minutes: measuredMinutes(f) });
+            const extras = [
+              f.copy === '1080p' ? t('copy1080') : null,
+              f.width && f.height ? `${f.width} × ${f.height}` : null,
+              f.unitConcurrentMax >= 2 ? t('bothSides') : null,
+            ].filter(Boolean);
+            const excludedKey = excludedReasonKey(f);
+            return (
+              <li key={f.sha256} className="flex items-start gap-2 min-w-0" data-playback-verdict={f.verdict}>
+                <span className={`shrink-0 rounded-full px-1.5 py-px text-[10px] font-bold ${TONE[v.tone].chip}`}>{t(v.key)}</span>
+                <span className="min-w-0">
+                  <span className="block text-[11.5px] font-semibold text-slate-700 leading-snug break-all">{f.name}</span>
+                  <span className="block text-[10.5px] font-semibold text-slate-500 leading-snug">
+                    {[detail, ...extras].join(' · ')}
+                  </span>
+                  {excludedKey && (
+                    <span className="block text-[10.5px] font-semibold text-slate-400 leading-snug" data-testid="screen-playback-excluded"
+                      data-excluded-reason={f.excludedReason ?? ''}>
+                      {t('excludedDetail', { count: f.excludedSamples ?? 0, reason: t(excludedKey) })}
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+    </ul>
+  );
+}
+
 /**
  * Which half to draw (2026-10-22). The drawer's Overview shows the verdict
  * and any demotion — one line an operator can act on — and puts the per-file
@@ -172,7 +212,7 @@ function DemotionNotice({ screenId, demotion }: { screenId: string; demotion: Sc
  */
 export type PlaybackCardPart = 'all' | 'summary' | 'files';
 
-export function ScreenPlaybackCard({ screenId, enabled, part = 'all', resolution = null }: { screenId: string; enabled: boolean; part?: PlaybackCardPart; resolution?: string | null }) {
+export function ScreenPlaybackCard({ screenId, enabled, part = 'all', current, resolution = null }: { screenId: string; enabled: boolean; part?: PlaybackCardPart; current?: CurrentVideoFile[]; resolution?: string | null }) {
   const t = useTranslations('screens.playback');
   const q = useScreenPlaybackCapability(screenId, enabled);
   if (!enabled) return null;
@@ -239,41 +279,23 @@ export function ScreenPlaybackCard({ screenId, enabled, part = 'all', resolution
       {showSummary && demotions.map((d) => (
         <DemotionNotice key={d.id} screenId={screenId} demotion={d} />
       ))}
-      {showFiles && data.files.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1.5" data-testid="screen-playback-files">
-          {data.files.map((f) => {
-            const v = FILE_VERDICT[f.verdict];
-            const detail =
-              f.verdict === 'insufficient' || f.droppedPct === null
-                ? t('fileChecking', { count: f.samples })
-                : t('fileDetail', { pct: f.droppedPct, minutes: measuredMinutes(f) });
-            const extras = [
-              f.copy === '1080p' ? t('copy1080') : null,
-              f.width && f.height ? `${f.width} × ${f.height}` : null,
-              f.unitConcurrentMax >= 2 ? t('bothSides') : null,
-            ].filter(Boolean);
-            const excludedKey = excludedReasonKey(f);
-            return (
-              <li key={f.sha256} className="flex items-start gap-2 min-w-0" data-playback-verdict={f.verdict}>
-                <span className={`shrink-0 rounded-full px-1.5 py-px text-[10px] font-bold ${TONE[v.tone].chip}`}>{t(v.key)}</span>
-                <span className="min-w-0">
-                  <span className="block text-[11.5px] font-semibold text-slate-700 leading-snug break-all">{f.name}</span>
-                  <span className="block text-[10.5px] font-semibold text-slate-500 leading-snug">
-                    {[detail, ...extras].join(' · ')}
-                  </span>
-                  {excludedKey && (
-                    <span className="block text-[10.5px] font-semibold text-slate-400 leading-snug" data-testid="screen-playback-excluded"
-                      data-excluded-reason={f.excludedReason ?? ''}>
-                      {t('excludedDetail', { count: f.excludedSamples ?? 0, reason: t(excludedKey) })}
-                    </span>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {showFiles && <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">{t('note')}</p>}
+      {showFiles && data.files.length > 0 && (() => {
+        // Only the file playing NOW is shown; older measurements sit behind "Earlier videos".
+        const isNow = (f: ScreenPlaybackFile) => part !== 'files' || isCurrentVideo({ sha256: f.sha256, assetId: f.assetId, name: f.name }, current);
+        const now = data.files.filter(isNow);
+        const earlier = data.files.filter((f) => !isNow(f));
+        return (
+          <>
+            {now.length > 0 && <FileList files={now} testId="screen-playback-files" />}
+            {earlier.length > 0 && (
+              <details className="mt-2" data-testid="screen-playback-earlier">
+                <summary className="cursor-pointer select-none text-[11px] font-bold text-slate-500">{t('earlierVideos', { count: earlier.length })}</summary>
+                <FileList files={earlier} testId="screen-playback-earlier-files" />
+              </details>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

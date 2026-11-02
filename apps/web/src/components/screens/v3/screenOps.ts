@@ -197,7 +197,10 @@ export interface OpsPlaylist {
     sequenceOrder?: number | null;
     durationMs?: number | null;
     asset?: {
+      id?: string | null;
       fileUrl?: string | null;
+      fileHash?: string | null;
+      originalName?: string | null;
       mimeType?: string | null;
       /** A video's poster frame (`Asset.posterUrl`, 2026-09-11). */
       posterUrl?: string | null;
@@ -842,6 +845,52 @@ export interface ExpectedContent {
    * the screen is told to show. `name` carries its label.
    */
   game?: { id: string; label: string; status: string | null } | null;
+  /**
+   * The video files of the scheduled playlist (the manifest's current items),
+   * so the Technical details can show measurements for the file playing NOW
+   * and nothing older. Absent/empty = no video is scheduled.
+   */
+  videoFiles?: CurrentVideoFile[];
+}
+
+/** One video the screen is scheduled to play — matched by hash, id, url or name. */
+export interface CurrentVideoFile {
+  assetId?: string | null;
+  hash?: string | null;
+  url?: string | null;
+  name?: string | null;
+}
+
+/** The video items of a playlist, in the shape the matchers below read. */
+export function videoFilesOf(pl: OpsPlaylist | undefined): CurrentVideoFile[] {
+  return (pl?.items ?? [])
+    .filter((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'))
+    .map((i) => ({
+      assetId: i.asset?.id ?? null,
+      hash: i.asset?.fileHash ?? null,
+      url: i.asset?.fileUrl ?? null,
+      name: i.asset?.originalName ?? null,
+    }));
+}
+
+/**
+ * Is this measured file one of the videos the screen is playing now? Matches
+ * on hash, asset id, URL, then file name. No scheduled video = nothing is
+ * current, so every older measurement is "earlier" (never shown as live).
+ */
+export function isCurrentVideo(
+  f: { sha256?: string | null; assetId?: string | null; url?: string | null; name?: string | null },
+  current: CurrentVideoFile[] | null | undefined,
+): boolean {
+  if (!current || current.length === 0) return false;
+  const fname = f.name ?? (f.url ? videoSampleName(f.url) : null);
+  return current.some((c) => {
+    if (c.hash && f.sha256 && c.hash === f.sha256) return true;
+    if (c.assetId && f.assetId && c.assetId === f.assetId) return true;
+    if (c.url && f.url && c.url.split(/[?#]/)[0] === f.url.split(/[?#]/)[0]) return true;
+    const names = [c.name, c.url ? videoSampleName(c.url) : null].filter(Boolean);
+    return !!fname && names.includes(fname);
+  });
 }
 
 /** The honest empty answer: nothing scheduled, nothing to preview. */
@@ -982,6 +1031,7 @@ export function deriveExpectedContent(
     thumbnailKind: preview.kind,
     thumbnailTint: preview.tint,
     posterUrl: preview.posterUrl,
+    videoFiles: videoFilesOf(pl),
     viaGroup: !winner.screenId,
     windowClosed: !open,
   };
@@ -1535,6 +1585,11 @@ export interface VideoPlayback {
   atMs?: number | null;
   /** Total time spent paused to buffer, when it paused. */
   stalledMs?: number | null;
+  /** The file the sample was taken on, for matching against the current item. */
+  sha256?: string | null;
+  url?: string | null;
+  /** Pauses to buffer / reported stalls, for the plain one-line verdict. */
+  stalls?: number | null;
 }
 
 /**
@@ -1624,7 +1679,8 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
       size, age ? `${age} ago` : null,
     ].filter(Boolean).join(' · ');
     return { grade: 'native', name: s.sha256 && s.sha256 === native.sha256 ? videoSampleName(s.url) : 'Native video',
-      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age, atMs: nativeAt };
+      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age, atMs: nativeAt, stalledMs: null, stalls: nativeStalls,
+      sha256: typeof native.sha256 === 'string' ? native.sha256 : null, url: s.sha256 && s.sha256 === native.sha256 ? s.url ?? null : null };
   }
   const total = typeof s.totalFrames === 'number' && Number.isFinite(s.totalFrames) ? Math.max(0, Math.floor(s.totalFrames)) : 0;
   if (total <= 0) return null;
@@ -1652,7 +1708,18 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
   // its dropped-frame share, and lift "too short to judge" as well.
   const grade: VideoPlaybackGrade = gradePlaybackSample({ totalFrames: total, droppedFrames: dropped, stalls, stalledMs });
   return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age,
-    atMs: Number.isFinite(atMs as number) ? (atMs as number) : null, stalledMs };
+    atMs: Number.isFinite(atMs as number) ? (atMs as number) : null, stalledMs, stalls, sha256: s.sha256 ?? null, url: s.url ?? null };
+}
+
+/**
+ * Does the last video sample describe what the screen is playing NOW? A live
+ * hardware-video report (fresh by construction) always does; a web sample only
+ * when its file is one of the playlist's current videos.
+ */
+export function videoSampleIsCurrent(video: VideoPlayback | null | undefined, current: CurrentVideoFile[] | null | undefined): boolean {
+  if (!video) return false;
+  if (video.grade === 'native') return true;
+  return isCurrentVideo({ sha256: video.sha256, url: video.url, name: video.name }, current);
 }
 
 /** A web video sample older than this is history, not news (2026-10-22). */
@@ -2098,4 +2165,25 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
   }
 
   return out;
+}
+
+/**
+ * The one plain line for a video sample: a message key under
+ * `screens.drawer` and its values. States only what the counters report
+ * (Player Reliability rule 10) — "reported", never "the picture is fine".
+ */
+export function videoPlainLine(video: VideoPlayback): { key: string; values?: Record<string, number> } {
+  const stalls = video.stalls ?? 0;
+  if (video.grade === 'native') {
+    if (stalls > 0) return { key: 'videoPlainStalls', values: { count: stalls } };
+    if (video.droppedFrames > 0) return { key: 'videoPlainDrops', values: { count: video.droppedFrames } };
+    return { key: 'videoPlainSmooth' };
+  }
+  switch (video.grade) {
+    case 'smooth':
+      return video.droppedFrames === 0 && stalls === 0 ? { key: 'videoPlainSmooth' } : { key: 'videoPlainSmoothFew' };
+    case 'hitching': return { key: 'videoPlainHitching' };
+    case 'stuttering': return { key: 'videoPlainStuttering' };
+    default: return { key: 'videoPlainShort' };
+  }
 }
