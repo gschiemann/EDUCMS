@@ -23,7 +23,8 @@
  */
 import { EmergencyController } from './emergency.controller';
 import { ScreensController } from '../screens/screens.controller';
-import { resolveEmergencyRev } from '../screens/emergency-rev';
+import { resolveEmergencyRev, type EmergencyRevRefusal } from '../screens/emergency-rev';
+import { confirmTenantWideAlert } from '../screens/tenant-emergency-state';
 
 export const DISTRICT = 'district';
 export const SCHOOL = 'school';
@@ -363,8 +364,27 @@ export function makeWorld() {
     return (await manifest(screenId))?.isEmergency === true;
   }
 
+  /** Every descriptor `rev` refused, in order (2026-11-01). */
+  const revRefusals: EmergencyRevRefusal[] = [];
+
+  /**
+   * The revision answer exactly as the endpoint's post-304 pass computes it:
+   * WITH the database confirmation, read through the manifest's own tenant
+   * read against this world's store (2026-11-01 — before then this called
+   * with no deps at all, and a descriptor rode on Redis's word alone).
+   */
   async function rev(screenId: string) {
-    return resolveEmergencyRev({}, screenId, screens.get(screenId)!.tenantId);
+    return resolveEmergencyRev(
+      {
+        redis,
+        confirmTenantAlert: (tenantId: string) => confirmTenantWideAlert(client.tenant, tenantId),
+        onDescriptorRefused: (refusal) => {
+          revRefusals.push(refusal);
+        },
+      },
+      screenId,
+      screens.get(screenId)!.tenantId,
+    );
   }
 
   /** Register a playlist the manifest can resolve; `itemCount` 0 = an empty (lazily created) bucket. */
@@ -383,7 +403,7 @@ export function makeWorld() {
     playlists.set(id, { id, tenantId, name, items });
   }
 
-  return { tenants, groups, screens, overrides, playlists, addPlaylist, auditLogs, published, client, redis, emergency, manifest, isEmergency, rev };
+  return { tenants, groups, screens, overrides, playlists, addPlaylist, auditLogs, published, client, redis, emergency, manifest, isEmergency, rev, revRefusals };
 }
 
 export const SCHOOL_IDS = ['gym-1', 'gym-2', 'lobby', 'office', 'front', 'back'];

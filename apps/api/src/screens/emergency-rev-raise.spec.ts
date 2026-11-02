@@ -17,6 +17,13 @@
  *   • an all-clear must drop it in the same synchronous write as the epoch;
  *   • a descriptor must never outlive the epoch it was minted with;
  *   • a Redis value is shared mutable state and must be parsed defensively.
+ *
+ * 2026-11-01 — a descriptor is now offered only when the DATABASE confirms it
+ * (emergency-rev.ts rule 6; the confirmation itself is pinned in
+ * emergency-rev-confirm.spec.ts). Every `resolveEmergencyRev` here therefore
+ * runs against a database that HAS the alert (`dbHasLockdown`), so a null
+ * below is the gate's doing, never a missing confirmer — and where the gate
+ * stands down first, the database is asserted not to have been asked.
  */
 
 import {
@@ -28,7 +35,9 @@ import {
   resetEmergencyRevForTests,
   resolveEmergencyRev,
   sanitizeAlertDescriptor,
+  type ConfirmedTenantAlert,
   type EmergencyAlertDescriptor,
+  type EmergencyRevDeps,
   type EmergencyRevRedis,
 } from './emergency-rev';
 
@@ -39,6 +48,23 @@ const LOCKDOWN: EmergencyAlertDescriptor = {
   scope: 'tenant',
   expiresAt: null,
 };
+
+/** A database whose tenant-wide alert is the LOCKDOWN above. */
+function dbHasLockdown() {
+  return jest.fn(
+    async (_tenantId: string): Promise<ConfirmedTenantAlert | null> => ({
+      type: 'LOCKDOWN',
+      severity: 'CRITICAL',
+      isDrill: false,
+    }),
+  );
+}
+
+/** Production-shaped deps: the post-304 pass always carries the confirmer. */
+function confirmed(extra: Partial<EmergencyRevDeps> = {}) {
+  const confirmTenantAlert = dbHasLockdown();
+  return { deps: { confirmTenantAlert, ...extra } as EmergencyRevDeps, confirmTenantAlert };
+}
 
 /** In-memory stand-in for the Redis mirror. `down` makes every call throw. */
 function fakeRedis(): EmergencyRevRedis & { store: Map<string, string>; down: boolean } {
@@ -147,7 +173,8 @@ describe('epoch round-trip', () => {
 describe('resolveEmergencyRev — when an alert may ride the response', () => {
   it('serves the descriptor to a screen with no alert on glass', async () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
-    const a = await resolveEmergencyRev({}, 's1', 't1');
+    const { deps } = confirmed();
+    const a = await resolveEmergencyRev(deps, 's1', 't1');
     expect(a.alert).toEqual(LOCKDOWN);
     expect(a.active).toBe(true);
   });
@@ -156,7 +183,8 @@ describe('resolveEmergencyRev — when an alert may ride the response', () => {
     // A screen that just booted (or a restarted API) has no record. Raising
     // is the safe direction; the manifest fetch on the same tick corrects it.
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
-    const a = await resolveEmergencyRev({}, 'never-seen', 't1');
+    const { deps } = confirmed();
+    const a = await resolveEmergencyRev(deps, 'never-seen', 't1');
     expect(a.cold).toBe(true);
     expect(a.alert).toEqual(LOCKDOWN);
   });
@@ -167,24 +195,29 @@ describe('resolveEmergencyRev — when an alert may ride the response', () => {
     // another from a fast path is the mistake this guard exists to prevent.
     noteScreenEmergencyState('s1', { tenantId: 't1', sig: 'sig-evac', active: true });
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
-    const a = await resolveEmergencyRev({}, 's1', 't1');
+    const { deps, confirmTenantAlert } = confirmed();
+    const a = await resolveEmergencyRev(deps, 's1', 't1');
     expect(a.alert).toBeNull();
     expect(a.active).toBe(true); // still reported active — only the RAISE is withheld
+    expect(confirmTenantAlert).not.toHaveBeenCalled(); // the gate stands down before the database
   });
 
   it('serves NOTHING for a group/device-scoped trigger (no descriptor minted)', async () => {
     // That is how the controller calls it: `bump(tid)` with no `alert`, on a
     // tenant that has never had a tenant-wide trigger.
     bumpTenantEmergencyEpoch({}, 't1');
-    const a = await resolveEmergencyRev({}, 's1', 't1');
+    const { deps, confirmTenantAlert } = confirmed();
+    const a = await resolveEmergencyRev(deps, 's1', 't1');
     expect(a.alert).toBeNull();
+    expect(confirmTenantAlert).not.toHaveBeenCalled();
   });
 
   it('stops serving it the moment the all-clear lands', async () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
-    expect((await resolveEmergencyRev({}, 's1', 't1')).alert).toEqual(LOCKDOWN);
+    const { deps } = confirmed();
+    expect((await resolveEmergencyRev(deps, 's1', 't1')).alert).toEqual(LOCKDOWN);
     bumpTenantEmergencyEpoch({}, 't1', { active: false, alert: null });
-    const after = await resolveEmergencyRev({}, 's1', 't1');
+    const after = await resolveEmergencyRev(deps, 's1', 't1');
     expect(after.alert).toBeNull();
     expect(after.active).toBe(false);
   });
@@ -197,23 +230,40 @@ describe('resolveEmergencyRev — when an alert may ride the response', () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
     bumpTenantEmergencyEpoch({}, 't1', { active: false, alert: null });
     bumpTenantEmergencyEpoch({}, 't1'); // group-scoped trigger
-    expect((await resolveEmergencyRev({}, 's1', 't1')).alert).toBeNull();
+    const { deps, confirmTenantAlert } = confirmed();
+    expect((await resolveEmergencyRev(deps, 's1', 't1')).alert).toBeNull();
+    expect(confirmTenantAlert).not.toHaveBeenCalled();
   });
 
   it('never invents a descriptor when none was ever stored', async () => {
-    const a = await resolveEmergencyRev({}, 's1', 't1');
+    const { deps } = confirmed();
+    const a = await resolveEmergencyRev(deps, 's1', 't1');
     expect(a.alert).toBeNull();
     expect(a.active).toBe(false);
   });
 
   it('serves no descriptor to an unpaired screen (no tenant, no epoch)', async () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
-    expect((await resolveEmergencyRev({}, 's1', null)).alert).toBeNull();
+    const { deps, confirmTenantAlert } = confirmed();
+    expect((await resolveEmergencyRev(deps, 's1', null)).alert).toBeNull();
+    expect(confirmTenantAlert).not.toHaveBeenCalled();
   });
 
   it('is tenant-scoped: another tenant\'s alert never leaks', async () => {
     bumpTenantEmergencyEpoch({}, 'tenant-a', { active: true, alert: LOCKDOWN });
-    expect((await resolveEmergencyRev({}, 's1', 'tenant-b')).alert).toBeNull();
+    const { deps, confirmTenantAlert } = confirmed();
+    expect((await resolveEmergencyRev(deps, 's1', 'tenant-b')).alert).toBeNull();
+    expect(confirmTenantAlert).not.toHaveBeenCalled();
+  });
+
+  it('serves nothing WITHOUT a database confirmer — the cheap pre-304 pass', async () => {
+    // 2026-11-01. The endpoint's first pass decides only 304-or-not and must
+    // stay free of Postgres, so it carries no confirmer — and an answer
+    // nobody confirmed is never offered for signing.
+    bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
+    const a = await resolveEmergencyRev({}, 's1', 't1');
+    expect(a.alert).toBeNull();
+    expect(a.active).toBe(true);
   });
 });
 
@@ -226,24 +276,28 @@ describe('EMERGENCY_REV_RAISE kill switch', () => {
 
   it('withholds every descriptor when turned off', async () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
+    const { deps, confirmTenantAlert } = confirmed();
     for (const off of ['off', '0', 'false', 'OFF']) {
       process.env.EMERGENCY_REV_RAISE = off;
-      const a = await resolveEmergencyRev({}, `s-${off}`, 't1');
+      const a = await resolveEmergencyRev(deps, `s-${off}`, 't1');
       expect(a.alert).toBeNull();
       // The revision itself is untouched — the screen still fetches, which is
       // exactly the pre-2026-09-05 delivery path.
       expect(a.active).toBe(true);
     }
+    // Off means off: not even the confirmation read is paid.
+    expect(confirmTenantAlert).not.toHaveBeenCalled();
   });
 
   it('is SUBTRACTIVE: any other value, including a typo, leaves it on', async () => {
     bumpTenantEmergencyEpoch({}, 't1', { active: true, alert: LOCKDOWN });
+    const { deps } = confirmed();
     for (const on of ['', 'on', 'true', '1', 'offf', 'no']) {
       process.env.EMERGENCY_REV_RAISE = on;
-      expect((await resolveEmergencyRev({}, `s-on-${on}`, 't1')).alert).toEqual(LOCKDOWN);
+      expect((await resolveEmergencyRev(deps, `s-on-${on}`, 't1')).alert).toEqual(LOCKDOWN);
     }
     delete process.env.EMERGENCY_REV_RAISE;
-    expect((await resolveEmergencyRev({}, 's-unset', 't1')).alert).toEqual(LOCKDOWN);
+    expect((await resolveEmergencyRev(deps, 's-unset', 't1')).alert).toEqual(LOCKDOWN);
   });
 });
 
@@ -251,12 +305,14 @@ describe('the Redis-down case this exists for', () => {
   it('still raises from the in-process epoch when the mirror is unreachable', async () => {
     // The whole point: this is the 21.6 s scenario. The local write is
     // synchronous and authoritative on the replica that served the trigger,
-    // so the descriptor is available to the very next poll with no Redis.
+    // so the descriptor is available to the very next poll with no Redis —
+    // once the database (which the trigger has committed to) confirms it.
     const redis = fakeRedis();
     redis.down = true;
     bumpTenantEmergencyEpoch({ redis }, 't1', { active: true, alert: LOCKDOWN });
     await settle();
-    const a = await resolveEmergencyRev({ redis }, 's1', 't1');
+    const { deps } = confirmed({ redis });
+    const a = await resolveEmergencyRev(deps, 's1', 't1');
     expect(a.alert).toEqual(LOCKDOWN);
   });
 
