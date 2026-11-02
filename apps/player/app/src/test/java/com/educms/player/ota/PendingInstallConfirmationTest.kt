@@ -54,7 +54,8 @@ class PendingInstallConfirmationTest {
         assertTrue(receiver.contains("recordSelfOtaOutcome(context, selfOtaVc, status, intent.getBooleanExtra(EXTRA_SELF_OTA_USER, false))"))
         val msg = receiver.substring(receiver.indexOf("internal fun needsTapMessage("), receiver.indexOf("private fun reportOtaError("))
         assertTrue("a raised dialog is named", msg.contains("Install dialog"))
-        assertTrue("a staged commit points at the Back menu", msg.contains("press Back"))
+        assertTrue("a staged commit uses the one staged wording", msg.contains("OtaAttemptPolicy.stagedNeedsTapMessage(target)"))
+        assertTrue("…which points at the Back menu", OtaAttemptPolicy.stagedNeedsTapMessage("v1.2.3").contains("press Back, choose Install v1.2.3"))
     }
 
     @Test
@@ -260,10 +261,13 @@ class PendingInstallConfirmationTest {
         val s = src("ota/OtaUpdateWorker.kt")
         assertTrue(s.contains("PendingInstallConfirmation.EXPIRED_STATE"))
         assertTrue(s.contains("abandonOwnSessions"))
-        assertEquals(
-            "every NEEDS_TAP report in the worker must be gated on a fresh dialog",
-            Regex("""reportOtaState\(apiRoot, deviceFingerprint, "NEEDS_TAP"""").findAll(s).count(),
-            Regex("""CheckAction\.KEEP_NEEDS_TAP\) \{\s+(PlayerLogger[^\n]+\n\s+)?reportOtaState\(apiRoot, deviceFingerprint, "NEEDS_TAP"""").findAll(s).count(),
-        )
+        // 1.1.56 — a NEEDS_TAP report either says a dialog is open (only while a
+        // fresh one is), or uses the STAGED wording that points at the Back
+        // menu's Install button (a stalled / refused / unstartable commit).
+        val all = Regex("""reportOtaState\(apiRoot, deviceFingerprint, "NEEDS_TAP"[^\n]*""").findAll(s).map { it.value }.toList()
+        val fresh = Regex("""CheckAction\.KEEP_NEEDS_TAP\) \{\s+(PlayerLogger[^\n]+\n\s+)?reportOtaState\(apiRoot, deviceFingerprint, "NEEDS_TAP"""").findAll(s).count()
+        val staged = all.count { it.contains("OtaAttemptPolicy.stagedNeedsTapMessage(") }
+        assertEquals("every NEEDS_TAP report in the worker is fresh-dialog-gated or staged", all.size, fresh + staged)
+        assertTrue("the dialog wording never rides a staged report", all.filter { it.contains("stagedNeedsTapMessage") }.none { it.contains("needsTapMessage(target)") })
     }
 }

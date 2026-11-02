@@ -207,7 +207,7 @@ test('switching accounts removes the old logo while new branding loads', async (
 test('the map supports one-finger dragging without covering primary tabs or More', async ({ page, browserName }, info) => {
   const state = await setup(page);
   await page.goto(`/${ALPHA}/screens`);
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   const map = page.locator('.leaflet-container');
   await expect(map).toBeVisible();
   await expect(map).toHaveClass(/leaflet-touch-drag/);

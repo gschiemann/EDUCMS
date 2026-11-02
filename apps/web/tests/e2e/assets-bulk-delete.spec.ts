@@ -60,9 +60,9 @@ test('Select all N includes unloaded files; deletion removes the selection toget
   // One select-all pattern (2026-10-04): the box above the tiles selects what is SHOWN (3 of the 60 are
   // loaded here), and "Select all 60" in the bulk bar reaches the files that were never loaded.
   await page.getByRole('checkbox', { name: 'Select all files shown' }).check();
-  await expect(page.getByTestId('asset-bulk-bar')).toContainText('3 assets selected');
+  await expect(page.getByTestId('asset-bulk-bar')).toContainText('3 selected');
   await page.getByTestId('asset-bulk-bar').getByRole('button', { name: 'Select all 60' }).click();
-  await expect(page.getByTestId('asset-bulk-bar')).toContainText('60 assets selected');
+  await expect(page.getByTestId('asset-bulk-bar')).toContainText('60 selected');
   await page.getByTestId('asset-bulk-bar').getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Deleting 60 files' })).toBeVisible();

@@ -317,13 +317,13 @@ describe('§10.3 — no filter results', () => {
   it('the recovery action clears EVERY filter, not just the search', () => {
     stage([tpl(), tpl({ id: 'tpl-2', category: 'PROMOTIONS', name: 'Summer Strength' })]);
     render(<TemplatesPage />);
-    // Turn on a category chip AND a search, so both must clear.
-    fireEvent.click(screen.getByRole('button', { name: /^Promotions/ }));
+    // Turn on a category tab AND a search, so both must clear.
+    fireEvent.click(screen.getByRole('tab', { name: /^Promotions/ }));
     fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'zzz' } });
     fireEvent.click(screen.getByRole('button', { name: /clear search & filters/i }));
     expect(screen.getByText('Club Welcome')).toBeInTheDocument();
     expect(screen.getByLabelText('Search templates')).toHaveValue('');
-    expect(screen.getByRole('button', { name: /^Promotions/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('tab', { name: /^Promotions/ })).toHaveAttribute('aria-selected', 'false');
   });
 });
 
@@ -333,26 +333,26 @@ describe('§5.3 — vertical-aware categories, no empty chips', () => {
   it('renders only categories the tenant\'s own catalog can satisfy', () => {
     stage([tpl({ category: 'LOBBY' }), tpl({ id: 'tpl-2', category: 'PROMOTIONS', name: 'Summer Strength' })]);
     render(<TemplatesPage />);
-    const group = screen.getByRole('group', { name: 'Filter by category' });
+    const group = screen.getByRole('tablist', { name: 'Category' });
     // Label + count are adjacent nodes (the gap is visual), so textContent
     // concatenates them.
-    const chips = within(group).getAllByRole('button').map((b) => b.textContent?.trim());
-    expect(chips).toEqual(['All2', 'Welcome1', 'Promotions1']);
+    const tabs = within(group).getAllByRole('tab').map((b) => b.textContent?.trim());
+    expect(tabs).toEqual(['All2', 'Welcome1', 'Promotions1']);
     // "Menus" has no matching template in this tenant, so it is not shown
-    // — a chip that can never return a result reads as a broken gallery.
-    expect(within(group).queryByRole('button', { name: /menus/i })).not.toBeInTheDocument();
+    // — a tab that can never return a result reads as a broken gallery.
+    expect(within(group).queryByRole('tab', { name: /menus/i })).not.toBeInTheDocument();
   });
 
-  it('never shows a K-12 school-level row to a gym', () => {
+  it('never shows a K-12 school-level filter to a gym (no Filter button at all)', () => {
     stage([tpl()]);
     render(<TemplatesPage />);
-    expect(screen.queryByRole('group', { name: 'Filter by school level' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('templates-filter-menu')).not.toBeInTheDocument();
   });
 
   it('filtering by a category keeps the toolbar in place and filters the grid', () => {
     stage([tpl({ category: 'LOBBY' }), tpl({ id: 'tpl-2', category: 'PROMOTIONS', name: 'Summer Strength' })]);
     render(<TemplatesPage />);
-    fireEvent.click(screen.getByRole('button', { name: /^Promotions/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Promotions/ }));
     expect(screen.getByText('Summer Strength')).toBeInTheDocument();
     expect(screen.queryByText('Club Welcome')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Search templates')).toBeInTheDocument();

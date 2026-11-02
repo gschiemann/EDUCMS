@@ -129,11 +129,71 @@ class UsbPackageTest {
             return (out as UsbImporter.Outcome.Rejected).outcome
         }
         assertEquals("REJECTED_SIGNATURE", rejected(pkg(signWith = "f".repeat(64))))
-        assertEquals("REJECTED", rejected(pkg(tenantId = "other")))
+        assertEquals("REJECTED_TENANT", rejected(pkg(tenantId = "other")))
         val edited = pkg().toMutableMap()
         edited["manifest.json"] = String(edited["manifest.json"]!!).replace("1000", "9999").toByteArray()
         assertEquals("REJECTED_SIGNATURE", rejected(edited))
         assertFalse(File(device, UsbPackage.CACHE_DIR).exists())
+    }
+
+    @Test
+    fun `another organization's package says so — and our own with a bad signature says it could not be verified`() {
+        fun kind(entries: Map<String, ByteArray>): UsbImporter.Reject {
+            val dir = Files.createTempDirectory("s").toFile()
+            val zip = writeZip(File(dir, "x.zip"), entries)
+            val v = UsbBundleSource.open(zip)!!.use { importer().verify(it, key, tenant) }
+            return (v as UsbImporter.Verdict.Rejected).kind
+        }
+        // Signed with ITS key and naming ITS tenant: that is what another organization's download is.
+        assertEquals(UsbImporter.Reject.OTHER_ORG, kind(pkg(tenantId = "other-tenant", signWith = "a".repeat(64))))
+        // Naming us but not signed with our key: edited, or signed before a key rotation.
+        assertEquals(UsbImporter.Reject.UNVERIFIED, kind(pkg(signWith = "a".repeat(64))))
+        val noSig = pkg().toMutableMap().apply { remove("manifest.sig") }
+        assertEquals(UsbImporter.Reject.UNVERIFIED, kind(noSig))
+    }
+
+    @Test
+    fun `the card's playlist name comes from the download's label, else the first playlist`() {
+        assertEquals("GGP", UsbPackage.displayName(JSONObject().put("bundleLabel", "GGP")))
+        assertEquals(
+            "Lobby",
+            UsbPackage.displayName(JSONObject().put("playlists", JSONArray().put(JSONObject().put("name", "Lobby")))),
+        )
+        assertNull(UsbPackage.displayName(JSONObject()))
+        // Control characters never reach the glass.
+        assertEquals("Bad name", UsbPackage.displayName(JSONObject().put("bundleLabel", "Bad\u0007 name\n")))
+        assertEquals(UsbPackage.MAX_LABEL_CHARS, UsbPackage.displayName(JSONObject().put("bundleLabel", "x".repeat(200)))!!.length)
+        val v = UsbBundleSource.open(writeZip(File(stick, "a.zip"), pkg { it.put("bundleLabel", "Front Lobby") }))!!
+            .use { importer().verify(it, key, tenant) } as UsbImporter.Verdict.Ok
+        assertEquals("Front Lobby", v.label)
+    }
+
+    @Test
+    fun `importing again what is already on the screen copies nothing and moves only the import time`() {
+        val zip = writeZip(File(stick, "a.zip"), pkg())
+        UsbBundleSource.open(zip)!!.use { importer().import(it, key, tenant) }
+        val state = File(device, "${UsbPackage.CACHE_DIR}/state.json")
+        val first = JSONObject(state.readText()).getLong("ingestedAt")
+        assertTrue(importer().restamp(first + 60_000L))
+        assertEquals(first + 60_000L, JSONObject(state.readText()).getLong("ingestedAt"))
+        assertEquals("1000", importer().currentVersion())
+        assertFalse(UsbImporter(Files.createTempDirectory("empty").toFile()).restamp())
+    }
+
+    @Test
+    fun `copy progress is reported after every file`() {
+        val zip = writeZip(File(stick, "a.zip"), pkg())
+        val seen = mutableListOf<Pair<Int, Int>>()
+        UsbBundleSource.open(zip)!!.use { importer().import(it, key, tenant) { done, total, _, _ -> seen += done to total } }
+        assertEquals(listOf(0 to 2, 1 to 2, 2 to 2), seen)
+    }
+
+    @Test
+    fun `not enough space says how much is needed`() {
+        val zip = writeZip(File(stick, "a.zip"), pkg())
+        val out = UsbBundleSource.open(zip)!!.use { importer(free = 1000).import(it, key, tenant) } as UsbImporter.Outcome.Rejected
+        assertEquals(UsbImporter.Reject.NO_SPACE, out.kind)
+        assertTrue(out.neededBytes > UsbPackage.SPACE_MARGIN_BYTES)
     }
 
     @Test

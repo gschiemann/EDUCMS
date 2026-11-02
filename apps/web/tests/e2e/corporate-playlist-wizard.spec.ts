@@ -64,7 +64,7 @@ async function openWizard(page: Page) {
   await wizard.getByRole('button', { name: /^Next/ }).click();
   await wizard.getByText('Welcome.png', { exact: true }).click();
   await wizard.getByRole('button', { name: /Next/ }).click();
-  await expect(wizard.getByRole('button', { name: 'All company screens', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(wizard.getByRole('radio', { name: 'All company screens', exact: true })).toHaveAttribute('aria-checked', 'true');
   return { wizard, writes };
 }
 
@@ -130,7 +130,7 @@ test('corporate can filter and publish to one child display on a phone', async (
 
 test('corporate local screens still use the regular schedule publish path', async ({ page }) => {
   const { wizard, writes } = await openWizard(page);
-  await wizard.getByRole('button', { name: 'Local screens', exact: true }).click();
+  await wizard.getByRole('radio', { name: 'Local screens', exact: true }).click();
   await expect(wizard.getByText('Reception screen', { exact: true })).toHaveCount(0);
   await wizard.getByRole('button', { name: /Corporate lobby/ }).click();
   await wizard.getByRole('button', { name: /^Next/ }).click();

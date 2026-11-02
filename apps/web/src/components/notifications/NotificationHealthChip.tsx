@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from 'next-intl';
+import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
 import type { InboxNotification } from './notificationInbox';
 
 /**
@@ -13,12 +14,12 @@ import type { InboxNotification } from './notificationInbox';
  * Sits BESIDE the localized title and body (`useNotificationText`), never in
  * place of them.
  */
-const TONE: Record<string, string> = {
-  offline: 'bg-rose-50 text-rose-700 border-rose-100',
-  'back-online': 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  resting: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  dormant: 'bg-slate-100 text-slate-600 border-slate-200',
-  removed: 'bg-slate-100 text-slate-600 border-slate-200',
+const TONE: Record<string, StatusTone> = {
+  offline: 'danger',
+  'back-online': 'success',
+  resting: 'brand',
+  dormant: 'neutral',
+  removed: 'neutral',
 };
 
 export function NotificationHealthChip({ n }: { n: InboxNotification }) {
@@ -32,16 +33,14 @@ export function NotificationHealthChip({ n }: { n: InboxNotification }) {
   else if (h.state === 'resting' && h.reason) label = (tReason as unknown as (key: string) => string)(h.reason);
   else label = (t as unknown as (key: string) => string)(h.state);
   return (
-    <span
-      data-testid="notification-health"
-      data-state={h.state}
-      className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold ${TONE[h.state] ?? TONE.dormant}`}
-    >
-      <span
-        aria-hidden
-        className={`w-1.5 h-1.5 rounded-full ${h.state === 'offline' ? 'bg-rose-500' : h.state === 'back-online' ? 'bg-emerald-500' : h.state === 'resting' ? 'bg-indigo-400' : 'bg-slate-400'}`}
-      />
-      {label}
+    <span data-state={h.state} className="mt-1 inline-flex">
+      <StatusPill
+        tone={TONE[h.state] ?? 'neutral'}
+        data-testid="notification-health"
+        icon={<span aria-hidden className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />}
+      >
+        {label}
+      </StatusPill>
     </span>
   );
 }
