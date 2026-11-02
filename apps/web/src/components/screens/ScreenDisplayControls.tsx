@@ -604,12 +604,6 @@ export function ScreenDisplayControls({
   // Highlight = the screen's current state (sleep-awake.ts). Neither is lit
   // when the state is unknown. The pressed button spins until the screen's
   // own report agrees; after 30 s without it we say so plainly.
-  const stateLabel =
-    sleepAwake.current === 'sleep'
-      ? t('screens.display.stateSleeping')
-      : sleepAwake.current === 'awake'
-        ? t('screens.display.stateAwake')
-        : t('screens.display.stateUnknown');
   const powerButton = (target: SleepAwakeTarget) => {
     const isCurrent = sleepAwake.current === target;
     const isPending = sleepAwake.pending === target;
@@ -650,20 +644,12 @@ export function ScreenDisplayControls({
         <span className="text-[11px] font-bold text-slate-700">
           {t('screens.display.powerLabel')}
         </span>
-        <span
-          data-testid="power-state"
-          className={`text-[11px] font-semibold ${
-            sleepAwake.current === 'unknown' ? 'text-slate-400' : 'text-slate-600'
-          }`}
-        >
-          {stateLabel}
-        </span>
       </div>
       <div className="flex items-center gap-2" role="group" aria-label={t('screens.display.powerLabel')}>
         {powerButton('sleep')}
         {powerButton('awake')}
       </div>
-      <p className="text-[10px] text-slate-500 leading-snug mt-1.5" aria-live="polite">
+      <p className="text-[10px] text-slate-500 leading-snug mt-1.5 empty:hidden" aria-live="polite">
         {sleepAwake.pending
           ? sleepAwake.pending === 'sleep'
             ? t('screens.display.pendingSleep')
@@ -672,7 +658,7 @@ export function ScreenDisplayControls({
             ? sleepAwake.unconfirmed === 'sleep'
               ? t('screens.display.unconfirmedSleep')
               : t('screens.display.unconfirmedAwake')
-            : t('screens.display.sleepAwakeHint')}
+            : null}
       </p>
     </div>
   );
