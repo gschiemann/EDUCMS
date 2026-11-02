@@ -1,3 +1,4 @@
+import { unitLastAliveAt } from '../../screens/screen-faces';
 /**
  * Customer alert emails — one test per rule that keeps an email from going
  * out (2026-10-23). The PR's suppression table names these tests.
@@ -523,5 +524,21 @@ describe('picture proof that stopped on several screens at once is one cause, no
   });
   it('three screens at the same second but in three different organisations are not a stall of one', () => {
     expect(sharedProofStall(['a', 'b', 'c'].map((o) => ({ screenId: o, orgId: o, startedAtMs: at }))).size).toBe(0);
+  });
+});
+
+describe('back face liveness is the unit\'s (2026-11-02)', () => {
+  // Real row shape: back face stopped 16:39:50, front last seen 16:40:00 (both pre-incident).
+  const back = { lastPingAt: new Date('2026-11-01T16:39:50Z') };
+  it('a face with a fresher front is alive at the front\'s time', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T19:50:00Z'), nativeRuntimeReportAt: null })?.toISOString()).toBe('2026-11-01T19:50:00.000Z');
+  });
+  it('the front\'s native heartbeat counts too', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T16:40:00Z'), nativeRuntimeReportAt: new Date('2026-11-01T19:00:00Z') })?.toISOString()).toBe('2026-11-01T19:00:00.000Z');
+  });
+  it('a silent unit stays at the newest of the stale times; a primary is judged by its own ping', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T16:40:00Z') })?.toISOString()).toBe('2026-11-01T16:40:00.000Z');
+    expect(unitLastAliveAt(back, null)).toEqual(back.lastPingAt);
+    expect(unitLastAliveAt({ lastPingAt: null }, null)).toBeNull();
   });
 });
