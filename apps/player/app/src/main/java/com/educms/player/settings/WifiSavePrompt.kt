@@ -360,7 +360,13 @@ object WifiSavePrompt {
         } else {
             null
         }
-        record(app, id, WifiSetupPolicy.dialogResult(resultCode == Activity.RESULT_OK, perNetwork, upFor))
+        val ok = resultCode == Activity.RESULT_OK
+        record(
+            app,
+            id,
+            WifiSetupPolicy.dialogResult(ok, perNetwork, upFor),
+            alreadySaved = WifiSetupPolicy.dialogAlreadySaved(ok, perNetwork),
+        )
     }
 
     /** Must the background relaunch paths keep off the glass right now? Never during an alert. */
@@ -376,7 +382,7 @@ object WifiSavePrompt {
     }
 
     /** Write the answer down (no secret), drop the stage, and tell the dashboard now. */
-    private fun record(ctx: Context, id: String, code: String) {
+    private fun record(ctx: Context, id: String, code: String, alreadySaved: Boolean = false) {
         val app = ctx.applicationContext
         prefs(app).edit()
             .putString(KEY_RESULT_ID, id)
@@ -389,7 +395,7 @@ object WifiSavePrompt {
             raisedAtMs = 0L
         }
         main.post { if (card != null) hide("answered") }
-        PlayerLogger.i(TAG, "save dialog $id: $code")
+        PlayerLogger.i(TAG, "save dialog $id: $code${if (alreadySaved) " (already saved — Android connects to nothing)" else ""}")
         if (WifiConnect.isLocal(id)) {
             // A person's request from the network screen: tell it, not the dashboard.
             val outcome = when (code) {
@@ -398,7 +404,7 @@ object WifiSavePrompt {
                     DeviceSettingsPolicy.Outcome.Held(DeviceSettingsPolicy.Status.WAITING, code)
                 else -> DeviceSettingsPolicy.Outcome.Error(code)
             }
-            WifiConnect.complete(app, id, outcome)
+            WifiConnect.complete(app, id, outcome, alreadySaved)
             return
         }
         runCatching { HeartbeatService.requestPromptTick(app, "wifi-dialog") }

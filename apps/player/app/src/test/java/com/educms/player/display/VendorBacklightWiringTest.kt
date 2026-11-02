@@ -103,7 +103,8 @@ class VendorBacklightWiringTest {
         // The registry names it in its chains (and calls it only as a
         // DisplayControlProvider). Beyond that, nothing calls INTO the
         // provider except: the emergency interlock (ON direction), the sleep
-        // proof and the alert watch (read-only facts), the bridge API (the
+        // proof, the alert watch and (1.1.59) the setup needs matrix (read-only
+        // facts), the bridge API (the
         // kill-switch config change) and the app's start.
         val root = moduleRoot!!
         val callers = File(root, "src/main/java").walkTopDown()
@@ -113,6 +114,7 @@ class VendorBacklightWiringTest {
             .toSet()
         assertTrue(callers.toString(), callers == setOf(
             "DisplayEmergency.kt", "SleepProof.kt", "NativeAlertWatch.kt", "DisplayControlApi.kt", "PlayerApp.kt",
+            "SetupCeremony.kt",
         ))
         assertTrue(registry.contains("VendorBacklightProvider,"))
         assertFalse(registry.contains("VendorBacklightProvider.apply("))
