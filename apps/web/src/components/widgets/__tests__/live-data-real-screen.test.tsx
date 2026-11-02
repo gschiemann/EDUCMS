@@ -1,7 +1,7 @@
 /**
  * K-12 launch, lane B4, item 4 — Live Data truth (2026-09-27).
  *
- * The Live Data and Transit packs have no feed. They used to put sample
+ * The Live Data and Transit boards listed below have no feed (air quality, road conditions, transit and parking were connected to free public sources and are covered by public-data.test.tsx). They used to put sample
  * quotes, bitcoin prices, "AP · Reuters · BBC" headlines, a Springfield air
  * reading and an SFO departures board on every REAL screen, under claims like
  * "delayed 15 min", "via CoinGecko" and "refreshed every 5 min". The weather
@@ -76,13 +76,9 @@ const SAMPLE: Record<string, string[]> = {
   STOCK_TICKER: ['AAPL', 'NVDA', '232.18', 'delayed 15 min'],
   CRYPTO_TICKER: ['Bitcoin', 'BTC', '96,420', 'CoinGecko'],
   NEWS_HEADLINES: ['Global summit', 'Underdog stuns', 'AP · Reuters · BBC', '12 min ago', 'HEADLINES'],
-  AIR_QUALITY: ['Springfield', 'Moderate', 'PM2.5', '62'],
   FX_RATES: ['Euro', '0.9241', 'Mid-market', 'refreshed every', 'OpenExchangeRates'],
-  TRAFFIC_CAM: ['I-5', 'Exit 168', 'HEAVY', 'Sample data', 'SAMPLE'],
   DEPARTURES_BOARD: ['SFO', "CHICAGO O'HARE", 'AA 1421', 'BOARDING'],
   FLIGHT_STATUS_HERO: ['UA 504', 'SFO', 'JFK', 'United Airlines', '2,576 mi', 'Boeing'],
-  TRANSIT_DEPARTURES: ['EMBARCADERO', 'Caltrain', 'BART', 'SF Zoo'],
-  PARKING_AVAILABILITY: ['SFO', 'Hourly Garage', '$22/day', 'Valet'],
 };
 /** The claims no board may make on any surface — nothing behind them. */
 const FALSE_CLAIMS = ['delayed 15 min', 'via CoinGecko', 'Mid-market', 'refreshed every 5 min', 'via Wise', 'OpenExchangeRates'];
@@ -95,9 +91,7 @@ const TYPED: Record<string, { config: Record<string, unknown>; shows: string[]; 
     config: { items: [{ cat: 'CAMPUS', time: 'Today', headline: 'Robotics team heads to state' }], source: 'Tiger Times' },
     shows: ['Robotics team heads to state', 'Tiger Times', 'HEADLINES'],
   },
-  AIR_QUALITY: { config: { aqi: 41, pm25: 9, location: 'Lincoln High' }, shows: ['41', 'Good', 'Lincoln High', 'PM2.5'], hides: ['PM10', 'NO₂'] },
   FX_RATES: { config: { pairs: [{ code: 'CAD', name: 'Canadian Dollar', flag: '', rate: 1.37, delta: 0.01 }] }, shows: ['CAD', 'Canadian Dollar', '1.3700'] },
-  TRAFFIC_CAM: { config: { cams: [{ name: 'Main St & 5th', note: 'Bus loop', status: 'clear' }], city: 'Our Town' }, shows: ['Traffic · Our Town', 'Main St & 5th', 'CLEAR'] },
   DEPARTURES_BOARD: {
     config: { flights: [{ flight: 'BUS 7', time: '15:10', dest: 'NORTH CAMPUS', gate: 'B', status: 'on time' }], airport: 'Bus Loop' },
     shows: ['BUS LOOP', 'BUS 7', 'NORTH CAMPUS', 'ON TIME'],
@@ -107,7 +101,6 @@ const TYPED: Record<string, { config: Record<string, unknown>; shows: string[]; 
     config: { lines: [{ line: '12', color: '#f00', toward: 'Downtown', minutes: [4, '19'] }], station: 'Main St' },
     shows: ['NEXT TRAINS · MAIN ST', 'Downtown', '19'],
   },
-  PARKING_AVAILABILITY: { config: { lots: [{ name: 'Student Lot', note: 'North', total: 200, avail: 35, rate: 'Free' }], facility: 'Campus' }, shows: ['PARKING · CAMPUS', 'Student Lot', '35', '/ 200 open'] },
 };
 
 const BOARDS = ALL_V2_WIDGETS.filter((w) => w.type in SAMPLE);
@@ -173,21 +166,11 @@ describe('Live Data + Transit boards on a real screen', () => {
     const p = mount(hero, { flight: 'DL 88' }, 'player');
     expect(textIn(p.container)).not.toContain('SFO');
   });
-
-  it('an air reading someone changed from the old seed is theirs, even where it matches a sample number', () => {
-    const air = BOARDS.find((w) => w.type === 'AIR_QUALITY')!.Component as AnyWidget;
-    const { container } = mount(air, { location: 'Springfield, IL', aqi: 40, pm25: 14, pm10: 28, o3: 52, no2: 12 }, 'player');
-    const text = textIn(container);
-    expect(text).toContain('40');
-    expect(text).toContain('PM10');
-    // The location is still the seed's — nobody typed it.
-    expect(text).not.toContain('Springfield');
-  });
 });
 
 describe('a freshly dropped Live Data / Transit board', () => {
   const dropped = listVariants({ widgetType: 'LIVE_DATA' });
-  const SETTINGS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange']);
+  const SETTINGS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange', 'dataMode', 'dataLayout', 'title', 'location', 'stationId', 'airport']);
 
   it('is registered for every board', () => {
     expect(dropped.length).toBeGreaterThanOrEqual(BOARDS.length);

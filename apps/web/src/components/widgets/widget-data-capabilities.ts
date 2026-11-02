@@ -5,6 +5,19 @@ export interface WidgetDataCapability {
   label: string;
   detail: string;
 }
+/** Shared mode inference keeps existing authored boards manual. */
+export function isAutomaticPublicData(config: Record<string, any>): boolean {
+ if(config.variant==='airport-conditions')return true;
+ if(config.dataMode==='manual')return false;
+ const automatic=config.dataMode==='automatic';
+ switch(config.variant){
+  case 'air-quality':return automatic||config.aqi==null;
+  case 'transit-departures':return automatic||(!config.lines?.length&&!config.station&&!config.agency);
+  case 'parking-availability':return automatic||(!config.lots?.length&&!config.facility);
+  case 'traffic-cam':return automatic||(!config.cams?.length&&!config.city);
+  default:return false;
+ }
+}
 const MANUAL: Record<string, string> = {
   "sports-scoreboard":
     "Scores are entered here. For your live venue feed, use the connected scoreboard widgets.",
@@ -34,6 +47,11 @@ export function widgetDataCapability(
   variant?: string,
   config?: Record<string, any>,
 ): WidgetDataCapability | undefined {
+  if (variant === 'traffic-cam' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.cams?.length && !config?.city))) return {mode:'automatic',label:'Automatic California road reports',detail:'Free California Highway Patrol incidents within 50 km. California only; no cameras, travel-time estimates or nationwide coverage. Source checked every minute.'};
+  if (variant === 'air-quality' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && config?.aqi == null))) return {mode:'automatic',label:'Automatic hourly air quality',detail:'Free EPA AirNow preliminary observations for a U.S. reporting area. Choose a city or ZIP. Pollutant values are AQI, not concentrations; source category colors are preserved.'};
+  if (variant === 'parking-availability' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.lots?.length && !config?.facility))) return {mode:'automatic',label:'Automatic parking reports',detail:'Free LADOT / LA ExpressPark street-meter states near a Los Angeles location. Reports older than 30 minutes are unknown. This is not a private-garage sensor connection.'};
+  if (variant === 'airport-conditions') return {mode:'automatic',label:'Automatic airport conditions',detail:'Free FAA airport notices and delays. This is airport-wide information, not individual flight status; check the airline for your flight.'};
+  if (variant === 'transit-departures' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.lines?.length && !config?.station && !config?.agency))) return {mode:'automatic',label:'Automatic transit predictions',detail:'Free MassDOT / MBTA real-time predictions for Boston-area stations. Select a station. Unavailable predictions never become an invented arrival.'};
   if (
     variant === "fx-rates" &&
     (config?.dataMode === "automatic" ||
