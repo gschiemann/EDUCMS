@@ -87,7 +87,7 @@ object NativePowerControl {
         }
         if (!beginAttempt(ctx, prefs, command)) return
         val result = runCatching {
-            DisplayControlRegistry.apply(ctx.applicationContext, DisplayAction.Wake, revertAfterMs = null, wakeSource = "power-on")
+            DisplayControlRegistry.apply(ctx.applicationContext, DisplayAction.Wake, revertAfterMs = null, wakeSource = "power-on", manual = true)
         }.getOrNull()
         // Wake alone can leave the OEM launcher visible. Bring our existing
         // task forward only for this explicit, persisted operator command.

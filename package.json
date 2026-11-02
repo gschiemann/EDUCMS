@@ -33,6 +33,7 @@
     "a11y:ci": "pnpm --filter web run a11y:ci",
     "lhci": "pnpm --filter web run lhci",
     "mobile-perf-guard": "node apps/web/tools/check-mobile-perf.cjs",
+    "pill-guard": "node apps/web/tools/check-pill-rules.cjs",
     "extract-zip-proof": "node scripts/check-extract-zip-unreachable.cjs",
     "scene-css-guard": "node apps/web/tools/check-scene-css.cjs",
     "widget-truth-guard": "node apps/web/tools/check-widget-truth.cjs",

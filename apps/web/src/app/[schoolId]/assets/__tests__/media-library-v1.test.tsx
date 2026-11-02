@@ -239,21 +239,25 @@ describe('Media Library v1 — the calm default view', () => {
     expect(rtl.getByRole('dialog', { name: 'Generate an image with AI' })).toBeInTheDocument();
   });
 
-  it('the upload strip states the drop affordance and the real accepted formats', () => {
+  it('the upload hint is one quiet line; its tooltip lists the real accepted formats (2026-11-02)', () => {
     mount();
-    const strip = rtl.getByTestId('upload-strip');
-    expect(strip).toHaveTextContent('Drop files anywhere to upload');
+    const hint = rtl.getByTestId('upload-hint');
+    expect(hint).toHaveTextContent('Drag files onto this page to upload · video up to 500 MB');
+    // The permanent drop box is gone; the full list moved to the tooltip.
+    expect(rtl.queryByTestId('upload-strip')).not.toBeInTheDocument();
+    const formats = hint.getAttribute('title') ?? '';
     // 2026-10-05: the page states what storage takes TODAY — 500 MB (the Supabase
     // project limit the API clamps its 2 GB code ceiling to). It said "2 GB" and
     // then refused a 700 MB file with "Max size is 500 MB" (media beta test, L6).
     // 2026-10-05: the formats are LISTED — read from the same table the uploader
     // and the API enforce — and MOV / HEIC are among them (converted for screens).
-    expect(strip).toHaveTextContent(
+    expect(formats).toContain(
       'Photos (JPG, PNG, WebP, GIF, BMP, ICO, HEIC), video (MP4, M4V, WebM, MOV, AVI, MKV, WMV, MPG, 3GP, TS), audio (MP3, OGG, WAV, M4A) and PDF · video up to 500 MB',
     );
-    expect(strip).toHaveTextContent('iPhone photos (HEIC) and videos (MOV) are converted automatically');
-    // The uploader rejects SVG, so the strip must never advertise it (§6).
-    expect(strip).not.toHaveTextContent(/svg/i);
+    expect(formats).toContain('iPhone photos (HEIC) and videos (MOV) are converted automatically');
+    // The uploader rejects SVG, so the hint must never advertise it (§6).
+    expect(formats).not.toMatch(/svg/i);
+    expect(hint).not.toHaveTextContent(/svg/i);
   });
 
   it('the file chooser offers every format the table takes — MOV, MKV, HEIC … — and never SVG (2026-10-05)', () => {
@@ -391,10 +395,10 @@ describe('Media Library v1 — selection bar (§13)', () => {
     mount();
     fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Recovery-Lounge-August.jpg' }));
     const bar = rtl.getByTestId('asset-bulk-bar');
-    expect(bar).toHaveTextContent('1 asset selected');
+    expect(bar).toHaveTextContent('1 selected');
 
     fireEvent.click(rtl.getByRole('checkbox', { name: 'Select Trainer-Tips-01.mp4' }));
-    expect(rtl.getByTestId('asset-bulk-bar')).toHaveTextContent('2 assets selected');
+    expect(rtl.getByTestId('asset-bulk-bar')).toHaveTextContent('2 selected');
 
     fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Clear selection/ }));
     expect(rtl.queryByTestId('asset-bulk-bar')).not.toBeInTheDocument();
@@ -456,20 +460,20 @@ describe('Media Library v1 — pagination footer (§17)', () => {
   it('type-chip counts are withheld while the library is only partly loaded (§7 truth rule)', () => {
     assetsResponse = { assets: ASSETS, total: 148 };
     mount();
-    const filters = rtl.getByRole('group', { name: 'Filter by media type' });
+    const filters = rtl.getByRole('tablist', { name: 'Media type' });
     // The All chip can show the server's real total…
-    expect(within(filters).getByRole('button', { name: /All 148/ })).toBeInTheDocument();
+    expect(within(filters).getByRole('tab', { name: /All 148/ })).toBeInTheDocument();
     // …but a per-type count would describe only the loaded page, so it is absent.
-    expect(within(filters).getByRole('button', { name: /^Images$/ })).toBeInTheDocument();
+    expect(within(filters).getByRole('tab', { name: /^Images$/ })).toBeInTheDocument();
   });
 
   it('type-chip counts appear once the whole library is in hand', () => {
     assetsResponse = { assets: ASSETS, total: 4 };
     mount();
-    const filters = rtl.getByRole('group', { name: 'Filter by media type' });
-    expect(within(filters).getByRole('button', { name: /Images 2/ })).toBeInTheDocument();
-    expect(within(filters).getByRole('button', { name: /Videos 1/ })).toBeInTheDocument();
-    expect(within(filters).getByRole('button', { name: /Documents 1/ })).toBeInTheDocument();
+    const filters = rtl.getByRole('tablist', { name: 'Media type' });
+    expect(within(filters).getByRole('tab', { name: /Images 2/ })).toBeInTheDocument();
+    expect(within(filters).getByRole('tab', { name: /Videos 1/ })).toBeInTheDocument();
+    expect(within(filters).getByRole('tab', { name: /Documents 1/ })).toBeInTheDocument();
   });
 });
 
@@ -934,12 +938,12 @@ describe('a new folder opens itself', () => {
     };
     createFolderResult = { id: 'f2' };
     mount();
-    expect(rtl.getByRole('button', { name: /^All \d+$/ })).toHaveTextContent('2');
+    expect(rtl.getByRole('tab', { name: /^All \d+$/ })).toHaveTextContent('2');
 
     await createFolder();
 
-    expect(rtl.getByRole('button', { name: /^All \d+$/ })).toHaveTextContent('1');
-    expect(rtl.getByRole('button', { name: /^Images/ })).toHaveTextContent('1');
+    expect(rtl.getByRole('tab', { name: /^All \d+$/ })).toHaveTextContent('1');
+    expect(rtl.getByRole('tab', { name: /^Images/ })).toHaveTextContent('1');
   });
 
   it('closes the name box only once the folder really exists', async () => {
