@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusPill } from '@/components/ui/status-pill';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, AlertTriangle, CheckCircle2, TrendingUp, Database, Zap, Activity } from 'lucide-react';
@@ -250,9 +251,9 @@ export default function EfficiencyPage() {
                 <Zap className="w-4 h-4 text-amber-500" />
                 <h2 className="text-sm font-bold text-slate-900">Egress Budget</h2>
                 {data.anomaly.triggered && (
-                  <span className="ml-auto text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                  <StatusPill tone="danger" className="ml-auto">
                     Anomaly: {data.anomaly.ratio}x baseline
-                  </span>
+                  </StatusPill>
                 )}
               </div>
               <EgressBar usedPct={data.egress.usedPct} budgetGb={data.egress.budgetGb} />

@@ -267,6 +267,6 @@ describe('§15 — reachability', () => {
     const { container } = render(<NotificationsPage />);
     const controls = Array.from(container.querySelectorAll('button'));
     expect(controls.length).toBeGreaterThan(5);
-    for (const c of controls) expect(c.className).toMatch(/min-h-\[(4[4-9]|[5-9]\d)px\]/);
+    for (const c of controls) expect(c.className).toMatch(/min-h-(\[(4[4-9]|[5-9]\d)px\]|11)/);
   });
 });

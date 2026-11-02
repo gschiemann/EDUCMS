@@ -17,6 +17,14 @@ class NetworkPolicyTest {
     private val fine = setOf(WifiScanPolicy.PERMISSION_FINE, WifiScanPolicy.PERMISSION_COARSE)
     private val coarse = setOf(WifiScanPolicy.PERMISSION_COARSE)
 
+    @Test
+    fun locationIsAskedOnlyAtFirstLaunch() {
+        assertTrue(WifiScanPolicy.shouldAskAtLaunch(emptySet(), askedBefore = false))
+        assertFalse(WifiScanPolicy.shouldAskAtLaunch(emptySet(), askedBefore = true))
+        assertFalse(WifiScanPolicy.shouldAskAtLaunch(fine, askedBefore = false))
+        assertTrue(WifiScanPolicy.shouldAskAtLaunch(coarse, askedBefore = false))
+    }
+
     private fun access(
         sdk: Int = 30,
         hasWifi: Boolean = true,

@@ -52,6 +52,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   // ── the "Full settings" popover's own reads/writes (2026-09-01) ──
   // It mounts INSIDE this surface now instead of behind a hop into the classic
   // page, so its hooks have to exist in this mock or the module throws on load.
@@ -241,36 +242,58 @@ describe('grouped table (§8)', () => {
   });
 });
 
-describe('filter chips (§7)', () => {
-  it('renders an All chip so there is always a path back to the full fleet', () => {
+describe('status filter: tabs + one Filter menu (§7, pill cleanup 2026-11-02)', () => {
+  const tabs = () => within(rtl.getByRole('tablist', { name: 'Filter screens' }));
+  const openFilter = () => fireEvent.click(rtl.getByTestId('screens-filter-menu'));
+  const filterOption = (name: RegExp) => within(rtl.getByTestId('screens-filter-menu-panel')).getByRole('radio', { name });
+
+  it('renders an All tab so there is always a path back to the full fleet', () => {
     renderPage();
-    const all = rtl.getByRole('button', { name: /^All/ });
-    expect(all).toHaveAttribute('aria-pressed', 'true');
+    expect(tabs().getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('is single-select: picking one chip releases the previous one', () => {
+  it('is single-select: picking one tab releases the previous one', () => {
     renderPage();
-    const chips = rtl.getByRole('group', { name: 'Filter screens' });
-    fireEvent.click(within(chips).getByRole('button', { name: /Needs attention/ }));
-    expect(within(chips).getByRole('button', { name: /Needs attention/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(chips).getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(within(chips).getByRole('button', { name: /^Offline/ }));
-    expect(within(chips).getByRole('button', { name: /Needs attention/ })).toHaveAttribute('aria-pressed', 'false');
-    expect(within(chips).getByRole('button', { name: /^Offline/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(tabs().getByRole('tab', { name: /Needs attention/ }));
+    expect(tabs().getByRole('tab', { name: /Needs attention/ })).toHaveAttribute('aria-selected', 'true');
+    expect(tabs().getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(tabs().getByRole('tab', { name: /^Offline/ }));
+    expect(tabs().getByRole('tab', { name: /Needs attention/ })).toHaveAttribute('aria-selected', 'false');
+    expect(tabs().getByRole('tab', { name: /^Offline/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('a status that has a tab, picked in Filter, underlines that tab and adds no Filter count', () => {
+    renderPage();
+    openFilter();
+    fireEvent.click(filterOption(/^Offline/));
+    expect(tabs().getByRole('tab', { name: /^Offline/ })).toHaveAttribute('aria-selected', 'true');
+    expect(rtl.getByTestId('screens-filter-menu')).toHaveAccessibleName(/none active/);
+    expect(filterOption(/^Offline/)).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('a status with no tab underlines NO tab and shows as the Filter count', () => {
+    renderPage();
+    openFilter();
+    fireEvent.click(filterOption(/^Content behind/));
+    for (const tab of tabs().getAllByRole('tab')) expect(tab).toHaveAttribute('aria-selected', 'false');
+    expect(rtl.getByTestId('screens-filter-menu')).toHaveAccessibleName(/1 active/);
+    // Clear in the menu goes back to All.
+    fireEvent.click(within(rtl.getByTestId('screens-filter-menu-panel')).getByRole('button', { name: 'Clear filters' }));
+    expect(tabs().getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('filtering to Needs attention hides the healthy screens, and All brings them back', () => {
     renderPage();
-    fireEvent.click(rtl.getByRole('button', { name: /Needs attention/ }));
+    fireEvent.click(tabs().getByRole('tab', { name: /Needs attention/ }));
     expect(rtl.queryByText('Mobile A-Frame')).not.toBeInTheDocument();
     expect(rtl.getByText(/Showing 2 of 6 screens/)).toBeInTheDocument();
-    fireEvent.click(rtl.getByRole('button', { name: /^All/ }));
+    fireEvent.click(tabs().getByRole('tab', { name: /^All/ }));
     expect(rtl.getAllByText('Mobile A-Frame').length).toBeGreaterThan(0);
   });
 
   it('honours a preselected filter from a dashboard exception link', () => {
     renderPage({ deepLinkFilter: 'attention' });
-    expect(rtl.getByRole('button', { name: /Needs attention/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(tabs().getByRole('tab', { name: /Needs attention/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('no results offers a way out instead of a dead end', () => {
@@ -281,9 +304,9 @@ describe('filter chips (§7)', () => {
     expect(rtl.getAllByText('G43').length).toBeGreaterThan(0);
   });
 
-  it('search composes with the selected chip', () => {
+  it('search composes with the selected status', () => {
     renderPage();
-    fireEvent.click(rtl.getByRole('button', { name: /Needs attention/ }));
+    fireEvent.click(within(rtl.getByRole('tablist', { name: 'Filter screens' })).getByRole('tab', { name: /Needs attention/ }));
     fireEvent.change(rtl.getByLabelText(/Search screens/i), { target: { value: 'Back' } });
     expect(rtl.getAllByText('Back Office').length).toBeGreaterThan(0);
     expect(rtl.queryByText('G43')).not.toBeInTheDocument();
@@ -681,15 +704,18 @@ describe('deep link + rollback', () => {
   });
 });
 
-describe('filter chips carry only what has screens behind it (2026-09-14)', () => {
-  it('a problem chip with a zero count is not rendered; All and Needs attention always are', () => {
-    // Nothing offline → no Offline chip. The push-delayed and behind screens remain.
+describe('the status filter carries only what has screens behind it (2026-09-14)', () => {
+  it('Offline has no tab at zero; an empty problem is disabled in Filter; All and Needs attention always show', () => {
+    // Nothing offline → no Offline tab. The push-delayed and behind screens remain.
     renderPage({ screens: FLEET.filter((s: any) => s.status !== 'OFFLINE') });
-    const chips = within(rtl.getByRole('group', { name: 'Filter screens' }));
-    expect(chips.getByRole('button', { name: /^All/ })).toBeInTheDocument();
-    expect(chips.getByRole('button', { name: /Needs attention/ })).toBeInTheDocument();
-    expect(chips.queryByRole('button', { name: /Offline/ })).not.toBeInTheDocument();
-    expect(chips.getByRole('button', { name: /Content behind/ })).toBeInTheDocument();
+    const tabs = within(rtl.getByRole('tablist', { name: 'Filter screens' }));
+    expect(tabs.getByRole('tab', { name: /^All/ })).toBeInTheDocument();
+    expect(tabs.getByRole('tab', { name: /Needs attention/ })).toBeInTheDocument();
+    expect(tabs.queryByRole('tab', { name: /Offline/ })).not.toBeInTheDocument();
+    fireEvent.click(rtl.getByTestId('screens-filter-menu'));
+    const panel = within(rtl.getByTestId('screens-filter-menu-panel'));
+    expect(panel.getByRole('radio', { name: /Content behind/ })).toBeEnabled();
+    expect(panel.getByRole('radio', { name: /^Offline/ })).toBeDisabled();
   });
 });
 

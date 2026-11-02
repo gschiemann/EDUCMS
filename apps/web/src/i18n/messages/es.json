@@ -504,7 +504,8 @@
     "phoneSetupSignedInTitle": "Ya iniciaste sesión",
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Mi cuenta.",
     "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
-    "security": "Seguridad"
+    "security": "Seguridad",
+    "requestInfo": "Solicitar información"
   },
   "account": {
     "title": "Mi cuenta",
@@ -3060,11 +3061,16 @@
       "evidenceDeclared": "Lo que el navegador de esta pantalla dice que puede reproducir",
       "evidenceClassDefault": "Habitual para este modelo",
       "evidenceUnknown": "Aún no hay datos",
-      "cap2160": "Video hasta 4K",
-      "cap1080": "Video hasta 1080p",
+      "panel1080": "Pantalla de 1080p",
+      "panel4k": "Pantalla 4K",
+      "panelSize": "Pantalla de {size}",
+      "sends1080": "Los videos se reproducen a 1080p en esta pantalla",
+      "sends4k": "Los videos se reproducen a 4K completo en esta pantalla",
+      "cap2160": "El decodificador de esta pantalla maneja video hasta 4K",
+      "cap1080": "El decodificador de esta pantalla maneja video hasta 1080p",
       "capNone": "Aún no hay un tamaño de video comprobado sin cortes",
-      "concurrencyOne": "Un video a la vez en esta pantalla",
-      "concurrencyMany": "{count} videos a la vez en esta pantalla",
+      "concurrencyOne": "El decodificador reproduce un video a la vez",
+      "concurrencyMany": "El decodificador puede reproducir {count} videos a la vez",
       "stale": "Medido antes de la última actualización del reproductor; se volverá a comprobar.",
       "fileSmooth": "Fluido",
       "fileHitching": "Se traba",
@@ -3174,10 +3180,43 @@
       "details": "Detalles del dispositivo",
       "sleepHeading": "Cómo funciona el reposo",
       "sleepHistory": "Actividad de reposo reciente"
+    },
+    "usb": {
+      "title": "Unidad USB",
+      "loading": "Cargando…",
+      "loadFailed": "No se pudo cargar lo que esta pantalla hizo con unidades USB.",
+      "none": "Aún no se ha informado ninguna unidad USB.",
+      "note": "Según lo informado por la pantalla. Los reproductores anteriores a 1.1.55 solo informan una importación terminada o rechazada.",
+      "detected": "Se conectó una unidad USB",
+      "needsAccess": "Necesita permiso para leer unidades USB: en la pantalla, elija Permitir",
+      "noAccessPage": "Esta pantalla no tiene ningún ajuste que le permita leer unidades USB",
+      "noPackage": "No hay ninguna lista de VenueOS en la unidad",
+      "waitingKey": "Debe conectarse a internet una vez antes de poder comprobar una lista desde USB",
+      "otherOrg": "La unidad tenía una lista de otra organización",
+      "unverified": "No se pudieron verificar los archivos de la unidad",
+      "noSpace": "No hay espacio suficiente en la pantalla para la lista",
+      "unreadable": "No se pudo leer la unidad",
+      "rejected": "Se rechazó la lista de la unidad",
+      "imported": "Lista importada desde la unidad",
+      "unknown": "Informó {code}"
     }
   },
   "selection": {
     "selectItem": "Seleccionar {name}",
+    "clearSelection": "Borrar selección"
+  },
+  "assetsLibV2": {
+    "uploadHint": "Arrastra archivos a esta página para subirlos · vídeo de hasta {video}",
+    "dropTitle": "Suelta para subir",
+    "dropSub": "Te preguntaremos en qué carpeta guardarlos",
+    "typeTabs": "Tipo de medio",
+    "sort": "Ordenar",
+    "moreActions": "Más acciones",
+    "selectionActions": "Acciones de la selección",
+    "selectedCount": "{count} seleccionados",
+    "createPlaylist": "Crear lista",
+    "move": "Mover",
+    "moveToFolder": "Mover a carpeta",
     "clearSelection": "Borrar selección"
   },
   "assetsLib": {
@@ -4923,7 +4962,16 @@
     "periodOverNext": "Siguiente periodo",
     "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3).",
     "readStale": "Se perdió el contacto con el partido: la última actualización fue hace {seconds} s. Los relojes aquí se detienen hasta que vuelva la conexión.",
-    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda."
+    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda.",
+    "cueTargetLabel": "Enviar a",
+    "cueTargetAria": "Enviar las celebraciones a",
+    "cueTargetAll": "Todo",
+    "cueTargetBoard": "Marcador",
+    "cueTargetRibbon": "Cinta",
+    "cueTargetRibbonHint": "texto de 2,5 s",
+    "statusConfigured": "Configurado",
+    "statusArmed": "Preparado",
+    "statusOnAir": "Al aire"
   },
   "studentPrivacy": {
     "title": "Información de estudiantes en pantallas públicas",
@@ -5327,7 +5375,8 @@
     "regenerate": "Regenerar…",
     "regenerateTitle": "Revocar y reemplazar: todas las credenciales ya instaladas para este partido dejan de funcionar y se emite un token nuevo",
     "confirmWarning": "Esto invalida todas las credenciales ya instaladas para este partido (incluido el token original) en cuanto confirmes: tu proveedor deja de sincronizar hasta que pegues el nuevo.",
-    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token."
+    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token.",
+    "vendorAria": "Proveedor del marcador"
   },
   "sportsConsoleSetup": {
     "title": "Consola del marcador",
@@ -6980,7 +7029,8 @@
       "pricing": "Precios",
       "help": "Ayuda",
       "signIn": "Iniciar sesión",
-      "startTrial": "Prueba gratis"
+      "startTrial": "Prueba gratis",
+      "requestInfo": "Solicitar información"
     }
   },
   "usbDelivery": {
@@ -7093,7 +7143,8 @@
     "notInGroup": "Sin grupo",
     "youreIn": "Estás en",
     "returnToFleet": "Volver a la flota de {name}",
-    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo."
+    "groupNameTaken": "Ya existe un grupo llamado «{name}». Elige otro nombre o añade pantallas a ese grupo.",
+    "filterStatus": "Estado"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# plantilla} other {# plantillas}} · {owned, plural, one {# es tuya} other {# son tuyas}}",
@@ -7121,7 +7172,18 @@
       "newest": "Más recientes",
       "oldest": "Más antiguas"
     },
-    "showMore": "Mostrar {count} más"
+    "showMore": "Mostrar {count} más",
+    "filterLevel": "Nivel escolar",
+    "filterHoliday": "Festividad",
+    "categoryTabs": "Categoría",
+    "selectTemplate": "Seleccionar {name}",
+    "selectAllShown": "Seleccionar todas tus plantillas mostradas",
+    "duplicate": "Duplicar",
+    "export": "Exportar",
+    "delete": "Eliminar",
+    "bulkDeleteTitle": "¿Eliminar {count, plural, one {# plantilla} other {# plantillas}}?",
+    "bulkDeleteBody": "Las plantillas que se muestran en pantallas se omiten: elimínalas una por una para ver dónde se reproducen.",
+    "bulkDeleteDone": "{deleted, plural, one {# plantilla eliminada} other {# plantillas eliminadas}}{skipped, plural, =0 {} one {, # omitida (en uso)} other {, # omitidas (en uso)}}"
   },
   "acceptInvite": {
     "title": "Acepta tu invitación",
@@ -7390,6 +7452,11 @@
         "namePlaceholder": "Iglesia Comunidad de Gracia",
         "where": "todo tu ministerio"
       }
+    },
+    "closed": {
+      "title": "El registro aún no está abierto",
+      "body": "VenueOS no acepta registros en línea por ahora. Escríbanos y le enviaremos más información.",
+      "cta": "Solicitar información por correo"
     }
   },
   "notifications": {
@@ -8094,5 +8161,42 @@
     "upload": "Subir nuevo",
     "loading": "Cargando biblioteca…",
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
+  },
+  "playerMenu": {
+    "importFromUsb": "Importar desde USB"
+  },
+  "ui": {
+    "filter": "Filtrar",
+    "filtersActive": "{count, plural, one {# filtro} other {# filtros}}",
+    "filterButton": "Filtrar, {count, plural, =0 {ninguno activo} one {# activo} other {# activos}}",
+    "clearFilters": "Quitar filtros",
+    "clear": "Quitar",
+    "moreActions": "Más acciones",
+    "selectedCount": "{count} seleccionados",
+    "selectAll": "Seleccionar los {count}",
+    "clearSelection": "Borrar selección",
+    "selectionActions": "Acciones de la selección",
+    "sort": "Ordenar",
+    "view": "Vista",
+    "gridView": "Vista de cuadrícula",
+    "listView": "Vista de lista",
+    "moreTabs": "Más",
+    "sortValue": "Ordenar: {label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Estilo visual",
+    "intakePalette": "Origen de los colores",
+    "intakeBackground": "Estilo de fondo",
+    "mediaKind": "Tipo de contenido",
+    "templateKind": "Origen de la plantilla",
+    "aiMenu": "Opciones de reescritura con IA",
+    "opRewrite": "Reescribir",
+    "opShorten": "Acortar",
+    "opFitToZone": "Ajustar a la zona",
+    "opExpand": "Ampliar",
+    "opPunch": "Dar más fuerza",
+    "opFixGrammar": "Corregir gramática",
+    "opTranslate": "Traducir…",
+    "opTellMe": "Dime cómo…"
   }
 }

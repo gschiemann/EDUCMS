@@ -50,6 +50,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   // ── the "Full settings" popover's own reads/writes (2026-09-01) ──
   // It mounts INSIDE this surface now instead of behind a hop into the classic
   // page, so its hooks have to exist in this mock or the module throws on load.
@@ -198,7 +199,7 @@ describe('bulk selection', () => {
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('6 screens selected');
 
     // Clear, search, select all again → only the matches.
-    fireEvent.click(within(rtl.getByTestId('screens-bulk-bar')).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(rtl.getByTestId('screens-bulk-bar')).getByRole('button', { name: 'Clear selection' }));
     fireEvent.change(rtl.getByRole('textbox', { name: /Search screens/i }), { target: { value: 'henderson' } });
     fireEvent.click(rtl.getByTestId('screens-select-all'));
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('2 screens selected');
@@ -207,12 +208,18 @@ describe('bulk selection', () => {
   });
 
   it('a search that hides a selected screen drops it from the selection (what is checked is what is sent)', () => {
+    // On desktop the toolbar BECOMES the selection bar, so search is not
+    // reachable mid-selection; on a phone the toolbar stays (the selection
+    // is in the bottom dock) — that is where this can happen.
+    const prevWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
     renderPage();
     fireEvent.click(rtl.getByTestId('screens-select-g43'));
     fireEvent.click(rtl.getByTestId('screens-select-hen1'));
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('2 screens selected');
     fireEvent.change(rtl.getByRole('textbox', { name: /Search screens/i }), { target: { value: 'henderson' } });
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('1 screen selected');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth });
   });
 
   it('the group box selects the whole group and goes tri-state; "Select all N" lives in the bar', () => {
@@ -361,7 +368,9 @@ describe('bulk confirm + results sheet', () => {
     bulkMutate.mockImplementation(async (req: Bulk) => answer(req));
     renderPage();
     fireEvent.click(rtl.getByTestId('screens-select-hen1'));
-    fireEvent.change(rtl.getByTestId('screens-bulk-auto'), { target: { value: 'auto-on' } });
+    // Automatic updates live in the selection bar's "⋯" menu (pill cleanup 2026-11-02).
+    fireEvent.click(rtl.getByTestId('screens-bulk-more'));
+    fireEvent.click(within(rtl.getByTestId('screens-bulk-more-menu')).getByRole('menuitem', { name: 'Automatic updates: On' }));
     const sheet = await rtl.findByTestId('screens-bulk-sheet');
     await within(sheet).findByText('1 screen will get it');
     expect(bulkMutate.mock.calls[0][0]).toMatchObject({ action: 'auto-update', mode: 'on', dryRun: true });

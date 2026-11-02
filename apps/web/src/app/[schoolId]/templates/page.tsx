@@ -18,7 +18,7 @@ import {
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
-  Check, Expand, ChevronLeft, Trophy, AlertTriangle, History,
+  Check, Expand, ChevronLeft, Trophy, AlertTriangle, History, ArrowUpDown,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -134,6 +134,14 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { DateField } from '@/components/ui/date-field';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { usePhoneWidth } from '@/lib/use-phone-width';
+import { TabRow } from '@/components/ui/tab-row';
+import { FilterMenu, type FilterGroup } from '@/components/ui/filter-menu';
+import { PageToolbar } from '@/components/ui/page-toolbar';
+import { StatusPill } from '@/components/ui/status-pill';
+import { Segmented } from '@/components/ui/segmented';
+import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
+import { SelectionCheckbox, SelectionTileCheckbox, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─────────────────────────────────────────────────────
@@ -1060,6 +1068,14 @@ export default function TemplatesPage() {
     aiBusyRef.current = aiBusy;
   }, [aiBusy]);
   const exportTemplate = useExportTemplate();
+
+  // ── Pill cleanup (2026-11-02, owner-approved) ─────────────────────
+  // The shared toolbar (category tabs · search · Filter · Sort · view) and a
+  // multi-select on YOUR templates (desktop selection bar / phone dock).
+  const tUi = useTranslations('ui');
+  const isPhone = usePhoneWidth();
+  const [tplSelected, setTplSelected] = useState<Set<string>>(() => new Set());
+  const [tplBulkBusy, setTplBulkBusy] = useState(false);
   const importTemplate = useImportTemplate();
   // Express lane — "Put on a screen". Creates a one-item playlist FROM this
   // board/template (same path the New-Playlist "From Template" mode uses) and
@@ -2382,6 +2398,67 @@ export default function TemplatesPage() {
     input.click();
   }
 
+  // Selection — only templates the operator can SEE stay selected.
+  const selectableTplIds = !isViewer && viewMode === 'grid' ? visibleCustom.map((t: Template) => t.id) : [];
+  const selectedTpls = visibleCustom.filter((t: Template) => tplSelected.has(t.id));
+  const tplSelState = selectionState(selectedTpls.length, selectableTplIds.length);
+  const toggleTpl = (id: string) => setTplSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  async function bulkDuplicateTpls() {
+    if (tplBulkBusy) return;
+    setTplBulkBusy(true);
+    try {
+      for (const t of selectedTpls) await duplicateTemplate.mutateAsync({ id: t.id });
+      setTplSelected(new Set());
+    } finally { setTplBulkBusy(false); }
+  }
+  async function bulkExportTpls() {
+    for (const t of selectedTpls) await handleExport(t);
+  }
+  async function bulkDeleteTpls() {
+    if (!isAdmin || tplBulkBusy) return;
+    const targets = selectedTpls;
+    if (targets.length === 1) { void handleDeleteTemplate(targets[0]); return; }
+    const ok = await appConfirm({
+      title: tTpl('bulkDeleteTitle', { count: targets.length }),
+      message: tTpl('bulkDeleteBody'),
+      tone: 'danger',
+      confirmLabel: tTpl('delete'),
+    });
+    if (!ok) return;
+    setTplBulkBusy(true);
+    let deleted = 0, skipped = 0;
+    try {
+      // Never forced: a template that is on a screen answers 409 and is skipped.
+      for (const t of targets) {
+        try { await deleteTemplate.mutateAsync({ id: t.id }); deleted += 1; }
+        catch { skipped += 1; }
+      }
+    } finally {
+      setTplBulkBusy(false);
+      setTplSelected(new Set());
+    }
+    toast.success(tTpl('bulkDeleteDone', { deleted, skipped }));
+  }
+  const tplBarProps: SelectionBarProps = {
+    count: selectedTpls.length,
+    onClear: () => setTplSelected(new Set()),
+    testId: 'templates-bulk-bar',
+    moreTestId: 'templates-bulk-more',
+    moreMenuTestId: 'templates-bulk-more-menu',
+    selectAll: selectableTplIds.length > selectedTpls.length
+      ? { label: tUi('selectAll', { count: selectableTplIds.length }), onSelect: () => setTplSelected(new Set(selectableTplIds)) }
+      : null,
+    actions: [
+      { id: 'export', label: tTpl('export'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkExportTpls(); }, disabled: tplBulkBusy },
+      { id: 'duplicate', label: tTpl('duplicate'), icon: <Copy className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDuplicateTpls(); }, disabled: tplBulkBusy, busy: tplBulkBusy },
+      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDeleteTpls(); }, disabled: tplBulkBusy }] : []),
+    ],
+  };
+
   if (editingTemplate) {
     return createPortal(
       <TemplateBuilder template={editingTemplate} onBack={() => setEditingTemplate(null)} onSaved={(u) => setEditingTemplate(u)} />,
@@ -3278,195 +3355,139 @@ export default function TemplatesPage() {
           category, plus the K-12-only grade-level row and the holiday
           sub-filter — both distinct DIMENSIONS, which is why §5.3 gives
           them their own secondary row rather than crowding tier one. */}
-      <div className="space-y-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[220px] max-w-xs flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search templates..."
-              aria-label="Search templates"
-              className="min-h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:min-h-9"
-            />
-          </div>
-
-          {/* Category chips. Vertical-aware: K-12 gets Welcome / Hallway /
-              Cafeteria / Athletics / Holidays; every other vertical gets
-              its own set from tenantCopy.templateCategories.
-              DATA-DRIVEN (2026-08-24): VERTICAL_TEMPLATE_CATEGORIES is a
-              static per-vertical taxonomy that doesn't always match what's
-              actually seeded — HEALTHCARE declares "Waiting room" /
-              "Directory" / "Patient info" chips while every seeded
-              healthcare preset carries the single literal
-              category='HEALTHCARE', so those three could never return a
-              result. A tenant clicking their own category chip landed on a
-              gallery that LOOKED broken. Only render a chip when ≥1
-              template in this tenant's actual catalog matches it (§5.3:
-              "Do not render empty categories") — this kills every dead
-              chip today and self-heals as the catalog changes, with no
-              hand-maintained allowlist. Counts come from the FULL catalog
-              (not re-derived per active level/search) so the row stays
-              stable as other filters change; a combination that is
-              legitimately empty still gets the honest empty state below
-              instead of a disappearing chip. */}
-          {(() => {
-            const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
-              ? tenantCopy.templateCategories
-              : CATEGORY_TABS;
-            const countForCategoryKey = (key: string): number => {
-              let n = 0;
-              for (const t of (templates || [])) {
-                if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
-                if (t.id.endsWith('-portrait')) continue; // portrait siblings never render as their own card
-                if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
+      {(() => {
+        // Category is the page's main axis (tabs, one row, overflow under
+        // More); school level and the Holidays sub-filter sit behind ONE
+        // Filter button. Same state and callbacks the old chip rows used.
+        const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+          ? tenantCopy.templateCategories
+          : CATEGORY_TABS;
+        const countFor = (key: string): number => {
+          let n = 0;
+          for (const t of (templates || [])) {
+            if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
+            if (t.id.endsWith('-portrait')) continue;
+            if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
+          }
+          return n;
+        };
+        const cats = catsRaw
+          .map((cat) => ({ ...cat, count: cat.key ? countFor(cat.key) : totalCount }))
+          .filter((cat) => !cat.key || cat.count > 0);
+        const filterGroups: FilterGroup[] = [];
+        if (!tenantCopy.vertical || tenantCopy.vertical === 'K12') {
+          filterGroups.push({
+            id: 'level', label: tTpl('filterLevel'), type: 'single',
+            options: SCHOOL_LEVEL_CHIPS.map((c) => ({ value: c.key, label: tTpl(`level.${c.key || 'ALL'}`) })),
+          });
+        }
+        if (activeCategory === 'HOLIDAYS') {
+          filterGroups.push({
+            id: 'holiday', label: tTpl('filterHoliday'), type: 'single',
+            options: HOLIDAY_SUB_FILTERS.map((h) => ({ value: h.key, label: h.label })),
+          });
+        }
+        const selecting = !isPhone && selectedTpls.length > 0;
+        return (
+          <>
+            <PageToolbar
+              testId="templates-toolbar"
+              compact={isPhone}
+              selection={selecting ? <SelectionToolbar {...tplBarProps} /> : undefined}
+              tabs={
+                <TabRow
+                  value={activeCategory}
+                  ariaLabel={tTpl('categoryTabs')}
+                  testId="templates-category-tabs"
+                  overflow
+                  onChange={(key) => {
+                    setActiveCategory(key);
+                    // leaving the Holidays category clears its sub-filter
+                    if (key !== 'HOLIDAYS') setActiveHoliday('');
+                    // a new filter is a new result set — back to the first page
+                    setPresetPages(1);
+                  }}
+                  tabs={cats.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+                />
               }
-              return n;
-            };
-            const cats = catsRaw
-              .map((cat) => ({ ...cat, count: cat.key ? countForCategoryKey(cat.key) : totalCount }))
-              .filter((cat) => !cat.key || cat.count > 0);
-            return (
-              <div
-                // A scroll container only where chips can actually run out of
-                // room (phones). On desktop the strip is a plain flex row that
-                // wraps in the rare case it must: a scrolling box that stretches
-                // across the toolbar's spare width rendered as a pale "block"
-                // beside the sort control in Greg's Chrome (2026-09-14) — a
-                // composited scroller over the page gradient, nothing in the
-                // DOM paints there — and it has no job to do up here anyway.
-                className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible"
-                role="group"
-                aria-label="Filter by category"
-              >
-                {cats.map((cat) => {
-                  const active = activeCategory === cat.key;
-                  return (
-                    <button
-                      key={cat.key || 'all'}
-                      type="button"
-                      onClick={() => {
-                        setActiveCategory(cat.key);
-                        // leaving the Holidays category clears its sub-filter
-                        if (cat.key !== 'HOLIDAYS') setActiveHoliday('');
-                        // A new filter is a new result set — start it at the
-                        // top of the page rather than deep in a paged catalog.
-                        setPresetPages(1);
-                      }}
-                      aria-pressed={active}
-                      className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-9 motion-reduce:transition-none ${
-                        active
-                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
+              search={
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search templates..."
+                    aria-label="Search templates"
+                    className="min-h-11 w-full md:w-48 lg:w-56 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 md:min-h-9"
+                  />
+                </div>
+              }
+              filters={filterGroups.length > 0 ? (
+                <FilterMenu
+                  testId="templates-filter-menu"
+                  groups={filterGroups}
+                  value={{ level: activeLevel, holiday: activeHoliday }}
+                  onChange={(group, next) => {
+                    if (group === 'level') setActiveLevel(next as string);
+                    if (group === 'holiday') setActiveHoliday(next as string);
+                  }}
+                  onClear={() => { setActiveLevel(''); setActiveHoliday(''); }}
+                />
+              ) : undefined}
+              sort={
+                // §9.1 — sort applies to YOUR templates; the ready-made
+                // catalog keeps its curated order. A native <select> is
+                // keyboard- and screen-reader-correct for free. On a phone
+                // the row has no room for "Recently edited", so the control
+                // is an icon with the native picker laid over it — the
+                // full choice is in the picker and in the accessible name.
+                isPhone ? (
+                  <div className="relative shrink-0 w-11 h-11 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-600" title={tUi('sortValue', { label: tTpl(`sort.${sortMode}`) })}>
+                    <ArrowUpDown className="w-4 h-4" aria-hidden />
+                    <select
+                      id="tpl-sort"
+                      aria-label={tUi('sortValue', { label: tTpl(`sort.${sortMode}`) })}
+                      data-testid="templates-sort"
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
+                      className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
                     >
-                      {cat.label}
-                      {/* §14 — 4.5:1 minimum for normal text. slate-400
-                          (#94a3b8) is 2.6:1 on white and fails; these
-                          counts are real information, not decoration. */}
-                      <span className={`tabular-nums text-[11px] font-bold ${active ? 'text-indigo-600' : 'text-slate-500'}`}>
-                        {cat.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          <div className="flex shrink-0 items-center gap-2">
-            {/* §9.1 — sort applies to YOUR templates; the ready-made
-                catalog keeps its curated order (that order is the
-                recommendation, and search relevance takes over while
-                searching). A native <select> is deliberate: it is
-                keyboard- and screen-reader-correct for free, and it is
-                the control an operator on a phone already knows. */}
-            <label className="sr-only" htmlFor="tpl-sort">{tTpl('sortLabel')}</label>
-            <select
-              id="tpl-sort"
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
-              className="min-h-11 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] font-semibold text-slate-600 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:min-h-9"
-            >
-              {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tTpl(`sort.${o.key}`)}</option>)}
-            </select>
-            <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="View">
-              {([
-                { key: 'grid', label: 'Grid view', Icon: Grid3X3 },
-                { key: 'list', label: 'List view', Icon: AlignLeft },
-              ] as const).map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setViewMode(key)}
-                  aria-pressed={viewMode === key}
-                  aria-label={label}
-                  title={label}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:h-8 sm:w-8 motion-reduce:transition-none ${
-                    viewMode === key ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* School-level filter — Elementary / Middle / High. A distinct
-            dimension from category, so §5.3 gives it its own row. Only
-            meaningful for K-12 tenants; hidden for every other vertical. */}
-        {(!tenantCopy.vertical || tenantCopy.vertical === 'K12') && (
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by school level">
-            {SCHOOL_LEVEL_CHIPS.map((chip) => {
-              const active = activeLevel === chip.key;
-              return (
-                <button
-                  key={chip.key || 'all'}
-                  type="button"
-                  onClick={() => setActiveLevel(chip.key)}
-                  aria-pressed={active}
-                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
-                    active
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                  }`}
-                >
-                  <span aria-hidden>{chip.emoji}</span>
-                  {tTpl(`level.${chip.key || 'ALL'}`)}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Holiday sub-filter — only when the Holidays category is active,
-            matching the original two-tier behavior (§3). */}
-        {activeCategory === 'HOLIDAYS' && (
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by holiday">
-            {HOLIDAY_SUB_FILTERS.map((h) => {
-              const active = activeHoliday === h.key;
-              return (
-                <button
-                  key={h.key || 'all'}
-                  type="button"
-                  onClick={() => setActiveHoliday(h.key)}
-                  aria-pressed={active}
-                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
-                    active
-                      ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                  }`}
-                >
-                  <span aria-hidden>{h.emoji}</span>
-                  {h.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tTpl(`sort.${o.key}`)}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <label className="sr-only" htmlFor="tpl-sort">{tTpl('sortLabel')}</label>
+                    <select
+                      id="tpl-sort"
+                      data-testid="templates-sort"
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as TemplateSortMode)}
+                      className="min-h-9 shrink-0 rounded-lg border-0 bg-transparent px-1 text-[13px] font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    >
+                      {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tTpl(`sort.${o.key}`)}</option>)}
+                    </select>
+                  </>
+                )
+              }
+              trailing={isPhone ? undefined : (
+                <Segmented
+                  value={viewMode}
+                  onChange={setViewMode}
+                  ariaLabel={tUi('view')}
+                  iconOnly
+                  options={[
+                    { value: 'grid', label: tUi('gridView'), icon: Grid3X3 },
+                    { value: 'list', label: tUi('listView'), icon: AlignLeft },
+                  ] as const}
+                />
+              )}
+            />
+            {isPhone && <ActionDock {...tplBarProps} />}
+          </>
+        );
+      })()}
 
       {/* ── Gallery body ───────────────────────────────────────────────
           Four states, in the order the operator can actually hit them:
@@ -3577,14 +3598,24 @@ export default function TemplatesPage() {
           {!(anyFilterActive && customTemplates.length === 0) && (
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
-              <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
-                {tTpl('yourTemplates')}
-                {customTemplates.length > 0 && (
-                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-500 tabular-nums">
-                    {customTemplates.length}
-                  </span>
+              <div className="flex items-center gap-2">
+                {selectableTplIds.length > 0 && (
+                  <SelectionCheckbox
+                    checked={tplSelState === 'all'}
+                    indeterminate={tplSelState === 'some'}
+                    label={tTpl('selectAllShown')}
+                    title={selectAllTitle(tplSelState, tTpl('selectAllShown'), tUi('clearSelection'))}
+                    onChange={() => setTplSelected(tplSelState === 'all' ? new Set() : new Set(selectableTplIds))}
+                    testId="templates-select-all"
+                  />
                 )}
-              </h2>
+                <h2 id="your-templates-heading" className="flex items-center gap-2 text-[17px] font-bold text-slate-800">
+                  {tTpl('yourTemplates')}
+                  {customTemplates.length > 0 && (
+                    <StatusPill className="tabular-nums">{customTemplates.length}</StatusPill>
+                  )}
+                </h2>
+              </div>
               {hiddenCustom > 0 && (
                 <button
                   type="button"
@@ -3622,8 +3653,17 @@ export default function TemplatesPage() {
             ) : (
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
+                  <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
+                    {selectableTplIds.length > 0 && (
+                      <SelectionTileCheckbox
+                        checked={tplSelected.has(t.id)}
+                        anySelected={selectedTpls.length > 0}
+                        label={tTpl('selectTemplate', { name: t.name })}
+                        onChange={() => toggleTpl(t.id)}
+                        testId={`templates-select-${t.id}`}
+                      />
+                    )}
                   <GalleryCard
-                    key={t.id}
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
@@ -3641,6 +3681,7 @@ export default function TemplatesPage() {
                     isViewerDisabled={isViewer}
                     {...ownedCardProps(t)}
                   />
+                  </div>
                 ))}
               </div>
             )}
@@ -3903,13 +3944,7 @@ export function TemplateListView({
               </div>
               <div className="hidden w-44 shrink-0 flex-col items-start gap-0.5 sm:flex">
                 {pill && (
-                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                    usage?.kind === 'live'
-                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-                      : 'border border-slate-200 bg-slate-50 text-slate-500'
-                  }`}>
-                    {pill}
-                  </span>
+                  <StatusPill tone={usage?.kind === 'live' ? 'success' : 'neutral'}>{pill}</StatusPill>
                 )}
                 {reach && <span className="text-[11px] text-slate-500">{reach}</span>}
               </div>
@@ -4260,12 +4295,10 @@ export function CandidateFullscreenPreview({
       <div className="absolute top-0 right-0 left-0 flex items-start justify-between px-4 py-3 bg-gradient-to-b from-slate-950/80 to-transparent pointer-events-none pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="pointer-events-auto">
           <div className="text-base font-bold text-white drop-shadow flex items-center gap-2">
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white">{label}</span>
+            <StatusPill tone="brand">{label}</StatusPill>
             <span className="truncate max-w-[50vw]">{candidate.name}</span>
             {saved && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white flex items-center gap-0.5">
-                <Check className="w-3 h-3" /> Saved
-              </span>
+              <StatusPill tone="success" icon={<Check className="w-3 h-3" aria-hidden />}>Saved</StatusPill>
             )}
           </div>
           <div className="text-[11px] text-white/60 drop-shadow">
