@@ -9,7 +9,7 @@
  * screen → measured on its model → declared by its WebView → class default →
  * unknown — and reports what it found:
  *
- *   VIDEO_PLAYBACK_GATE = warn (default) | enforce | off
+ *   VIDEO_PLAYBACK_GATE = off (default) | warn | enforce
  *     warn    — the publish goes through exactly as before; the response
  *               carries `playbackWarnings` naming the file and the screen(s)
  *               ("this video may stutter on <screen>; we will switch that

@@ -54,6 +54,7 @@ import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
+import { ScreenUsbSection } from '../ScreenUsbSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -749,7 +750,7 @@ export function ScreenDetailDrawer({
               {/* Video playback (2026-10-11, video guarantee step 4): the
                   verdict and any demotion here; the per-file measurements
                   under Technical details (2026-10-22). */}
-              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" />
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" resolution={screen.resolution} />
 
               {/* ── Technical details (2026-10-22) ─────────────────────
                   Greg, on this tab: "the overview screen has so much shit in
@@ -781,8 +782,10 @@ export function ScreenDetailDrawer({
                       </p>
                     )}
                     {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
-                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" />
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" resolution={screen.resolution} />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
+                    {/* 2026-10-26 — what this screen last did with a USB drive (its own reports). */}
+                    <ScreenUsbSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
                     {/* Device — the facts the screen reported about itself
                         (2026-09-24, Greg: "give info about the screen itself right?
