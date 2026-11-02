@@ -100,7 +100,7 @@ describe('ScreenDetailDrawer → Time zone', () => {
     renderDrawer(screenRow({ timeZone: 'America/Los_Angeles', timeZoneSource: 'location', timeZoneAuto: 'America/Los_Angeles', deviceTimeZone: 'US/Pacific' }));
     const row = rtl.getByTestId('screen-time-zone');
     expect(row.textContent).toContain('From the location’s setting');
-    expect(within(row).getByTestId('screen-time-zone-device').textContent).toBe('The screen’s own clock setting agrees.');
+    expect(within(row).queryByTestId('screen-time-zone-device')).toBeNull();
   });
 
   it('with no zone known it says the screen uses its device’s zone, and offers the picker', () => {

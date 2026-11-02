@@ -110,6 +110,7 @@ const VIDEO_TONE: Record<VideoPlaybackGrade, { wrap: string; ink: string }> = {
 const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
   confirmed: { wrap: 'border-emerald-200 bg-emerald-50/40', ink: 'text-emerald-800' },
   playing: { wrap: 'border-slate-200', ink: 'text-slate-800' },
+  updating: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   behind: { wrap: 'border-amber-200 bg-amber-50/40', ink: 'text-amber-800' },
   idle: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   paused: { wrap: 'border-slate-200', ink: 'text-slate-700' },
@@ -378,6 +379,12 @@ export function ScreenDetailDrawer({
   const recovery = deriveRecovery({
     screen, status, sending: refreshWeb.isPending, justSent: sent, ackedAtMs, now,
   });
+
+  // One short line while a resync is pending: from the click until the screen
+  // confirms. After UPDATE_STUCK_MS the reported state turns 'behind' (a real
+  // warning) and `reported.line` takes over.
+  const updatingNow = reported.state === 'updating'
+    || (reported.state !== 'behind' && !!recovery && (recovery.state === 'sending' || recovery.state === 'accepted'));
 
   const fireResync = () => {
     // POST /screens/:id/refresh-web — admin-only.
@@ -670,9 +677,20 @@ export function ScreenDetailDrawer({
                     <p className="text-[13px] font-bold text-slate-800 leading-snug break-words">
                       {expected.name ?? 'Nothing scheduled'}
                     </p>
-                    <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
-                      {text(contentStatusLine(reported), reported.messages?.line)}
-                    </p>
+                    {updatingNow ? (
+                      <p
+                        className="mt-0.5 flex items-center gap-1.5 text-[12px] font-bold leading-snug text-slate-700"
+                        role="status"
+                        data-testid="screen-content-update"
+                      >
+                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden />
+                        {t('screens.contentState.updating')}
+                      </p>
+                    ) : (
+                      <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
+                        {text(contentStatusLine(reported), reported.messages?.line)}
+                      </p>
+                    )}
                     {/* The download itself (2026-09-27): only a FRESH one ever
                         reaches here (`liveDownload`), so a bar never shows a
                         number the screen stopped reporting. The file name is
@@ -728,11 +746,6 @@ export function ScreenDetailDrawer({
                     )}
                   </div>
                 </div>
-                {recovery && ['sending', 'accepted', 'waiting-ack'].includes(recovery.state) && (
-                  <p className="mt-2 text-[11px] font-semibold text-slate-600 leading-snug" data-testid="screen-content-update">
-                    {recovery.body}
-                  </p>
-                )}
                 {/* Last video (2026-09-24): the player's own dropped-frame
                     count for the clip it last played. On the Overview only
                     while it is news — recent and visible (2026-10-22) —
@@ -742,9 +755,6 @@ export function ScreenDetailDrawer({
                     <VideoSampleBlock video={video} tinted />
                   </div>
                 )}
-                <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">
-                  As reported by the player — we can&apos;t see the panel itself.
-                </p>
               </div>
 
               {/* Video playback (2026-10-11, video guarantee step 4): the
@@ -781,6 +791,9 @@ export function ScreenDetailDrawer({
                         })()}
                       </p>
                     )}
+                    <p className="text-[11px] font-semibold text-slate-400 leading-snug">
+                      {t('screens.drawer.reportedByPlayer')}
+                    </p>
                     {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
                     <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" resolution={screen.resolution} />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
@@ -974,7 +987,7 @@ export function ScreenDetailDrawer({
                     {timeZoneSourceLine && (
                       <p className="text-[11px] text-slate-500">{timeZoneSourceLine}</p>
                     )}
-                    {effectiveTimeZone && screen.deviceTimeZone && (
+                    {effectiveTimeZone && screen.deviceTimeZone && deviceZoneDiffers && (
                       <p
                         className={`mt-1 text-[11px] font-semibold leading-snug ${deviceZoneDiffers ? 'text-amber-800' : 'text-slate-400'}`}
                         data-testid="screen-time-zone-device"
