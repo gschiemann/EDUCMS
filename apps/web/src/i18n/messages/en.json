@@ -2705,7 +2705,7 @@
       "alertNotPaintedTitle": "This screen hasn't confirmed it is showing the alert yet. If it doesn't confirm within a minute, check it in person.",
       "alertShowingOn": "Alert showing on {confirmed} of {total} screens",
       "alertWaitingFor": "Waiting for {count, plural, one {# screen} other {# screens}} to confirm",
-      "alertNotConfirmed": "{count, plural, one {# screen didn't} other {# screens didn't}} confirm — check {count, plural, one {it} other {them}}: {names}",
+      "alertNotConfirmed": "{count, plural, one {# screen didn't confirm — check it} other {# screens didn't confirm — check them}}: {names}",
       "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",
       "stalledTitle": "The video stopped moving. The screen is fixing it on its own; if this keeps happening, check the file.",
       "paintingTitleAt": "This screen reported a picture — last check {time}",
