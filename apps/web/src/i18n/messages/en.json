@@ -4939,7 +4939,16 @@
     "periodOverNext": "Next period",
     "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3).",
     "readStale": "Lost contact with the game: the last update was {seconds} s ago. The clocks here are held until the connection is back.",
-    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers."
+    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers.",
+    "cueTargetLabel": "Send to",
+    "cueTargetAria": "Send celebration cues to",
+    "cueTargetAll": "All",
+    "cueTargetBoard": "Board",
+    "cueTargetRibbon": "Ribbon",
+    "cueTargetRibbonHint": "2.5s crawl",
+    "statusConfigured": "Configured",
+    "statusArmed": "Armed",
+    "statusOnAir": "On air"
   },
   "studentPrivacy": {
     "title": "Student information on public screens",
@@ -5343,7 +5352,8 @@
     "regenerate": "Regenerate…",
     "regenerateTitle": "Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued",
     "confirmWarning": "This kills every credential already deployed for this game (including the original token) the moment you confirm — your vendor stops syncing until you paste in the new one.",
-    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token."
+    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token.",
+    "vendorAria": "Scoreboard vendor"
   },
   "sportsConsoleSetup": {
     "title": "Scoreboard console",
