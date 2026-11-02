@@ -97,6 +97,8 @@ This repo is frequently worked by parallel AI agents. The standing rules
 - **DB:** always via Prisma. Schema is
   `packages/database/prisma/schema.prisma`; run `pnpm db:generate` after
   changes. Migrations are **additive-only** (a live pilot tenant is in prod).
+  Every `db:*` script that writes data or schema refuses a non-local
+  `DATABASE_URL` / `DIRECT_URL` (`scripts/guard-destructive-db.cjs`).
 - **Tests:** Jest `*.spec.ts` next to source (API); Playwright for E2E.
 - **Cross-browser:** must work in Safari/WebKit; player surfaces must also
   survive Chromium 83–87 (Taurus). Never use the `inset` shorthand / `inset-*`

@@ -230,3 +230,35 @@ describe('native emergency paint recovery reporting', () => {
     expect(auditLog.create).not.toHaveBeenCalled();
   });
 });
+
+// ─── 2026-11-02: the APK's own PAINTED verdict completes the record ──────────
+describe('native heartbeat emergency paint verdict', () => {
+  const challenge = '00000000-0000-4000-8000-000000000011';
+  const face = (status: 'pending' | 'painted', extra: Record<string, unknown> = {}) => ({
+    face: 0, challenge, heldAtMs: 1_700_000_000_000, status, step: 0, ...extra,
+    events: [{ step: 0, atMs: 1_700_000_000_000, outcome: 'pending' }, ...(status === 'painted' ? [{ step: 0, atMs: 1_700_000_000_400, outcome: 'painted' }] : [])],
+  });
+
+  it('writes PLAYER_EMERGENCY_PAINTED and the render timestamp when the episode turns painted, exactly once', async () => {
+    const { controller, screen, auditLog, row } = harness();
+    (row as any).lastRenderedHash = 'pending|em:1edd5448';
+    await poll(controller, JSON.stringify({ ...runtime, emergencyProof: { faces: [face('pending')] } }));
+    expect(auditLog.create.mock.calls.map(c => (c[0] as any).data.action)).toEqual(['PLAYER_EMERGENCY_RECOVERY']);
+    expect(screen.update.mock.calls[0][0].data).not.toHaveProperty('lastRenderedAt');
+
+    row.nativeRuntimeReport = { ...runtime, emergencyProof: { faces: [face('pending')] } };
+    await poll(controller, JSON.stringify({ ...runtime, emergencyProof: { faces: [face('painted', { identity: '1edd5448', documentId: 'doc-a' })] } }));
+    const actions = auditLog.create.mock.calls.map(c => (c[0] as any).data.action);
+    expect(actions).toEqual(['PLAYER_EMERGENCY_RECOVERY', 'PLAYER_EMERGENCY_RECOVERY', 'PLAYER_EMERGENCY_PAINTED']);
+    expect(JSON.parse((auditLog.create.mock.calls[2][0] as any).data.details)).toMatchObject({ identity: '1edd5448', challenge, evidence: 'native-validated-page-overlay-paint' });
+    expect(screen.update.mock.calls[1][0].data).toMatchObject({ lastRenderedHash: 'em:1edd5448', lastRenderedAt: expect.any(Date) });
+
+    // The same verdict on the next heartbeat (or after the page's own accepted post) adds nothing.
+    row.nativeRuntimeReport = { ...runtime, emergencyProof: { faces: [face('painted', { identity: '1edd5448', documentId: 'doc-a' })] } };
+    (row as any).lastRenderedHash = 'em:1edd5448';
+    await poll(controller, JSON.stringify({ ...runtime, emergencyProof: { faces: [face('painted', { identity: '1edd5448', documentId: 'doc-a' })] } }));
+    expect(auditLog.create).toHaveBeenCalledTimes(3);
+    // The unchanged report is debounced (no write) — and no later write re-stamps the render time.
+    expect(screen.update.mock.calls.slice(2).every(c => !("lastRenderedAt" in c[0].data))).toBe(true);
+  });
+});

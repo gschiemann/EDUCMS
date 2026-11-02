@@ -67,10 +67,12 @@ function fakeDb() {
       { id: T2, name: 'Demo' },
       { id: T_CUSTOMER, name: 'Customer' },
     ] as Row[],
+    // (2026-10-31) The window's screens are ONE known hardware class: a window
+    // or push of more than one screen must be (player-ota/fleet-push-policy.ts).
     screens: [
-      { id: S1, tenantId: T1, name: 'Lobby', status: 'ONLINE', lastPingAt: new Date(T0 - 5_000), playerVersion: '1.1.29', playerVersionCode: 10129, playerVersionAt: new Date(T0 - 60_000), forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
-      { id: S2, tenantId: T1, name: 'Gym', status: 'ONLINE', lastPingAt: new Date(T0 - 900_000), playerVersion: '1.1.41-field.1', playerVersionCode: 10141, playerVersionAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
-      { id: S3, tenantId: T2, name: 'Wall', status: 'ONLINE', lastPingAt: null, playerVersion: null, playerVersionCode: null, playerVersionAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
+      { id: S1, tenantId: T1, name: 'Lobby', status: 'ONLINE', hardwareModel: 'goodview-ep6n', lastPingAt: new Date(T0 - 5_000), playerVersion: '1.1.29', playerVersionCode: 10129, playerVersionAt: new Date(T0 - 60_000), forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
+      { id: S2, tenantId: T1, name: 'Gym', status: 'ONLINE', hardwareModel: 'goodview-ep6n', lastPingAt: new Date(T0 - 900_000), playerVersion: '1.1.41-field.1', playerVersionCode: 10141, playerVersionAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
+      { id: S3, tenantId: T2, name: 'Wall', status: 'ONLINE', hardwareModel: 'goodview-ep6n', lastPingAt: null, playerVersion: null, playerVersionCode: null, playerVersionAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOverrideWindow: false, forceApkUpdateOfferCount: 0 },
       { id: S_REVOKED, tenantId: T1, name: 'Old', status: 'REVOKED', lastPingAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOfferCount: 0 },
       { id: S_CUSTOMER, tenantId: T_CUSTOMER, name: 'Theirs', status: 'ONLINE', lastPingAt: null, forceApkUpdatePendingAt: null, forceApkUpdateOfferCount: 0 },
     ] as Row[],
@@ -655,5 +657,275 @@ describe('reads for the panel', () => {
     const q = candidates.find((c) => c.versionName === CANDIDATE)!;
     expect(q).toMatchObject({ allowed: false, blockedReason: `version-quarantined:${CANDIDATE}`, sha256: RELEASE.sha256, mirror: { state: 'present' } });
     expect(candidates.find((c) => c.versionName === '1.1.41-field.1')).toMatchObject({ allowed: true, blockedReason: null });
+  });
+});
+
+/**
+ * 2026-10-31 — the owner's fleet push rules (player-ota/fleet-push-policy.ts):
+ * one hardware class and off-hours for more than one screen (overridable, and
+ * the override is audited), and bench screens only for a field build
+ * (PLAYER_FIELD_BENCH_SCREENS; unset = exactly as before; no override).
+ */
+describe('the owner’s fleet push rules', () => {
+  const BENCH = 'PLAYER_FIELD_BENCH_SCREENS';
+  const savedBench = process.env[BENCH];
+  beforeEach(() => {
+    delete process.env[BENCH];
+  });
+  afterEach(() => {
+    if (savedBench === undefined) delete process.env[BENCH];
+    else process.env[BENCH] = savedBench;
+  });
+  type H = ReturnType<typeof harness>;
+  const screenOf = (h: H, id: string) => h.db.screens.find((s) => s.id === id)!;
+  const pushRows = (h: H) => h.db.audit.filter((a) => a.action === FIELD_AUDIT.PUSH);
+  const armedScreens = (h: H) => h.db.log.filter((l) => l.startsWith('screen.update'));
+  const report = (cls: string) => ({ native: { device: { class: cls } } });
+  // A push goes out at T0 + settle = 15:00 UTC: 00:00 in Tokyo and 02:00 in
+  // Sydney (AEDT) are night; 10:00 in Chicago (CDT) is day.
+  const atNight = (h: H) => {
+    screenOf(h, S1).timezone = 'Asia/Tokyo';
+    screenOf(h, S2).timezone = 'Australia/Sydney';
+  };
+
+  describe('one hardware class — arming a window', () => {
+    it('a window over two classes is refused, naming them, and writes nothing', async () => {
+      const h = harness();
+      screenOf(h, S2).hardwareModel = 'maxhub-l55vec';
+      const r = await codeOf(h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S1, S2] })));
+      expect(r).toMatchObject({ status: 422, code: 'FIELD_BUILD_MIXED_HARDWARE', body: { classes: ['goodview-ep6n', 'maxhub-l55vec'] } });
+      expect(r.body.message).toContain('goodview-ep6n, maxhub-l55vec');
+      expect(h.db.windows).toHaveLength(0);
+      expect(h.db.audit).toHaveLength(0);
+    });
+
+    it('`all` means every screen of the organisations a push could reach: a mix there is refused; a revoked screen never counts', async () => {
+      const h = harness();
+      screenOf(h, S_REVOKED).hardwareModel = 'novastar-taurus';
+      await h.svc.arm(owner, armBody({ tenantIds: [T1], screens: 'all' }));
+      expect(h.db.windows).toHaveLength(1);
+      const h2 = harness();
+      screenOf(h2, S2).hardwareModel = 'maxhub-l55vec';
+      expect(await codeOf(h2.svc.arm(owner, armBody({ tenantIds: [T1], screens: 'all' })))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_MIXED_HARDWARE',
+      });
+      expect(h2.db.windows).toHaveLength(0);
+    });
+
+    it('THE 2026-10-12 SHAPE: a GUQ panel and an rk3288 unit, both generic-android, are told apart by what their APKs reported', async () => {
+      const h = harness();
+      Object.assign(screenOf(h, S1), { hardwareModel: 'generic-android', lastVideoReport: report('amlogic/android-13') });
+      Object.assign(screenOf(h, S2), { hardwareModel: 'generic-android', lastVideoReport: report('rockchip/android-7') });
+      expect(await codeOf(h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S1, S2] })))).toMatchObject({
+        code: 'FIELD_BUILD_MIXED_HARDWARE',
+        body: { classes: ['generic-android (amlogic/android-13)', 'generic-android (rockchip/android-7)'] },
+      });
+      // Two panels that reported the same class are one.
+      screenOf(h, S2).lastVideoReport = report('amlogic/android-13');
+      await h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S1, S2] }));
+      expect(h.db.windows).toHaveLength(1);
+    });
+
+    it('a screen of unknown hardware cannot be shown to be one class with another; alone it is exempt', async () => {
+      const h = harness();
+      screenOf(h, S2).hardwareModel = null;
+      const r = await codeOf(h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S1, S2] })));
+      expect(r).toMatchObject({ status: 422, code: 'FIELD_BUILD_HARDWARE_UNKNOWN', body: { unknownScreens: [{ id: S2, name: 'Gym' }] } });
+      expect(r.body.message).toMatch(/^Gym has no known hardware model/);
+      expect(h.db.windows).toHaveLength(0);
+      await h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S2] }));
+      expect(h.db.windows).toHaveLength(1);
+    });
+
+    it('`all` over more screens than can be read at once cannot be shown to be one class', async () => {
+      const h = harness();
+      for (let i = 0; i < 1_001; i++) {
+        h.db.screens.push({
+          id: `dddddddd-dddd-4ddd-8ddd-${String(i).padStart(12, '0')}`,
+          tenantId: T2,
+          name: `Wall ${i}`,
+          status: 'ONLINE',
+          hardwareModel: 'goodview-ep6n',
+        });
+      }
+      expect(await codeOf(h.svc.arm(owner, armBody({ tenantIds: [T2], screens: 'all' })))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_HARDWARE_UNKNOWN',
+        body: { incomplete: true },
+      });
+      expect(h.db.windows).toHaveLength(0);
+    });
+
+    it('the explicit override arms it, and every organisation’s arm row records the override and what it set aside', async () => {
+      const h = harness();
+      screenOf(h, S3).hardwareModel = 'maxhub-l55vec';
+      await h.svc.arm(owner, armBody({ overrideMassPushRules: true }));
+      const rows = h.db.audit.filter((a) => a.action === FIELD_AUDIT.ARM);
+      expect(rows.map((a) => a.tenantId)).toEqual([T1, T2]);
+      for (const a of rows) {
+        expect(JSON.parse(a.details)).toMatchObject({ overrideMassPushRules: true, massPushRulesOverridden: ['hardware-class'] });
+      }
+    });
+
+    it('a window that needs no override says so; a malformed override is a 400 before anything is written', async () => {
+      const h = harness();
+      await h.svc.arm(owner, armBody());
+      expect(JSON.parse(h.db.audit[0].details)).toMatchObject({ overrideMassPushRules: false, massPushRulesOverridden: [] });
+      const h2 = harness();
+      expect(await codeOf(h2.svc.arm(owner, armBody({ overrideMassPushRules: 'yes' })))).toMatchObject({
+        status: 400,
+        code: 'FIELD_BUILD_MASS_PUSH_OVERRIDE_INVALID',
+      });
+      expect(h2.db.windows).toHaveLength(0);
+    });
+  });
+
+  describe('a push of more than one screen', () => {
+    async function openWindow(h: H, patch: Record<string, unknown> = {}) {
+      const w = await h.svc.arm(owner, armBody({ tenantIds: [T1], screens: [S1, S2], ...patch }));
+      setNow(T0 + PUSH_SETTLE_MS);
+      return w;
+    }
+
+    it('goes out when it is night in every screen’s own time zone — one audited push per screen', async () => {
+      const h = harness();
+      atNight(h);
+      const w = await openWindow(h);
+      const out = await h.svc.push(owner, w.id, { screenIds: [S1, S2] });
+      expect(out.results.map((r) => [r.screenId, r.armed])).toEqual([
+        [S1, true],
+        [S2, true],
+      ]);
+      expect(pushRows(h)).toHaveLength(2);
+      for (const row of pushRows(h)) {
+        expect(JSON.parse(row.details)).toMatchObject({ overrideMassPushRules: false, massPushRulesOverridden: [], screensInPush: 2 });
+      }
+    });
+
+    it('is refused when it is day for any one of them (409), naming it and its local time; nothing is armed', async () => {
+      const h = harness();
+      atNight(h);
+      screenOf(h, S2).timezone = 'America/Chicago';
+      const w = await openWindow(h);
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S1, S2] }))).toMatchObject({
+        status: 409,
+        code: 'FIELD_BUILD_OUTSIDE_OFF_HOURS',
+        body: { screens: [{ id: S2, name: 'Gym', timeZone: 'America/Chicago', localTime: '10:00' }] },
+      });
+      expect(pushRows(h)).toHaveLength(0);
+      expect(armedScreens(h)).toHaveLength(0);
+    });
+
+    it('a screen with no time zone refuses it, saying why — the device’s own zone is never used', async () => {
+      const h = harness();
+      atNight(h);
+      Object.assign(screenOf(h, S2), { timezone: null, deviceTimeZone: 'Asia/Tokyo' });
+      const w = await openWindow(h);
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S1, S2] }))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_TIME_ZONE_UNKNOWN',
+        body: { screens: [{ id: S2, name: 'Gym' }] },
+      });
+      expect(pushRows(h)).toHaveLength(0);
+    });
+
+    it('the zone is the screen’s effective one: its location’s setting, or automatic from its saved coordinates', async () => {
+      const h = harness();
+      Object.assign(screenOf(h, S1), { timezone: null, tenant: { timezone: 'Asia/Tokyo' } });
+      Object.assign(screenOf(h, S2), { timezone: null, latitude: -33.8688, longitude: 151.2093 }); // Sydney
+      const w = await openWindow(h);
+      expect((await h.svc.push(owner, w.id, { screenIds: [S1, S2] })).results.every((r) => r.armed)).toBe(true);
+    });
+
+    it('is refused when the screens are two hardware classes, even at night', async () => {
+      const h = harness();
+      atNight(h);
+      screenOf(h, S2).hardwareModel = 'maxhub-l55vec';
+      const w = await openWindow(h, { overrideMassPushRules: true });
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S1, S2] }))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_MIXED_HARDWARE',
+        body: { classes: ['goodview-ep6n', 'maxhub-l55vec'] },
+      });
+      expect(pushRows(h)).toHaveLength(0);
+    });
+
+    it('the explicit override sends it anyway, and every push row records which rules it set aside', async () => {
+      const h = harness();
+      screenOf(h, S2).hardwareModel = 'maxhub-l55vec';
+      screenOf(h, S1).timezone = 'America/Chicago';
+      const w = await openWindow(h, { overrideMassPushRules: true });
+      const out = await h.svc.push(owner, w.id, { screenIds: [S1, S2], overrideMassPushRules: true });
+      expect(out.results.every((r) => r.armed)).toBe(true);
+      expect(pushRows(h).map((r) => r.targetId)).toEqual([S1, S2]);
+      for (const row of pushRows(h)) {
+        expect(JSON.parse(row.details)).toMatchObject({
+          overrideMassPushRules: true,
+          massPushRulesOverridden: ['hardware-class', 'off-hours'],
+          screensInPush: 2,
+        });
+      }
+    });
+
+    it('ONE screen is exempt from both — any hour, no zone, unknown hardware: that is bench testing', async () => {
+      const h = harness();
+      screenOf(h, S2).hardwareModel = null;
+      const w = await openWindow(h, { screens: [S2] });
+      expect((await h.svc.push(owner, w.id, { screenIds: [S2] })).results[0]).toMatchObject({ screenId: S2, armed: true });
+      expect(JSON.parse(pushRows(h)[0].details)).toMatchObject({ overrideMassPushRules: false, massPushRulesOverridden: [], screensInPush: 1 });
+    });
+  });
+
+  describe('PLAYER_FIELD_BENCH_SCREENS at the push', () => {
+    async function openWindow(h: H) {
+      const w = await h.svc.arm(owner, armBody());
+      setNow(T0 + PUSH_SETTLE_MS);
+      return w;
+    }
+
+    it('UNSET (or blank): every screen inside the window can be pushed, exactly as before', async () => {
+      const h = harness();
+      const w = await openWindow(h);
+      expect((await h.svc.push(owner, w.id, { screenIds: [S3] })).results[0]).toMatchObject({ screenId: S3, armed: true });
+      process.env[BENCH] = '   ';
+      expect((await h.svc.push(owner, w.id, { screenIds: [S1] })).results[0]).toMatchObject({ screenId: S1, armed: true });
+    });
+
+    it('SET: a screen not on the list is refused (422) and nothing is armed; a listed one goes out', async () => {
+      process.env[BENCH] = S1.toUpperCase();
+      const h = harness();
+      const w = await openWindow(h);
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S3] }))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+        body: { screens: [{ id: S3, name: 'Wall' }] },
+      });
+      expect(pushRows(h)).toHaveLength(0);
+      expect(armedScreens(h)).toHaveLength(0);
+      expect((await h.svc.push(owner, w.id, { screenIds: [S1] })).results[0]).toMatchObject({ screenId: S1, armed: true });
+    });
+
+    it('the override never sets the bench list aside; a list with no valid id admits no screen', async () => {
+      process.env[BENCH] = S1;
+      const h = harness();
+      const w = await openWindow(h);
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S3], overrideMassPushRules: true }))).toMatchObject({
+        code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+      });
+      process.env[BENCH] = 'all';
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S1] }))).toMatchObject({ code: 'FIELD_BUILD_SCREEN_NOT_BENCH' });
+      expect(pushRows(h)).toHaveLength(0);
+    });
+
+    it('reach is asked first: a refusal never describes a screen of an organisation the caller cannot reach', async () => {
+      process.env[BENCH] = S1;
+      const h = harness();
+      const w = await openWindow(h);
+      expect(await codeOf(withReach([T2], () => h.svc.push(owner, w.id, { screenIds: [S3] })))).toMatchObject({
+        status: 403,
+        code: 'SUPPORT_ACCESS_REQUIRED',
+      });
+    });
   });
 });

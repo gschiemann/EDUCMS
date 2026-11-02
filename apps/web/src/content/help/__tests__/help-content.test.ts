@@ -307,7 +307,9 @@ describe('signing-in and emergency-broadcast articles match the product', () => 
     // exists for other callers. Staff SOS retains its thirty-minute default.
     expect(api).toMatch(/new Date\(Date\.now\(\) \+ 60 \* 60 \* 1000\); \/\/ 1 hr default/);
     expect(api).toMatch(/new Date\(Date\.now\(\) \+ 30 \* 60 \* 1000\); \/\/ 30 min/);
-    expect(page).toMatch(/expiresAt: Math\.floor\(Date\.now\(\) \/ 1000\) \+ Number\(durationMin\) \* 60/);
+    // (2026-11-01: the minutes come from durationMinutesFor — a preset or the typed number.)
+    expect(page).toMatch(/expiresAt: Math\.floor\(Date\.now\(\) \/ 1000\) \+ minutesToSend\(\) \* 60/);
+    expect(page).toMatch(/durationMinutesFor\(durationPreset, Number\(durationMin\)\)/);
     expect(en).toMatch(/\| Media alert \| Your selected duration \(1–120 minutes; default 5\) \|/);
     expect(en).toMatch(/\| Staff SOS \| 30 minutes \|/);
     // "Clear" follows the API's own rule since 2026-10-22 (admins + the

@@ -59,6 +59,8 @@ import {
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
 import { ScreenSetupSection } from '@/components/screens/ScreenSetupSection';
 import { ScreenSleepWakeSection } from '@/components/screens/ScreenSleepWakeSection';
+import { ScreenDeviceSettings } from '@/components/screens/ScreenDeviceSettings';
+import { ScreenAdvancedSection } from '@/components/screens/ScreenAdvancedSection';
 import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
 import { deriveTrackedPush, holdIsCurrent } from './trackedPush';
 import { TrackedPushFooter } from './TrackedPushFooter';
@@ -1454,6 +1456,30 @@ export function ScreenSettingsSections({
             </div>
           )}
 
+          {/* ── THE COMMON CONTROLS, FIRST (2026-11-01) ──────────────────
+              Sleep / Awake, volume, brightness, the on/off schedule as one
+              line and Restart — each only where THIS screen can do it (see
+              quick-settings.ts). Browser players collapse to Sleep / Awake.
+              Opening the schedule editor closes the popover first — the
+              popover dismisses on a document-level pointerdown and would
+              otherwise fight the modal. */}
+          <ScreenDisplayControls
+            screen={s}
+            readOnly={displayReadOnly}
+            browserPlayer={isBrowserPlayer}
+            onOpenSchedule={() => { onClose?.(); onOpenDisplaySchedule(); }}
+          />
+
+          {/* First-boot permission state as ONE line ("Setup complete" /
+              "3 things need setup · Fix"); the checklist opens from Fix.
+              Renders NOTHING when the panel has never reported a `setup`
+              block — "we do not know" must never look like "all done". */}
+          <ScreenSetupSection
+            screen={s}
+            inventoryReport={setupInventoryQ.data?.report ?? null}
+            readOnly={displayReadOnly}
+          />
+
           {/* Player app (APK) — Android players ONLY. A browser player
               has no APK, so the old always-on version strip + push
               button were noise there ("every setting needs to make
@@ -1740,51 +1766,33 @@ export function ScreenSettingsSections({
           <ConsoleSection screen={s} readOnly={displayReadOnly} />
           {syncActive && <SyncTrimSection screen={s} readOnly={displayReadOnly} />}
 
-          {/* 2026-08-13 — volume / brightness / blank / reboot, each
-              rendered only when this screen's own probe verdict says
-              the hardware can do it. Browser players collapse to one
-              honest line (no bridge → no report, no command lands).
-              Opening the schedule editor closes the popover first —
-              the popover dismisses on a document-level pointerdown
-              and would otherwise fight the modal. */}
-          <ScreenDisplayControls
-            screen={s}
-            readOnly={displayReadOnly}
-            browserPlayer={isBrowserPlayer}
-            onOpenSchedule={() => { onClose?.(); onOpenDisplaySchedule(); }}
-          />
-
-          {/* 2026-10-11 — how THIS screen turns off, what wakes it, and
-              what its Android player last proved (native heartbeat report).
-              Never says "off" for a black overlay. An Android concern, so a
-              browser player shows nothing. */}
-          {!isBrowserPlayer && <ScreenSleepWakeSection screen={s} />}
-
-          {/* 2026-08-25 (v1.1.6) — first-boot permission state + the
-              cable-free way back into it. Renders NOTHING when this panel
-              has never reported a `setup` block (older APK / never probed),
-              because "we do not know" must never look like "nothing is
-              outstanding". See ScreenSetupSection. */}
-          <ScreenSetupSection
-            screen={s}
-            inventoryReport={setupInventoryQ.data?.report ?? null}
-            readOnly={displayReadOnly}
-          />
-
-          {/* Device details — every read-only diagnostic (OS, APK
-              versions, cache, OTA history, location, fingerprint,
-              hardware identity + correction), collapsed by default so
-              the menu's face stays short. */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setDetailsOpen((v) => !v); }}
-            aria-expanded={detailsOpen}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-slate-50 border-t border-slate-100 transition-colors"
-          >
-            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Device details</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {detailsOpen && <DeviceDetails screen={s} />}
+          {/* ── ADVANCED — closed by default (2026-11-01) ────────────────
+              Android settings (only the rows this unit supports), network,
+              how sleep works in plain words, and diagnostics. */}
+          <ScreenAdvancedSection>
+            {!isBrowserPlayer && <ScreenDeviceSettings screenId={s.id} readOnly={displayReadOnly} embedded />}
+            {!isBrowserPlayer && <ScreenSleepWakeSection screen={s} view="summary" />}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setDetailsOpen((v) => !v); }}
+              aria-expanded={detailsOpen}
+              className="w-full flex items-center justify-between px-3.5 py-3 min-h-[44px] text-left hover:bg-slate-50 border-t border-slate-100 transition-colors"
+            >
+              <span className="text-[13px] font-bold text-slate-700">{t('screens.settingsTab.details')}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {detailsOpen && (
+              <>
+                <DeviceDetails screen={s} />
+                {!isBrowserPlayer && (
+                  <div className="border-t border-slate-100">
+                    <p className="px-3.5 pt-3 text-[11px] font-bold text-slate-500">{t('screens.settingsTab.sleepHistory')}</p>
+                    <ScreenSleepWakeSection screen={s} view="history" />
+                  </div>
+                )}
+              </>
+            )}
+          </ScreenAdvancedSection>
     </>
   );
 }

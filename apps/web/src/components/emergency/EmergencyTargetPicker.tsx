@@ -20,6 +20,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Loader2, MonitorSmartphone, Search, Users, X } from 'lucide-react';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { SelectionCheckbox, SELECTED_TILE_CLASS } from '@/components/common/SelectionCheckbox';
 import {
   filterTargets,
   groupDisplayName,
@@ -68,6 +70,8 @@ export function EmergencyTargetPicker({
   onSelectScreens,
 }: EmergencyTargetPickerProps) {
   const t = useTranslations();
+  // Multi-select is a dashboard dialog: hide the mobile tab bar while it is up.
+  useOverlayLock(open && multiple);
   const [query, setQuery] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   // Multi-select draft: committed only by "Done", dropped by closing.
@@ -134,6 +138,199 @@ export function EmergencyTargetPicker({
   const nothingMatches = status === 'ready' && searching && groups.length === 0 && screens.length === 0;
   const nothingAtAll =
     status === 'ready' && !searching && (targets?.groups.length ?? 0) === 0 && (targets?.screens.length ?? 0) === 0;
+
+
+  if (multiple) {
+    // Dashboard-style dialog (light, like Publish to locations): shared
+    // SelectionCheckbox rows, the Screens-page search field, Cancel + Done.
+    const rowBase = 'w-full min-h-[56px] px-3 flex items-center gap-2 text-left rounded-xl border bg-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300';
+    const rowTone = (on: boolean) => (on ? SELECTED_TILE_CLASS : 'border-slate-200 hover:bg-slate-50');
+    const heading = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2';
+    return (
+      <div
+        className="fixed top-0 right-0 bottom-0 left-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 sm:p-4"
+        onClick={close}
+      >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="emergency-target-picker-title"
+          tabIndex={-1}
+          data-testid="emergency-target-picker"
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden outline-none"
+        >
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
+            <MonitorSmartphone className="w-5 h-5" style={{ color: 'var(--brand-primary, #4f46e5)' }} aria-hidden />
+            <h2 id="emergency-target-picker-title" className="text-base font-black text-slate-800 flex-1">
+              {t('emergency.target.pickerTitle')}
+            </h2>
+            <button
+              type="button"
+              onClick={close}
+              aria-label={t('emergency.target.pickerClose')}
+              className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" aria-hidden />
+            </button>
+          </div>
+
+          <div className="px-5 pt-4">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
+              <input
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('emergency.target.searchPlaceholder')}
+                aria-label={t('emergency.target.searchAria')}
+                className="w-full h-12 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-[16px] sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
+            <button
+              type="button"
+              onClick={() => pick(allScreens)}
+              aria-pressed={isAllScreens(selected)}
+              data-testid="target-option-all"
+              className={`${rowBase} ${rowTone(isAllScreens(selected))}`}
+            >
+              <MonitorSmartphone className="w-5 h-5 shrink-0 text-slate-500" aria-hidden />
+              <span className="flex-1 min-w-0 text-sm font-bold text-slate-700">{targetChipLabel(t, allScreens)}</span>
+              {isAllScreens(selected) && <Check className="w-5 h-5 shrink-0 text-indigo-600" aria-hidden />}
+            </button>
+
+            {status === 'loading' && (
+              <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> {t('emergency.target.loading')}
+              </p>
+            )}
+            {status === 'error' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" role="alert">
+                <p>{t('emergency.target.loadFailed')}</p>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="mt-2 min-h-[44px] px-4 text-sm font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                >
+                  {t('emergency.target.retry')}
+                </button>
+              </div>
+            )}
+            {nothingMatches && <p className="text-sm text-slate-500">{t('emergency.target.noMatches', { query: query.trim() })}</p>}
+            {nothingAtAll && <p className="text-sm text-slate-500">{t('emergency.target.noTargets')}</p>}
+
+            {status === 'ready' && groups.length > 0 && (
+              <section aria-labelledby="emergency-target-groups">
+                <h3 id="emergency-target-groups" className={heading}>{t('emergency.target.groups')}</h3>
+                <ul className="space-y-2">
+                  {groups.map((g) => {
+                    const on = isSelected('group', g.id);
+                    return (
+                      <li key={g.id}>
+                        <button
+                          type="button"
+                          onClick={() => pick(groupTarget(g))}
+                          aria-pressed={on}
+                          data-testid={`target-option-group-${g.id}`}
+                          className={`${rowBase} ${rowTone(on)}`}
+                        >
+                          <Users className="w-5 h-5 shrink-0 text-slate-500" aria-hidden />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-bold text-slate-700 truncate">{groupDisplayName(t, g.name)}</span>
+                            <span className="block text-xs text-slate-400 truncate">
+                              {t('emergency.target.screenCount', { count: g.screenCount })}
+                              {multiTenant && g.tenantName ? ` · ${g.tenantName}` : ''}
+                            </span>
+                          </span>
+                          {on && <Check className="w-5 h-5 shrink-0 text-indigo-600" aria-hidden />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
+            {status === 'ready' && screens.length > 0 && (
+              <section aria-labelledby="emergency-target-screens">
+                <h3 id="emergency-target-screens" className={heading}>{t('emergency.target.screens')}</h3>
+                <ul className="space-y-2">
+                  {screens.map((s) => {
+                    const on = draft.includes(s.id);
+                    const where = [s.location, s.groupName ? groupDisplayName(t, s.groupName) : null, multiTenant ? s.tenantName : null]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return (
+                      <li key={s.id}>
+                        <div
+                          className={`${rowBase} cursor-pointer ${rowTone(on)}`}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest('label')) return;
+                            toggleDraft(s.id);
+                          }}
+                        >
+                          <SelectionCheckbox
+                            checked={on}
+                            label={s.name}
+                            onChange={() => toggleDraft(s.id)}
+                            testId={`target-option-screen-${s.id}`}
+                          />
+                          <span
+                            className="w-2.5 h-2.5 shrink-0 rounded-full"
+                            style={{ background: s.online ? '#10b981' : '#cbd5e1' }}
+                            aria-hidden
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-bold text-slate-700 truncate">{s.name}</span>
+                            <span className="block text-xs text-slate-400 truncate">
+                              {s.online ? t('emergency.target.online') : t('emergency.target.offline')}
+                              {s.displayScreenCount > 1 ? ` · ${t('emergency.target.screenCount', { count: s.displayScreenCount })}` : ''}
+                              {where ? ` · ${where}` : ''}
+                            </span>
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100">
+            <p className="text-xs text-slate-500" role="status" data-testid="target-selected-count">
+              {t('emergency.target.screensSelected', { count: draft.length })}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={close}
+                className="min-h-[44px] px-4 text-sm font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                {t('emergency.target.pickerCancel')}
+              </button>
+              <button
+                type="button"
+                onClick={done}
+                data-testid="target-done"
+                className="min-h-[44px] px-4 text-sm font-bold rounded-lg text-white"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}
+              >
+                {t('emergency.target.done')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const rowCls =
     'w-full min-h-[56px] px-4 py-2.5 flex items-center gap-3 text-left rounded-xl border transition-colors ' +
@@ -266,7 +463,7 @@ export function EmergencyTargetPicker({
             </h3>
             <ul className="space-y-2">
               {screens.map((s) => {
-                const on = multiple ? draft.includes(s.id) : isSelected('device', s.id);
+                const on = isSelected('device', s.id);
                 const where = [s.location, s.groupName ? groupDisplayName(t, s.groupName) : null, multiTenant ? s.tenantName : null]
                   .filter(Boolean)
                   .join(' · ');
@@ -274,8 +471,8 @@ export function EmergencyTargetPicker({
                   <li key={s.id}>
                     <button
                       type="button"
-                      onClick={() => (multiple ? toggleDraft(s.id) : pick(screenTarget(s)))}
-                      {...(multiple ? { role: 'checkbox' as const, 'aria-checked': on } : { 'aria-pressed': on })}
+                      onClick={() => pick(screenTarget(s))}
+                      aria-pressed={on}
                       data-testid={`target-option-screen-${s.id}`}
                       className={rowCls}
                       style={rowStyle(on)}
@@ -303,21 +500,6 @@ export function EmergencyTargetPicker({
         )}
       </div>
 
-      {multiple && (
-        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <p className="text-sm font-semibold" role="status" data-testid="target-selected-count">
-            {t('emergency.target.screensSelected', { count: draft.length })}
-          </p>
-          <button
-            type="button"
-            onClick={done}
-            data-testid="target-done"
-            className="min-h-[48px] px-5 rounded-xl bg-white text-slate-900 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          >
-            {t('emergency.target.done')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

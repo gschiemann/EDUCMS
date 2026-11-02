@@ -1,6 +1,7 @@
 # Dependabot — dependency updates for the pnpm monorepo.
 # `npm` ecosystem covers pnpm (Dependabot reads pnpm-lock.yaml).
-# One entry per package.json directory + one for GitHub Actions.
+# One entry per package.json directory, one for the Android player's Gradle build,
+# one for GitHub Actions and one for the API's Docker base image.
 #
 # ⏸ PRE-LAUNCH PAUSE (2026-07-03): every block sets
 # `open-pull-requests-limit: 0`, which PAUSES routine version-update PRs.
@@ -43,7 +44,13 @@
 # IGNORED — they break builds (argon2 native compile, eslint 9->10 flat-config,
 # prisma 5->7, typescript 5->6, actions/checkout 4->6, helmet 7->8 ...; see
 # CLAUDE.md "Deploy Reliability") and must be done DELIBERATELY.
-# apps/player is Android/Gradle, not npm — not managed here.
+# apps/player is Android/Gradle, not npm: it has its own "gradle" entry below.
+# KEEP THIS LIST IN STEP WITH THE WORKSPACES (pnpm-workspace.yaml: apps/*, packages/*):
+# a listed directory that no longer exists is a standing Dependabot error, and a package
+# that is missing here is simply not watched for version updates.
+# (2026-11-01: auth-core and ws-events were deleted — see the CLAUDE.md monorepo-layout
+# note of 2026-09-08 — but were still listed; signage-design and renderer exist but were
+# not listed.)
 version: 2
 updates:
   # ---- Root workspace (Turborepo tooling, shared devDeps) ----
@@ -96,9 +103,8 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # ---- Shared packages ----
   - package-ecosystem: "npm"
-    directory: "/packages/api-types"
+    directory: "/apps/renderer"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 0
@@ -109,8 +115,29 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
+  # ---- Android player (Gradle) ----
+  # One multi-module build: apps/player/settings.gradle.kts includes :app (the Player APK)
+  # and :manager (the Manager APK). Same pause and noise policy as every npm block: no
+  # version-update PRs before launch, minor + patch grouped when they resume, majors
+  # ignored. Majors here (AGP, Kotlin, compileSdk) are deliberate migrations that need the
+  # hardware qualification matrix (apps/player/HARDWARE-QUALIFICATION.md), never a bot PR.
+  # The dependency graph the APKs actually ship is also scanned by OSV in
+  # .github/workflows/player-kotlin-check.yml.
+  - package-ecosystem: "gradle"
+    directory: "/apps/player"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ---- Shared packages ----
   - package-ecosystem: "npm"
-    directory: "/packages/auth-core"
+    directory: "/packages/api-types"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 0
@@ -134,7 +161,7 @@ updates:
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
-    directory: "/packages/ws-events"
+    directory: "/packages/scoreboard-cts"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 0
@@ -146,7 +173,7 @@ updates:
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
-    directory: "/packages/scoreboard-cts"
+    directory: "/packages/signage-design"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 0

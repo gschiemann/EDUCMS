@@ -3767,7 +3767,21 @@ export type ScreenEventKind =
   | 'auto-refresh-requested'
   | 'refresh-acked'
   | 'repair-required'
-  | 'credential-restored';
+  | 'credential-restored'
+  | 'app-relaunch'
+  | 'page-reload'
+  | 'update-applied'
+  | 'ota-download'
+  | 'ota-install'
+  | 'ota-installed'
+  | 'ota-failed'
+  | 'emergency-start'
+  | 'emergency-clear'
+  | 'engine-start'
+  | 'engine-stop'
+  | 'engine-swap'
+  | 'rendition-swap'
+  | 'display-schedule';
 export interface ScreenEvent {
   id: string;
   kind: ScreenEventKind;
