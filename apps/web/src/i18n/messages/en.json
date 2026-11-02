@@ -240,6 +240,7 @@
       "sendTo": "Send to",
       "screensSelected": "{count, plural, one {# screen selected} other {# screens selected}}",
       "done": "Done",
+      "pickerCancel": "Cancel",
       "allScreens": "All screens",
       "allScreensCount": "All screens ({count})",
       "chipOne": "{name} · {count, plural, one {# screen} other {# screens}}",
