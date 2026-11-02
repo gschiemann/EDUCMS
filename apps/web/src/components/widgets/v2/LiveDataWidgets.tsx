@@ -14,6 +14,7 @@
  */
 import React from 'react';
 import { AirQualityLiveWidget, RoadIncidentsLiveWidget } from '../PublicDataWidgets';
+import { TrafficLiveWidget } from '../IntegrationDataWidgets';
 import { useReferenceRates, DISPLAY_CURRENCIES } from '../use-reference-rates';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
@@ -643,7 +644,7 @@ function camRows(value: unknown): TrafficCam[] {
     .map((cam) => ({ name: text(cam.name), note: text(cam.note), status: text(cam.status).toUpperCase(), tint: text(cam.tint) || undefined }));
 }
 
-export function TrafficCamWidget(props:WidgetProps<TrafficCamCfg>){const c=props.config as any || {};return c.dataMode==='automatic'||(c.dataMode!=='manual'&&!c.cams?.length&&!c.city)?<RoadIncidentsLiveWidget {...props}/>:<ManualTrafficCamWidget {...props}/>;}
+export function TrafficCamWidget(props:WidgetProps<TrafficCamCfg>){const c=props.config as any || {};return c.dataMode==='automatic'||(c.dataMode!=='manual'&&!c.cams?.length&&!c.city)?<TrafficLiveWidget config={c} fallback={<RoadIncidentsLiveWidget {...props}/>}/>:<ManualTrafficCamWidget {...props}/>;}
 function ManualTrafficCamWidget({ config, live = true, height = 480 }: WidgetProps<TrafficCamCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#0e1320', textColor: '#22c55e', accentColor: '#dc2626', ...c.style });

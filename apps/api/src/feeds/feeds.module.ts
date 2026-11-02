@@ -48,5 +48,8 @@ import { FeedsRateLimiter } from './feeds-rate-limiter';
     ReferenceRatesService,
     CurrentWeatherService,
   ],
+  // The integrations/live-data module geocodes with the same rate-leased
+  // Nominatim client the weather boards use — one lease, one cache.
+  exports: [ForecastService],
 })
 export class FeedsModule {}

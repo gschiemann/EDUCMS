@@ -1,6 +1,7 @@
 "use client";
 import { AirportConditionsWidget } from '../PublicDataWidgets';
 import { isWidgetDiscoverable } from '../widget-discovery';
+import { CryptoTickerSwitch, DeparturesBoardSwitch, ScoresBoardSwitch, StockTickerSwitch } from './IntegrationSwitchWidgets';
 
 /**
  * v2 widget pack — central registry.
@@ -642,14 +643,14 @@ export const LIVE_DATA_WIDGETS: RegisteredWidget[] = [
   // K-12 launch audit F28 — there is no score feed behind this board; it used
   // to present hardcoded NBA games as LIVE on every screen. The rows are
   // the school's own, stamped with when they were updated.
-  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Scores Board',     'Scores from other games that you enter — stamped with the time you updated them (not a live feed)', 'universal', Tv, withMeasuredHeight(LiveSportsScoreboardWidget), { accent: '#ffd23a' }),
-  W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Stock tiles + ticker band — not a live market feed', 'universal', TrendingUp,  withMeasuredHeight(StockTickerWidget),         { exchange: 'NYSE / NASDAQ' }),
-  W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    'Crypto price board — not a live price feed',         'universal', Coins,       withMeasuredHeight(CryptoTickerWidget),        {}),
+  W('SPORTS_SCOREBOARD', CAT_LIVE_DATA, 'Scores Board',     'Live league scores from TheSportsDB — offered only when this deploy has a scores key', 'universal', Tv, withMeasuredHeight(ScoresBoardSwitch), { accent: '#ffd23a' }),
+  W('STOCK_TICKER',      CAT_LIVE_DATA, 'Stock Ticker',     'Live stock quotes from Twelve Data — offered only when this deploy has a market-data key', 'universal', TrendingUp,  withMeasuredHeight(StockTickerSwitch),         { exchange: 'NYSE / NASDAQ' }),
+  W('CRYPTO_TICKER',     CAT_LIVE_DATA, 'Crypto Ticker',    'Live crypto prices from CoinGecko — offered only when this deploy has a CoinGecko key', 'universal', Coins,       withMeasuredHeight(CryptoTickerSwitch),        {}),
   W('NEWS_HEADLINES',    CAT_LIVE_DATA, 'News Headlines',   'Headline list — not a news feed (News Feed reads RSS)', 'universal', Newspaper,   withMeasuredHeight(NewsHeadlinesWidget),       { source: 'AP · Reuters · BBC', accent: '#e7142b' }),
   W('AIR_QUALITY',       CAT_LIVE_DATA, 'Air Quality',      'Current preliminary U.S. reporting-area AQI from EPA AirNow — free source', 'universal', Wind,        withMeasuredHeight(AirQualityWidget),          { dataMode: 'automatic', location: '', dataLayout: 'auto', title: 'Air quality' }),
   W('WORLD_CLOCKS',      CAT_LIVE_DATA, 'World Clocks',     'Live multi-timezone clock cards',                     'universal', Globe,       withMeasuredHeight(WorldClocksWidget),         { hour12: false }),
   W('FX_RATES',          CAT_LIVE_DATA, 'Daily Exchange Rates',         'Automatic ECB daily reference rates (free source data), or rates you enter',        'universal', DollarSign,  withMeasuredHeight(FxRatesWidget),             { base: 'USD' }),
-  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Road Conditions Board',  'Free CHP road incidents near a California location', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { dataMode: 'automatic', location: '', dataLayout: 'auto', title: 'Road conditions' }),
+  W('TRAFFIC_CAM',       CAT_LIVE_DATA, 'Road Conditions Board',  'Road incidents near a location — nationwide with TomTom, free CHP in California', 'universal', TrafficCone, withMeasuredHeight(TrafficCamWidget),          { dataMode: 'automatic', location: '', dataLayout: 'auto', title: 'Road conditions' }),
 ];
 
 /* ─── TOUCH & ENGAGE — interactive kiosk surfaces (EDU CMS-7) ────────
@@ -680,7 +681,7 @@ const CAT_TRANSIT = 'Transit';
 
 export const TRANSIT_WIDGETS: RegisteredWidget[] = [
   W('AIRPORT_CONDITIONS', CAT_TRANSIT, 'Airport Conditions', 'Actual FAA airport notices and delays — no individual flight tracking', 'universal', PlaneTakeoff, AirportConditionsWidget, {dataMode:'automatic',airport:'',title:'Airport conditions',dataLayout:'auto'}),
-  W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Split-flap departures board — not a flight feed',  'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardWidget),     { airport: 'SFO · TERMINAL 2' }),
+  W('DEPARTURES_BOARD',     CAT_TRANSIT, 'Departures Board',     'Live airport departures or arrivals from AeroDataBox — offered only when this deploy has a flights key',  'universal', PlaneTakeoff,  withMeasuredHeight(DeparturesBoardSwitch),     { airport: 'SFO · TERMINAL 2' }),
   W('FLIGHT_STATUS_HERO',   CAT_TRANSIT, 'Flight Information Board',   'Single-flight status hero for a flight you enter',  'universal', Plane,         withMeasuredHeight(FlightStatusHeroWidget),    { flight: 'UA 504', from: 'SFO', fromCity: 'San Francisco', to: 'JFK', toCity: 'New York', depTime: '14:30', arrTime: '22:52', status: 'ON TIME', gate: 'B07', board: '13:50', terminal: '2', aircraft: 'Boeing 737-900' }),
   W('TRANSIT_DEPARTURES',   CAT_TRANSIT, 'Transit Departures',   'Current MBTA predictions for Boston-area stations, or an entered schedule',            'universal', TrainFront,    withMeasuredHeight(TransitDeparturesWidget),   {dataMode:'automatic',stationId:'',dataLayout:'auto',title:'Next departures'}),
   W('PARKING_AVAILABILITY', CAT_TRANSIT, 'Parking Availability', 'Actual LADOT street-meter reports for Los Angeles, or entered garage counts', 'universal', SquareParking, withMeasuredHeight(ParkingAvailabilityWidget), {dataMode:'automatic',location:'',dataLayout:'auto',title:'Parking nearby'}),

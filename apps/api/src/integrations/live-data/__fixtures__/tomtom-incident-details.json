@@ -1,0 +1,59 @@
+{
+  "incidents": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "4819f7d0a4ec1e2ee2a6b6aa4d7c2e85",
+        "iconCategory": 8,
+        "magnitudeOfDelay": 4,
+        "events": [{ "description": "Closed", "code": 401, "iconCategory": 8 }],
+        "startTime": "2021-02-02T12:01:39Z",
+        "endTime": "2021-02-02T13:15:00Z",
+        "from": "Paleisstraat",
+        "to": "Rosmarijnsteeg",
+        "length": 238.553,
+        "delay": 0,
+        "roadNumbers": []
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [4.8905266414, 52.3725919469],
+          [4.8905306647, 52.372535656],
+          [4.8906564493, 52.3720865438]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "a1c3e9b2f7d84d0b9b6c2f1e0a9d8c7b",
+        "iconCategory": 6,
+        "magnitudeOfDelay": 3,
+        "events": [{ "description": "Stationary traffic", "code": 101, "iconCategory": 6 }],
+        "startTime": "2021-02-02T11:40:00Z",
+        "endTime": null,
+        "from": "Amsterdam-Centrum",
+        "to": "Coenplein",
+        "length": 4120.5,
+        "delay": 742,
+        "roadNumbers": ["A10"]
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [4.9012, 52.3901],
+          [4.9055, 52.3942]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "",
+        "iconCategory": 1
+      },
+      "geometry": { "type": "LineString", "coordinates": [[4.9, 52.38]] }
+    }
+  ]
+}

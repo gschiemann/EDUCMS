@@ -31,13 +31,13 @@ export const PUBLIC_DATA_LAYOUTS: [string, string][] = [
   ["list", "List"],
   ["banner", "Horizontal banner"],
 ];
-function clock(at: string) {
+export function clock(at: string) {
   const date = new Date(at);
   return Number.isFinite(date.getTime())
     ? date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
     : "";
 }
-function Frame({
+export function Frame({
   config,
   title,
   location,
@@ -170,7 +170,7 @@ function Frame({
   );
 }
 /** One page clock for a board, not one timer per row. All notices remain reachable. */
-function Rows<T>({
+export function Rows<T>({
   items,
   size,
   config,
@@ -273,7 +273,7 @@ function Rows<T>({
     </>
   );
 }
-const sourceLink = { color: "inherit" };
+export const sourceLink = { color: "inherit" };
 export function AirQualityLiveWidget({
   config = {},
 }: {
