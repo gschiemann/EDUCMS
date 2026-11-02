@@ -1,3 +1,4 @@
+import { hasNoLiveDataSource, NO_LIVE_SOURCE_NOTICE } from "./widget-discovery";
 /** Data behavior is product metadata, not a decorative claim. Keep it shared
  * by discovery, the native editor and audit exports. Saved variant IDs stay stable. */
 export interface WidgetDataCapability {
@@ -62,6 +63,13 @@ export function widgetDataCapability(
       label: "Automatic daily rates",
       detail:
         "Calculated from ECB reference rates, updated each business day. The source data is available free from the ECB. Entered rates remain available in Manual mode.",
+    };
+  if (variant && hasNoLiveDataSource(variant))
+    return {
+      mode: "manual",
+      label: NO_LIVE_SOURCE_NOTICE,
+      detail:
+        "This widget is no longer offered for new screens. Boards that already use it keep showing what they hold; nothing here updates by itself.",
     };
   if (variant && MANUAL[variant])
     return {

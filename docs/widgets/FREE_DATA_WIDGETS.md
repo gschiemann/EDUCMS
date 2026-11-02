@@ -40,3 +40,17 @@ Garage availability comes from the garage operator's actual sensor/count feed. T
 - [CHP public traffic information](https://www.chp.ca.gov/traffic), [incident XML](https://media.chp.ca.gov/sa_xml/sa.xml), and [Caltrans commercial/public traveler-information portal](https://dot.ca.gov/programs/traffic-operations/traveler-information/cwwp). Only mapped travel summaries are exposed; dispatcher narratives are excluded.
 
 All new upstream hosts are fixed in server code. Existing SSRF-safe transport checks DNS/redirects, bounds response size and time, and shares cached source snapshots across screens. Transit uses one bulk feed rather than one anonymous provider request per screen/station. Source timestamps are validated. CHP additionally requires a recent HTTP Last-Modified timestamp. Nothing modifies screen assignments, APKs, the player loader or its activation policy.
+
+## Removed from the picker (2026-11-01 owner rule: no "enter it yourself" data widgets)
+
+A data widget either reads a real source or is not offered for new screens.
+Saved boards keep rendering; the builder shows "This widget has no live data source."
+(`widget-discovery.ts`, `HIDDEN_UNLICENSED_DATA_WIDGETS`).
+
+| Family | Verdict | Why |
+|---|---|---|
+| Stock ticker, Crypto ticker | Removed | Real-time quotes need a licensed feed; free endpoints forbid public display. |
+| Departures board, Flight status | Removed | No free per-flight source with schedules/gates. FAA airport conditions is the live replacement. Candidate to build: OpenSky Network (free, rate-limited, position/altitude by callsign only, no schedules). |
+| News Headlines (entered) | Removed | Newsroom (GDELT) and RSS widgets are the live replacements. |
+| Scores Board (entered) | Removed | Bound-game scoreboards are the live replacement. |
+| Air quality, Road conditions, Transit, Parking, Airport conditions, FX rates | Live | AirNow, CHP (California only), MBTA (Boston only), LADOT (Los Angeles only), FAA, ECB. Nationwide traffic/transit/parking still needs a source per region. |

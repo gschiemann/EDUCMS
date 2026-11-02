@@ -222,10 +222,10 @@ describe('simple automatic widget typography', () => {
   expect(screen.queryByLabelText('Font size')).toBeNull();
   expect(screen.queryByLabelText(/text size.*%/i)).toBeNull();
  });
- it('labels a flight board as entered content before offering its fields', () => {
+ it('tells the builder a saved flight board has no live data source', () => {
   render(<ContentFields zone={makeZone('LIVE_DATA', {variant:'flight-status-hero'})} updateZone={jest.fn()} />);
-  expect(screen.getByText('Manually updated')).toBeTruthy();
-  expect(screen.getByText(/not live flight tracking/)).toBeTruthy();
+  expect(screen.getByText('This widget has no live data source.')).toBeTruthy();
+  expect(screen.getByText(/no longer offered for new screens/)).toBeTruthy();
  });
  it('adds typed flight rows using the existing row editor, without seeding a fake flight', () => {
   const updateZone=jest.fn();
