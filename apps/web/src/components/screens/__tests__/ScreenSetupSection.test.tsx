@@ -38,6 +38,25 @@ const REPORT = {
   },
 };
 
+/** One required grant missing — the case where the checklist is offered. */
+const REPORT_NEEDS = {
+  setup: {
+    ...REPORT.setup,
+    granted: 3,
+    complete: false,
+    steps: REPORT.setup.steps.map((st) =>
+      st.key === 'homeSetupPromptShown' ? { ...st, held: false } : st,
+    ),
+  },
+};
+
+/** Render, then open the checklist from the one-line summary's Fix button. */
+function renderOpen(report: unknown, screenOver: Record<string, unknown> = {}, props: { readOnly?: boolean } = {}) {
+  const r = renderSection(report, screenOver, props);
+  fireEvent.click(rtl.getByTestId('setup-fix'));
+  return r;
+}
+
 function renderSection(
   report: unknown,
   screenOver: Record<string, unknown> = {},
@@ -70,16 +89,31 @@ describe('ScreenSetupSection', () => {
     expect(older.container).toBeEmptyDOMElement();
   });
 
-  it('states the outstanding optional work the completion card used to hide', () => {
+  it('says "Setup complete" with no Fix button when nothing required is missing', () => {
     renderSection(REPORT);
-    expect(rtl.getByText('4 of 4 required')).toBeInTheDocument();
+    expect(rtl.getByText('Setup complete')).toBeInTheDocument();
+    expect(rtl.queryByTestId('setup-fix')).toBeNull();
+    // The full checklist is not drawn inline.
+    expect(rtl.queryByText('Install updates')).toBeNull();
+  });
+
+  it('counts the required steps that need setup and keeps the checklist behind Fix', () => {
+    renderSection(REPORT_NEEDS);
+    expect(rtl.getByText('1 thing needs setup')).toBeInTheDocument();
+    expect(rtl.queryByText('Come back after updates')).toBeNull();
+    fireEvent.click(rtl.getByTestId('setup-fix'));
+    expect(rtl.getByText('Come back after updates')).toBeInTheDocument();
+  });
+
+  it('states the outstanding optional work the completion card used to hide', () => {
+    renderOpen(REPORT_NEEDS);
     expect(
       rtl.getByText('2 optional steps were never set up on this panel.'),
     ).toBeInTheDocument();
   });
 
   it('names the Settings pages this MODEL hides — knowledge for the next 50 panels', () => {
-    renderSection(REPORT);
+    renderOpen(REPORT_NEEDS);
     const callout = rtl.getByText(/This model hides some Settings pages/).parentElement!;
     // The grant whose `launch` was 'fallback' is NAMED in the callout — the
     // row list also carries that name, hence the scoped read.
@@ -91,12 +125,12 @@ describe('ScreenSetupSection', () => {
     // Android exposes no way to read another package's appop, so `held` is a
     // hard false there. Telling an operator to go grant something that may
     // already be on is its own small lie.
-    renderSection(REPORT);
+    renderOpen(REPORT_NEEDS);
     expect(rtl.getByText('Unknown')).toBeInTheDocument();
   });
 
   it('posts the OPEN_SETUP wire shape the API accepts', async () => {
-    renderSection(REPORT);
+    renderOpen(REPORT_NEEDS);
     fireEvent.click(rtl.getByRole('button', { name: /Open setup on this panel/i }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
     const [path, init] = apiFetchMock.mock.calls[0];
@@ -116,7 +150,7 @@ describe('ScreenSetupSection', () => {
 
   it('reports a poll-only screen as QUEUED, never as success', async () => {
     apiFetchMock.mockResolvedValue({ success: true, delivered: false });
-    renderSection(REPORT);
+    renderOpen(REPORT_NEEDS);
     fireEvent.click(rtl.getByRole('button', { name: /Open setup on this panel/i }));
     await waitFor(() =>
       expect(rtl.getByText(/no live push channel/)).toBeInTheDocument(),
@@ -127,13 +161,13 @@ describe('ScreenSetupSection', () => {
     // The bridge method shipped in v1.1.6; below that the frame is delivered
     // and then dropped as `no-bridge`. A button with a 100% failure rate is
     // exactly what this panel is not allowed to render.
-    renderSection(REPORT, { playerVersion: '1.1.5' });
+    renderOpen(REPORT_NEEDS, { playerVersion: '1.1.5' });
     expect(rtl.queryByRole('button', { name: /Open setup on this panel/i })).toBeNull();
     expect(rtl.getByText(/press and hold the\s+top-left corner for 6 seconds/i)).toBeInTheDocument();
   });
 
   it('is inert for a read-only role', () => {
-    renderSection(REPORT, {}, { readOnly: true });
+    renderOpen(REPORT_NEEDS, {}, { readOnly: true });
     const btn = rtl.getByRole('button', { name: /Open setup on this panel/i });
     expect(btn).toBeDisabled();
     fireEvent.click(btn);

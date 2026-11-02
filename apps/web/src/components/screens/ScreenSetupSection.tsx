@@ -41,11 +41,13 @@
  */
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ClipboardCheck, ExternalLink, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useDisplayControl, DISPLAY_CONTROL_TIMEOUT_MS } from '@/hooks/use-api';
 import {
   parseSetupTelemetry,
   describeStep,
+  summarizeSetup,
   supportsSetupPush,
   SETUP_PUSH_MIN_VERSION,
 } from './screen-setup';
@@ -62,6 +64,9 @@ export function ScreenSetupSection({
   readOnly?: boolean;
 }) {
   const control = useDisplayControl();
+  const t = useTranslations('screens.settingsTab');
+  // 2026-11-01: the checklist is behind a one-line summary, closed by default.
+  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const setup = parseSetupTelemetry(inventoryReport);
@@ -112,19 +117,38 @@ export function ScreenSetupSection({
   };
 
   const applicable = setup.steps.filter((s) => s.applies);
+  const summary = summarizeSetup(setup);
 
   return (
-    <div className="border-t border-slate-100">
-      <div className="px-3.5 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
-            <ClipboardCheck className="w-3.5 h-3.5 text-slate-400" />
-            Screen setup
-          </span>
-          <span className="text-[10px] font-mono text-slate-500 tabular-nums">
-            {setup.granted} of {setup.required} required
-          </span>
-        </div>
+    <div className="border-t border-slate-100" data-testid="setup-section">
+      <div className="flex items-center gap-3 px-3.5 py-3 min-h-[48px]" data-testid="setup-summary">
+        {summary.complete ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        ) : (
+          <ClipboardCheck className="w-4 h-4 text-amber-600 shrink-0" />
+        )}
+        <span
+          className={`flex-1 min-w-0 text-[13px] font-semibold ${summary.complete ? 'text-slate-600' : 'text-slate-800'}`}
+        >
+          {summary.complete ? t('setupComplete') : t('setupNeeds', { count: summary.needed })}
+        </span>
+        {!summary.complete && (
+          <button
+            type="button"
+            aria-expanded={open}
+            data-testid="setup-fix"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+            className="shrink-0 min-h-[40px] px-2 text-[13px] font-bold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-md"
+          >
+            {open ? t('setupHide') : t('setupFix')}
+          </button>
+        )}
+      </div>
+      {open && (
+      <div className="px-3.5 pb-3">
 
         {/* The correction the panel's own completion card now also makes:
             "required: done" is not "nothing left". */}
@@ -226,6 +250,7 @@ export function ScreenSetupSection({
           </p>
         )}
       </div>
+      )}
     </div>
   );
 }
