@@ -4939,7 +4939,16 @@
     "periodOverNext": "Siguiente periodo",
     "clockEntryHint": "Escriba el tiempo exacto que queda: minutos y segundos (7:42), o segundos y décimas (4.3, 0.3).",
     "readStale": "Se perdió el contacto con el partido: la última actualización fue hace {seconds} s. Los relojes aquí se detienen hasta que vuelva la conexión.",
-    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda."
+    "readStaleNever": "Todavía no se puede conectar con el partido. Los relojes aquí se detienen hasta que responda.",
+    "cueTargetLabel": "Enviar a",
+    "cueTargetAria": "Enviar las celebraciones a",
+    "cueTargetAll": "Todo",
+    "cueTargetBoard": "Marcador",
+    "cueTargetRibbon": "Cinta",
+    "cueTargetRibbonHint": "texto de 2,5 s",
+    "statusConfigured": "Configurado",
+    "statusArmed": "Preparado",
+    "statusOnAir": "Al aire"
   },
   "studentPrivacy": {
     "title": "Información de estudiantes en pantallas públicas",
@@ -5343,7 +5352,8 @@
     "regenerate": "Regenerar…",
     "regenerateTitle": "Revocar y reemplazar: todas las credenciales ya instaladas para este partido dejan de funcionar y se emite un token nuevo",
     "confirmWarning": "Esto invalida todas las credenciales ya instaladas para este partido (incluido el token original) en cuanto confirmes: tu proveedor deja de sincronizar hasta que pegues el nuevo.",
-    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token."
+    "perGame": "Las credenciales son por partido: para el próximo, abre esta tarjeta en ese partido y dale a tu proveedor su nueva URL y token.",
+    "vendorAria": "Proveedor del marcador"
   },
   "sportsConsoleSetup": {
     "title": "Consola del marcador",
@@ -8140,5 +8150,21 @@
     "listView": "Vista de lista",
     "moreTabs": "Más",
     "sortValue": "Ordenar: {label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Estilo visual",
+    "intakePalette": "Origen de los colores",
+    "intakeBackground": "Estilo de fondo",
+    "mediaKind": "Tipo de contenido",
+    "templateKind": "Origen de la plantilla",
+    "aiMenu": "Opciones de reescritura con IA",
+    "opRewrite": "Reescribir",
+    "opShorten": "Acortar",
+    "opFitToZone": "Ajustar a la zona",
+    "opExpand": "Ampliar",
+    "opPunch": "Dar más fuerza",
+    "opFixGrammar": "Corregir gramática",
+    "opTranslate": "Traducir…",
+    "opTellMe": "Dime cómo…"
   }
 }

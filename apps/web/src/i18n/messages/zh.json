@@ -4939,7 +4939,16 @@
     "periodOverNext": "下一节",
     "clockEntryHint": "输入准确的剩余时间：分:秒（7:42），或秒和十分之一秒（4.3、0.3）。",
     "readStale": "与比赛的连接已中断：上次更新是 {seconds} 秒前。连接恢复前，此处的计时器将保持暂停。",
-    "readStaleNever": "暂时无法连接到比赛。在其响应之前，此处的计时器将保持暂停。"
+    "readStaleNever": "暂时无法连接到比赛。在其响应之前，此处的计时器将保持暂停。",
+    "cueTargetLabel": "发送到",
+    "cueTargetAria": "庆祝提示发送到",
+    "cueTargetAll": "全部",
+    "cueTargetBoard": "记分牌",
+    "cueTargetRibbon": "横幅",
+    "cueTargetRibbonHint": "2.5 秒滚动",
+    "statusConfigured": "已配置",
+    "statusArmed": "已就绪",
+    "statusOnAir": "播出中"
   },
   "studentPrivacy": {
     "title": "公共屏幕上的学生信息",
@@ -5343,7 +5352,8 @@
     "regenerate": "重新生成…",
     "regenerateTitle": "撤销并替换：本场比赛此前部署的所有凭据都将失效，并签发新令牌",
     "confirmWarning": "确认后，本场比赛已部署的所有凭据（包括最初的令牌）将立即失效——在您粘贴新令牌之前，供应商将停止同步。",
-    "perGame": "凭据按比赛区分：下一场比赛时，请在该比赛中打开此卡片，并将新的网址和令牌提供给供应商。"
+    "perGame": "凭据按比赛区分：下一场比赛时，请在该比赛中打开此卡片，并将新的网址和令牌提供给供应商。",
+    "vendorAria": "记分牌供应商"
   },
   "sportsConsoleSetup": {
     "title": "记分牌控制台",
@@ -8140,5 +8150,21 @@
     "listView": "列表视图",
     "moreTabs": "更多",
     "sortValue": "排序：{label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "外观风格",
+    "intakePalette": "配色来源",
+    "intakeBackground": "背景样式",
+    "mediaKind": "媒体类型",
+    "templateKind": "模板来源",
+    "aiMenu": "AI 改写选项",
+    "opRewrite": "改写",
+    "opShorten": "缩短",
+    "opFitToZone": "适应区域",
+    "opExpand": "扩写",
+    "opPunch": "更有力",
+    "opFixGrammar": "修正语法",
+    "opTranslate": "翻译…",
+    "opTellMe": "告诉我怎么改…"
   }
 }
