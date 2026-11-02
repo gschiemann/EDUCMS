@@ -44,7 +44,6 @@
  *   - Everything must be reachable by click and by keyboard. Drag is extra.
  */
 
-import { useLiveDataDiscovery } from '@/components/widgets/use-live-data-discovery';
 import { widgetDataCapability } from '../widgets/widget-data-capabilities';
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { Search, X, SlidersHorizontal, ChevronRight, RotateCcw, } from 'lucide-react';
@@ -264,13 +263,9 @@ export function VariantPicker({ replaceZoneId }: VariantPickerProps = {}) {
   }, [selected?.id, replaceZoneId]);
 
   // Everything this tenant is allowed to see, before any operator filter.
-  // Paid data families (stocks, crypto, flights, scores) join the list only
-  // while this deploy has their provider key — the version bumps when /status lands.
-  const liveDataVersion = useLiveDataDiscovery();
   const visible = useMemo(
     () => listVariants().filter(v => variantVisibleForVertical(v, tenantCopy.vertical)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tenantCopy.vertical, liveDataVersion],
+    [tenantCopy.vertical],
   );
 
   // Faceted filters (owner 2026-10-12): each axis only offers values that

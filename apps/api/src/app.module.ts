@@ -110,7 +110,6 @@ import { CleverModule } from './integrations/clever/clever.module';
 // server-only key the geocode proxy uses): with no key every route answers
 // `{ enabled: false }` with a 200, so an unconfigured deploy is unaffected.
 import { GoogleReviewsModule } from './integrations/google-reviews/google-reviews.module';
-import { LiveDataModule } from './integrations/live-data/live-data.module';
 // 2026-09-12 — Instagram + Facebook Page. Same dormant-until-configured
 // posture as Clever and Stripe: with no INSTAGRAM_APP_ID / META_APP_ID the
 // module loads, /status says so, and the cron self-disables.
@@ -231,7 +230,6 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     IntegrationsModule,
     CleverModule,
     GoogleReviewsModule,
-    LiveDataModule,
     SocialModule,
     AnalyticsModule,
     GpioModule,

@@ -1,9 +1,6 @@
 "use client";
 
 import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/data-widget-meta';
-import { DEFAULT_CRYPTO_COINS, DEFAULT_STOCK_SYMBOLS, isIntegrationAutomatic } from '../widgets/data-widget-meta';
-import { INTEGRATION_GATED_WIDGETS, isWidgetDiscoverable } from '../widgets/widget-discovery';
-import dynamic from 'next/dynamic';
 import { useGtfsAgencies, useGtfsStations, useTransitStations } from '../widgets/use-public-data';
 import { TextField, SelectField } from './field-controls';
 import { isAutomaticPublicData, widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
@@ -219,10 +216,6 @@ import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
 import { GoToPageSelect, WhenTappedGoToPage } from './GoToPage';
 import { isInteractiveTemplate, isTapTargetZone, sortPages } from './pages';
 
-// Lazy: provider pickers pull in the live-data client + GTFS hooks; keep them out of the builder chunk.
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const LiveDataSourceFields = dynamic<{ variant: string; cfg: any; automatic: boolean; setField: (patch: Record<string, any>) => void }>(() => import('./LiveDataEditorFields').then(m => m.LiveDataSourceFields));
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -6975,23 +6968,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // K-12 launch audit F28/F30 — the universal Live Data "Scores Board"
       // (`sports-scoreboard`, canonical LIVE_DATA) has nested game rows the
       // generic editor below cannot express; it shares the venue schema.
-      // Paid live-data families (integrations/live-data, 2026-11-01): the
-      // query, layout and heading for a board whose data comes from a
-      // provider. Only meaningful while the deploy has that provider's key;
-      // the component says so when it does not.
-      const integrationVariant = cfg.variant && INTEGRATION_GATED_WIDGETS[String(cfg.variant)] ? String(cfg.variant) : undefined;
-      // Inferred-automatic counts only while the family is live here (the
-      // picker's discovery state); otherwise the manual row editor stays.
-      const integrationAuto = !!integrationVariant && isIntegrationAutomatic(integrationVariant, cfg) && (cfg.dataMode === 'automatic' || isWidgetDiscoverable(integrationVariant));
-      if (integrationVariant) {
-        fields.push(<LiveDataSourceFields key="live-data-source" variant={integrationVariant} cfg={cfg} automatic={integrationAuto} setField={setField} />);
-        if (integrationAuto) {
-          fields.push(<SelectField key="live-data-layout" label="Layout" value={cfg.dataLayout || 'auto'} options={PUBLIC_DATA_LAYOUTS} onChange={v=>setField({dataLayout:v})}/>);
-          fields.push(<StyleableField key="live-data-title" fieldName="title" styles={cfg._styles} label="Heading" value={cfg.title ?? ''} onChange={v=>setField({title:v})}/>);
-          fields.push(<SelectField key="live-data-text" label="Text to format" value={PUBLIC_DATA_TEXT_AREAS.some(([id])=>id===activeForecastTextArea)?activeForecastTextArea!:'dataValue'} options={PUBLIC_DATA_TEXT_AREAS} onChange={v=>useBuilderStore.getState().setActiveFieldName(v)}/>);
-        }
-      }
-      if (cfg.variant && SPORTS_VENUE_VARIANTS.has(String(cfg.variant)) && !(cfg.variant === 'sports-scoreboard' && integrationAuto)) {
+      if (cfg.variant && SPORTS_VENUE_VARIANTS.has(String(cfg.variant))) {
         fields.push(<SportsVenueEditor key="sports-venue" variant={String(cfg.variant)} cfg={cfg} setField={setField} />);
         break;
       }
@@ -7029,7 +7006,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         const dataCapability = widgetDataCapability(zone.widgetType, cfg.variant, cfg);
         if (dataCapability) fields.push(<p key="data-behavior" className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600"><strong className="block text-slate-800 mb-1">{dataCapability.label}</strong>{dataCapability.detail}</p>);
         const contentKeys = Object.keys(defs).filter(
-          (k) => !integrationAuto && !(publicKind && (publicAutomatic || ['dataMode','dataLayout','title','stationId'].includes(k))) && k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
+          (k) => !(publicKind && (publicAutomatic || ['dataMode','dataLayout','title','stationId'].includes(k))) && k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
         );
         // 2026-05-29 — operator: "upload logos when needed or images." An
         // image/logo/photo content field used to render as a plain URL
