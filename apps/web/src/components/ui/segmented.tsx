@@ -41,7 +41,7 @@ export function Segmented<T extends string>({
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const index = Math.max(0, options.findIndex((o) => o.value === value));
 
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
@@ -55,7 +55,6 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       data-testid={testId}
-      onKeyDown={onKey}
       className={`inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 ${fullWidthOnMobile ? 'flex w-full sm:inline-flex sm:w-auto' : ''} ${className ?? ''}`}
     >
       {options.map((o, i) => {
@@ -72,6 +71,7 @@ export function Segmented<T extends string>({
             title={iconOnly ? o.label : undefined}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(o.value)}
+            onKeyDown={onKey}
             className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
               iconOnly ? 'min-w-11 sm:min-w-8' : 'px-3'
             } ${fullWidthOnMobile ? 'flex-1 sm:flex-none' : ''} ${
