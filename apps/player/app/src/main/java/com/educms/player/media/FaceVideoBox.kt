@@ -216,7 +216,7 @@ internal object FaceVideoBox {
     private const val DECODER_RELEASE_WAIT_MS = 1_000L
     private const val LEASE_TICK_MS = 2_000L
     /** Ends of the presenting session after which its pre-roll must NOT take the face. */
-    private val NO_PROMOTION = setOf("emergency-held", "released", "page-requested", "operator-ui", "lifecycle-not-ready",
+    private val NO_PROMOTION = setOf("emergency-held", FaceVideoPolicy.EMERGENCY_HELD_OTHER_FACE, "released", "page-requested", "operator-ui", "lifecycle-not-ready",
         "activity-paused", "credential-identity", "document-retired", "host-detached")
     /** The enrolment switch is re-read from this face's own manifest this often (a conditional GET: a 304 costs nothing). */
     private const val SWITCH_REFRESH_MS = 5L * 60_000L
@@ -293,7 +293,23 @@ internal object FaceVideoBox {
     }
 
     /** ⚠️ §7 E1: EVERY session of EVERY face — v2, v3, v4, a pre-roll, a held predecessor, attended or not. */
-    @Synchronized fun suppress(why: String) { hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } } }
+    @Synchronized fun suppress(why: String) {
+        hosts.values.forEach { h ->
+            // An emergency suppression names, per face, whether THIS face holds (FaceVideoPolicy.emergencyHeldReason).
+            val reason = if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(h) else why
+            h.faceSessions.values.toList().forEach { stopSession(h, it, reason) }
+        }
+    }
+
+    /**
+     * The end reason for a session stopped by the emergency hold on [host]'s face:
+     * `emergency-held` when this face is in the hold (or the hold names no face),
+     * `emergency-held-other-face` when only ANOTHER face of a double-sided unit holds.
+     * The page treats both as "do not play regular media"; only the first may ever be
+     * read as this face's own alert (2026-11-02, the double-sided echo loop).
+     */
+    private fun heldReason(host: SharedVideoHost): String =
+        FaceVideoPolicy.emergencyHeldReason(host.face, DisplayEmergency.holdingFaces(host.ctx))
     /** Re-assert removal even for already-retired output; an alert never trusts a prior stop. */
     fun clearEmergencySurfaces() {
         val remove = Runnable {
@@ -386,7 +402,7 @@ internal object FaceVideoBox {
             // positioned-slot engine is off on every class in this build.
             session.refusal?.let { stopSession(host, session, it); return null }
             // §7 E2: nothing starts under a hold — a v4 intent is kept, suspended, for the page's restore.
-            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, "emergency-held"); return null }
+            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, heldReason(host)); return null }
             if (session.protocol == 2 && !host.lifecycleReady) { stopSession(host, session, if (session.v4) "lifecycle-not-ready" else "activity-paused"); return null }
         }
         // The pair engine and this one never share a face (outside our monitor — lock order).
@@ -857,7 +873,7 @@ internal object FaceVideoBox {
         // Protocol 4 has no commit: its start policy replaces it (§3.5). v2 / v3 are unchanged.
         if (s.v4) return
         if (!live(host, s) || s.state != "ready") return
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isPlaybackHeld(host.ctx)) return@post
@@ -943,7 +959,7 @@ internal object FaceVideoBox {
                     ints.put(face, intent.copy(suspendedByHold = true))
                     rejections.remove(face)
                     armLeaseTick(host.ctx)
-                    listOfNotNull(current, next).forEach { stopSession(host, it, "emergency-held") }
+                    listOfNotNull(current, next).forEach { stopSession(host, it, heldReason(host)) }
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_INTENT face=$face held=true sha=${m.sha256.take(8)}")
                     return
                 }
@@ -1039,7 +1055,7 @@ internal object FaceVideoBox {
             val host = s.host
             if (!live(host, s) || s.state != "ready") return
             // §7 E2: not even a hidden pre-roll decoder starts under a hold.
-            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
             if (s.key == NEXT) {
                 // PRE-ROLL: the decoder starts now and its first frame is HELD on a surface parked beyond
                 // the display (static) or beneath the opaque window (dynamic); prerollHeld() arms the swap.
@@ -1053,7 +1069,7 @@ internal object FaceVideoBox {
 
     /** UI thread, under the monitor: the v4 equivalent of commit's start (nothing presents on this face). */
     private fun startNow(host: SharedVideoHost, s: FaceVideoSession) {
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         host.refreshReadiness()
         if (s.protocol == 2 && !host.lifecycleReady) { stopSession(host, s, pageStopped(host, s)); return }
         if (!host.canOwnWindow()) { stopSession(host, s, pageStopped(host, s)); return }
@@ -1133,8 +1149,8 @@ internal object FaceVideoBox {
             val path = b.swapPath ?: NativeFirstBoundary.Path.HOLD_LAST_FRAME
             for (step in NativeFirstBoundary.swapSteps(held, path)) when (step) {
                 NativeFirstBoundary.Step.ABORT_HELD -> {
-                    stopSession(host, b, "emergency-held")
-                    a?.let { stopSession(host, it, "emergency-held") }
+                    stopSession(host, b, heldReason(host))
+                    a?.let { stopSession(host, it, heldReason(host)) }
                     return
                 }
                 NativeFirstBoundary.Step.FREEZE_A -> a?.let {
@@ -1174,8 +1190,8 @@ internal object FaceVideoBox {
     private fun continueSwap(b: FaceVideoSession, a: FaceVideoSession?) {
         if (DisplayEmergency.isPlaybackHeld(b.host.ctx)) {
             synchronized(this) {
-                if (liveNow(b)) stopSession(b.host, b, "emergency-held")
-                a?.let { if (liveNow(it)) stopSession(it.host, it, "emergency-held") }
+                if (liveNow(b)) stopSession(b.host, b, heldReason(b.host))
+                a?.let { if (liveNow(it)) stopSession(it.host, it, heldReason(it.host)) }
             }
             return
         }
@@ -1241,7 +1257,7 @@ internal object FaceVideoBox {
     @Synchronized fun play(host: SharedVideoHost, id: String) {
         val s = byId(host, id) ?: return
         if (!live(host, s) || s.zone == null || s.onGlass || !s.held) return
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isPlaybackHeld(host.ctx) || !s.held) return@post
@@ -1337,7 +1353,7 @@ internal object FaceVideoBox {
                 main.postDelayed({ probeOutput(host, s, sv) }, 60_000)
                 main.postDelayed({ probeOutput(host, s, sv) }, 300_000)
             } else if (s.layer.phase == SoloVideoLayer.Phase.RETIRED && live(host, s)) {
-                stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else pageStopped(host, s))
+                stopSession(host, s, if (held) heldReason(host) else if (!attached) "output-detached" else pageStopped(host, s))
             }
         } else if (s.layer.request(started = true, validFrame = true)) {
             main.post {
@@ -1348,7 +1364,7 @@ internal object FaceVideoBox {
                     val uiClear = host.canOwnWindow()
                     if (!s.layer.promote(live(host, s), attached, held, uiClear)) {
                         if (live(host, s)) stopSession(host, s,
-                            if (held) "emergency-held" else if (!attached) "output-detached" else pageStopped(host, s))
+                            if (held) heldReason(host) else if (!attached) "output-detached" else pageStopped(host, s))
                         return@post
                     }
                     try {
@@ -1398,7 +1414,7 @@ internal object FaceVideoBox {
                 val attached = s.attached && sv.isAttachedToWindow && sv.holder.surface.isValid
                 val uiClear = host.canOwnWindow()
                 if (held || !attached || !uiClear || s.layer.revealTimedOut(System.nanoTime())) {
-                    stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else if (!uiClear) pageStopped(host, s) else "output-unavailable")
+                    stopSession(host, s, if (held) heldReason(host) else if (!attached) "output-detached" else if (!uiClear) pageStopped(host, s) else "output-unavailable")
                     return@synchronized
                 }
                 val origin = IntArray(2); container.getLocationInWindow(origin)
@@ -1446,7 +1462,7 @@ internal object FaceVideoBox {
             val screen = s.descriptor?.screenId ?: s.screenId
             val sv = s.surface
             val why = when {
-                DisplayEmergency.isPlaybackHeld(host.ctx) -> "emergency-held"
+                DisplayEmergency.isPlaybackHeld(host.ctx) -> heldReason(host)
                 s.protocol == 2 && s.startedAt > 0 && !host.lifecycleReady -> pageStopped(host, s)
                 s.startedAt > 0 && !host.canOwnWindow() -> pageStopped(host, s)
                 s.layer.revealTimedOut(System.nanoTime()) -> "output-unavailable"
@@ -1745,7 +1761,7 @@ internal object FaceVideoBox {
         }
         s.predecessor?.let { p ->
             s.predecessor = null
-            if (p.alive) stopSession(p.host, p, if (why == "emergency-held") "emergency-held" else "content-changed")
+            if (p.alive) stopSession(p.host, p, if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(p.host) else "content-changed")
         }
         when (s.key) {
             NEXT -> host.faceSessions[""]?.let { a ->

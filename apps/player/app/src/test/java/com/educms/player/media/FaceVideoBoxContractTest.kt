@@ -319,7 +319,7 @@ class FaceVideoBoxContractTest {
     fun `E1 - suppression reaches every v4 session - pre-roll, held predecessor and unattended alike`() {
         val b = code(box)
         val suppress = body(b, "fun suppress(")
-        assertTrue(suppress.contains("hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } }"))
+        assertTrue((suppress.contains("hosts.values.forEach { h ->") && suppress.contains("h.faceSessions.values.toList().forEach { stopSession(h, it, reason) }") && suppress.contains("val reason = if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(h) else why")))
         assertFalse("no filter of any kind in front of the hold", suppress.contains("v4") || suppress.contains("key") || suppress.contains("lease"))
         // The pre-roll and the held predecessor are REGISTERED sessions, so the loop above reaches them.
         assertTrue(body(b, "private fun begin(").contains("host.faceSessions[session.key] = session"))
@@ -350,7 +350,7 @@ class FaceVideoBoxContractTest {
         val intend = body(b, "private fun intend(")
         assertTrue("the hold is part of the decision", intend.contains("held = DisplayEmergency.isPlaybackHeld(host.ctx)"))
         assertTrue("…and an intent under it is kept suspended", intend.contains("ints.put(face, intent.copy(suspendedByHold = true))"))
-        assertTrue(body(b, "private fun begin(").contains("if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, \"emergency-held\"); return null }"))
+        assertTrue(body(b, "private fun begin(").contains("if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, heldReason(host)); return null }"))
         val start = body(b, "private fun startNow(")
         assertTrue(start.indexOf("DisplayEmergency.isPlaybackHeld(host.ctx)") in 0 until start.indexOf("s.renderer?.start()"))
         assertTrue("opaque black, set-to-known-value", start.contains("host.web.setBackgroundColor(Color.BLACK)"))

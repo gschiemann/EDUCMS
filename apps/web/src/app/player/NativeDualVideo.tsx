@@ -56,8 +56,8 @@ export function nativeVideoNext(
 
 /**
  * The APK stopped this face's native video because an emergency hold is in
- * force on the unit: `emergency-held` (this face, or — before APK 1.1.63 —
- * any face of a double-sided unit) or `emergency-held-other-face` (only the
+ * force on the unit: `emergency-held` (this face, or —
+ * any face of a double-sided unit, on APKs up to 1.1.62) or `emergency-held-other-face` (only the
  * other face holds). Either one suppresses regular web media on this page;
  * NEITHER may raise the native hold. Pure, exported for the test.
  */

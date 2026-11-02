@@ -325,7 +325,7 @@ class FaceEmergencyHoldTest {
     fun `suppression reaches unattended and mid-boundary sessions, and the hold's release restarts nothing by itself`() {
         val box = source("src/main/java/com/educms/player/media/FaceVideoBox.kt")
         val suppress = box.substring(box.indexOf("fun suppress("), box.indexOf("fun yieldToUi("))
-        assertTrue("every session of every host", suppress.contains("hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } }"))
+        assertTrue("every session of every host", (suppress.contains("hosts.values.forEach { h ->") && suppress.contains("h.faceSessions.values.toList().forEach { stopSession(h, it, reason) }") && suppress.contains("val reason = if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(h) else why")))
         assertFalse("not filtered by the lease, the role or the protocol", Regex("v4|lease|key|NEXT|PREV").containsMatchIn(suppress))
         // The pre-roll and the held predecessor live in that same registry.
         assertTrue(box.contains("host.faceSessions[PREV] = it"))
