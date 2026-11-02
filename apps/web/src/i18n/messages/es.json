@@ -274,6 +274,7 @@
       "sendTo": "Enviar a",
       "screensSelected": "{count, plural, one {# pantalla seleccionada} other {# pantallas seleccionadas}}",
       "done": "Listo",
+      "pickerCancel": "Cancelar",
       "allScreens": "Todas las pantallas",
       "allScreensCount": "Todas las pantallas ({count})",
       "chipOne": "{name} · {count, plural, one {# pantalla} other {# pantallas}}",

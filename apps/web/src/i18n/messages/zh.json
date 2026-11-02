@@ -274,6 +274,7 @@
       "sendTo": "发送至",
       "screensSelected": "已选择 {count} 个屏幕",
       "done": "完成",
+      "pickerCancel": "取消",
       "allScreens": "所有屏幕",
       "allScreensCount": "所有屏幕（{count}）",
       "chipOne": "{name} · {count, plural, other {# 块屏幕}}",
