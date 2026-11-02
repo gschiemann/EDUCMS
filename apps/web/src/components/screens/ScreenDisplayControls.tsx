@@ -105,14 +105,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   Volume2,
-  VolumeX,
   Sun,
   Moon,
   Monitor,
-  Power,
+  RotateCw,
   CalendarClock,
   Info,
   Loader2,
@@ -122,6 +121,7 @@ import {
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import {
   useDisplayControl,
+  useDisplaySchedules,
   DISPLAY_CONTROL_TIMEOUT_MS,
   type DisplayActionType,
 } from '@/hooks/use-api';
@@ -139,22 +139,10 @@ import {
   nativeReportAsleep,
   type SleepAwakeTarget,
 } from './sleep-awake';
-import { ScreenDeviceSettings } from './ScreenDeviceSettings';
+import { resolveQuickControls, summarizeScheduleLine } from './quick-settings';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
-
-function ago(ts: string | null | undefined): string | null {
-  if (!ts) return null;
-  const ms = Date.now() - new Date(ts).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
 
 /**
  * Slider row. `reported` is the device's own last-known level when the API
@@ -174,29 +162,34 @@ function ago(ts: string | null | undefined): string | null {
 function LevelRow({
   icon,
   label,
-  note,
+  hint,
+  infoLabel,
   min,
   reported,
   unknownPark,
-  unknownHint,
   disabled,
   onCommit,
   accentClass,
 }: {
   icon: React.ReactNode;
   label: string;
-  note: string | null;
+  /**
+   * One short muted line, shown only on hover (title) or tap (the info
+   * button) — never as always-on orange chrome (2026-11-01 simplification).
+   * Null = nothing to say.
+   */
+  hint: string | null;
+  infoLabel: string;
   min: number;
   reported: number | null;
   /** Where the thumb rests when the device has never echoed a level. */
   unknownPark: number;
-  /** Shown only while the level is genuinely unknown. */
-  unknownHint: string;
   disabled: boolean;
   onCommit: (percent: number) => void;
   accentClass: string;
 }) {
   const [draft, setDraft] = useState<number | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const lastSent = useRef<number | null>(null);
   const unknown = draft === null && reported === null;
   const shown = draft ?? reported ?? unknownPark;
@@ -209,18 +202,30 @@ function LevelRow({
   };
 
   return (
-    <div className="px-3.5 py-2.5 border-t border-slate-100">
+    <div className="px-3.5 py-3 border-t border-slate-100" data-testid="level-row">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+        <span className="flex items-center gap-2 text-[13px] font-bold text-slate-700">
           {icon}
           {label}
+          {hint && (
+            <button
+              type="button"
+              aria-label={infoLabel}
+              aria-expanded={showHint}
+              title={hint}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowHint((v) => !v);
+              }}
+              className="p-1 -m-1 rounded-full text-slate-300 hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+          )}
         </span>
-        <span className="text-[10px] font-mono text-slate-500 tabular-nums">
-          {draft !== null
-            ? `${draft}% · sent`
-            : reported !== null
-              ? `${reported}%`
-              : '—'}
+        {/* No number while the level is unknown — a dash read as a fault. */}
+        <span className="text-[12px] font-semibold text-slate-500 tabular-nums" data-testid="level-readout">
+          {draft !== null ? `${draft}%` : reported !== null ? `${reported}%` : ''}
         </span>
       </div>
       <input
@@ -240,12 +245,13 @@ function LevelRow({
         onTouchEnd={commit}
         onKeyUp={commit}
         onBlur={commit}
-        className={`w-full mt-1.5 ${accentClass} ${unknown ? 'opacity-60' : ''} disabled:opacity-40 disabled:cursor-not-allowed`}
+        className={`w-full mt-2 h-6 ${accentClass} ${unknown ? 'opacity-70' : ''} disabled:opacity-40 disabled:cursor-not-allowed`}
       />
-      {unknown && (
-        <p className="text-[10px] text-amber-600 leading-snug mt-1">{unknownHint}</p>
+      {hint && showHint && (
+        <p className="text-[11px] text-slate-400 leading-snug mt-1" data-testid="level-hint">
+          {hint}
+        </p>
       )}
-      {note && <p className="text-[10px] text-slate-400 leading-snug mt-1">{note}</p>}
     </div>
   );
 }
@@ -312,7 +318,7 @@ export function ScreenDisplayControls({
   const t = useTranslations();
   const control = useDisplayControl();
   const caps = resolveDisplayControls(screen?.displayCapabilities);
-  const reportedAt = ago(screen?.displayCapabilitiesAt);
+  const locale = useLocale();
   // `tone` (2026-08-25) splits the two very different ways an action can come
   // back undelivered. 'fail' is a real outage (fan-out down, publish threw) —
   // rose, alarm-shaped. 'note' is the per-screen `no_push_socket` case: the
@@ -527,19 +533,6 @@ export function ScreenDisplayControls({
     }
   };
 
-  const header = (
-    <div className="px-3.5 pt-3 pb-1 flex items-baseline justify-between gap-2 border-t border-slate-100">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-        {t('screens.display.title')}
-      </span>
-      {reportedAt && (
-        <span className="text-[9px] text-slate-400">
-          {t('screens.display.checkedAgo', { ago: reportedAt })}
-        </span>
-      )}
-    </div>
-  );
-
   const disabled = !!readOnly;
 
   // Brightness. Rendered in BOTH layouts, because a raise is a recovery
@@ -547,21 +540,26 @@ export function ScreenDisplayControls({
   // difference is the floor (and therefore what the slider can even express)
   // and the copy. `caps.brightness.floor` is the API's own gate value, so
   // every position on this track is a request the server will take.
-  const brightnessRow = caps.brightness.available && (
+  const q = resolveQuickControls(caps, { browserPlayer });
+  const levelHint = (note: string | null, unknownLevel: boolean) => {
+    const parts = [unknownLevel ? t('screens.display.levelUnknown') : null, note].filter(Boolean);
+    return parts.length ? parts.join(' ') : null;
+  };
+
+  const brightnessRow = q.brightness && (
     <LevelRow
-      icon={<Sun className="w-3.5 h-3.5 text-slate-400" />}
-      label={
-        caps.brightness.softwareOnly
-          ? t('screens.display.brightnessSoftwareLabel')
-          : t('screens.display.brightness')
-      }
+      icon={<Sun className="w-4 h-4 text-slate-400" />}
+      label={t('screens.display.brightness')}
       // `min` is passed to every brightness note; only the recovery-only
       // copy interpolates it, and next-intl ignores unused values.
-      note={caps.brightness.noteKey ? t(caps.brightness.noteKey, { min: caps.brightness.floor }) : null}
+      hint={levelHint(
+        caps.brightness.noteKey ? t(caps.brightness.noteKey, { min: caps.brightness.floor }) : null,
+        reportedBrightness === null,
+      )}
+      infoLabel={t('screens.display.levelInfo', { label: t('screens.display.brightness') })}
       min={caps.brightness.floor}
       reported={reportedBrightness}
       unknownPark={100}
-      unknownHint={t('screens.display.levelUnknown')}
       disabled={disabled || lockedBy('SET_BRIGHTNESS')}
       accentClass="accent-amber-500"
       onCommit={(p) => {
@@ -571,6 +569,26 @@ export function ScreenDisplayControls({
           okMsg: t('screens.display.brightnessSent', { percent: pct }),
         });
       }}
+    />
+  );
+
+  const volumeRow = q.volume && (
+    <LevelRow
+      icon={<Volume2 className="w-4 h-4 text-slate-400" />}
+      label={t('screens.display.volume')}
+      hint={levelHint(caps.volume.noteKey ? t(caps.volume.noteKey) : null, reportedVolume === null)}
+      infoLabel={t('screens.display.levelInfo', { label: t('screens.display.volume') })}
+      min={0}
+      reported={reportedVolume}
+      unknownPark={0}
+      disabled={disabled || lockedBy('SET_VOLUME')}
+      accentClass="accent-indigo-600"
+      onCommit={(p) =>
+        send('SET_VOLUME', {
+          percent: clampVolume(p),
+          okMsg: t('screens.display.volumeSent', { percent: clampVolume(p) }),
+        })
+      }
     />
   );
 
@@ -651,20 +669,55 @@ export function ScreenDisplayControls({
     </div>
   );
 
-  const scheduleRow = (
-    <button
-      type="button"
-      onClick={onOpenSchedule}
-      className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-white border-t border-slate-100 transition-colors"
+  // The on/off schedule as ONE line: "Off 6 PM – on 7 AM · Edit".
+  const scheduleQ = useDisplaySchedules(q.schedule ? { screenId: screen.id } : null);
+  const line = summarizeScheduleLine(scheduleQ.data, locale);
+  const scheduleText = scheduleQ.isLoading
+    ? t('screens.display.scheduleRow')
+    : line.kind === 'window'
+      ? line.more > 0
+        ? t('screens.display.scheduleLineMore', { off: line.offAt, on: line.onAt, count: line.more })
+        : t('screens.display.scheduleLineWindow', { off: line.offAt, on: line.onAt })
+      : line.kind === 'paused'
+        ? t('screens.display.scheduleLinePaused')
+        : t('screens.display.scheduleLineNone');
+  const scheduleRow = q.schedule && (
+    <div
+      className="flex items-center gap-3 px-3.5 py-3 border-t border-slate-100 min-h-[48px]"
+      data-testid="schedule-line"
     >
       <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
-      <span className="flex-1 min-w-0">
-        <span className="block">{t('screens.display.scheduleRow')}</span>
-        <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-          {t('screens.display.scheduleRowSub')}
-        </span>
-      </span>
-    </button>
+      <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-700">{scheduleText}</span>
+      <button
+        type="button"
+        onClick={onOpenSchedule}
+        className="shrink-0 min-h-[40px] px-2 text-[13px] font-bold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-md"
+      >
+        {line.kind === 'none' ? t('screens.display.scheduleSetUp') : t('screens.display.scheduleEdit')}
+      </button>
+    </div>
+  );
+
+  const restartRow = q.restart && (
+    <div className="px-3.5 py-2 border-t border-slate-100">
+      <button
+        type="button"
+        data-testid="restart-player"
+        disabled={disabled || lockedBy('REBOOT')}
+        onClick={(e) => {
+          e.stopPropagation();
+          void confirmReboot();
+        }}
+        className="w-full min-h-[44px] flex items-center gap-3 px-0 text-left text-[13px] font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {busy === 'REBOOT' ? (
+          <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+        ) : (
+          <RotateCw className="w-4 h-4 text-slate-400" />
+        )}
+        {t('screens.display.reboot')}
+      </button>
+    </div>
   );
 
   // Result of the last command. "Sent" — not "done": the wire tells us the
@@ -693,160 +746,17 @@ export function ScreenDisplayControls({
     </div>
   );
 
-  // ── Browser player, nothing reported ────────────────────────────────
-  // The explainer stays: remote power, brightness and on/off schedules all
-  // need the native bridge, and this screen will never have one.
-  //
-  // But Blank / Wake now DO work here (2026-08-25). The soft blank is drawn
-  // by the player page itself, so a browser player blanks and wakes exactly
-  // like a Goodview panel — this is the first control in this panel that is
-  // genuinely bridge-free, and withholding it would be the mirror image of
-  // the "dead button" mistake this branch was created to fix.
-  if (browserPlayer && !caps.reported) {
-    return (
-      <div className="bg-slate-50/60">
-        {header}
-        <div className="px-3.5 pb-3 pt-1 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-slate-500 leading-snug">
-            {t('screens.display.browserPlayer')}
-          </p>
-        </div>
-        {sleepAwakeRow}
-        {statusRow}
-      </div>
-    );
-  }
-
-  // ── Nothing reported yet ────────────────────────────────────────────
-  // Explainer + EXACTLY the actions the server gate accepts on a null
-  // verdict: Blank, Wake, a brightness raise, and the schedule. Volume,
-  // Reboot and panel POWER are withheld — the API refuses all three here, so
-  // a button for any of them would fail 100% of the time.
-  //
-  // Blank JOINED this list on 2026-08-25 and that is the point of the split:
-  // it is soft now, so it works on an unprobed screen exactly as well as on
-  // a probed one. `powerRow` renders as its explainer sentence, which is
-  // where the old "blanking stays disabled until it reports" line went.
-  if (!caps.reported) {
-    return (
-      <div className="bg-slate-50/60">
-        {header}
-        <div className="px-3.5 pb-3 pt-1 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-slate-500 leading-snug">
-            {t('screens.display.notReported')}
-          </p>
-        </div>
-        {brightnessRow}
-        {sleepAwakeRow}
-        {scheduleRow}
-        {statusRow}
-        {/* 2026-10-18 — basic Android settings: their own report, so they
-            do not wait on this panel's display verdict. */}
-        <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
-      </div>
-    );
-  }
-
+  // Every control below renders only where THIS screen can do it
+  // (`resolveQuickControls`). No greyed rows, no "not possible" notes, no
+  // explainer paragraphs — a feature the screen lacks is simply absent.
   return (
-    <div className="bg-slate-50/60">
-      {header}
-
-      {/* ── Volume ─────────────────────────────────────────────── */}
-      {caps.volume.available ? (
-        <LevelRow
-          icon={<Volume2 className="w-3.5 h-3.5 text-slate-400" />}
-          label={t('screens.display.volume')}
-          note={caps.volume.noteKey ? t(caps.volume.noteKey) : null}
-          min={0}
-          reported={reportedVolume}
-          unknownPark={0}
-          unknownHint={t('screens.display.levelUnknown')}
-          disabled={disabled || lockedBy('SET_VOLUME')}
-          accentClass="accent-indigo-600"
-          onCommit={(p) =>
-            send('SET_VOLUME', {
-              percent: clampVolume(p),
-              okMsg: t('screens.display.volumeSent', { percent: clampVolume(p) }),
-            })
-          }
-        />
-      ) : (
-        caps.volume.noteKey && (
-          <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
-            <VolumeX className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold text-slate-400">
-                {t('screens.display.volume')}
-              </div>
-              <p className="text-[10px] text-slate-400 leading-snug">{t(caps.volume.noteKey)}</p>
-            </div>
-          </div>
-        )
-      )}
-
-      {/* ── Brightness ─────────────────────────────────────────── */}
-      {brightnessRow}
-
-      {/* ── Blank / Wake — SOFT, always available (2026-08-25) ──── */}
+    <div data-testid="quick-controls">
       {sleepAwakeRow}
-
-      {/* ── Panel power — HARD, allowlisted (2026-08-25) ────────── */}
-
-      {/* ── Reboot ─────────────────────────────────────────────── */}
-      {/* NOTE: on today's fleet this ALWAYS takes the `else` branch — we do
-          not hold device owner, so the probe reports reboot:'none'. The
-          else branch is a single explanatory row, not an empty section and
-          not a dangling divider (the divider belongs to the row). */}
-      {caps.reboot.available ? (
-        <div className="px-3.5 py-2.5 border-t border-slate-100">
-          <button
-            type="button"
-            disabled={disabled || lockedBy('REBOOT')}
-            onClick={(e) => {
-              e.stopPropagation();
-              void confirmReboot();
-            }}
-            // Fixed rose, not brand color: a destructive control must read
-            // as danger on a tenant whose brand primary happens to be mint.
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-rose-200 bg-white text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy === 'REBOOT' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Power className="w-3.5 h-3.5" />
-            )}
-            {t('screens.display.reboot')}
-          </button>
-          <p className="text-[10px] text-slate-400 leading-snug mt-1">
-            {t('screens.display.rebootHint')}
-          </p>
-        </div>
-      ) : (
-        // reboot: 'none' — per the spec there is NO button here at all. The
-        // line below is text, and it tells the operator what would unlock it
-        // instead of leaving a silent hole where a control used to be.
-        caps.reboot.noteKey && (
-          <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
-            <Power className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold text-slate-400">
-                {t('screens.display.reboot')}
-              </div>
-              <p className="text-[10px] text-slate-400 leading-snug">{t(caps.reboot.noteKey)}</p>
-            </div>
-          </div>
-        )
-      )}
-
-      {/* ── On/off schedule ────────────────────────────────────── */}
+      {volumeRow}
+      {brightnessRow}
       {scheduleRow}
-
+      {restartRow}
       {statusRow}
-
-      {/* ── Android settings (2026-10-18) — collapsed until opened ── */}
-      <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
     </div>
   );
 }
