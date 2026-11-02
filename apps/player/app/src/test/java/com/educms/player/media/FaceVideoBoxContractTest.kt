@@ -63,6 +63,16 @@ class FaceVideoBoxContractTest {
     }
 
     @Test
+    fun `a USB card cannot yield native video when an alert or connection state forbids opening it`() {
+        val show = body(code(activity), "private fun showUsbCard(")
+        val yield = show.indexOf("sharedVideoHost?.yieldToUi()")
+        assertTrue(yield >= 0)
+        val before = show.substring(0, yield)
+        assertTrue(before.contains("if (!allowOpening && !com.educms.player.usb.UsbImportCard.isShowing()) return false"))
+        assertTrue(before.contains("if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return false"))
+    }
+
+    @Test
     fun `the WebView is never made transparent by either native engine`() {
         for ((name, src) in listOf("FaceVideoBox" to code(box), "SharedVideoHost" to code(host))) {
             assertFalse("$name: a WebView must never get Color.TRANSPARENT", Regex("web\\.setBackgroundColor\\(\\s*Color\\.TRANSPARENT").containsMatchIn(src))

@@ -94,7 +94,8 @@ export function BugReporterButton() {
   // install banner's "Don't show again" — yield to both.
   const moreSheetOpen = useAppStore((s) => s.moreSheetOpen);
   const installBannerShown = useAppStore((s) => s.installBannerShown);
-  const showFab = shouldRender && overlayOpenCount === 0 && !moreSheetOpen && !installBannerShown;
+  const selectionDockShown = useAppStore((s) => s.selectionDockShown);
+  const showFab = shouldRender && overlayOpenCount === 0 && !moreSheetOpen && !installBannerShown && !selectionDockShown;
 
   useEffect(() => {
     if (!shouldRender) return;

@@ -139,8 +139,31 @@ async function mockApi(page: Page) {
   return signups;
 }
 
+// 2026-11-02 — self-serve sign-up is closed by default (`lib/signup-gate.ts`);
+// the form tests below run only on a build with NEXT_PUBLIC_SIGNUP_OPEN=1.
+const SIGNUP_OPEN = process.env.NEXT_PUBLIC_SIGNUP_OPEN === '1';
+const CLOSED: Record<Lang, { title: string; cta: string }> = {
+  en: { title: 'Sign-up isn\'t open yet', cta: 'Request info by email' },
+  es: { title: 'El registro aún no está abierto', cta: 'Solicitar información por correo' },
+  zh: { title: '暂未开放注册', cta: '通过电子邮件索取信息' },
+};
+
+for (const lang of ['en', 'es', 'zh'] as const) {
+  test(`/signup while closed shows request-info in ${lang}, and no form`, async ({ page, context }) => {
+    test.skip(SIGNUP_OPEN, 'sign-up is switched on for this build');
+    test.setTimeout(90_000);
+    await useLanguage(context, lang);
+    await mockApi(page);
+    await page.goto('/signup', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(CLOSED[lang].title, { timeout: 30_000 });
+    await expect(page.getByRole('link', { name: CLOSED[lang].cta })).toHaveAttribute('href', /^mailto:sales@venue-os\.app/);
+    await expect(page.locator('form')).toHaveCount(0);
+  });
+}
+
 for (const lang of ['en', 'es', 'zh'] as const) {
   test.describe(`/signup in ${lang}`, () => {
+    test.skip(!SIGNUP_OPEN, 'sign-up is closed (NEXT_PUBLIC_SIGNUP_OPEN unset)');
     test('every label, button, error and link is in the reader’s language', async ({ page, context }) => {
       test.setTimeout(90_000);
       await useLanguage(context, lang);
@@ -191,6 +214,7 @@ for (const lang of ['en', 'es', 'zh'] as const) {
 }
 
 test('the language switcher on /signup changes the page in place, without a reload', async ({ page }) => {
+  test.skip(!SIGNUP_OPEN, 'sign-up is closed (NEXT_PUBLIC_SIGNUP_OPEN unset)');
   test.setTimeout(90_000);
   await mockApi(page);
   await page.goto('/signup', { waitUntil: 'domcontentloaded' });

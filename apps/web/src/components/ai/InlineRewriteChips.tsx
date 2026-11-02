@@ -19,7 +19,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw, Zap, Languages, Pencil, Check, MoreHorizontal } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { AnchoredMenu } from '@/components/ui/anchored-menu';
+import { useDismiss } from '@/components/ui/use-dismiss';
+import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw, Zap, Languages, Pencil, Check, ChevronDown } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useAiBillingMessages, type AiBillingMessages } from './useAiBillingMessages';
 import { getTextFieldDescriptor } from '@cms/api-types';
@@ -30,16 +33,17 @@ type RewriteOp = 'rewrite' | 'shorten' | 'fit_to_zone' | 'expand' | 'punch' | 'f
 type ChipExtra = { targetLang?: string; instruction?: string };
 
 // Always-visible chips. `fit_to_zone` only shows when we know the px box.
+// Pill audit 2026-11-02: these used to be a row of six pills. They are now the
+// items of ONE "AI" menu (labels are i18n keys under `pillWavePlaylists`).
 const PRIMARY_CHIPS: { op: RewriteOp; label: string; Icon: typeof Wand2 }[] = [
-  { op: 'rewrite', label: 'Rewrite', Icon: Wand2 },
-  { op: 'shorten', label: 'Shorten', Icon: Scissors },
-  { op: 'fit_to_zone', label: 'Fit to zone', Icon: Maximize2 },
+  { op: 'rewrite', label: 'opRewrite', Icon: Wand2 },
+  { op: 'shorten', label: 'opShorten', Icon: Scissors },
+  { op: 'fit_to_zone', label: 'opFitToZone', Icon: Maximize2 },
 ];
-// Behind the "more" (⋯) toggle to keep the bar phone-friendly.
 const MORE_CHIPS: { op: RewriteOp; label: string; Icon: typeof Wand2 }[] = [
-  { op: 'expand', label: 'Expand', Icon: Sparkles },
-  { op: 'punch', label: 'Punch it up', Icon: Zap },
-  { op: 'fix_grammar', label: 'Fix grammar', Icon: Check },
+  { op: 'expand', label: 'opExpand', Icon: Sparkles },
+  { op: 'punch', label: 'opPunch', Icon: Zap },
+  { op: 'fix_grammar', label: 'opFixGrammar', Icon: Check },
 ];
 // Common US-school languages for the Translate submenu.
 const LANGS: Array<[string, string]> = [
@@ -92,12 +96,15 @@ export function InlineRewriteChips({
   onPick: (text: string) => void;
 }) {
   const billing = useAiBillingMessages();
+  const tp = useTranslations('pillWavePlaylists');
+  const menuAnchor = useRef<HTMLButtonElement>(null);
   const [aiSource, setAiSource] = useState<'platform' | 'tenant' | 'none' | null>(null);
   const [busyOp, setBusyOp] = useState<RewriteOp | null>(null);
   const [openOp, setOpenOp] = useState<RewriteOp | null>(null);
   const [options, setOptions] = useState<Array<{ text: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
+  useDismiss(showMore, menuAnchor, () => setShowMore(false));
   const [langOpen, setLangOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
@@ -165,71 +172,59 @@ export function InlineRewriteChips({
   return (
     <div className="relative">
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Rewrite this text with AI">
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-violet-500">
-          <Sparkles className="w-3 h-3" /> AI
-        </span>
-        {primary.map(({ op, label, Icon }) => (
-          <button
-            key={op}
-            type="button"
-            onClick={() => run(op)}
-            disabled={busyOp !== null}
-            aria-haspopup="dialog"
-            aria-expanded={openOp === op}
-            className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed px-2 py-1 rounded-full transition-colors"
-          >
-            {busyOp === op ? <Loader2 className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
-            {label}
-          </button>
-        ))}
-        {/* Translate → language submenu */}
         <button
+          ref={menuAnchor}
           type="button"
-          onClick={() => { setLangOpen((v) => !v); setCustomOpen(false); }}
+          onClick={() => { setShowMore((v) => !v); setLangOpen(false); setCustomOpen(false); }}
           disabled={busyOp !== null}
           aria-haspopup="menu"
-          aria-expanded={langOpen}
-          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
-        >
-          {busyOp === 'translate' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
-          Translate
-        </button>
-        {/* Tell me → free-text instruction */}
-        <button
-          type="button"
-          onClick={() => { setCustomOpen((v) => !v); setLangOpen(false); }}
-          disabled={busyOp !== null}
-          aria-expanded={customOpen}
-          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
-        >
-          <Pencil className="w-3 h-3" /> Tell me
-        </button>
-        {/* More → Expand / Punch / Fix grammar */}
-        <button
-          type="button"
-          onClick={() => setShowMore((v) => !v)}
-          disabled={busyOp !== null}
-          aria-label="More rewrite options"
           aria-expanded={showMore}
-          className="inline-flex items-center text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+          className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-violet-200 bg-white text-xs font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
-          <MoreHorizontal className="w-3 h-3" />
+          {busyOp ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Sparkles className="w-3.5 h-3.5" aria-hidden />}
+          AI
+          <ChevronDown className="w-3 h-3 opacity-70" aria-hidden />
         </button>
-        {showMore && MORE_CHIPS.map(({ op, label, Icon }) => (
-          <button
-            key={op}
-            type="button"
-            onClick={() => run(op)}
-            disabled={busyOp !== null}
-            aria-haspopup="dialog"
-            aria-expanded={openOp === op}
-            className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
-          >
-            {busyOp === op ? <Loader2 className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
-            {label}
-          </button>
-        ))}
       </div>
+      <AnchoredMenu anchorRef={menuAnchor} open={showMore} width={200} align="left">
+        <div role="menu" aria-label={tp('aiMenu')} className="py-1">
+          {[...primary, ...MORE_CHIPS].map(({ op, label, Icon }) => (
+            <button
+              key={op}
+              type="button"
+              role="menuitem"
+              disabled={busyOp !== null}
+              aria-haspopup="dialog"
+              onClick={() => { setShowMore(false); void run(op); }}
+              className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-violet-50 flex items-center gap-2 disabled:opacity-40"
+            >
+              <Icon className="w-3.5 h-3.5 text-violet-600" aria-hidden />
+              {tp(label)}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busyOp !== null}
+            aria-haspopup="menu"
+            onClick={() => { setShowMore(false); setLangOpen(true); setCustomOpen(false); }}
+            className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-violet-50 flex items-center gap-2 border-t border-slate-100 disabled:opacity-40"
+          >
+            <Languages className="w-3.5 h-3.5 text-violet-600" aria-hidden />
+            {tp('opTranslate')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busyOp !== null}
+            onClick={() => { setShowMore(false); setCustomOpen(true); setLangOpen(false); }}
+            className="w-full px-3 py-2 min-h-11 sm:min-h-0 text-left text-xs font-medium text-slate-700 hover:bg-violet-50 flex items-center gap-2 disabled:opacity-40"
+          >
+            <Pencil className="w-3.5 h-3.5 text-violet-600" aria-hidden />
+            {tp('opTellMe')}
+          </button>
+        </div>
+      </AnchoredMenu>
 
       {/* Translate language submenu */}
       {langOpen && (
@@ -241,7 +236,7 @@ export function InlineRewriteChips({
               type="button"
               onClick={() => run('translate', { targetLang: code })}
               disabled={busyOp !== null}
-              className="text-[10px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+              className="text-[11px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-md transition-colors"
             >
               {label}
             </button>

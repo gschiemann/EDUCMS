@@ -20,7 +20,9 @@
  */
 
 import * as React from 'react';
-jest.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
+// Desktop by default; `asPhone()` flips it for the phone-width paths.
+let mockIsMobile = false;
+jest.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mockIsMobile }));
 import { render, screen as rtl, fireEvent, within, act } from '@testing-library/react';
 
 const NOW = Date.now();
@@ -168,7 +170,7 @@ describe('Media Library — LIST view: the header box, over the rows shown', () 
     fireEvent.click(headerBox()); // none → all shown
     expect(rows().every((r) => r.checked)).toBe(true);
     expect(headerBox().checked).toBe(true);
-    expect(bar()).toHaveTextContent('3 assets selected');
+    expect(bar()).toHaveTextContent('3 selected');
 
     fireEvent.click(rows()[1]); // one row off → the dash
     expect(headerBox().checked).toBe(false);
@@ -246,7 +248,7 @@ describe('Media Library — "Select all N" lives in the bulk bar', () => {
 
     await act(async () => { fireEvent.click(selectAllLink() as HTMLElement); });
     expect(apiFetchMock).toHaveBeenCalledWith('/assets?take=1000&skip=0');
-    expect(bar()).toHaveTextContent('60 assets selected');
+    expect(bar()).toHaveTextContent('60 selected');
     // everything is selected, so there is nothing more to offer
     expect(selectAllLink()).toBeNull();
     // and the box above the tiles agrees
@@ -257,7 +259,7 @@ describe('Media Library — "Select all N" lives in the bulk bar', () => {
     assetsResponse = { assets: LOADED, total: LOADED.length };
     render(<AssetsPage />);
     fireEvent.click(headerBox());
-    expect(bar()).toHaveTextContent('3 assets selected');
+    expect(bar()).toHaveTextContent('3 selected');
     expect(selectAllLink()).toBeNull();
   });
 
@@ -266,7 +268,7 @@ describe('Media Library — "Select all N" lives in the bulk bar', () => {
     await selectEverything();
     expect(selectAllLink()).toBeNull();
     fireEvent.click(tileBox(0));
-    expect(bar()).toHaveTextContent('59 assets selected');
+    expect(bar()).toHaveTextContent('59 selected');
     expect(selectAllLink()).toHaveTextContent('Select all 60');
   });
 
@@ -294,7 +296,7 @@ describe('Media Library — un-ticking the box after a select-everything', () =>
   it('clears ALL of it, including the files nobody can see', async () => {
     render(<AssetsPage />);
     await selectEverything();
-    expect(bar()).toHaveTextContent('60 assets selected');
+    expect(bar()).toHaveTextContent('60 selected');
     fireEvent.click(headerBox()); // checked → clear
     expect(bar()).not.toBeInTheDocument();
     expect(headerBox().checked).toBe(false);
@@ -302,22 +304,33 @@ describe('Media Library — un-ticking the box after a select-everything', () =>
 });
 
 describe('Media Library — the 2026-10-04 safety rule survives', () => {
+  const asPhone = () => { mockIsMobile = true; };
+  afterEach(() => { mockIsMobile = false; });
+
   it('a select-EVERYTHING selection is dropped when the FOLDER changes', async () => {
     render(<AssetsPage />);
     await selectEverything();
-    expect(bar()).toHaveTextContent('60 assets selected');
+    expect(bar()).toHaveTextContent('60 selected');
     fireEvent.click(rtl.getByRole('button', { name: 'Open folder Campaigns' }));
     expect(bar()).not.toBeInTheDocument();
   });
 
   it('…when the FILTER changes', async () => {
+    // Desktop swaps the filter row for the selection bar (2026-11-02), so the
+    // filters and search are only reachable WHILE selected at phone width —
+    // the selection lives in the bottom bar there. Prove the rule on that path.
+    asPhone();
     render(<AssetsPage />);
     await selectEverything();
-    fireEvent.click(rtl.getByRole('button', { name: /^Videos/ }));
+    fireEvent.click(rtl.getByRole('tab', { name: /^Videos/ }));
     expect(bar()).not.toBeInTheDocument();
   });
 
   it('…when the SEARCH changes', async () => {
+    // Desktop swaps the filter row for the selection bar (2026-11-02), so the
+    // filters and search are only reachable WHILE selected at phone width —
+    // the selection lives in the bottom bar there. Prove the rule on that path.
+    asPhone();
     render(<AssetsPage />);
     await selectEverything();
     fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'file-0' } });
@@ -327,17 +340,17 @@ describe('Media Library — the 2026-10-04 safety rule survives', () => {
   it('a HAND-PICKED selection is kept across a folder change, so files can still be gathered', () => {
     render(<AssetsPage />);
     fireEvent.click(tileBox(0));
-    expect(bar()).toHaveTextContent('1 asset selected');
+    expect(bar()).toHaveTextContent('1 selected');
     fireEvent.click(rtl.getByRole('button', { name: 'Open folder Campaigns' }));
-    expect(bar()).toHaveTextContent('1 asset selected');
+    expect(bar()).toHaveTextContent('1 selected');
   });
 
   it('the box above the list selects what is SHOWN, so it is hand-picked too: kept across a folder change', () => {
     render(<AssetsPage />);
     fireEvent.click(headerBox());
-    expect(bar()).toHaveTextContent('3 assets selected');
+    expect(bar()).toHaveTextContent('3 selected');
     fireEvent.click(rtl.getByRole('button', { name: 'Open folder Campaigns' }));
-    expect(bar()).toHaveTextContent('3 assets selected');
+    expect(bar()).toHaveTextContent('3 selected');
   });
 
   it('a select-everything that was cleared does not leave its flag behind to eat a later hand-pick', async () => {
@@ -346,7 +359,7 @@ describe('Media Library — the 2026-10-04 safety rule survives', () => {
     fireEvent.click(within(rtl.getByTestId('asset-bulk-bar')).getByRole('button', { name: /Clear selection/ }));
     fireEvent.click(tileBox(0)); // a fresh, hand-picked selection
     fireEvent.click(rtl.getByRole('button', { name: 'Open folder Campaigns' }));
-    expect(bar()).toHaveTextContent('1 asset selected');
+    expect(bar()).toHaveTextContent('1 selected');
   });
 
   it('…nor one that was emptied by un-ticking every file, one at a time', async () => {
@@ -359,13 +372,13 @@ describe('Media Library — the 2026-10-04 safety rule survives', () => {
     render(<AssetsPage />);
     fireEvent.click(tileBox(0));
     await act(async () => { fireEvent.click(selectAllLink() as HTMLElement); });
-    expect(bar()).toHaveTextContent('5 assets selected');
+    expect(bar()).toHaveTextContent('5 selected');
     for (let i = 0; i < 5; i += 1) fireEvent.click(tileBox(i));
     expect(bar()).not.toBeInTheDocument();
 
     fireEvent.click(tileBox(2)); // a fresh, hand-picked selection
     fireEvent.click(rtl.getByRole('button', { name: 'Open folder Campaigns' }));
-    expect(bar()).toHaveTextContent('1 asset selected');
+    expect(bar()).toHaveTextContent('1 selected');
   });
 });
 
@@ -375,7 +388,7 @@ describe('Media Library — the box covers only the rows SHOWN', () => {
     fireEvent.change(rtl.getByLabelText('Search the media library'), { target: { value: 'file-01' } });
     expect(rtl.getByRole('heading', { name: /Search results/ })).toHaveTextContent('Search results 1');
     fireEvent.click(headerBox());
-    expect(bar()).toHaveTextContent('1 asset selected');
+    expect(bar()).toHaveTextContent('1 selected');
     expect(selectAllLink()).toBeNull();
   });
 });

@@ -188,7 +188,7 @@ function SponsorRow({
         type="button"
         onClick={onToggle}
         disabled={busy}
-        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors disabled:opacity-50 ${
+        className={`shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors disabled:opacity-50 ${
           s.active
             ? 'bg-green-100 text-green-700 hover:bg-green-200'
             : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
