@@ -2,21 +2,21 @@
 
 # Templates and boards rulebook
 
-**Counts — produced by `scripts/check-rulebook.cjs`, never hand-kept:** presets 537 · boards 330 · shim V16. The script re-derives all three on every push and pull request (unique preset ids, board files, the shim `MARKER`) and fails CI when this file disagrees; run `node scripts/check-rulebook.cjs` to print the derived numbers. Change a count here only after the script derives the new value.
+**Counts — produced by `scripts/check-rulebook.cjs`, never hand-kept:** presets 564 · boards 342 · shim V16. The script re-derives all three on every push and pull request (unique preset ids, board files, the shim `MARKER`) and fails CI when this file disagrees; run `node scripts/check-rulebook.cjs` to print the derived numbers. Change a count here only after the script derives the new value.
 
 ## Template System
 
-Templates define screen layouts using **537 system presets** (re-derived 2026-11-01) plus custom operator-created templates.
+Templates define screen layouts using **564 system presets** (re-derived 2026-11-03) plus custom operator-created templates.
 
 ⚠️ **This file said "17 system presets" until 2026-09-11 — it was wrong by 27×, and it is the
-first thing every agent and every external auditor reads.** The real catalogue uses **seven
+first thing every agent and every external auditor reads.** The real catalogue uses **eight
 top-level preset packs** under `apps/api/src/templates/`, unioned into `ALL_PRESETS` by
 `ensure-system-presets.ts`. Four additional source files are spread into the system pack —
 that union, not `system-presets.ts` alone, is what seeds and what the gallery serves:
 
 | file | export | count |
 |---|---|---|
-| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **425** (includes the 14 Homebuilder, 32 Directory, 12 Touch-property and 8 workflow entries below, and 3 reviewed portrait entries) |
+| `system-presets.ts` | `SYSTEM_TEMPLATE_PRESETS` | **428** (includes the 14 Homebuilder, 32 Directory, 12 Touch-property and 8 workflow entries below, and 6 reviewed portrait entries) |
 | `homebuilder-presets.ts` | `HOMEBUILDER_TEMPLATE_PRESETS` | 14 (spread into the system pack) |
 | `directory-presets.ts` | `DIRECTORY_TEMPLATE_PRESETS` | 32 (spread into the system pack) |
 | `touch-property-presets.ts` | `TOUCH_PROPERTY_TEMPLATE_PRESETS` | 12 (spread into the system pack) |
@@ -26,7 +26,8 @@ that union, not `system-presets.ts` alone, is what seeds and what the gallery se
 | `restaurant-presets.ts` | `RESTAURANT_TEMPLATE_PRESETS` | 21 |
 | `retail-presets.ts` / `worship-presets.ts` | `RETAIL_` / `WORSHIP_TEMPLATE_PRESETS` | 8 each |
 | `bar-presets.ts` | `BAR_TEMPLATE_PRESETS` | 6 |
-| | **TOTAL (unique ids)** | **537** |
+| `essentials-presets.ts` | `ESSENTIALS_TEMPLATE_PRESETS` | 24 (three compositions × four business contexts × two orientations) |
+| | **TOTAL (unique ids)** | **564** |
 
 **Re-derive it rather than trusting the table** — `SYSTEM_TEMPLATE_PRESETS` is a *computed*
 array (in `system-presets.ts` it filters `RAW_SYSTEM_PRESETS` for retired widget types, then
@@ -57,19 +58,19 @@ previous form of this command compiled each file in isolation and broke on 2026-
 
 There are **three** template-editing architectures; do not confuse them:
 1. **React-zone presets** — zones rendered by `WidgetRenderer`; edited field-by-field in `PropertiesPanel`.
-2. **EXTERNAL_HTML boards** — the **330** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
+2. **EXTERNAL_HTML boards** — the **342** self-contained HTML files under `apps/web/public/templates/{custom,fitness,hs,kiosk,school,signage}/`. Each is a full 3840×2160 (or 1920×1080 kiosk) document rendered in a **null-origin sandboxed `src` iframe** (`allow-scripts`, NO `allow-same-origin`). Because React **cannot reach into that iframe**, all editing must go through a **shim baked into the HTML file**.
 
    **This said "~107 … {hs,kiosk,signage,fitness}" until 2026-09-11** — low by 143 boards and
    missing `school/` entirely, which is exactly how the editability sweep below ended up
    skipping 59 boards. Re-derive with one command (it is just a file count — trust nothing):
    ```bash
-   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 330
+   find apps/web/public/templates -name '*.html' -not -path '*/_*' | wc -l          # 342
    find apps/web/public/templates -name '*.html' -not -path '*/_*' | cut -d/ -f5 | sort | uniq -c
-   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 41 school · 219 signage
+   #   14 custom · 7 fitness · 30 hs · 19 kiosk · 41 school · 231 signage
    ```
-   `signage/` is itself 16 industry sub-folders (`qsr` 28, `worship` 24, `hospitality` 16, `bar`
+   `signage/` is itself 17 industry sub-folders (`qsr` 28, `worship` 24, `hospitality` 16, `bar`
    13, `corporate` 71, `gym` 11, `church` 10, `fashion` 10, `healthcare` 10, `menus-pos` 10,
-   `retail` 9, `veterinary` 2, `clinic` 2, and `museum`/`office`/`real-estate` 1 each) — so any
+   `retail` 9, `veterinary` 2, `clinic` 2, and `museum`/`office`/`real-estate` 1 each, plus 12 business-adapted `essentials` boards) — so any
    sweep must recurse, never list a fixed set of directories. `-not -path '*/_*'` skips
    `_thumbs/` and `_edit-shim.js`, the same "no `_`-prefixed path segment" rule the poster
    generator and `apps/web/tools/check-poster-freshness.cjs` use to decide what counts as a board.
@@ -144,11 +145,11 @@ Incident: `docs/incidents/2026-06-07-uneditable-templates-shim.md`
 
 Both alternations in that `grep` are load-bearing: 311 boards carry a **baked** shim
 (`EDUCMS-SHIM-V<n>`) and the 19 `kiosk/` boards instead `<script src>` the external
-`_edit-shim.js` (311 + 19 = 330), so dropping either branch reports a whole class of boards as a
+`_edit-shim.js` (311 + 19 = 342), so dropping either branch reports a whole class of boards as a
 false failure. As of 2026-11-01 it reports **zero** violations. **The old sweep
 (`grep -qE "educms-field-click|…"`) can no longer fail:** the shared media-controls companion
 (`EDUCMS-MEDIA-CONTROLS-V2`, `board-media-controls.ts`) is baked into every board and itself posts
-`educms-field-click`, so that string is on all 330 boards whether or not they carry a click shim.
+`educms-field-click`, so that string is on all 342 boards whether or not they carry a click shim.
 The quick grep above is also weaker than the gate — it cannot tell an apply-only V2–V4 shim from a
 V5+ one, and it does not resolve the kiosk `src` on disk. The real gate is
 `apps/web/tools/check-board-editability.cjs`, run by `taurus-safety.yml`; like the other

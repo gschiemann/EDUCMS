@@ -269,6 +269,18 @@ for (const [board, key, portrait = false] of [
   ['/templates/signage/qsr/01-drive-thru-flagship.html', 'hero'],
   ['/templates/kiosk/school.html', 'staff.reyes.photo'],
   ['/templates/custom/brookfield/07-tour-takeaway.html', 'tour.image'],
+  ['/templates/signage/real-estate/01-availability-flagship.html', 'feat.photo', false],
+  ['/templates/signage/real-estate/01-availability-flagship.html', 'feat.photo', true],
+  ['/templates/signage/museum/01-today-flagship.html', 'feat.photo', false],
+  ['/templates/signage/museum/01-today-flagship.html', 'feat.photo', true],
+  ['/templates/signage/bar/09-hours-location.html', 'venue.photo', false],
+  ['/templates/signage/bar/09-hours-location.html', 'venue.photo', true],
+  ['/templates/signage/essentials/hospitality/the-guest-edit.html', 'hero.photo', false],
+  ['/templates/signage/essentials/hospitality/the-guest-edit.html', 'hero.photo', true],
+  ['/templates/signage/essentials/hospitality/easy-days.html', 'hero.photo', false],
+  ['/templates/signage/essentials/hospitality/easy-days.html', 'hero.photo', true],
+  ['/templates/signage/essentials/hospitality/city-guide.html', 'hero.photo', false],
+  ['/templates/signage/essentials/hospitality/city-guide.html', 'hero.photo', true],
   ['/templates/signage/corporate/20-service-update.html', 'hero.photo', false],
   ['/templates/signage/corporate/20-service-update.html', 'hero.photo', true],
   ['/templates/signage/clinic/02-services-booking-guide.html', 'hero.photo', false],
@@ -284,7 +296,7 @@ for (const [board, key, portrait = false] of [
     if (board.includes('/kiosk/')) await frame.getByText('Directory', { exact: true }).click();
     const slot = frame.locator(`[data-imgslot="${key}"]:visible,[data-slot="${key}"]:visible,[data-img="${key}"]:visible,[data-posterslot="${key}"]:visible`).first();
     await expect(slot).toBeVisible();
-    await slot.click();
+    await slot.click(key === 'feat.photo' ? { position: await slot.evaluate(el => ({x: el.clientWidth * 0.7, y: el.clientHeight * 0.15})) } : undefined);
     const bar = page.locator('[data-builder-bottom-bar]');
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
     await bar.getByRole('combobox', { name: 'Media fit' }).selectOption('contain');
@@ -392,7 +404,7 @@ for (const portrait of [false, true]) {
     const slot = frame.locator(`[data-imgslot="${key}"]`);
     const source = () => slot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage);
     await expect.poll(source).toContain('/landscape.png');
-    await slot.click();
+    await slot.click(key === 'feat.photo' ? { position: await slot.evaluate(el => ({x: el.clientWidth * 0.7, y: el.clientHeight * 0.15})) } : undefined);
     const bar = page.locator('[data-builder-bottom-bar]');
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
     await expect(page.locator(`[data-edit-img="${key}"]`)).toHaveCount(1);
@@ -860,3 +872,61 @@ for (const portrait of [false,true]) test(`current weather ${portrait?'portrait'
  await expect(zone.getByRole('link',{name:'MET Norway'})).toBeVisible();
  await expect(zone.getByText(/^10°/)).toBeVisible();
 });
+
+// Owner-approved Guest Essentials: exercise the actual editor save/reopen boundary.
+for (const design of ['the-guest-edit', 'easy-days', 'city-guide']) for (const portrait of [false, true]) {
+  test(`essentials text and font save/reopen: ${design} ${portrait ? 'portrait' : 'landscape'}`, async ({page}, testInfo) => {
+    const state = await openEditor(page, portrait, [{id:'essentials', name:'Guest essentials', widgetType:'EXTERNAL_HTML', x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{url:`/templates/signage/essentials/hospitality/${design}.html${portrait ? '?o=portrait' : ''}`}}], {width:portrait ? 2160 : 3840,height:portrait ? 3840 : 2160});
+    const frame = page.locator('[data-zone-id="essentials"] iframe').contentFrame();
+    const heading = frame.locator('[data-field="hero.title"]');
+    await expect(heading).toBeVisible();
+    await frame.locator('html').evaluate(()=>document.fonts.ready);
+    await heading.click();
+    const input = page.locator('[data-edit-field="hero.title"]').getByRole('textbox').first();
+    await expect(input).toBeVisible();
+    await input.fill('Welcome to Alder House'); await input.blur();
+    await expect(heading).toHaveText('Welcome to Alder House');
+    await heading.click();
+    await page.getByLabel('Font size',{exact:true}).fill('105');
+    await expect.poll(()=>heading.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBe(105);
+    await page.getByLabel('Font family',{exact:true}).selectOption('Arial');
+    await expect.poll(()=>heading.evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Arial');
+    await page.getByRole('button',{name:/^Save$/}).click();
+    await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({textOverrides:{'hero.title':'Welcome to Alder House'},_styles:{'hero.title':{fontSize:105,fontFamily:'Arial'}}});
+    await reloadEditor(page);
+    const restored = page.locator('[data-zone-id] iframe').contentFrame().locator('[data-field="hero.title"]');
+    await expect(restored).toHaveText('Welcome to Alder House');
+    await expect.poll(()=>restored.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBe(105);
+    await expect.poll(()=>restored.evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Arial');
+    await page.screenshot({path:testInfo.outputPath('essentials-text-saved.png')});
+  });
+}
+
+// Repaired legacy boards: exercise the actual editor save/reopen boundary.
+for (const design of ['real-estate/01-availability-flagship', 'museum/01-today-flagship', 'bar/09-hours-location']) for (const portrait of [false, true]) {
+  test(`refreshed board text and font save/reopen: ${design} ${portrait ? 'portrait' : 'landscape'}`, async ({page}, testInfo) => {
+    const state = await openEditor(page, portrait, [{id:'essentials', name:'Guest essentials', widgetType:'EXTERNAL_HTML', x:0,y:0,width:100,height:100,zIndex:1,sortOrder:0,defaultConfig:{url:`/templates/signage/${design}.html${portrait ? '?o=portrait' : ''}`}}], {width:portrait ? 2160 : 3840,height:portrait ? 3840 : 2160});
+    const frame = page.locator('[data-zone-id="essentials"] iframe').contentFrame();
+    const heading = frame.locator('[data-field="brand.name"]');
+    await expect(heading).toBeVisible();
+    await frame.locator('html').evaluate(()=>document.fonts.ready);
+    await heading.click();
+    const input = page.locator('[data-edit-field="brand.name"]').getByRole('textbox').first();
+    await expect(input).toBeVisible();
+    await input.fill('Alder House'); await input.blur();
+    await expect(heading).toHaveText('Alder House');
+    await heading.click();
+    await page.getByLabel('Font size',{exact:true}).fill('105');
+    await expect.poll(()=>heading.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBe(105);
+    await page.getByLabel('Font family',{exact:true}).selectOption('Arial');
+    await expect.poll(()=>heading.evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Arial');
+    await page.getByRole('button',{name:/^Save$/}).click();
+    await expect.poll(()=>state.saved().zones[0].defaultConfig).toMatchObject({textOverrides:{'brand.name':'Alder House'},_styles:{'brand.name':{fontSize:105,fontFamily:'Arial'}}});
+    await reloadEditor(page);
+    const restored = page.locator('[data-zone-id] iframe').contentFrame().locator('[data-field="brand.name"]');
+    await expect(restored).toHaveText('Alder House');
+    await expect.poll(()=>restored.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBe(105);
+    await expect.poll(()=>restored.evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Arial');
+    await page.screenshot({path:testInfo.outputPath('refresh-text-saved.png')});
+  });
+}

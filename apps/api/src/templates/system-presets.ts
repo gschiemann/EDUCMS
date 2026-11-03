@@ -3453,7 +3453,7 @@ const RETIRED_LEGACY_WIDGET_TYPES = new Set<string>([
 // These reviewed boards have independent portrait compositions in the same
 // editable source. Register them so the portrait gallery can actually find them.
 const REVIEWED_BOARD_PORTRAITS: SystemPreset[] = RAW_SYSTEM_PRESETS
-  .filter(p => ['preset-sig-corporate-04', 'preset-sig-healthcare-06', 'preset-sig-healthcare-07'].includes(p.id))
+  .filter(p => ['preset-sig-corporate-04', 'preset-sig-healthcare-06', 'preset-sig-healthcare-07', 'preset-sig-real-estate-01', 'preset-sig-museum-01', 'preset-sig-bar-09'].includes(p.id))
   .map(p => ({
     ...p,
     id: `${p.id}-portrait`,

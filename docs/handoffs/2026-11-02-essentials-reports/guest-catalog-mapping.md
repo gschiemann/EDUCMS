@@ -1,0 +1,35 @@
+# Guest Essentials catalog mapping audit
+
+Read-only audit of the checked-out catalog and renderer. The current code already has good source candidates for three distinct Guest Essentials journeys; prefer adapting those records/boards over adding parallel copies of an existing welcome concept.
+
+## Recommended registration for the three new workflow designs
+
+These are new Guest Essentials workflows, so register three new preset IDs (for example `preset-sig-hospitality-17`, `preset-sig-corporate-18`, `preset-sig-gym-19`) against the three new board URLs. Do not repurpose the existing welcomes: `preset-sig-hospitality-01` is the current lobby welcome, `preset-sig-corporate-01` is the corporate lobby welcome, and `preset-sig-gym-03..05` are already a distinct new-member welcome series. The gym set is therefore a concept to avoid duplicating unless one incoming design is materially a different workflow.
+
+- Hospitality guest workflow: tag `HOSPITALITY`; corporate visitor journey: tag `CORPORATE`; gym first-visit workflow: tag `GYM`. If one workflow should actually serve two verticals, `PRESET_VERTICALS` supports pipe tags. Use multi-tags only when the copy/design is truly useful in both galleries.
+- Existing industry IDs use the `preset-sig-<industry>-NN` convention. The `SIG_INDUSTRY_VERTICAL` table and ID regex in `ensure-system-presets.ts:199–253` automatically map `corporate`→`CORPORATE`, `hospitality`→`HOSPITALITY`, and `gym`→`GYM`, including optional `-portrait` siblings. Thus these example IDs need no explicit `PRESET_VERTICALS` entry unless intentionally multi-vertical.
+- `ALL_PRESETS` is assembled in `ensure-system-presets.ts:21–29`; `system-presets.ts` is the source array where these existing industry preset entries live. The seed source includes the board URL and any intentional `defaultConfig` values; reconciliation copies that source config to the database (`ensure-system-presets.ts:986–1005`). So source-owned `textOverrides` are supported as intentional defaults. Persisted operator config remains the live saved customization.
+
+Evidence for existing concepts: `system-presets.ts:1833–1838` corporate lobby; `:2796–2801` hospitality lobby; `:3172–3176` gym welcome trio. Adjacent hospitality lobby, group welcome and check-in status entries are around `:2796–2857`, which further argues for workflow differentiation rather than another generic welcome.
+
+## Frontend registry consumer
+
+There is a second catalog, `apps/web/src/components/widgets/signage-templates.ts`, marked auto-generated at lines 1–4. It backs the “Industry Signage Template” widget picker tile and the Properties panel dropdown (`PropertiesPanel.tsx:189, 3022, 3064–3066`). That is distinct from API system-preset registration/gallery. New boards intended to be selectable through this widget must also be added to the generated `SIGNAGE_TEMPLATES` registry (with matching ID, name/group, URL); the editor reads `SELECTABLE_SIGNAGE_TEMPLATES`, which filters quarantine URLs (`signage-templates.ts:19, 283–287`). If the preset is intended only as a gallery preset and not a selectable board widget, the extra registry entry is not required. The quarantine test at `apps/web/src/components/widgets/__tests__/signage-templates-quarantine.test.ts` protects that filter.
+
+## Copy and media overrides
+
+`EXTERNAL_HTML` supports per-zone `defaultConfig.textOverrides`, `imageOverrides`, `textStyles`, `mediaStyles`, and related config at render time. `WidgetRenderer.tsx:4335–4355` serializes `textOverrides` as `?text=`, `imageOverrides` as `?img=`, and styles/media controls as URL params. The inline designer path posts the same data in `educms-overrides` (`:4553–4574`, `:4583–4589`). The injected board shim applies text by exact `[data-field="key"]` matches and image values by `[data-imgslot="key"]` (`apps/web/public/templates/signage/hospitality/01-lobby-welcome-flagship.html`, shim block; shared behavior documented in `apps/web/public/templates/CLAUDE.md`).
+
+Recommended implementation shape: add the three distinct new boards and put intentional default `textOverrides` in each source preset zone’s `defaultConfig` (source reconciliation preserves them because it syncs source config). Keys must exactly match board `data-field`s. The renderer appends live overrides to the URL and posts them to the iframe; keep normal operator edits in saved zone config. For default images, use `imageOverrides` keyed by `data-imgslot`, while keeping image slots swappable. Media can similarly use `imageOverrides` keyed by `data-imgslot`; ship authored slots/default images as swappable slots and don't encode real property/member imagery in the preset.
+
+Copy can be meaningfully tailored while retaining the concept: hospitality: “Welcome in” / “Your stay starts here” / front desk, breakfast, Wi-Fi and wayfinding; corporate visitors: “Welcome” / visitor check-in, host, meeting room and guest Wi-Fi; gym first visit: “Welcome to your first session” / check in, meet your coach, where to start and book an intro. Avoid operational claims implying live check-in/booking integrations unless those are connected.
+
+## Safe integration and narrow validation
+
+- The route is a single full-canvas `EXTERNAL_HTML` zone, with root-relative `/templates/...` URL. Existing row shapes show the established contract (e.g. `system-presets.ts:1833`, `:2796`, `:3174`). `zone-url-guard.spec.ts` accepts this path form (`apps/api/src/templates/zone-url-guard.spec.ts:97–99`) and rejects unsafe external schemes.
+- Add only the requested business preset entries to the existing source array and vertical mapping; no new pack or frontend registry. Keep preset IDs unique and avoid altering an existing design's ID if you need distinct gallery cards.
+- Narrow checks: `ensure-system-presets-lock.spec.ts` checks count/lock; `gap-presets.spec.ts` demonstrates catalog ID uniqueness and vertical tags; `portrait-vertical-parity.spec.ts` checks sibling parity; `zone-url-guard.spec.ts` validates EXTERNAL_HTML URLs. Update `signage-templates.ts` only if the Industry Signage widget picker should offer these boards, and cover the entries/URL mapping in a focused registry test. Add a focused test asserting each new ID's exact URL, one-zone `EXTERNAL_HTML` shape, exact vertical tag(s), and intended copy overrides. For board edits, follow the template rulebook: reinject current shim/media companion, regenerate poster/provenance and designer exemplars, and verify both orientations plus click-edit/media behavior. Full checklist is `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md`.
+
+## Source instructions reviewed
+
+Read `AGENTS.md`, root `CLAUDE.md`, `apps/web/public/templates/CLAUDE.md`, and `docs/design/FLAGSHIP-TEMPLATE-STANDARDS.md`. Template rules require every editable copy field as `data-field`, images as `data-imgslot`, editable theme tokens, current click-to-edit shim, 50px support/60px body floors and both orientation verification. Existing three selected source boards are self-contained boards, so parent-owned visual edits should preserve the EXTERNAL_HTML/shim contract.

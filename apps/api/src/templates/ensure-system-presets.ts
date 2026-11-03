@@ -1,3 +1,4 @@
+import { ESSENTIALS_TEMPLATE_PRESETS, ESSENTIALS_PRESET_VERTICALS } from './essentials-presets';
 import { TOUCH_PROPERTY_TEMPLATE_PRESETS } from './touch-property-presets';
 import { DIRECTORY_TEMPLATE_PRESETS } from './directory-presets';
 import { Logger } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { WORSHIP_TEMPLATE_PRESETS } from './worship-presets';
 // per-preset vertical is resolved via the map below.
 export const ALL_PRESETS = [
   ...SYSTEM_TEMPLATE_PRESETS,
+  ...ESSENTIALS_TEMPLATE_PRESETS,
   ...FITNESS_TEMPLATE_PRESETS,
   ...RESTAURANT_TEMPLATE_PRESETS,
   ...BAR_TEMPLATE_PRESETS,
@@ -120,6 +122,7 @@ export const QUARANTINED_URLS_WITHOUT_PRESET: ReadonlyArray<string> = [
 ].filter((url) => !ALL_PRESETS.some((p: any) => presetBoardUrl(p) === url));
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
+ESSENTIALS_PRESET_VERTICALS.forEach((vertical, id) => PRESET_VERTICAL.set(id, vertical));
 DIRECTORY_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'CORPORATE'));
 TOUCH_PROPERTY_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'CORPORATE'));
 // 2026-05-02 — VenueOS launch verticals are K12 / GYM / RETAIL /

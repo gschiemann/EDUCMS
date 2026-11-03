@@ -1,0 +1,122 @@
+[
+  {
+    "business": "hospitality",
+    "vertical": "HOSPITALITY",
+    "group": "Hospitality",
+    "name": "Guest Essentials \u00b7 The Guest Edit",
+    "category": "INFO",
+    "bgColor": "#f3efe5",
+    "id": "preset-essentials-hospitality-the-guest-edit",
+    "url": "/templates/signage/essentials/hospitality/the-guest-edit.html"
+  },
+  {
+    "business": "hospitality",
+    "vertical": "HOSPITALITY",
+    "group": "Hospitality",
+    "name": "Guest Essentials \u00b7 Easy Days",
+    "category": "INFO",
+    "bgColor": "#f8f0df",
+    "id": "preset-essentials-hospitality-easy-days",
+    "url": "/templates/signage/essentials/hospitality/easy-days.html"
+  },
+  {
+    "business": "hospitality",
+    "vertical": "HOSPITALITY",
+    "group": "Hospitality",
+    "name": "Guest Essentials \u00b7 City Guide",
+    "category": "INFO",
+    "bgColor": "#1e2928",
+    "id": "preset-essentials-hospitality-city-guide",
+    "url": "/templates/signage/essentials/hospitality/city-guide.html"
+  },
+  {
+    "business": "corporate",
+    "vertical": "CORPORATE",
+    "group": "Corporate",
+    "name": "Visitor Essentials \u00b7 The Guest Edit",
+    "category": "INFO",
+    "bgColor": "#f3efe5",
+    "id": "preset-essentials-corporate-the-guest-edit",
+    "url": "/templates/signage/essentials/corporate/the-guest-edit.html"
+  },
+  {
+    "business": "corporate",
+    "vertical": "CORPORATE",
+    "group": "Corporate",
+    "name": "Visitor Essentials \u00b7 Easy Days",
+    "category": "INFO",
+    "bgColor": "#f8f0df",
+    "id": "preset-essentials-corporate-easy-days",
+    "url": "/templates/signage/essentials/corporate/easy-days.html"
+  },
+  {
+    "business": "corporate",
+    "vertical": "CORPORATE",
+    "group": "Corporate",
+    "name": "Visitor Essentials \u00b7 City Guide",
+    "category": "INFO",
+    "bgColor": "#1e2928",
+    "id": "preset-essentials-corporate-city-guide",
+    "url": "/templates/signage/essentials/corporate/city-guide.html"
+  },
+  {
+    "business": "gym",
+    "vertical": "GYM",
+    "group": "Gym",
+    "name": "First Visit \u00b7 The Guest Edit",
+    "category": "FITNESS",
+    "bgColor": "#f3efe5",
+    "id": "preset-essentials-gym-the-guest-edit",
+    "url": "/templates/signage/essentials/gym/the-guest-edit.html"
+  },
+  {
+    "business": "gym",
+    "vertical": "GYM",
+    "group": "Gym",
+    "name": "First Visit \u00b7 Easy Days",
+    "category": "FITNESS",
+    "bgColor": "#f8f0df",
+    "id": "preset-essentials-gym-easy-days",
+    "url": "/templates/signage/essentials/gym/easy-days.html"
+  },
+  {
+    "business": "gym",
+    "vertical": "GYM",
+    "group": "Gym",
+    "name": "First Visit \u00b7 City Guide",
+    "category": "FITNESS",
+    "bgColor": "#1e2928",
+    "id": "preset-essentials-gym-city-guide",
+    "url": "/templates/signage/essentials/gym/city-guide.html"
+  },
+  {
+    "business": "healthcare",
+    "vertical": "HEALTHCARE",
+    "group": "Healthcare",
+    "name": "Arrival Guide \u00b7 The Guest Edit",
+    "category": "PATIENT",
+    "bgColor": "#f3efe5",
+    "id": "preset-essentials-healthcare-the-guest-edit",
+    "url": "/templates/signage/essentials/healthcare/the-guest-edit.html"
+  },
+  {
+    "business": "healthcare",
+    "vertical": "HEALTHCARE",
+    "group": "Healthcare",
+    "name": "Arrival Guide \u00b7 Easy Days",
+    "category": "PATIENT",
+    "bgColor": "#f8f0df",
+    "id": "preset-essentials-healthcare-easy-days",
+    "url": "/templates/signage/essentials/healthcare/easy-days.html"
+  },
+  {
+    "business": "healthcare",
+    "vertical": "HEALTHCARE",
+    "group": "Healthcare",
+    "name": "Arrival Guide \u00b7 City Guide",
+    "category": "PATIENT",
+    "bgColor": "#1e2928",
+    "id": "preset-essentials-healthcare-city-guide",
+    "url": "/templates/signage/essentials/healthcare/city-guide.html"
+  }
+]

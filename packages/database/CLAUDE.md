@@ -59,7 +59,7 @@ Measured on the real prod DB from one machine (wire RTT 74ms): raw `pg` on a reu
 | **Schedule** | When/where a playlist plays | `id`, `tenantId`, `playlistId`, `screenId|screenGroupId`, `startTime`/`endTime`, `daysOfWeek`, `timeStart`/`timeEnd`, `priority`, `isActive` |
 | **Asset** | Image, video, or document file | `id`, `tenantId`, `uploadedByUserId`, `folderId`, `fileUrl`, `mimeType`, `status` (a `String`: `PENDING_APPROVAL` by default, `PUBLISHED` once approved — the only value the manifest serves — or `ARCHIVED`) |
 | **AssetFolder** | Hierarchical asset organization | `id`, `tenantId`, `parentId`, `name` |
-| **Template** | Screen layout (537 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
+| **Template** | Screen layout (564 system presets + custom — see Template System for how to re-derive) | `id`, `name`, `description`, `isSystem`, `screenWidth`/`screenHeight`, `bgColor`/`bgGradient`/`bgImage`, `zones[]` (TemplateZone[]) |
 | **TemplateZone** | Widget region in a template | `id`, `templateId`, `name`, `widgetType`, `x`/`y`/`width`/`height` (% coords), `zIndex`, `defaultConfig` |
 | **AuditLog** | Immutable activity log | `id`, `tenantId`, `userId`, `action`, `targetType`, `targetId`, `details`, `createdAt` |
 

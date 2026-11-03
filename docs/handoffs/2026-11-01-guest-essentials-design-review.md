@@ -1,3 +1,7 @@
+# Superseded status
+
+The owner approved all three directions and business adaptations. See `2026-11-03-template-release-checkpoint.md` for current implementation, passing checks, remaining defects and release priority. The historical pending-choice/publication-hold language below is no longer current.
+
 # Guest Essentials — first owner approval chunk
 
 Date: November 1, 2026 (America/Los_Angeles). Builder: Codex, GPT-6, Codex desktop. Branch: `codex/hospitality-guest-essentials`, based on fetched `origin/master` at `d24392a7d`.

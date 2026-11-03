@@ -17,6 +17,33 @@ export interface SignageTemplate {
 }
 
 export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+  // GUEST ESSENTIALS COLLECTION
+  {"id": "preset-essentials-hospitality-the-guest-edit", "name": "Guest Essentials · The Guest Edit", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/the-guest-edit.html"},
+  {"id": "preset-essentials-hospitality-the-guest-edit-portrait", "name": "Guest Essentials · The Guest Edit — Portrait", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/the-guest-edit.html?o=portrait"},
+  {"id": "preset-essentials-hospitality-easy-days", "name": "Guest Essentials · Easy Days", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/easy-days.html"},
+  {"id": "preset-essentials-hospitality-easy-days-portrait", "name": "Guest Essentials · Easy Days — Portrait", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/easy-days.html?o=portrait"},
+  {"id": "preset-essentials-hospitality-city-guide", "name": "Guest Essentials · City Guide", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/city-guide.html"},
+  {"id": "preset-essentials-hospitality-city-guide-portrait", "name": "Guest Essentials · City Guide — Portrait", "group": "Hospitality", "url": "/templates/signage/essentials/hospitality/city-guide.html?o=portrait"},
+  {"id": "preset-essentials-corporate-the-guest-edit", "name": "Visitor Essentials · The Guest Edit", "group": "Corporate", "url": "/templates/signage/essentials/corporate/the-guest-edit.html"},
+  {"id": "preset-essentials-corporate-the-guest-edit-portrait", "name": "Visitor Essentials · The Guest Edit — Portrait", "group": "Corporate", "url": "/templates/signage/essentials/corporate/the-guest-edit.html?o=portrait"},
+  {"id": "preset-essentials-corporate-easy-days", "name": "Visitor Essentials · Easy Days", "group": "Corporate", "url": "/templates/signage/essentials/corporate/easy-days.html"},
+  {"id": "preset-essentials-corporate-easy-days-portrait", "name": "Visitor Essentials · Easy Days — Portrait", "group": "Corporate", "url": "/templates/signage/essentials/corporate/easy-days.html?o=portrait"},
+  {"id": "preset-essentials-corporate-city-guide", "name": "Visitor Essentials · City Guide", "group": "Corporate", "url": "/templates/signage/essentials/corporate/city-guide.html"},
+  {"id": "preset-essentials-corporate-city-guide-portrait", "name": "Visitor Essentials · City Guide — Portrait", "group": "Corporate", "url": "/templates/signage/essentials/corporate/city-guide.html?o=portrait"},
+  {"id": "preset-essentials-gym-the-guest-edit", "name": "First Visit · The Guest Edit", "group": "Gym", "url": "/templates/signage/essentials/gym/the-guest-edit.html"},
+  {"id": "preset-essentials-gym-the-guest-edit-portrait", "name": "First Visit · The Guest Edit — Portrait", "group": "Gym", "url": "/templates/signage/essentials/gym/the-guest-edit.html?o=portrait"},
+  {"id": "preset-essentials-gym-easy-days", "name": "First Visit · Easy Days", "group": "Gym", "url": "/templates/signage/essentials/gym/easy-days.html"},
+  {"id": "preset-essentials-gym-easy-days-portrait", "name": "First Visit · Easy Days — Portrait", "group": "Gym", "url": "/templates/signage/essentials/gym/easy-days.html?o=portrait"},
+  {"id": "preset-essentials-gym-city-guide", "name": "First Visit · City Guide", "group": "Gym", "url": "/templates/signage/essentials/gym/city-guide.html"},
+  {"id": "preset-essentials-gym-city-guide-portrait", "name": "First Visit · City Guide — Portrait", "group": "Gym", "url": "/templates/signage/essentials/gym/city-guide.html?o=portrait"},
+  {"id": "preset-essentials-healthcare-the-guest-edit", "name": "Arrival Guide · The Guest Edit", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/the-guest-edit.html"},
+  {"id": "preset-essentials-healthcare-the-guest-edit-portrait", "name": "Arrival Guide · The Guest Edit — Portrait", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/the-guest-edit.html?o=portrait"},
+  {"id": "preset-essentials-healthcare-easy-days", "name": "Arrival Guide · Easy Days", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/easy-days.html"},
+  {"id": "preset-essentials-healthcare-easy-days-portrait", "name": "Arrival Guide · Easy Days — Portrait", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/easy-days.html?o=portrait"},
+  {"id": "preset-essentials-healthcare-city-guide", "name": "Arrival Guide · City Guide", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/city-guide.html"},
+  {"id": "preset-essentials-healthcare-city-guide-portrait", "name": "Arrival Guide · City Guide — Portrait", "group": "Healthcare", "url": "/templates/signage/essentials/healthcare/city-guide.html?o=portrait"},
+  // END GUEST ESSENTIALS COLLECTION
+
   // ARC RIOT COMMERCIAL TOUCH COLLECTION
   {"id": "preset-corporate-touch-harbor-cinema-landscape", "name": "Corporate · Commercial Real Estate · Harbor Cinema", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/harbor-cinema-landscape.html"},
   {"id": "preset-corporate-touch-harbor-cinema-portrait", "name": "Corporate · Commercial Real Estate · Harbor Cinema — Portrait — Portrait", "group": "Corporate", "url": "/templates/signage/corporate/commercial-touch/harbor-cinema-portrait.html"},
@@ -136,6 +163,7 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-bar-07", name: "Bar · Bottle Service", group: "Bar", url: "/templates/signage/bar/07-bottle-service.html" },
   { id: "preset-sig-bar-08", name: "Bar · Game Day", group: "Bar", url: "/templates/signage/bar/08-game-day.html" },
   { id: "preset-sig-bar-09", name: "Bar · Hours", group: "Bar", url: "/templates/signage/bar/09-hours-location.html" },
+  { id: "preset-sig-bar-09-portrait", name: "Bar · Hours — Portrait", group: "Bar", url: "/templates/signage/bar/09-hours-location.html?o=portrait" },
   { id: "preset-sig-bar-10", name: "Bar · Hiring", group: "Bar", url: "/templates/signage/bar/10-now-hiring.html" },
   { id: "preset-sig-corporate-01", name: "Corporate · Lobby", group: "Corporate", url: "/templates/signage/corporate/01-lobby-welcome-flagship.html" },
   { id: "preset-sig-corporate-02", name: "Corporate · Conference", group: "Corporate", url: "/templates/signage/corporate/02-conference-room.html" },
@@ -231,7 +259,9 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-gym-04", name: "Gym · Welcome Split-Duo", group: "Gym", url: "/templates/signage/gym/04-welcome-split-duo.html" },
   { id: "preset-sig-gym-05", name: "Gym · Welcome Locker Room", group: "Gym", url: "/templates/signage/gym/05-welcome-locker-room.html" },
   { id: "preset-sig-real-estate-01", name: "Real Estate · Availability", group: "Real Estate", url: "/templates/signage/real-estate/01-availability-flagship.html" },
+  { id: "preset-sig-real-estate-01-portrait", name: "Real Estate · Availability — Portrait", group: "Real Estate", url: "/templates/signage/real-estate/01-availability-flagship.html?o=portrait" },
   { id: "preset-sig-museum-01", name: "Museum · Today", group: "Museum", url: "/templates/signage/museum/01-today-flagship.html" },
+  { id: "preset-sig-museum-01-portrait", name: "Museum · Today — Portrait", group: "Museum", url: "/templates/signage/museum/01-today-flagship.html?o=portrait" },
   { id: "preset-sig-office-01", name: "Office · Room Grid", group: "Office", url: "/templates/signage/office/01-room-grid-flagship.html" },
   { id: "preset-sig-clinic-01", name: "Clinic · Campaign", group: "Clinic", url: "/templates/signage/clinic/01-campaign-flagship.html" },
   // Modern K-12 school boards (2026-06-07) — EXTERNAL_HTML rebuilds of the
