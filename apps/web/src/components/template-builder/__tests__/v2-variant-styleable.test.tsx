@@ -236,3 +236,16 @@ describe('simple automatic widget typography', () => {
   expect(flights).toHaveLength(1); expect(flights[0]).toEqual({flight:'',time:'',dest:'',gate:'',status:'',note:''});
  });
 });
+
+describe('free public data native controls',()=>{
+ it.each(['air-quality','airport-conditions','parking-availability','traffic-cam'])('%s has source, layout and one typography workflow',variant=>{
+  const updateZone=jest.fn();render(<ContentFields zone={makeZone('LIVE_DATA',{variant,dataMode:'automatic'})} updateZone={updateZone}/>);
+  expect(selectFor('Layout')).toBeTruthy();expect(selectFor('Text to format')).toBeTruthy();expect(screen.queryByLabelText('Font size')).toBeNull();
+  expect(screen.queryByText('Highlight / glow')).toBeNull();
+  fireEvent.change(selectFor('Layout'),{target:{value:'banner'}});expect(lastCfg(updateZone).dataLayout).toBe('banner');
+ });
+ it('keeps manually entered parking counts editable instead of converting a saved garage to Los Angeles',()=>{
+  render(<ContentFields zone={makeZone('LIVE_DATA',{variant:'parking-availability',facility:'Private garage',lots:[{name:'North',avail:7,total:10}]})} updateZone={jest.fn()}/>);
+  expect(selectFor('Data').value).toBe('manual');expect(screen.getByDisplayValue('Private garage')).toBeTruthy();
+ });
+});

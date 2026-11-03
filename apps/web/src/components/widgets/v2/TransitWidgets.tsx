@@ -1,13 +1,16 @@
 "use client";
+
 /**
  * VenueOS · Transit / Airport widgets — Departures Board, Flight Status,
  * Transit Departures, Parking Availability.
  *
- * None of these is connected to a flight, transit or parking feed. They
+ * Automatic MBTA/LADOT modes delegate to source-backed renderers. Saved
+ * manual boards retain their authored values. The manual components below
  * render what the template holds; the SFO / Embarcadero sample boards show
  * only in the builder, stamped SAMPLE, and a real screen with nothing entered
  * shows a dash (lane B4, 2026-09-27 — `_shared/live-data-truth.tsx`).
  */
+import { TransitArrivalsLiveWidget, ParkingReportsLiveWidget } from '../PublicDataWidgets';
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
@@ -282,7 +285,12 @@ function transitRows(value: unknown): TransitLine[] {
     }));
 }
 
-export function TransitDeparturesWidget({ config, live = true, height = 480 }: WidgetProps<TransitDeparturesCfg>) {
+export function TransitDeparturesWidget(props: WidgetProps<TransitDeparturesCfg & {dataMode?:string;stationId?:string}>) {
+  const c = props.config || {};
+  const automatic = c.dataMode === 'automatic' || (c.dataMode !== 'manual' && !c.lines?.length && !c.station && !c.agency);
+  return automatic ? <TransitArrivalsLiveWidget config={c} live={props.live}/> : <ManualTransitDeparturesWidget {...props}/>;
+}
+function ManualTransitDeparturesWidget({ config, live = true, height = 480 }: WidgetProps<TransitDeparturesCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#fff', textColor: '#0b0c0e', accentColor: '#dc2626', ...c.style });
   const realScreen = useRealScreen();
@@ -386,7 +394,11 @@ function parkingRows(value: unknown): ParkingLot[] {
     .map((l) => ({ name: text(l.name), note: text(l.note), total: num(l.total) as number, avail: Math.max(0, num(l.avail) as number), rate: text(l.rate) }));
 }
 
-export function ParkingAvailabilityWidget({ config, live = true, height = 480 }: WidgetProps<ParkingAvailabilityCfg>) {
+export function ParkingAvailabilityWidget(props: WidgetProps<ParkingAvailabilityCfg & {dataMode?:string;location?:string}>) {
+ const c=props.config || {};const automatic=c.dataMode==='automatic'||(c.dataMode!=='manual'&&!c.lots?.length&&!c.facility);
+ return automatic?<ParkingReportsLiveWidget config={c} live={props.live}/>:<ManualParkingAvailabilityWidget {...props}/>;
+}
+function ManualParkingAvailabilityWidget({ config, live = true, height = 480 }: WidgetProps<ParkingAvailabilityCfg>) {
   const c = config ?? {};
   const r = resolveStyle({ bgColor: '#11161e', textColor: '#fff', accentColor: '#22c55e', ...c.style });
   const realScreen = useRealScreen();
