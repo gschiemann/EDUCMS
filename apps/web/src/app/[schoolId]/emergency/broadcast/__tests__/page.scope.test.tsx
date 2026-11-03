@@ -79,6 +79,19 @@ const statusCalls = () => fetchWithTimeout.mock.calls.filter((c) => String(c[0])
 const sendCalls = () => fetchWithTimeout.mock.calls.filter((c) => String(c[0]).includes('/emergency/broadcast') || String(c[0]).includes('/emergency/media-alert'));
 
 describe('Emergency Broadcast console — request scope (B1)', () => {
+  it('previews a banner until media is actually selected, while critical alerts remain full screen', async () => {
+    await act(async () => { render(<BroadcastPage />); });
+    expect(screen.getByText('emergency.broadcast.textBanner')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('emergency.broadcast.includeMedia'));
+    expect(screen.getByText('emergency.broadcast.textBanner')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'emergency.broadcast.addImage' }));
+    fireEvent.click(screen.getByText('Pick stored asset'));
+    expect(screen.getByText('emergency.broadcast.fullScreen')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('emergency.broadcast.includeMedia'));
+    expect(screen.getByText('emergency.broadcast.textBanner')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('emergency.broadcast.sevCritical'));
+    expect(screen.getByText('emergency.broadcast.fullScreen')).toBeInTheDocument();
+  });
   it('polls the active list with the TENANT ID, never the URL slug', async () => {
     await act(async () => { render(<BroadcastPage />); });
     await waitFor(() => expect(statusCalls().length).toBeGreaterThan(0));
