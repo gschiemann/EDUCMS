@@ -45,20 +45,34 @@ export class FeedsRateLimiter {
   private globalHits: number[] = [];
 
   /** @param hostKey normalized upstream hostname (e.g. "example.com") */
-  check(hostKey: string): void {
+  check(hostKey: string, perHostLimit = PER_HOST): void {
     const now = Date.now();
     const windowStart = now - HOUR;
 
     this.globalHits = this.globalHits.filter((t) => t >= windowStart);
     if (this.globalHits.length >= GLOBAL) {
       throw new HttpException(
-        { message: 'Feeds service is busy right now. Try again shortly.', code: 'FEEDS_RATE_LIMIT_GLOBAL' },
+        {
+          message: 'Feeds service is busy right now. Try again shortly.',
+          code: 'FEEDS_RATE_LIMIT_GLOBAL',
+        },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    const hits = (this.hostHits.get(hostKey) || []).filter((t) => t >= windowStart);
-    if (hits.length >= PER_HOST) {
+    const hits = (this.hostHits.get(hostKey) || []).filter(
+      (t) => t >= windowStart,
+    );
+    if (
+      hits.length >=
+      Math.max(
+        1,
+        Math.min(
+          GLOBAL,
+          Number.isFinite(perHostLimit) ? perHostLimit : PER_HOST,
+        ),
+      )
+    ) {
       const resetInMin = Math.ceil((hits[0] + HOUR - now) / 60000);
       throw new HttpException(
         {
