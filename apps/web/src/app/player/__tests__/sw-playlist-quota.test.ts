@@ -92,3 +92,19 @@ test('the keep-on-glass list protects chunked playback, and removing it prunes o
   expect(w.cacheNamed(w.hooks.STAGING_CACHE).entries.size).toBe(0);
   expect(w.cacheNamed(w.hooks.EMERGENCY_CACHE).entries.size).toBe(1);
 });
+
+
+test('an actual storage-quota exception is not reported as a truncated network body', async () => {
+  const w = loadWorker();
+  const file = randomBytes(MiB);
+  const a = { url, sha256: sha256Hex(file), size: file.length };
+  w.setFetch(rangeFetch({ file, calls: [] }));
+  await w.send({ type: 'PRECACHE_VERIFY', ...a });
+  w.cacheNamed(w.hooks.STAGING_CACHE).put = async () => {
+    throw new DOMException('Quota exceeded.', 'QuotaExceededError');
+  };
+  expect(await w.send({ type: 'PRECACHE_CHUNK', ...a, offset: 0, chunkBytes: MiB }))
+    .toMatchObject({ ok: false, reason: 'storage-quota', offset: 0 });
+  expect(await w.send({ type: 'CACHE_LOOKUP', urls: [a] }))
+    .toMatchObject({ present: { [url]: false } });
+});
