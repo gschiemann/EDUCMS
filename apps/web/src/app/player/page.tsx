@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
+import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -3097,7 +3098,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // instead of silently going without. Same behaviour, one implementation.
   useTaurusPolyfills();
 
-  const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
+  const [storageEstimate, setStorageEstimate] = useState<PlayerStorageEstimate | null>(null);
+  const storageInfo = storageEstimateText(storageEstimate);
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
   // `#t=<jwt>&o=<portrait|landscape>` when opening the Preview link.
@@ -3513,17 +3515,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
 
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
-      navigator.storage.estimate().then(({ usage, quota }) => {
-        if (usage && quota) {
-          setStorageInfo({
-             used: (usage / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
-             total: (quota / (1024 * 1024 * 1024)).toFixed(0) + ' GB',
-             percent: Math.round((usage / quota) * 100)
-          });
-        }
-      });
-    }
+    let active = true;
+    void readPlayerStorageEstimate(typeof navigator === 'undefined' ? undefined : navigator.storage)
+      .then(value => { if (active) setStorageEstimate(value); });
+    return () => { active = false; };
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -14902,11 +14897,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Local storage</span>
                     <span className="font-mono font-semibold text-slate-700 text-right">
-                      {storageInfo.used} of {storageInfo.total}
+                      {storageInfo ? `${storageInfo.used} of ${storageInfo.total}` : '—'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo?.percent ?? 0}%` }} />
                   </div>
 
                   {/* 2026-05-04 — operator: "my playlist should show
