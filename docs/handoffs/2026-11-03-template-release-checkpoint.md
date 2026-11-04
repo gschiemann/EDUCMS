@@ -1,3 +1,5 @@
+> Superseded later November 3: owner requested “release your templates” and “out of usage publish”. The partial-message image reset is fixed; 48 Chromium/WebKit real-builder cases and 24 portable bridge cases now pass. Final provenance, scope and release checks are in `docs/templates/essentials-release.md`. The text below preserves the earlier checkpoint, not current blockers.
+
 # Template checkpoint — November 3, 2026
 
 Owner approved all three Guest Essentials directions and business adaptations, then requested repairs to unfinished templates. On November 3 the owner expanded the active priority: “get all PR's publlished that have been tried to be pushed”. Preserve this template branch while handling that release queue; it is not published or ready to merge yet.

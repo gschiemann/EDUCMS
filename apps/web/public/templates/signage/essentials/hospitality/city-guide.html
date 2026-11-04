@@ -19,7 +19,7 @@ h1{margin:0}.stage>*{min-height:0}.logo-fallback{width:86px;height:104px;text-al
 .stage[data-orient=portrait]{grid-template-columns:1fr;grid-template-rows:1100px 1fr}.stage[data-orient=portrait] .cover{padding:80px 100px;grid-template-columns:1.35fr 1fr;grid-template-rows:140px 90px 1fr;gap:40px 70px}.stage[data-orient=portrait] .identity{grid-column:1}.stage[data-orient=portrait] .kicker{grid-column:1;grid-row:2;padding:0;font-size:54px}.stage[data-orient=portrait] .headline{grid-column:1;grid-row:3;font-size:180px;line-height:1.05}.stage[data-orient=portrait] .cover .photo{grid-column:2;grid-row:1/3;border-radius:0 230px 0 0}.stage[data-orient=portrait] .cover .intro{grid-column:2;grid-row:3;align-self:end;height:265px;font-size:65px}.stage[data-orient=portrait] .guide{padding:75px 100px 95px;grid-template-rows:155px 1fr 325px;gap:35px}.stage[data-orient=portrait] .guide-head{padding-bottom:30px}.stage[data-orient=portrait] .guide-title{font-size:80px}.stage[data-orient=portrait] .guide-tag{font-size:50px;width:470px}.stage[data-orient=portrait] .info{grid-template-columns:115px 1fr;grid-template-rows:90px 140px 1fr;gap:10px 45px;padding:34px 0}.stage[data-orient=portrait] .number{grid-column:1;grid-row:1/4;font-size:60px}.stage[data-orient=portrait] .info-label{grid-column:2;grid-row:1;font-size:53px;height:85px}.stage[data-orient=portrait] .info-value{grid-column:2;grid-row:2;font-size:104px;height:140px}.stage[data-orient=portrait] .info-detail{grid-column:2;grid-row:3;font-size:70px;height:130px;white-space:normal}.stage[data-orient=portrait] .footer{padding:40px 45px}.stage[data-orient=portrait] .help-block{grid-template-columns:1fr 1fr;grid-template-rows:85px 150px}.stage[data-orient=portrait] .foot-value{font-size:80px;height:150px}.stage[data-orient=portrait] .foot-detail{font-size:70px;height:235px}
 
 .stage{grid-template-rows:minmax(0,1fr)}.cover{grid-template-rows:160px 120px 630px minmax(0,1fr) 180px;gap:35px}.cover .intro{height:180px}.guide{grid-template-rows:160px minmax(0,1fr) 240px;gap:40px}.rows{min-height:0;grid-template-rows:repeat(5,minmax(0,1fr))}.info{padding:20px 0;grid-template-rows:70px 172px;gap:10px 55px}.info-label{height:70px}.info-value{font-size:84px;height:172px;line-height:1.3}.info-detail{font-size:62px;height:172px;line-height:1.3}.stage[data-orient=portrait] .guide{grid-template-rows:155px minmax(0,1fr) 325px}.stage[data-orient=portrait] .info{grid-template-rows:80px 140px minmax(0,1fr);padding:24px 0;gap:8px 45px}.stage[data-orient=portrait] .info-label{height:80px}.stage[data-orient=portrait] .info-detail{height:130px}.stage[data-orient=portrait] .cover .intro{height:265px}
-.image-slot{position:relative}.logo{overflow:hidden}.logo-fallback{position:relative;z-index:1}.has-img .placeholder{display:none}</style><script>/*EDUCMS-SHIM-V16*/(function(){try{
+.image-slot{position:relative}.logo{overflow:hidden}.logo-fallback{position:relative;z-index:1}.has-img .placeholder{display:none}.stage[data-orient=landscape] .guide-head{padding-top:16px;padding-bottom:34px}</style><script>/*EDUCMS-SHIM-V16*/(function(){try{
 var editMode=false;
 // V16: compare exact attribute values; never interpolate a saved key into a selector.
 function _veNodes(attr,key){return Array.prototype.filter.call(document.querySelectorAll('['+attr+']'),function(el){return el.getAttribute(attr)===key;});}
@@ -241,22 +241,30 @@ Easy departures.</div></header><main class="guide"><div class="guide-head"><div 
   // Restore removes an override; Remove is an explicit empty value. Keep these distinct.
   var previousText = new Set(), previousImages = new Set();
   function restoreMissing(data) {
-    var text = data.text || {}, images = data.img || {};
-    fields.forEach(function (el) {
-      var key = el.dataset.field;
-      if (previousText.has(key) && !Object.prototype.hasOwnProperty.call(text, key)) el.textContent = defaults.get(el);
-    });
-    previousImages.forEach(function (key) {
-      if (Object.prototype.hasOwnProperty.call(images, key)) return;
-      fields.forEach(function (el) { if (el.dataset.field === 'media.' + key + '.slides' || el.dataset.field === 'media.' + key + '.mode') el.textContent = defaults.get(el); });
-    });
-    previousText = new Set(Object.keys(text)); previousImages = new Set(Object.keys(images));
+    // Each message may carry only media, menu data or text. Omitted maps mean
+    // unchanged; an explicit empty map is the editor's Restore command.
+    if (Object.prototype.hasOwnProperty.call(data, 'text')) {
+      var text = data.text || {};
+      fields.forEach(function (el) {
+        var key = el.dataset.field;
+        if (previousText.has(key) && !Object.prototype.hasOwnProperty.call(text, key)) el.textContent = defaults.get(el);
+      });
+      previousText = new Set(Object.keys(text));
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'img')) {
+      var images = data.img || {};
+      previousImages.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(images, key)) return;
+        fields.forEach(function (el) { if (el.dataset.field === 'media.' + key + '.slides' || el.dataset.field === 'media.' + key + '.mode') el.textContent = defaults.get(el); });
+      });
+      previousImages = new Set(Object.keys(images));
+    }
   }
   previousText = new Set(Object.keys(decode('text'))); previousImages = new Set(Object.keys(decode('img')));
   addEventListener('message', function (event) {
     if (event.source !== parent || !event.data || event.data.type !== 'educms-overrides') return;
     restoreMissing(event.data);
-    var next = event.data.textStyles || {};
+    var next = Object.prototype.hasOwnProperty.call(event.data, 'textStyles') ? event.data.textStyles || {} : manual;
     var styleProperties = { color:'color', fontSize:'font-size', fontWeight:'font-weight', bold:'font-weight', fontStyle:'font-style', italic:'font-style', fontFamily:'font-family', textDecoration:'text-decoration', underline:'text-decoration', strikethrough:'text-decoration', textAlign:'text-align', backgroundColor:'background-color', lineHeight:'line-height', hidden:'display', visibility:'visibility' };
     fields.forEach(function (el) {
       var key = el.dataset.field, before = manual[key] || {}, after = next[key] || {};

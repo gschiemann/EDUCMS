@@ -86,7 +86,7 @@ for business, context in CONTEXTS.items():
         if business == 'healthcare': controls['media.hero.photo.position'] = '50% 25%'
         source = source.replace('<div class="viewport">', '<div data-controls hidden>' + ''.join('<span data-field="'+k+'">'+html.escape(v)+'</span>' for k,v in controls.items()) + '</div><div class="viewport">')
         # Host follows the authored photo frame; no container-level transform that could move text.
-        source = source.replace('</style>', '.image-slot{position:relative}.logo{overflow:hidden}.logo-fallback{position:relative;z-index:1}.has-img .placeholder{display:none}</style>')
+        source = source.replace('</style>', '.image-slot{position:relative}.logo{overflow:hidden}.logo-fallback{position:relative;z-index:1}.has-img .placeholder{display:none}.stage[data-orient=landscape] .guide-head{padding-top:16px;padding-bottom:34px}</style>')
         source = re.sub(r'<title>.*?</title>', '<title>'+html.escape(context['label']+' · '+name)+'</title>', source)
         source = source.replace('</body>', '<script>'+RUNTIME+'</script><script defer src="/templates/_native-image-carousel.js"></script></body>')
         filename = slug[2:] + '.html'

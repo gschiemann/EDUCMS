@@ -1,0 +1,6 @@
+
+Test Suites: 2 passed, 2 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+Time:        0.612 s, estimated 1 s
+Ran all test suites matching src/templates/essentials-presets.spec.ts|src/templates/gap-presets.spec.ts.

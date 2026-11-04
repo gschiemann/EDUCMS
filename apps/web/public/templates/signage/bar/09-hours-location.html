@@ -298,22 +298,30 @@ addEventListener('message',function(e){if(e.source!==parent)return;try{var d=e.d
   // Restore removes an override; Remove is an explicit empty value. Keep these distinct.
   var previousText = new Set(), previousImages = new Set();
   function restoreMissing(data) {
-    var text = data.text || {}, images = data.img || {};
-    fields.forEach(function (el) {
-      var key = el.dataset.field;
-      if (previousText.has(key) && !Object.prototype.hasOwnProperty.call(text, key)) el.textContent = defaults.get(el);
-    });
-    previousImages.forEach(function (key) {
-      if (Object.prototype.hasOwnProperty.call(images, key)) return;
-      fields.forEach(function (el) { if (el.dataset.field === 'media.' + key + '.slides' || el.dataset.field === 'media.' + key + '.mode') el.textContent = defaults.get(el); });
-    });
-    previousText = new Set(Object.keys(text)); previousImages = new Set(Object.keys(images));
+    // Each message may carry only media, menu data or text. Omitted maps mean
+    // unchanged; an explicit empty map is the editor's Restore command.
+    if (Object.prototype.hasOwnProperty.call(data, 'text')) {
+      var text = data.text || {};
+      fields.forEach(function (el) {
+        var key = el.dataset.field;
+        if (previousText.has(key) && !Object.prototype.hasOwnProperty.call(text, key)) el.textContent = defaults.get(el);
+      });
+      previousText = new Set(Object.keys(text));
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'img')) {
+      var images = data.img || {};
+      previousImages.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(images, key)) return;
+        fields.forEach(function (el) { if (el.dataset.field === 'media.' + key + '.slides' || el.dataset.field === 'media.' + key + '.mode') el.textContent = defaults.get(el); });
+      });
+      previousImages = new Set(Object.keys(images));
+    }
   }
   previousText = new Set(Object.keys(decode('text'))); previousImages = new Set(Object.keys(decode('img')));
   addEventListener('message', function (event) {
     if (event.source !== parent || !event.data || event.data.type !== 'educms-overrides') return;
     restoreMissing(event.data);
-    var next = event.data.textStyles || {};
+    var next = Object.prototype.hasOwnProperty.call(event.data, 'textStyles') ? event.data.textStyles || {} : manual;
     var styleProperties = { color:'color', fontSize:'font-size', fontWeight:'font-weight', bold:'font-weight', fontStyle:'font-style', italic:'font-style', fontFamily:'font-family', textDecoration:'text-decoration', underline:'text-decoration', strikethrough:'text-decoration', textAlign:'text-align', backgroundColor:'background-color', lineHeight:'line-height', hidden:'display', visibility:'visibility' };
     fields.forEach(function (el) {
       var key = el.dataset.field, before = manual[key] || {}, after = next[key] || {};
@@ -359,7 +367,7 @@ addEventListener('message',function(e){if(e.source!==parent)return;try{var d=e.d
       });
     } catch (_) { /* Keep authored copy when a supplied locale/timezone is invalid. */ }
   }
-  addEventListener('message',function(event){if(event.source===parent&&event.data&&event.data.type==='educms-overrides'){overrides=event.data.text||{};Promise.resolve().then(tick);}});
+  addEventListener('message',function(event){if(event.source===parent&&event.data&&event.data.type==='educms-overrides'&&Object.prototype.hasOwnProperty.call(event.data,'text')){overrides=event.data.text||{};Promise.resolve().then(tick);}});
   new MutationObserver(tick).observe(document.querySelector('[data-controls]'),{subtree:true,childList:true,characterData:true});
   addEventListener('DOMContentLoaded',tick);tick();setInterval(tick,15000);
 })();

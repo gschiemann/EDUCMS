@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Page, type Route, type Locator } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -256,6 +256,22 @@ test('Fit frame repairs a saved image with empty borders; toolbar and panel fit 
   await expect(zone.locator('img')).toHaveAttribute('src', media[1].fileUrl);
 });
 
+// Photo captions are independently editable. Click an exposed image point,
+// measured after stage scaling/rotation, to select the photo rather than its copy.
+async function clickPhoto(page: Page, slot: Locator) {
+  const point = await slot.evaluate(el => {
+    const box = el.getBoundingClientRect();
+    for (const y of [0.15, 0.3, 0.7, 0.85]) for (const x of [0.15, 0.3, 0.7, 0.85]) {
+      const hit = document.elementFromPoint(box.left + x * box.width, box.top + y * box.height);
+      if (hit?.closest('[data-field],[data-imgslot]') === el) return {x, y};
+    }
+    throw new Error('No exposed photo point is clickable');
+  });
+  const box = await slot.boundingBox();
+  if (!box) throw new Error('Photo is not visible');
+  await page.mouse.click(box.x + point.x * box.width, box.y + point.y * box.height);
+}
+
 for (const [board, key, portrait = false] of [
   ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', false],
   ['/templates/signage/retail/09-service-counter.html', 'collection.parcel', true],
@@ -296,7 +312,7 @@ for (const [board, key, portrait = false] of [
     if (board.includes('/kiosk/')) await frame.getByText('Directory', { exact: true }).click();
     const slot = frame.locator(`[data-imgslot="${key}"]:visible,[data-slot="${key}"]:visible,[data-img="${key}"]:visible,[data-posterslot="${key}"]:visible`).first();
     await expect(slot).toBeVisible();
-    await slot.click(key === 'feat.photo' ? { position: await slot.evaluate(el => ({x: el.clientWidth * 0.7, y: el.clientHeight * 0.15})) } : undefined);
+    if (key === 'feat.photo') await clickPhoto(page, slot); else await slot.click();
     const bar = page.locator('[data-builder-bottom-bar]');
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
     await bar.getByRole('combobox', { name: 'Media fit' }).selectOption('contain');
@@ -334,7 +350,7 @@ for (const [board, key, portrait = false] of [
       const image = el.matches('img') ? el : el.querySelector('img');
       return (image ? getComputedStyle(image).objectFit : getComputedStyle(el).backgroundSize).split(',')[0].trim();
     })).toBe('contain');
-    await savedSlot.click();
+    if (key === 'feat.photo') await clickPhoto(page, savedSlot); else await savedSlot.click();
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('built-in-media-edited.png') });
     await addImage(page, 'square');
@@ -404,7 +420,7 @@ for (const portrait of [false, true]) {
     const slot = frame.locator(`[data-imgslot="${key}"]`);
     const source = () => slot.evaluate(el => el.querySelector('img')?.getAttribute('src') || getComputedStyle(el).backgroundImage);
     await expect.poll(source).toContain('/landscape.png');
-    await slot.click(key === 'feat.photo' ? { position: await slot.evaluate(el => ({x: el.clientWidth * 0.7, y: el.clientHeight * 0.15})) } : undefined);
+    await slot.click();
     const bar = page.locator('[data-builder-bottom-bar]');
     await expect(bar.getByRole('button', { name: 'Replace image', exact: true })).toBeVisible();
     await expect(page.locator(`[data-edit-img="${key}"]`)).toHaveCount(1);
