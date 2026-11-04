@@ -402,7 +402,9 @@ export function screenCompatibilityIssues(
   if (probe.fieldOrder !== null && INTERLACED_FIELD_ORDERS.has(probe.fieldOrder)) out.push('interlaced');
   if (Math.abs(probe.pixelAspect - 1) > 0.005) out.push('pixel-aspect');
   if (Math.round(probe.rotation) % 360 !== 0) out.push('rotation');
-  if (probe.fps !== null && probe.fps > rung.fpsCap + 0.5) out.push('frame-rate');
+  // Match the native decoder admission ceiling. Calling 30.303 fps ready
+  // while native refuses >30 silently stranded otherwise valid MP4s on web.
+  if (probe.fps !== null && probe.fps > rung.fpsCap) out.push('frame-rate');
   if (probe.variableFrameRate) out.push('variable-frame-rate');
   if (short > rung.shortSide || long > MAX_LONG_EDGE) out.push('oversize');
   if (probe.hasAudio) {
@@ -451,10 +453,10 @@ const MIN_HALVED_FPS = 23.9;
  */
 export function targetFps(probe: ProbeResult, cap: number): number | null {
   const fps = probe.fps;
-  if (fps !== null && fps > cap + 0.5) {
+  if (fps !== null && fps > cap) {
     const half = fps / 2;
     return half >= MIN_HALVED_FPS && half <= cap + 0.5
-      ? Math.round(half * 1000) / 1000
+      ? Math.min(cap, Math.round(half * 1000) / 1000)
       : cap;
   }
   if (probe.variableFrameRate) {
@@ -718,7 +720,7 @@ export function verifyTranscodeOutput(
     return { ok: false, reason: `output-rotation-${out.rotation}` };
   if (Math.abs(out.pixelAspect - 1) > 0.005)
     return { ok: false, reason: 'output-pixel-aspect' };
-  if (out.fps !== null && out.fps > plan.rung.fpsCap + 0.5)
+  if (out.fps !== null && out.fps > plan.rung.fpsCap)
     return { ok: false, reason: `output-fps-${out.fps.toFixed(2)}` };
   if (out.colorTransfer !== null && HDR_TRANSFERS.has(out.colorTransfer))
     return { ok: false, reason: `output-transfer-${out.colorTransfer}` };
