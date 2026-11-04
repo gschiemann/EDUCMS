@@ -22,8 +22,6 @@ jest.mock('next-intl', () => ({
   },
 }));
 const storeState = {
-  pushOverlay: () => {},
-  popOverlay: () => {},
   token: 'tok',
   user: { id: 'u1', email: 'admin@school.test', role: 'SCHOOL_ADMIN', tenantId: TENANT_UUID, canTriggerPanic: false },
   // The screen picker's sheet takes the shared overlay lock (useOverlayLock).
