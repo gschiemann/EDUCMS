@@ -316,6 +316,7 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 // `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
+import { RemoteOptions } from './RemoteOptions';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -5971,6 +5972,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const uninstall = installDeviceDiagnosticsUploader(createDeviceDiagnosticsUploader({
       screenId, token: getDeviceToken, apiRoot: getApiRoot,
       readLogs: () => nativeCall('getRecentLogs'),
+      readNativeState: () => nativeCall('sharedVideoState'),
+      readStorage: () => readPlayerStorageEstimate(navigator.storage),
       post: (url, init) => fetchJsonBounded(url, init, 15_000),
       now: Date.now,
     }));
@@ -12598,8 +12601,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // setup checklist (its only glass re-entry is a TOUCH corner-hold).
   //
   // This panel is what Back now opens on the pre-content phases. Remote-first:
-  // autoFocus on the primary so OK/Enter works with zero navigation, and
-  // every control is a real <button> so D-pad spatial nav reaches it.
+  // RemoteOptions captures arrows and OK explicitly; real buttons alone
+  // do not provide spatial navigation on every OEM WebView.
   // Spacing via margins, not `gap` (Chromium-83 Taurus floor); positioning
   // via four longhand sides (never `inset`).
   const retryConnectionNow = () => {
@@ -12622,8 +12625,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const escapeButtonCls =
     'px-6 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:scale-95';
   const preContentEscapeOverlay = playbackStopped ? (
-    <div
-      role="dialog"
+    <RemoteOptions
       aria-label="Screen options"
       style={{
         position: 'fixed',
@@ -12712,7 +12714,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           </button>
         </div>
       </div>
-    </div>
+    </RemoteOptions>
   ) : null;
   // One-line standing hint so the escape panel is discoverable from across
   // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
