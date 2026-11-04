@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
+import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -26,7 +27,7 @@ import { healPatternCss } from '@/lib/pattern-css';
 // rendererBundle.tsx — loaded after register succeeds and the first
 // manifest is applied. Re-adding a static renderer import here silently
 // puts the whole catalog back on the pairing path.
-import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
+import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut, Usb } from 'lucide-react';
 import { KioskSplash, type LoadProgress, type SplashNetwork } from '@/components/player/KioskSplash';
 import { useNetworkStatus, noteNetworkAnswer, noteNetworkNoAnswer } from './useNetworkStatus';
 import type { NetworkStatus } from './networkStatus';
@@ -47,7 +48,7 @@ import { decideEmergencySurface, isBannerEmergencyMessage } from './emergencySur
 import { broadcastContentStyle, type BroadcastLayout } from './broadcastLayout';
 import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
-  USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
+  USB_IMPORTED_AT_HEADER, USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseImportedAt, parseUsbPackage,
   readUsbMemo, usbOnlyManifest, usbOverlayActive, writeUsbMemo, type UsbOverlayState,
 } from './usbPackage';
 import { emergencyPaintIdentity, emergencyRenderHash } from './emergencyPaintProof';
@@ -2936,6 +2937,7 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
 function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMonitorRefs }) {
   const emergencyFaceStage = useEmergencyFaceStage();
   const tEmergency = useTranslations('emergency');
+  const tPlayerMenu = useTranslations('playerMenu');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPlaybackHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyPlaybackHeld, () => false);
   const [broadcastLayout, setBroadcastLayout] = useState<BroadcastLayout | null>(null);
@@ -3096,7 +3098,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // instead of silently going without. Same behaviour, one implementation.
   useTaurusPolyfills();
 
-  const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
+  const [storageEstimate, setStorageEstimate] = useState<PlayerStorageEstimate | null>(null);
+  const storageInfo = storageEstimateText(storageEstimate);
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
   // `#t=<jwt>&o=<portrait|landscape>` when opening the Preview link.
@@ -3512,17 +3515,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
 
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
-      navigator.storage.estimate().then(({ usage, quota }) => {
-        if (usage && quota) {
-          setStorageInfo({
-             used: (usage / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
-             total: (quota / (1024 * 1024 * 1024)).toFixed(0) + ' GB',
-             percent: Math.round((usage / quota) * 100)
-          });
-        }
-      });
-    }
+    let active = true;
+    void readPlayerStorageEstimate(typeof navigator === 'undefined' ? undefined : navigator.storage)
+      .then(value => { if (active) setStorageEstimate(value); });
+    return () => { active = false; };
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -8436,12 +8432,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     if (!hasNativeBridge()) return;
     try {
       const res = await fetch(USB_PACKAGE_PATH, { cache: 'no-store' });
-      const pkg = res.ok ? parseUsbPackage(await res.json()) : null;
+      const pkg = res.ok ? parseUsbPackage(await res.json(), parseImportedAt(res.headers.get(USB_IMPORTED_AT_HEADER))) : null;
       const prev = usbStateRef.current;
-      const next = adoptUsbPackage({ ...prev, memo: prev.memo ?? readUsbMemo(window.localStorage) }, pkg);
+      const prevMemo = prev.memo ?? readUsbMemo(window.localStorage);
+      const next = adoptUsbPackage({ ...prev, memo: prevMemo }, pkg);
       usbStateRef.current = next;
       if (pkg) writeUsbMemo(window.localStorage, next.memo);
-      if (pkg && usbOverlayActive(next) && prev.pkg?.bundleVersion !== pkg.bundleVersion) {
+      // A new package — or the same one a person brought in again (a new
+      // import time revives a retired stick: usbPackage.ts adoptUsbPackage).
+      const broughtInAgain = !!prevMemo && prevMemo.retired && next.memo?.retired === false;
+      if (pkg && usbOverlayActive(next) && (prev.pkg?.bundleVersion !== pkg.bundleVersion || broughtInAgain)) {
         console.warn(`[Player] USB playlist ${pkg.bundleVersion} ready — applying`);
         manifestEtagRef.current = null;
         void fetchContent();
@@ -8454,6 +8454,27 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     window.addEventListener(USB_IMPORTED_EVENT, onImported);
     return () => window.removeEventListener(USB_IMPORTED_EVENT, onImported);
   }, [loadUsbPackage]);
+  // 2026-10-26 — "Import from USB" in the Back menu (APK ≥ 1.1.55). The APK
+  // reads the drive and its USB card says what it found (and owns the remote
+  // while it is up; Back from it returns to this menu). When that import
+  // lands, the person asked for it to PLAY: close the menu so it does, instead
+  // of leaving it paused behind the menu they started from.
+  const usbMenuImportAtRef = useRef(0);
+  useEffect(() => {
+    const onImported = () => {
+      const at = usbMenuImportAtRef.current;
+      if (!at || Date.now() - at > 10 * 60_000) return;
+      usbMenuImportAtRef.current = 0;
+      setPlaybackStopped(false);
+      setExitUnavailable(false);
+    };
+    window.addEventListener(USB_IMPORTED_EVENT, onImported);
+    return () => window.removeEventListener(USB_IMPORTED_EVENT, onImported);
+  }, []);
+  const importFromUsb = () => {
+    usbMenuImportAtRef.current = Date.now();
+    nativeFire('importFromUsb');
+  };
 
   // Emergency preempt lane (deep-audit F2): abort any in-flight NORMAL
   // manifest request so the gate's coalesced follow-up — which will fetch
@@ -12268,7 +12289,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
   // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
-  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet ? (
+  // A dashboard preview has no device credential by design: never warn there (2026-11-02).
+  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet && !isPreviewMode() ? (
     <div
       data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
@@ -12649,7 +12671,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               }}
               className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
             >
-              Device setup
+              Finish screen setup
             </button>
           )}
           {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
@@ -12664,6 +12686,21 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
             >
               Network
+            </button>
+          )}
+          {bootMounted && isAndroidWebView() && nativeHas('importFromUsb') && (
+            <button
+              data-edu-import-usb=""
+              onClick={() => {
+                // 2026-10-26 (APK ≥ 1.1.55) — read the USB drive now; the APK's
+                // USB card says what it found, with the fix on its focused
+                // button. Fire-and-forget; the APK refuses it over an alert.
+                // This menu stays open under the card, so Back comes back HERE.
+                importFromUsb();
+              }}
+              className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
+            >
+              {tPlayerMenu('importFromUsb')}
             </button>
           )}
           <button
@@ -14860,11 +14897,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Local storage</span>
                     <span className="font-mono font-semibold text-slate-700 text-right">
-                      {storageInfo.used} of {storageInfo.total}
+                      {storageInfo ? `${storageInfo.used} of ${storageInfo.total}` : '—'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo?.percent ?? 0}%` }} />
                   </div>
 
                   {/* 2026-05-04 — operator: "my playlist should show
@@ -15483,6 +15520,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
                     </button>
                   )}
+                  {bootMounted && isAndroidWebView() && nativeHas('openSetupChecklist') && (
+                    <button
+                      // 2026-11-01 (APK 1.1.59) — "Finish screen setup": the
+                      // one-time permission list. The APK never asks for a
+                      // permission mid-use any more, so this is the on-glass
+                      // way back to anything still missing (the dashboard's
+                      // "Open setup on this panel" is the other). Existing
+                      // bridge method (≥ 1.1.6), fire-and-forget; the APK
+                      // refuses it over an alert and logs why.
+                      data-edu-finish-setup=""
+                      onClick={(e) => { e.stopPropagation(); nativeFire('openSetupChecklist'); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Settings className="w-4 h-4 text-slate-400" /> Finish screen setup
+                    </button>
+                  )}
                   {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
                     <button
                       // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen
@@ -15493,6 +15546,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
                     >
                       <Network className="w-4 h-4 text-slate-400" /> Network
+                    </button>
+                  )}
+                  {bootMounted && isAndroidWebView() && nativeHas('importFromUsb') && (
+                    <button
+                      // 2026-10-26 (APK ≥ 1.1.55, M43 on site) — read the USB
+                      // drive now; the APK's USB card says what it found and
+                      // owns the remote until Back. A successful import closes
+                      // this menu so the playlist plays. Hidden on an APK that
+                      // does not prove the method.
+                      data-edu-import-usb=""
+                      onClick={(e) => { e.stopPropagation(); importFromUsb(); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Usb className="w-4 h-4 text-slate-400" /> {tPlayerMenu('importFromUsb')}
                     </button>
                   )}
                   <button

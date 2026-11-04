@@ -233,6 +233,40 @@
       "chooseVideo": "Choose or upload a video",
       "chooseAudio": "Choose or upload audio",
       "errDuration": "Choose a whole number from 1 to 120 minutes.",
+      "bannerStyle": "Banner style",
+      "bannerColor": "Banner colour",
+      "colorDefault": "Standard",
+      "colorBrandPrimary": "Brand primary",
+      "colorBrandAccent": "Brand accent",
+      "color_blue": "Blue",
+      "color_green": "Green",
+      "color_amber": "Amber",
+      "color_red": "Red",
+      "color_purple": "Purple",
+      "color_dark": "Dark",
+      "colorCustom": "Custom",
+      "customHexLabel": "Custom colour (hex)",
+      "customHexInvalid": "Enter a colour like #1d4ed8.",
+      "errBannerColor": "Enter a valid banner colour like #1d4ed8, or choose another.",
+      "contrastAuto": "Text colour is chosen automatically so it stays easy to read.",
+      "contrastWarn": "This colour is hard to read with either white or dark text ({ratio}:1; accessibility needs 4.5:1). Choose a lighter or darker colour.",
+      "bannerText": "Banner text",
+      "modeStatic": "Static",
+      "modeScroll": "Scrolling",
+      "modeStaticHint": "Centred. Up to 2 lines; long messages shrink to fit.",
+      "modeScrollHint": "One line that scrolls smoothly and repeats until the broadcast ends.",
+      "speed": "Scroll speed",
+      "speedSlow": "Slow",
+      "speedNormal": "Normal",
+      "speedFast": "Fast",
+      "autoClear": "Clear automatically",
+      "d15m": "15 min",
+      "d1h": "1 hour",
+      "d4h": "4 hours",
+      "dEod": "End of day",
+      "dManual": "Until I clear it (24 h max)",
+      "dCustom": "Custom",
+      "criticalColorNote": "Critical and media alerts always use the standard red full-screen look.",
       "errMediaRequired": "Add an image, video or audio file before sending a media alert."
     },
     "viewIncident": "View incident",
@@ -240,6 +274,7 @@
       "sendTo": "Send to",
       "screensSelected": "{count, plural, one {# screen selected} other {# screens selected}}",
       "done": "Done",
+      "pickerCancel": "Cancel",
       "allScreens": "All screens",
       "allScreensCount": "All screens ({count})",
       "chipOne": "{name} · {count, plural, one {# screen} other {# screens}}",
@@ -469,7 +504,8 @@
     "phoneSetupSignedInTitle": "You're signed in",
     "phoneSetupLater": "You can add a passkey for this device later in My account.",
     "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
-    "security": "Security"
+    "security": "Security",
+    "requestInfo": "Request info"
   },
   "account": {
     "title": "My account",
@@ -2233,8 +2269,8 @@
       "awakeSent": "Awake sent. Waiting for the screen to confirm.",
       "sleepAwakeHint": "Sleep darkens the screen. Awake brings it back. An emergency alert always wakes it.",
       "blankAutoWake": "Wakes itself after {minutes} min so a forgotten click can’t leave the screen dark. For a nightly off, use the schedule below.",
-      "reboot": "Restart device",
-      "rebootHint": "Restarts the whole player box. It comes back on its own in about a minute.",
+      "reboot": "Restart player",
+      "rebootHint": "Restarts the player. It comes back on its own in about a minute.",
       "rebootConfirmTitle": "Restart this device?",
       "rebootConfirmBody": "“{name}” will go dark and restart, usually for about a minute. If it doesn't come back, someone will need to check it.",
       "rebootContinue": "Continue",
@@ -2306,11 +2342,18 @@
       "scheduleDeleteTitle": "Delete this schedule?",
       "scheduleDeleteBody": "The screen will stop turning itself off and on. You can add a new schedule any time.",
       "scheduleSaveFailed": "Couldn’t save the schedule.",
-      "levelUnknown": "This screen doesn’t report its current level, so the slider sets an absolute value — not an adjustment from where it is now.",
+      "levelUnknown": "We can’t see this screen’s current level, so the slider sets an exact value.",
       "pickADay": "Pick at least one day. To stop a screen turning itself off, delete the schedule instead.",
       "powerOffConfirmTitle": "Turn this panel off?",
       "powerOffConfirmBody": "If it doesn't turn back on, someone will have to switch it on at the screen. To just darken it, use Blank.",
-      "powerOffConfirmCta": "Turn it off"
+      "powerOffConfirmCta": "Turn it off",
+      "levelInfo": "More information",
+      "scheduleLineWindow": "Off {off} – on {on}",
+      "scheduleLineMore": "Off {off} – on {on} · +{count} more",
+      "scheduleLinePaused": "On/off schedule paused",
+      "scheduleLineNone": "No on/off schedule",
+      "scheduleEdit": "Edit",
+      "scheduleSetUp": "Set up"
     },
     "deviceSettings": {
       "title": "Android settings",
@@ -2318,10 +2361,10 @@
       "loading": "Loading Android settings…",
       "notReported": "This screen hasn’t reported its Android settings yet. It needs an updated VenueOS player on Android 13 or newer.",
       "needsAndroid13": "Android settings need Android 13 or newer. This unit reports Android API level {sdk}.",
-      "intro": "VenueOS sets these on the screen itself and reads back what Android keeps. A change reaches the screen within about 5 minutes.",
-      "notManaged": "Not managed",
-      "android": "Android reports {value}",
-      "androidUnreadable": "Android doesn’t report this value",
+      "intro": "Changes reach the screen within about 5 minutes.",
+      "notManaged": "Leave as is",
+      "android": "Currently {value}",
+      "androidUnreadable": "Current value unknown",
       "save": "Save",
       "saving": "Saving…",
       "stopManaging": "Stop managing",
@@ -2405,8 +2448,8 @@
       },
       "why": {
         "api-level": "needs Android 13 or newer",
-        "no-write-settings": "VenueOS isn’t allowed to modify system settings — allow it in the screen’s setup, or run the install command",
-        "no-secure-settings": "needs the one-time install command (adb) on this unit",
+        "no-write-settings": "VenueOS needs permission on this screen — finish the screen’s setup",
+        "no-secure-settings": "this screen needs a one-time setup by your installer",
         "vendor-brightness": "this panel’s brightness is controlled by its own controller, not Android",
         "picture-only": "Android exposes no backlight control here — the Brightness slider above dims the picture only",
         "volume-fixed": "the volume is fixed (the TV or amplifier controls it)",
@@ -2488,6 +2531,8 @@
     },
     "setLocation": "Set address",
     "contentState": {
+      "updating": "Updating…",
+      "updatingStuck": "Still updating — check the screen",
       "downloading": "Downloading new content",
       "downloadingProgress": "Downloading new content · {percent}% of {size}",
       "downloadingSoFar": "Downloading new content · {loaded} so far",
@@ -2591,6 +2636,7 @@
       "syncLocking": "Getting in sync with its group — this takes a few seconds.",
       "trustRequestedAnnounce": "Restore requested.",
       "technicalDetails": "Technical details",
+      "reportedByPlayer": "As reported by the player — we can’t see the panel itself.",
       "technicalDetailsHint": "For support: device facts, video measurements and connection.",
       "lastVideoSample": "Last web video sample",
       "nativePlayback": "Native playback",
@@ -2701,8 +2747,11 @@
       }
     },
     "trust": {
-      "alertNotPainted": "Alert raised · no on-glass proof",
-      "alertNotPaintedTitle": "The alert was raised, but the page has not confirmed painting its overlay. Delivery is not confirmed.",
+      "alertNotPainted": "Alert sent · waiting for this screen to confirm",
+      "alertNotPaintedTitle": "This screen hasn't confirmed it is showing the alert yet. If it doesn't confirm within a minute, check it in person.",
+      "alertShowingOn": "Alert showing on {confirmed} of {total} screens",
+      "alertWaitingFor": "Waiting for {count, plural, one {# screen} other {# screens}} to confirm",
+      "alertNotConfirmed": "{count, plural, one {# screen didn't confirm — check it} other {# screens didn't confirm — check them}}: {names}",
       "repairTitle": "Device trust needs repair. Restore trust from this screen's settings.",
       "stalledTitle": "The video stopped moving. The screen is fixing it on its own; if this keeps happening, check the file.",
       "paintingTitleAt": "This screen reported a picture — last check {time}",
@@ -2727,7 +2776,7 @@
       "willUpdate": "Updates itself between {start} and {end} ({timezone}) when a new version is out.",
       "off": "This screen only updates when someone presses “Push update”.",
       "silent": "Installs silently — no prompt appears on the screen.",
-      "needsTap": "Needs someone at the screen: Android shows an “Install?” prompt on this screen, so it is never updated automatically. Use “Push update” when someone can select Install there (OK on the remote, or tap it).",
+      "needsTap": "Needs someone at the screen to install updates",
       "unknown": "Not reported yet — it will not update automatically until it reports that it can install without a prompt.",
       "reasonAndroidTooOld": "Android 11 or older always asks before installing.",
       "reasonInstalledByAnotherApp": "The app was installed by a different installer. One pushed update that someone at the screen confirms by selecting Install makes later updates silent.",
@@ -2815,20 +2864,20 @@
       "title": "Sleep & wake",
       "android": "Android {release}",
       "mech": {
-        "device-admin": "Turns the panel off for real (Android lock).",
-        "accessibility": "Turns the panel off for real (VenueOS sleep service), the way its power button does.",
-        "lock-held-back": "This model's Android lock has latched panels off on older Android, so VenueOS does not use it unattended. It turns off through the screen-off timer where allowed, otherwise covers the screen with black.",
-        "vendor": "Turns the panel off with this model's own command.",
-        "screen-timeout": "Turns off through Android's screen-off timer. Some TV-type boxes show a screensaver instead; the player checks and reports which.",
-        "screensaver": "This box shows a screensaver instead of turning off, so the player uses a black screen (the backlight stays on). For a real off, turn on VenueOS sleep under Accessibility at the panel.",
-        "black-only": "Can only cover the screen with black. The backlight stays on.",
+        "device-admin": "Sleep turns the screen off for real.",
+        "accessibility": "Sleep turns the screen off for real.",
+        "lock-held-back": "Sleep turns the screen off with its built-in timer where this model allows it; otherwise it shows a black screen.",
+        "vendor": "Sleep turns the screen off using this model’s own command.",
+        "screen-timeout": "Sleep turns the screen off with its built-in timer. Some TV-type boxes show a screensaver instead.",
+        "screensaver": "This screen shows a screensaver instead of turning off, so Sleep shows a black screen and the backlight stays on.",
+        "black-only": "Sleep shows a black screen. The backlight stays on.",
         "unknown": "Not reported yet."
       },
       "blankNote": "Blank and the on/off schedule cover the screen with black on every screen. They never cut power.",
       "now": {
-        "asleep": "Asleep now: Android reports the panel off.",
-        "asleepSince": "Asleep now: Android reports the panel off since {since}.",
-        "on": "On now: Android reports the panel on.",
+        "asleep": "Asleep now.",
+        "asleepSince": "Asleep now, since {since}.",
+        "on": "Awake now.",
         "nativeGlass": "Video on the glass: the app’s own video engine reported a fresh frame {ago}."
       },
       "row": {
@@ -3012,11 +3061,16 @@
       "evidenceDeclared": "What this screen’s browser says it can play",
       "evidenceClassDefault": "Typical for this model",
       "evidenceUnknown": "No evidence yet",
-      "cap2160": "Video up to 4K",
-      "cap1080": "Video up to 1080p",
+      "panel1080": "1080p screen",
+      "panel4k": "4K screen",
+      "panelSize": "{size} screen",
+      "sends1080": "Videos play at 1080p on this screen",
+      "sends4k": "Videos play at full 4K on this screen",
+      "cap2160": "This screen’s decoder can handle video up to 4K",
+      "cap1080": "This screen’s decoder can handle video up to 1080p",
       "capNone": "No video size proven smooth yet",
-      "concurrencyOne": "One video at a time on this display",
-      "concurrencyMany": "{count} videos at once on this display",
+      "concurrencyOne": "The decoder plays one video at a time",
+      "concurrencyMany": "The decoder can play {count} videos at once",
       "stale": "Measured before the last player update — it will be checked again.",
       "fileSmooth": "Smooth",
       "fileHitching": "Hitches",
@@ -3115,10 +3169,54 @@
       "typeMedical": "Medical",
       "typeCustom": "Custom alert",
       "typeAlert": "Alert"
+    },
+    "settingsTab": {
+      "setupComplete": "Setup complete",
+      "setupNeeds": "{count, plural, one {# thing needs setup} other {# things need setup}}",
+      "setupFix": "Fix",
+      "setupHide": "Hide",
+      "advanced": "Advanced",
+      "advancedHint": "Android settings, network, sleep details and diagnostics",
+      "details": "Device details",
+      "sleepHeading": "How sleep works",
+      "sleepHistory": "Recent sleep activity"
+    },
+    "usb": {
+      "title": "USB drive",
+      "loading": "Loading…",
+      "loadFailed": "Couldn’t load what this screen did with USB drives.",
+      "none": "No USB drive reported yet.",
+      "note": "As reported by the screen. Players before 1.1.55 report only a finished or refused import.",
+      "detected": "A USB drive was plugged in",
+      "needsAccess": "Needs permission to read USB drives — on the screen, choose Allow",
+      "noAccessPage": "This screen has no setting that lets it read USB drives",
+      "noPackage": "No VenueOS playlist on the drive",
+      "waitingKey": "Must connect to the internet once before it can check a USB playlist",
+      "otherOrg": "The drive held another organization’s playlist",
+      "unverified": "Couldn’t verify the files on the drive",
+      "noSpace": "Not enough room on the screen for the playlist",
+      "unreadable": "Couldn’t read the drive",
+      "rejected": "Refused the playlist on the drive",
+      "imported": "Playlist imported from the drive",
+      "unknown": "Reported {code}"
     }
   },
   "selection": {
     "selectItem": "Select {name}",
+    "clearSelection": "Clear selection"
+  },
+  "assetsLibV2": {
+    "uploadHint": "Drag files onto this page to upload · video up to {video}",
+    "dropTitle": "Drop to upload",
+    "dropSub": "We’ll ask which folder to put them in",
+    "typeTabs": "Media type",
+    "sort": "Sort",
+    "moreActions": "More actions",
+    "selectionActions": "Selection actions",
+    "selectedCount": "{count} selected",
+    "createPlaylist": "Create playlist",
+    "move": "Move",
+    "moveToFolder": "Move to folder",
     "clearSelection": "Clear selection"
   },
   "assetsLib": {
@@ -4864,7 +4962,16 @@
     "periodOverNext": "Next period",
     "clockEntryHint": "Type the exact time left: minutes and seconds (7:42), or seconds and tenths (4.3, 0.3).",
     "readStale": "Lost contact with the game: the last update was {seconds} s ago. The clocks here are held until the connection is back.",
-    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers."
+    "readStaleNever": "Can't reach the game yet. The clocks here are held until it answers.",
+    "cueTargetLabel": "Send to",
+    "cueTargetAria": "Send celebration cues to",
+    "cueTargetAll": "All",
+    "cueTargetBoard": "Board",
+    "cueTargetRibbon": "Ribbon",
+    "cueTargetRibbonHint": "2.5s crawl",
+    "statusConfigured": "Configured",
+    "statusArmed": "Armed",
+    "statusOnAir": "On air"
   },
   "studentPrivacy": {
     "title": "Student information on public screens",
@@ -5268,7 +5375,8 @@
     "regenerate": "Regenerate…",
     "regenerateTitle": "Revoke-and-replace: every previously deployed credential for this game stops working, and a fresh token is issued",
     "confirmWarning": "This kills every credential already deployed for this game (including the original token) the moment you confirm — your vendor stops syncing until you paste in the new one.",
-    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token."
+    "perGame": "Credentials are per-game: for the next game, open this card on that game and give your vendor its new URL + token.",
+    "vendorAria": "Scoreboard vendor"
   },
   "sportsConsoleSetup": {
     "title": "Scoreboard console",
@@ -6921,7 +7029,8 @@
       "pricing": "Pricing",
       "help": "Help",
       "signIn": "Sign in",
-      "startTrial": "Start free trial"
+      "startTrial": "Start free trial",
+      "requestInfo": "Request info"
     }
   },
   "usbDelivery": {
@@ -7034,7 +7143,8 @@
     "notInGroup": "Not in a group",
     "youreIn": "You’re in",
     "returnToFleet": "Return to {name} fleet",
-    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group."
+    "groupNameTaken": "A group named “{name}” already exists. Pick another name, or add screens to that group.",
+    "filterStatus": "Status"
   },
   "templatesPage": {
     "summaryYours": "{count, plural, one {# template} other {# templates}} · {owned, plural, one {# is yours} other {# are yours}}",
@@ -7062,7 +7172,18 @@
       "newest": "Newest",
       "oldest": "Oldest"
     },
-    "showMore": "Show {count} more"
+    "showMore": "Show {count} more",
+    "filterLevel": "School level",
+    "filterHoliday": "Holiday",
+    "categoryTabs": "Category",
+    "selectTemplate": "Select {name}",
+    "selectAllShown": "Select all your templates shown",
+    "duplicate": "Duplicate",
+    "export": "Export",
+    "delete": "Delete",
+    "bulkDeleteTitle": "Delete {count, plural, one {# template} other {# templates}}?",
+    "bulkDeleteBody": "Templates that are showing on screens are skipped — delete those one at a time so you can see where they play.",
+    "bulkDeleteDone": "{deleted, plural, one {# template deleted} other {# templates deleted}}{skipped, plural, =0 {} one {, # skipped (in use)} other {, # skipped (in use)}}"
   },
   "acceptInvite": {
     "title": "Accept your invitation",
@@ -7331,6 +7452,11 @@
         "namePlaceholder": "Grace Community Church",
         "where": "whole ministry"
       }
+    },
+    "closed": {
+      "title": "Sign-up isn't open yet",
+      "body": "VenueOS isn't taking new sign-ups online right now. Email us and we'll send you more information.",
+      "cta": "Request info by email"
     }
   },
   "notifications": {
@@ -8035,5 +8161,42 @@
     "upload": "Upload new",
     "loading": "Loading library…",
     "empty": "No files here yet. Upload a file or choose another folder."
+  },
+  "playerMenu": {
+    "importFromUsb": "Import from USB"
+  },
+  "ui": {
+    "filter": "Filter",
+    "filtersActive": "{count, plural, one {# filter} other {# filters}}",
+    "filterButton": "Filter, {count, plural, =0 {none active} one {# active} other {# active}}",
+    "clearFilters": "Clear filters",
+    "clear": "Clear",
+    "moreActions": "More actions",
+    "selectedCount": "{count} selected",
+    "selectAll": "Select all {count}",
+    "clearSelection": "Clear selection",
+    "selectionActions": "Selection actions",
+    "sort": "Sort",
+    "view": "View",
+    "gridView": "Grid view",
+    "listView": "List view",
+    "moreTabs": "More",
+    "sortValue": "Sort: {label}"
+  },
+  "pillWavePlaylists": {
+    "intakeTheme": "Look and feel",
+    "intakePalette": "Color source",
+    "intakeBackground": "Background style",
+    "mediaKind": "Media type",
+    "templateKind": "Template source",
+    "aiMenu": "AI rewrite options",
+    "opRewrite": "Rewrite",
+    "opShorten": "Shorten",
+    "opFitToZone": "Fit to zone",
+    "opExpand": "Expand",
+    "opPunch": "Punch it up",
+    "opFixGrammar": "Fix grammar",
+    "opTranslate": "Translate…",
+    "opTellMe": "Tell me…"
   }
 }

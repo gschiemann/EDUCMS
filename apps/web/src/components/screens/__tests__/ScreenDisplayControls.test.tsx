@@ -25,8 +25,14 @@ import { DISPLAY_ACTIONS, DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT } from '@cms/a
 import { ScreenDisplayControls } from '../ScreenDisplayControls';
 
 const apiFetchMock = jest.fn().mockResolvedValue({ success: true });
+// The one-line on/off schedule reads GET /display-schedules; it is answered
+// here so the wire-shape assertions below only ever see display-control calls.
+const SCHEDULES = [{ id: 'sc1', onTime: '07:00', offTime: '18:00', isActive: true }];
 jest.mock('@/lib/api-client', () => ({
-  apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  apiFetch: (path: unknown, ...rest: unknown[]) =>
+    String(path).startsWith('/display-schedules')
+      ? Promise.resolve(SCHEDULES)
+      : apiFetchMock(path, ...rest),
 }));
 
 /**
@@ -108,6 +114,9 @@ const NO_DEVICE_OWNER = {
   deviceOwnerPath: 'provisionable-after-factory-reset',
 };
 
+/** Tap the (i) next to a slider — the hint is tap/hover-only, never always-on. */
+const openHint = () => rtl.getAllByRole('button', { name: /More information/ }).forEach((b) => fireEvent.click(b));
+
 const pressed = (name: RegExp) =>
   rtl.getByRole('button', { name }).getAttribute('aria-pressed');
 
@@ -119,8 +128,9 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     // Brightness (raise-only) is the ONLY slider; volume has no recovery
     // direction and the API refuses it on a null verdict.
     expect(rtl.getAllByRole('slider')).toHaveLength(1);
-    expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
-    expect(rtl.getByText(/once this screen reports what it can do/i)).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart player/ })).toBeNull();
+    // No explainer paragraph: what a screen cannot do is simply not drawn.
+    expect(rtl.queryByText(/once this screen reports what it can do/i)).toBeNull();
   });
 
   // ⚠️ REVERSED AGAIN 2026-08-25 (the blank/power split). On 2026-08-13 this
@@ -135,7 +145,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getByRole('button', { name: /^Sleep$/ })).not.toBeDisabled();
     expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
     expect(rtl.getByLabelText(/Brightness/)).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
+    expect(rtl.getByTestId('schedule-line')).toBeTruthy();
     // ONE pair: no other power wording anywhere.
     expect(rtl.queryByRole('button', { name: /Turn panel|Blank|Wake$/ })).toBeNull();
   });
@@ -147,6 +157,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel(null);
     const brightness = rtl.getByLabelText(/Brightness/) as HTMLInputElement;
     expect(Number(brightness.min)).toBe(DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT);
+    openHint();
     expect(rtl.getByText(/brightness can only go up/i)).toBeTruthy();
   });
 
@@ -168,13 +179,13 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
     expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /Restart device/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /Restart player/ })).toBeTruthy();
   });
 
-  it('omits the reboot BUTTON entirely when the probe says reboot:none, and explains why', () => {
+  it('omits the restart button when the probe says reboot:none, and says nothing about it', () => {
     renderPanel({ ...CAPABLE, reboot: 'none', deviceOwnerPath: 'blocked-other-owner' });
-    expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
-    expect(rtl.getByText(/another management app already owns this device/i)).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart player/ })).toBeNull();
+    expect(rtl.queryByText(/management app|device-owner|Not available/i)).toBeNull();
   });
 
   // The no-device-owner fleet shape, rendered end to end. Nothing may be
@@ -182,14 +193,14 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // owns its own divider, and every other section still renders.
   it('renders cleanly with reboot absent — the whole real fleet’s layout', () => {
     const { container } = renderPanel(NO_DEVICE_OWNER);
-    expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
-    // The reboot section is a single explanatory row, not an empty block.
-    expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart player/ })).toBeNull();
+    // Nothing replaces it: no explainer row, no greyed control.
+    expect(rtl.queryByText(/device-owner|factory reset/i)).toBeNull();
     // Everything else survives.
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
     expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
+    expect(rtl.getByTestId('schedule-line')).toBeTruthy();
     // No empty section: every direct child of the panel has content.
     const panel = container.firstElementChild as HTMLElement;
     Array.from(panel.children).forEach((child) => {
@@ -206,8 +217,8 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getAllByRole('slider')).toHaveLength(2);
     expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeTruthy();
-    expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
-    expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart player/ })).toBeNull();
+    expect(rtl.queryByText(/device-owner|factory reset/i)).toBeNull();
     // screen-timeout has no hard power: Sleep still works, via the soft blank.
     expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
     // Real backlight control, so no "image only" label.
@@ -224,12 +235,14 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel({ ...CAPABLE, volume: 'none' });
     // Brightness slider survives; volume does not.
     expect(rtl.getAllByRole('slider')).toHaveLength(1);
-    expect(rtl.getByText(/exposes no volume interface/i)).toBeTruthy();
+    expect(rtl.queryByLabelText('Volume')).toBeNull();
+    expect(rtl.queryByText(/exposes no volume interface/i)).toBeNull();
   });
 
   it('keeps the brightness slider on a software-dim box but says it dims the image only', () => {
     renderPanel({ ...CAPABLE, brightness: 'software-dim' });
-    expect(rtl.getByLabelText(/Brightness \(image only\)/)).toBeTruthy();
+    expect(rtl.getByLabelText('Brightness')).toBeTruthy();
+    openHint();
     expect(
       rtl.getByText(/Dims the image only — this box exposes no backlight control/i),
     ).toBeTruthy();
@@ -238,18 +251,24 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // ═══════════════════════════════════════════════════════════════════
   // ONE Sleep / Awake pair, state highlighted (owner spec)
   // ═══════════════════════════════════════════════════════════════════
+  it('shows the on/off schedule as ONE line with an Edit button', async () => {
+    renderPanel(CAPABLE);
+    expect(await rtl.findByText('Off 6 PM – on 7 AM')).toBeTruthy();
+    expect(rtl.getByRole('button', { name: 'Edit' })).toBeTruthy();
+  });
+
   it('highlights Awake when the screen is online and showing', () => {
     renderPanel(CAPABLE, {}, PAINTING);
     expect(pressed(/^Awake$/)).toBe('true');
     expect(pressed(/^Sleep$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toMatch(/Awake and showing/);
+    expect(rtl.queryByTestId('power-state')).toBeNull();
   });
 
   it('highlights Sleep when render proof says the glass is not lit', () => {
     renderPanel(CAPABLE, {}, DARK);
     expect(pressed(/^Sleep$/)).toBe('true');
     expect(pressed(/^Awake$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toMatch(/Sleeping/);
+    expect(rtl.queryByTestId('power-state')).toBeNull();
   });
 
   it('highlights Sleep from the native report even while the page still paints', () => {
@@ -266,7 +285,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     renderPanel(CAPABLE, {}, UNPROVED);
     expect(pressed(/^Sleep$/)).toBe('false');
     expect(pressed(/^Awake$/)).toBe('false');
-    expect(rtl.getByTestId('power-state').textContent).toBe('State unknown');
+    expect(rtl.queryByText('State unknown')).toBeNull();
     // Both are still live: recovery is never gated.
     expect(rtl.getByRole('button', { name: /^Awake$/ })).not.toBeDisabled();
   });
@@ -288,10 +307,10 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     // ignores it. The API routes those soft and the player dims its own
     // picture, so "Sets the Android system brightness" was true and useless.
     renderPanel({ ...CAPABLE, brightness: 'settings' });
-    expect(rtl.getByLabelText(/Brightness \(image only\)/)).toBeTruthy();
+    expect(rtl.getByLabelText('Brightness')).toBeTruthy();
     // The slider itself is unchanged — it renders on every screen, and its
     // floor is still the API's own gate value.
-    const slider = rtl.getByLabelText(/Brightness \(image only\)/) as HTMLInputElement;
+    const slider = rtl.getByLabelText('Brightness') as HTMLInputElement;
     expect(Number(slider.min)).toBeGreaterThanOrEqual(5);
   });
 
@@ -349,9 +368,9 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // that", which a blank that un-blanks itself after ten minutes is not.
   // What must never regress is that the copy describes what WE SENT, never a
   // device state we cannot observe.
-  it('describes what Sleep and Awake do, and never claims an unobserved state', () => {
+  it('shows no helper sentence under Sleep and Awake, and never claims an unobserved state', () => {
     renderPanel(CAPABLE, {}, UNPROVED);
-    expect(rtl.getByText(/An emergency alert always wakes it/i)).toBeTruthy();
+    expect(rtl.queryByText(/An emergency alert always wakes it/i)).toBeNull();
     expect(rtl.queryByText(/Wakes itself after 10 min/i)).toBeNull();
   });
 
@@ -364,7 +383,11 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     // Darkness is not recoverable; silence is.
     expect(Number(brightness.value)).toBe(100);
     expect(Number(volume.value)).toBe(0);
-    expect(rtl.getAllByText(/doesn’t report its current level/i).length).toBeGreaterThan(0);
+    // No number while unknown, and the hint is tap-only.
+    expect(rtl.getAllByTestId('level-readout').every((r) => r.textContent === '')).toBe(true);
+    expect(rtl.queryByTestId('level-hint')).toBeNull();
+    openHint();
+    expect(rtl.getAllByText(/can’t see this screen’s current level/i).length).toBeGreaterThan(0);
   });
 
   it('renders every control inert for a role that cannot drive display control', () => {
@@ -372,7 +395,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     rtl.getAllByRole('slider').forEach((s) => expect(s).toBeDisabled());
     expect(rtl.getByRole('button', { name: /^Sleep$/ })).toBeDisabled();
     expect(rtl.getByRole('button', { name: /^Awake$/ })).toBeDisabled();
-    expect(rtl.getByRole('button', { name: /Restart device/ })).toBeDisabled();
+    expect(rtl.getByRole('button', { name: /Restart player/ })).toBeDisabled();
   });
 });
 

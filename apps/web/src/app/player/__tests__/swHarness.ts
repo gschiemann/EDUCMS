@@ -87,9 +87,8 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-export function loadWorker() {
+export function loadWorker(cacheMap = new Map<string, FakeCache>()) {
   const handlers: Record<string, (event: any) => void> = {};
-  const cacheMap = new Map<string, FakeCache>();
   const caches = { open: async (name: string) => { if (!cacheMap.has(name)) cacheMap.set(name, new FakeCache()); return cacheMap.get(name)!; } };
   // The worker builds relative Requests ("/__edu_meta__/…") against its own
   // origin; Node's Request needs them absolute.
@@ -144,7 +143,8 @@ export function loadWorker() {
     const cache = await caches.open(cacheName);
     await cache.put(url, new Response(bytes.slice(), { status: 200, headers: { 'content-type': 'video/mp4' } }));
   };
-  return { context, hooks, send, sendFrames, cacheNamed, fetchRequest, status, seedLegacyEntry, setFetch: (fn: unknown) => { context.fetch = fn; } };
+  return { context, hooks, send, sendFrames, cacheNamed, fetchRequest, status, seedLegacyEntry,
+    restart: () => loadWorker(cacheMap), setFetch: (fn: unknown) => { context.fetch = fn; } };
 }
 
 export type Worker = ReturnType<typeof loadWorker>;

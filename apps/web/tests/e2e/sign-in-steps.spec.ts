@@ -210,7 +210,7 @@ test.describe('step 1 — one field', () => {
     await expect(email).toBeFocused();
     await expect(email).toHaveAttribute('autocomplete', 'username webauthn');
     await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Create a workspace' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Request info' })).toBeVisible();
 
     await expect(page.locator('#login-password')).toHaveCount(0);
     await expect(card(page).locator('input[type="checkbox"]')).toHaveCount(0);
@@ -345,7 +345,7 @@ test.describe('step 2 — password', () => {
     await expect(page.getByTestId('sign-in-email')).toHaveText(EMAIL);
     await expect(page.locator('#login-email')).toHaveCount(0);
     await expect(card(page).locator('button[type="submit"]')).toHaveCount(1);
-    await expect(page.getByRole('link', { name: 'Create a workspace' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Request info' })).toHaveCount(0);
     // The lookup carried the address and nothing else.
     expect(a.optionsCalls).toEqual([{ email: EMAIL }]);
     // …and the address is not in the URL.

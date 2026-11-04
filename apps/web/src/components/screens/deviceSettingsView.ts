@@ -8,9 +8,8 @@
  * HONESTY RULES (the same ones ScreenDisplayControls lives by):
  *  1. No report from the unit → no controls. "Not reported" is never
  *     rendered as "not possible".
- *  2. A setting the unit cannot set, with nothing stored, shows the unit's
- *     reason and NO control — a greyed control reads as "this exists and my
- *     permissions are wrong".
+ *  2. A setting the unit cannot set, with nothing stored, is NOT SHOWN at
+ *     all (2026-11-01; it used to show the unit's reason with no control).
  *  3. A stored value shows its control even when the unit can no longer set
  *     it, so it can be cleared.
  *  4. What the row shows as current is what ANDROID READ BACK, labelled as
@@ -82,11 +81,14 @@ export function buildSection(view: DeviceSettingsView): SectionModel {
     // Collapsed into the note — unless something is stored, which keeps its row so it can be cleared.
     if (olderAndroid && key !== 'wifi' && !desired) return [];
     const state = deviceSettingState(key, desired, report);
+    // 2026-11-01 — a setting this unit cannot change is not drawn at all (no
+    // "Not possible on this unit" row). Only rows that offer a control stay.
+    if (state.kind === 'not-possible' || state.kind === 'unknown') return [];
     return [
       {
         key,
         state,
-        editable: state.kind !== 'not-possible' && state.kind !== 'unknown',
+        editable: true, // rows without a control were dropped above
         desired,
         observed: report.obs?.[key],
       },

@@ -32,6 +32,7 @@ import {
 } from '@/hooks/use-api';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { TimeField } from '@/components/ui/time-field';
+import { StatusPill } from '@/components/ui/status-pill';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { websitePreviewUrl } from '@/lib/website-preview';
@@ -705,11 +706,11 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           {/* Live chip */}
           <div className="shrink-0 pointer-events-auto">
             {hasSchedules ? (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+              <StatusPill tone={isLive ? 'success' : 'neutral'} className="uppercase tracking-wider">
                 {isLive ? '● Live' : '○ Off'}
-              </span>
+              </StatusPill>
             ) : (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-50 text-amber-600">{t('playlistsPage.unscheduled')}</span>
+              <StatusPill tone="warning" className="uppercase tracking-wider">{t('playlistsPage.unscheduled')}</StatusPill>
             )}
           </div>
           {/* On/off toggle */}
@@ -758,19 +759,15 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-bold text-slate-800 truncate">{playlist.name}</h3>
               {hasSchedules && (
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${isLive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                <StatusPill tone={isLive ? 'success' : 'neutral'} className="uppercase tracking-wider">
                   {isLive ? '● Live' : '○ Off'}
-                </span>
+                </StatusPill>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                isTemplate
-                  ? 'bg-violet-100 text-violet-600'
-                  : 'bg-indigo-100 text-indigo-600'
-              }`}>
+              <StatusPill tone={isTemplate ? 'brand' : 'info'} className="uppercase tracking-wider">
                 {contentLabel}
-              </span>
+              </StatusPill>
               <span className="text-[10px] text-slate-400">
                 {isTemplate
                   ? `${playlist.template.screenWidth}x${playlist.template.screenHeight}`
@@ -2197,11 +2194,9 @@ export default function ClassicPlaylistsPage({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-slate-800">{selectedPlaylist.name}</h1>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  selectedPlaylist.template ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'
-                }`}>
+                <StatusPill tone={selectedPlaylist.template ? 'brand' : 'info'} className="uppercase tracking-wider">
                   {derivePlaylistContentLabel(selectedPlaylist)}
-                </span>
+                </StatusPill>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 {selectedPlaylist.template
@@ -2290,9 +2285,9 @@ export default function ClassicPlaylistsPage({
                 </div>
                 <h3 className="text-base font-bold text-slate-700">{selectedPlaylist.template.name}</h3>
                 <p className="text-xs text-slate-400 mt-1 mb-1">Template-based layout · {selectedPlaylist.template.screenWidth}x{selectedPlaylist.template.screenHeight}</p>
-                <span className="text-[10px] font-semibold bg-violet-100 text-violet-600 px-3 py-1 rounded-full uppercase tracking-wider mb-6">
+                <StatusPill tone="brand" className="uppercase tracking-wider mb-6">
                   {selectedPlaylist.template.category}
-                </span>
+                </StatusPill>
                 <p className="text-xs text-slate-400 max-w-sm mb-6">
                   {t('playlistsPage.templateLayoutHelp')}
                 </p>
@@ -3865,8 +3860,8 @@ export function InlineDownloadButton({ playlistId, playlistName }: { playlistId:
         onClick={() => { if (!usb.busy) void usb.run({ playlistId, playlistName }); }}
         disabled={usb.busy}
         data-testid="playlist-download-usb"
-        /* Greg, 2026-09-16: same pill, height, text size and border as Pause. */
-        className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[13px] font-bold rounded-full inline-flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+        /* Pill audit 2026-11-02: an action is a rounded-lg button, never a pill. */
+        className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[13px] font-bold rounded-lg inline-flex items-center gap-1.5 shadow-sm disabled:opacity-50"
       >
         {usb.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Usb className="w-3.5 h-3.5" />}
         {t('button')}

@@ -98,6 +98,21 @@ object DisplayScheduler {
             )
             return
         }
+        // 1.1.61 — EDGE, NOT LEVEL. A person's Turn on / Turn off holds until
+        // the schedule's NEXT trigger. Without this, any re-evaluation (a
+        // process start, a changed `display` block — e.g. the server moving
+        // the window from soft to hard when the vendor backlight is proven)
+        // re-blanked a panel the owner had just turned on mid-off-window.
+        val lastTrigger = DisplayScheduleMath.lastTransitionAtOrBefore(schedules, System.currentTimeMillis())
+        val manualAt = DisplayPrefs.manualPowerAtMs(app)
+        if (!ScheduleTriggerPolicy.scheduleMayLevel(lastTrigger?.atMs, manualAt)) {
+            PlayerLogger.i(
+                TAG,
+                "schedule says on=$desiredOn, but a manual power command (${(System.currentTimeMillis() - manualAt) / 1000}s ago) " +
+                    "came after the schedule's last trigger — it holds until the next trigger",
+            )
+            return
+        }
         val action = if (desiredOn) DisplayAction.Wake else DisplayAction.Blank
         // ⚠️ The registry is the single gate and it will refuse this
         // anyway; the explicit check is here so the log says WHY a

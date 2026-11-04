@@ -59,8 +59,16 @@ internal object EmergencyPaintPolicy {
     fun event(e: Episode, step: Int, atMs: Long, outcome: String): Episode =
         e.copy(step = step, events = (e.events + Event(step, atMs, outcome)).takeLast(MAX_EVENTS))
 
+    /**
+     * 2026-11-02: a PAINTED episode never admits the older watch's reload or
+     * relaunch — the page proved this alert on the glass, under this document,
+     * and the app validated its window. Tearing it down to "bring the page
+     * back" put a boot splash and then the board again on screens that were
+     * already showing it (the 04:36 and 04:45 drills). Only a ladder that ran
+     * out (step 4, still unproven) may fall through to the legacy backstop.
+     */
     fun legacyAllowed(e: Episode, nowMs: Long, launch: Boolean): Boolean =
-        nowMs - e.startedAtMs >= FINISH_AT_MS && (e.status == "painted" || e.step == 4) &&
+        nowMs - e.startedAtMs >= FINISH_AT_MS && e.status != "painted" && e.step == 4 &&
             if (launch) e.legacyLaunches < 6 else e.legacyReloads < 3
 
     /**

@@ -1,5 +1,5 @@
 import { emergencyLayoutIsPortrait, emergencyLayoutOrientation } from './emergency-layout';
-import { emergencyPaintSchema, emergencyRenderEvidence, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
+import { emergencyPaintSchema, emergencyRenderEvidence, nativePaintedTransition, newEmergencyEvents, type EmergencyPaint } from './emergency-proof';
 import { nativeSharedVideoTarget, buildNativeSharedVideoDescriptor } from './native-shared-video';
 import { buildNativeVideoDescriptor, nativeVideoCandidate, nativeVideoEnrolled, nativeVideoWinner } from './native-video';
 import { buildNativeVideoItems, nativeTemplateVideoZones, nativeVideoItemsCandidate, NATIVE_VIDEO_MAX_ZONES } from './native-video-items';
@@ -61,6 +61,7 @@ import {
   normalizeFaceContentMode,
   reportsSecondDisplay,
   resolveFaceContentTarget,
+  unitLastAliveAt,
 } from './screen-faces';
 
 /**
@@ -1769,6 +1770,22 @@ export class ScreensController {
       if (episode && episode.status !== 'painted' && (prior?.challenge !== episode.challenge || prior?.status !== episode.status)) {
         data.lastRenderedHash = `pending|em:${episode.challenge}`;
       }
+      // 2026-11-02 — the APK's own PAINTED verdict completes the record. The
+      // page's post raced this heartbeat and lost on every screen of the
+      // SECURE drill (the heartbeat rides a 5-minute floor while the page
+      // reports); whichever of the two arrives second now finishes it.
+      const painted = nativePaintedTransition(episode, prior, (screen as any).lastRenderedHash);
+      if (painted && credential.proved) {
+        data.lastRenderedHash = painted.hash;
+        data.lastRenderedAt = new Date();
+        if (screen.tenantId) {
+          await this.prisma.client.auditLog.create({ data: {
+            tenantId: screen.tenantId, userId: null, action: 'PLAYER_EMERGENCY_PAINTED',
+            targetType: 'Screen', targetId: screen.id,
+            details: JSON.stringify({ identity: painted.identity, challenge: painted.challenge, evidence: 'native-validated-page-overlay-paint' }),
+          }});
+        }
+      }
     }
     // Basic Android settings (2026-10-18, device-settings/): the unit's report
     // in, its desired set out — the same credential gate as the native report.
@@ -2596,6 +2613,35 @@ export class ScreensController {
   }
 
   // ─── ADMIN: List all screens in tenant ───
+  /**
+   * For every FACE row in `rows`, when its unit last proved it was alive
+   * (`unitLastAliveAt`: its own ping or the front face's ping / native
+   * heartbeat). Faces only; one extra read at most, for primaries not in
+   * `rows`; a failed read leaves the face on its own ping.
+   */
+  private async unitAliveByFace(
+    rows: Array<{ id: string; tenantId?: string | null; lastPingAt?: Date | null; faceOfScreenId?: string | null }>,
+  ): Promise<Map<string, Date | null>> {
+    const out = new Map<string, Date | null>();
+    const faces = rows.filter((r) => !!r.faceOfScreenId);
+    if (faces.length === 0) return out;
+    const byId = new Map<string, any>(rows.map((r) => [r.id, r]));
+    const missing = [...new Set(faces.map((f) => f.faceOfScreenId as string).filter((id) => !byId.has(id)))];
+    if (missing.length) {
+      try {
+        const extra = await this.prisma.client.screen.findMany({
+          where: { id: { in: missing }, tenantId: { in: [...new Set(faces.map((f) => f.tenantId).filter(Boolean) as string[])] } },
+          select: { id: true, lastPingAt: true, nativeRuntimeReportAt: true },
+        });
+        for (const e of extra) byId.set(e.id, e);
+      } catch {
+        // fall through: those faces keep their own ping
+      }
+    }
+    for (const f of faces) out.set(f.id, unitLastAliveAt(f, byId.get(f.faceOfScreenId as string)));
+    return out;
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -2652,6 +2698,7 @@ export class ScreensController {
     // ping will recover by the next 30s tick.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     return rows.map((s) => {
       // If a device is actively pinging, mark ONLINE regardless of
       // stored column. If stale, flip to OFFLINE unless the stored
@@ -2659,7 +2706,10 @@ export class ScreensController {
       // REVOKED trumps all; ONLINE that's gone stale becomes OFFLINE).
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        // A back face is alive while its UNIT is (unitLastAliveAt) — the same
+        // rule the alert emails use.
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
@@ -2978,10 +3028,12 @@ export class ScreensController {
     // (35s = 30s heartbeat + grace). Keep in sync with the GET / mapper.
     const STALE_MS = SCREEN_ONLINE_GRACE_MS;
     const now = Date.now();
+    const unitAlive = await this.unitAliveByFace(rows as any[]);
     const screens = rows.map((s) => {
       let liveStatus: string = s.status;
       if (s.status !== 'REVOKED') {
-        const last = s.lastPingAt ? new Date(s.lastPingAt).getTime() : 0;
+        const aliveAt = unitAlive.get(s.id) ?? s.lastPingAt;
+        const last = aliveAt ? new Date(aliveAt).getTime() : 0;
         const isAlive = last && (now - last) < STALE_MS;
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
@@ -3445,6 +3497,41 @@ export class ScreensController {
   // (screens/events/screen-events.ts). Without `hours` the timeline answers
   // exactly as before: ledger rows are left out of it, so they can never
   // crowd its newest-N window (the History tab reads its refresh ack there).
+  // GET /screens/:id/usb-events (2026-10-26, M43 on site: "inserted a USB …
+  // nothing happens"). The newest USB-drive states this screen reported —
+  // DETECTED, NEEDS_ACCESS, NO_PACKAGE, WAITING_KEY, REJECTED, IMPORTED (older
+  // APKs: ACCEPTED, REJECTED_*) — for the drawer's Technical details. Before
+  // 1.1.55 a screen reported only after verification, so "nothing happened"
+  // left no row at all. Admins only; ownership is proven against the SCREEN
+  // row exactly like `:id/events`; read-only and never polled.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get(':id/usb-events')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async screenUsbEvents(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const rootId = req.user.tenantId as string;
+    if (!rootId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
+    const limit = Math.min(Math.max(Number.parseInt(limitRaw ?? '', 10) || 5, 1), 20);
+    const tenantIds = await this.readableTenantIds(rootId);
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: tenantIds } },
+      select: { id: true, tenantId: true },
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    const events = await this.prisma.client.usbIngestEvent.findMany({
+      // tenantId first: it is the table's index ([tenantId, createdAt]). Never
+      // null here — the screen matched a readable tenant above.
+      where: { tenantId: screen.tenantId as string, screenId: id },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, outcome: true, reason: true, bundleVersion: true, assetCount: true, createdAt: true },
+    });
+    return { events };
+  }
+
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Get(':id/events')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
