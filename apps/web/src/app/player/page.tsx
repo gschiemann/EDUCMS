@@ -13976,8 +13976,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // milliseconds of a boot, before the first state read answered,
               // yields to native-first the moment the app says protocolMax 4.
               if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
-              const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
+              // Keep the normal solo boundary mounted while admission changes
+              // (late capabilities, an overlay, or descriptor withdrawal).
+              // Switching between a wrapper and its browser child recreated
+              // the media element/loop package on every such transition.
+              const wrapNative = (browser: React.ReactNode) => nativeEligible || (!playlist?.isEmergency && isSoloPlaylist && sorted.length === 1)
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeEligible ? nativeChoice : null} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}

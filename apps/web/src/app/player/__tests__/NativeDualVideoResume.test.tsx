@@ -24,6 +24,54 @@ const prepares = () => bridge.fire.mock.calls.filter(([m]) => m === "sharedVideo
 const commits = () => bridge.fire.mock.calls.filter(([m]) => m === "sharedVideoCommit");
 const mount = (child = <div data-testid="web" />) => render(<NativeDualVideo descriptor={descriptor} classes="player" onPlaying={() => undefined}>{child}</NativeDualVideo>);
 
+const tree = (admitted: boolean) => <NativeDualVideo descriptor={admitted ? descriptor : null} classes="player" onPlaying={() => undefined}>
+  <video data-testid="web" src="https://example.com/file.mp4" />
+</NativeDualVideo>;
+
+it("keeps the same browser element and time through late admission, refresh and withdrawal", async () => {
+  const r = render(tree(false));
+  const video = r.getByTestId("web") as HTMLVideoElement;
+  const load = jest.fn();
+  Object.defineProperties(video, { paused: { value: false }, readyState: { value: 2 }, currentTime: { value: 10, writable: true }, load: { value: load } });
+  r.rerender(tree(true)); await flush();
+  expect(r.getByTestId("web")).toBe(video);
+  expect(video.currentTime).toBe(10);
+  expect(load).not.toHaveBeenCalled();
+  r.rerender(tree(true)); await flush();
+  expect(prepares()).toHaveLength(1);
+  reply = state("ready"); await flush(500);
+  expect(commits()).toHaveLength(0); // a working clip waits for its boundary
+  r.rerender(tree(false)); await flush();
+  video.dispatchEvent(new Event("ended")); await flush();
+  expect(commits()).toHaveLength(0); // retired callbacks cannot reveal native
+  expect(r.getByTestId("web")).toBe(video);
+  expect(video.currentTime).toBe(10);
+  expect(load).not.toHaveBeenCalled();
+  r.unmount();
+});
+
+it("re-admission after native presentation retains the fallback browser until a new handoff", async () => {
+  const r = mount(); await flush();
+  reply = state("ready"); await flush(500); await flush();
+  reply = state("presenting"); await flush(500);
+  expect(commits()).toHaveLength(1);
+  expect(r.queryByTestId("web")).toBeNull();
+  r.rerender(tree(false)); await flush();
+  const video = r.getByTestId("web") as HTMLVideoElement;
+  Object.defineProperties(video, { paused: { value: false }, readyState: { value: 2 }, currentTime: { value: 12, writable: true } });
+  r.rerender(tree(true)); await flush();
+  expect(r.getByTestId("web")).toBe(video);
+  expect(video.currentTime).toBe(12);
+  expect(commits()).toHaveLength(1);
+  reply = state("ready", 2); await flush(500);
+  expect(r.getByTestId("web")).toBe(video);
+  expect(commits()).toHaveLength(1);
+  r.rerender(tree(false)); await flush();
+  video.dispatchEvent(new Event("ended")); await flush();
+  expect(commits()).toHaveLength(1);
+  r.unmount();
+});
+
 beforeEach(() => {
   jest.useFakeTimers(); reply = state(); bridge.fire.mockClear(); bridge.call.mockClear();
   bridge.call.mockImplementation(async () => reply);
