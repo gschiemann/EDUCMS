@@ -21,6 +21,9 @@ import {
   subscribeDisplayEmergencyHold,
   DISPLAY_EMERGENCY_HOLD_METHOD,
   __resetDisplayEmergencyHoldForTests,
+  bannerRefusalFromState,
+  noteNativeBannerRefused,
+  displayEmergencyBannerRefused,
 } from '../emergencyHold';
 import type { NativeFireOutcome } from '../nativeBridge';
 
@@ -226,5 +229,48 @@ describe('regular-content render interlock', () => {
     unsubscribe();
     signalDisplayEmergencyHold(true);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the app refuses banner posture (2026-11-02, portrait-by-rotation native video)', () => {
+  it('reads the refusal from one sharedVideoState reply, bounded and total', () => {
+    expect(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'refused', reason: 'display-rotated' } })).toBe('display-rotated');
+    expect(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'refused', reason: 'x'.repeat(65) } })).toBe('refused');
+    expect(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'banner' } })).toBeNull();
+    expect(bannerRefusalFromState({})).toBeNull();
+    expect(bannerRefusalFromState(null)).toBeNull();
+    expect(bannerRefusalFromState('nope')).toBeNull();
+  });
+
+  it('a refused banner holds playback, tells the app it is a takeover, and later banner signals cannot reopen it', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+    const listener = jest.fn();
+    const off = subscribeDisplayEmergencyHold(listener);
+    fireMock.mockClear();
+    noteNativeBannerRefused('display-rotated');
+    expect(displayEmergencyBannerRefused()).toBe(true);
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+    expect(listener).toHaveBeenCalled();
+    // The banner geometry is withdrawn and the hold re-asserted as a takeover.
+    expect(fireMock).toHaveBeenCalledWith('sharedVideoPrepare', expect.stringContaining('"active":false'));
+    expect(fireMock).toHaveBeenCalledWith(DISPLAY_EMERGENCY_HOLD_METHOD, true);
+    // The page's own effects keep asking for a banner: it stays a takeover.
+    signalDisplayEmergencyHold(true, true, true);
+    reassertDisplayEmergencyHold();
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+    expect(fireMock).not.toHaveBeenCalledWith(DISPLAY_EMERGENCY_HOLD_METHOD, true, true);
+    // Only the release ends it; the next alert starts unrefused.
+    signalDisplayEmergencyHold(false);
+    expect(displayEmergencyBannerRefused()).toBe(false);
+    signalDisplayEmergencyHold(true, true, true);
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+    off();
+  });
+
+  it('a refusal with no hold raised is ignored (never invents an alert)', () => {
+    noteNativeBannerRefused('display-rotated');
+    expect(displayEmergencyBannerRefused()).toBe(false);
+    expect(displayEmergencyHoldRaised()).toBe(false);
   });
 });

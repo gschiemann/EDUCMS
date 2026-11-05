@@ -69,6 +69,9 @@ export interface EmergencySurfaceInput {
   renderHold: boolean;
   /** Known banner awaiting the same server-confirmed hold release. */
   playbackHeld?: boolean;
+  /** The APK refused banner posture (its native video could not be proven
+   * correct under a banner): a banner message is shown as a full takeover. */
+  bannerRefused?: boolean;
   /** A signed OVERRIDE is still being confirmed by the manifest. */
   pendingOverrideConfirm: boolean;
   /** The current playlist IS the emergency content. */
@@ -81,7 +84,7 @@ export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurfa
   if (i.pushed && !isBannerEmergencyMessage(i.pushed)) return 'takeover';
   if (i.polledActive && i.polledTakeover) return 'takeover';
   const bannerShown = isBannerEmergencyMessage(i.pushed) || (i.polledActive && !i.polledTakeover);
-  if (bannerShown) return 'overlay';
+  if (bannerShown) return i.bannerRefused ? 'takeover' : 'overlay';
   // Hold engaged with nothing identified yet: protective, but unattributed —
   // black, never a red claim the page cannot back (see `hold` above).
   if (i.renderHold && i.playbackHeld !== false) return 'hold';

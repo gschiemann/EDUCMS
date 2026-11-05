@@ -93,3 +93,18 @@ describe('decideEmergencySurface', () => {
     expect(decideEmergencySurface({ ...base, renderHold: true, playbackHeld: false, pushed: critical })).toBe('takeover');
   });
 });
+
+describe('decideEmergencySurface — the app refused banner posture (2026-11-02)', () => {
+  it('a refused banner is a full takeover, pushed or polled; an unrefused one still overlays', () => {
+    expect(decideEmergencySurface({ ...base, pushed: info, renderHold: true, playbackHeld: true, bannerRefused: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, pushed: warn, renderHold: true, playbackHeld: true, bannerRefused: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, polledActive: true, polledTakeover: false, renderHold: true, bannerRefused: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, pushed: info, renderHold: true, bannerRefused: false })).toBe('overlay');
+  });
+
+  it('a refusal never changes CRITICAL / lockdown / SOS takeovers or an emergency playlist', () => {
+    expect(decideEmergencySurface({ ...base, pushed: sos, bannerRefused: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, activeEmergency: true, bannerRefused: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, playlistIsEmergency: true, pushed: info, bannerRefused: true })).toBe('content');
+  });
+});
