@@ -317,6 +317,7 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
 import { RemoteOptions } from './RemoteOptions';
+import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -8212,6 +8213,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {
           const tag = nativeManifestTag(manifestEtagRef.current);
           if (tag) nativeFirstFaceRef.current?.sync(tag, lastEmergencySetHashRef.current || null);
+          // .64 can learn enrolment from the store's own authenticated read.
+          // Waiting for protocol 4 before nudging that read stranded a face
+          // which booted on images. Keep cached/loaded video on its current
+          // path: discovery must not take a working video away to download it.
+          const url = manifest.nativeVideo?.asset?.url;
+          if (tag && typeof url === 'string') {
+            const key = stableManifestUrlKey(playbackUrlFor(url, 'video/mp4'));
+            const available = cachedMediaKeysRef.current.has(key) || Array.from(document.querySelectorAll('video')).some(video =>
+              video.readyState >= 2 && stableManifestUrlKey(video.currentSrc || video.src) === key);
+            nativeFirstFaceRef.current?.discoverStore(tag, nativeStoreDiscoveryAllowed({
+              manifest, screenId, userAgent: navigator.userAgent,
+              holdRaised: displayEmergencyPlaybackHeld(), mediaAlreadyAvailable: available,
+            }));
+          }
         }
         // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
         if (pendingOverrideConfirmRef.current) {
