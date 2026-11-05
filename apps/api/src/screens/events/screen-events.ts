@@ -94,6 +94,7 @@ export type LedgerSource = 'operator' | 'system' | 'device';
 export const NON_INTERRUPTING_STOP_REASONS: ReadonlySet<string> = new Set([
   'content-changed',
   'emergency-held',
+  'emergency-held-other-face',
   'process-ended',
   'device-rebooted',
 ]);

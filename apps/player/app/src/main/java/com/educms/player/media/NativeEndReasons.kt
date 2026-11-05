@@ -58,6 +58,8 @@ internal object NativeEndReasons {
     val TRANSIENT: Set<String> = setOf(
         // the emergency hold took every surface (§7 E1); the intent is kept, suspended by the hold
         "emergency-held",
+        // the hold is held by ANOTHER face of a double-sided unit; this face's intent is suspended the same way
+        "emergency-held-other-face",
         // the Activity paused or was destroyed: the window and its surfaces are gone
         "activity-paused",
         // the face is not ready to own its window (not foreground / not interactive / no focus)

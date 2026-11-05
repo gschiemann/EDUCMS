@@ -110,11 +110,49 @@ let renderHold = false;
 let bannerOnly = false;
 let bannerInset = 0;
 let bannerRotation: 0 | 90 = 0;
+// PAGE-LOCAL playback suppression while the APK reports its native video
+// stopped `emergency-held` (2026-11-02, the double-sided echo loop). It is
+// NEVER sent over the bridge and never becomes a hold membership:
+//   • a double-sided unit has ONE native hold with per-face membership, and
+//     the APK stops EITHER face's native video `emergency-held` while ANY
+//     face holds. Turning that stop into `displayEmergencyHold(true)` made
+//     each face re-raise itself while the other face was still releasing
+//     after an all-clear, and the never-painted episodes drove the APK's
+//     paint ladder to reload/relaunch the page for minutes.
+//   • only a manifest / signed push may raise the native hold (rule 1 above).
+//     A real alert the native watch raised first still holds natively; this
+//     page draws the black hold surface instead of regular web media until
+//     its own manifest / push raises (and paints) the alert.
+// Cleared by a LIVE no-alert manifest (any `signalDisplayEmergencyHold(false)`,
+// which only the server-driven manifest handler sends) or by the APK
+// reporting a non-held state.
+let nativeHeldSuppression = false;
 const holdListeners = new Set<() => void>();
+function notifyHoldListeners(): void {
+  holdListeners.forEach(listener => { try { listener(); } catch { /* one observer cannot block an alert */ } });
+}
 function publishRenderHold(active: boolean): void {
   if (renderHold === active) return;
   renderHold = active;
-  holdListeners.forEach(listener => { try { listener(); } catch { /* one observer cannot block an alert */ } });
+  notifyHoldListeners();
+}
+
+/**
+ * The APK reported (true) or no longer reports (false) that its native video
+ * on THIS face is stopped `emergency-held`. Page-local only: no bridge call,
+ * no native hold membership, no paint episode. Never throws.
+ */
+export function noteNativeEmergencyHeld(held: boolean): void {
+  try {
+    if (nativeHeldSuppression === held) return;
+    nativeHeldSuppression = held;
+    notifyHoldListeners();
+  } catch { /* emergency-path code does not get to throw */ }
+}
+
+/** READ-ONLY, for tests and diagnostics: is the page-local native-held suppression on? */
+export function nativeEmergencyHeldSuppressed(): boolean {
+  return nativeHeldSuppression;
 }
 export function subscribeDisplayEmergencyHold(listener: () => void): () => void {
   holdListeners.add(listener);
@@ -151,6 +189,9 @@ function isRefusal(result: unknown): boolean {
  *                expected outcome in a browser player.
  */
 export function signalDisplayEmergencyHold(active: boolean, force = false, isBanner = false): HoldOutcome {
+  // A live no-alert manifest ends any page-local native-held suppression,
+  // whatever the device does with the release below.
+  if (!active) noteNativeEmergencyHeld(false);
   if (active && bannerOnly !== isBanner) {
     // Reserve space before the first measured banner frame can reach native.
     if (isBanner && bannerInset === 0) bannerInset = 0.1;
@@ -212,17 +253,19 @@ export function signalDisplayEmergencyHold(active: boolean, force = false, isBan
  * raises before transport dispatch and survives a refused release.
  */
 export function displayEmergencyHoldRaised(): boolean {
-  return renderHold;
+  return renderHold || nativeHeldSuppression;
 }
 
 /** Playback suppression is separate from the unchanged display interlock. */
 export function displayEmergencyPlaybackHeld(): boolean {
-  return renderHold && !bannerOnly;
+  return (renderHold && !bannerOnly) || nativeHeldSuppression;
 }
 
 /** Paint validation reinforces the existing alert's posture; it must not
  * silently turn a known banner into a playback takeover. */
 export function reassertDisplayEmergencyHold(): HoldOutcome {
+  // Reads `renderHold` itself (not the getter), so a page-local native-held
+  // suppression alone can never be turned into a bridge raise here.
   return signalDisplayEmergencyHold(true, true, renderHold && bannerOnly);
 }
 
@@ -254,5 +297,6 @@ export function __resetDisplayEmergencyHoldForTests(): void {
   bannerOnly = false;
   bannerInset = 0;
   bannerRotation = 0;
+  nativeHeldSuppression = false;
   publishRenderHold(false);
 }
