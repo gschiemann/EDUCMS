@@ -53,6 +53,10 @@ import {
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause, PUSH_CONFIRM_GRACE_MS } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
+import { desiredOnAt } from '@/app/player/softSchedule';
+import { windowsForScreen, type DisplayScheduleRow } from '@/components/dashboard/district/uptime';
+import { derivePanelPowerState, nativeHardOff } from '../display-capabilities';
+import { nativeReportAsleep, sleepingReason, type SleepingReason } from '../sleep-awake';
 import { templatePosterUrl } from '@/lib/template-poster';
 import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
 import {
@@ -162,6 +166,9 @@ export interface OpsScreen {
   lastCrashAt?: string | null;
   lastCrashMessage?: string | null;
   lastCrashVersion?: string | null;
+  /** Native sleep report (`sleep.vb`, `interactive`) — read by the Sleeping status. */
+  nativeRuntimeReport?: unknown;
+  nativeRuntimeReportAt?: string | null;
 }
 
 /** One row of `GET /schedules` (schedules.controller.ts list()). */
@@ -248,6 +255,7 @@ export const STATUS_ORDER = [
   'connecting', // alive, still fetching its schedule
   'content-loading', // alive, opening the first item of its schedule
   'idle', // alive, nothing scheduled
+  'sleeping', // dark on purpose: on/off schedule, Sleep command or standby
   'unknown', // no evidence capability
   'current', // earned positive evidence
 ] as const;
@@ -340,6 +348,8 @@ export interface DeriveStatusInput {
    *  identity the player actually reloads on; preferred over the SHA when
    *  both sides report one. */
   deployedBundleId?: string | null;
+  /** On/off schedule rows — lets a scheduled-off screen read "Sleeping". */
+  displaySchedules?: DisplayScheduleRow[] | null;
   now: number;
 }
 
@@ -354,6 +364,42 @@ export interface DeriveStatusInput {
  * and this page's "syncing" are the same window.
  */
 export { PUSH_CONFIRM_GRACE_MS };
+
+/** Why this screen is asleep on purpose right now, or null (see `sleepingReason`). */
+export function sleepReasonOf(
+  screen: OpsScreen,
+  grade: RenderTrustGrade,
+  displaySchedules: DisplayScheduleRow[] | null | undefined,
+  now: number,
+): SleepingReason | null {
+  const windows = displaySchedules?.length
+    ? windowsForScreen(
+        { id: screen.id, screenGroup: screen.screenGroup ? { id: screen.screenGroup.id } : null },
+        displaySchedules,
+      )
+    : [];
+  return sleepingReason({
+    panelState: derivePanelPowerState(grade),
+    hardOff: nativeHardOff(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now),
+    reportAsleep: nativeReportAsleep(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now),
+    scheduleOff: windows.length > 0 && desiredOnAt(windows, now) === false,
+  });
+}
+
+export function sleepingDescriptor(reason: SleepingReason): StatusDescriptor {
+  const bySchedule = reason === 'schedule';
+  const label = copy(bySchedule ? 'screens.contentState.sleepingSchedule' : 'screens.contentState.sleeping');
+  const detail = copy(bySchedule ? 'screens.contentState.sleepingScheduleDetail' : 'screens.contentState.sleepingDetail');
+  return {
+    key: 'sleeping',
+    tone: 'neutral',
+    label: label.en,
+    action: 'View',
+    needsAttention: false,
+    detail: detail.en,
+    messages: { label: label.message, detail: detail.message },
+  };
+}
 
 /**
  * Collapse every independent truth about one screen into the single
@@ -390,6 +436,7 @@ export function deriveScreenStatus({
   screen,
   deployedSha,
   deployedBundleId,
+  displaySchedules,
   now,
 }: DeriveStatusInput): StatusDescriptor {
   const status = screen.status ?? null;
@@ -429,6 +476,15 @@ export function deriveScreenStatus({
       detail:
         'This screen is holding an emergency alert it has not been able to re-confirm with the server. Holding is correct — but an all-clear cannot reach it until it reconnects.',
     };
+  }
+
+  // 1b ── dark ON PURPOSE (on/off schedule, Sleep command, vendor standby).
+  // Same evidence as the Sleep / Awake buttons (`sleep-awake.ts`); an
+  // intended sleep is never "No picture confirmed" — the same call the alert
+  // emails make (`intendedDowntime`: display-schedule-off / standby).
+  if (status === 'ONLINE' && grade !== 'repair-required') {
+    const reason = sleepReasonOf(screen, grade, displaySchedules, now);
+    if (reason) return sleepingDescriptor(reason);
   }
 
   // 2 ── reachable, but the picture is not advancing.
@@ -1726,17 +1782,18 @@ export function buildScreenOps(input: {
   deployedSha: string | null;
   /** Deployed client-bundle identity (2026-09-21) — see `DeriveStatusInput`. */
   deployedBundleId?: string | null;
+  displaySchedules?: DisplayScheduleRow[] | null;
   /** Keeps the selected screen's group open even when it is healthy (§8). */
   selectedScreenId?: string | null;
   now: number;
 }): ScreenOps {
-  const { screens, schedules, playlists, deployedSha, deployedBundleId, now } = input;
+  const { screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules, now } = input;
 
   const playlistById = new Map<string, OpsPlaylist>();
   for (const p of playlists) if (p?.id) playlistById.set(p.id, p);
 
   const rows: OpsRow[] = screens.map((screen) => {
-    const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, now });
+    const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, displaySchedules, now });
     const expected = deriveExpectedContent(screen, schedules, playlistById, now);
     return {
       screen,
