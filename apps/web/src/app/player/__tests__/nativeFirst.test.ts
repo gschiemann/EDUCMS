@@ -351,6 +351,28 @@ describe('the per-document controller', () => {
     expect(r.face.sync('etag-2', 'set-1')).toBe(true);
   });
 
+  it('store discovery before v4 sends only one source nudge, never playback or a release', async () => {
+    const r = rig([reply({ protocolMax: 3 })]);
+    await r.face.read();
+    expect(r.face.discoverStore('etag-1', false)).toBe(false);
+    expect(r.face.discoverStore('etag-1', true)).toBe(true);
+    expect(r.face.discoverStore('etag-1', true)).toBe(false);
+    expect(r.face.discoverStore('', true)).toBe(false);
+    expect(r.face.intend(X, 'now')).toBe(false);
+    expect(r.face.release('now')).toBe(false);
+    expect(r.fired).toHaveLength(1);
+    expect(JSON.parse(r.fired[0][1])).toEqual(JSON.parse(nativeSyncMessage('etag-1')!));
+    expect(r.fired[0][1]).not.toMatch(/lease|https?:|token|authorization|asset/i);
+  });
+
+  it('already-v4 faces keep the existing sync path without an extra discovery request', async () => {
+    const r = rig();
+    await r.face.read();
+    expect(r.face.discoverStore('etag-1', true)).toBe(false);
+    expect(r.face.sync('etag-1')).toBe(true);
+    expect(r.fired).toHaveLength(1);
+  });
+
   it('the same message is not repeated inside a second (StrictMode, re-renders), and is after it', async () => {
     const r = rig();
     await r.face.read();

@@ -40,22 +40,24 @@ function wrap(node: React.ReactNode) {
 }
 afterEach(() => { cleanup(); calls.length = 0; });
 
-it('defaults to the organization setting (off) and says the screen only updates on a push', async () => {
+it('defaults to the organization setting with no explanatory paragraphs', async () => {
   info = { ...base };
   wrap(<AutoUpdateSection screenId="scr-1" />);
-  expect(await screen.findByText('Following the organization setting (off).')).toBeInTheDocument();
-  expect(screen.getByText('This screen only updates when someone presses “Push update”.')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Automatic app updates: Organization' })).not.toBeDisabled());
+  expect(screen.queryByText(/Following the organization/)).toBeNull();
+  expect(screen.queryByText(/only updates when someone/)).toBeNull();
+  expect(screen.queryByText(/Off-hours only/)).toBeNull();
   expect(screen.getByRole('button', { name: 'Automatic app updates: Organization' })).toHaveAttribute('aria-pressed', 'true');
 });
 
-it('an admin turns it ON for this one screen; the window it will use is stated', async () => {
+it('an admin turns it ON for this one screen', async () => {
   info = { ...base };
   wrap(<AutoUpdateSection screenId="scr-1" />);
-  await screen.findByText('Following the organization setting (off).');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Automatic app updates: On' })).not.toBeDisabled());
   fireEvent.click(screen.getByRole('button', { name: 'Automatic app updates: On' }));
   await waitFor(() => expect(calls.some((c) => c.init?.method === 'PUT' && JSON.parse(c.init.body).mode === 'on')).toBe(true));
-  expect(await screen.findByText('On for this screen, whatever the organization setting.')).toBeInTheDocument();
-  expect(screen.getByText('Updates itself between 03:00 and 04:00 (America/Chicago) when a new version is out.')).toBeInTheDocument();
+  expect(screen.queryByText(/whatever the organization setting/)).toBeNull();
+  expect(screen.queryByText(/Updates itself between/)).toBeNull();
 });
 
 it('a screen that would show the Install prompt says so, and is never promised an automatic update', async () => {
@@ -64,7 +66,7 @@ it('a screen that would show the Install prompt says so, and is never promised a
   // 2026-10-26 — most panels are wall-mounted with a remote and no touch screen:
   // the action and the place, remote first, never "needs a tap".
   const line = await screen.findByText(/Needs someone at the screen/);
-  expect(line).toHaveTextContent('Use “Push update” when someone can select Install there (OK on the remote, or tap it).');
+  expect(line).toHaveTextContent('Needs someone at the screen to install updates');
   expect(line).not.toHaveTextContent(/needs a tap|tap Install/i);
   expect(screen.queryByText(/Updates itself between/)).toBeNull();
 });
@@ -72,7 +74,7 @@ it('a screen that would show the Install prompt says so, and is never promised a
 it('read-only roles see the state but cannot change it', async () => {
   info = { ...base };
   wrap(<AutoUpdateSection screenId="scr-1" readOnly />);
-  await screen.findByText('Following the organization setting (off).');
+  await waitFor(() => expect(calls.length).toBeGreaterThan(0));
   expect(screen.getByRole('button', { name: 'Automatic app updates: On' })).toBeDisabled();
 });
 

@@ -192,6 +192,8 @@ export function fmtSize(bytes: number): string {
  * catalogue.
  */
 export const DOWNLOAD_COPY_EN = {
+  'screens.contentState.updating': 'Updating…',
+  'screens.contentState.updatingStuck': 'Still updating — check the screen',
   'screens.contentState.downloading': 'Downloading new content',
   'screens.contentState.downloadingProgress': 'Downloading new content · {percent}% of {size}',
   'screens.contentState.downloadingSoFar': 'Downloading new content · {loaded} so far',
