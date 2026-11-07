@@ -17,13 +17,16 @@ const ACTION_KEYS = [
   'settings.cc.player.autoReady.description',
   'screens.apk.sublineNeedsTap',
   'screens.apk.push.sublineNeedsTapLikely',
-  'screens.autoUpdate.needsTap',
   'screens.bulk.installPrompt',
 ];
 const STATUS_KEYS = [
   'settings.cc.player.autoReady.countTap',
   'settings.cc.player.autoReady.statusTap',
   'screens.apk.needsTap',
+  // AutoUpdateSection renders this from info.readiness, as a capability
+  // status even when no update is pending. Install action instructions are
+  // the two ScreenSettingsMenu sublines above and still require the remote.
+  'screens.autoUpdate.needsTap',
   'screens.autoUpdate.reasonInstalledByAnotherApp',
   'screens.interruptions.kindOtaNeedsTap',
   'fieldBuilds.screens.state.needs-tap',

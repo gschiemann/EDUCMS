@@ -521,3 +521,26 @@
 .nr-scroll-story {
   padding-right: 3em;
 }
+
+/* Center the compact edition and story within their own padded columns. */
+.nr-ribbon .nr-masthead,
+.nr-banner .nr-masthead {
+  justify-content: center;
+  text-align: center;
+}
+.nr-ribbon .nr-content {
+  align-self: center;
+  text-align: center;
+}
+.nr-ribbon .nr-lead {
+  align-items: center;
+}
+.nr-ribbon .nr-kicker {
+  text-align: center;
+}
+.nr-empty {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
