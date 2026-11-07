@@ -10,7 +10,7 @@
  * only in the builder, stamped SAMPLE, and a real screen with nothing entered
  * shows a dash (lane B4, 2026-09-27 — `_shared/live-data-truth.tsx`).
  */
-import { TransitArrivalsLiveWidget, ParkingReportsLiveWidget } from '../PublicDataWidgets';
+import { TransitArrivalsLiveWidget, ParkingReportsLiveWidget } from '../LiveDataLazy';
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';

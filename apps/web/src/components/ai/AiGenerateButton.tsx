@@ -23,7 +23,7 @@
  *     restaurant promo.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Sparkles, Loader2, X, RefreshCw, AlertCircle, Zap, Settings2 } from 'lucide-react';
@@ -307,6 +307,7 @@ function AiGenerateModal({
   const abortRef = useRef<AbortController | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const contextId = useId();
   const titleId = 'ai-generate-modal-title';
 
   useEffect(() => {
@@ -501,8 +502,9 @@ function AiGenerateModal({
         <div className="p-6 space-y-4">
           {/* Context input */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">What's this about?</label>
+            <label htmlFor={contextId} className="block text-xs font-bold text-slate-700 mb-1.5">What's this about?</label>
             <textarea
+              id={contextId}
               ref={textareaRef}
               value={context}
               onChange={(e) => setContext(e.target.value)}

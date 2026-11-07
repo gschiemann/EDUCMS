@@ -44,6 +44,8 @@ export class PublicSourceCache {
       provider?: string;
       hourlyLimit?: number;
       maxSourceAgeMs?: number;
+      /** Hand `parse` the body as latin1 (byte-preserving) for binary sources: zip, protobuf. */
+      binary?: boolean;
     } = {},
   ): Promise<{ value: T; fetchedAt: string }> {
     const local = this.hot.get(key);
@@ -119,7 +121,9 @@ export class PublicSourceCache {
           throw new Error('Source update is stale');
       }
       const data = {
-        value: parse(response.body.toString('utf8')),
+        value: parse(
+          response.body.toString(options.binary ? 'latin1' : 'utf8'),
+        ),
         fetchedAt: new Date().toISOString(),
       };
       await setCachedFeed(

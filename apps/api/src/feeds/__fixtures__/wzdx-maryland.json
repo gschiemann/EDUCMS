@@ -1,0 +1,322 @@
+{
+ "feed_info": {
+  "publisher": "Maryland DOT SHA",
+  "contact_name": "RITIS Support",
+  "contact_email": "support@ritis.org",
+  "update_frequency": 60,
+  "update_date": "2026-11-02T02:05:58Z",
+  "version": "4.1",
+  "license": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "data_sources": [
+   {
+    "data_source_id": "1a5b4354-1926-4aee-b121-e27fc9f3c37e",
+    "organization_name": "Maryland DOT SHA",
+    "contact_name": "Carole Delion",
+    "contact_email": "CDelion@mdot.maryland.gov"
+   }
+  ]
+ },
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "01027e73760404da006ad32ec4235c0a_East",
+   "type": "Feature",
+   "properties": {
+    "is_start_position_verified": false,
+    "is_end_position_verified": false,
+    "vehicle_impact": "some-lanes-closed",
+    "location_method": "other",
+    "lanes": [
+     {
+      "order": 1,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 2,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 3,
+      "status": "closed",
+      "type": "shoulder"
+     }
+    ],
+    "core_details": {
+     "data_source_id": "11a5b4354-1926-4aee-b121-e27fc9f3c37e",
+     "event_type": "work-zone",
+     "related_road_events": [
+      {
+       "type": "related-work-zone",
+       "id": "01027e73760404da006ad32ec4235c0a_West"
+      }
+     ],
+     "road_names": [
+      "CO140",
+      "SHOWALTER RD"
+     ],
+     "direction": "eastbound",
+     "description": "Active Closure @ SHOWALTER RD EAST/WEST AT MARYLAND VETERANS MEMORIAL HWY",
+     "creation_date": "2026-10-22T12:41:26Z",
+     "update_date": "2026-10-22T14:18:02Z"
+    },
+    "beginning_cross_street": "I81",
+    "start_date": "2026-10-22T12:41:26Z",
+    "end_date": "2026-12-31T05:00:00Z",
+    "is_start_date_verified": true,
+    "is_end_date_verified": false
+   },
+   "geometry": {
+    "type": "MultiPoint",
+    "coordinates": [
+     [
+      -77.739359,
+      39.700509
+     ]
+    ]
+   }
+  },
+  {
+   "id": "01027e73760404da006ad32ec4235c0a_West",
+   "type": "Feature",
+   "properties": {
+    "is_start_position_verified": false,
+    "is_end_position_verified": false,
+    "vehicle_impact": "some-lanes-closed",
+    "location_method": "other",
+    "lanes": [
+     {
+      "order": 1,
+      "status": "open",
+      "type": "median"
+     },
+     {
+      "order": 2,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 3,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 4,
+      "status": "closed",
+      "type": "shoulder"
+     }
+    ],
+    "core_details": {
+     "data_source_id": "11a5b4354-1926-4aee-b121-e27fc9f3c37e",
+     "event_type": "work-zone",
+     "related_road_events": [
+      {
+       "type": "related-work-zone",
+       "id": "01027e73760404da006ad32ec4235c0a_East"
+      }
+     ],
+     "road_names": [
+      "CO140",
+      "SHOWALTER RD"
+     ],
+     "direction": "westbound",
+     "description": "Active Closure @ SHOWALTER RD EAST/WEST AT MARYLAND VETERANS MEMORIAL HWY",
+     "creation_date": "2026-10-22T12:41:26Z",
+     "update_date": "2026-10-22T14:18:02Z"
+    },
+    "ending_cross_street": "I81",
+    "start_date": "2026-10-22T12:41:26Z",
+    "end_date": "2026-12-31T05:00:00Z",
+    "is_start_date_verified": true,
+    "is_end_date_verified": false
+   },
+   "geometry": {
+    "type": "MultiPoint",
+    "coordinates": [
+     [
+      -77.739359,
+      39.700509
+     ]
+    ]
+   }
+  },
+  {
+   "id": "0200150ad9cc04850067d32ec4235c0a_North",
+   "type": "Feature",
+   "properties": {
+    "is_start_position_verified": false,
+    "is_end_position_verified": false,
+    "vehicle_impact": "all-lanes-open",
+    "location_method": "other",
+    "lanes": [
+     {
+      "order": 1,
+      "status": "open",
+      "type": "shoulder"
+     },
+     {
+      "order": 2,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 3,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 4,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 5,
+      "status": "open",
+      "type": "shoulder"
+     }
+    ],
+    "core_details": {
+     "data_source_id": "11a5b4354-1926-4aee-b121-e27fc9f3c37e",
+     "event_type": "work-zone",
+     "related_road_events": [
+      {
+       "type": "related-work-zone",
+       "id": "0200150ad9cc04850067d32ec4235c0a_South"
+      }
+     ],
+     "road_names": [
+      "MD5",
+      "BRANCH AVE"
+     ],
+     "direction": "northbound",
+     "description": "Active Closure @ MD 5 NORTH/SOUTH FROM CAPITAL BELTWAY TO CRAIN HWY",
+     "creation_date": "2025-01-14T02:29:33Z",
+     "update_date": "2026-11-02T01:32:33Z"
+    },
+    "beginning_cross_street": "US301",
+    "ending_cross_street": "I95",
+    "start_date": "2026-11-02T01:32:10Z",
+    "end_date": "2026-12-31T05:00:00Z",
+    "is_start_date_verified": true,
+    "is_end_date_verified": false
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -76.872242,
+      38.69527
+     ],
+     [
+      -76.919373,
+      38.819576
+     ]
+    ],
+    "bbox": [
+     -76.919373,
+     38.69527,
+     -76.872242,
+     38.819576
+    ]
+   },
+   "bbox": [
+    -76.919373,
+    38.69527,
+    -76.872242,
+    38.819576
+   ]
+  },
+  {
+   "id": "0200150ad9cc04850067d32ec4235c0a_South",
+   "type": "Feature",
+   "properties": {
+    "is_start_position_verified": false,
+    "is_end_position_verified": false,
+    "vehicle_impact": "all-lanes-open",
+    "location_method": "other",
+    "lanes": [
+     {
+      "order": 1,
+      "status": "open",
+      "type": "median"
+     },
+     {
+      "order": 2,
+      "status": "open",
+      "type": "shoulder"
+     },
+     {
+      "order": 3,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 4,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 5,
+      "status": "open",
+      "type": "general"
+     },
+     {
+      "order": 6,
+      "status": "open",
+      "type": "shoulder"
+     }
+    ],
+    "core_details": {
+     "data_source_id": "11a5b4354-1926-4aee-b121-e27fc9f3c37e",
+     "event_type": "work-zone",
+     "related_road_events": [
+      {
+       "type": "related-work-zone",
+       "id": "0200150ad9cc04850067d32ec4235c0a_North"
+      }
+     ],
+     "road_names": [
+      "MD5",
+      "BRANCH AVE"
+     ],
+     "direction": "southbound",
+     "description": "Active Closure @ MD 5 NORTH/SOUTH FROM CAPITAL BELTWAY TO CRAIN HWY",
+     "creation_date": "2025-01-14T02:29:33Z",
+     "update_date": "2026-11-02T01:32:33Z"
+    },
+    "beginning_cross_street": "I95",
+    "ending_cross_street": "US301",
+    "start_date": "2026-11-02T01:32:10Z",
+    "end_date": "2026-12-31T05:00:00Z",
+    "is_start_date_verified": true,
+    "is_end_date_verified": false
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -76.919373,
+      38.819576
+     ],
+     [
+      -76.872242,
+      38.69527
+     ]
+    ],
+    "bbox": [
+     -76.919373,
+     38.69527,
+     -76.872242,
+     38.819576
+    ]
+   },
+   "bbox": [
+    -76.919373,
+    38.69527,
+    -76.872242,
+    38.819576
+   ]
+  }
+ ]
+}

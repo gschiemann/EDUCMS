@@ -140,29 +140,73 @@ export function useParkingReports(location: string, active = true) {
 }
 
 export interface RoadFeed {
-  source: string;
-  sourceUrl: string;
-  region: string;
   location: string;
+  radiusKm?: number;
   supported: boolean;
   reason?: string;
   fetchedAt: string;
+  /** Every publisher behind these rows (CHP, and each state DOT's WZDx feed). */
+  sources?: { name: string; url: string; licenseUrl?: string; fetchedAt: string }[];
   items: {
     id: string;
     type: string;
     road: string;
     area: string;
     distanceKm: number;
+    source?: string;
   }[];
 }
-export function useRoadIncidents(location: string, active = true) {
+/** Free road reports: CHP incidents (California) + DOT work zones (CC0 WZDx, 15 states + 2 metros). */
+export function useRoadIncidents(location: string, active = true, radiusKm = 25) {
   return usePolledFeed<RoadFeed>(
     active && !!location,
     () =>
-      `${API}/feeds/road-incidents?location=${encodeURIComponent(location)}`,
+      `${API}/feeds/road-conditions?location=${encodeURIComponent(location)}&radiusKm=${radiusKm}`,
     60000,
     120000,
     25000,
     500,
+  );
+}
+
+export interface GtfsDeparturesFeed {
+  agency: string;
+  source: string;
+  sourceUrl: string;
+  note: string;
+  station: string;
+  stationId: string;
+  updatedAt: string;
+  fetchedAt: string;
+  items: TransitFeed["items"];
+}
+/** Open GTFS-realtime departures (agencies with reviewed licences). */
+export function useGtfsDepartures(agency: string, station: string, active = true) {
+  return usePolledFeed<GtfsDeparturesFeed>(
+    active && !!agency && !!station,
+    () =>
+      `${API}/feeds/gtfs-departures?agency=${encodeURIComponent(agency)}&station=${encodeURIComponent(station)}`,
+    30000,
+    90000,
+    25000,
+    300,
+  );
+}
+export function useGtfsAgencies(active = true) {
+  return usePolledFeed<{ items: { id: string; name: string; region: string; termsUrl: string }[] }>(
+    active,
+    () => `${API}/feeds/gtfs-agencies`,
+    86400000,
+    86400000,
+    15000,
+  );
+}
+export function useGtfsStations(agency: string, q: string, active = true) {
+  return usePolledFeed<{ agency: string; items: { id: string; name: string }[] }>(
+    active && !!agency,
+    () => `${API}/feeds/gtfs-stations?agency=${encodeURIComponent(agency)}&q=${encodeURIComponent(q)}`,
+    86400000,
+    86400000,
+    20000,
   );
 }
