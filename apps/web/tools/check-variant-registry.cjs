@@ -139,7 +139,7 @@ require(path.join(SRC, 'components/widgets/variants-register.ts'));
 const { listVariants, listVariantIdCollisions } = require(path.join(SRC, 'components/widgets/variants.ts'));
 console.error = realError;
 
-const variants = listVariants();
+const variants = listVariants({ includeHidden: true });
 const collisions = listVariantIdCollisions();
 const missingRenderer = variants.filter((v) => typeof v.render !== 'function');
 

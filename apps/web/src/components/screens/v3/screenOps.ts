@@ -1124,9 +1124,13 @@ export function imageUrlOfPreview(preview: { url: string | null; kind: ExpectedT
  * match; anything it cannot match is "a playlist", never an accusation. The
  * app-version fact survives as its own line (`app`).
  */
+/** A pending resync older than this is a warning, not "in progress". */
+export const UPDATE_STUCK_MS = 2 * 60_000;
+
 export type ReportedState =
   | 'confirmed' // playing exactly what is scheduled
   | 'playing' // playing a playlist or board that cannot be matched to the schedule
+  | 'updating' // a resync was sent and the screen has not confirmed yet (under 2 min)
   | 'behind' // an update is outstanding, or the schedule is not on the glass yet
   | 'idle' // the waiting screen, with nothing scheduled (or the window closed)
   | 'paused' // paused on the screen itself
@@ -1240,12 +1244,12 @@ export function deriveReportedContent(
   // An outstanding update outranks whatever is on the glass: until the screen
   // echoes it back, what it shows may be the previous content.
   if (pendingMs != null) {
-    return {
-      state: 'behind',
-      line: 'Update not confirmed',
-      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; waiting for the screen to confirm it.`,
-      app,
-    };
+    if (now - pendingMs < UPDATE_STUCK_MS) {
+      const line = copy('screens.contentState.updating');
+      return { state: 'updating', line: line.en, app, messages: { line: line.message } };
+    }
+    const line = copy('screens.contentState.updatingStuck');
+    return { state: 'behind', line: line.en, app, messages: { line: line.message } };
   }
 
   // ── What the idle proofs and the download snapshot say (2026-09-27) ──
@@ -1333,7 +1337,7 @@ export function deriveReportedContent(
   if (proof.startsWith('tpl:')) {
     const boardId = proof.slice('tpl:'.length).split(':')[0];
     if (expected?.templateId && boardId === expected.templateId) {
-      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('The board on the glass is the one you scheduled.'), app });
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
     return withBackground({
       state: 'playing',
@@ -1348,7 +1352,7 @@ export function deriveReportedContent(
   }
   if (proof.startsWith('pl:')) {
     if (renderProofMatches(expected?.renderSignature ?? null, proof)) {
-      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('Item for item, what you scheduled.'), app });
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
     return withBackground({
       state: 'playing',
@@ -1485,7 +1489,7 @@ export function deriveRecovery(input: {
     return {
       state: 'waiting-ack',
       heading: 'Resync in progress',
-      body: `Request recorded ${wordyAge(pendingMs, now) ?? 'just now'} ago; waiting for this screen to confirm it.`,
+      body: '',
     };
   }
   if (justSent) {

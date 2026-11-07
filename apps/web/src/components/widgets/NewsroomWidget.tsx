@@ -180,6 +180,10 @@ export function NewsroomWidget({
   const base: CSSProperties = {
     width: "100%",
     height: "100%",
+    boxSizing: "border-box",
+    // Geometry, not type size, owns the safe margin. Toolbar changes must not
+    // push copy against the edge, and the builder reset must not erase it.
+    padding: `${Math.max(8, Math.min(48, h * 0.09))}px ${Math.max(12, Math.min(96, w * 0.04, h * 0.16))}px`,
     fontSize: font,
     color: config.textColor || config.style?.textColor || palette.text,
     background: "transparent",
