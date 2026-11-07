@@ -347,7 +347,9 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(card).getByText(/Scheduled for this group/)).toBeInTheDocument();
     // G43 has an unconfirmed refresh outstanding, so the card wears that state.
     expect(card).toHaveAttribute('data-reported-state', 'behind');
-    expect(within(card).getByText(/As reported by the player/)).toBeInTheDocument();
+    // The disclaimer lives under Technical details, not the default view.
+    expect(within(card).queryByText(/As reported by the player/)).not.toBeInTheDocument();
+    expect(within(card).getByText('Still updating — check the screen')).toBeInTheDocument();
     // The two-card split is gone, and so are the words it used.
     expect(within(dialog).queryByText('Scheduled')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Playing now')).not.toBeInTheDocument();
@@ -370,6 +372,25 @@ describe('detail drawer (§10 / §14)', () => {
     expect(within(card).queryByText('Paired')).not.toBeInTheDocument();
     // The web bundle's state rides the Player app row, not the content card.
     expect(within(card).getByText('Current build')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['pending (12 s): one Updating line with a spinner, no warning, no timestamps', new Date(NOW - 12_000).toISOString(), true],
+    ['confirmed (nothing pending): back to the normal state', null, false],
+  ])('resync %s', (_n, pendingRefreshAt, pending) => {
+    renderPage({ screens: FLEET.map((s) => (s.id === 'g43' ? { ...s, pendingRefreshAt } : s)) });
+    fireEvent.click(within(rtl.getByTestId('screens-desktop')).getAllByRole('button', { name: 'G43' })[0]);
+    const card = within(rtl.getByRole('dialog')).getByTestId('screen-content-card');
+    if (pending) {
+      expect(within(card).getAllByText('Updating…')).toHaveLength(1);
+      expect(card.querySelector('.animate-spin')).not.toBeNull();
+      expect(card).toHaveAttribute('data-reported-state', 'updating');
+      expect(card.className).not.toMatch(/amber/);
+      expect(within(card).queryByText(/ago|waiting for/)).not.toBeInTheDocument();
+    } else {
+      expect(within(card).queryByText('Updating…')).not.toBeInTheDocument();
+      expect(card).not.toHaveAttribute('data-reported-state', 'updating');
+    }
   });
 
   it('the Device card shows the panel, OS, browser, IP and cache when the screen reported them', () => {
@@ -409,7 +430,7 @@ describe('detail drawer (§10 / §14)', () => {
     const dialog = open();
     expect(within(dialog).queryByText('Delivery')).not.toBeInTheDocument();
     const content = within(dialog).getByTestId('screen-content-card');
-    expect(within(content).getByText(/Request recorded .* ago; waiting for this screen to confirm it\./)).toBeInTheDocument();
+    expect(within(content).queryByText(/Request recorded|Update not confirmed|waiting for this screen/)).not.toBeInTheDocument();
     expect(content.querySelector('.animate-spin')).toBeNull();
     expect(within(dialog).queryByText('How far the update got')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Physical display')).not.toBeInTheDocument();
@@ -419,7 +440,9 @@ describe('detail drawer (§10 / §14)', () => {
 
   it('shows the recovery card only from a real outstanding command', () => {
     const dialog = open();
-    expect(within(within(dialog).getByTestId('screen-content-card')).getByTestId('screen-content-update')).toBeInTheDocument();
+    // 18 minutes old: past the 2-minute window, so it is the warning line, once.
+    const card = within(dialog).getByTestId('screen-content-card');
+    expect(within(card).getAllByText(/Still updating/)).toHaveLength(1);
     // Never claims a milestone the player did not emit.
     expect(within(dialog).queryByText(/fetched/i)).not.toBeInTheDocument();
   });
