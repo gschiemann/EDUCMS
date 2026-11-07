@@ -5,7 +5,7 @@
  *      with a per-user "Classic view" preference and a `?classic=<id>` deep
  *      link into the pre-v1 library. Greg: "why is a classic view option still
  *      showing...dump that shit, no more classic view". A stored preference
- *      from before the removal and the old deep link both land on v1, and no
+ *      from before the removal and the old deep link both land on the gallery, and no
  *      control on the page offers the old library.
  *   2. THE ?newPlaylist=1 CONTRACT SURVIVES. The dashboard and the Assets page
  *      both link here with it, and Assets also stashes the picked asset ids in
@@ -55,7 +55,6 @@ jest.mock('@/hooks/use-api', () => ({
 const push = jest.fn();
 jest.mock('next/navigation', () => ({
   useParams: () => ({ schoolId: 'demo' }),
-  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push, replace: jest.fn(), back: jest.fn() }),
 }));
 jest.mock('@/store/ui-store', () => ({
@@ -94,21 +93,21 @@ beforeEach(() => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe('there is no classic view', () => {
-  it('shows the v1 library, and offers no way into the old one', () => {
+  it('shows the gallery, and offers no way into the old one', () => {
     render(<PlaylistsPage />);
     expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /classic/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/classic view/i)).not.toBeInTheDocument();
   });
 
-  it('a preference stored before the removal is ignored — v1 renders, nothing else', () => {
+  it('a preference stored before the removal is ignored — the gallery renders, nothing else', () => {
     localStorage.setItem('venueos_playlists_view', 'classic');
     render(<PlaylistsPage />);
     expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
     expect(screen.queryByText(/Back to the new Playlists/)).not.toBeInTheDocument();
   });
 
-  it('the old ?classic=<id> deep link lands on v1 and is left alone (nothing consumes it)', () => {
+  it('the old ?classic=<id> deep link lands on the gallery and is left alone (nothing consumes it)', () => {
     setUrl('?classic=p1');
     render(<PlaylistsPage />);
     expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
@@ -175,10 +174,9 @@ describe('the library is wired to the durable workspace', () => {
   it('derives the row model when the summary endpoint is absent', () => {
     render(<PlaylistsPage />);
     // usePlaylistSummary is mocked to null — the row still has every fact.
-    expect(screen.getByTestId('library-summary')).toHaveTextContent('1 playlist · 1 active');
-    const row = screen.getAllByTestId('playlist-row')[0];
+    expect(screen.getByTestId('library-summary')).toHaveTextContent('1 playlist · 1 playing now on 1 screen');
+    const row = screen.getAllByTestId('playlist-card-v2')[0];
     expect(row).toHaveTextContent('Member Promotions');
-    expect(row).toHaveTextContent('1 screen');
-    expect(row).toHaveTextContent('Always');
+    expect(row).toHaveTextContent('On G43');
   });
 });

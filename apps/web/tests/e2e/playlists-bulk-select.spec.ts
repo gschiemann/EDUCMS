@@ -7,12 +7,13 @@
  * call mocked — WebKit as well as Chromium, because the operator runs Safari
  * (bug telemetry: Safari 26.5 / 27, a 1325 × 758 window).
  *
+ * Retargeted 2026-11-07: the Playlists page is the content-first filmstrip gallery
+ * (PlaylistGalleryV2); the old table is gone, so this drives the cards.
+ *
  * jsdom cannot answer the two layout questions that matter here:
  *
- *   1. The table already scrolls sideways under ~1440 px, so a checkbox COLUMN
- *      would take 48 px from the Delivery column — the one the operator keeps
- *      saying he cannot read. The checkbox is a chip on each thumbnail and a
- *      box in the Playlist header, and the table gains no column.
+ *   1. The gallery must fit the operator's 1325 px window with no sideways
+ *      scroll, and the checkbox is a chip on each card's stage (no column).
  *   2. The confirmation's red button must sit inside its card. It ran off the
  *      edge (clipped mid-word by the card's overflow-hidden) when its label was
  *      "Delete 3 playlists and rules", and the fix that stops that has to hold.
@@ -92,36 +93,36 @@ async function openLibrary(
 
   await page.setViewportSize({ width: 1325, height: 758 }); // the operator's own Safari window
   await page.goto(`/${SCHOOL_ID}/playlists`, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('playlist-row').first().waitFor({ state: 'visible', timeout: 90_000 });
+  await page.getByTestId('playlist-card-v2').first().waitFor({ state: 'visible', timeout: 90_000 });
 }
 
-test.describe('playlists library — bulk select and remove', () => {
-  test('the table gains no column for the checkboxes (Delivery keeps its width)', async ({ page }) => {
+test.describe('playlists gallery — bulk select and remove', () => {
+  test('the page is the card gallery: no table, no sideways scroll, a checkbox chip on every card', async ({ page }) => {
     test.setTimeout(120_000);
     await openLibrary(page, []);
-    const headers = await page.locator('[data-testid="playlist-table"] thead th').allTextContents();
-    // Playlist · Status · Publishing · Schedule · Delivery · Updated · (Actions, screen-reader only).
-    expect(headers.map((h) => h.trim())).toEqual(['Playlist', 'Status', 'Publishing', 'Schedule', 'Delivery', 'Updated', 'Actions']);
-    // The header checkbox lives INSIDE the Playlist header, and every row's checkbox inside its Playlist cell.
-    await expect(page.locator('[data-testid="playlist-table"] thead th').first().getByTestId('select-page')).toHaveCount(1);
-    const firstRow = page.getByTestId('playlist-row').first();
-    await expect(firstRow.locator('td').first().getByRole('checkbox')).toHaveCount(1);
+    await expect(page.getByTestId('playlists-v2')).toHaveCount(1);
+    await expect(page.getByTestId('playlist-table')).toHaveCount(0);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    const cards = page.getByTestId('playlist-card-v2');
+    await expect(cards).toHaveCount(6);
+    await expect(cards.first().getByRole('checkbox')).toHaveCount(1);
   });
 
-  test('check three, remove them: one confirmation that fits its card, one delete each in list order, selection cleared', async ({ page }) => {
+  test('check three, remove them: one confirmation that fits its card, one delete each in gallery order, selection cleared', async ({ page }) => {
     test.setTimeout(120_000);
     const deletes: Array<{ id: string; confirm: string | null }> = [];
     await openLibrary(page, deletes, { deleteDelayMs: 1_500 }); // a slow server: 3 deletes take ~4.5 s
 
-    const rows = page.getByTestId('playlist-row');
+    const rows = page.getByTestId('playlist-card-v2');
     const box = (name: string) => rows.filter({ hasText: name }).first().getByRole('checkbox', { name: `Select ${name}` });
-    // Checked out of list order on purpose: the removals still run in list order.
+    // Checked out of list order on purpose: the removals still run in the gallery's order.
     await box('Class Schedule').check();
     await box('Freese').check();
     await box('Fall Fundraiser').check();
     await expect(page.getByTestId('bulk-count')).toHaveText('3 selected');
 
-    await page.getByTestId('bulk-remove').click();
+    await page.getByTestId('bulk-delete').click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(dialog.getByRole('heading', { name: 'Delete 3 playlists?' })).toBeVisible();
@@ -145,11 +146,11 @@ test.describe('playlists library — bulk select and remove', () => {
     await expect(rows).toHaveCount(3, { timeout: 1_200 });
     expect(deletes.length).toBeLessThan(3);
     await expect.poll(() => deletes.length, { timeout: 15_000 }).toBe(3);
-    expect(deletes.map((d) => d.id)).toEqual(['p1', 'p3', 'p5']); // Freese, Fall Fundraiser, Class Schedule — list order
+    expect(deletes.map((d) => d.id)).toEqual(['p1', 'p5', 'p3']); // Freese (playing), then Class Schedule, Fall Fundraiser — the gallery's own order
     // Only the published one is sent with the server's in-use confirmation.
-    expect(deletes.map((d) => [d.id, d.confirm])).toEqual([['p1', 'in-use'], ['p3', null], ['p5', null]]);
+    expect(deletes.map((d) => [d.id, d.confirm])).toEqual([['p1', 'in-use'], ['p5', null], ['p3', null]]);
 
-    await expect(page.getByTestId('bulk-bar')).toHaveCount(0);
+    await expect(page.getByTestId('playlists-selection')).toHaveCount(0);
     await expect(rows).toHaveCount(3);
     for (const gone of ['Freese', 'Fall Fundraiser', 'Class Schedule']) {
       await expect(rows.filter({ hasText: gone })).toHaveCount(0);
@@ -160,10 +161,10 @@ test.describe('playlists library — bulk select and remove', () => {
     test.setTimeout(120_000);
     const deletes: Array<{ id: string; confirm: string | null }> = [];
     await openLibrary(page, deletes);
-    const rows = page.getByTestId('playlist-row');
+    const rows = page.getByTestId('playlist-card-v2');
     await rows.filter({ hasText: 'Lobby Welcome' }).first().getByRole('checkbox', { name: 'Select Lobby Welcome' }).check();
     await rows.filter({ hasText: 'Holiday Hours' }).first().getByRole('checkbox', { name: 'Select Holiday Hours' }).check();
-    await page.getByTestId('bulk-remove').click();
+    await page.getByTestId('bulk-delete').click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor({ state: 'visible', timeout: 10_000 });
     await dialog.getByRole('button', { name: 'Cancel' }).last().click();

@@ -31,7 +31,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { normalizeVertical } from '@cms/api-types';
 import {
@@ -44,7 +44,6 @@ import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
-import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
 import { PlaylistGalleryV2 } from '@/components/playlists/v2/PlaylistGalleryV2';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
@@ -59,7 +58,6 @@ export default function PlaylistsPage() {
   const schoolId = params?.schoolId || '';
   const currentUser = useUIStore((s) => s.user);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
-  const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
   // USB has no on/off setting any more (2026-10-22): "Export to USB" always
   // works for anyone who can open the menu; the API signs the package itself.
@@ -75,13 +73,6 @@ export default function PlaylistsPage() {
   const [publishToLocationsOpen, setPublishToLocationsOpen] = useState(false);
   // Which row opened the sheet — it used to open with no playlist chosen.
   const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
-  // Design preview (2026-11-02): `?design=v2` shows the gallery redesign for
-  // the owner to approve. Without the param the page is exactly as before.
-  const searchParams = useSearchParams();
-  const designV2 = searchParams?.get('design') === 'v2';
-  // `&look=a|b|c` picks one of the three visual directions (2026-11-07 redo).
-  const lookParam = searchParams?.get('look');
-  const designLook = lookParam === 'b' || lookParam === 'c' ? lookParam : 'a';
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -211,23 +202,6 @@ export default function PlaylistsPage() {
     () => new Map<string, unknown>(playlists.map((p) => [p.id, p])),
     [playlists],
   );
-  const groupOfScreen = useMemo(
-    () => new Map(screens.map((s) => [s.id, s.screenGroupId ?? null])),
-    [screens],
-  );
-  const creatorOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.creatorSummary).filter((c): c is string => !!c))).sort(),
-    [rows],
-  );
-  const screenOptions = useMemo(
-    () => screens.map((s) => ({ id: s.id, name: s.name || s.id })).sort((a, b) => a.name.localeCompare(b.name)),
-    [screens],
-  );
-  const groupOptions = useMemo(
-    () => groups.map((g) => ({ id: g.id, name: g.name || g.id })).sort((a, b) => a.name.localeCompare(b.name)),
-    [groups],
-  );
-
   const openWorkspace = useCallback(
     (id: string, tab?: string) => router.push(`/${schoolId}/playlists/${id}${tab ? `?tab=${tab}` : ''}`),
     [router, schoolId],
@@ -418,7 +392,6 @@ export default function PlaylistsPage() {
 
   return (
     <>
-      {designV2 ? (
       <PlaylistGalleryV2
         rows={rows}
         rawById={rawById}
@@ -443,43 +416,7 @@ export default function PlaylistsPage() {
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSetActive={(row, next) => { void handleSetActive(row, next); }}
         isViewer={isViewer}
-        look={designLook}
       />
-      ) : (
-      <PlaylistLibraryV1
-        rows={rows}
-        rawById={rawById}
-        templateLookup={templateLookup}
-        loading={playlistsQuery.isLoading}
-        error={playlistsQuery.isError}
-        onRetry={() => {
-          playlistsQuery.refetch();
-          screensQuery.refetch();
-          schedulesQuery.refetch();
-        }}
-        onOpen={(id) => openWorkspace(id)}
-        onReviewDelivery={(id) => openWorkspace(id, 'screens')}
-        onNew={() => setWizardOpen(true)}
-        onDuplicate={handleDuplicate}
-        onExport={(id) => { void runUsbExport(id); }}
-        onRemove={handleRemove}
-        onRemoveMany={handleRemoveMany}
-        onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
-        onSubmitForReview={(id) => openWorkspace(id)}
-        onSetActive={(row, next) => { void handleSetActive(row, next); }}
-        isViewer={isViewer}
-        isContributor={isContributor}
-        isHQ={isHQ}
-        creatorOptions={creatorOptions}
-        screenOptions={screenOptions}
-        groupOptions={groupOptions}
-        groupOfScreen={groupOfScreen}
-        // The list never fires a per-row delivery request (§26). Until a
-        // batched summary carries delivery, every cell is the client-side
-        // rollup of each target screen's own reported state.
-        deliveryDerived
-      />
-      )}
 
       {/* §5 — the five-step wizard, unchanged, mounted on the v1 surface so
           the ?newPlaylist=1 contract keeps landing somewhere real. */}

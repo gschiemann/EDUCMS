@@ -2,22 +2,19 @@
 
 /**
  * PlaylistGalleryV2 — the Playlists page as a gallery of what is on the
- * screens (design preview behind `?design=v2`; redo 2026-11-07).
+ * screens (the Playlists page; filmstrip look chosen by the owner 2026-11-07).
  *
  * Owner on the first v2 (2026-11-02): "I want to see it with content previews
  * on it … no crazy colors, just a beautiful UI design so the playlists are a
  * joy to work with." So:
  *
- *  - The playlist's ACTUAL items are the hero — a mosaic, a filmstrip or a
- *    row of its pictures, each shown WHOLE on a soft neutral backdrop (never
+ *  - The playlist's ACTUAL items are the hero — a filmstrip of its
+ *    pictures under a large stage, each shown WHOLE on a soft neutral backdrop (never
  *    cropped). On desktop hover the card slowly cross-fades through every
  *    item, one per 3 s (owner rule: no fast carousels). The timer exists only
  *    while the pointer is on the card; reduced motion turns it off.
  *  - Calm and neutral: no tinted badges or fills. Status is small grey text
  *    and a tiny dot. 12px corners, hairline borders, generous whitespace.
- *  - Three looks behind `?look=a|b|c` for the owner to choose from — album
- *    (Apple Photos), filmstrip (Frame.io), rows (Linear). Same data, same
- *    controls, same behaviour.
  *  - Kept: "playing where" (offline screens named), the tabs, search, Filter,
  *    Sort, the whole card opens the playlist, "⋯" for the rest.
  *  - Bulk select through the shared SelectionToolbar / ActionDock (Delete
@@ -54,8 +51,6 @@ import {
 
 const apiBase = API_URL.replace('/api/v1', '');
 
-/** a = album (Apple Photos), b = filmstrip (Frame.io), c = rows (Linear). */
-export type GalleryLook = 'a' | 'b' | 'c';
 
 export interface PlaylistGalleryV2Props {
   rows: PlaylistSummaryRow[];
@@ -78,7 +73,6 @@ export interface PlaylistGalleryV2Props {
   onPublishToLocations?: (id: string) => void;
   onSetActive?: (row: PlaylistSummaryRow, next: boolean) => void;
   isViewer: boolean;
-  look?: GalleryLook;
 }
 
 /** Same rule as v1: a press on a control inside the card never opens it. */
@@ -105,7 +99,6 @@ export function PlaylistGalleryV2(props: PlaylistGalleryV2Props) {
   const t = useTranslations('playlistsPage.v2');
   const tUi = useTranslations('ui');
   const isPhone = usePhoneWidth();
-  const look: GalleryLook = props.look ?? 'a';
   const { rows, loading, error, isViewer, screens, schedules, groups } = props;
 
   const [tab, setTab] = useState<GalleryTab>('all');
@@ -235,14 +228,13 @@ export function PlaylistGalleryV2(props: PlaylistGalleryV2Props) {
 
   const SORTS: GallerySort[] = ['playing', 'updated', 'name', 'screens'];
   const cardCtx: CardCtx = {
-    ...props, look, isPhone, selectable, selecting, selected, toggle,
+    ...props, isPhone, selectable, selecting, selected, toggle,
   };
-  const renderList = (list: GalleryEntry[]) => (look === 'c'
-    ? <RowList>{list.map((e) => <PlaylistRow key={e.row.id} entry={e} ctx={cardCtx} />)}</RowList>
-    : <CardGrid look={look}>{list.map((e) => <PlaylistCard key={e.row.id} entry={e} ctx={cardCtx} />)}</CardGrid>);
+  const renderList = (list: GalleryEntry[]) => (
+    <CardGrid>{list.map((e) => <PlaylistCard key={e.row.id} entry={e} ctx={cardCtx} />)}</CardGrid>);
 
   return (
-    <div className="space-y-6" data-testid="playlists-v2" data-look={look}>
+    <div className="space-y-6" data-testid="playlists-v2">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.01em] text-slate-900">{t('title')}</h1>
@@ -326,7 +318,7 @@ export function PlaylistGalleryV2(props: PlaylistGalleryV2Props) {
       {error ? (
         <Empty title={t('errorTitle')} body={t('errorBody')} action={t('tryAgain')} onAction={props.onRetry} />
       ) : loading && rows.length === 0 ? (
-        <CardGrid look={look === 'c' ? 'a' : look}>{Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}</CardGrid>
+        <CardGrid>{Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}</CardGrid>
       ) : rows.length === 0 ? (
         <Empty title={t('emptyTitle')} body={t('emptyBody')} action={isViewer ? undefined : t('emptyAction')} onAction={props.onNew} />
       ) : visible.length === 0 ? (
@@ -376,15 +368,9 @@ function SectionHeading({ id, label, count }: { id: string; label: string; count
   );
 }
 
-function CardGrid({ children, look }: { children: React.ReactNode; look: GalleryLook }) {
-  const cols = look === 'b'
-    ? 'grid-cols-1 min-[640px]:grid-cols-2 min-[1000px]:grid-cols-3 min-[1600px]:grid-cols-4 gap-x-5 gap-y-5'
-    : 'grid-cols-1 min-[560px]:grid-cols-2 min-[1000px]:grid-cols-3 min-[1500px]:grid-cols-4 gap-x-6 gap-y-8';
+function CardGrid({ children }: { children: React.ReactNode }) {
+  const cols = 'grid-cols-1 min-[640px]:grid-cols-2 min-[1000px]:grid-cols-3 min-[1600px]:grid-cols-4 gap-x-5 gap-y-5';
   return <ul className={`grid ${cols} list-none p-0 m-0`}>{children}</ul>;
-}
-
-function RowList({ children }: { children: React.ReactNode }) {
-  return <ul className={`list-none p-0 m-0 bg-white rounded-xl ${HAIRLINE} divide-y divide-black/[0.06] overflow-hidden`}>{children}</ul>;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -392,7 +378,6 @@ function RowList({ children }: { children: React.ReactNode }) {
 // ─────────────────────────────────────────────────────────────────────
 
 type CardCtx = PlaylistGalleryV2Props & {
-  look: GalleryLook;
   isPhone: boolean;
   selectable: boolean;
   selecting: boolean;
@@ -456,24 +441,6 @@ function CrossFade({ pictures, index, pad }: { pictures: PreviewPicture[]; index
           aria-hidden={i !== index}
         >
           <div className="relative w-full h-full"><Whole pic={p} /></div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Album mosaic: 1 whole · 2 side by side · 3 = one large + two · 4 = 2×2; portrait sets stand in a row. */
-function Mosaic({ pictures, orientation }: { pictures: PreviewPicture[]; orientation: ContentOrientation }) {
-  const n = Math.min(pictures.length, orientation === 'portrait' ? 3 : 4);
-  const shown = pictures.slice(0, n);
-  const grid = orientation === 'portrait'
-    ? (n === 1 ? 'grid-cols-1' : n === 2 ? 'grid-cols-2' : 'grid-cols-3')
-    : n === 1 ? 'grid-cols-1' : n === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
-  return (
-    <div className={`absolute top-0 left-0 w-full h-full p-4 grid gap-2.5 ${grid}`}>
-      {shown.map((p, i) => (
-        <div key={p.key} className={`relative min-h-0 ${orientation !== 'portrait' && n === 3 && i === 0 ? 'row-span-2' : ''}`}>
-          <Whole pic={p} />
         </div>
       ))}
     </div>
@@ -699,7 +666,7 @@ function FallbackThumb({ raw, ctx }: { raw: any; ctx: CardCtx }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Looks A (album) and B (filmstrip): a card
+// The card (filmstrip)
 // ─────────────────────────────────────────────────────────────────────
 
 function PlaylistCard({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
@@ -711,24 +678,10 @@ function PlaylistCard({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
   const meta = useMetaLine(entry, total);
   const open = () => ctx.onOpen(row.id);
   const on = ctx.selected.has(row.id);
-  const album = ctx.look === 'a';
 
   const stage = (
-    <div
-      className={`relative w-full overflow-hidden ${STAGE} ${album ? `rounded-xl ${HAIRLINE}` : ''} ${album && on ? 'ring-2 ring-slate-900 ring-offset-2' : ''}`}
-      style={{ aspectRatio: album ? '4 / 3' : '16 / 10' }}
-    >
-      {pictures.length === 0 ? <FallbackThumb raw={raw} ctx={ctx} /> : album ? (
-        <>
-          <Mosaic pictures={pictures} orientation={orientation} />
-          {cycle.hovering && pictures.length > 0 && <CrossFade pictures={pictures} index={cycle.index} pad="p-4" />}
-        </>
-      ) : (
-        <CrossFade pictures={pictures} index={cycle.index} pad="p-4" />
-      )}
-      {album && total > 4 && !cycle.hovering && (
-        <span className="absolute bottom-2 right-2.5 text-[11px] font-medium tabular-nums text-slate-500">{t('more', { count: total - (orientation === 'portrait' ? 3 : 4) })}</span>
-      )}
+    <div className={`relative w-full overflow-hidden ${STAGE}`} style={{ aspectRatio: '16 / 10' }}>
+      {pictures.length === 0 ? <FallbackThumb raw={raw} ctx={ctx} /> : <CrossFade pictures={pictures} index={cycle.index} pad="p-4" />}
       {cycle.hovering && pictures.length > 1 && (
         <span className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1" aria-hidden>
           {pictures.map((p, i) => (
@@ -740,7 +693,7 @@ function PlaylistCard({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
     </div>
   );
 
-  const strip = !album && (
+  const strip = (
     <div className="flex items-center gap-1.5 px-3 pt-2.5" aria-hidden>
       {pictures.slice(0, 6).map((p, i) => (
         <div
@@ -764,13 +717,11 @@ function PlaylistCard({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
       onClick={openOnClick(open)}
       onMouseEnter={cycle.onEnter}
       onMouseLeave={cycle.onLeave}
-      className={album
-        ? 'group relative cursor-pointer'
-        : `group relative cursor-pointer bg-white rounded-xl ${HAIRLINE} overflow-hidden transition-shadow duration-200 hover:shadow-[0_6px_24px_rgba(15,23,42,0.08)] ${on ? 'ring-2 ring-slate-900' : ''}`}
+      className={`group relative cursor-pointer bg-white rounded-xl ${HAIRLINE} overflow-hidden transition-shadow duration-200 hover:shadow-[0_6px_24px_rgba(15,23,42,0.08)] ${on ? 'ring-2 ring-slate-900' : ''}`}
     >
       {stage}
       {strip}
-      <div className={album ? 'pt-3 px-0.5' : 'px-3 pt-2.5 pb-3.5'}>
+      <div className="px-3 pt-2.5 pb-3.5">
         <div className="flex items-start gap-2">
           <button
             type="button"
@@ -794,78 +745,10 @@ function PlaylistCard({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Look C (rows)
-// ─────────────────────────────────────────────────────────────────────
-
-function PlaylistRow({ entry, ctx }: { entry: GalleryEntry; ctx: CardCtx }) {
-  const t = useTranslations('playlistsPage.v2');
-  const { row, orientation, attention } = entry;
-  const { raw, pictures, total } = usePictures(entry, ctx);
-  const cycle = useHoverCycle(pictures.length);
-  const menu = useCardMenu(row, ctx);
-  const meta = useMetaLine(entry, total);
-  const rel = useRelative();
-  const open = () => ctx.onOpen(row.id);
-  const on = ctx.selected.has(row.id);
-
-  return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
-    <li
-      data-testid="playlist-card-v2"
-      data-state={row.scheduleState}
-      data-orientation={orientation}
-      onClick={openOnClick(open)}
-      onMouseEnter={cycle.onEnter}
-      onMouseLeave={cycle.onLeave}
-      className={`group relative flex items-center gap-3 sm:gap-4 pl-1 sm:pl-2 pr-2 sm:pr-3 py-3 cursor-pointer transition-colors ${on ? 'bg-slate-50' : 'hover:bg-slate-50/70'}`}
-    >
-      <SelectCheck id={row.id} name={row.name} ctx={ctx} className="shrink-0" />
-      <div className={`relative shrink-0 w-[112px] sm:w-[152px] rounded-lg overflow-hidden ${STAGE} ring-1 ring-black/[0.05]`} style={{ aspectRatio: '16 / 10' }}>
-        {pictures.length === 0 ? <FallbackThumb raw={raw} ctx={ctx} /> : <CrossFade pictures={pictures} index={cycle.index} pad="p-2" />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <button
-          type="button"
-          data-card-open
-          onClick={(e) => { e.stopPropagation(); open(); }}
-          className="block max-w-full text-left text-[14.5px] font-semibold tracking-[-0.005em] text-slate-900 truncate focus:outline-none focus-visible:underline"
-          title={row.name}
-        >
-          {row.name}
-        </button>
-        <div className="mt-0.5 space-y-0.5">
-          <WhereLine entry={entry} compact={ctx.isPhone} />
-          {attention ? <AttentionLine entry={entry} ctx={ctx} /> : <p className="min-[1440px]:hidden text-[12px] text-slate-400 truncate">{meta}</p>}
-        </div>
-      </div>
-      {/* The rest of its items, small — desktop only. */}
-      <div className="hidden min-[1600px]:flex items-center gap-1.5 shrink-0 w-[236px]" aria-hidden>
-        {pictures.slice(1, 5).map((p, i) => (
-          <div key={p.key} className={`relative h-9 w-[52px] rounded-md ${STAGE} transition-shadow duration-500 ${i + 1 === cycle.index ? 'ring-1 ring-slate-500' : 'ring-1 ring-black/[0.05]'}`}>
-            <div className="absolute top-0 left-0 w-full h-full p-[3px]"><div className="relative w-full h-full"><Whole pic={p} size="sm" /></div></div>
-          </div>
-        ))}
-        {total > 5 && <span className="text-[11px] tabular-nums text-slate-400">{t('more', { count: total - 5 })}</span>}
-      </div>
-      <p className="hidden md:flex items-center gap-1.5 shrink-0 w-28 text-[12.5px] text-slate-500">
-        <StatusMark entry={entry} />{statusWord(entry, t)}
-      </p>
-      <p className="hidden xl:block shrink-0 w-32 text-[12.5px] text-slate-400 tabular-nums truncate">
-        {row.kind === 'template' ? t('template') : t('itemsDuration', { count: row.itemCount || total, duration: formatDuration(row.durationMs) })}
-      </p>
-      <p className="hidden min-[1440px]:block shrink-0 w-24 text-[12.5px] text-slate-400 truncate" title={row.updatedAt}>{rel(row.updatedAt)}</p>
-      <div className={`shrink-0 ${ctx.isPhone ? '' : 'opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity'}`}>
-        <OverflowMenu items={menu} ariaLabel={t('moreFor', { name: row.name })} testId="card-more" />
-      </div>
-    </li>
-  );
-}
-
 function SkeletonCard() {
   return (
     <li className="space-y-3" aria-hidden>
-      <div className={`rounded-xl ${STAGE} animate-pulse`} style={{ aspectRatio: '4 / 3' }} />
+      <div className={`rounded-xl ${STAGE} animate-pulse`} style={{ aspectRatio: '16 / 10' }} />
       <div className="space-y-2 px-0.5">
         <div className="h-3.5 w-2/3 rounded bg-slate-100" />
         <div className="h-3 w-1/2 rounded bg-slate-100" />

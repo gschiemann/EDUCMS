@@ -26,7 +26,7 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '@/store/ui-store';
-import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
+import { PlaylistGalleryV2 } from '@/components/playlists/v2/PlaylistGalleryV2';
 import { PlaylistWorkspace, type WorkspaceTab } from '@/components/playlists/v1/PlaylistWorkspace';
 import {
   buildPlaylistRow, deriveDeliveryFromScreens, pauseEverywhereCopy, resolveTargetScreenIds,
@@ -281,10 +281,13 @@ export default function PlaylistsMockHarness() {
 
       <div style={{ padding: '20px 26px 60px', maxWidth: 1426, margin: '0 auto' }}>
         {view === 'library' ? (
-          <PlaylistLibraryV1
+          <PlaylistGalleryV2
             rows={rows}
             rawById={new Map(PLAYLISTS.map((p) => [p.id, p]))}
             templateLookup={{ [TEMPLATE.id]: { zones: [], screenWidth: 1920, screenHeight: 1080, bgColor: '#1b1140' } }}
+            schedules={SCHEDULES}
+            screens={SCREENS}
+            groups={GROUPS}
             loading={false}
             error={false}
             onRetry={() => {}}
@@ -294,15 +297,9 @@ export default function PlaylistsMockHarness() {
             onDuplicate={() => {}}
             onExport={() => {}}
             onRemove={() => {}}
+            onRemoveMany={() => {}}
             onPublishToLocations={() => {}}
             isViewer={false}
-            isContributor={false}
-            isHQ
-            creatorOptions={['garlan@planetfitness.example']}
-            screenOptions={SCREENS.map((s) => ({ id: s.id, name: s.name ?? s.id }))}
-            groupOptions={GROUPS.map((g) => ({ id: g.id, name: g.name ?? g.id }))}
-            groupOfScreen={new Map(SCREENS.map((s) => [s.id, s.screenGroupId ?? null]))}
-            deliveryDerived
           />
         ) : (
           <PlaylistWorkspace

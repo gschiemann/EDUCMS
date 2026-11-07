@@ -1,5 +1,5 @@
 /**
- * Playlists gallery v2 — design preview (`?design=v2&look=a|b|c`).
+ * Playlists gallery — the Playlists page (filmstrip look, owner-approved 2026-11-07).
  *
  * Owner on the first v2 (2026-11-02): "I want to see it with content previews
  * on it … no crazy colors". This spec drives the real route with every API
@@ -7,14 +7,14 @@
  * the repo's own template posters (`public/templates/_thumbs/**`) and sample
  * media (`public/templates/{school/menu-assets,hs/news-assets}`), mixed
  * portrait and landscape, so the previews look like a real library. With
- * PLV2_SHOTS set it writes the screenshots for each look.
+ * PLV2_SHOTS set it writes the screenshots.
  *
  *   E2E_BASE=http://localhost:3217 PLV2_SHOTS=<dir> \
  *     pnpm --filter web exec playwright test -c playwright.sandbox.config.ts \
  *     tests/e2e/playlists-gallery-v2.spec.ts --project=webkit
  *
- * The assertions hold without PLV2_SHOTS: no param → the v1 page; with it →
- * the gallery in each look, real pictures loaded, the filter menu, the
+ * The assertions hold without PLV2_SHOTS: the gallery, real pictures
+ * loaded, the filter menu, the
  * "playing where" popover (offline screen named), bulk select with Delete.
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
@@ -183,23 +183,16 @@ async function shot(page: Page, name: string, scrollPx = 0) {
 
 const DESKTOP = { width: 1325, height: 758 };
 const PHONE = { width: 390, height: 844 };
-const LOOKS = [['a', 'album'], ['b', 'filmstrip'], ['c', 'rows']] as const;
 
-test.describe('playlists gallery v2 (design preview)', () => {
+test.describe('playlists gallery (filmstrip)', () => {
   test.setTimeout(180_000);
 
-  test('without the param the page is v1, unchanged', async ({ page }) => {
-    await openPlaylists(page, '', DESKTOP);
-    await page.getByTestId('playlist-row').first().waitFor({ state: 'visible', timeout: 120_000 });
-    await expect(page.getByTestId('playlists-v2')).toHaveCount(0);
-  });
-
-  for (const [look, name] of LOOKS) {
-    test(`look ${look} (${name}) — desktop`, async ({ page }) => {
-      await openPlaylists(page, `?design=v2&look=${look}`, DESKTOP);
+  {
+    test('desktop', async ({ page }) => {
+      await openPlaylists(page, '', DESKTOP);
       const cards = page.getByTestId('playlist-card-v2');
       await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
-      await expect(page.getByTestId('playlists-v2')).toHaveAttribute('data-look', look);
+      await expect(page.getByTestId('playlists-v2')).toHaveCount(1);
       await expect(cards).toHaveCount(15);
       await expect(page.getByRole('heading', { name: /Playing now/ })).toBeVisible();
       await expect(page.locator('[data-testid="playlist-card-v2"][data-orientation="portrait"]').first()).toBeAttached();
@@ -207,16 +200,16 @@ test.describe('playlists gallery v2 (design preview)', () => {
       await expect(cards.filter({ hasText: 'Game Day Promo' }).getByTestId('where-offline')).toContainText('Gym Entrance');
       await page.mouse.move(5, 5);
       await picturesLoaded(page);
-      await shot(page, `look-${look}-${name}-desktop.png`);
+      await shot(page, 'final-desktop.png');
       await page.mouse.move(700, 400);
-      await shot(page, `look-${look}-${name}-desktop-scrolled.png`, 640);
+      await shot(page, 'final-desktop-scrolled.png', 640);
 
       // Hover: the card cross-fades to its next item after ~3 s.
       const lobby = cards.filter({ hasText: 'Main Lobby Welcome' });
       await lobby.hover();
       await page.waitForTimeout(3600);
       await expect(lobby.getByTestId('card-crossfade')).toBeVisible();
-      await shot(page, `look-${look}-${name}-desktop-hover.png`);
+      await shot(page, 'final-desktop-hover.png');
 
       // "Playing where" popover.
       await lobby.getByTestId('where-button').click();
@@ -230,27 +223,27 @@ test.describe('playlists gallery v2 (design preview)', () => {
       await expect(page.getByTestId('bulk-count')).toContainText('2');
       await expect(page.getByTestId('bulk-delete')).toBeVisible();
       await page.mouse.move(5, 5);
-      await shot(page, `look-${look}-${name}-desktop-select.png`);
+      await shot(page, 'final-desktop-select.png');
     });
 
-    test(`look ${look} (${name}) — iPhone`, async ({ page }) => {
-      await openPlaylists(page, `?design=v2&look=${look}`, PHONE);
+    test('iPhone', async ({ page }) => {
+      await openPlaylists(page, '', PHONE);
       const cards = page.getByTestId('playlist-card-v2');
       await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(0);
       await picturesLoaded(page);
-      await shot(page, `look-${look}-${name}-iphone.png`);
-      await shot(page, `look-${look}-${name}-iphone-scrolled.png`, 1400);
+      await shot(page, 'final-iphone.png');
+      await shot(page, 'final-iphone-scrolled.png', 1400);
       await cards.first().getByTestId('card-select').click();
       await expect(page.locator('[data-testid="playlists-selection"][data-placement="dock"]')).toBeVisible();
       await expect(page.getByTestId('bulk-delete')).toBeVisible();
-      await shot(page, `look-${look}-${name}-iphone-select.png`);
+      await shot(page, 'final-iphone-select.png');
     });
   }
 
   test('filter menu narrows by orientation', async ({ page }) => {
-    await openPlaylists(page, '?design=v2', DESKTOP);
+    await openPlaylists(page, '', DESKTOP);
     const cards = page.getByTestId('playlist-card-v2');
     await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
     await page.getByTestId('playlists-filter-menu').click();
