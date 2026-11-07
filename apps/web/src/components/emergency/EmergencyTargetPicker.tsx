@@ -147,10 +147,14 @@ export function EmergencyTargetPicker({
     const rowTone = (on: boolean) => (on ? SELECTED_TILE_CLASS : 'border-slate-200 hover:bg-slate-50');
     const heading = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2';
     return (
+      // Backdrop click is a pointer shortcut; Escape and the Cancel button are the keyboard paths.
+      // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div
         className="fixed top-0 right-0 bottom-0 left-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 sm:p-4"
         onClick={close}
       >
+        {/* Stops backdrop-close; the dialog itself is not an action target. */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events */}
         <div
           ref={dialogRef}
           role="dialog"
@@ -269,6 +273,8 @@ export function EmergencyTargetPicker({
                       .join(' · ');
                     return (
                       <li key={s.id}>
+                        {/* Row click is a convenience; the inner checkbox label is the keyboard path. */}
+                        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                         <div
                           className={`${rowBase} cursor-pointer ${rowTone(on)}`}
                           onClick={(e) => {

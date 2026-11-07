@@ -496,16 +496,12 @@ object NativeBridgeChannel {
      * matters. Call it from the main-frame document callbacks; the reply
      * callback is the proof of delivery that arms the gate.
      */
-    fun injectBridgeNonceIntoTopFrame(webView: WebView, nonce: String, onDelivered: () -> Unit) {
-        if (!NONCE_PATTERN.matches(nonce)) {
-            PlayerLogger.e(TAG, "refusing to inject a malformed bridge nonce")
-            return
-        }
-        val script = "(function(){try{window.${BridgeNonce.JS_GLOBAL}='$nonce';return '1';}catch(e){return '0';}})();"
+    fun injectBridgeNonceIntoTopFrame(webView: WebView, nonce: String, acknowledgement: String, onResult: (String?) -> Unit) {
+        val origin = HostAllowlist.playerOrigin() ?: return
+        if (!BridgeNonceDelivery.trustedUrl(webView.url, origin)) return
+        val script = BridgeNonceDelivery.script(nonce, origin, acknowledgement) ?: return
         try {
-            webView.evaluateJavascript(script) { result ->
-                if (result != null && result.contains("1")) onDelivered()
-            }
+            webView.evaluateJavascript(script) { result -> onResult(result) }
         } catch (t: Throwable) {
             PlayerLogger.w(TAG, "bridge nonce evaluateJavascript failed: ${t.message}")
         }

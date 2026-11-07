@@ -1,9 +1,23 @@
+import { hasNoLiveDataSource, NO_LIVE_SOURCE_NOTICE } from "./widget-discovery";
 /** Data behavior is product metadata, not a decorative claim. Keep it shared
  * by discovery, the native editor and audit exports. Saved variant IDs stay stable. */
 export interface WidgetDataCapability {
   mode: "automatic" | "feed" | "manual" | "connection";
   label: string;
   detail: string;
+}
+/** Shared mode inference keeps existing authored boards manual. */
+export function isAutomaticPublicData(config: Record<string, any>): boolean {
+ if(config.variant==='airport-conditions')return true;
+ if(config.dataMode==='manual')return false;
+ const automatic=config.dataMode==='automatic';
+ switch(config.variant){
+  case 'air-quality':return automatic||config.aqi==null;
+  case 'transit-departures':return automatic||(!config.lines?.length&&!config.station&&!config.agency);
+  case 'parking-availability':return automatic||(!config.lots?.length&&!config.facility);
+  case 'traffic-cam':return automatic||(!config.cams?.length&&!config.city);
+  default:return false;
+ }
 }
 const MANUAL: Record<string, string> = {
   "sports-scoreboard":
@@ -34,6 +48,11 @@ export function widgetDataCapability(
   variant?: string,
   config?: Record<string, any>,
 ): WidgetDataCapability | undefined {
+  if (variant === 'traffic-cam' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.cams?.length && !config?.city))) return {mode:'automatic',label:'Automatic road reports',detail:'Free California Highway Patrol incidents, plus public-domain DOT work zones, closures and detours (WZDx) in Utah, Minnesota, Maryland, Missouri, Wisconsin, Hawaii, Washington, New Jersey, Kentucky, Kansas, Delaware, Louisiana, Indiana, Mississippi, North Dakota, Austin and Maricopa County. Other places show that no free feed covers them. No cameras or travel-time estimates.'};
+  if (variant === 'air-quality' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && config?.aqi == null))) return {mode:'automatic',label:'Automatic hourly air quality',detail:'Free EPA AirNow preliminary observations for a U.S. reporting area. Choose a city or ZIP. Pollutant values are AQI, not concentrations; source category colors are preserved.'};
+  if (variant === 'parking-availability' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.lots?.length && !config?.facility))) return {mode:'automatic',label:'Automatic parking reports',detail:'Free LADOT / LA ExpressPark street-meter states near a Los Angeles location. Reports older than 30 minutes are unknown. This is not a private-garage sensor connection.'};
+  if (variant === 'airport-conditions') return {mode:'automatic',label:'Automatic airport conditions',detail:'Free FAA airport notices and delays. This is airport-wide information, not individual flight status; check the airline for your flight.'};
+  if (variant === 'transit-departures' && (config?.dataMode === 'automatic' || (config?.dataMode !== 'manual' && !config?.lines?.length && !config?.station && !config?.agency))) return {mode:'automatic',label:'Automatic transit predictions',detail:'Free real-time predictions from agencies that publish open feeds: MBTA (Boston), BART (Bay Area) and RTD (Denver). Choose an agency and a station. Unavailable predictions never become an invented arrival.'};
   if (
     variant === "fx-rates" &&
     (config?.dataMode === "automatic" ||
@@ -44,6 +63,13 @@ export function widgetDataCapability(
       label: "Automatic daily rates",
       detail:
         "Calculated from ECB reference rates, updated each business day. The source data is available free from the ECB. Entered rates remain available in Manual mode.",
+    };
+  if (variant && hasNoLiveDataSource(variant))
+    return {
+      mode: "manual",
+      label: NO_LIVE_SOURCE_NOTICE,
+      detail:
+        "This widget is no longer offered for new screens. Boards that already use it keep showing what they hold; nothing here updates by itself.",
     };
   if (variant && MANUAL[variant])
     return {

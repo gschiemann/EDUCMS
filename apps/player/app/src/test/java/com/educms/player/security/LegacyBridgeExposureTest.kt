@@ -173,7 +173,7 @@ class LegacyBridgeExposureTest {
      * of seconds on a slow uplink — with its own control plane shut.
      */
     @Test
-    fun `the top-frame nonce delivery retries until it arms`() {
+    fun `the top-frame nonce delivery uses bounded document checkpoints`() {
         val src = mainActivity
         assertTrue(
             "the delivery pump is gone — a dropped injection now costs the main frame its bridge",
@@ -185,12 +185,14 @@ class LegacyBridgeExposureTest {
         )
         assertTrue(
             "the retry is unbounded — a forever-timer on a panel that must not jank",
-            src.contains("BRIDGE_NONCE_RETRY_MAX") && src.contains("bridgeNonceRetriesLeft -= 1"),
+            src.contains("BridgeNonceDelivery(BRIDGE_NONCE_RETRY_MAX + 1)") && src.contains("bridgeNonceDelivery.next(checkpoint)"),
         )
         assertTrue(
             "the main-frame document callback no longer drives delivery",
-            Regex("""onMainFrameDocument = \{ view, _ ->[^}]*pumpBridgeNonceDelivery\(view\)""").containsMatchIn(src),
+            Regex("""onMainFrameDocument = \{ view, url ->[^}]*pumpBridgeNonceDelivery\(view, url\)""").containsMatchIn(src),
         )
+        assertTrue("each checkpoint must supersede earlier delivery", src.contains("val checkpoint = bridgeNonceDelivery.begin()"))
+        assertFalse("lifetime armed state must never suppress a new document", src.contains("if (n.armed()) return"))
         // Three delivery points across a navigation, not two. onPageCommitVisible
         // is the first moment evaluateJavascript provably targets the NEW document.
         val client = read("src/main/java/com/educms/player/SafePlayerWebViewClient.kt")
