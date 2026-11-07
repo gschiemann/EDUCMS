@@ -1371,7 +1371,56 @@ async function answerPort(event, work) {
  * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
  * temp body can never be counted as staged.
  */
-async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes) {
+async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes, expected) {
+  // Playlist chunks with a known length need only ONE disk copy. Cache.put
+  // publishes atomically after the stream has fulfilled: validate at actual
+  // EOF before closing, so a short body, overrun, read failure or worker death
+  // cannot publish a trusted range key. Never infer EOF from reaching expected.
+  // Emergency and unknown-length staging retain the measured-temp path below.
+  if (tier.name === 'playlist' && Number.isSafeInteger(expected) && expected > 0 &&
+      res.body && typeof res.body.getReader === 'function' && typeof ReadableStream === 'function') {
+    // An older worker may have filled this exact untrusted temp entry then
+    // failed its duplicate write. It is never served; reclaim only our own
+    // generation/offset so that the repair also recovers that prior state.
+    await staging.delete(new Request(`${stagePrefixFor(url, tier)}tmp-${start}`));
+    const reader = res.body.getReader();
+    let seen = 0;
+    const cancel = (reason) => {
+      try { Promise.resolve(reader.cancel(reason)).catch(() => {}); } catch (_e) { /* already closed */ }
+    };
+    const validated = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (seen !== expected) throw new Error('truncated');
+            controller.close();
+            return;
+          }
+          const length = value ? value.byteLength : 0;
+          if (length > expected - seen) throw new Error('overlong-chunk');
+          seen += length;
+          if (onBytes) { try { onBytes(seen); } catch (_e) { /* progress only */ } }
+          controller.enqueue(value);
+        } catch (e) {
+          controller.error(e);
+          cancel(e);
+        }
+      },
+      cancel,
+    });
+    try {
+      await staging.put(stageChunkKey(tier, url, start, expected),
+        new Response(validated, { status: 200, headers: {
+          'content-type': contentType, 'content-length': String(expected),
+        } }));
+    } catch (e) {
+      cancel(e);
+      // A failed atomic put leaves any prior committed entry intact.
+      throw e;
+    }
+    return expected;
+  }
   const tmpKey = new Request(`${stagePrefixFor(url, tier)}tmp-${start}`);
   let body = res.body;
   if (onBytes && body && typeof body.getReader === 'function' && typeof ReadableStream === 'function') {
@@ -1408,6 +1457,12 @@ async function stageChunk(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
+  // Admission covers resume and metadata decisions too: a writer must not
+  // race another caller's view of this same generation/offset.
+  const lockKey = `${stagePrefixFor(url, tier)}@${offset}`;
+  if (STAGE_IN_FLIGHT.has(lockKey)) return { ok: false, reason: 'busy', offset };
+  STAGE_IN_FLIGHT.add(lockKey);
+  try {
   const want = Math.max(CHUNK_BYTES_MIN, Math.min(CHUNK_BYTES_MAX,
     Number.isSafeInteger(msg.chunkBytes) && msg.chunkBytes > 0 ? msg.chunkBytes : CHUNK_BYTES_DEFAULT));
   const knownSize = Number.isSafeInteger(msg.size) && msg.size > 0 ? msg.size : null;
@@ -1424,6 +1479,13 @@ async function stageChunk(msg, tier, report) {
   const have = await listStagedChunks(staging, url, tier);
   const existing = have.filter((c) => c.start === offset).sort((a, b) => b.length - a.length)[0];
   if (existing) {
+    // A worker may die after atomic chunk publication but before its info
+    // row. Recover only a manifest-known playlist total; no bytes are trusted
+    // beyond that total, and whole-file verification still gates promotion.
+    if (tier.name === 'playlist' && (!info || !info.total) && knownSize !== null &&
+        existing.start + existing.length <= knownSize) {
+      await writeStageInfo(staging, url, { ...(info || {}), total: knownSize }, tier);
+    }
     const next = offset + existing.length;
     return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total, staged: true };
   }
@@ -1431,9 +1493,6 @@ async function stageChunk(msg, tier, report) {
     return { ok: true, offset, nextOffset: offset, total, complete: true, staged: true };
   }
 
-  const lockKey = `${stableKey(url)}@${offset}`;
-  if (STAGE_IN_FLIGHT.has(lockKey)) return { ok: false, reason: 'busy', offset };
-  STAGE_IN_FLIGHT.add(lockKey);
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = setTimeout(() => { try { if (controller) controller.abort(); } catch (_e) { /* noop */ } }, CHUNK_FETCH_TIMEOUT_MS);
   try {
@@ -1503,9 +1562,12 @@ async function stageChunk(msg, tier, report) {
     let stored;
     try {
       stored = await storeStagedChunk(staging, url, offset, res, contentType, tier,
-        report ? (n) => report('chunk', offset + n, total) : null);
+        report ? (n) => report('chunk', offset + n, total) : null,
+        total !== null ? expected : null);
     } catch (e) {
-      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
+      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout'
+        : e && e.name === 'QuotaExceededError' ? 'storage-quota'
+        : 'truncated', offset };
     }
     if (expected !== null && stored !== expected) {
       if (res.status === 206 && total === null && stored < expected) {
@@ -1531,6 +1593,8 @@ async function stageChunk(msg, tier, report) {
     return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total };
   } finally {
     clearTimeout(timer);
+  }
+  } finally {
     STAGE_IN_FLIGHT.delete(lockKey);
   }
 }

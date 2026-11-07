@@ -24,7 +24,7 @@ import {
 
 // Snapshot the real registry BEFORE any probe registration below mutates it.
 const realCollisions = listVariantIdCollisions();
-const realVariants = listVariants();
+const realVariants = listVariants({ includeHidden: true });
 
 describe('variant registry — duplicate ids', () => {
   it('has exactly the collisions the CI baseline records, and no others', () => {
@@ -92,4 +92,13 @@ describe('variant registry — renderers', () => {
   it('registered a non-trivial catalog (guards against an empty-registry false green)', () => {
     expect(realVariants.length).toBeGreaterThan(600);
   });
+});
+
+describe('unconnected market and flight discovery',()=>{
+ it.each(['stock-ticker','crypto-ticker','departures-board','flight-status-hero'])('hides %s from new discovery but preserves the saved renderer',id=>{
+  expect(listVariants().some(v=>v.id===id)).toBe(false);
+  expect(listVariants({includeHidden:true}).some(v=>v.id===id)).toBe(true);
+  expect(typeof getVariant(id)?.render).toBe('function');
+ });
+ it('offers the separate FAA airport-wide conditions board',()=>expect(getVariant('airport-conditions')).toBeTruthy());
 });

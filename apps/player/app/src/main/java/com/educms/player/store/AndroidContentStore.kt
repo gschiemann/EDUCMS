@@ -85,6 +85,9 @@ internal object AndroidContentStore {
             storageAllowed = { SharedVideoSourcePolicy.allowed(it) },
             classAllows = classAllows,
             enrolledBy = enrolledBy ?: ::nativeFirstEnrolled,
+            nativeEnrolment = { face, screen, enabled ->
+                com.educms.player.media.FaceVideoBox.observeStoreEnrolment(app, face, screen, enabled)
+            },
             log = { PlayerLogger.i(TAG, it) },
         )
     }
