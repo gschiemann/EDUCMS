@@ -293,6 +293,25 @@ function statusBadge(a: any): { label: string; className: string } | null {
 export default function AssetsPage() {
   const t = useTranslations();
   const isMobile = useIsMobile();
+  // Sticky toolbar: shadow only once it is actually stuck (desktop).
+  const [toolbarEl, setToolbarEl] = useState<HTMLDivElement | null>(null);
+  const [toolbarStuck, setToolbarStuck] = useState(false);
+  useEffect(() => {
+    if (isMobile) { setToolbarStuck(false); return; }
+    const scroller = document.getElementById('main-content');
+    const el = toolbarEl;
+    if (!scroller || !el) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const stuck = scroller.scrollTop > 0 && el.getBoundingClientRect().top <= scroller.getBoundingClientRect().top + (parseFloat(getComputedStyle(scroller).paddingTop) || 0) + 0.5;
+      setToolbarStuck((prev) => (prev === stuck ? prev : stuck));
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => { scroller.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [isMobile, toolbarEl]);
   // The two outcomes the browser itself reports are translated here; a
   // refusal from the server keeps the server's own sentence.
   const deleteFailureText = (item: AssetDeleteResult) =>
@@ -1573,7 +1592,17 @@ export default function AssetsPage() {
           plain Sort dropdown. On desktop the SAME row becomes the selection
           bar while files are selected (the page never grows); on a phone the
           selection lives in the bottom bar (`AssetSelectionDock`). */}
-        <div className="space-y-3">
+        <div
+          ref={setToolbarEl}
+          data-testid="library-toolbar-sticky"
+          data-stuck={toolbarStuck ? 'true' : undefined}
+          // Desktop: sticks to the top of <main> (the real scroll container,
+          // DashboardLayout `overflow-y-auto`; the app header sits outside it,
+          // so top-0; it sticks inside main's md:p-8 padding, so while stuck a ::before covers the 2rem gutter above). Solid bg = main's slate-50, no blur. z-30 is above the
+          // cards (their menu is z-20) and below menus/dialogs (z-50+). On a
+          // phone it scrolls away: the ActionDock already holds the actions.
+          className={`space-y-3 md:sticky md:top-0 md:z-30 md:bg-slate-50 transition-shadow ${toolbarStuck ? 'md:shadow-[0_6px_12px_-8px_rgba(15,23,42,0.18)] md:before:content-[\'\'] md:before:absolute md:before:left-0 md:before:right-0 md:before:-top-8 md:before:h-8 md:before:bg-slate-50' : ''}`}
+        >
           {isMobile && <div className="flex gap-2 items-center">
             {renderSearch(true)}
             <select
