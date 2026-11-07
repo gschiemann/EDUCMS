@@ -225,6 +225,13 @@ class FacePlayerHost(
                 "(Android ${android.os.Build.VERSION.RELEASE})"
         }
 
+        // Legacy-engine compatibility layer, as on the primary: website
+        // zones only — the player's own origin is skipped.
+        com.educms.player.webcompat.LegacyEngineCompat.install(
+            activity.applicationContext, wv, "face-$faceIndex",
+            listOfNotNull(com.educms.player.security.HostAllowlist.playerOrigin()),
+        )
+
         val faceNonce = BridgeNonce()
         nonce = faceNonce
         val faceBridge = buildBridge(faceNonce, sharedMedia)

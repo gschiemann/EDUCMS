@@ -1,5 +1,6 @@
 package com.educms.player.store
 
+import com.educms.player.media.FaceVideoDescriptor
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -58,6 +59,9 @@ internal class ContentStore(
     private val quarantine = HashMap<String, Long>()
     private val rejected = HashMap<String, Long>()
     private val faces = TreeMap<Int, FaceSource>()
+    // Persisted selections do not contain the native-first switch. Obtain a
+    // fresh authenticated body once per process before reusing their ETag.
+    private val freshManifestFaces = HashSet<Int>()
     private val intents = HashMap<Int, List<String>>()
     private val emergency = HashMap<String, EmergencyState>()
     private val emergencyDirty = HashSet<String>()
@@ -356,13 +360,16 @@ internal class ContentStore(
         val base = env.credentials.apiBase()?.takeIf { env.apiHostAllowed(it) }
         val credentialed = ArrayList<Int>()
         val resolved = HashSet<Int>()
+        val enrolments = ArrayList<Triple<Int, String, Boolean>>()
         for (face in env.credentials.faces()) {
             val token = env.credentials.token(face) ?: continue
             val screen = env.screenIdOf(token) ?: continue
             credentialed += face
             if (base == null) continue
             val prev = synchronized(lock) { faces[face] }
-            val etag = prev?.takeIf { it.screenId.equals(screen, ignoreCase = true) }?.etag
+            val etag = prev?.takeIf {
+                it.screenId.equals(screen, ignoreCase = true) && synchronized(lock) { face in freshManifestFaces }
+            }?.etag
             val fetched = try {
                 fetchManifest(base, screen, token, etag)
             } catch (e: Exception) {
@@ -386,12 +393,26 @@ internal class ContentStore(
                         }
                         when (read) {
                             is StoreSourceParser.ManifestRead.Content -> {
+                                freshManifestFaces += face
                                 if (prev != read.source.copy(fetchedAt = prev?.fetchedAt ?: 0L)) generation++
                                 faces[face] = read.source
                                 alertMedia.remove(read.source.tenant)
                                 resolved += face
+                                // The store already read this face's authenticated source.
+                                // Teach the session its explicit enrolment without requiring
+                                // a previous browser-backed native session to succeed first.
+                                val descriptor = fetched.json.optJSONObject("nativeVideo")
+                                val enabled = FaceVideoDescriptor.nativeFirstOf(descriptor)
+                                if (descriptor?.opt("store") == true && enabled != null &&
+                                    descriptor.optInt("faceIndex", -1) == face &&
+                                    descriptor.optString("screenId").equals(screen, ignoreCase = true) &&
+                                    descriptor.optString("tenantId").equals(read.source.tenant, ignoreCase = true)) {
+                                    enrolments += Triple(face, screen, enabled)
+                                }
+                                Unit
                             }
                             is StoreSourceParser.ManifestRead.Alert -> {
+                                freshManifestFaces += face
                                 // An alert is live: content stays as it was; the alert's media is pinned (raise-only).
                                 if (prev == null || prev.tenant != read.tenant) {
                                     faces[face] = FaceSource(face, screen, read.tenant, null, emptyList(), null, false, now)
@@ -421,6 +442,14 @@ internal class ContentStore(
             manifestRequested = false
             dirty = true
             if (credentialed.isNotEmpty() && resolved.containsAll(credentialed)) purgeUnbound()
+        }
+        // Native session and store monitors must never nest. Recheck the
+        // current credential after committing the complete source read.
+        for ((face, screen, enabled) in enrolments) {
+            if (env.screenIdOf(env.credentials.token(face))?.equals(screen, ignoreCase = true) == true) {
+                runCatching { env.nativeEnrolment(face, screen, enabled) }
+                    .onFailure { env.log("[content-store] enrolment notification failed") }
+            }
         }
     }
 

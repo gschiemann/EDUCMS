@@ -227,9 +227,9 @@ class MainActivity : ComponentActivity() {
      * [BRIDGE_NONCE_RETRY_MAX] × [BRIDGE_NONCE_RETRY_MS] ≈ 6 s of trying,
      * re-armed from scratch by the next main-frame document callback.
      */
-    private var bridgeNonceRetriesLeft: Int = 0
+    private val bridgeNonceDelivery = com.educms.player.security.BridgeNonceDelivery(BRIDGE_NONCE_RETRY_MAX + 1)
 
-    /** Main-thread runnable for [bridgeNonceRetriesLeft]. One at a time. */
+    /** Main-thread runnable for the current delivery checkpoint. One at a time. */
     private var bridgeNonceRetry: Runnable? = null
 
     /**
@@ -2739,6 +2739,8 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
+        bridgeNonceDelivery.invalidate()
+        bridgeNonceNeedsEval = false
         val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv,
             foreground = { isInForeground }, window = { window }, operatorUiClear = ::nativeVideoUiClear)
         sharedVideoHost = sharedMedia
@@ -2767,6 +2769,15 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
+
+        // Legacy-engine compatibility layer: on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR, missing JS builtins are
+        // defined at document start for website zones in iframes. The
+        // player's own origin is skipped, so this bundle (and its emergency
+        // path) runs on the unmodified engine. No bridge, no listener.
+        com.educms.player.webcompat.LegacyEngineCompat.install(
+            applicationContext, wv, "player", listOfNotNull(HostAllowlist.playerOrigin()),
+        )
 
         // ── AND-002 / SEC-002 — ONE handler set, ONE transport ──────
         // Built once and handed to the origin-scoped `NativeBridgeChannel`
@@ -3424,6 +3435,7 @@ class MainActivity : ComponentActivity() {
                 if (failed === webView) {
                     bridgeNonceRetry?.let { failed.removeCallbacks(it) }
                     bridgeNonceRetry = null
+                    bridgeNonceDelivery.invalidate()
                     // P2-6 — the remote's focus followed the old view.
                     val hadFocus = runCatching { failed.hasFocus() }.getOrDefault(false)
                     val (fresh, delayMs) = primaryRendererRecovery.replace(failed, didCrash)
@@ -3472,8 +3484,8 @@ class MainActivity : ComponentActivity() {
             // Since the re-audit made the gate DEFAULT-DENY, a dropped
             // injection costs the MAIN frame its control plane rather than
             // opening the surface to everyone, so this is a bounded retry
-            // rather than a single shot. See [bridgeNonceRetriesLeft].
-            onMainFrameDocument = { view, _ -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view) },
+            // rather than a single shot. See [bridgeNonceDelivery].
+            onMainFrameDocument = { view, url -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view, url) },
             onMainFrameStarted = { com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0) },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
@@ -3604,41 +3616,40 @@ class MainActivity : ComponentActivity() {
      * it is already in every player document before any frame script runs.
      *
      * Idempotent and self-cancelling: `arm()` flips a latch, so a duplicate
-     * delivery is free, and the pump stops the moment [BridgeNonce.armed] is
-     * true — or when the budget runs out, which leaves the screen in the
+     * delivery is free, and the pump stops after this checkpoint acknowledges
+     * delivery — or when the budget runs out, which leaves the screen in the
      * honest degraded state (content + emergency intact, control plane shut)
      * rather than spinning a timer forever on a panel whose WebView will
      * never run our JS.
      */
-    private fun pumpBridgeNonceDelivery(view: WebView) {
+    private fun pumpBridgeNonceDelivery(view: WebView, url: String) {
         if (view !== webView) return
         val n = bridgeNonce ?: return
         if (!bridgeNonceNeedsEval) return
         bridgeNonceRetry?.let { view.removeCallbacks(it) }
         bridgeNonceRetry = null
-        bridgeNonceRetriesLeft = BRIDGE_NONCE_RETRY_MAX
-        deliverBridgeNonceOnce(view, n)
+        val checkpoint = bridgeNonceDelivery.begin()
+        if (!com.educms.player.security.BridgeNonceDelivery.trustedUrl(url, HostAllowlist.playerOrigin())) return
+        deliverBridgeNonceOnce(view, n, checkpoint)
     }
 
     /** One attempt, plus the re-arm. See [pumpBridgeNonceDelivery]. */
-    private fun deliverBridgeNonceOnce(view: WebView, n: com.educms.player.security.BridgeNonce) {
-        if (n.armed()) return
-        NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value()) { n.arm() }
-        if (n.armed() || bridgeNonceRetriesLeft <= 0) {
-            if (!n.armed()) {
-                PlayerLogger.w(
-                    "Player",
-                    "SEC-002 — bridge nonce still UNDELIVERED after $BRIDGE_NONCE_RETRY_MAX attempts. " +
-                        "This screen keeps playing content and still takes an emergency hold; its " +
-                        "control-plane bridge methods (unpair/setBootstrap/logs/…) stay refused " +
-                        "until a delivery lands. Reported as bridgeNonceArmed=false in deviceInfo.",
-                )
-            }
+    private fun deliverBridgeNonceOnce(view: WebView, n: com.educms.player.security.BridgeNonce, checkpoint: Long) {
+        if (view !== webView || n !== bridgeNonce || isDestroyed || isFinishing) return
+        if (!bridgeNonceDelivery.isCurrent(checkpoint)) return
+        val attempt = bridgeNonceDelivery.next(checkpoint)
+        if (attempt == null) {
             bridgeNonceRetry = null
+            if (!bridgeNonceDelivery.isDelivered(checkpoint)) {
+                PlayerLogger.w("Player", "SEC-002 — current player document delivery budget exhausted; control-plane calls remain nonce-gated")
+            }
             return
         }
-        bridgeNonceRetriesLeft -= 1
-        val again = Runnable { deliverBridgeNonceOnce(view, n) }
+        NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value(), attempt.acknowledgement) { result ->
+            if (view === webView && n === bridgeNonce && !isDestroyed && !isFinishing &&
+                bridgeNonceDelivery.acknowledge(attempt, result)) n.arm()
+        }
+        val again = Runnable { deliverBridgeNonceOnce(view, n, checkpoint) }
         bridgeNonceRetry = again
         view.postDelayed(again, BRIDGE_NONCE_RETRY_MS)
     }
@@ -3704,6 +3715,12 @@ class MainActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
             WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, true)
         }
+        // The ONE document-start script this view gets: the legacy-engine
+        // compatibility layer (only on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR). It defines missing JS
+        // builtins in page context and nothing else — no native surface, so
+        // the boundary above holds (`WebTabsWiringTest`).
+        com.educms.player.webcompat.LegacyEngineCompat.install(applicationContext, wv, "overlay")
         // (A touch inside the site is relayed to the player page from the
         // Activity's dispatchTouchEvent — observed, never consumed — so the
         // Website Tabs idle clock resets. Not a View.OnTouchListener: that
@@ -4742,6 +4759,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        bridgeNonceDelivery.invalidate()
+        bridgeNonceRetry?.let { if (::webView.isInitialized) webView.removeCallbacks(it) }
+        bridgeNonceRetry = null
         if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)
         sharedVideoHost?.detach()
         sharedVideoHost = null
