@@ -29,3 +29,20 @@ The owner requested Astra review, selected one lab screen for testing, then requ
 ## Rollback
 
 The four fixes are separate commits. Revert the affected commit through a PR; retain the previous signed APK for a single-screen rollback. Do not clear device identity, emergency state or protective caches to roll back. A merge deploys web/API code; an APK installation is a separate operation.
+
+## 2026-11-07 — rebased for 1.1.65 and reviewed by a different vendor
+
+Reviewer: Claude Opus 5.5 (Anthropic), Claude Code harness. This is the different-vendor review the section above says was missing. It covers the code that remains in the PR.
+
+- `origin/master` (through #258) merged in cleanly. After the merge, the PR's net diff against master is only the 30 fps ceiling, its tests and this file. The other three repairs are already on master, byte for byte. The bridge-nonce checkpoint delivery came in with the #255 squash (`9a6173780`). The chunk publication, storage estimates and browser-worker tests came in with #253 (`821717022`). The 1.1.64 field build (source `aa444aa7e`) has the same nonce code as master, so a 1.1.65 built from master does not regress it.
+- Bridge contracts are unchanged. No bridge method was added or renamed. `GATED_METHODS`, METHODS, the dispatch arm, NATIVE_VOID/VALUE_METHODS and KNOWN_METHODS are untouched. The emergency hold is not nonce-gated (see `BridgeNonce.GATED_METHODS`).
+- 30 fps ceiling (API): `screenCompatibilityIssues`, `targetFps` and `verifyTranscodeOutput` now apply the same strict `> 30` rule as native admission (`native-shared-video.ts`, `FaceVideoPolicy.kt`, `SharedVideoPolicy.kt`, `nativeZones.ts`). The change is correct, and nothing was removed.
+  - Consequence: a **new** upload measured at 30.0x to 30.5 fps is now "not ready until converted". This is common for phone video, where `avg_frame_rate` is frames divided by duration. Such a file goes through a required transcode with `fps=30`. Before, it was delivered at once and played on the web engine only.
+  - Existing assets are not re-evaluated.
+  - The real-ffmpeg round trip ran (ffmpeg is installed locally, so it was not skipped). It shows that `fps=30` output probes at 30 fps or less.
+- Tests run on the merged tree:
+  - Android `testDebugUnitTest` + `lintDebug`: 1570 tests, 0 failures, 2 skipped.
+  - API `src/assets src/screens src/storage`: 128 suites; 2485 tests passed, 5 skipped.
+  - Web `src/app/player` Jest: all 121 suites pass (after building `@cms/scoreboard-cts`).
+  - Web `tsc --noEmit`: clean. API `tsc -p tsconfig.build.json`: clean.
+- Still unverified: behaviour on the glass, and the emergency black-after-alert symptom, which this PR does not address.
