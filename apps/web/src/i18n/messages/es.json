@@ -3834,7 +3834,20 @@
       "panelTargets": "Asignada a {count, plural, one {# pantalla} other {# pantallas}}",
       "screensCount": "{count, plural, one {# pantalla} other {# pantallas}}",
       "offline": "Sin conexión",
-      "online": "En línea"
+      "online": "En línea",
+      "selDelete": "Eliminar {count}",
+      "selDeleting": "Eliminando…",
+      "selectOne": "Seleccionar {name}",
+      "showMore": "Mostrar {count} más",
+      "showingOf": "Mostrando {shown} de {total}",
+      "updated": "Actualizada {when}",
+      "offlineNamed": "{name} sin conexión",
+      "offlineCount": "{count} pantallas sin conexión",
+      "panelOffline": "Sin conexión: {names}",
+      "statusIdle": "No se reproduce ahora",
+      "statusScheduled": "Programada",
+      "statusPaused": "En pausa",
+      "statusUnassigned": "Sin pantalla"
     }
   },
   "brandingCard": {

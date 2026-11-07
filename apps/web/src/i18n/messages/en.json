@@ -3834,7 +3834,20 @@
       "panelTargets": "Set for {count, plural, one {# screen} other {# screens}}",
       "screensCount": "{count, plural, one {# screen} other {# screens}}",
       "offline": "Offline",
-      "online": "Online"
+      "online": "Online",
+      "selDelete": "Delete {count}",
+      "selDeleting": "Deleting…",
+      "selectOne": "Select {name}",
+      "showMore": "Show {count} more",
+      "showingOf": "Showing {shown} of {total}",
+      "updated": "Updated {when}",
+      "offlineNamed": "{name} offline",
+      "offlineCount": "{count} screens offline",
+      "panelOffline": "Offline: {names}",
+      "statusIdle": "Not playing now",
+      "statusScheduled": "Scheduled",
+      "statusPaused": "Paused",
+      "statusUnassigned": "Not on a screen"
     }
   },
   "brandingCard": {

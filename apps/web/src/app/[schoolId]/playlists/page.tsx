@@ -77,7 +77,11 @@ export default function PlaylistsPage() {
   const [publishToLocationsId, setPublishToLocationsId] = useState<string | undefined>(undefined);
   // Design preview (2026-11-02): `?design=v2` shows the gallery redesign for
   // the owner to approve. Without the param the page is exactly as before.
-  const designV2 = useSearchParams()?.get('design') === 'v2';
+  const searchParams = useSearchParams();
+  const designV2 = searchParams?.get('design') === 'v2';
+  // `&look=a|b|c` picks one of the three visual directions (2026-11-07 redo).
+  const lookParam = searchParams?.get('look');
+  const designLook = lookParam === 'b' || lookParam === 'c' ? lookParam : 'a';
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -435,9 +439,11 @@ export default function PlaylistsPage() {
         onDuplicate={handleDuplicate}
         onExport={(id) => { void runUsbExport(id); }}
         onRemove={handleRemove}
+        onRemoveMany={handleRemoveMany}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
         onSetActive={(row, next) => { void handleSetActive(row, next); }}
         isViewer={isViewer}
+        look={designLook}
       />
       ) : (
       <PlaylistLibraryV1

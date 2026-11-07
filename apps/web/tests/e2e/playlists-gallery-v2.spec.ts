@@ -1,18 +1,21 @@
 /**
- * Playlists gallery v2 — design preview (`?design=v2`, 2026-11-02).
+ * Playlists gallery v2 — design preview (`?design=v2&look=a|b|c`).
  *
- * Greg: "the playlist tiles is a ugly ass design ... make it easy to find
- * what is playing where". He wants to SEE it with content before approving,
- * so this spec drives the real route with every API call mocked (fictional
- * names only — the repo is public) and, when PLV2_SHOTS is set, writes the
- * before/after screenshots for the review.
+ * Owner on the first v2 (2026-11-02): "I want to see it with content previews
+ * on it … no crazy colors". This spec drives the real route with every API
+ * call mocked (fictional names only — the repo is public) and REAL pictures:
+ * the repo's own template posters (`public/templates/_thumbs/**`) and sample
+ * media (`public/templates/{school/menu-assets,hs/news-assets}`), mixed
+ * portrait and landscape, so the previews look like a real library. With
+ * PLV2_SHOTS set it writes the screenshots for each look.
  *
  *   E2E_BASE=http://localhost:3217 PLV2_SHOTS=<dir> \
  *     pnpm --filter web exec playwright test -c playwright.sandbox.config.ts \
  *     tests/e2e/playlists-gallery-v2.spec.ts --project=webkit
  *
  * The assertions hold without PLV2_SHOTS: no param → the v1 page; with it →
- * the gallery, its tabs, the filter menu and the "playing where" popover.
+ * the gallery in each look, real pictures loaded, the filter menu, the
+ * "playing where" popover (offline screen named), bulk select with Delete.
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 import * as fs from 'fs';
@@ -29,76 +32,55 @@ const CORS: Record<string, string> = {
 };
 const USER = { id: 'u1', email: 'e2e@example.com', role: 'SCHOOL_ADMIN', tenantId: SCHOOL_ID, canTriggerPanic: false };
 const IMG = 'https://img.e2e.invalid';
+const PUBLIC_TEMPLATES = path.resolve(__dirname, '../../public/templates');
 const HOUR = 3_600_000;
 const now = Date.now();
 
-// ── Fictional signage content, drawn as SVG posters ─────────────────────
-type Poster = { key: string; title: string; sub: string; a: string; b: string; ink?: string; portrait?: boolean };
-const POSTERS: Poster[] = [
-  { key: 'welcome', title: 'Welcome to Maple Ridge', sub: 'Home of the Foxes', a: '#1e3a8a', b: '#7c3aed' },
-  { key: 'menu', title: "Today's Lunch", sub: 'Tacos · Rice · Fresh fruit', a: '#f59e0b', b: '#dc2626' },
-  { key: 'gameday', title: 'Game Day Friday', sub: 'Foxes vs. Eagles · 7 PM', a: '#065f46', b: '#10b981', portrait: true },
-  { key: 'fundraiser', title: 'Fall Fundraiser', sub: 'Goal: $12,000', a: '#9a3412', b: '#fb923c', portrait: true },
-  { key: 'library', title: 'Library Week', sub: 'Read 20 minutes a day', a: '#0f766e', b: '#38bdf8' },
-  { key: 'bus', title: 'Bus Departures', sub: 'Route 4 · 3:15 PM', a: '#111827', b: '#374151' },
-  { key: 'art', title: 'Student Art Show', sub: 'Gallery Hall · Nov 14', a: '#be185d', b: '#f472b6', portrait: true },
-  { key: 'weather', title: 'Snow Day Plan', sub: 'Check the app by 6 AM', a: '#0369a1', b: '#93c5fd' },
-  { key: 'clubs', title: 'Join a Club', sub: 'Robotics · Chess · Drama', a: '#4338ca', b: '#22d3ee', portrait: true },
-  { key: 'honor', title: 'Honor Roll', sub: 'Congratulations, Foxes!', a: '#a16207', b: '#fde047', ink: '#1f2937' },
-  { key: 'safety', title: 'Safety First', sub: 'Badges visible at all times', a: '#991b1b', b: '#f87171' },
-  { key: 'concert', title: 'Winter Concert', sub: 'Auditorium · Dec 12', a: '#1e1b4b', b: '#6366f1', portrait: true },
-  { key: 'staff', title: 'Staff Spotlight', sub: 'Ms. Rivera · Science', a: '#14532d', b: '#84cc16' },
-  { key: 'menu2', title: 'Smoothie Bar', sub: 'Open 7:30 – 8:15 AM', a: '#7e22ce', b: '#f0abfc', portrait: true },
-  { key: 'gym', title: 'Fitness Challenge', sub: '10,000 steps this week', a: '#0c4a6e', b: '#f97316' },
+// ── Real pictures from the repo: [path under public/templates, w, h] ─────
+type Pic = [string, number, number];
+const L = (p: string): Pic => [`_thumbs/${p}.png`, 800, 450];
+const P = (p: string): Pic => [`_thumbs/${p}.png`, 450, 800];
+const PHOTO = (p: string, w: number, h: number): Pic => [p, w, h];
+/** A video item: its poster frame is a real still. */
+type Item = Pic | { video: Pic };
+
+// name, items, seconds per item
+const PL: Array<[string, Item[], number]> = [
+  ['Main Lobby Welcome', [L('school/ms-lobby-v1'), L('school/ms-lobby-v2'), L('school/ms-lobby-v3'), L('hs/achievement'), L('hs/morning-news')], 12],
+  ['Cafeteria Menus', [L('hs/caf-today'), L('hs/caf-week'), L('hs/caf-market'), PHOTO('school/menu-assets/ms-campus-pizza.jpg', 2200, 1571)], 15],
+  ['Game Day Promo', [L('hs/ath-gameday'), L('hs/ath-biggame'), L('hs/ath-standings'), L('hs/varsity')], 20],
+  ['Hallway Posters', [P('school/campus-pulse/01-campus-magazine-portrait'), P('school/campus-pulse/02-digital-signal-portrait'), P('school/campus-pulse/03-neo-yearbook-portrait'), P('school/campus-pulse/04-varsity-broadcast-portrait')], 10],
+  ['Lunch Line Portrait', [P('school/ms-lunch-campus-lineup-portrait'), PHOTO('school/menu-assets/ms-campus-pasta.jpg', 2200, 3300), PHOTO('school/menu-assets/teriyaki-chicken.jpg', 3840, 4800)], 12],
+  ['Bus Board', [L('hs/bell-schedule')], 30],
+  ['Morning Announcements', [{ video: PHOTO('hs/news-assets/student-hallway-study-poster.jpg', 1280, 720) }, L('hs/morning-news-daily-cut'), L('hs/morning-news-rundown-desk')], 15],
+  ['Snow Day Plan', [L('hs/hall-bulletin')], 15],
+  ['Wayfinding Portrait', [P('hs/hall-wayfinder-campus-grid-portrait'), P('school/campus-pulse/05-metro-wayfinding-portrait')], 12],
+  ['Honor Roll Slides', [L('hs/achievement-stage-call'), L('hs/achievement-victory-wall'), L('hs/yearbook')], 8],
+  ['Visitor Safety', [L('hs/blueprint'), L('hs/hall-wayfinder')], 20],
+  ['Winter Concert', [L('hs/gallery'), L('hs/zine')], 10],
+  ['Bell Schedules', [L('school/elem-bell-daybook'), L('school/ms-bell-agenda-flip'), L('school/ms-bell-locker-line'), L('school/ms-bell-rotation-radar'), L('school/elem-bell-sun-clock'), L('school/elem-bell-color-hop')], 10],
+  ['Fresh Kitchen', [{ video: PHOTO('school/menu-assets/salad-prep-poster.jpg', 3840, 2160) }, PHOTO('school/menu-assets/baked-ziti.jpg', 4928, 3264), PHOTO('school/menu-assets/grilled-cheese.jpg', 3840, 2561), PHOTO('school/menu-assets/quesadilla.jpg', 6960, 3915)], 12],
+  ['Commencement Guide', [P('school/commencement-guest-guide-portrait'), P('hs/achievement-portrait'), P('hs/bell-schedule-portrait')], 15],
 ];
 
-function posterSvg(p: Poster): string {
-  const [w, h] = p.portrait ? [1080, 1920] : [1920, 1080];
-  const ink = p.ink ?? '#ffffff';
-  const t = p.portrait ? 120 : 132;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p.a}"/><stop offset="1" stop-color="${p.b}"/></linearGradient></defs>
-  <rect width="${w}" height="${h}" fill="url(#g)"/>
-  <circle cx="${w * 0.82}" cy="${h * 0.2}" r="${Math.min(w, h) * 0.32}" fill="#ffffff" opacity="0.12"/>
-  <circle cx="${w * 0.1}" cy="${h * 0.92}" r="${Math.min(w, h) * 0.45}" fill="#000000" opacity="0.12"/>
-  <rect x="${w * 0.08}" y="${h * (p.portrait ? 0.56 : 0.52)}" width="${w * 0.18}" height="14" rx="7" fill="${ink}" opacity="0.8"/>
-  <text x="${w * 0.08}" y="${h * (p.portrait ? 0.66 : 0.68)}" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="${t}" fill="${ink}">${p.title.length > 16 && p.portrait ? p.title.split(' ').slice(0, 2).join(' ') : p.title}</text>
-  ${p.title.length > 16 && p.portrait ? `<text x="${w * 0.08}" y="${h * 0.66 + t * 1.1}" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="${t}" fill="${ink}">${p.title.split(' ').slice(2).join(' ')}</text>` : ''}
-  <text x="${w * 0.08}" y="${h * (p.portrait ? 0.8 : 0.82)}" font-family="Helvetica, Arial, sans-serif" font-weight="500" font-size="${t * 0.45}" fill="${ink}" opacity="0.9">${p.sub}</text>
-</svg>`;
-}
-
-const asset = (p: Poster, video = false) => ({
-  id: `a-${p.key}`,
-  originalName: `${p.key}.${video ? 'mp4' : 'jpg'}`,
-  mimeType: video ? 'video/mp4' : 'image/jpeg',
-  fileUrl: `${IMG}/${p.key}.${video ? 'mp4' : 'svg'}`,
-  posterUrl: video ? `${IMG}/${p.key}.svg` : null,
-});
-const byKey = (k: string) => POSTERS.find((p) => p.key === k)!;
-
-// name, poster keys, item duration, video?
-const PL: Array<[string, string[], number, boolean?]> = [
-  ['Main Lobby Welcome', ['welcome', 'honor', 'staff'], 12_000],
-  ['Cafeteria Menus', ['menu', 'menu2'], 15_000],
-  ['Game Day Promo', ['gameday'], 20_000, true],
-  ['Fall Fundraiser', ['fundraiser', 'art'], 10_000],
-  ['Library Week', ['library'], 12_000],
-  ['Bus Board', ['bus'], 30_000],
-  ['Art Show Posters', ['art', 'clubs'], 10_000],
-  ['Snow Day Plan', ['weather'], 15_000],
-  ['Club Fair Portrait', ['clubs'], 12_000],
-  ['Honor Roll Slides', ['honor', 'staff'], 8_000],
-  ['Visitor Safety', ['safety'], 20_000],
-  ['Winter Concert', ['concert'], 10_000],
-  ['Staff Spotlight', ['staff', 'welcome'], 12_000],
-  ['Smoothie Bar Portrait', ['menu2'], 10_000],
-  ['Fitness Challenge', ['gym'], 15_000, true],
-];
-const PLAYLISTS = PL.map(([name, keys, dur, video], i) => ({
+let aid = 0;
+const assetFor = (item: Item) => {
+  const video = !Array.isArray(item);
+  const [file, w, h] = video ? item.video : item;
+  const id = `a${++aid}`;
+  return {
+    id,
+    originalName: path.basename(file).replace(/\.\w+$/, video ? '.mp4' : path.extname(file)),
+    mimeType: video ? 'video/mp4' : file.endsWith('.jpg') ? 'image/jpeg' : 'image/png',
+    fileUrl: video ? `${IMG}/${id}.mp4` : `${IMG}/${file}`,
+    posterUrl: video ? `${IMG}/${file}` : null,
+    processingMeta: { originalDimensions: { w, h } },
+  };
+};
+const PLAYLISTS = PL.map(([name, items, sec], i) => ({
   id: `p${i + 1}`,
   name,
-  items: keys.map((k, j) => ({ id: `i${i}-${j}`, durationMs: dur, asset: asset(byKey(k), !!video && j === 0) })),
+  items: items.map((it, j) => ({ id: `i${i}-${j}`, durationMs: sec * 1000, asset: assetFor(it) })),
   updatedAt: new Date(now - (i + 1) * 5 * HOUR).toISOString(),
   createdBy: { id: 'u1', email: 'e2e@example.com' },
 }));
@@ -111,7 +93,7 @@ const SCREENS = [
   { id: 's4', name: 'Cafeteria Right', screenGroupId: 'g2', resolution: '1920x1080', location: 'North Campus', ...ok },
   { id: 's5', name: 'Hallway A Poster', screenGroupId: 'g3', resolution: '1080x1920', location: 'South Campus', ...ok },
   { id: 's6', name: 'Hallway B Poster', screenGroupId: 'g3', resolution: '1080x1920', location: 'South Campus', ...ok },
-  { id: 's7', name: 'Gym Entrance', screenGroupId: null, resolution: '1080x1920', location: 'South Campus', status: 'OFFLINE', renderHealth: 'STALE', lastRenderedAt: new Date(now - 6 * HOUR).toISOString() },
+  { id: 's7', name: 'Gym Entrance', screenGroupId: null, resolution: '1920x1080', location: 'South Campus', status: 'OFFLINE', renderHealth: 'STALE', lastRenderedAt: new Date(now - 6 * HOUR).toISOString() },
   { id: 's8', name: 'Bus Loop Display', screenGroupId: null, resolution: '1920x1080', location: 'North Campus', ...ok },
   { id: 's9', name: 'Library Desk', screenGroupId: null, resolution: '1920x1080', location: 'South Campus', ...ok },
 ];
@@ -132,12 +114,15 @@ const rule = (playlistId: string, target: { screenId?: string; screenGroupId?: s
 const SCHEDULES = [
   rule('p1', { screenGroupId: 'g1' }), rule('p1', { screenId: 's9' }),
   rule('p2', { screenGroupId: 'g2' }),
-  rule('p3', { screenId: 's7' }), // Gym Entrance is offline → needs attention
+  rule('p3', { screenId: 's7' }), rule('p3', { screenId: 's8' }), // Gym Entrance is offline → named, needs attention
   rule('p4', { screenGroupId: 'g3' }),
+  rule('p5', { screenGroupId: 'g3' }),
   rule('p6', { screenId: 's8' }),
-  rule('p5', { screenId: 's9' }, { startTime: new Date(now + 3 * 24 * HOUR).toISOString() }), // scheduled
+  rule('p7', { screenGroupId: 'g1' }),
+  rule('p13', { screenGroupId: 'g2' }), rule('p13', { screenId: 's9' }),
+  rule('p8', { screenGroupId: 'g1' }, { startTime: new Date(now + 3 * 24 * HOUR).toISOString() }), // scheduled
   rule('p12', { screenGroupId: 'g1' }, { startTime: new Date(now + 9 * 24 * HOUR).toISOString() }), // scheduled
-  rule('p8', { screenGroupId: 'g1' }, { isActive: false }), // paused
+  rule('p10', { screenGroupId: 'g1' }, { isActive: false }), // paused
   rule('p11', { screenId: 's1' }, { isActive: false }), // paused
 ];
 
@@ -158,10 +143,12 @@ async function openPlaylists(page: Page, query: string, viewport: { width: numbe
   await page.route('**/api/v1/templates', (r) => json(r, []));
   await page.route('**/api/v1/assets**', (r) => json(r, []));
   await page.route('**/api/v1/playlists', (r) => json(r, PLAYLISTS));
+  // The pictures: real files from the repo's public/templates.
   await page.route(`${IMG}/**`, (r) => {
-    const key = path.basename(new URL(r.request().url()).pathname).replace(/\.\w+$/, '');
-    const p = POSTERS.find((x) => x.key === key);
-    return p ? r.fulfill({ status: 200, contentType: 'image/svg+xml', body: posterSvg(p) }) : r.fulfill({ status: 404, body: '' });
+    const rel = decodeURIComponent(new URL(r.request().url()).pathname).replace(/^\/+/, '');
+    const file = path.resolve(PUBLIC_TEMPLATES, rel);
+    if (!file.startsWith(PUBLIC_TEMPLATES) || !fs.existsSync(file)) return r.fulfill({ status: 404, body: '' });
+    return r.fulfill({ status: 200, contentType: file.endsWith('.jpg') ? 'image/jpeg' : 'image/png', body: fs.readFileSync(file) });
   });
   await page.addInitScript((user) => {
     try { localStorage.setItem('edu_cms_eula_accepted_v1.0', '1'); } catch { /* ignore */ }
@@ -176,17 +163,27 @@ async function openPlaylists(page: Page, query: string, viewport: { width: numbe
   await page.goto(`/${SCHOOL_ID}/playlists${query}`, { waitUntil: 'domcontentloaded' });
 }
 
+/** Every picture in the first screenful has decoded (no blank tiles in a screenshot). */
+async function picturesLoaded(page: Page) {
+  await expect.poll(async () => page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll('[data-testid="playlist-card-v2"] img')) as HTMLImageElement[];
+    const inView = imgs.filter((i) => { const r = i.getBoundingClientRect(); return r.top < window.innerHeight && r.bottom > 0; });
+    return inView.length > 0 && inView.every((i) => i.complete && i.naturalWidth > 0);
+  }), { timeout: 30_000 }).toBe(true);
+}
+
 async function shot(page: Page, name: string, scrollPx = 0) {
   if (!SHOTS) return;
   fs.mkdirSync(SHOTS, { recursive: true });
-  await page.waitForTimeout(600); // images decode + the menu's enter
-  if (scrollPx) { await page.mouse.move(700, 600); await page.mouse.wheel(0, scrollPx); await page.waitForTimeout(800); }
+  if (scrollPx) { await page.mouse.wheel(0, scrollPx); await page.waitForTimeout(500); await picturesLoaded(page); }
+  await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(SHOTS, name) });
   if (scrollPx) { await page.mouse.wheel(0, -scrollPx * 2); await page.waitForTimeout(300); }
 }
 
 const DESKTOP = { width: 1325, height: 758 };
 const PHONE = { width: 390, height: 844 };
+const LOOKS = [['a', 'album'], ['b', 'filmstrip'], ['c', 'rows']] as const;
 
 test.describe('playlists gallery v2 (design preview)', () => {
   test.setTimeout(180_000);
@@ -195,65 +192,71 @@ test.describe('playlists gallery v2 (design preview)', () => {
     await openPlaylists(page, '', DESKTOP);
     await page.getByTestId('playlist-row').first().waitFor({ state: 'visible', timeout: 120_000 });
     await expect(page.getByTestId('playlists-v2')).toHaveCount(0);
-    const grid = page.getByRole('button', { name: 'Grid view' });
-    if (await grid.isVisible()) await grid.click();
-    await shot(page, '01-before-desktop-grid.png');
   });
 
-  test('before, iPhone', async ({ page }) => {
-    await openPlaylists(page, '', PHONE);
-    await page.getByText('Main Lobby Welcome').first().waitFor({ state: 'attached', timeout: 120_000 });
-    await page.waitForTimeout(1500);
-    await shot(page, '02-before-iphone.png');
-  });
+  for (const [look, name] of LOOKS) {
+    test(`look ${look} (${name}) — desktop`, async ({ page }) => {
+      await openPlaylists(page, `?design=v2&look=${look}`, DESKTOP);
+      const cards = page.getByTestId('playlist-card-v2');
+      await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
+      await expect(page.getByTestId('playlists-v2')).toHaveAttribute('data-look', look);
+      await expect(cards).toHaveCount(15);
+      await expect(page.getByRole('heading', { name: /Playing now/ })).toBeVisible();
+      await expect(page.locator('[data-testid="playlist-card-v2"][data-orientation="portrait"]').first()).toBeAttached();
+      // The offline screen is named on the card's "playing where" line.
+      await expect(cards.filter({ hasText: 'Game Day Promo' }).getByTestId('where-offline')).toContainText('Gym Entrance');
+      await page.mouse.move(5, 5);
+      await picturesLoaded(page);
+      await shot(page, `look-${look}-${name}-desktop.png`);
+      await page.mouse.move(700, 400);
+      await shot(page, `look-${look}-${name}-desktop-scrolled.png`, 640);
 
-  test('v2 desktop: gallery, filter menu, playing-where popover', async ({ page }) => {
+      // Hover: the card cross-fades to its next item after ~3 s.
+      const lobby = cards.filter({ hasText: 'Main Lobby Welcome' });
+      await lobby.hover();
+      await page.waitForTimeout(3600);
+      await expect(lobby.getByTestId('card-crossfade')).toBeVisible();
+      await shot(page, `look-${look}-${name}-desktop-hover.png`);
+
+      // "Playing where" popover.
+      await lobby.getByTestId('where-button').click();
+      await expect(page.getByTestId('where-panel')).toContainText('Lobby Screens');
+      await page.keyboard.press('Escape');
+
+      // Bulk select → the shared SelectionToolbar with Delete visible.
+      await lobby.hover();
+      await lobby.getByTestId('card-select').click();
+      await cards.filter({ hasText: 'Cafeteria Menus' }).getByTestId('card-select').click();
+      await expect(page.getByTestId('bulk-count')).toContainText('2');
+      await expect(page.getByTestId('bulk-delete')).toBeVisible();
+      await page.mouse.move(5, 5);
+      await shot(page, `look-${look}-${name}-desktop-select.png`);
+    });
+
+    test(`look ${look} (${name}) — iPhone`, async ({ page }) => {
+      await openPlaylists(page, `?design=v2&look=${look}`, PHONE);
+      const cards = page.getByTestId('playlist-card-v2');
+      await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      await picturesLoaded(page);
+      await shot(page, `look-${look}-${name}-iphone.png`);
+      await shot(page, `look-${look}-${name}-iphone-scrolled.png`, 1400);
+      await cards.first().getByTestId('card-select').click();
+      await expect(page.locator('[data-testid="playlists-selection"][data-placement="dock"]')).toBeVisible();
+      await expect(page.getByTestId('bulk-delete')).toBeVisible();
+      await shot(page, `look-${look}-${name}-iphone-select.png`);
+    });
+  }
+
+  test('filter menu narrows by orientation', async ({ page }) => {
     await openPlaylists(page, '?design=v2', DESKTOP);
     const cards = page.getByTestId('playlist-card-v2');
     await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
-    await expect(cards).toHaveCount(15);
-    await expect(page.getByRole('heading', { name: /Playing now/ })).toBeVisible();
-    // A portrait playlist is drawn portrait.
-    await expect(page.locator('[data-testid="playlist-card-v2"][data-orientation="portrait"]').first()).toBeVisible();
-    await page.mouse.move(5, 5);
-    await shot(page, '03-after-desktop.png');
-    await shot(page, '04-after-desktop-scrolled.png', 700);
-
     await page.getByTestId('playlists-filter-menu').click();
-    await expect(page.getByTestId('playlists-filter-menu-panel')).toBeVisible();
-    await shot(page, '05-after-filter-menu.png');
     await page.getByRole('radio', { name: /Portrait/ }).click();
     await page.keyboard.press('Escape');
     await expect(cards.first()).toHaveAttribute('data-orientation', 'portrait');
-    await page.getByTestId('playlists-filter-menu').click();
-    await page.getByRole('button', { name: 'Clear filters' }).click();
-    await page.keyboard.press('Escape');
-
-    const lobby = cards.filter({ hasText: 'Main Lobby Welcome' });
-    await lobby.getByTestId('where-button').click();
-    const panel = page.getByTestId('where-panel');
-    await expect(panel).toContainText('Lobby Screens');
-    await expect(panel).toContainText('Library Desk');
-    await shot(page, '06-after-playing-where-popover.png');
-    await page.keyboard.press('Escape');
-
-    const attentionTab = page.getByTestId('playlists-tabs').getByRole('tab', { name: /Needs attention/ });
-    await expect(attentionTab).toBeVisible(); // on the line at the operator's width, not behind More
-    await attentionTab.click();
-    await expect(cards).toHaveCount(1);
-    await expect(cards.first().getByTestId('card-attention')).toBeVisible();
-    await shot(page, '07-after-needs-attention-tab.png');
-  });
-
-  test('v2 iPhone: one column', async ({ page }) => {
-    await openPlaylists(page, '?design=v2', PHONE);
-    const cards = page.getByTestId('playlist-card-v2');
-    await cards.first().waitFor({ state: 'visible', timeout: 120_000 });
-    const [a, b] = await Promise.all([cards.nth(0).boundingBox(), cards.nth(1).boundingBox()]);
-    expect(Math.abs((a?.x ?? 0) - (b?.x ?? 1))).toBeLessThan(1); // stacked, not side by side
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow).toBeLessThanOrEqual(0);
-    await shot(page, '08-after-iphone.png');
-    await shot(page, '09-after-iphone-scrolled.png', 2600);
+    await expect(cards).toHaveCount(4);
   });
 });

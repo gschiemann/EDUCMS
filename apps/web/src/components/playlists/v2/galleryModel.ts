@@ -78,6 +78,42 @@ export function playlistOrientation(
 /** The first item a picture can be made from — an image, or a video poster. */
 export interface HeroPicture { src: string; isVideo: boolean; count: number }
 
+/** One of a playlist's items as a picture the card can show whole. */
+export interface PreviewPicture { key: string; src: string; isVideo: boolean }
+
+/**
+ * The playlist's actual items as pictures, in play order: images, and videos
+ * through their poster frame. The same file twice is shown once. `total` is
+ * every visual item (the "+N" a card may say), `pictures` at most `max`.
+ */
+export function previewPictures(
+  raw: any,
+  resolveUrl: (asset: any) => string | null,
+  max = 8,
+): { pictures: PreviewPicture[]; total: number } {
+  const items = ((raw?.items as any[]) ?? []).map((it) => it?.asset).filter(Boolean);
+  const visual = items.filter((a) => /^(image|video)\//.test(a?.mimeType ?? ''));
+  const seen = new Set<string>();
+  const pictures: PreviewPicture[] = [];
+  for (const a of visual) {
+    if (pictures.length >= max) break;
+    const src = resolveUrl(a);
+    if (!src || seen.has(src)) continue;
+    seen.add(src);
+    pictures.push({ key: String(a.id ?? src), src, isVideo: String(a.mimeType).startsWith('video/') });
+  }
+  return { pictures, total: visual.length };
+}
+
+/** How many cards a gallery draws before "Show more" (paging, not a scroll trap). */
+export const GALLERY_PAGE_SIZE = 24;
+
+/** The first `shown` entries plus how many are left behind "Show more". */
+export function pageGallery<T>(entries: T[], shown: number): { page: T[]; remaining: number } {
+  const n = Math.max(0, Math.floor(shown));
+  return { page: entries.slice(0, n), remaining: Math.max(0, entries.length - n) };
+}
+
 export function heroPicture(raw: any, resolveUrl: (asset: any) => string | null): HeroPicture | null {
   const items = ((raw?.items as any[]) ?? []).map((it) => it?.asset).filter(Boolean);
   const visual = items.filter((a) => /^(image|video)\//.test(a?.mimeType ?? ''));
@@ -109,6 +145,8 @@ export interface PlayingWhere {
   screenCount: number;
   /** True when the places are live now; false when they are only targets. */
   live: boolean;
+  /** Screens behind `places` that are not checking in, by name — the card says which. */
+  offline: Array<{ id: string; name: string }>;
 }
 
 const isOnline = (s: GalleryScreenRef | undefined) => String(s?.status ?? '').toUpperCase() === 'ONLINE';
@@ -163,8 +201,12 @@ export function playingWhere(
       online: sc ? isOnline(sc) : null,
     });
   }
-  const screenCount = resolveTargetScreenIds(rules, groups, screens).length;
-  return { places, screenCount, live };
+  const targetIds = resolveTargetScreenIds(rules, groups, screens);
+  const offline = targetIds
+    .map((id) => screenById.get(id))
+    .filter((sc): sc is GalleryScreenRef => !!sc && !isOnline(sc))
+    .map((sc) => ({ id: sc.id, name: sc.name || 'Screen' }));
+  return { places, screenCount: targetIds.length, live, offline };
 }
 
 // ─────────────────────────────────────────────────────────────────────
