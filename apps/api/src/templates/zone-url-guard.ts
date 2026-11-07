@@ -70,7 +70,8 @@ import { validatePublicUrl, isPrivateIp } from '../branding/safe-fetch';
 export const URL_BEARING_ZONE_FIELDS: Readonly<Record<string, readonly string[]>> = {
   WEBPAGE: ['url'],
   EXTERNAL_HTML: ['url'],
-  STREAMING: ['playbackUrl', 'embedUrl'],
+  // posterUrl (2026-11-07): the poster / fallback <img> behind the stream.
+  STREAMING: ['playbackUrl', 'embedUrl', 'posterUrl'],
 };
 
 /**
