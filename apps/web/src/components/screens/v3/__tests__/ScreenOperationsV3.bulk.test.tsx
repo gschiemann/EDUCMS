@@ -35,6 +35,7 @@ jest.mock('@/components/ui/AddressAutocomplete', () => ({
 }));
 const bulkMutate = jest.fn();
 jest.mock('@/hooks/use-api', () => ({
+  useAllDisplaySchedules: () => ({ data: [] }),
   useBulkScreenAction: () => ({ mutateAsync: (...a: any[]) => bulkMutate(...a), isPending: false }),
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
   useCreateScreenGroup: () => ({ mutate: createGroupMutate, mutateAsync: createGroupMutate, isPending: false }),
