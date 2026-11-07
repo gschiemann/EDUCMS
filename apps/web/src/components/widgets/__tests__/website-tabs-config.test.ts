@@ -13,11 +13,15 @@ import {
   allowHostsFor,
   buildHidePayload,
   buildShowPayload,
+  cssToWindowRatio,
   fillCopy,
   idlePlanFor,
   isUrlWithinTabs,
   normalizeTabUrl,
   normalizeWebsiteTabsConfig,
+  physicalSizeFromQuery,
+  signOutOnLeave,
+  siteSurfaceFor,
   tabHost,
   tabInitials,
   toNativeBounds,
@@ -187,5 +191,109 @@ describe('the native contract', () => {
   it('builds the hide payload', () => {
     expect(buildHidePayload(true)).toEqual({ v: 1, wipe: true });
     expect(buildHidePayload(false)).toEqual({ v: 1, wipe: false });
+  });
+});
+
+/**
+ * 2026-11-07 field report: a Website Tabs template on a 2160×3840 Goodview
+ * "didn't fill the screen … the login was in the bottom corner". The player
+ * pins its layout viewport to the panel's physical size, so one CSS px is one
+ * window px there — but the ROM reports devicePixelRatio 3.0, and the old
+ * bounds were multiplied by it.
+ */
+describe('cssToWindowRatio — the CSS px → window px factor for the native site view', () => {
+  it('a pinned portrait 4K panel is 1:1 even though the ROM reports dpr 3', () => {
+    expect(cssToWindowRatio({ w: 2160, h: 3840 }, { w: 2160, h: 3840 }, 3)).toBe(1);
+  });
+  it('a pinned landscape 4K panel is 1:1', () => {
+    expect(cssToWindowRatio({ w: 3840, h: 2160 }, { w: 3840, h: 2160 }, 2)).toBe(1);
+  });
+  it('a density-scaled viewport keeps its real ratio (agrees with an honest dpr)', () => {
+    expect(cssToWindowRatio({ w: 720, h: 1280 }, { w: 2160, h: 3840 }, 3)).toBe(3);
+    expect(cssToWindowRatio({ w: 1920, h: 1080 }, { w: 3840, h: 2160 }, 1)).toBe(2);
+  });
+  it('a URL size taken before the rotation landed (swapped) still resolves', () => {
+    expect(cssToWindowRatio({ w: 2160, h: 3840 }, { w: 3840, h: 2160 }, 3)).toBe(1);
+  });
+  it('falls back to the reported dpr when the sizes disagree (LED canvas pin) or are missing', () => {
+    expect(cssToWindowRatio({ w: 320, h: 1080 }, { w: 1920, h: 1080 }, 1.5)).toBe(1.5);
+    expect(cssToWindowRatio({ w: 2160, h: 3840 }, null, 3)).toBe(3);
+    expect(cssToWindowRatio({ w: 0, h: 0 }, { w: 2160, h: 3840 }, 0)).toBe(1);
+  });
+  it('reads the APK size from the player URL', () => {
+    expect(physicalSizeFromQuery('?client=android&w=2160&h=3840&dpr=3.0')).toEqual({ w: 2160, h: 3840 });
+    expect(physicalSizeFromQuery('?w=abc&h=3840')).toBeNull();
+    expect(physicalSizeFromQuery('')).toBeNull();
+    expect(physicalSizeFromQuery('?w=99999&h=10')).toBeNull();
+  });
+});
+
+/**
+ * The whole chain on each stage shape: the template's design frame scaled by
+ * TemplateScaler (contain/cover, centred) → the site area's viewport rect →
+ * window px. A full-screen Website Tabs zone with a 96 design-px tab bar.
+ */
+describe('native site-view geometry across stage shapes', () => {
+  const BAR = 96;
+  /** What getBoundingClientRect returns for the site area of a 100 % zone. */
+  function siteRect(design: { w: number; h: number }, viewport: { w: number; h: number }) {
+    const aspectDiff = Math.abs(viewport.w / viewport.h - design.w / design.h) / Math.max(viewport.w / viewport.h, design.w / design.h);
+    const fn = aspectDiff < 0.25 ? Math.max : Math.min;
+    const s = fn(viewport.w / design.w, viewport.h / design.h);
+    const left = (viewport.w - design.w * s) / 2;
+    const top = (viewport.h - design.h * s) / 2;
+    return { left, top: top + BAR * s, width: design.w * s, height: (design.h - BAR) * s };
+  }
+  const bounds = (design: { w: number; h: number }, vp: { w: number; h: number }, physical: { w: number; h: number }, dpr: number) =>
+    toNativeBounds(siteRect(design, vp), cssToWindowRatio(vp, physical, dpr));
+
+  it('portrait 1080×1920 template on a portrait 2160×3840 panel fills under the bar', () => {
+    expect(bounds({ w: 1080, h: 1920 }, { w: 2160, h: 3840 }, { w: 2160, h: 3840 }, 3)).toEqual({ left: 0, top: 192, width: 2160, height: 3648 });
+  });
+  it('the same panel with the old devicePixelRatio math lands off the glass (the regression this pins)', () => {
+    const old = toNativeBounds(siteRect({ w: 1080, h: 1920 }, { w: 2160, h: 3840 }), 3);
+    expect(old.top).toBe(576);
+    expect(old.width).toBe(6480);
+  });
+  it('landscape 1920×1080 template on a landscape 3840×2160 panel fills under the bar', () => {
+    expect(bounds({ w: 1920, h: 1080 }, { w: 3840, h: 2160 }, { w: 3840, h: 2160 }, 2)).toEqual({ left: 0, top: 192, width: 3840, height: 1968 });
+  });
+  it('a landscape template on a portrait panel stays inside its letterboxed band', () => {
+    const b = bounds({ w: 1920, h: 1080 }, { w: 2160, h: 3840 }, { w: 2160, h: 3840 }, 3);
+    expect(b).toEqual({ left: 0, top: 1421, width: 2160, height: 1107 });
+    expect(b.top + b.height).toBeLessThanOrEqual(3840);
+  });
+  it('a density-scaled viewport (720×1280 CSS on 2160×3840) gives the same window rect', () => {
+    expect(bounds({ w: 1080, h: 1920 }, { w: 720, h: 1280 }, { w: 2160, h: 3840 }, 3)).toEqual({ left: 0, top: 192, width: 2160, height: 3648 });
+  });
+});
+
+describe('siteSurfaceFor — a site that forbids framing is never framed', () => {
+  it('our app with the native site view shows every site top-level, frameable or not', () => {
+    for (const embed of ['ok', 'blocked', 'unknown', 'unreachable'] as const) {
+      expect(siteSurfaceFor({ native: true, inApp: true, embed })).toBe('native');
+    }
+  });
+  it('without it, a blocked site gets the honest card, never a frame', () => {
+    expect(siteSurfaceFor({ native: false, inApp: false, embed: 'blocked' })).toBe('needs-app');
+    expect(siteSurfaceFor({ native: false, inApp: true, embed: 'blocked' })).toBe('app-update');
+  });
+  it('a frameable or unchecked site keeps the sandboxed frame', () => {
+    expect(siteSurfaceFor({ native: false, inApp: false, embed: 'ok' })).toBe('frame');
+    expect(siteSurfaceFor({ native: false, inApp: false, embed: 'unknown' })).toBe('frame');
+    expect(siteSurfaceFor({ native: false, inApp: false })).toBe('frame');
+  });
+});
+
+describe('signOutOnLeave — "Sign in once" is honoured', () => {
+  const tab = (signIn?: 'none' | 'once') => ({ id: 'a', name: 'A', url: 'https://a.example/', ...(signIn ? { signIn } : {}) });
+  it('signs out when the kiosk switch is on and no tab keeps its sign-in', () => {
+    expect(signOutOnLeave({ incognito: true, tabs: [tab('none'), tab()] })).toBe(true);
+  });
+  it('keeps the sign-in when any tab is "Sign in once" (cookies are process-wide on shipped APKs)', () => {
+    expect(signOutOnLeave({ incognito: true, tabs: [tab('none'), tab('once')] })).toBe(false);
+  });
+  it('never signs out with the switch off', () => {
+    expect(signOutOnLeave({ incognito: false, tabs: [tab()] })).toBe(false);
   });
 });

@@ -5477,7 +5477,7 @@
     "signInLabel": "Sign-in",
     "signInNone": "None",
     "signInOnce": "Sign in once on the screen",
-    "signInHelp": "\"Sign in once\" keeps that site signed in across idle resets, even when Sign out after idle is on.",
+    "signInHelp": "\"Sign in once\" keeps that site signed in across idle resets, even when Sign out after idle is on. While any site uses it, idle resets keep every site on this screen signed in.",
     "sectionLayout": "Tab bar",
     "barPosition": "Tab bar position",
     "barTop": "Top",

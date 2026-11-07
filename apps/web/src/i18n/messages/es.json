@@ -5477,7 +5477,7 @@
     "signInLabel": "Inicio de sesión",
     "signInNone": "Ninguno",
     "signInOnce": "Iniciar sesión una vez en la pantalla",
-    "signInHelp": "«Iniciar sesión una vez» mantiene ese sitio con la sesión iniciada aunque la pantalla se reinicie por inactividad, incluso con Cerrar sesión tras inactividad activado.",
+    "signInHelp": "«Iniciar sesión una vez» mantiene ese sitio con la sesión iniciada aunque la pantalla se reinicie por inactividad, incluso con Cerrar sesión tras inactividad activado. Mientras algún sitio lo use, los reinicios por inactividad mantienen la sesión de todos los sitios de esta pantalla.",
     "sectionLayout": "Barra de pestañas",
     "barPosition": "Posición de la barra de pestañas",
     "barTop": "Arriba",
