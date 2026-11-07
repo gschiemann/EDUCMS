@@ -162,3 +162,20 @@ class EmergencyPaintPolicyTest {
         assertFalse(freshReply.has("documentId"))
     }
 }
+
+class EmergencyPaintPolicyPaintedEpisodeTest {
+    private fun episode() = EmergencyPaintPolicy.Episode("live-challenge", 1_000_000, 100)
+
+    /** 2026-11-02: a page that proved the board is never reloaded or relaunched by the older watch. */
+    @Test fun `a painted episode never admits the legacy reload or relaunch`() {
+        val painted = episode().copy(status = "painted", identity = "alert-a", documentId = "document-a", paintedAtMs = 500)
+        for (now in listOf(10_100L, 60_000L, 600_000L)) {
+            assertFalse(EmergencyPaintPolicy.legacyAllowed(painted, now, launch = false))
+            assertFalse(EmergencyPaintPolicy.legacyAllowed(painted, now, launch = true))
+        }
+        // Only a ladder that ran out unproven falls through to the backstop.
+        val spent = episode().copy(step = 4, status = "unconfirmed")
+        assertTrue(EmergencyPaintPolicy.legacyAllowed(spent, 10_100, launch = false))
+        assertFalse(EmergencyPaintPolicy.legacyAllowed(spent.copy(status = "painted"), 10_100, launch = false))
+    }
+}

@@ -196,11 +196,30 @@ async function bootUnderTest(page: Page, tag: string, manifestRef: { value: unkn
         if (manifestDelayRef.value > 0) await new Promise((r) => setTimeout(r, manifestDelayRef.value));
         return ok(route, manifestRef.value);
       });
-      await p.route(`**/api/v1/screens/${id.screenId}/render-proof`, (route) => ok(route, { ok: true, emergencyPaintAccepted: true }));
+      // THE REAL API'S VERDICT (2026-11-02), not a yes-machine. The mock here
+      // used to answer `emergencyPaintAccepted: true` to everything, so the
+      // suite never saw what every real screen saw on the SECURE drill: the
+      // API grades a painted post against the APK's episode as carried by the
+      // native HEARTBEAT — which rides a 5-minute floor while the page is
+      // reporting — so the post met `pending` and was refused. The fixed page
+      // relays the APK's own verdict (`nativeAccepted`, read over the bridge);
+      // the fixed API accepts that relay. This mock accepts exactly that.
+      await p.route(`**/api/v1/screens/${id.screenId}/render-proof`, async (route) => {
+        let proof: { painted?: boolean; challenge?: string; nativeAccepted?: boolean } | undefined;
+        try { proof = route.request().postDataJSON()?.emergencyProof; } catch { proof = undefined; }
+        const accepted = !proof?.painted ? true : !!proof.challenge && proof.nativeAccepted === true;
+        renderProofPosts.push({ at: Date.now(), painted: proof?.painted === true, challenge: proof?.challenge, nativeAccepted: proof?.nativeAccepted === true, accepted });
+        return ok(route, { ok: true, emergencyPaintAccepted: accepted });
+      });
     },
   });
   return id;
 }
+
+type RenderProofPost = { at: number; painted: boolean; challenge?: string; nativeAccepted: boolean; accepted: boolean };
+/** Every render-proof post the page made, graded the way the real API grades it. */
+const renderProofPosts: RenderProofPost[] = [];
+test.beforeEach(() => { renderProofPosts.length = 0; });
 
 for (const drill of [true, false]) {
   const label = drill ? 'DRILL' : 'LIVE';
@@ -249,6 +268,17 @@ for (const drill of [true, false]) {
       await expect(fallback).toContainText('MEDICAL');
       await expect(fallback).not.toContainText('DRILL');
     }
+
+    // (2b) The SERVER learns it too (2026-11-02). The page relays the APK's
+    // verdict and the API accepts it — the PLAYER_EMERGENCY_PAINTED row the
+    // dashboard's "Alert showing on N of M screens" is built from. Before this
+    // fix the page sent no relay, met `pending` and gave up after 1.5 s: on the
+    // SECURE drill not one of the screens ever confirmed.
+    await expect.poll(() => renderProofPosts.filter(p => p.painted && p.accepted).length, { timeout: 15_000 }).toBeGreaterThan(0);
+    const confirmedPost = renderProofPosts.find(p => p.painted && p.accepted)!;
+    expect(confirmedPost.nativeAccepted).toBe(true);
+    expect(confirmedPost.challenge).toBe(afterPaint.episodes[0].challenge);
+    expect(confirmedPost.at - raise!.at, `the server confirmation took ${confirmedPost.at - raise!.at} ms after the hold`).toBeLessThan(10_000);
 
     // (3) The committed manifest lands (scope 'screen', an expiry): the alert
     // object changes shape, the identity does not — the APK sees no new alert.

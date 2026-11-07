@@ -185,6 +185,7 @@ internal class Harness(
     val creds: FakeCredentials = FakeCredentials().also { it.tokens[0] = Kit.token(Kit.SCREEN_0) },
     val disk: FakeDisk = FakeDisk(),
     var classAllows: Boolean = true,
+    onNativeEnrolment: (Int, String, Boolean) -> Unit = { _, _, _ -> },
 ) {
     val logs = ArrayList<String>()
     val env = StoreEnv(
@@ -193,6 +194,7 @@ internal class Harness(
         storageAllowed = { it.startsWith("${Kit.STORAGE}/") && !it.contains("..") },
         classAllows = { classAllows },
         verifyBytesPerSec = 0,
+        nativeEnrolment = onNativeEnrolment,
         log = { logs += it },
     )
     var store = ContentStore(dir, env)

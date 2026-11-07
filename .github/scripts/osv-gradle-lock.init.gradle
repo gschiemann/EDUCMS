@@ -1,0 +1,41 @@
+// Gradle init script — NOT part of the app build. Exports the resolved dependency graph that
+// ships in the player's APKs as `gradle.lockfile`, the format OSV-Scanner reads. Used only by
+// .github/workflows/player-kotlin-check.yml:
+//
+//   ./gradlew --init-script .github/scripts/osv-gradle-lock.init.gradle osvResolve --write-locks
+//
+// Why an init script: the player's build files carry no dependency locking, and here a lockfile
+// is a CI artefact that is never committed (a committed one would pin the build and go stale).
+// This turns on Gradle's own locking from the outside, so `--write-locks` records what was
+// resolved. Nothing in it changes how the app builds or what it resolves.
+//
+// What is recorded: ONLY `releaseRuntimeClasspath` — the closure each release APK actually
+// ships. Test classpaths, lint and the Android toolchain are deliberately not scanned: a finding
+// in junit or in AGP's own tooling is not a finding in a screen's APK.
+//
+// Where it is written: <module>/build/osv-lock/gradle.lockfile. `build/` is git-ignored, so no
+// untracked file appears in the tree, and the file keeps the name `gradle.lockfile` because
+// OSV-Scanner picks its parser by file name. Every module that has a releaseRuntimeClasspath is
+// covered automatically — adding a module needs no edit here or in the workflow.
+allprojects { p ->
+    p.dependencyLocking {
+        lockAllConfigurations()
+        lockFile.set(p.layout.buildDirectory.file('osv-lock/gradle.lockfile'))
+    }
+    // Registered on every project (the root has no such configuration and simply skips). The
+    // configuration is looked up at EXECUTION time because the Android plugin creates its
+    // variant configurations after this script has run.
+    p.tasks.register('osvResolve') {
+        notCompatibleWithConfigurationCache('resolves a configuration at execution time')
+        doLast {
+            def cfg = p.configurations.findByName('releaseRuntimeClasspath')
+            if (cfg == null) {
+                println "osvResolve: ${p.path} has no releaseRuntimeClasspath - skipped"
+            } else {
+                // Graph only (metadata) - no AAR/JAR is downloaded. Counts the root too, hence -1.
+                int n = cfg.incoming.resolutionResult.allComponents.size() - 1
+                println "osvResolve: ${p.path} releaseRuntimeClasspath resolved (${n} components)"
+            }
+        }
+    }
+}

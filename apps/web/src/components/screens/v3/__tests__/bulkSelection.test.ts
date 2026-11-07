@@ -1,4 +1,4 @@
-import { groupResults, pruneTo, reasonKey, requestFor, setMany, stateFor, toggleMany, toggleOne, BULK_KINDS } from '../bulkSelection';
+import { groupResults, pruneTo, reasonKey, refusalKey, requestFor, setMany, stateFor, toggleMany, toggleOne, BULK_KINDS } from '../bulkSelection';
 import en from '../../../../i18n/messages/en.json';
 
 describe('bulk selection — pure rules', () => {
@@ -45,6 +45,19 @@ describe('bulk selection — pure rules', () => {
       expect([c, typeof leaf]).toEqual([c, 'string']);
     }
     expect(reasonKey('made-up')).toBeNull();
+  });
+
+  it('every fleet push rule refusal of Send update has copy in the catalog (2026-10-31)', () => {
+    const codes = ['BULK_UPDATE_MIXED_HARDWARE', 'BULK_UPDATE_HARDWARE_UNKNOWN', 'BULK_UPDATE_OUTSIDE_OFF_HOURS', 'BULK_UPDATE_TIME_ZONE_UNKNOWN'];
+    for (const c of codes) {
+      const key = refusalKey(c)!;
+      const leaf = key.split('.').reduce<any>((n, p) => n?.[p], en);
+      expect([c, typeof leaf]).toEqual([c, 'string']);
+    }
+    // Anything else keeps the server's own message.
+    for (const other of ['BULK_TOO_MANY_SCREENS', 'constructor', '__proto__', '', undefined, null, 7]) {
+      expect(refusalKey(other)).toBeNull();
+    }
   });
 
   it('groups results and counts skips per reason and install prompts', () => {

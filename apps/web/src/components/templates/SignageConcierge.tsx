@@ -50,6 +50,7 @@ import { referenceMenuItemCount } from './conciergeMenuContent';
 import { ConciergePosPanel } from './ConciergePosCard';
 import { looksLikeMenuBoard } from './conciergePos';
 import { useAiBillingMessages, type AiBillingMessages } from '@/components/ai/useAiBillingMessages';
+import { StatusPill } from '@/components/ui/status-pill';
 
 // ── friendly error mapping ──────────────────────────────────────────────
 // Mirrors friendlyAiError() in templates/page.tsx so chat speaks the same
@@ -463,7 +464,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
             type="button"
             onClick={() => { setUrlOpen((v) => !v); setRefError(null); }}
             disabled={urlRef.isPending}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-full bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-11 sm:min-h-0 text-xs font-bold rounded-lg bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
           >
             <Globe className="w-3.5 h-3.5" /> Add a website
           </button>
@@ -471,7 +472,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={imageRef.isPending}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-full bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-11 sm:min-h-0 text-xs font-bold rounded-lg bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 disabled:opacity-50"
           >
             {imageRef.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
             Upload a look
@@ -532,14 +533,12 @@ export function SignageConcierge(props: SignageConciergeProps) {
           <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500 mb-1.5">What I&apos;ve gathered</p>
           <div className="flex flex-wrap items-center gap-1.5">
             {intakeChips.map((c) => (
-              <span key={c.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-violet-200 text-[11px] font-semibold text-violet-700">
-                {c.label}
-              </span>
+              <StatusPill key={c.key} tone="brand">{c.label}</StatusPill>
             ))}
             {references.map((r, i) => (
               <span
                 key={`ref-${i}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-violet-200 text-[11px] font-semibold text-violet-700"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-violet-200 text-[11px] font-semibold text-violet-700"
                 title={r.summary}
               >
                 <ReferenceIcon kind={r.kind} />

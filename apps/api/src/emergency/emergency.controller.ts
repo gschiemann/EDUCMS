@@ -105,6 +105,7 @@ import {
   SosInputSchema,
   BroadcastInputSchema,
   MediaAlertInputSchema,
+  sanitizeBannerOptions,
 } from '@cms/api-types';
 import type {
   TriggerEmergencyInput,
@@ -2099,13 +2100,16 @@ export class EmergencyController {
   ) {
     const user = req.user || {};
     const { scopeType, scopeId, text, severity, durationMs } = body;
+    // Banner colour / scrolling (2026-11-01): INFO + WARN banners only. A
+    // CRITICAL broadcast is the full-screen alert; it keeps its own look.
+    const bannerStyle = severity === 'CRITICAL' ? null : sanitizeBannerOptions(body.banner);
     if (body.screenIds && body.screenIds.length > 0) {
       const expires = body.expiresAt
         ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
         : new Date(Date.now() + (durationMs ?? 5 * 60 * 1000));
       return this.dispatchToScreenSet({
         kind: 'broadcast', screenIds: body.screenIds, user, severity, textBlob: text,
-        mediaUrls: [], audioUrl: undefined, expiresAt: expires,
+        mediaUrls: [], audioUrl: undefined, expiresAt: expires, bannerStyle,
       });
     }
 
@@ -2175,6 +2179,7 @@ export class EmergencyController {
             scopeType,
             scopeId,
             expiresAt: expiresAtDate,
+            ...(bannerStyle ? { bannerStyle: { ...bannerStyle } as Record<string, string> } : {}),
           },
         }),
       ),
@@ -2218,6 +2223,7 @@ export class EmergencyController {
         severity,
         text,
         expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
+        ...(bannerStyle ? { banner: bannerStyle } : {}),
       });
       try {
         await this.redisService.publish(target.ch, signedMessage);
@@ -2398,8 +2404,10 @@ export class EmergencyController {
     mediaUrls: string[];
     audioUrl?: string;
     expiresAt: Date;
+    bannerStyle?: ReturnType<typeof sanitizeBannerOptions>;
   }) {
     const { kind, user, severity, textBlob, mediaUrls, audioUrl, expiresAt } = args;
+    const bannerStyle = kind === 'broadcast' ? args.bannerStyle ?? null : null;
     const named = [...new Set(args.screenIds)];
     // ten-ok: ownership RESOLVER — tenantId is verified against the caller below (403); SUPER_ADMIN cross-tenant by design
     const found: Array<{ id: string; tenantId: string | null; faceOfScreenId?: string | null }> =
@@ -2454,6 +2462,7 @@ export class EmergencyController {
             scopeId: messageId,
             screenIds: byTenant.get(tid)!,
             expiresAt,
+            ...(bannerStyle ? { bannerStyle: { ...bannerStyle } as Record<string, string> } : {}),
           },
         }),
       ),
@@ -2483,7 +2492,7 @@ export class EmergencyController {
       const signed =
         kind === 'media'
           ? this.signer.signMessage('MEDIA_ALERT', { messageId: id, severity, textBlob, mediaUrls, audioUrl, expiresAt: expiresEpoch })
-          : this.signer.signMessage('TEXT_BROADCAST', { messageId: id, severity, text: textBlob, expiresAt: expiresEpoch });
+          : this.signer.signMessage('TEXT_BROADCAST', { messageId: id, severity, text: textBlob, expiresAt: expiresEpoch, ...(bannerStyle ? { banner: bannerStyle } : {}) });
       for (const sid of byTenant.get(tid)!) {
         pushes.push(
           Promise.resolve(this.redisService.publish(`device:${sid}`, signed)).then(
@@ -3136,10 +3145,15 @@ export class EmergencyController {
    * MUST emit identical objects. Centralizing it keeps them in lockstep.
    */
   private toEmergencyMessageView(r: any) {
+    // Banner options ride the poll too (2026-11-01), so a screen that missed
+    // the push renders the same banner. Re-sanitised on the way out; only an
+    // INFO / WARN text broadcast carries them.
+    const banner = r.type === 'TEXT_BROADCAST' && r.severity !== 'CRITICAL' ? sanitizeBannerOptions(r.bannerStyle) : null;
     return {
       id: r.id,
       type: r.type,
       severity: r.severity,
+      ...(banner ? { banner } : {}),
       textBlob: r.textBlob,
       mediaUrls: r.mediaUrls ? JSON.parse(r.mediaUrls) : [],
       audioUrl: r.audioUrl,

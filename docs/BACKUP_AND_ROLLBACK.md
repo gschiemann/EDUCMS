@@ -46,17 +46,26 @@ Uncommitted files preserved in tarball only (not pushed to remote):
 
 ## Rollback procedures
 
-### A) Revert to the tagged commit (discards all work since tag)
+### A) Roll back a bad change: revert the PR, or redeploy the previous build
 
-```bash
-cd "/Users/gschiemann/Desktop/EDU CMS"
-git fetch --tags
-git checkout master
-git reset --hard backup/pre-sprint-0-20260416-170111
-```
+`master` is never rewound. Two safe paths:
 
-> Destructive. Loses any commits and uncommitted work made after the tag.
-> Only run if you're sure. Consider `git stash` first to preserve current work.
+1. **Revert the PR.** On a branch `<vendor>/revert-<topic>` run `git revert -m 1 <merge-commit-sha>`
+   (a merge commit; a squash merge takes no `-m`), open a pull request in the decision
+   format, watch its checks (`gh pr checks <PR> --watch`), and the Lead merges it on the
+   owner's written go (or a standing approval in `docs/governance/AUTONOMY-REGISTER.md`).
+   A merge to `master` deploys, so a revert is a deploy.
+2. **Redeploy the previous build** (no code change — the quickest way to stop an
+   outage): Railway → Deployments → the last healthy deployment → redeploy it; Vercel →
+   Deployments → promote the previous production deployment. Then check
+   `https://<railway-api>/api/v1/health`: its `commit` must be the SHA you meant to
+   restore. Do this first when production is down, then revert the PR properly so
+   `master` and production agree again.
+
+Do **not** `git reset --hard` or force-push `master`: the ruleset forbids non-fast-forward
+pushes (its admin bypass is not a rollback tool), the Foundry Standard forbids pushing to
+the main branch at all, and a reset discards every commit after the target. A
+`backup/*` tag is for **comparison** (section D), not for moving `master`.
 
 ### B) Recover uncommitted files from a tarball (non-destructive, one file)
 
@@ -85,6 +94,11 @@ cd "EDU CMS"
 pnpm install  # rebuild node_modules
 ```
 
+> A tarball contains **no secrets by design** (see "Future backups"): no `.env`,
+> `apps/api/.env`, `apps/web/.env.local` or any `*.env*` file. After a restore, put
+> them back from the password manager and the Railway / Vercel variables
+> (`docs/SECRET-ROTATION.md` lists every store) — never from a backup.
+
 ### D) Inspect the tag without checking it out
 
 ```bash
@@ -96,15 +110,21 @@ git diff backup/pre-sprint-0-20260416-170111..master
 
 ## Future backups
 
-Before each sprint, the Integration Lead (or Claude on request) should:
+Before each sprint, the Lead (or any model on request) should:
 
-1. `git tag "backup/pre-sprint-N-$(date +%Y%m%d-%H%M%S)"` then push to origin
+1. `git tag "backup/pre-sprint-N-$(date +%Y%m%d-%H%M%S)"` then push **that one tag**
+   (`git push origin <tag>`) — never `git push --tags`, which republishes every local tag.
 2. Re-run the tarball command (macOS):
    ```bash
    mkdir -p "$HOME/EDU-CMS-backups"
    cd "/Users/gschiemann/Desktop/EDU CMS"
+   # Options go BEFORE the path: macOS bsdtar reads anything after it as a file name.
+   # Secrets never go in a tarball: .env, apps/api/.env, apps/web/.env.local and every
+   # *.env* file are excluded (the patterns match at any depth).
    tar -czf "$HOME/EDU-CMS-backups/edu-cms-backup-$(date +%Y%m%d-%H%M%S).tar.gz" \
-     . --exclude=node_modules --exclude=.git/objects
+     --exclude=node_modules --exclude=.git/objects \
+     --exclude='.env' --exclude='*.env*' \
+     .
    ```
    (matches the CLAUDE.md "Backup & Rollback" recipe; `scripts/backup.sh` does
    not exist yet — wrap the above in it when you make it).
@@ -115,11 +135,33 @@ can be deleted since the git tag covers committed history.
 
 ---
 
+## The database backup that exists today — `.github/workflows/db-backup.yml`
+
+Git backs up code, not Postgres. The database is backed up by
+**`.github/workflows/db-backup.yml`**: a nightly (09:17 UTC) `pg_dump` of the production
+database, AES-256-encrypted (PBKDF2, key = the `BACKUP_ENC_KEY` repo secret) and kept 30
+days as an Actions artifact. Only the encrypted blob is ever uploaded — the repo is public.
+The restore recipe is in the workflow's header. A failed run opens an `ops` issue
+(`scheduled-failure-issue.yml`), and `node scripts/ops-sweep.mjs` checks that the newest
+successful backup is under 36 hours old.
+
+**Restore drill: GAP.** No restore of one of these artifacts into a throwaway database is
+recorded, automated or scheduled. It is tracked in `docs/governance/MECHANISMS.md` (row #29
+"rollback"; Phase 1 item 10 — a weekly restore of the latest backup into a throwaway
+database with row-count assertions). Until a drill has run, treat the backup as unproven:
+an untested backup is a hope, not a plan. When one runs, log its date, duration and any
+gotchas in this file.
+
+> The Supabase PITR and weekly-`pg_dump` sections below pre-date that workflow. The
+> workflow's own header (2026-07-30) says the org was moving Pro → Free and that the Free
+> plan has no daily backups, so confirm the current plan and any PITR add-on in the
+> Supabase dashboard before relying on the PITR figures.
+
 ## Supabase PITR retention + manual `pg_dump` cadence
 
-Git backs up code — not the Postgres database. Data recovery depends on
-Supabase Point-In-Time Recovery (PITR) plus manual dumps as a belt-and-
-suspenders safety net. Review the plan below before any pilot customer
+Git backs up code — not the Postgres database. Beyond the nightly workflow above, data
+recovery can depend on Supabase Point-In-Time Recovery (PITR) plus manual dumps as a
+belt-and-suspenders safety net. Review the plan below before any pilot customer
 onboards.
 
 ### Supabase PITR

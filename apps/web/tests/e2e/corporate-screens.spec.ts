@@ -119,7 +119,7 @@ test('corporate sees local and company group cards, details and location map wit
   expect(new URL(page.url()).searchParams.getAll('location')).toEqual(['austin', 'boston']);
   await page.getByRole('checkbox', { name: 'All locations', exact: true }).check();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   await page.locator('.leaflet-container').waitFor();
   await expect(page.locator('.venueos-locpin-row').filter({ hasText: 'Seattle office' })).toBeVisible();
   await page.locator('.leaflet-tile-loaded').first().waitFor({ timeout: 20_000 });
@@ -127,7 +127,7 @@ test('corporate sees local and company group cards, details and location map wit
   await page.locator('.venueos-locpin-row').filter({ hasText: 'Austin office' }).click();
   await page.getByRole('region', { name: 'Austin office screens' }).getByRole('button', { name: 'View location in list' }).click();
   await expect(filter).toHaveText('Austin office');
-  await expect(page.getByRole('tab', { name: 'List', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('radio', { name: 'List', exact: true })).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: info.outputPath('company-screen-groups.png') });
   await page.getByRole('button', { name: 'Local screens', exact: true }).click();

@@ -173,7 +173,7 @@ class LegacyBridgeExposureTest {
      * of seconds on a slow uplink — with its own control plane shut.
      */
     @Test
-    fun `the top-frame nonce delivery retries until it arms`() {
+    fun `the top-frame nonce delivery uses bounded document checkpoints`() {
         val src = mainActivity
         assertTrue(
             "the delivery pump is gone — a dropped injection now costs the main frame its bridge",
@@ -185,12 +185,14 @@ class LegacyBridgeExposureTest {
         )
         assertTrue(
             "the retry is unbounded — a forever-timer on a panel that must not jank",
-            src.contains("BRIDGE_NONCE_RETRY_MAX") && src.contains("bridgeNonceRetriesLeft -= 1"),
+            src.contains("BridgeNonceDelivery(BRIDGE_NONCE_RETRY_MAX + 1)") && src.contains("bridgeNonceDelivery.next(checkpoint)"),
         )
         assertTrue(
             "the main-frame document callback no longer drives delivery",
-            Regex("""onMainFrameDocument = \{ view, _ ->[^}]*pumpBridgeNonceDelivery\(view\)""").containsMatchIn(src),
+            Regex("""onMainFrameDocument = \{ view, url ->[^}]*pumpBridgeNonceDelivery\(view, url\)""").containsMatchIn(src),
         )
+        assertTrue("each checkpoint must supersede earlier delivery", src.contains("val checkpoint = bridgeNonceDelivery.begin()"))
+        assertFalse("lifetime armed state must never suppress a new document", src.contains("if (n.armed()) return"))
         // Three delivery points across a navigation, not two. onPageCommitVisible
         // is the first moment evaluateJavascript provably targets the NEW document.
         val client = read("src/main/java/com/educms/player/SafePlayerWebViewClient.kt")
@@ -225,6 +227,10 @@ class LegacyBridgeExposureTest {
             // 2026-10-23 — the Back menu's way to VenueOS's Network screen: a
             // panel whose Wi-Fi is wrong must be fixable from the glass.
             "openNetworkScreen",
+            // 2026-10-26 — the Back menu's "Import from USB": a screen that
+            // cannot arm must still be able to read a stick (it verifies the
+            // package itself; the method grants nothing).
+            "importFromUsb",
             // ⚠️ LIFE SAFETY. Gating this is how an alert fails to reach a panel.
             "displayEmergencyHold",
             "displayApply",
@@ -394,11 +400,14 @@ class LegacyBridgeExposureTest {
         // 36 → 37 on 2026-10-23: `openNetworkScreen` (the Back menu's Network
         // entry), web tables + canary in the same commit, kept out of the web's
         // KNOWN_METHODS until the fleet floor includes this APK.
+        // 37 → 38 on 2026-10-26: `importFromUsb` (the Back menu's "Import from
+        // USB"), the same full contract, kept out of KNOWN_METHODS until the
+        // fleet floor is 1.1.55.
         assertEquals(
             "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
                 "if this is a deliberate new method, update the web tables and the canary " +
                 "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
-            37, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen.
+            38, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen + importFromUsb.
             names.size,
         )
     }

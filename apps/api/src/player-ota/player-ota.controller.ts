@@ -78,6 +78,7 @@ import {
 // the rollout/cohort/hold gates, and the device-side verification.
 import { resolveApkDelivery, type ApkDelivery } from './apk-storage';
 import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
+import { isFieldBenchScreen } from './fleet-push-policy';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
 
 interface UpdateCheckBody {
@@ -1007,9 +1008,16 @@ export class PlayerOtaController {
       // used to be a bare `{uptoDate:true}`: the Player then reported
       // "UP_TO_DATE … no newer release offered", the push sat at 0 offers, and
       // nothing anywhere said why (the sideloaded Android 9 units, 2026-10-20).
+      //
+      // 2026-10-31 — a field build goes only to a BENCH screen once
+      // PLAYER_FIELD_BENCH_SCREENS is set (fleet-push-policy.ts: field builds
+      // 1.1.42 / 1.1.47 / 1.1.50 reached customer screens). Any other screen
+      // inside a window is HELD on its current build — never handed the
+      // stable build in its place. Unset, every screen passes, as before.
       const fieldRefusal =
         !deviceAuthenticated ? 'device-not-authenticated' // no / stale device token on the check (an anonymous check is never offered private bytes)
         : !lookupScreenId || !lookupTenantId ? 'no-screen-row'
+        : !isFieldBenchScreen(lookupScreenId) ? 'not-a-bench-screen' // PLAYER_FIELD_BENCH_SCREENS is set and does not list this screen
         : forcedPendingScreenId !== lookupScreenId ? 'no-push-admitted-for-this-screen' // gated above: window / canary / not pushed — see the [ota] line before this one
         : !release ? 'no-configured-field-release'
         : null;

@@ -127,7 +127,7 @@ export function FitnessDiscothequeWidget({ config }: { config?: FitnessDiscotheq
             <div className="fd-ph">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {pick(config, 'instructorPhotoUrl') ? (
-                <img src={pick(config, 'instructorPhotoUrl')} alt="Instructor photo" className="fd-instr-photo" />
+                <img src={pick(config, 'instructorPhotoUrl')} alt="Instructor" className="fd-instr-photo" />
               ) : (
                 <div className="fd-init" data-field="instr.init">{pick(config, 'instr.init')}</div>
               )}

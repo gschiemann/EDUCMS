@@ -120,6 +120,14 @@ object WakePolicy {
         val nowMs: Long,
         /** Is this the last scheduled check for this wake? */
         val lastCheck: Boolean,
+        /**
+         * 2026-11-02: the page proved the alert ON THE GLASS since this wake was
+         * requested (`EmergencyPaintRecovery.paintedAtMs` ≥ the request). The app
+         * validated foreground + visibility itself when it accepted that receipt,
+         * so a stale `isInForeground` (an install prompt, a paused Activity) must
+         * not relaunch — and reload — a page that is showing the board.
+         */
+        val alertPaintedSinceWake: Boolean = false,
     )
 
     /**
@@ -141,6 +149,8 @@ object WakePolicy {
 
     fun step(f: Facts): Step {
         if (f.foreground) return Step.DONE_ON_GLASS
+        // The alert's own accepted paint receipt is proof the player is on the glass.
+        if (f.emergencyHeld && f.alertPaintedSinceWake) return Step.DONE_ON_GLASS
         if (f.standbyActive && !f.emergencyHeld) return Step.STOP_STANDBY
         // 1.1.46 — an install dialog never keeps an alert off the glass.
         if (f.installPromptOutstanding && !f.emergencyHeld) return Step.STOP_INSTALL_PROMPT

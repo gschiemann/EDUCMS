@@ -63,6 +63,12 @@ export const KNOWN_ERRORS = [
   'FIELD_BUILD_WINDOW_SETTLING',
   'FIELD_BUILD_MIRROR_MISSING',
   'FIELD_BUILD_SCREEN_OUTSIDE_WINDOW',
+  // The owner's fleet push rules (apps/api/src/player-ota/fleet-push-policy.ts).
+  'FIELD_BUILD_SCREEN_NOT_BENCH',
+  'FIELD_BUILD_MIXED_HARDWARE',
+  'FIELD_BUILD_HARDWARE_UNKNOWN',
+  'FIELD_BUILD_OUTSIDE_OFF_HOURS',
+  'FIELD_BUILD_TIME_ZONE_UNKNOWN',
   'SUPPORT_ACCESS_REQUIRED',
 ] as const;
 export type KnownError = (typeof KNOWN_ERRORS)[number];

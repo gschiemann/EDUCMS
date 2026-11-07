@@ -272,7 +272,7 @@ export function FitnessTelemetryWidget({ config }: { config?: FitnessTelemetryCo
             <span className="ft-corn ft-br" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {pick(config, 'athletePhotoUrl') ? (
-              <img src={pick(config, 'athletePhotoUrl')} alt="Athlete photo" className="ft-ath-photo" />
+              <img src={pick(config, 'athletePhotoUrl')} alt="Athlete" className="ft-ath-photo" />
             ) : (
               <span className="ft-ini" data-field="ath.ini">{pick(config, 'ath.ini')}</span>
             )}

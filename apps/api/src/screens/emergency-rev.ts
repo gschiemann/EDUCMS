@@ -70,7 +70,7 @@
  */
 
 import * as crypto from 'crypto';
-import { currentManifestContentRev } from './manifest-hot-cache';
+import { currentManifestContentRev, tenantStateEpoch } from './manifest-hot-cache';
 
 /** Bump when the composition of the revision string changes. */
 export const EMERGENCY_REV_SCHEMA = 'r1';
@@ -178,6 +178,23 @@ export interface TenantEmergencyEpoch {
  *    mints a fresh `WebsocketSignerService` envelope per response, so the
  *    player runs it through the SAME `checkSensitivePush` gate a WS/SSE push
  *    clears rather than through a bespoke trust rule.
+ * 6. **Only what the DATABASE confirms is signed (2026-11-01).** The epoch is
+ *    read from Redis, and Redis is shared mutable state that anyone holding
+ *    `REDIS_URL` can write — it was in the 2026-10-21 Railway environment
+ *    leak. Before this rule the endpoint turned any planted
+ *    `<stamp>:1:<descriptor>` into a correctly HMAC-signed OVERRIDE for every
+ *    screen of that tenant, with no signing key: a signing oracle. Now a
+ *    descriptor is offered only when the manifest's own read of the tenant
+ *    (`tenant-emergency-state.ts`) confirms a live tenant-wide alert with the
+ *    same type, severity and drill flag, and no per-screen note or expiry
+ *    (a tenant-scoped trigger writes neither). The read is bounded
+ *    (`RAISE_CONFIRM_TIMEOUT_MS`), single-flight and cached per tenant, and
+ *    runs only inside the raise window, never on the 304 path. Unreadable,
+ *    slow or disagreeing → NO descriptor; `active` is untouched, so the
+ *    player still learns an alert is up and fetches the manifest — the
+ *    unchanged source of truth. Authenticity is closed; availability
+ *    degrades only to the manifest path. A refusal is evidence: see
+ *    `classifyDescriptorRefusal`.
  */
 export interface EmergencyAlertDescriptor {
   /** `manifest.emergencyType` — the incident type ("LOCKDOWN", "EVACUATE"…). */
@@ -260,9 +277,124 @@ export interface EmergencyRevRedis {
   setString(key: string, value: string, ttlSeconds?: number): Promise<boolean>;
 }
 
+/**
+ * The tenant-wide alert as the DATABASE has it (rule 6 above) — produced by
+ * `tenant-emergency-state.ts` from the manifest's own read, so it is exactly
+ * what the tenant's next manifest asserts for a screen with no override.
+ */
+export interface ConfirmedTenantAlert {
+  /** `manifest.emergencyType` — Tenant.emergencyType (stored upper-case). */
+  type: string;
+  /** `manifest.emergencySeverity` — Tenant.emergencyStatus. */
+  severity: string;
+  /** `manifest.isDrill` — Tenant.emergencyIsDrill. */
+  isDrill: boolean;
+}
+
+/**
+ * Why a descriptor was not offered:
+ *   'no-alert'    — the database read worked; no tenant-wide alert is up;
+ *   'mismatch'    — an alert is up, but not the one the descriptor names;
+ *   'unavailable' — the read threw, timed out or returned junk: unknown.
+ */
+export type DescriptorRefusalReason = 'no-alert' | 'mismatch' | 'unavailable';
+
+/**
+ * Where the epoch's DESCRIPTOR came from. 'local' = minted by this process's
+ * own `bumpTenantEmergencyEpoch` (an authenticated trigger request served
+ * here). 'redis' = read from the shared mirror — written by another replica,
+ * by a previous process, or by anyone else who can write Redis.
+ */
+export type EpochDescriptorOrigin = 'local' | 'redis';
+
+/** One refused descriptor, handed to `EmergencyRevDeps.onDescriptorRefused`. */
+export interface EmergencyRevRefusal {
+  tenantId: string;
+  screenId: string;
+  reason: DescriptorRefusalReason;
+  origin: EpochDescriptorOrigin;
+  /** The descriptor that was NOT signed (already shape-checked, bounded). */
+  descriptor: { type: string; severity: string; isDrill: boolean };
+  /** What the database said, when it could be read. */
+  confirmed: ConfirmedTenantAlert | null;
+  epochStamp: number;
+  /** `now - epochStamp` — negative when the stamp is in the future. */
+  epochAgeMs: number;
+  /** See `classifyDescriptorRefusal`. */
+  forgerySignal: boolean;
+  /** Emit the throttled log line now. */
+  log: boolean;
+  /** Alert the owner now — a forgery signal, at most once per tenant per hour. */
+  notifyOwner: boolean;
+}
+
 export interface EmergencyRevDeps {
   redis?: EmergencyRevRedis | null;
+  /**
+   * The database confirmation (rule 6). WITHOUT it no descriptor is ever
+   * returned — fail closed. The controller's cheap pre-304 pass deliberately
+   * omits it (that pass must stay free of Postgres, and its answer is never
+   * signed); the post-304 pass supplies `confirmTenantWideAlert`. Resolve
+   * null when no tenant-wide alert is up; throw when the database cannot be
+   * read.
+   */
+  confirmTenantAlert?: ((tenantId: string) => Promise<ConfirmedTenantAlert | null>) | null;
+  /**
+   * Evidence hook for a refused descriptor. Called synchronously; must not
+   * block — anything slow (mail, audit row) belongs off the request path. A
+   * throw here is swallowed.
+   */
+  onDescriptorRefused?: ((refusal: EmergencyRevRefusal) => void) | null;
 }
+
+// ── Raise confirmation tunables (rule 6) ─────────────────────────────────
+
+/**
+ * Bound on the confirmation read as one poll sees it. A slower read answers
+ * "unavailable" (no descriptor → the manifest path) but keeps running as the
+ * tenant's single in-flight read, so a stalled database gets ONE outstanding
+ * confirmation per tenant, never one per poll.
+ */
+export const RAISE_CONFIRM_TIMEOUT_MS = 300;
+
+/**
+ * How long a confirmed alert is reused for one tenant. The herd moment — every
+ * screen of a tenant polling while an alert is up and not yet applied — then
+ * costs one indexed read per tenant per 2 s, not one per screen. Same window
+ * as the manifest's own tenant-state cache, which this read goes through.
+ */
+export const RAISE_CONFIRM_POSITIVE_TTL_MS = 2_000;
+
+/**
+ * How long a NEGATIVE answer (no alert / mismatch / unreadable) is reused.
+ * Short on purpose: the only writer that mints a descriptor — the tenant
+ * trigger — bumps the epoch BEFORE its transaction commits (the 2026-08-15
+ * dispatch-first fast path), so a poll inside that window is refused and the
+ * next one must succeed. Every cached answer is also keyed to the epoch stamp
+ * and to the manifest cache's invalidation epoch, which the trigger moves
+ * again right after its commit — so on this replica the first poll after the
+ * commit re-reads at once.
+ */
+export const RAISE_CONFIRM_NEGATIVE_TTL_MS = 500;
+
+/** After this, a confirmation read still in flight no longer blocks a new one. */
+export const RAISE_CONFIRM_FLIGHT_MAX_AGE_MS = 10_000;
+
+/**
+ * A disagreement younger than this may be a legitimate trigger whose
+ * transaction has not committed yet (the pool waits up to 20 s for a
+ * connection); see `classifyDescriptorRefusal`.
+ */
+export const RAISE_REFUSAL_COMMIT_GRACE_MS = 30_000;
+
+/** A stamp further in the future than this was not written by any API clock. */
+export const RAISE_REFUSAL_CLOCK_SKEW_MS = 5_000;
+
+/** One refusal log line per tenant per kind per minute. */
+export const RAISE_REFUSAL_LOG_INTERVAL_MS = 60_000;
+
+/** One owner alert per tenant per hour (per API process). */
+export const RAISE_REFUSAL_OWNER_ALERT_INTERVAL_MS = 60 * 60_000;
 
 /** What `getManifest` observed for one screen on its last build. */
 export interface ScreenEmergencyRecord {
@@ -473,6 +605,24 @@ export function peekScreenRecord(screenId: string): ScreenEmergencyRecord | unde
 const localTenantEpochs = new Map<string, TenantEmergencyEpoch>();
 const tenantEpochMemo = new Map<string, { value: TenantEmergencyEpoch; at: number }>();
 
+/**
+ * tenantId → the stamp of the newest epoch whose DESCRIPTOR this process
+ * minted itself (rule 6 evidence). `localTenantEpochs` cannot answer that: it
+ * also holds values adopted from Redis, and a local bump that omits `alert`
+ * CARRIES the previous descriptor forward — possibly one adopted from Redis.
+ * Diagnostics only: it decides how a refusal is reported, never whether a
+ * descriptor is signed (only the database decides that).
+ */
+const localDescriptorStamps = new Map<string, number>();
+
+/** Where the descriptor of this epoch came from (see `EpochDescriptorOrigin`). */
+export function epochDescriptorOrigin(
+  tenantId: string,
+  epoch: Pick<TenantEmergencyEpoch, 'stamp'>,
+): EpochDescriptorOrigin {
+  return localDescriptorStamps.get(tenantId) === epoch.stamp ? 'local' : 'redis';
+}
+
 export function localTenantEmergencyEpoch(tenantId: string): TenantEmergencyEpoch | undefined {
   return localTenantEpochs.get(tenantId);
 }
@@ -569,6 +719,18 @@ export function bumpTenantEmergencyEpoch(
     // them together at the write, not at every read.
     alert: nextActive ? nextAlert : null,
   };
+  // Provenance of the descriptor this value carries (rule 6 evidence): minted
+  // here when the caller supplied it, carried from a value that was itself
+  // minted here when omitted — anything else came from Redis.
+  if (
+    opts.alert !== undefined ||
+    (prev !== undefined && localDescriptorStamps.get(tenantId) === prev.stamp)
+  ) {
+    localDescriptorStamps.set(tenantId, stamp);
+    capMap(localDescriptorStamps, TENANT_EPOCH_MAX_ENTRIES);
+  } else {
+    localDescriptorStamps.delete(tenantId);
+  }
   localTenantEpochs.set(tenantId, next);
   capMap(localTenantEpochs, TENANT_EPOCH_MAX_ENTRIES);
   // Drop the read memo so this replica's very next poll sees the new value
@@ -649,6 +811,295 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   }
 }
 
+// ── Raise confirmation (rule 6, 2026-11-01) ──────────────────────────────
+
+/**
+ * Does the descriptor say exactly what the database says? Type compares
+ * without case — the trigger mints the descriptor from the request's
+ * lower-case incident type and stores `toUpperCase()` of it — while severity
+ * and the drill flag compare exactly. A tenant-scoped trigger never writes a
+ * scope note or an expiry, so a descriptor carrying either was not written by
+ * it and does not match.
+ */
+export function descriptorMatchesConfirmed(
+  descriptor: EmergencyAlertDescriptor,
+  confirmed: ConfirmedTenantAlert,
+): boolean {
+  return (
+    descriptor.scope === 'tenant' &&
+    descriptor.scopeNote === null &&
+    descriptor.expiresAt === null &&
+    descriptor.type.toUpperCase() === confirmed.type.toUpperCase() &&
+    descriptor.severity === confirmed.severity &&
+    (descriptor.isDrill === true) === (confirmed.isDrill === true)
+  );
+}
+
+type RaiseConfirmation =
+  | { kind: 'ok'; alert: ConfirmedTenantAlert | null }
+  | { kind: 'unavailable' };
+
+interface RaiseConfirmationEntry {
+  /** The tenant epoch stamp the read was made for. */
+  stamp: number;
+  /** `tenantStateEpoch(tenantId)` when the read began. */
+  stateEpoch: number;
+  /** `now` of the poll that started the read. */
+  at: number;
+  outcome: RaiseConfirmation;
+}
+
+const raiseConfirmations = new Map<string, RaiseConfirmationEntry>();
+const raiseConfirmationsInFlight = new Map<
+  string,
+  { stamp: number; stateEpoch: number; at: number; promise: Promise<RaiseConfirmation> }
+>();
+
+/** Accept only a well-formed answer from the confirmer; anything else is unknown. */
+function asConfirmedAlert(value: unknown): RaiseConfirmation {
+  if (value === null) return { kind: 'ok', alert: null };
+  if (!value || typeof value !== 'object') return { kind: 'unavailable' };
+  const v = value as Record<string, unknown>;
+  if (typeof v.type !== 'string' || v.type.length === 0) return { kind: 'unavailable' };
+  if (typeof v.severity !== 'string' || v.severity.length === 0) return { kind: 'unavailable' };
+  return { kind: 'ok', alert: { type: v.type, severity: v.severity, isDrill: v.isDrill === true } };
+}
+
+async function runRaiseConfirmation(
+  confirm: (tenantId: string) => Promise<ConfirmedTenantAlert | null>,
+  tenantId: string,
+): Promise<RaiseConfirmation> {
+  try {
+    return asConfirmedAlert(await confirm(tenantId));
+  } catch {
+    return { kind: 'unavailable' };
+  }
+}
+
+function raiseConfirmationTtl(outcome: RaiseConfirmation): number {
+  return outcome.kind === 'ok' && outcome.alert
+    ? RAISE_CONFIRM_POSITIVE_TTL_MS
+    : RAISE_CONFIRM_NEGATIVE_TTL_MS;
+}
+
+/**
+ * The database's answer for one tenant: cached, single-flight, and bounded to
+ * `RAISE_CONFIRM_TIMEOUT_MS` as this poll sees it. Never throws.
+ *
+ * A cached answer is reused only for the SAME epoch stamp (a new trigger,
+ * all-clear or broadcast re-reads), the SAME manifest-cache invalidation epoch
+ * (the trigger's post-commit `invalidateTenantState` re-reads), and inside its
+ * TTL. An answer from a read that began before an invalidation is not cached
+ * — it may carry pre-commit state — exactly the guard `setTenantState` uses.
+ */
+async function readRaiseConfirmation(
+  confirm: (tenantId: string) => Promise<ConfirmedTenantAlert | null>,
+  tenantId: string,
+  stamp: number,
+  now: number,
+): Promise<RaiseConfirmation> {
+  const stateEpoch = tenantStateEpoch(tenantId);
+  const hit = raiseConfirmations.get(tenantId);
+  if (
+    hit &&
+    hit.stamp === stamp &&
+    hit.stateEpoch === stateEpoch &&
+    now >= hit.at &&
+    now - hit.at < raiseConfirmationTtl(hit.outcome)
+  ) {
+    return hit.outcome;
+  }
+
+  let flight = raiseConfirmationsInFlight.get(tenantId);
+  if (
+    !flight ||
+    flight.stamp !== stamp ||
+    flight.stateEpoch !== stateEpoch ||
+    // A read that never settles (a hung connection) must not disable the
+    // fast path for this tenant for good: past this age a new read starts.
+    // Still bounded — one more read per tenant per window.
+    now - flight.at > RAISE_CONFIRM_FLIGHT_MAX_AGE_MS
+  ) {
+    const started = { stamp, stateEpoch, at: now, promise: runRaiseConfirmation(confirm, tenantId) };
+    raiseConfirmationsInFlight.set(tenantId, started);
+    capMap(raiseConfirmationsInFlight, TENANT_EPOCH_MAX_ENTRIES);
+    void started.promise.then((outcome) => {
+      if (raiseConfirmationsInFlight.get(tenantId) === started) {
+        raiseConfirmationsInFlight.delete(tenantId);
+      }
+      if (tenantStateEpoch(tenantId) !== started.stateEpoch) return;
+      const current = raiseConfirmations.get(tenantId);
+      if (current && current.at > started.at) return;
+      raiseConfirmations.set(tenantId, {
+        stamp: started.stamp,
+        stateEpoch: started.stateEpoch,
+        at: started.at,
+        outcome,
+      });
+      capMap(raiseConfirmations, TENANT_EPOCH_MAX_ENTRIES);
+    });
+    flight = started;
+  }
+  return (await withTimeout(flight.promise, RAISE_CONFIRM_TIMEOUT_MS)) ?? { kind: 'unavailable' };
+}
+
+/** A tenant's run of consecutive definite refusals of Redis-sourced descriptors. */
+export interface RefusalStreak {
+  since: number;
+  last: number;
+}
+
+/**
+ * Is this refusal a FORGERY SIGNAL — the owner-alert class — or the expected
+ * shape of a legitimate alert in flight? Pure.
+ *
+ * Never a signal:
+ *   • 'unavailable' — an unknown is not evidence of anything;
+ *   • origin 'local' — this process minted the descriptor on an
+ *     authenticated trigger request; Redis cannot have written it. A refusal
+ *     here is that trigger's own pre-commit window (the epoch is bumped
+ *     before the transaction commits), or a trigger whose write failed —
+ *     which its operator was already told.
+ *
+ * A Redis-sourced descriptor the database DEFINITELY disagrees with is a
+ * signal once it cannot be another replica's trigger mid-commit:
+ *   • its stamp is older than `RAISE_REFUSAL_COMMIT_GRACE_MS`, or
+ *   • its stamp is in the future beyond `RAISE_REFUSAL_CLOCK_SKEW_MS`, or
+ *   • definite refusals for this tenant have run, with no gap longer than
+ *     the grace, for `RAISE_REFUSAL_COMMIT_GRACE_MS` — a writer re-stamping
+ *     its value to look fresh still trips this.
+ * A confirmed descriptor ends the streak (the caller deletes it).
+ */
+export function classifyDescriptorRefusal(input: {
+  reason: DescriptorRefusalReason;
+  origin: EpochDescriptorOrigin;
+  epochStamp: number;
+  now: number;
+  streak: RefusalStreak | null;
+}): { forgerySignal: boolean; streak: RefusalStreak | null } {
+  const { reason, origin, epochStamp, now, streak } = input;
+  if (reason === 'unavailable' || origin === 'local') return { forgerySignal: false, streak };
+  const next: RefusalStreak =
+    streak && now - streak.last <= RAISE_REFUSAL_COMMIT_GRACE_MS
+      ? { since: streak.since, last: now }
+      : { since: now, last: now };
+  const forgerySignal =
+    now - epochStamp >= RAISE_REFUSAL_COMMIT_GRACE_MS ||
+    epochStamp - now > RAISE_REFUSAL_CLOCK_SKEW_MS ||
+    now - next.since >= RAISE_REFUSAL_COMMIT_GRACE_MS;
+  return { forgerySignal, streak: next };
+}
+
+const refusalStreaks = new Map<string, RefusalStreak>();
+const refusalLogAt = new Map<string, number>();
+const refusalOwnerAlertAt = new Map<string, number>();
+
+/** True at most once per `intervalMs` per key; records the emission. */
+function emitAtMostEvery(map: Map<string, number>, key: string, now: number, intervalMs: number): boolean {
+  const last = map.get(key);
+  if (last !== undefined && now >= last && now - last < intervalMs) return false;
+  map.set(key, now);
+  capMap(map, TENANT_EPOCH_MAX_ENTRIES);
+  return true;
+}
+
+/** Record a refusal and hand the evidence to the hook. Never throws. */
+function noteDescriptorRefused(
+  deps: EmergencyRevDeps,
+  args: {
+    tenantId: string;
+    screenId: string;
+    reason: DescriptorRefusalReason;
+    descriptor: EmergencyAlertDescriptor;
+    confirmed: ConfirmedTenantAlert | null;
+    epoch: TenantEmergencyEpoch;
+    now: number;
+  },
+): void {
+  try {
+    const { tenantId, screenId, reason, descriptor, confirmed, epoch, now } = args;
+    const origin = epochDescriptorOrigin(tenantId, epoch);
+    const { forgerySignal, streak } = classifyDescriptorRefusal({
+      reason,
+      origin,
+      epochStamp: epoch.stamp,
+      now,
+      streak: refusalStreaks.get(tenantId) ?? null,
+    });
+    if (streak) {
+      refusalStreaks.set(tenantId, streak);
+      capMap(refusalStreaks, TENANT_EPOCH_MAX_ENTRIES);
+    }
+    const log = emitAtMostEvery(
+      refusalLogAt,
+      `${tenantId}|${forgerySignal ? 'forgery-signal' : `${origin}:${reason}`}`,
+      now,
+      RAISE_REFUSAL_LOG_INTERVAL_MS,
+    );
+    const notifyOwner =
+      forgerySignal &&
+      emitAtMostEvery(refusalOwnerAlertAt, tenantId, now, RAISE_REFUSAL_OWNER_ALERT_INTERVAL_MS);
+    const hook = deps.onDescriptorRefused;
+    if (typeof hook !== 'function') return;
+    hook({
+      tenantId,
+      screenId,
+      reason,
+      origin,
+      descriptor: {
+        type: descriptor.type,
+        severity: descriptor.severity,
+        isDrill: descriptor.isDrill === true,
+      },
+      confirmed,
+      epochStamp: epoch.stamp,
+      epochAgeMs: now - epoch.stamp,
+      forgerySignal,
+      log,
+      notifyOwner,
+    });
+  } catch {
+    // Evidence must never be able to fail a poll.
+  }
+}
+
+/**
+ * Offer `candidate` only if the database confirms it (rule 6). Returns the
+ * descriptor to sign, or null. Never throws.
+ */
+async function confirmRaiseDescriptor(
+  deps: EmergencyRevDeps,
+  tenantId: string,
+  screenId: string,
+  candidate: EmergencyAlertDescriptor,
+  epoch: TenantEmergencyEpoch,
+  now: number,
+): Promise<EmergencyAlertDescriptor | null> {
+  const confirm = deps.confirmTenantAlert;
+  // No confirmer → nothing may be signed. The cheap pre-304 pass calls
+  // without one on purpose; it is not a refusal, so it records nothing.
+  if (typeof confirm !== 'function') return null;
+  try {
+    const outcome = await readRaiseConfirmation(confirm, tenantId, epoch.stamp, now);
+    if (outcome.kind === 'ok' && outcome.alert && descriptorMatchesConfirmed(candidate, outcome.alert)) {
+      refusalStreaks.delete(tenantId);
+      return candidate;
+    }
+    noteDescriptorRefused(deps, {
+      tenantId,
+      screenId,
+      reason: outcome.kind === 'unavailable' ? 'unavailable' : outcome.alert ? 'mismatch' : 'no-alert',
+      descriptor: candidate,
+      confirmed: outcome.kind === 'ok' ? outcome.alert : null,
+      epoch,
+      now,
+    });
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Composition ──────────────────────────────────────────────────────────
 
 export interface EmergencyRevAnswer {
@@ -660,14 +1111,20 @@ export interface EmergencyRevAnswer {
   /**
    * The RAISE fast-path descriptor to put in a 200 body, or null (P0-7 #2).
    *
-   * Non-null ONLY when all three hold, and the caller must not second-guess
+   * Non-null ONLY when all four hold, and the caller must not second-guess
    * them — they are the whole safety argument:
    *   1. the tenant epoch says an alert is ACTIVE, and
    *   2. that epoch carries a descriptor (⇒ a TENANT-scoped trigger minted
    *      it — a group/device trigger stores none), and
    *   3. this screen's last manifest build did NOT already record an active
    *      alert, so the fast path can only ever move a screen from "no alert"
-   *      to "alert", never replace one alert with another.
+   *      to "alert", never replace one alert with another, and
+   *   4. the DATABASE confirms it (rule 6, 2026-11-01): the manifest's own
+   *      read of the tenant has a live tenant-wide alert of the same type,
+   *      severity and drill flag. Points 1–3 come from Redis-fed state, which
+   *      anyone holding `REDIS_URL` can write; point 4 is what stops this
+   *      field being a signing oracle. Without `deps.confirmTenantAlert` it
+   *      is always null.
    *
    * It must never be attached to a 304: a 304 says "nothing moved", and a
    * screen that has already applied this revision has already been told.
@@ -676,8 +1133,11 @@ export interface EmergencyRevAnswer {
 }
 
 /**
- * Build the answer for one screen. Reads Redis at most once (memoised) and
- * Postgres NEVER — that is the whole point of the endpoint.
+ * Build the answer for one screen. Reads Redis at most once (memoised).
+ * Postgres is read only through `deps.confirmTenantAlert`, only inside the
+ * raise window (rule 6) — an alert up, a descriptor present, this screen not
+ * yet showing one — and at most once per tenant per cache window. Without a
+ * confirmer this never touches Postgres and never returns a descriptor.
  */
 export async function resolveEmergencyRev(
   deps: EmergencyRevDeps,
@@ -701,9 +1161,17 @@ export async function resolveEmergencyRev(
   // means this screen's own last manifest build already put an alert on the
   // glass — possibly a per-screen override the tenant-wide descriptor knows
   // nothing about — so the fast path stands down and the manifest decides.
-  const alert =
+  const candidate =
     epoch.active && record?.active !== true && emergencyRevRaiseEnabled()
       ? sanitizeAlertDescriptor(epoch.alert)
+      : null;
+  // DATABASE CONFIRMATION (rule 6). Only a candidate pays for it, so the
+  // read happens only inside the raise window. `active` below is untouched:
+  // a refused descriptor still tells the player an alert is up, and the
+  // player answers that with the manifest fetch — the unchanged path.
+  const alert =
+    candidate && tenantId
+      ? await confirmRaiseDescriptor(deps, tenantId, screenId, candidate, epoch, now)
       : null;
   return {
     rev,
@@ -713,10 +1181,89 @@ export async function resolveEmergencyRev(
   };
 }
 
+// ── Refusal evidence copy (rule 6) ───────────────────────────────────────
+
+/**
+ * A descriptor's strings come from Redis: bounded by `sanitizeAlertDescriptor`
+ * but otherwise attacker-chosen. Anything leaving this process in a log line
+ * or an email is reduced to a plain token so it cannot forge a second log line
+ * or rewrite the mail.
+ */
+export function evidenceSafe(value: unknown, max = 64): string {
+  const s = typeof value === 'string' ? value : String(value ?? '');
+  const cleaned = s.replace(/[^A-Za-z0-9_.:-]/g, '?').slice(0, max);
+  return cleaned.length > 0 ? cleaned : '-';
+}
+
+/** The one throttled log line (no secrets: ids, the descriptor's type/severity, provenance). */
+export function formatDescriptorRefusalLine(r: EmergencyRevRefusal): string {
+  return (
+    '[emergency-rev] descriptor refused: not confirmed by the database' +
+    ` tenant=${evidenceSafe(r.tenantId, 128)}` +
+    ` type=${evidenceSafe(r.descriptor.type)}` +
+    ` severity=${evidenceSafe(r.descriptor.severity)}` +
+    ` drill=${r.descriptor.isDrill ? 'yes' : 'no'}` +
+    ` source=${r.origin}` +
+    ` reason=${r.reason}` +
+    ` db=${r.confirmed ? `${evidenceSafe(r.confirmed.type)}/${evidenceSafe(r.confirmed.severity)}${r.confirmed.isDrill ? '/drill' : ''}` : 'none'}` +
+    ` epoch-age-s=${Math.round(r.epochAgeMs / 1000)}` +
+    ` forgery-signal=${r.forgerySignal ? 'yes' : 'no'}` +
+    ` screen=${evidenceSafe(r.screenId, 128)}`
+  );
+}
+
+/** The owner alert (PlatformAlertMailer → PLATFORM_ALERT_EMAILS). */
+export function renderDescriptorRefusalAlert(r: EmergencyRevRefusal): { subject: string; body: string } {
+  const tenant = evidenceSafe(r.tenantId, 128);
+  const stampMs = Number.isFinite(r.epochStamp) ? r.epochStamp : NaN;
+  const stampIso =
+    Number.isFinite(stampMs) && stampMs > 0 && stampMs < 8.64e15 ? new Date(stampMs).toISOString() : 'unreadable';
+  const db = r.confirmed
+    ? `type=${evidenceSafe(r.confirmed.type)} severity=${evidenceSafe(r.confirmed.severity)} drill=${r.confirmed.isDrill ? 'yes' : 'no'}`
+    : 'no tenant-wide alert is active';
+  const body = [
+    'The emergency-rev fast path (GET /api/v1/screens/:id/emergency-rev) was about to sign a',
+    'tenant-wide alert descriptor that the database does not confirm. It refused: no screen was',
+    'handed a signed alert from it. The screens were told an alert may be up and fetched their',
+    'manifest instead, which reads the database and is unchanged.',
+    '',
+    `Tenant:             ${tenant}`,
+    `Descriptor (Redis): type=${evidenceSafe(r.descriptor.type)} severity=${evidenceSafe(r.descriptor.severity)} drill=${r.descriptor.isDrill ? 'yes' : 'no'}`,
+    `Database:           ${db}`,
+    `Reason:             ${r.reason}`,
+    `Descriptor source:  ${r.origin === 'redis' ? 'redis (not minted by this API process)' : 'local'}`,
+    `Epoch stamp:        ${stampIso} (${Math.round(r.epochAgeMs / 1000)} s before the refusal)`,
+    `Screen that asked:  ${evidenceSafe(r.screenId, 128)}`,
+    '',
+    'What it can mean:',
+    `  1. Something other than VenueOS wrote the Redis key venueos:emrev:t:${tenant} - an attempted`,
+    '     forged alert. REDIS_URL was in the 2026-10-21 Railway environment leak; anyone holding it',
+    '     can write that key. Treat it as one until (2) is ruled out.',
+    '  2. A stale mirror outlived its alert (an all-clear whose Redis write failed, then a restart),',
+    '     or a trigger whose database write never committed.',
+    '',
+    'Check: the tenant\'s TRIGGER_EMERGENCY / CLEAR_EMERGENCY audit rows around the epoch stamp; the',
+    'Redis key above; rotate REDIS_URL if (1) is plausible.',
+    '',
+    'Sent at most once per tenant per hour per API process. Every refusal is also logged as',
+    '"[emergency-rev] descriptor refused" and this one is audited as EMERGENCY_REV_DESCRIPTOR_REFUSED.',
+  ].join('\n');
+  return {
+    subject: `[VenueOS] Emergency raise refused: the database does not confirm an alert for tenant ${tenant}`,
+    body,
+  };
+}
+
 /** Full reset of module state between spec cases. */
 export function resetEmergencyRevForTests(nextOriginId = 'testorigin'): void {
   screenRecords.clear();
   localTenantEpochs.clear();
   tenantEpochMemo.clear();
+  localDescriptorStamps.clear();
+  raiseConfirmations.clear();
+  raiseConfirmationsInFlight.clear();
+  refusalStreaks.clear();
+  refusalLogAt.clear();
+  refusalOwnerAlertAt.clear();
   originId = nextOriginId;
 }

@@ -121,7 +121,7 @@ test('Settings inherits the group address and offers one clear update action', a
 
 test('Map uses account branding for a shared group location and opens its equipment', async ({ page }, info) => {
   await openScreens(page);
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   const pin = page.getByRole('img', { name: /^Allora Neighborhood —/ });
   await expect(pin).toBeVisible();
   await expect(pin).toHaveCount(1); // two devices at one address, one physical location
@@ -170,7 +170,7 @@ test('Map uses account branding for a shared group location and opens its equipm
 
 test('map navigation filters keep the map visible and location equipment opens screen details', async ({ page }) => {
   await openScreens(page);
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   await page.getByRole('radio', { name: 'Offline', exact: true }).click();
   await expect(page.getByText('No locations match this filter.')).toBeVisible();
   await expect(page.getByTestId('location-map-surface').locator('.leaflet-container')).toBeVisible();
@@ -184,7 +184,7 @@ test('map navigation filters keep the map visible and location equipment opens s
 test('mobile map location navigation stays inside the viewport', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openScreens(page);
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   await page.getByRole('group', { name: 'Location navigation' }).getByRole('button', { name: 'Allora Neighborhood', exact: true }).click();
   const details = page.getByRole('group', { name: 'Allora Neighborhood details' });
   await expect(details).toBeVisible();
@@ -223,7 +223,7 @@ for (const width of [1440, 390]) {
 
 test('groups sharing an address keep named pin and detail headings with the address underneath', async ({ page }, info) => {
   await openScreens(page, '', true);
-  await page.getByRole('tab', { name: 'Map', exact: true }).click();
+  await page.getByRole('radio', { name: 'Map', exact: true }).click();
   await page.getByRole('group', { name: 'Location navigation' }).getByRole('button', { name: 'Allora Neighborhood + 1 group', exact: true }).click();
   const details = page.getByRole('group', { name: 'Allora Neighborhood + 1 group details' });
   await expect(details.getByText('Allora Neighborhood + 1 group', { exact: true })).toBeVisible();

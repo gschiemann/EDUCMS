@@ -4,6 +4,7 @@ import { PublicShell } from '@/components/marketing/PublicShell';
 import { TemplateEmbed } from '@/components/marketing/TemplateEmbed';
 import { IndustryShowcase } from '@/components/marketing/IndustryShowcase';
 import { SessionEntryRedirect } from '@/components/layout/SessionEntryRedirect';
+import { SIGNUP_OPEN, signupHref } from '@/lib/signup-gate';
 
 /**
  * VenueOS landing page.
@@ -84,10 +85,10 @@ function Hero() {
         </p>
         <div className="mt-9 flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href="/signup"
+            href={signupHref()}
             className="group inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
           >
-            Start free trial
+            {SIGNUP_OPEN ? 'Start free trial' : 'Request info'}
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
@@ -98,7 +99,9 @@ function Hero() {
           </Link>
         </div>
         <p className="mt-5 text-sm text-slate-500">
-          No credit card · 14-day free trial, any industry · Up and running in 10 minutes
+          {SIGNUP_OPEN
+            ? 'No credit card · 14-day free trial, any industry · Up and running in 10 minutes'
+            : 'Every industry · Email us and we’ll send you more information'}
         </p>
       </div>
     </section>
@@ -504,15 +507,16 @@ function CTA() {
               Put it on every screen.
             </h2>
             <p className="mt-4 text-slate-400 text-base md:text-lg max-w-xl mx-auto">
-              14-day free trial, any industry. Up and running in under ten minutes — no card,
-              no hardware, no sales call.
+              {SIGNUP_OPEN
+                ? '14-day free trial, any industry. Up and running in under ten minutes — no card, no hardware, no sales call.'
+                : 'Any industry. Email us and we’ll send you more information.'}
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
               <Link
-                href="/signup"
+                href={signupHref()}
                 className="group inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
               >
-                Start free trial
+                {SIGNUP_OPEN ? 'Start free trial' : 'Request info'}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <Link

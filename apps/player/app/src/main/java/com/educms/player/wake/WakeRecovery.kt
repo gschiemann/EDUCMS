@@ -303,6 +303,13 @@ object WakeRecovery {
             lastLaunchAtMs = lastLaunchAtElapsedMs,
             nowMs = SystemClock.elapsedRealtime(),
             lastCheck = last,
+            // Either face's accepted paint receipt since this wake was asked for.
+            alertPaintedSinceWake = runCatching {
+                (0..1).any { face ->
+                    com.educms.player.display.EmergencyPaintRecovery.paintedAtMs(face)
+                        ?.let { it >= t.requestedAtElapsedMs } == true
+                }
+            }.getOrDefault(false),
         )
         val step = WakePolicy.step(facts)
         when (step) {
