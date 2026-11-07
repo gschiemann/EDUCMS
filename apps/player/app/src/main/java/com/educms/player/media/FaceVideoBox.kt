@@ -1869,6 +1869,12 @@ internal object FaceVideoBox {
         return switchValues[face]
     }
 
+    /** Only the store's own authenticated, identity-checked source read calls this. */
+    internal fun observeStoreEnrolment(ctx: Context, face: Int, screen: String, enabled: Boolean) {
+        if (face !in 0..1 || NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(ctx, face)) != screen) return
+        learnSwitch(ctx, face, enabled)
+    }
+
     @Synchronized private fun learnSwitch(ctx: Context, face: Int, value: Boolean?) {
         switchLearnedAt[face] = SystemClock.elapsedRealtime()
         if (switchValues.containsKey(face) && switchValues[face] == value) return

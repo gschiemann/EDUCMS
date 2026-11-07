@@ -172,6 +172,32 @@ test("a real native readiness epoch restores protocol-2 after menu pause without
   expect(page.url()).toBe(before);
 });
 
+test("a solo video's browser element survives descriptor withdrawal and re-admission", async ({ page }) => {
+  const { manifestRef } = await bootDual(page, true);
+  const video = page.locator('video:visible').first();
+  await expect(video).toBeVisible();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > 0.25)).toBe(true);
+  type StableWindow = {
+    __stableBrowser: Element | null;
+    __eduTestRealtime: { deliver(message: unknown): void };
+    __dualTest: { prepares: number; stops: number };
+  };
+  await page.evaluate(() => { (window as unknown as StableWindow).__stableBrowser = document.querySelector('video'); });
+  const current = manifestRef.value as unknown as Record<string, unknown>;
+  const descriptor = current.nativeVideo;
+  const stops = await page.evaluate(() => (window as unknown as StableWindow).__dualTest.stops);
+  delete current.nativeVideo;
+  await page.evaluate(() => (window as unknown as StableWindow).__eduTestRealtime.deliver({ type: 'SYNC', eventId: 'solo-withdraw', timestamp: Date.now(), payload: {} }));
+  await expect.poll(() => page.evaluate(() => (window as unknown as StableWindow).__dualTest.stops)).toBeGreaterThan(stops);
+  expect(await page.evaluate(() => document.querySelector('video') === (window as unknown as StableWindow).__stableBrowser)).toBe(true);
+  const prepares = await page.evaluate(() => (window as unknown as StableWindow).__dualTest.prepares);
+  current.nativeVideo = descriptor;
+  await page.evaluate(() => (window as unknown as StableWindow).__eduTestRealtime.deliver({ type: 'SYNC', eventId: 'solo-restore', timestamp: Date.now(), payload: {} }));
+  await expect.poll(() => page.evaluate(() => (window as unknown as StableWindow).__dualTest.prepares)).toBeGreaterThan(prepares);
+  expect(await page.evaluate(() => document.querySelector('video') === (window as unknown as StableWindow).__stableBrowser)).toBe(true);
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > 0)).toBe(true);
+});
+
 async function push(page: Page, type: string) {
   await expect
     .poll(() =>

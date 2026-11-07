@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
+import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -315,6 +316,8 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 // `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
+import { RemoteOptions } from './RemoteOptions';
+import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -3100,7 +3103,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // instead of silently going without. Same behaviour, one implementation.
   useTaurusPolyfills();
 
-  const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
+  const [storageEstimate, setStorageEstimate] = useState<PlayerStorageEstimate | null>(null);
+  const storageInfo = storageEstimateText(storageEstimate);
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
   // `#t=<jwt>&o=<portrait|landscape>` when opening the Preview link.
@@ -3516,17 +3520,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
 
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
-      navigator.storage.estimate().then(({ usage, quota }) => {
-        if (usage && quota) {
-          setStorageInfo({
-             used: (usage / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
-             total: (quota / (1024 * 1024 * 1024)).toFixed(0) + ' GB',
-             percent: Math.round((usage / quota) * 100)
-          });
-        }
-      });
-    }
+    let active = true;
+    void readPlayerStorageEstimate(typeof navigator === 'undefined' ? undefined : navigator.storage)
+      .then(value => { if (active) setStorageEstimate(value); });
+    return () => { active = false; };
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -5979,6 +5976,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const uninstall = installDeviceDiagnosticsUploader(createDeviceDiagnosticsUploader({
       screenId, token: getDeviceToken, apiRoot: getApiRoot,
       readLogs: () => nativeCall('getRecentLogs'),
+      readNativeState: () => nativeCall('sharedVideoState'),
+      readStorage: () => readPlayerStorageEstimate(navigator.storage),
       post: (url, init) => fetchJsonBounded(url, init, 15_000),
       now: Date.now,
     }));
@@ -8217,6 +8216,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {
           const tag = nativeManifestTag(manifestEtagRef.current);
           if (tag) nativeFirstFaceRef.current?.sync(tag, lastEmergencySetHashRef.current || null);
+          // .64 can learn enrolment from the store's own authenticated read.
+          // Waiting for protocol 4 before nudging that read stranded a face
+          // which booted on images. Keep cached/loaded video on its current
+          // path: discovery must not take a working video away to download it.
+          const url = manifest.nativeVideo?.asset?.url;
+          if (tag && typeof url === 'string') {
+            const key = stableManifestUrlKey(playbackUrlFor(url, 'video/mp4'));
+            const available = cachedMediaKeysRef.current.has(key) || Array.from(document.querySelectorAll('video')).some(video =>
+              video.readyState >= 2 && stableManifestUrlKey(video.currentSrc || video.src) === key);
+            nativeFirstFaceRef.current?.discoverStore(tag, nativeStoreDiscoveryAllowed({
+              manifest, screenId, userAgent: navigator.userAgent,
+              holdRaised: displayEmergencyPlaybackHeld(), mediaAlreadyAvailable: available,
+            }));
+          }
         }
         // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
         if (pendingOverrideConfirmRef.current) {
@@ -12297,7 +12310,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
   // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
-  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet ? (
+  // A dashboard preview has no device credential by design: never warn there (2026-11-02).
+  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet && !isPreviewMode() ? (
     <div
       data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
@@ -12605,8 +12619,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // setup checklist (its only glass re-entry is a TOUCH corner-hold).
   //
   // This panel is what Back now opens on the pre-content phases. Remote-first:
-  // autoFocus on the primary so OK/Enter works with zero navigation, and
-  // every control is a real <button> so D-pad spatial nav reaches it.
+  // RemoteOptions captures arrows and OK explicitly; real buttons alone
+  // do not provide spatial navigation on every OEM WebView.
   // Spacing via margins, not `gap` (Chromium-83 Taurus floor); positioning
   // via four longhand sides (never `inset`).
   const retryConnectionNow = () => {
@@ -12629,8 +12643,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const escapeButtonCls =
     'px-6 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:scale-95';
   const preContentEscapeOverlay = playbackStopped ? (
-    <div
-      role="dialog"
+    <RemoteOptions
       aria-label="Screen options"
       style={{
         position: 'fixed',
@@ -12719,7 +12732,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           </button>
         </div>
       </div>
-    </div>
+    </RemoteOptions>
   ) : null;
   // One-line standing hint so the escape panel is discoverable from across
   // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
@@ -13968,8 +13981,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // milliseconds of a boot, before the first state read answered,
               // yields to native-first the moment the app says protocolMax 4.
               if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
-              const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
+              // Keep the normal solo boundary mounted while admission changes
+              // (late capabilities, an overlay, or descriptor withdrawal).
+              // Switching between a wrapper and its browser child recreated
+              // the media element/loop package on every such transition.
+              const wrapNative = (browser: React.ReactNode) => nativeEligible || (!playlist?.isEmergency && isSoloPlaylist && sorted.length === 1)
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeEligible ? nativeChoice : null} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
@@ -14906,11 +14923,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Local storage</span>
                     <span className="font-mono font-semibold text-slate-700 text-right">
-                      {storageInfo.used} of {storageInfo.total}
+                      {storageInfo ? `${storageInfo.used} of ${storageInfo.total}` : '—'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo?.percent ?? 0}%` }} />
                   </div>
 
                   {/* 2026-05-04 — operator: "my playlist should show

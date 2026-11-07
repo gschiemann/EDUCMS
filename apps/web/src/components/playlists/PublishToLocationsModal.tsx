@@ -156,8 +156,9 @@ export function PublishToLocationsModal({
             <div className="p-5 overflow-y-auto space-y-4">
               {/* Playlist picker */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Playlist to publish</label>
+                <label htmlFor="publish-to-locations-playlist" className="text-xs font-bold uppercase tracking-wider text-slate-400">Playlist to publish</label>
                 <select
+                  id="publish-to-locations-playlist"
                   value={playlistId}
                   onChange={(e) => setPlaylistId(e.target.value)}
                   className="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white outline-none focus:border-slate-400"
@@ -172,7 +173,7 @@ export function PublishToLocationsModal({
               {/* Screen picker grouped by location */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Screens across your locations</label>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Screens across your locations</span>
                   <span className="text-xs text-slate-500">{selected.size} selected</span>
                 </div>
                 {fleet.isLoading ? (
