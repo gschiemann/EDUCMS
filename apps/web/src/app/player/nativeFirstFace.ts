@@ -13,7 +13,8 @@ import { noteNativeEmergencyHeld } from './emergencyHold';
  *     and never replaces the last facts (unknown ≠ idle);
  *   • the poll runs only while something holds interest (`hold()`), never
  *     on a browser player and never off the player page;
- *   • nothing is sent unless the app advertised protocolMax ≥ 4.
+ *   • playback commands require protocolMax ≥ 4. An explicitly enrolled
+ *     .64 store may receive a read-only discovery nudge before that point.
  * No React, no DOM; timers and the clock are injectable for the tests.
  */
 import {
@@ -216,6 +217,20 @@ export class NativeFirstFace {
   sync(manifestTag: string, emergencySetHash?: string | null): boolean {
     const message = nativeSyncMessage(manifestTag, emergencySetHash);
     if (!message || message === this.lastSync || !this.supportsV4()) return false;
+    return this.fireSync(message);
+  }
+
+  /** Break the first-session dependency without granting playback authority.
+   * The caller checks a fresh live manifest, explicit store enrolment and
+   * the .64 floor. Native receives only an ETag and re-reads its OWN source. */
+  discoverStore(manifestTag: string, eligible: boolean): boolean {
+    if (!eligible || this.supportsV4() || !this.bridge.has('sharedVideoPrepare')) return false;
+    const message = nativeSyncMessage(manifestTag);
+    if (!message || message === this.lastSync) return false;
+    return this.fireSync(message);
+  }
+
+  private fireSync(message: string): boolean {
     let ok = false;
     try { ok = this.bridge.fire('sharedVideoPrepare', message); } catch { ok = false; }
     if (ok) this.lastSync = message;

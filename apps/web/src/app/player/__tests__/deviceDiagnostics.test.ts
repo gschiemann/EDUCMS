@@ -1,4 +1,4 @@
-import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader, requestDeviceDiagnosticsUpload } from '../deviceDiagnostics';
+import { createDeviceDiagnosticsUploader, installDeviceDiagnosticsUploader, requestDeviceDiagnosticsUpload, nativeStorageDiagnostic } from '../deviceDiagnostics';
 import { requestDiagnosticsUpload } from '../playbackSafety';
 
 const screenId = '12345678-abcd-1234-abcd-123456789abc';
@@ -71,4 +71,43 @@ test('a worker failure reaches authenticated diagnostics even when the legacy br
   h.advance(); h.deps.readLogs.mockRejectedValueOnce(new Error('bridge unavailable'));
   await h.upload(failure);
   expect(h.deps.post).toHaveBeenCalledTimes(2);
+});
+
+test('native storage evidence excludes credentials, URLs, lease identities and asset lists', () => {
+  const snapshot = nativeStorageDiagnostic(JSON.stringify({
+    protocol: 2, protocolMax: 4, state: 'idle', token: 'private-credential',
+    nativeFirst: { enabled: true }, lease: { id: 'private-document' },
+    store: { mode: 'active', serve: false, generation: 3, ready: ['private-asset'], pending: [],
+      url: 'https://private.example/file?token=credential',
+      accounting: { usedBytes: 100, freeBytes: 6000, budgetBytes: 5000, storeFull: false, secret: 'private' } },
+  }));
+  expect(snapshot).toMatchObject({ protocolMax: 4, nativeFirst: true, store: {
+    mode: 'active', readyCount: 1, pendingCount: 0, freeBytes: 6000, budgetBytes: 5000,
+  } });
+  expect(JSON.stringify(snapshot)).not.toMatch(/private|credential|token|lease|https/);
+  expect(nativeStorageDiagnostic('{}')).toMatchObject({ nativeFirst: null, store: { mode: null, freeBytes: null } });
+  expect(nativeStorageDiagnostic('malformed')).toBeNull();
+  expect(nativeStorageDiagnostic(' '.repeat(65_537))).toBeNull();
+});
+
+test('a hung native log read cannot hide the independent native-store and browser-quota evidence', async () => {
+  jest.useFakeTimers();
+  try {
+    const h = harness();
+    h.deps.readLogs.mockImplementation(() => new Promise(() => undefined));
+    const upload = createDeviceDiagnosticsUploader({ ...h.deps,
+      readNativeState: async () => ({ protocolMax: 2, store: { mode: 'off', reason: 'not-enrolled' } }),
+      readStorage: async () => ({ usage: 159_000_000, quota: 159_000_000 }),
+    });
+    const pending = upload({ phase: 'chunk', reason: 'storage-quota', offset: 42_000_000, total: 128_108_229 });
+    await jest.advanceTimersByTimeAsync(2001);
+    await pending;
+    expect(h.deps.post).toHaveBeenCalledTimes(1);
+    const body = h.deps.post.mock.calls[0][1].body as string;
+    expect(body).toContain('"reason":"storage-quota"');
+    expect(body).toContain('"protocolMax":2');
+    expect(body).toContain('"mode":"off"');
+    expect(body).toContain('"browser":{"usage":159000000,"quota":159000000}');
+    expect(jest.getTimerCount()).toBe(0);
+  } finally { jest.useRealTimers(); }
 });

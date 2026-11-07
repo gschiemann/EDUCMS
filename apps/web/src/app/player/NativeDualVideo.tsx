@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
 import { noteNativeEmergencyHeld } from "./emergencyHold";
 import {
@@ -110,11 +110,20 @@ export function NativeDualVideo({
   // A protocol-2 retry is a NEW attempt identity, so the effect below re-runs.
   const [attempt, setAttempt] = useState<{ base: string; n: number }>({ base: "", n: 0 });
   const attemptN = attempt.base === baseIdentity ? attempt.n : 0;
-  const identity = baseIdentity ? `${baseIdentity}#${attemptN}` : "";
+  // A withdrawn descriptor retires its presentation. Re-admitting the same
+  // file must start in browser stage, never reuse an old "presenting" phase
+  // and hide the browser before a new native session has a frame.
+  const [admission, setAdmission] = useState({ base: baseIdentity, epoch: 0 });
+  let admissionEpoch = admission.epoch;
+  if (admission.base !== baseIdentity) {
+    admissionEpoch++;
+    setAdmission({ base: baseIdentity, epoch: admissionEpoch });
+  }
+  const identity = baseIdentity ? `${baseIdentity}#${attemptN}@${admissionEpoch}` : "";
   const container = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const playing = useRef(onPlaying);
-  playing.current = onPlaying;
+  useLayoutEffect(() => { playing.current = onPlaying; }, [onPlaying]);
   const controller = useRef<SharedVideoController | null>(null);
   const commitGate = useRef<(() => void) | null>(null);
   const [phase, setPhase] = useState<{

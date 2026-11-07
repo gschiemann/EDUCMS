@@ -8,7 +8,8 @@
  * One rounded-lg container, the active option a white raised segment (the
  * look the Screens view switch already had). `role="radiogroup"` with roving
  * tabindex: Tab lands on the chosen option, arrow keys move AND choose.
- * 44px tall on a phone, 32px from `sm` up.
+ * 44 × 44 px on a phone (portrait, or landscape via `short-land`), 32px tall
+ * from `sm` up.
  */
 import { useRef, type ComponentType, type KeyboardEvent } from 'react';
 
@@ -72,8 +73,8 @@ export function Segmented<T extends string>({
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(o.value)}
             onKeyDown={onKey}
-            className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:min-h-8 motion-reduce:transition-none ${
-              iconOnly ? 'min-w-11 sm:min-w-8' : 'px-3'
+            className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:min-h-8 short-land:min-h-11 motion-reduce:transition-none ${
+              iconOnly ? 'min-w-11 sm:min-w-8 short-land:min-w-11' : 'px-3 min-w-11 sm:min-w-0 short-land:min-w-11'
             } ${fullWidthOnMobile ? 'flex-1 sm:flex-none' : ''} ${
               active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-800'
             }`}
