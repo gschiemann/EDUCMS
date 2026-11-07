@@ -2770,6 +2770,15 @@ class MainActivity : ComponentActivity() {
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
 
+        // Legacy-engine compatibility layer: on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR, missing JS builtins are
+        // defined at document start for website zones in iframes. The
+        // player's own origin is skipped, so this bundle (and its emergency
+        // path) runs on the unmodified engine. No bridge, no listener.
+        com.educms.player.webcompat.LegacyEngineCompat.install(
+            applicationContext, wv, "player", listOfNotNull(HostAllowlist.playerOrigin()),
+        )
+
         // ── AND-002 / SEC-002 — ONE handler set, ONE transport ──────
         // Built once and handed to the origin-scoped `NativeBridgeChannel`
         // and — only on the devices that can take nothing else — the legacy
@@ -3706,6 +3715,12 @@ class MainActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
             WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, true)
         }
+        // The ONE document-start script this view gets: the legacy-engine
+        // compatibility layer (only on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR). It defines missing JS
+        // builtins in page context and nothing else — no native surface, so
+        // the boundary above holds (`WebTabsWiringTest`).
+        com.educms.player.webcompat.LegacyEngineCompat.install(applicationContext, wv, "overlay")
         // (A touch inside the site is relayed to the player page from the
         // Activity's dispatchTouchEvent — observed, never consumed — so the
         // Website Tabs idle clock resets. Not a View.OnTouchListener: that
