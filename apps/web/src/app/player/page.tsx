@@ -316,6 +316,8 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 // `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
+import { RemoteOptions } from './RemoteOptions';
+import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -5971,6 +5973,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const uninstall = installDeviceDiagnosticsUploader(createDeviceDiagnosticsUploader({
       screenId, token: getDeviceToken, apiRoot: getApiRoot,
       readLogs: () => nativeCall('getRecentLogs'),
+      readNativeState: () => nativeCall('sharedVideoState'),
+      readStorage: () => readPlayerStorageEstimate(navigator.storage),
       post: (url, init) => fetchJsonBounded(url, init, 15_000),
       now: Date.now,
     }));
@@ -8209,6 +8213,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {
           const tag = nativeManifestTag(manifestEtagRef.current);
           if (tag) nativeFirstFaceRef.current?.sync(tag, lastEmergencySetHashRef.current || null);
+          // .64 can learn enrolment from the store's own authenticated read.
+          // Waiting for protocol 4 before nudging that read stranded a face
+          // which booted on images. Keep cached/loaded video on its current
+          // path: discovery must not take a working video away to download it.
+          const url = manifest.nativeVideo?.asset?.url;
+          if (tag && typeof url === 'string') {
+            const key = stableManifestUrlKey(playbackUrlFor(url, 'video/mp4'));
+            const available = cachedMediaKeysRef.current.has(key) || Array.from(document.querySelectorAll('video')).some(video =>
+              video.readyState >= 2 && stableManifestUrlKey(video.currentSrc || video.src) === key);
+            nativeFirstFaceRef.current?.discoverStore(tag, nativeStoreDiscoveryAllowed({
+              manifest, screenId, userAgent: navigator.userAgent,
+              holdRaised: displayEmergencyPlaybackHeld(), mediaAlreadyAvailable: available,
+            }));
+          }
         }
         // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
         if (pendingOverrideConfirmRef.current) {
@@ -12598,8 +12616,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // setup checklist (its only glass re-entry is a TOUCH corner-hold).
   //
   // This panel is what Back now opens on the pre-content phases. Remote-first:
-  // autoFocus on the primary so OK/Enter works with zero navigation, and
-  // every control is a real <button> so D-pad spatial nav reaches it.
+  // RemoteOptions captures arrows and OK explicitly; real buttons alone
+  // do not provide spatial navigation on every OEM WebView.
   // Spacing via margins, not `gap` (Chromium-83 Taurus floor); positioning
   // via four longhand sides (never `inset`).
   const retryConnectionNow = () => {
@@ -12622,8 +12640,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const escapeButtonCls =
     'px-6 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:scale-95';
   const preContentEscapeOverlay = playbackStopped ? (
-    <div
-      role="dialog"
+    <RemoteOptions
       aria-label="Screen options"
       style={{
         position: 'fixed',
@@ -12712,7 +12729,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           </button>
         </div>
       </div>
-    </div>
+    </RemoteOptions>
   ) : null;
   // One-line standing hint so the escape panel is discoverable from across
   // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
@@ -13959,8 +13976,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // milliseconds of a boot, before the first state read answered,
               // yields to native-first the moment the app says protocolMax 4.
               if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
-              const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
+              // Keep the normal solo boundary mounted while admission changes
+              // (late capabilities, an overlay, or descriptor withdrawal).
+              // Switching between a wrapper and its browser child recreated
+              // the media element/loop package on every such transition.
+              const wrapNative = (browser: React.ReactNode) => nativeEligible || (!playlist?.isEmergency && isSoloPlaylist && sorted.length === 1)
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeEligible ? nativeChoice : null} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
