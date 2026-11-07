@@ -206,6 +206,12 @@ export const DOWNLOAD_COPY_EN = {
     'It keeps showing the old content until the new file finishes downloading.',
   'screens.contentState.backgroundProgress': 'Downloading another file · {percent}% of {size}',
   'screens.contentState.backgroundSoFar': 'Downloading another file · {loaded} so far',
+  'screens.contentState.sleeping': 'Sleeping',
+  'screens.contentState.sleepingSchedule': 'Sleeping · on/off schedule',
+  'screens.contentState.sleepingDetail':
+    "This screen is asleep on purpose (a Sleep command or the panel's standby). It wakes with Awake, an alert, or its schedule.",
+  'screens.contentState.sleepingScheduleDetail':
+    'This screen is asleep on purpose because its on/off schedule says off right now. It wakes by itself when the schedule turns it on.',
   'screens.contentState.unavailable': 'Content unavailable',
   'screens.contentState.unavailableDetail':
     "None of the scheduled files would load. It keeps retrying; if this lasts, check the playlist's files.",

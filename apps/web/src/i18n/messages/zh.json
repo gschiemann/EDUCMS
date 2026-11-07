@@ -2531,6 +2531,10 @@
     },
     "setLocation": "设置地址",
     "contentState": {
+      "sleeping": "休眠中",
+      "sleepingSchedule": "休眠中 · 开关机计划",
+      "sleepingDetail": "此屏幕正在有意休眠（休眠指令或面板待机）。可通过“唤醒”、警报或其计划唤醒。",
+      "sleepingScheduleDetail": "此屏幕因开关机计划当前为关闭而有意休眠，计划开启时会自动唤醒。",
       "updating": "正在更新…",
       "updatingStuck": "仍在更新，请检查屏幕",
       "downloading": "正在下载新内容",
