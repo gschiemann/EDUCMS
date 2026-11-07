@@ -228,3 +228,34 @@ describe('sw-player emergency tier — large files through the chunk protocol', 
     expect(metaSetHash(w)).toBe('set-adopt');
   });
 });
+
+// ─── Small-origin headroom (2026-11-07) never reaches the emergency tier ─────
+describe('playlist headroom reclaim leaves the emergency tier alone', () => {
+  it('emergency staging leftovers survive a playlist reclaim, and an emergency chunk is never preflight-refused', async () => {
+    const file = randomBytes(9 * MiB);
+    const w = loadWorker();
+    // An origin that claims to be FULL: a playlist chunk would be refused here.
+    w.context.self.navigator = { storage: { estimate: async () => ({ usage: 100 * MiB, quota: 100 * MiB }) } };
+    const server: RangeServer = { file, calls: [] };
+    w.setFetch(rangeFetch(server));
+    const asset = { url: EM_URL, sha256: sha256Hex(file), size: file.length };
+    const reply = await w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 0, chunkBytes: 4 * MiB, tier: 'emergency' });
+    expect(reply).toMatchObject({ ok: true, nextOffset: 4 * MiB });
+    expect(reply.preflight).toBeUndefined();
+    expect(server.calls).toHaveLength(1);
+    const staging = w.cacheNamed(w.hooks.STAGING_CACHE);
+    const emKey = [...staging.entries.keys()].find((k) => new URL(k).pathname.startsWith(EM_STAGE))!;
+    const dir = emKey.slice(0, emKey.lastIndexOf('/') + 1);
+    await staging.put(`${dir}0-${MiB}`, new Response(new Uint8Array(MiB)));
+    await staging.put(`${dir}tmp-4194304`, new Response(new Uint8Array(MiB)));
+    const before = stagedKeys(w).filter((p) => p.startsWith(EM_STAGE)).sort();
+    expect(before).toHaveLength(3);
+    expect(await w.hooks.reclaimPlaylistStagingLeftovers()).toBe(0);
+    expect(stagedKeys(w).filter((p) => p.startsWith(EM_STAGE)).sort()).toEqual(before);
+    expect(stagedKeys(w).some((p) => p.startsWith(PL_STAGE))).toBe(false);
+    // The full download still lands in the never-evict tier on a "full" origin.
+    const cached = await drive(w, asset, 4 * MiB, 'emergency');
+    expect(cached.assemble).toMatchObject({ ok: true });
+    expect(w.cacheNamed(w.hooks.EMERGENCY_CACHE).entries.size).toBe(1);
+  });
+});

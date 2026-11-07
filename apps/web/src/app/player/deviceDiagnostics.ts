@@ -3,7 +3,50 @@ export type WebCacheFailure = {
   reason: string;
   offset: number;
   total: number | null;
+  /** A worker that refused a chunk before downloading it (origin full) says why, in bytes. */
+  preflight?: true;
+  freeBytes?: number;
+  quotaBytes?: number;
+  needBytes?: number;
+  reclaimedBytes?: number;
+  occupancy?: Record<string, unknown>;
 };
+
+const byteCount = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
+
+/** Only the worker's numeric storage facts, never its free text: no URL can ride along. */
+export function storageEvidence(reply: unknown): Partial<WebCacheFailure> {
+  if (!reply || typeof reply !== 'object') return {};
+  const r = reply as Record<string, unknown>;
+  const out: Partial<WebCacheFailure> = {};
+  if (r.preflight === true) out.preflight = true;
+  for (const k of ['freeBytes', 'quotaBytes', 'needBytes', 'reclaimedBytes'] as const) {
+    const n = byteCount(r[k]);
+    if (n !== undefined) out[k] = n;
+  }
+  const occ = r.occupancy as Record<string, unknown> | undefined;
+  if (occ && typeof occ === 'object') {
+    const staging = occ.staging as Record<string, { count?: unknown; bytes?: unknown }> | undefined;
+    const tierBytes = (t: unknown) => {
+      const o = t as { count?: unknown; bytes?: unknown } | undefined;
+      const count = byteCount(o?.count), bytes = byteCount(o?.bytes);
+      return count !== undefined && bytes !== undefined ? { count, bytes } : undefined;
+    };
+    const summary: Record<string, unknown> = {};
+    for (const k of ['playlistBytes', 'emergencyBytes', 'shellBytes'] as const) {
+      const n = byteCount(occ[k]);
+      if (n !== undefined) summary[k] = n;
+    }
+    if (staging && typeof staging === 'object') {
+      const pl = tierBytes(staging.playlist), em = tierBytes(staging.emergency);
+      if (pl) summary.stagingPlaylist = pl;
+      if (em) summary.stagingEmergency = em;
+    }
+    if (Object.keys(summary).length) out.occupancy = summary;
+  }
+  return out;
+}
 
 /** No URLs, credentials, document identities or arbitrary native log text. */
 export function nativeStorageDiagnostic(raw: unknown): Record<string, unknown> | null {
