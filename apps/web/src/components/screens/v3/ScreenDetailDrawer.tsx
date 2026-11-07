@@ -799,9 +799,6 @@ export function ScreenDetailDrawer({
                         })()}
                       </p>
                     )}
-                    <p className="text-[11px] font-semibold text-slate-400 leading-snug">
-                      {t('screens.drawer.reportedByPlayer')}
-                    </p>
                     {video && videoCurrent && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
                     <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" current={currentVideoFiles} resolution={screen.resolution} />
                     <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="main" />
