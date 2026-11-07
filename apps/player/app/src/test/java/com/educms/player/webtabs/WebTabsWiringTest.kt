@@ -24,8 +24,11 @@ import java.io.File
  *      WebTabsPolicy — no inert feature;
  *   4. ⚠️ THE BOUNDARY: the overlay WebView — the one that shows third-party
  *      sites — is configured with NO `addJavascriptInterface`, NO
- *      `addWebMessageListener` and NO document-start script, refuses
- *      downloads, and its navigation policy consults WebTabsPolicy;
+ *      `addWebMessageListener` and no document-start script of its own
+ *      (the one exception is the legacy-engine compatibility layer, which
+ *      only defines missing JS builtins and has no native surface —
+ *      `LegacyEnginePolicyTest` pins that), refuses downloads, and its
+ *      navigation policy consults WebTabsPolicy;
  *   5. the sign-out never calls `WebStorage.deleteAllData()`, which would
  *      erase the player's own localStorage credential.
  *
@@ -154,6 +157,8 @@ class WebTabsWiringTest {
         for (surface in listOf("addJavascriptInterface", "addWebMessageListener", "addDocumentStartJavaScript", "NativeBridgeChannel.attach", "attachLegacyCompatShim")) {
             assertFalse("the third-party overlay WebView must never get $surface", block.contains(surface))
         }
+        // The only document-start script is the legacy-engine layer, through its installer.
+        assertEquals(1, Regex("""LegacyEngineCompat\.install\(""").findAll(block).count())
         // …and the only script we evaluate into it is our own remote-control shim.
         val evals = Regex("""evaluateJavascript\(""").findAll(block).count()
         assertEquals("unexpected script injection into the overlay WebView", 0, evals)
