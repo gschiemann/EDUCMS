@@ -47,6 +47,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
                 Log.i(TAG, "OTA install SUCCESS for $targetPackage — relaunching")
+                com.educms.manager.health.ManagerHealth.clearInstallTapPending(context)
                 // 2026-04-28 — operator: 'i hit yes and it then closed
                 // the app and ttok me to the android app screen, never
                 // relanched the app'. Cause: PackageInstaller doesn't
@@ -108,10 +109,13 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     "INSTALLING",
                     "Waiting for Android install confirmation",
                 )
+                // 2026-11-08 — Manager health: "waiting for an Install tap on the panel".
+                com.educms.manager.health.ManagerHealth.noteInstallTapPending(context)
                 surfaceInstallPromptViaNotification(context, pendingIntent, targetPackage)
             }
             else -> {
                 Log.e(TAG, "OTA install FAILED: ${statusName(status)} — $message")
+                com.educms.manager.health.ManagerHealth.clearInstallTapPending(context)
                 InstallState.clearPending(context)
                 InstallTracker.clearPending(context)
                 reportInstallError(
@@ -138,21 +142,8 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     android.provider.Settings.Secure.ANDROID_ID,
                 ).orEmpty()))
             if (fp.isBlank() || fp == "android-") return
-
-            val url = java.net.URL("${BuildConfig.API_ROOT}/api/v1/screens/status/$fp/ota-state")
-            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json")
-                doOutput = true
-                connectTimeout = 5_000
-                readTimeout = 5_000
-            }
-            val payload = JSONObject().apply {
-                put("state", state)
-                put("message", "$targetPackage: ${message.take(360)}")
-            }
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            conn.responseCode
+            // 2026-11-08 — signed through the Player when it relays; anonymous otherwise.
+            com.educms.manager.health.ManagerReports.otaState(ctx, fp, state, "$targetPackage: ${message.take(360)}")
         } catch (_: Exception) { /* best-effort */ }
     }
 
@@ -212,17 +203,10 @@ class OtaInstallReceiver : BroadcastReceiver() {
                     ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID,
                 ).orEmpty()))
             if (fp.isNotBlank() && fp != "android-") {
-                val url = java.net.URL("${BuildConfig.API_ROOT}/api/v1/screens/status/$fp/ota-state")
-                val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json")
-                    doOutput = true
-                    connectTimeout = 5_000
-                    readTimeout = 5_000
-                }
-                val payload = """{"state":"ERROR","message":"Installed v$pkg but did not relaunch — power-cycle required"}"""
-                conn.outputStream.use { it.write(payload.toByteArray()) }
-                conn.responseCode  // force-flush
+                // 2026-11-08 — signed through the Player when it relays; anonymous otherwise.
+                com.educms.manager.health.ManagerReports.otaState(
+                    ctx, fp, "ERROR", "Installed v$pkg but did not relaunch — power-cycle required",
+                )
             }
         } catch (_: Exception) { /* best-effort */ }
     }
