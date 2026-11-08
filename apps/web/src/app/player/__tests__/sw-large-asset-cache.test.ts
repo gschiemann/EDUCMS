@@ -394,3 +394,92 @@ describe('sw-player large-asset staging', () => {
     expect(contiguousLayout([{ start: 0, length: 4 }], null)).toMatchObject({ ok: false, nextOffset: 4 });
   });
 });
+
+// ─── Small-origin headroom (2026-11-07, Android 9 / WebView 66 field class) ──
+// The field origin's quota was 167,680,409 bytes and full; every chunk still
+// downloaded its Range body, then failed Cache.put — re-downloaded 6–17 times
+// an hour. These drive the REAL worker with a StorageManager whose usage is
+// the bytes actually stored in the fake CacheStorage.
+describe('sw-player small-origin headroom (playlist tier)', () => {
+  const URL_BIG = 'https://cdn.example.com/storage/v1/object/public/assets/t1/big.mp4';
+  /* eslint-disable @typescript-eslint/no-explicit-any -- vm / fake-worker harness */
+  const fileBytes = (map: Map<string, any>) => {
+    let n = 0;
+    for (const cache of map.values()) for (const e of cache.entries.values()) n += e.bytes.length;
+    return n;
+  };
+  function withQuota(quota: number) {
+    const map = new Map<string, any>();
+    const w = loadWorker(map);
+    const estimate = jest.fn(async () => ({ usage: fileBytes(map), quota }));
+    w.context.self.navigator = { storage: { estimate } };
+    return { w, map, estimate };
+  }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  const stagedPaths = (w: ReturnType<typeof loadWorker>) =>
+    [...w.cacheNamed(w.hooks.STAGING_CACHE).entries.keys()].map((k) => new URL(k).pathname);
+
+  it('a full origin refuses the chunk BEFORE downloading it, with the measured bytes and occupancy', async () => {
+    const file = randomBytes(12 * MiB);
+    const { w } = withQuota(6 * MiB);
+    const server: RangeServer = { file, calls: [] };
+    w.setFetch(rangeFetch(server));
+    const asset = { url: URL_BIG, sha256: sha256Hex(file), size: file.length };
+    const first = await w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 0, chunkBytes: 4 * MiB });
+    expect(first).toMatchObject({ ok: true, nextOffset: 4 * MiB });
+    expect(server.calls).toHaveLength(1);
+    const second = await w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 4 * MiB, chunkBytes: 4 * MiB });
+    expect(second).toMatchObject({
+      ok: false, reason: 'storage-quota', preflight: true, offset: 4 * MiB, needBytes: 4 * MiB,
+      quotaBytes: 6 * MiB, occupancy: { staging: { playlist: { count: 1, bytes: 4 * MiB } } },
+    });
+    expect(second.freeBytes).toBeLessThan(4 * MiB + w.hooks.STAGE_HEADROOM_MARGIN_BYTES);
+    // The point of the repair: no second Range request, no wasted download.
+    expect(server.calls).toHaveLength(1);
+    // The staged chunk survives — the download resumes when space appears.
+    expect(stagedPaths(w).filter((p) => /\/0-\d+$/.test(p))).toHaveLength(1);
+  });
+
+  it('leftovers no reader can serve are reclaimed so the chunk fits; resume data past a gap is kept', async () => {
+    const file = randomBytes(16 * MiB);
+    const { w } = withQuota(14 * MiB);
+    w.setFetch(rangeFetch({ file, calls: [] }));
+    const asset = { url: URL_BIG, sha256: sha256Hex(file), size: file.length };
+    expect(await w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 0, chunkBytes: 4 * MiB })).toMatchObject({ ok: true });
+    const staging = w.cacheNamed(w.hooks.STAGING_CACHE);
+    const firstKey = [...staging.entries.keys()].find((k) => /\/0-\d+$/.test(k))!;
+    const dir = firstKey.slice(0, firstKey.lastIndexOf('/') + 1);
+    const put = (leaf: string, bytes: number) => staging.put(`${dir}${leaf}`, new Response(new Uint8Array(bytes)));
+    await put(`0-${2 * MiB}`, 2 * MiB); // wholly covered by 0-4MiB: a duplicate
+    await put('tmp-4194304', 3 * MiB); // a stopped worker's temp body: never served
+    await put(`${12 * MiB}-${MiB}`, MiB); // past a gap: resume data
+    // 4 + 2 + 3 + 1 = 10 MiB stored of 14: a 4 MiB chunk fits only once the 5 MiB of leftovers go.
+    const reply = await w.send({ type: 'PRECACHE_CHUNK', ...asset, offset: 4 * MiB, chunkBytes: 4 * MiB });
+    expect(reply).toMatchObject({ ok: true, nextOffset: 8 * MiB });
+    const leaves = stagedPaths(w).filter((p) => p.startsWith('/__edu_stage__/')).map((p) => p.slice(p.lastIndexOf('/') + 1)).sort();
+    expect(leaves).toEqual([`0-${4 * MiB}`, `${12 * MiB}-${MiB}`, `${4 * MiB}-${4 * MiB}`].sort());
+  });
+
+  it('an estimate that throws or answers nonsense changes nothing: the file downloads as before', async () => {
+    const file = randomBytes(9 * MiB);
+    const w = loadWorker();
+    w.context.self.navigator = { storage: { estimate: async () => { throw new Error('no estimate'); } } };
+    w.setFetch(rangeFetch({ file, calls: [] }));
+    expect((await drive(w, { url: URL_BIG, sha256: sha256Hex(file), size: file.length }, 4 * MiB)).assemble)
+      .toMatchObject({ ok: true, total: file.length });
+    w.context.self.navigator = { storage: { estimate: async () => ({ usage: NaN, quota: 0 }) } };
+    const other = randomBytes(9 * MiB);
+    w.setFetch(rangeFetch({ file: other, calls: [] }));
+    const otherUrl = 'https://cdn.example.com/storage/v1/object/public/assets/t1/big2.mp4';
+    expect((await drive(w, { url: otherUrl, sha256: sha256Hex(other), size: other.length }, 4 * MiB)).assemble)
+      .toMatchObject({ ok: true });
+  });
+
+  it('STATUS_REPLY reports staged bytes per tier', async () => {
+    const file = randomBytes(9 * MiB);
+    const { w } = withQuota(64 * MiB);
+    w.setFetch(rangeFetch({ file, calls: [] }));
+    await w.send({ type: 'PRECACHE_CHUNK', url: URL_BIG, sha256: sha256Hex(file), size: file.length, offset: 0, chunkBytes: 4 * MiB });
+    expect(await w.status()).toMatchObject({ staging: { playlist: { count: 1, bytes: 4 * MiB }, emergency: { count: 0, bytes: 0 } } });
+  });
+});
