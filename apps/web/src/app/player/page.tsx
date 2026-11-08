@@ -17,6 +17,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, use
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
 import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
+import { DIAGNOSTICS_WS_TYPE, onLiveManifestApplied, onPushedDiagnosticsRequest } from './screenDiagnostics';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -8288,6 +8289,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
         // value is either already acked or pointless offline).
         maybeExecuteDurableRefresh(manifest, admitRefreshNow);
+        // Screen diagnostics (2026-11-08, screenDiagnostics.ts): an open self-test
+        // rides the manifest too; fire-and-forget, never touches playback.
+        onLiveManifestApplied(manifest, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
         setPhase('playing');
         setLastSync(new Date().toLocaleTimeString());
         return;
@@ -9722,6 +9726,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         raiseFromSignedPush(pl, 'sse');
         preemptReconcile(); // F2: don't wait out an in-flight normal fetch
       });
+      handle(DIAGNOSTICS_WS_TYPE, (pl) => {
+        onPushedDiagnosticsRequest(pl, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
+      });
       handle('ALL_CLEAR', () => {
         if (pendingOverrideConfirmRef.current) {
           pendingOverrideConfirmRef.current = null;
@@ -10246,6 +10253,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // recover from the dashboard is the worst outcome in this feature.
             if (msg.type === DISPLAY_CONTROL_TYPE) {
               applyDisplayControl(msg, 'WS');
+              return;
+            }
+            // Screen diagnostics (2026-11-08): the push ride of a self-test. Benign —
+            // the server accepts an answer only for its own open request id.
+            if (msg.type === DIAGNOSTICS_WS_TYPE) {
+              onPushedDiagnosticsRequest(msg.payload || (msg as any).data, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
               return;
             }
             if (msg.type === 'REFRESH_WEB') {
