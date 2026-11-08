@@ -55,6 +55,10 @@ const DisplayScheduleModal = dynamic(
   () => import('@/components/screens/DisplayScheduleModal').then((m) => m.DisplayScheduleModal),
   { ssr: false, loading: () => null },
 );
+const ScheduledRestartModal = dynamic(
+  () => import('@/components/screens/ScheduledRestartModal').then((m) => m.ScheduledRestartModal),
+  { ssr: false, loading: () => null },
+);
 const ConnectScreenCard = dynamic(
   () => import('@/components/screens/ConnectScreenCard').then((m) => m.ConnectScreenCard),
   { ssr: false, loading: () => null },
@@ -201,6 +205,7 @@ export default function ScreensPage() {
   const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
   const [groupLocationModal, setGroupLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
   const [displayScheduleTarget, setDisplayScheduleTarget] = useState<DisplayScheduleTargetRef | null>(null);
+  const [scheduledRestartTarget, setScheduledRestartTarget] = useState<{ id: string; name: string } | null>(null);
 
   // ── pair modal ──────────────────────────────────────────────────
   const [showPairModal, setShowPairModal] = useState(false);
@@ -320,6 +325,7 @@ export default function ScreensPage() {
         onSetScreenLocation={(s) => setLocationModal(s)}
         onSetGroupLocation={(g) => setGroupLocationModal(g)}
         onOpenDisplaySchedule={(target) => setDisplayScheduleTarget(target)}
+        onOpenScheduledRestart={(g) => setScheduledRestartTarget(g)}
         onChanged={refetchAll}
         buildPreviewHref={buildPreviewHref}
         renderMap={(visible, navigation) => companyMode && !companyFleet ? (
@@ -467,6 +473,13 @@ export default function ScreensPage() {
           target={displayScheduleTarget}
           readOnly={!canControlDisplay}
           onClose={() => setDisplayScheduleTarget(null)}
+        />
+      )}
+      {scheduledRestartTarget && (
+        <ScheduledRestartModal
+          target={scheduledRestartTarget}
+          readOnly={!canControlDisplay}
+          onClose={() => setScheduledRestartTarget(null)}
         />
       )}
     </>

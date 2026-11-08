@@ -199,6 +199,8 @@ export interface ScreenOperationsV3Props {
   onSetScreenLocation?: (screen: { id: string; name: string; address?: string | null }) => void;
   onSetGroupLocation: (group: { id: string; name: string; address?: string | null }) => void;
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
+  /** 2026-11-08 — opens the group's opt-in scheduled restart sheet (ScheduledRestartModal). */
+  onOpenScheduledRestart?: (group: { id: string; name: string }) => void;
   onChanged: () => void;
   /** Preview URL builder — the page holds the auth token. */
   buildPreviewHref: (screen: OpsScreen) => string | null;
@@ -249,7 +251,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha, deployedBundleId,
     isLoading, isError, onRetry, canControl, controlDisabledReason, viewMode, onViewMode,
-    renderMap, floorSlot, scopeSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
+    renderMap, floorSlot, scopeSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule, onOpenScheduledRestart,
     onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter, deepLinkGroupId,
   } = props;
@@ -653,6 +655,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           className={`${item} border-t border-slate-100`}>
           On/off schedule
         </button>
+        {onOpenScheduledRestart && (
+          <button type="button"
+            onClick={() => { setGroupMenu(null); onOpenScheduledRestart({ id: g.id, name: g.name }); }}
+            className={item} data-testid={`group-scheduled-restart-${g.id}`}>
+            {t('scheduledRestart.menuItem')}
+          </button>
+        )}
         {synced && schoolSlug && (
           <a href={`/${schoolSlug}/screens/sync-calibrate?groupId=${g.id}`}
             title={t('screens.ops.calibrateTitle')}
