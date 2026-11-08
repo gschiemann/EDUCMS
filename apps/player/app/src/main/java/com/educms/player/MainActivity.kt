@@ -3336,6 +3336,7 @@ class MainActivity : ComponentActivity() {
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
                 onOpenNetworkScreen = { runOnUiThread { openNetworkScreen("back menu") } },
+                onClearUpdateQuarantine = { PlayerApp.clearManagerQuarantine(applicationContext) },
                 // 2026-10-26 — the Back menu's "Import from USB": read the drive now, on the card.
                 onImportFromUsb = { runOnUiThread { com.educms.player.usb.UsbAutoImport.importNow("back menu") } },
                 // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────

@@ -2609,6 +2609,20 @@
     "apkUpdating": "正在更新…",
     "apkRetryUpdate": "重试更新",
     "apkPushUpdate": "推送更新",
+    "quarantine": {
+      "title": "配套服务更新",
+      "hint": "适用于配套服务搁置了某个更新的屏幕。",
+      "body": "如果此屏幕在启动失败后搁置了某个更新，此操作可让它再次获得该更新。",
+      "noRollback": "此操作不会回退任何内容。没有设备所有者权限时，Android 不会在运行中的版本之上安装更旧的版本，因此屏幕只会向前升级。",
+      "button": "清除更新隔离",
+      "sending": "正在发送",
+      "sent": "命令已发送",
+      "sentNote": "已发送到屏幕。仅当屏幕在线且运行 Player 1.1.66 或更高版本时才会执行；此处无法确认。",
+      "failed": "无法发送命令：{error}",
+      "confirmTitle": "清除此屏幕的更新隔离？",
+      "confirmMessage": "将允许再次向该屏幕提供它搁置的更新。此操作不会回退或安装任何内容。",
+      "confirmButton": "清除隔离"
+    },
     "drawer": {
       "savedTemplatePreview": "已保存模板的预览。",
       "boardOwnLook": "这是看板的原始外观 — 此处不显示你对品牌或文字所做的更改。",

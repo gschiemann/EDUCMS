@@ -2609,6 +2609,20 @@
     "apkUpdating": "Actualizando…",
     "apkRetryUpdate": "Reintentar actualización",
     "apkPushUpdate": "Enviar actualización",
+    "quarantine": {
+      "title": "Actualizaciones del servicio complementario",
+      "hint": "Para una pantalla cuyo servicio complementario dejó de lado una actualización.",
+      "body": "Si esta pantalla dejó de lado una actualización tras un arranque fallido, esto permite volver a ofrecérsela.",
+      "noRollback": "Esto no revierte nada. Sin propietario del dispositivo, Android no instalará una versión anterior sobre la que está en ejecución, así que una pantalla solo avanza.",
+      "button": "Borrar la cuarentena de actualizaciones",
+      "sending": "Enviando",
+      "sent": "Comando enviado",
+      "sentNote": "Enviado a la pantalla. Solo se aplica mientras la pantalla esté en línea y ejecute Player 1.1.66 o posterior; nada aquí lo confirma.",
+      "failed": "No se pudo enviar el comando: {error}",
+      "confirmTitle": "¿Borrar la cuarentena de actualizaciones de esta pantalla?",
+      "confirmMessage": "Se permitirá ofrecer a la pantalla una actualización que dejó de lado. Esto no revierte ni instala nada.",
+      "confirmButton": "Borrar cuarentena"
+    },
     "drawer": {
       "savedTemplatePreview": "Vista previa de la plantilla guardada.",
       "boardOwnLook": "El aspecto original del tablero — aquí no se muestran los cambios de marca o de texto que hiciste.",

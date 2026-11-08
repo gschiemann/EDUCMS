@@ -8,6 +8,8 @@ import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaits
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
+import { CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION, QUARANTINE_NO_ROLLBACK_NOTE, publishClearUpdateQuarantine } from './quarantine-command';
+import { companionTapVerdict, isCompanionTapReport } from '../player-ota/companion-tap-report';
 import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
@@ -2192,6 +2194,24 @@ export class ScreensController {
         `falsely overwritten Player OTA state column`,
       );
       return { ok: true, ignored: 'manager-self-update-noise' };
+    }
+
+    // ── Manager wave 3 (#12) — the companion upgrade waiting for a tap ──────
+    // Only the device's own signed report, and never over a pending Player push
+    // (companion-tap-report.ts). Stored in the ordinary status line, holds nothing.
+    if (isCompanionTapReport(state, message)) {
+      const verdict = companionTapVerdict({
+        deviceAuthenticated,
+        pushPending: !!(screen as any).forceApkUpdatePendingAt,
+      });
+      if (verdict !== 'store') return { ok: true, ignored: `companion-tap-${verdict}` };
+      // ten-ok: device OTA-state report keyed by the fingerprint resolved above;
+      // writes only this row's own OTA status columns.
+      await this.prisma.client.screen.update({
+        where: { id: screen.id },
+        data: { lastOtaState: 'NEEDS_TAP', lastOtaProgress: null, lastOtaMessage: message, lastOtaAt: new Date() } as any,
+      });
+      return { ok: true, stored: 'companion-tap' };
     }
 
     // 2026-05-12 — also guard against state=INSTALLED being written
@@ -5310,6 +5330,57 @@ export class ScreensController {
       },
     }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'screen', screenId: id, corrId };
+  }
+
+  /**
+   * ─── ADMIN: clear the update quarantine on ONE screen (Manager wave 3, #8) ─
+   *
+   * Lets the companion Manager offer a build it set aside after a failed first
+   * boot again. Not a rollback - see quarantine-command.ts. Admin roles only;
+   * the screen must be in a tenant the caller may act in (same readable set as
+   * refresh-web), out-of-scope ids 404. The AuditLog row is written BEFORE the
+   * command leaves and is not best-effort: a privileged action with no row does
+   * not happen.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/clear-update-quarantine')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async clearUpdateQuarantine(@Request() req: any, @Param('id') id: string) {
+    const callerTenantId = req.user?.tenantId as string | undefined;
+    if (!callerTenantId) {
+      throw new HttpException(
+        { code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: await this.readableTenantIds(callerTenantId) } },
+      select: { id: true, name: true, tenantId: true, managerVersion: true } as any,
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const corrId = `cq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION,
+        targetType: 'screen',
+        targetId: id,
+        tenantId: (screen as any).tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          screenName: (screen as any).name,
+          managerVersion: (screen as any).managerVersion ?? null,
+          corrId,
+          rollback: false,
+        }),
+      },
+    });
+    const published = await publishClearUpdateQuarantine(
+      { signer: this.signer, redis: this.redisService },
+      { id, tenantId: (screen as any).tenantId, name: (screen as any).name },
+      { requestedBy: req.user.userId || req.user.id || null, corrId },
+    );
+    return { ok: true, screenId: id, corrId, published, rollback: false, note: QUARANTINE_NO_ROLLBACK_NOTE };
   }
 
   /**

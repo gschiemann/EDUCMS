@@ -176,6 +176,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Manager wave 3 (#8): dashboard "Clear quarantine", relayed by the Player. -->
+        <receiver
+            android:name=".ClearQuarantineReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION">
+            <intent-filter>
+                <action android:name="com.educms.manager.CLEAR_QUARANTINE" />
+            </intent-filter>
+        </receiver>
+
         <!--
           Cross-app trigger: Player broadcasts here when it gets a
           CHECK_FOR_UPDATES WebSocket from the dashboard. Manager
