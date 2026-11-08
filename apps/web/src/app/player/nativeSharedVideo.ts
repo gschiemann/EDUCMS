@@ -730,6 +730,8 @@ export function pickNativeVideo(input: {
  */
 export const NATIVE_VIDEO_TRANSIENT_REASONS: ReadonlySet<string> = new Set([
   "emergency-held",
+  // Newer APKs (after 1.1.62): the hold is held by the OTHER face of a double-sided unit (page-local suppression only).
+  "emergency-held-other-face",
   "activity-paused",
   "host-detached",
   "document-retired",

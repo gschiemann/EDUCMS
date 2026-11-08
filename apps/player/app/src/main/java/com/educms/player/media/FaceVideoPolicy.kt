@@ -116,6 +116,23 @@ internal data class FaceVideoDescriptor(
 }
 
 internal object FaceVideoPolicy {
+    /** A face held only by ANOTHER face of the unit (2026-11-02). TRANSIENT, suspends the intent like `emergency-held`. */
+    const val EMERGENCY_HELD_OTHER_FACE = "emergency-held-other-face"
+
+    /**
+     * Which emergency-hold end reason a face reports. A double-sided unit has ONE hold
+     * with per-face membership, and native playback stops on EVERY face while any face
+     * holds; the page of a face that is not itself in the hold must not read the stop as
+     * its own alert (it used to re-raise the hold, and the two faces kept each other held
+     * after an all-clear). An empty set (a legacy un-attributed hold) stays protective:
+     * `emergency-held`.
+     */
+    fun emergencyHeldReason(face: Int, holding: Set<Int>): String =
+        if (holding.isEmpty() || face in holding) "emergency-held" else EMERGENCY_HELD_OTHER_FACE
+
+    fun isEmergencyHeldReason(reason: String?): Boolean =
+        reason == "emergency-held" || reason == EMERGENCY_HELD_OTHER_FACE
+
     /**
      * Hardware decoders this box may run natively at once, across every face.
      * Two is the DH43's case (two panels, one rk3288) and what Goodview's own
@@ -200,7 +217,7 @@ internal object NativeEndGrade {
     enum class Grade { TRANSIENT, NOT_READY, BOX, FAULT }
 
     val TRANSIENT: Set<String> = setOf(
-        "emergency-held", "activity-paused", "host-detached", "document-retired", "content-changed", "peer-stopped",
+        "emergency-held", "emergency-held-other-face", "activity-paused", "host-detached", "document-retired", "content-changed", "peer-stopped",
         "page-stopped", "engine-switched", "page-lease-expired", "credential-changed", "session-retired", "selection-changed",
         "superseded", "skipped", "hold-expired", "decoder-budget", "decoder-unavailable", "output-detached",
         "display-mode-reverted",

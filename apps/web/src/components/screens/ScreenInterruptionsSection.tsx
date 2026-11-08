@@ -56,6 +56,7 @@ const STOP_REASON_KEYS: Record<string, string> = {
   'activity-paused': 'stopActivityPaused',
   'content-changed': 'stopContentChanged',
   'emergency-held': 'stopEmergencyHeld',
+  'emergency-held-other-face': 'stopEmergencyHeld',
   'output-stalled': 'stopOutputStalled',
   'process-ended': 'stopProcessEnded',
   'device-rebooted': 'stopDeviceRebooted',

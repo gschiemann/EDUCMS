@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { nativeCall, nativeFire, nativeHas } from "./nativeBridge";
-import { signalDisplayEmergencyHold } from "./emergencyHold";
+import { noteNativeEmergencyHeld } from "./emergencyHold";
 import {
   blockNativeVideo,
   NATIVE_VIDEO_MAX_ATTEMPTS,
@@ -52,6 +52,17 @@ export function nativeVideoNext(
   // player until it changes or the page reloads (a fault still blocks).
   if (wasOnGlass) return "stay";
   return attempt + 1 < NATIVE_VIDEO_MAX_ATTEMPTS ? "retry" : "stay";
+}
+
+/**
+ * The APK stopped this face's native video because an emergency hold is in
+ * force on the unit: `emergency-held` (this face, or —
+ * any face of a double-sided unit, on APKs up to 1.1.62) or `emergency-held-other-face` (only the
+ * other face holds). Either one suppresses regular web media on this page;
+ * NEITHER may raise the native hold. Pure, exported for the test.
+ */
+export function isNativeEmergencyHeldReason(reason: string | undefined | null): boolean {
+  return reason === "emergency-held" || reason === "emergency-held-other-face";
 }
 
 /** Longest wait for the web clip's loop point before handing over anyway. */
@@ -159,8 +170,13 @@ export function NativeDualVideo({
     };
     const fallback = (reason?: string) => {
       if (!alive || ended) return;
-      // Raise before evidence or React can fall back to regular web media.
-      if (reason === "emergency-held") signalDisplayEmergencyHold(true);
+      // Suppress regular web media BEFORE evidence or React can fall back to
+      // it — page-local only. NEVER a bridge raise: on a double-sided unit
+      // the APK says `emergency-held` for a face the OTHER face holds, and a
+      // raise here kept each face re-raising the other after an all-clear
+      // (2026-11-02). Only a manifest / signed push raises the native hold.
+      // `emergency-held-other-face` (newer APKs) is the same suppression.
+      if (isNativeEmergencyHeldReason(reason)) noteNativeEmergencyHeld(true);
       ended = true;
       markHandoff(false);
       if (gateTimer !== null) { clearTimeout(gateTimer); gateTimer = null; }
@@ -274,7 +290,9 @@ export function NativeDualVideo({
         },
         update: (state, fresh) => {
           if (!alive || ended) return;
-          if (state.reason === "emergency-held") signalDisplayEmergencyHold(true);
+          // Page-local suppression only (see `fallback`), never a raise.
+          if (isNativeEmergencyHeldReason(state.reason)) noteNativeEmergencyHeld(true);
+          else if (fresh) noteNativeEmergencyHeld(false);
           nativeSharedVideoEvidence.update(owner, state, fresh, Date.now());
           if (fresh && !playingReported) {
             playingReported = true;
