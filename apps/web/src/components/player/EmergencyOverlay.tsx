@@ -227,6 +227,12 @@ interface Props {
   onPolledActiveChange?: (active: boolean, takeover: boolean) => void;
   onBannerLayoutChange?: (layout: BroadcastLayout | null) => void;
   /**
+   * 2026-11-02 — the app refused banner posture for this screen (its live
+   * native video could not be proven correct under a banner), so an INFO /
+   * WARN broadcast renders the FULL presentation instead of a top banner.
+   */
+  fullPresentation?: boolean;
+  /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
    * GET /emergency/messages endpoint with `Authorization: Bearer`
@@ -260,7 +266,7 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onBannerLayoutChange }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onBannerLayoutChange, fullPresentation = false }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
   // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
@@ -278,7 +284,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const faceStage = useEmergencyFaceStage();
   const bannerRef = useRef<HTMLDivElement>(null);
   const displayed = message || polled;
-  const bannerVisible = isBannerEmergencyMessage(displayed);
+  const bannerVisible = isBannerEmergencyMessage(displayed) && !fullPresentation;
   useLayoutEffect(() => {
     if (!bannerVisible) { onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); return; }
     const banner = bannerRef.current;
@@ -390,7 +396,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   // Banner-style for INFO text broadcasts, full-screen for everything else.
   // Shared with the page's surface decision (`emergencySurface.ts`) so the
   // two can never disagree about which messages take the content down.
-  const isBanner = isBannerEmergencyMessage(active);
+  const isBanner = isBannerEmergencyMessage(active) && !fullPresentation;
 
   // 2026-05-26 P0-5 — Chromium-83 sweep on a life-safety surface.
   // NovaStar Taurus LED controllers ship Chromium 83 and several K-12

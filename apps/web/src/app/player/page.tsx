@@ -379,7 +379,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyBannerRefused, displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -2944,6 +2944,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const tPlayerMenu = useTranslations('playerMenu');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPlaybackHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyPlaybackHeld, () => false);
+  // 2026-11-02: the app refused banner posture (its native video could not be
+  // proven correct under a banner) — the broadcast is shown as a full takeover.
+  const emergencyBannerRefused = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyBannerRefused, () => false);
   const [broadcastLayout, setBroadcastLayout] = useState<BroadcastLayout | null>(null);
   const onBannerLayoutChange = useCallback((next: BroadcastLayout | null) => {
     setBroadcastLayout(previous => previous?.width === next?.width && previous?.height === next?.height && previous?.bannerHeight === next?.bannerHeight ? previous : next);
@@ -12818,6 +12821,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           onTenantEmergencyHint={onTenantEmergencyHint}
           onPolledActiveChange={onPolledEmergencyActiveChange}
           onBannerLayoutChange={onBannerLayoutChange}
+          fullPresentation={emergencyBannerRefused}
         />
       ) : null;
 
@@ -12842,6 +12846,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     polledTakeover: polledEmergencyTakeover,
     renderHold: emergencyRenderHold,
     playbackHeld: emergencyPlaybackHold,
+    bannerRefused: emergencyBannerRefused,
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
   });

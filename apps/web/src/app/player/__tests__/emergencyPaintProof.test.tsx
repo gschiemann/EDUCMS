@@ -6,7 +6,7 @@ import { PAINT_POST_RETRY_MS, useEmergencyPaintMonitor, type EmergencyPaintMonit
 import { apkVersionFromUserAgent, hasNativeBridge } from '../nativeBridge';
 
 jest.mock('../nativeBridge', () => ({ nativeHas: () => false, hasNativeBridge: jest.fn(() => false), apkVersionFromUserAgent: jest.fn(() => null), nativeCall: jest.fn(), nativeFire: jest.fn() }));
-jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn(), reassertDisplayEmergencyHold: jest.fn(), updateBroadcastBannerInset: jest.fn() }));
+jest.mock('../emergencyHold', () => ({ signalDisplayEmergencyHold: jest.fn(), reassertDisplayEmergencyHold: jest.fn(), updateBroadcastBannerInset: jest.fn(), bannerRefusalFromState: jest.fn(() => null), noteNativeBannerRefused: jest.fn() }));
 
 const alert: EmergencyMessageView = { id: 'test-alert', type: 'TEXT_BROADCAST', severity: 'CRITICAL', textBlob: 'Move to the designated safe area', mediaUrls: [], audioUrl: null, expiresAt: null, createdAt: '2026-10-01T00:00:00Z' };
 const rect = { top: 0, left: 0, right: 1280, bottom: 720, width: 1280, height: 720, x: 0, y: 0, toJSON: () => ({}) };
@@ -58,6 +58,21 @@ function mountMessage() {
   hit = root.querySelector('h1') || root;
   return root;
 }
+
+it('an INFO broadcast is a banner, and the FULL presentation when the app refused banner posture (2026-11-02)', () => {
+  const info: EmergencyMessageView = { ...alert, id: 'test-info', severity: 'INFO', textBlob: 'test message to the staff' };
+  const banner = render(<EmergencyOverlay message={info} />);
+  expect(document.querySelector('[data-edu-emergency-root="banner"]')).not.toBeNull();
+  expect(document.querySelector('[data-edu-emergency-root="full"]')).toBeNull();
+  banner.unmount();
+  render(<EmergencyOverlay message={info} fullPresentation />);
+  const full = document.querySelector<HTMLElement>('[data-edu-emergency-root="full"]');
+  expect(full).not.toBeNull();
+  expect(document.querySelector('[data-edu-emergency-root="banner"]')).toBeNull();
+  // Same alert identity, so the paint proof follows the alert across the switch.
+  expect(full!.dataset.eduEmergencyIdentity).toBe(emergencyPaintIdentity(info));
+  expect(full!.textContent).toContain('test message to the staff');
+});
 
 it('the actual message overlay reports paint only after two visible frame samples', () => {
   const root = mountMessage();

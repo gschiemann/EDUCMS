@@ -127,6 +127,12 @@ let bannerRotation: 0 | 90 = 0;
 // which only the server-driven manifest handler sends) or by the APK
 // reporting a non-held state.
 let nativeHeldSuppression = false;
+// 2026-11-02: the APK could not PROVE its live native video correct under a
+// banner (a display Android rotated from its natural orientation; natively
+// oriented panels keep the banner), so its hold is a full takeover.
+// Sticky until the hold releases: no later banner signal may re-open banner
+// posture over a video the app has stopped.
+let bannerRefused = false;
 const holdListeners = new Set<() => void>();
 function notifyHoldListeners(): void {
   holdListeners.forEach(listener => { try { listener(); } catch { /* one observer cannot block an alert */ } });
@@ -188,7 +194,8 @@ function isRefusal(result: unknown): boolean {
  * @returns       what the device did with it. `'no-native'` is a normal,
  *                expected outcome in a browser player.
  */
-export function signalDisplayEmergencyHold(active: boolean, force = false, isBanner = false): HoldOutcome {
+export function signalDisplayEmergencyHold(active: boolean, force = false, requestedBanner = false): HoldOutcome {
+  const isBanner = requestedBanner && !bannerRefused;
   // A live no-alert manifest ends any page-local native-held suppression,
   // whatever the device does with the release below.
   if (!active) noteNativeEmergencyHeld(false);
@@ -261,6 +268,40 @@ export function displayEmergencyPlaybackHeld(): boolean {
   return (renderHold && !bannerOnly) || nativeHeldSuppression;
 }
 
+/**
+ * READ-ONLY: did the APK refuse banner posture for this alert? The page then
+ * shows the FULL broadcast presentation (a takeover), never a banner over a
+ * native video the app has stopped or could not place.
+ */
+export function displayEmergencyBannerRefused(): boolean {
+  return bannerRefused;
+}
+
+/**
+ * The APK reported `broadcastBannerPosture: {posture: 'refused'}` on
+ * `sharedVideoState`. Turn the banner into a takeover: playback is held and the
+ * surface decision renders the full presentation. Never throws; never releases.
+ */
+export function noteNativeBannerRefused(reason?: string): void {
+  if (bannerRefused || !renderHold) return;
+  bannerRefused = true;
+  console.warn(`[emergencyHold] the app refused banner posture (${reason ?? 'unknown'}) — showing the full broadcast presentation`);
+  if (bannerOnly) {
+    bannerOnly = false;
+    sendBannerGeometry(false);
+  }
+  holdListeners.forEach(listener => { try { listener(); } catch { /* observers cannot block alerting */ } });
+  // Re-assert the hold as a takeover so the APK's posture matches the page's.
+  try { signalDisplayEmergencyHold(true, true, false); } catch { /* emergency path never throws */ }
+}
+
+/** One `sharedVideoState` reply → the refusal reason, or null. Bounded and total. */
+export function bannerRefusalFromState(state: unknown): string | null {
+  const posture = (state as { broadcastBannerPosture?: { posture?: unknown; reason?: unknown } } | null)?.broadcastBannerPosture;
+  if (!posture || typeof posture !== 'object' || posture.posture !== 'refused') return null;
+  return typeof posture.reason === 'string' && posture.reason.length <= 64 ? posture.reason : 'refused';
+}
+
 /** Paint validation reinforces the existing alert's posture; it must not
  * silently turn a known banner into a playback takeover. */
 export function reassertDisplayEmergencyHold(): HoldOutcome {
@@ -277,6 +318,7 @@ function sendBannerGeometry(active: boolean): void {
 }
 
 function clearBannerMode(): void {
+  if (bannerRefused) { bannerRefused = false; holdListeners.forEach(listener => { try { listener(); } catch { /* observers cannot block alerting */ } }); }
   if (!bannerOnly) return;
   bannerOnly = false;
   sendBannerGeometry(false);
@@ -298,5 +340,6 @@ export function __resetDisplayEmergencyHoldForTests(): void {
   bannerInset = 0;
   bannerRotation = 0;
   nativeHeldSuppression = false;
+  bannerRefused = false;
   publishRenderHold(false);
 }
