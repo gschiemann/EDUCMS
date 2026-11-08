@@ -17,6 +17,7 @@ import { selectVideoFile, usesPortraitAvcCompatibility, usesNoBFrameCompatibilit
 import { registeredResolution } from './registered-resolution';
 import { loadDemotedSources } from './playback-demotions';
 import { NATIVE_PRESENTING_HEADER, NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativePresentingHeader, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
+import { ALERT_WATCH_WATCHDOG_HEADER, parseAlertWatchWatchdogHeader } from './alert-watch-watchdog';
 import { ScreenEventsService } from './events/screen-events.service';
 import {
   LEDGER_KIND_LIST,
@@ -1735,6 +1736,14 @@ export class ScreensController {
         (screen as any).faceIndex === 1 ? 1 : 0,
       );
       if (presenting) nativeRuntime.nativePresenting = presenting;
+    }
+    // Manager wave 5 (2026-11-08): the companion Manager's verdict on the native
+    // alert watch rides its own header and is stored INSIDE the runtime report
+    // (telemetry only), under the same credential gate. Absent or malformed =
+    // nothing stored; it can never cost the power report.
+    if (nativeRuntime && !nativeRuntime.alertWatchWatchdog) {
+      const watchdog = parseAlertWatchWatchdogHeader(req?.headers?.[ALERT_WATCH_WATCHDOG_HEADER]);
+      if (watchdog) nativeRuntime.alertWatchWatchdog = watchdog;
     }
 
     if (nativeRuntime?.emergencyProof && screen.tenantId) {
