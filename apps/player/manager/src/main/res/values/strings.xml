@@ -1,7 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Every user-visible Manager string lives here with a values-es and values-zh
+  twin (the en + es + zh rule, CLAUDE.md section 9). Keep the three files in
+  lockstep: scripts/check-android-i18n-parity.cjs fails CI on a missing key,
+  a differing placeholder set, or a hard-coded notification string in Kotlin.
+-->
 <resources>
     <string name="app_name">VenueOS Manager</string>
     <string name="watchdog_notif_channel">VenueOS watchdog</string>
     <string name="watchdog_notif_title">VenueOS — keeping Player alive</string>
     <string name="watchdog_notif_text">This service keeps the kiosk online and applies updates.</string>
+
+    <!-- Shared by the permission prompt and the install prompt: one channel in Settings. -->
+    <string name="updates_notif_channel">VenueOS Updates</string>
+    <string name="permission_notif_channel_description">Tap to allow VenueOS to install Player updates.</string>
+    <string name="permission_notif_title">VenueOS: enable updates</string>
+    <string name="permission_notif_text">Tap to allow Player updates without sideloading.</string>
+    <string name="permission_notif_big_text">Tap to grant VenueOS Manager permission to install Player updates. One-time setup; future updates will install with a single tap on the Install dialog.</string>
+
+    <string name="install_notif_channel_description">Tap to install Player updates pushed from the dashboard.</string>
+    <string name="install_notif_target_player">Player</string>
+    <string name="install_notif_target_player_debug">Player (debug)</string>
+    <string name="install_notif_title">VenueOS: install %1$s update</string>
+    <string name="install_notif_text">Tap to confirm installation. The screen needs this to receive updates.</string>
 </resources>

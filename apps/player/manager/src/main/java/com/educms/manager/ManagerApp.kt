@@ -60,9 +60,7 @@ class ManagerApp : Application() {
         // → Install dialog → tap → installed. One tap per update,
         // no Settings detour.
         //
-        // Skipped when Manager is already DEVICE_OWNER (silent
-        // installs work without the permission anyway) or when
-        // the permission is already granted.
+        // Skipped when the permission is already granted.
         maybePromptForInstallPermission(this)
 
         // ONE RELEASE UNIT (2026-11-08): the Manager no longer updates itself.
@@ -82,17 +80,6 @@ class ManagerApp : Application() {
         // the Manager onto a kiosk with no Player should not wait out the
         // periodic initial delay. A no-op once a Player is installed.
         triggerImmediateOtaCheck(this)
-
-        // v1.0.21 — pin Player as the HOME launcher. THE fix for the
-        // OTA auto-relaunch problem (see pinPlayerAsHome). Idempotent;
-        // safe on every boot. No-op unless Manager is device owner.
-        pinPlayerAsHome(this)
-
-        // 2026-08-03 — grant Player permission to enter lock task mode.
-        // GRANTS ONLY; pins nothing. Player's LockTaskController decides
-        // whether to actually use it. No-op unless Manager is device
-        // owner. See allowPlayerLockTask.
-        allowPlayerLockTask(this)
 
         if (!isPlayerInstalled()) {
             // Single-sideload UX (matches Yodeck's pattern): the
@@ -114,151 +101,9 @@ class ManagerApp : Application() {
     }
 
     /**
-     * v1.0.21 — pin Player's KioskHomeAlias as the device's persistent
-     * preferred HOME activity.
-     *
-     * THE fix for "the OTA upgrade never relaunches the player".
-     * Android 14 forbids an app from launching itself into the
-     * foreground from the background; v1.0.61/62 (Player-side receiver
-     * + FGS tricks) and Manager v1.0.20 (watchdog activity launch) all
-     * fought that policy. The canonical kiosk answer is to stop
-     * fighting it: make the Player the HOME launcher. When Player is
-     * home, the OS itself returns to it after ANY death — OTA self-
-     * update, crash, reboot — and a system-initiated HOME launch is
-     * never BAL-blocked.
-     *
-     * Only the device owner can set a persistent preferred activity
-     * without a chooser dialog, which is why this lives in Manager.
-     * The flow:
-     *   - Player ships `.KioskHomeAlias` (a HOME activity-alias)
-     *     disabled; Player enables it at runtime once it sees Manager
-     *     is device owner (PlayerApp.maybeEnableKioskHomeAlias).
-     *   - Manager (here) registers that alias as the persistent
-     *     preferred HOME handler via addPersistentPreferredActivity.
-     *
-     * We clear any prior persistent-preferred HOME entry we set first,
-     * so repeated boots don't stack duplicates and a Player package-id
-     * change (debug <-> release) can't strand a stale mapping.
-     *
-     * No-op when Manager isn't device owner — on an OEM-CMS box we are
-     * a guest and must not touch the launcher.
-     */
-    private fun pinPlayerAsHome(ctx: Context) {
-        try {
-            if (!AdminReceiver.isDeviceOwner(ctx)) {
-                Log.i(TAG, "pinPlayerAsHome skipped — Manager is not device owner")
-                return
-            }
-            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as? android.app.admin.DevicePolicyManager ?: return
-            val admin = android.content.ComponentName(ctx, AdminReceiver::class.java)
-
-            // Resolve whichever Player package is actually installed
-            // (release or .debug).
-            val pm = ctx.packageManager
-            val playerPkg = listOf(
-                BuildConfig.PLAYER_PACKAGE,
-                "${BuildConfig.PLAYER_PACKAGE}.debug",
-            ).firstOrNull { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
-            }
-            if (playerPkg == null) {
-                Log.i(TAG, "pinPlayerAsHome — Player not installed yet, will retry next boot")
-                return
-            }
-
-            // Clear any HOME preference we previously set for either
-            // Player package id, then add the fresh one. clearPackage
-            // PersistentPreferredActivities only affects entries this
-            // admin created.
-            dpm.clearPackagePersistentPreferredActivities(admin, playerPkg)
-
-            val homeFilter = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                addCategory(Intent.CATEGORY_DEFAULT)
-            }
-            val aliasComponent = android.content.ComponentName(
-                playerPkg,
-                "com.educms.player.KioskHomeAlias",
-            )
-            dpm.addPersistentPreferredActivity(admin, homeFilter, aliasComponent)
-            Log.i(TAG, "pinPlayerAsHome — $aliasComponent pinned as persistent preferred HOME")
-        } catch (e: Exception) {
-            Log.w(TAG, "pinPlayerAsHome failed: ${e.message}", e)
-        }
-    }
-
-    /**
-     * 2026-08-03 — put Player on the device owner's **lock task
-     * allowlist**, so Player's `LockTaskController` may pin the kiosk.
-     *
-     * This is the DEVICE-OWNER half of a deliberate two-key system:
-     *
-     *   - This call only GRANTS PERMISSION. It pins nothing, changes
-     *     nothing visible, and is a no-op on a screen whose Player never
-     *     calls `startLockTask()`.
-     *   - Player's `LockTaskController.engageIfPermitted()` is the other
-     *     key, and it re-checks device-owner status itself.
-     *
-     * Why it must live HERE: only a device owner / profile owner can call
-     * `setLockTaskPackages`, and it is what upgrades Player's
-     * `startLockTask()` from the degraded **screen pinning** variant
-     * (`LOCK_TASK_MODE_PINNED` — the "App is pinned" dialog whose only
-     * exit is hold-Back+Overview, a gesture that does not exist on a
-     * signage remote) to the real, DO-managed `LOCK_TASK_MODE_LOCKED`.
-     * Player refuses to pin at all until `isLockTaskPermitted` is true,
-     * precisely so it can never land in the trapping variant. Read
-     * `LockTaskController`'s header before changing either half.
-     *
-     * The allowlist is deliberately MINIMAL — Player and Manager only.
-     * Notably NOT Settings: while locked, the OS refuses to launch any
-     * package that isn't on this list, and "a student at the screen can
-     * reach Settings" is the exact thing lock task exists to stop.
-     *
-     * No-op when Manager isn't device owner: on an OEM-CMS signage box we
-     * are a guest and must never touch device policy (see the long
-     * comment in Player's AndroidManifest.xml). Idempotent — the list is
-     * replaced wholesale on every boot, which also self-heals a stale
-     * entry after a Player release <-> debug package swap.
-     */
-    private fun allowPlayerLockTask(ctx: Context) {
-        try {
-            if (!AdminReceiver.isDeviceOwner(ctx)) {
-                Log.i(TAG, "allowPlayerLockTask skipped — Manager is not device owner")
-                return
-            }
-            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as? android.app.admin.DevicePolicyManager ?: return
-            val admin = AdminReceiver.componentName(ctx)
-
-            val pm = ctx.packageManager
-            val playerPkg = listOf(
-                BuildConfig.PLAYER_PACKAGE,
-                "${BuildConfig.PLAYER_PACKAGE}.debug",
-            ).firstOrNull { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
-            }
-            if (playerPkg == null) {
-                Log.i(TAG, "allowPlayerLockTask — Player not installed yet, will retry next boot")
-                return
-            }
-
-            // Manager rides along so a future Manager-owned prompt (e.g.
-            // InstallPromptActivity on a ROM that still wants a tap) can
-            // surface over a locked Player instead of being swallowed.
-            val packages = arrayOf(playerPkg, ctx.packageName)
-            dpm.setLockTaskPackages(admin, packages)
-            Log.i(TAG, "allowPlayerLockTask — lock-task allowlist set to ${packages.joinToString(", ")}")
-        } catch (e: Exception) {
-            Log.w(TAG, "allowPlayerLockTask failed: ${e.message}", e)
-        }
-    }
-
-    /**
      * v1.0.7 — Post a high-priority notification deep-linking to
      * Manager's "Install unknown apps" Settings page if the perm
-     * isn't already granted (and we aren't DEVICE_OWNER, which
-     * doesn't need it). Idempotent — Android dedupes by
+     * isn't already granted. Idempotent — Android dedupes by
      * INSTALL_PROMPT_NOTIF_ID + INSTALL_PROMPT_CHANNEL.
      *
      * Why this exists: the Player has its own install-unknown-apps
@@ -272,7 +117,6 @@ class ManagerApp : Application() {
     private fun maybePromptForInstallPermission(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (ctx.packageManager.canRequestPackageInstalls()) return
-        if (AdminReceiver.isDeviceOwner(ctx)) return
 
         try {
             // Channel must exist; OtaInstallReceiver creates it too —
@@ -281,10 +125,10 @@ class ManagerApp : Application() {
                 as android.app.NotificationManager
             val channel = android.app.NotificationChannel(
                 PERMISSION_NOTIF_CHANNEL,
-                "VenueOS Updates",
+                ctx.getString(R.string.updates_notif_channel),
                 android.app.NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Tap to allow VenueOS to install Player updates."
+                description = ctx.getString(R.string.permission_notif_channel_description)
             }
             nm.createNotificationChannel(channel)
 
@@ -301,11 +145,10 @@ class ManagerApp : Application() {
 
             val notification = androidx.core.app.NotificationCompat.Builder(ctx, PERMISSION_NOTIF_CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
-                .setContentTitle("VenueOS: enable updates")
-                .setContentText("Tap to allow Player updates without sideloading.")
+                .setContentTitle(ctx.getString(R.string.permission_notif_title))
+                .setContentText(ctx.getString(R.string.permission_notif_text))
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(
-                    "Tap to grant VenueOS Manager permission to install Player updates. " +
-                    "One-time setup; future updates will install with a single tap on the Install dialog."
+                    ctx.getString(R.string.permission_notif_big_text)
                 ))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
                 .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)
@@ -331,7 +174,7 @@ class ManagerApp : Application() {
 
         /**
          * Launches WatchdogService as a foreground service. Called
-         * from onCreate, BootReceiver, and AdminReceiver.onEnabled.
+         * from onCreate and BootReceiver.
          * Idempotent — re-calls just bump the existing service.
          */
         fun startWatchdogService(ctx: Context) {

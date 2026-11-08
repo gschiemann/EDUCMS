@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VenueOS Manager</string>
+    <string name="watchdog_notif_channel">VenueOS 看门狗</string>
+    <string name="watchdog_notif_title">VenueOS — 保持 Player 运行</string>
+    <string name="watchdog_notif_text">此服务让屏幕保持在线并应用更新。</string>
+
+    <string name="updates_notif_channel">VenueOS 更新</string>
+    <string name="permission_notif_channel_description">点按以允许 VenueOS 安装 Player 更新。</string>
+    <string name="permission_notif_title">VenueOS：启用更新</string>
+    <string name="permission_notif_text">点按以允许 Player 无需手动安装即可更新。</string>
+    <string name="permission_notif_big_text">点按以授予 VenueOS Manager 安装 Player 更新的权限。这是一次性设置；以后的更新只需在安装对话框中点按一次即可完成。</string>
+
+    <string name="install_notif_channel_description">点按以安装从控制台推送的 Player 更新。</string>
+    <string name="install_notif_target_player">Player</string>
+    <string name="install_notif_target_player_debug">Player（调试版）</string>
+    <string name="install_notif_title">VenueOS：安装 %1$s 更新</string>
+    <string name="install_notif_text">点按以确认安装。屏幕需要此操作才能接收更新。</string>
+</resources>

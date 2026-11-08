@@ -13,14 +13,10 @@ import android.util.Log
  * SharedPreferences. Set membership is small (typically 0-2
  * versions), so a CSV is fine and easier to debug than a JSON blob.
  *
- * Quarantine entries don't expire automatically. If a server-side
- * rebuild fixes a known-bad version, the operator can clear via
- * the dashboard (Phase 2.5: add a "Clear quarantine" button), or
- * via ADB:
- *   adb shell am broadcast -a com.educms.manager.CLEAR_QUARANTINE \
- *       -n com.educms.manager/.AdminReceiver
- * (Phase 2.5: implement that broadcast; for v1.0.0 the only escape
- * is uninstall + reinstall Manager, which clears prefs.)
+ * Quarantine entries don't expire automatically. A server-side rebuild that
+ * fixes a known-bad version is cleared from the dashboard ("Clear quarantine",
+ * delivered as the `clear-quarantine` command, see [clear]); the only other
+ * escape is uninstall + reinstall of the Manager, which clears prefs.
  */
 object QuarantineList {
     private const val TAG = "QuarantineList"

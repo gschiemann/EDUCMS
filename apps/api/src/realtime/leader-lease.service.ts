@@ -98,6 +98,9 @@ export const LEASE = {
   POS_SYNC: 'pos:sync',
   FLEET_PULSE: 'screens:fleet-pulse',
   SCREEN_WEDGE_DETECTOR: 'screens:wedge-detector',
+  // 2026-11-08 — opt-in scheduled restarts. Leased because a second replica would race the
+  // same slot claims and double the per-tenant cap arithmetic (scheduled-reboot/).
+  SCHEDULED_REBOOT: 'screens:scheduled-reboot',
   SPORTS_CLOCK_ADVANCE: 'sports:clock-advance',
   // 2026-09-15 — design-import staging sweep. Leased because the work is a
   // DELETE against shared object storage: two replicas racing the same keys
@@ -140,6 +143,10 @@ export const LEASE = {
   // refusal evaluator reads refusals every replica writes to shared Redis sets.
   POST_RESTART_FLEET_CHECK: 'alarms:post-restart-fleet-check',
   DEVICE_CREDENTIAL_REFUSAL_ALARM: 'alarms:device-credential-refusals',
+  // 2026-11-08 — screen diagnostics retention (screen-diagnostics/): deletes
+  // device-log objects past the retention window and old request rows. Leased
+  // because it is a DELETE against shared storage and the database.
+  SCREEN_DIAGNOSTICS_RETENTION: 'screens:diagnostics-retention',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

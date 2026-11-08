@@ -74,7 +74,6 @@ object OtaInstaller {
         // (@RequiresApi(31) object) so Android 11 ART never resolves
         // setRequireUserAction at class-load time — that was the
         // v1.0.4 VerifyError crash.
-        val isDeviceOwner = AdminReceiver.isDeviceOwner(ctx)
         val installerOfRecord: String? = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 ctx.packageManager.getInstallSourceInfo(targetPackage).installingPackageName
@@ -92,7 +91,7 @@ object OtaInstaller {
             Log.i(
                 TAG,
                 "Silent install hint applied (API ${Build.VERSION.SDK_INT}, " +
-                "deviceOwner=$isDeviceOwner installerOfRecord=$installerOfRecord " +
+                "installerOfRecord=$installerOfRecord " +
                 "weAreInstaller=$weAreInstaller) — system will silent-install if " +
                 "eligible, fall back to user-action prompt otherwise"
             )
@@ -134,7 +133,7 @@ object OtaInstaller {
             return
         }
 
-        Log.i(TAG, "OTA install starting — sessionId=$sessionId target=$targetPackage deviceOwner=$isDeviceOwner size=${apkFile.length()}b")
+        Log.i(TAG, "OTA install starting — sessionId=$sessionId target=$targetPackage size=${apkFile.length()}b")
 
         try {
             val session = installer.openSession(sessionId)

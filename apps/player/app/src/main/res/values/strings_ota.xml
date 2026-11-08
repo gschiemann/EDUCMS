@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The on-glass "ready to install" card (UpdateReadyCard). en + es + zh. -->
+<resources>
+    <string name="update_card_title">Update ready</string>
+    <string name="update_card_body">VenueOS Player %1$s is ready to install.\nPress OK on the remote (or tap Install update). When Android\'s Install dialog appears, select Install (OK on the remote, or tap it).</string>
+    <string name="update_card_install">Install update</string>
+    <string name="update_card_later">Not now</string>
+    <string name="companion_card_title">Companion update ready</string>
+    <string name="companion_card_body">The VenueOS companion service needs one more tap to finish updating.\nPress OK on the remote (or tap Install update). When Android\'s Install dialog appears, select Install (OK on the remote, or tap it).</string>
+</resources>

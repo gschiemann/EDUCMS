@@ -124,6 +124,8 @@ export const TITLE_RULES: readonly Rule[] = [
   { kinds: INFO, re: /^Visitor needs assistance — (.+)$/, key: 'kioskHelp', params: (m) => ({ screen: m[1] }) },
   // playback-demotion.service.ts.
   { kinds: INFO, re: /^Video stutters on (.+)$/, key: 'videoStutter', params: (m) => ({ screen: m[1] }) },
+  // screen-diagnostics/storage-health.ts — the pre-degradation warning.
+  { kinds: INFO, re: /^Storage almost full: (.+)$/, key: 'storageAlmostFull', params: (m) => ({ screen: m[1] }) },
 ];
 
 /** Every body sentence the API writes. Free text (notes, reasons) is never matched on its own. */
@@ -225,6 +227,8 @@ export const BODY_RULES: readonly Rule[] = [
     key: 'videoStutterNoCopyBody',
     params: (m) => ({ screen: m[1], file: m[2] }),
   },
+  // screen-diagnostics/storage-health.ts — the pre-degradation warning.
+  { kinds: INFO, re: /^New content may not download\. Remove unused media from its playlists or free space on the device\.$/, key: 'storageAlmostFullBody' },
 ];
 
 function apply(kind: string, text: string, rules: readonly Rule[], o: NotificationCopyOptions): string | null {

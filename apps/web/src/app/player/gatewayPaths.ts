@@ -57,6 +57,10 @@ const CONTROL_PLANE_RULES: readonly RegExp[] = [
   // proof timers with one POST per minute — same reason it must ride here.
   /^\/screens\/[^/]+\/(manifest|emergency-rev|telemetry|cache-status|render-proof|emergency-assets|display-capabilities|stream-ticket)$/,
   /^\/screens\/[^/]+\/orientation\/device$/,
+  // Screen diagnostics (2026-11-08): the page half of a self-test and the
+  // 30-minute storage report — device-authenticated, same family as telemetry.
+  /^\/screens\/[^/]+\/diagnostics\/[^/]+\/page$/,
+  /^\/screens\/[^/]+\/storage-health$/,
   // ── Emergency reconcile (the stranded-alert backstop) ───────────────────
   /^\/emergency\/(messages|status)$/,
   // ── Realtime fallbacks + the sync clock (WS stays direct; see header) ───

@@ -200,6 +200,8 @@ class WebAppBridge(
      * Activity decides whether it may open (never over an alert).
      */
     private val onOpenNetworkScreen: () -> Unit = {},
+    /** Manager wave 3 (#8): clear the companion Manager's update quarantine (dashboard command). */
+    private val onClearUpdateQuarantine: () -> Unit = {},
     /**
      * 2026-10-26 — the Back menu's "Import from USB": read the USB drive now
      * and show what happens on the USB card (usb.UsbImportCard). Copies
@@ -535,6 +537,26 @@ class WebAppBridge(
             onOpenNetworkScreen()
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "openNetworkScreen failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * Manager wave 3 (#8) - the dashboard's signed CLEAR_UPDATE_QUARANTINE
+     * command, relayed by the page. Tells the companion Manager to forget the
+     * versionCodes it quarantined. Nonce-gated like [checkForUpdates] (a board
+     * iframe on the legacy surface cannot call it). Fire-and-forget; it
+     * installs nothing and grants nothing. THREE-FILE ATOMIC CHANGE: the
+     * channel's METHODS + dispatch arm, the web's NATIVE_VOID_METHODS (excluded
+     * from KNOWN_METHODS until the fleet floor includes this APK), and the
+     * drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun clearUpdateQuarantine(nonce: String) {
+        if (!gate("clearUpdateQuarantine", nonce)) return
+        try {
+            onClearUpdateQuarantine()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "clearUpdateQuarantine failed: ${ex.message}")
         }
     }
 

@@ -67,7 +67,8 @@ class PendingInstallConfirmationTest {
         val raisedOrStaged = receiver.substring(receiver.indexOf("internal fun needsTapMessage("), receiver.indexOf("private fun reportOtaError("))
         val worker = source("src/main/java/com/educms/player/ota/OtaUpdateWorker.kt")
         val reportedWhileOpen = worker.substring(worker.indexOf("private fun needsTapMessage("), worker.indexOf("private fun sha256("))
-        val readyCard = source("src/main/java/com/educms/player/ota/UpdateReadyCard.kt")
+        // The card copy moved to string resources (en + es + zh) with the companion card.
+        val readyCard = source("src/main/res/values/strings_ota.xml")
         for ((name, text) in listOf("receiver message" to raisedOrStaged, "worker message" to reportedWhileOpen)) {
             assertTrue("$name: remote first", text.contains("select Install (OK on the remote, or tap it)"))
             assertFalse("$name: never a bare tap", text.contains("tap Install."))

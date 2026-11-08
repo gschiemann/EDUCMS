@@ -547,6 +547,12 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastCrashVersion',
     'lastCrashMessage',
     'lastCrashStack',
+    // 2026-11-08 — companion Manager health, carried by the Player's signed
+    // heartbeat (screens/manager-health.ts), and the crash report's
+    // credential verdict. Dashboard-only; no manifest branch reads them.
+    'managerHealthReport',
+    'managerHealthReportAt',
+    'lastCrashAuthenticated',
 ]);
 
 export type ManifestCacheEntry =
