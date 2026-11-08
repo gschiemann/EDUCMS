@@ -2610,6 +2610,16 @@
     "apkRetryUpdate": "Reintentar actualización",
     "apkPushUpdate": "Enviar actualización",
     "drawer": {
+      "companion": {
+        "label": "Complemento",
+        "healthy": "Complemento en buen estado",
+        "healthyRestarts": "Complemento en buen estado · reinició el reproductor {count, plural, one {una vez} other {# veces}} esta semana ({reason, select, afterUpdate {tras una actualización} other {dejó de responder}})",
+        "tapPending": "Esperando que alguien toque Instalar en la pantalla (desde hace {ago})",
+        "notReporting": "El complemento no informa desde {since}",
+        "lastReported": "El complemento informó por última vez hace {ago}",
+        "quarantined": "Retiene {count, plural, one {# versión del reproductor} other {# versiones del reproductor}} que no lograron iniciar",
+        "noInstallPermission": "Android no ha permitido que el complemento instale apps — solo se necesita para recuperar un reproductor"
+      },
       "savedTemplatePreview": "Vista previa de la plantilla guardada.",
       "boardOwnLook": "El aspecto original del tablero — aquí no se muestran los cambios de marca o de texto que hiciste.",
       "location": "Ubicación",

@@ -149,6 +149,9 @@ export interface OpsScreen {
   /** `Screen.playerVersion` / `managerVersion` — the APK pair the device last reported. */
   playerVersion?: string | null;
   managerVersion?: string | null;
+  /** 2026-11-08 — the companion's own health, carried by the Player's signed heartbeat (companionHealth.ts). */
+  managerHealth?: import('./companionHealth').ManagerHealthReport | null;
+  managerHealthAt?: string | null;
   orientation?: string | null;
   deviceFingerprint?: string | null;
   emergencyStatus?: string | null;
@@ -2093,7 +2096,7 @@ export function contentStatusLine(reported: ReportedContent): string {
 }
 
 export interface DeviceFact {
-  key: 'panel' | 'device' | 'browser' | 'player' | 'network' | 'contact' | 'paired' | 'cache' | 'crash';
+  key: 'panel' | 'device' | 'browser' | 'player' | 'companion' | 'network' | 'contact' | 'paired' | 'cache' | 'crash';
   label: string;
   value: string;
   /** A second, quieter line. */

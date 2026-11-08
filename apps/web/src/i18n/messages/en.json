@@ -2610,6 +2610,16 @@
     "apkRetryUpdate": "Retry update",
     "apkPushUpdate": "Push update",
     "drawer": {
+      "companion": {
+        "label": "Companion",
+        "healthy": "Companion healthy",
+        "healthyRestarts": "Companion healthy · restarted the player {count, plural, one {once} other {# times}} this week ({reason, select, afterUpdate {after an update} other {it stopped responding}})",
+        "tapPending": "Waiting for an Install tap on the panel (for {ago})",
+        "notReporting": "Companion not reporting since {since}",
+        "lastReported": "Companion last reported {ago} ago",
+        "quarantined": "Holding back {count, plural, one {# player build} other {# player builds}} that failed to start",
+        "noInstallPermission": "Android has not allowed the companion to install apps — only needed to recover a player"
+      },
       "savedTemplatePreview": "Preview of the saved template.",
       "boardOwnLook": "The board’s own look — brand or text changes you made are not shown here.",
       "location": "Location",

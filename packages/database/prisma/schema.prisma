@@ -1767,6 +1767,10 @@ model Screen {
   lastCrashSource                     String?      @map("last_crash_source")
   lastCrashMessage                    String?      @map("last_crash_message")
   lastCrashStack                      String?      @map("last_crash_stack")
+  // 2026-11-08 — did the caller of that crash report prove the screen's device
+  // credential? A Manager crash relayed by the Player is; Manager 1.0.24's
+  // anonymous post is not. NULL on rows written before this column.
+  lastCrashAuthenticated              Boolean?     @map("last_crash_authenticated")
   // 2026-09-02 (P0-2) — the BOOT DIAGNOSTIC the APK raises when a screen
   // loads the page and never actually starts playing: no client-JS boot,
   // no registration attempt, no registration answer, or repeated
@@ -1789,6 +1793,15 @@ model Screen {
   // small and avoids two network connections per kiosk).
   managerVersion                      String?      @map("manager_version")
   managerVersionAt                    DateTime?    @map("manager_version_at")
+  // 2026-11-08 — the companion's own health facts (schema 1: watchdog tick,
+  // relaunches with reason, rollback / quarantine, install permission, a
+  // pending Install tap, its version), read by the Player from the Manager's
+  // provider and carried on the Player's DEVICE-AUTHENTICATED heartbeat
+  // (`x-venueos-manager-health`, screens/manager-health.ts). Device times are
+  // converted to the server clock on receipt. Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS, never in a manifest.
+  managerHealthReport                 Json?        @map("manager_health_report")
+  managerHealthReportAt               DateTime?    @map("manager_health_report_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:

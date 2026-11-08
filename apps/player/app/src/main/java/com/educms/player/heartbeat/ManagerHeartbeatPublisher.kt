@@ -126,6 +126,9 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
             // Older Manager APKs (v1.0.2 and earlier) ignore unknown
             // ContentValues columns — strict-additive on the wire.
             put(COL_FINGERPRINT, deriveFingerprint())
+            // 2026-11-08 — 1 = this Player relays the companion's reports on
+            // its signed channel (ManagerReportRelay). An old companion ignores it.
+            put(COL_RELAY, ManagerReportRelay.relayFlag(ctx))
         }
         try {
             val result = ctx.contentResolver.insert(URI_HEARTBEAT, values)
@@ -136,6 +139,12 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
                 // and not silently broken.
                 Log.i(TAG, "Manager APK not installed (no provider) — heartbeat publisher is no-op for now")
                 loggedMissingProvider = true
+            }
+            if (result != null) {
+                // 2026-11-08 — same thread, same 30 s: the companion's health
+                // row (carried by the signed heartbeat) and its queued reports.
+                ManagerReportRelay.readHealth(ctx)
+                ManagerReportRelay.drain(ctx)
             }
         } catch (e: SecurityException) {
             if (!loggedMissingProvider) {
@@ -181,6 +190,8 @@ class ManagerHeartbeatPublisher(private val ctx: Context) {
         // Settings.Secure.ANDROID_ID's per-app scoping creates two
         // ghost screen rows on the dashboard.
         const val COL_FINGERPRINT = "device_fingerprint"
+        // 2026-11-08 — mirror of PlayerHealthProvider.COL_RELAY.
+        const val COL_RELAY = "relay"
 
         private val URI_HEARTBEAT = android.net.Uri.parse(
             "content://$AUTHORITY/$PATH_HEARTBEAT",

@@ -393,6 +393,11 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         com.educms.player.media.FaceVideoBox.presentingReport()?.let { setRequestProperty(NATIVE_PRESENTING_HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "native presenting report unavailable: ${it.message}") }
+                    // 2026-11-08 — the companion Manager's health (ManagerReportRelay):
+                    // its own header, only on the signed request, omitted when stale.
+                    if (nativeAllowed) runCatching {
+                        ManagerReportRelay.healthHeader()?.let { setRequestProperty(ManagerReportRelay.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "manager health report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -441,6 +446,10 @@ class HeartbeatService : Service() {
         if (nativeAllowed) runCatching {
             NativePowerControl.accept(applicationContext, prefs, JSONObject(body))
         }.onFailure { PlayerLogger.e(TAG, "native power command failed", it) }
+        // 2026-11-08 — MANAGER_REPORT_RELAY kill switch, isolated like the rest.
+        if (nativeAllowed) runCatching {
+            ManagerReportRelay.acceptServerDirective(prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.w(TAG, "manager relay directive failed: ${it.message}") }
         // Stored device settings — isolated like the power command: a fault
         // here must not stop a back side being hosted or an OTA push below.
         if (nativeAllowed) runCatching {

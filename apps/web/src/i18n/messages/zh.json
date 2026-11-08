@@ -2610,6 +2610,16 @@
     "apkRetryUpdate": "重试更新",
     "apkPushUpdate": "推送更新",
     "drawer": {
+      "companion": {
+        "label": "配套服务",
+        "healthy": "配套服务运行正常",
+        "healthyRestarts": "配套服务运行正常 · 本周重启了播放器 {count} 次（{reason, select, afterUpdate {更新之后} other {播放器停止响应}}）",
+        "tapPending": "正在等待有人在屏幕上点按“安装”（已等待 {ago}）",
+        "notReporting": "配套服务自 {since} 起未报告",
+        "lastReported": "配套服务上次报告于 {ago} 前",
+        "quarantined": "正在拦截 {count} 个无法启动的播放器版本",
+        "noInstallPermission": "Android 尚未允许配套服务安装应用——仅在恢复播放器时需要"
+      },
       "savedTemplatePreview": "已保存模板的预览。",
       "boardOwnLook": "这是看板的原始外观 — 此处不显示你对品牌或文字所做的更改。",
       "location": "位置",
