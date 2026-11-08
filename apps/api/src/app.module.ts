@@ -146,6 +146,9 @@ import { ActivationFunnelModule } from './activation-funnel/activation-funnel.mo
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { FleetPulseSamplerCron } from './screens/fleet-pulse.cron';
+import { ScreenDiagnosticsController } from './screen-diagnostics/screen-diagnostics.controller';
+import { ScreenDiagnosticsService } from './screen-diagnostics/screen-diagnostics.service';
+import { ScreenDiagnosticsRetentionCron } from './screen-diagnostics/screen-diagnostics-retention.cron';
 import { FleetPulseController } from './screens/fleet-pulse.controller';
 import { ScreenAttentionController } from './notifications/screen-attention/screen-attention.controller';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -292,6 +295,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-24 — `GET /screens/attention` (the dashboard's Screens down card).
     // A literal path under /screens: registered ahead of ScreensController.
     ScreenAttentionController,
+    // 2026-11-08 — screen diagnostics (self-test, logs on demand, storage
+    // health). Literal segments after `:id`; registered here so it shares
+    // this module's single SupabaseStorageService and WebsocketSignerService.
+    ScreenDiagnosticsController,
     AppController,
     ScreensController,
     DevicesController,
@@ -341,6 +348,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // cause + signal design.
     ScreenWedgeDetectorCron,
     FleetPulseSamplerCron,
+    ScreenDiagnosticsService,
+    ScreenDiagnosticsRetentionCron,
     AssetSanitizerService,
     SupabaseStorageService,
     AssetArchivesService,

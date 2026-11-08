@@ -140,6 +140,10 @@ export const LEASE = {
   // refusal evaluator reads refusals every replica writes to shared Redis sets.
   POST_RESTART_FLEET_CHECK: 'alarms:post-restart-fleet-check',
   DEVICE_CREDENTIAL_REFUSAL_ALARM: 'alarms:device-credential-refusals',
+  // 2026-11-08 — screen diagnostics retention (screen-diagnostics/): deletes
+  // device-log objects past the retention window and old request rows. Leased
+  // because it is a DELETE against shared storage and the database.
+  SCREEN_DIAGNOSTICS_RETENTION: 'screens:diagnostics-retention',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

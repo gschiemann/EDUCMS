@@ -27,6 +27,8 @@ import {
 } from './events/screen-events';
 import { DEVICE_SETTINGS_HEADER } from '@cms/api-types';
 import { deviceSettingsHeartbeat } from '../device-settings/device-settings.heartbeat';
+import { diagnosticsHeartbeat } from '../screen-diagnostics/diagnostics-heartbeat';
+import { manifestDiagnostics } from '../screen-diagnostics/diagnostics-policy';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1793,6 +1795,11 @@ export class ScreensController {
       ? await deviceSettingsHeartbeat(this.prisma, screen as any, req?.headers?.[DEVICE_SETTINGS_HEADER])
       : null;
     if (deviceSettings) Object.assign(data, deviceSettings.data);
+    // Screen diagnostics (2026-11-08, screen-diagnostics/): storage report in,
+    // an open self-test / logs request out. Same credential gate; never throws.
+    const diagnostics = paired && credential.proved
+      ? await diagnosticsHeartbeat({ prisma: this.prisma }, screen as any, req?.headers)
+      : {};
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -2053,6 +2060,7 @@ export class ScreensController {
       forceUpdatePending,
       forceUpdatePendingAt: forceAt ? new Date(forceAt).toISOString() : null,
       ...(deviceSettings?.reply ? { deviceSettings: deviceSettings.reply } : {}),
+      ...diagnostics,
       ...(nativeRuntime ? {
         nativeControl: {
           schema: 1,
@@ -7010,6 +7018,9 @@ export class ScreensController {
             screen.pendingRefreshAt as Date | null,
             screen.pendingRefreshSource as string | null,
           ),
+          // Screen diagnostics (2026-11-08): the open self-test / logs request,
+          // absent (no key, ETag unchanged) when none is open.
+          ...manifestDiagnostics(screen as any),
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
@@ -7356,6 +7367,8 @@ export class ScreensController {
           (screen as any).pendingRefreshAt,
           (screen as any).pendingRefreshSource,
         ),
+        // Screen diagnostics (2026-11-08) — same contract as the scoreboard branch.
+        ...manifestDiagnostics(screen as any),
         // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
         // A screen waiting for an assignment must still power its panel
         // down overnight, so the display block rides this body too. It is
@@ -7707,6 +7720,8 @@ export class ScreensController {
         (screen as any).pendingRefreshAt,
         (screen as any).pendingRefreshSource,
       ),
+      // Screen diagnostics (2026-11-08) — the open request, absent when none.
+      ...manifestDiagnostics(screen as any),
       // ── Double-sided displays (2026-09-16) ─────────────────────────────
       // Emitted ONLY on a face's own manifest. Every ordinary screen's
       // payload — and therefore its ETag — stays byte-for-byte what it was

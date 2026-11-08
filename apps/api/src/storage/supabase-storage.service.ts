@@ -124,6 +124,12 @@ const IMPORT_STAGING_BUCKET = 'import-staging';
 const BUG_SCREENSHOT_BUCKET = 'bug-screenshots-private';
 /** The legacy PUBLIC bucket existing screenshots live in until migrated. */
 export const LEGACY_BUG_SCREENSHOT_BUCKET = 'bug-screenshots';
+// PRIVATE device-log bucket (2026-11-08, screen diagnostics "Get recent
+// logs"). Redacted text bundles a screen uploaded on an operator's request;
+// read only through 5-minute signed URLs from the RBAC-gated diagnostics
+// route, purged after SCREEN_DIAGNOSTICS_LOG_RETENTION_DAYS.
+export const DEVICE_LOGS_BUCKET = 'device-logs-private';
+export const DEVICE_LOGS_SIZE_LIMIT = 4 * 1024 * 1024;
 
 // Every bucket created with `public: true`. Used by uploadToBucket() to pick
 // the correct `/object/public/...` URL shape — see the PUBLIC_BUCKETS
@@ -345,6 +351,26 @@ export class SupabaseStorageService implements OnModuleInit {
       } else {
         this.logger.log(`Supabase Storage bucket "${BUG_SCREENSHOT_BUCKET}" ready (private)`);
       }
+    }
+
+    // PRIVATE device-log bucket (2026-11-08) — same shape as the bug
+    // screenshots: created private and re-asserted private on every boot.
+    const DEVICE_LOG_MIMES = ['text/plain'];
+    const { error: dlErr } = await this.client.storage.createBucket(DEVICE_LOGS_BUCKET, {
+      public: false,
+      fileSizeLimit: DEVICE_LOGS_SIZE_LIMIT,
+      allowedMimeTypes: DEVICE_LOG_MIMES,
+    });
+    if (dlErr && !dlErr.message?.includes('already exists') && !dlErr.message?.includes('duplicate')) {
+      this.logger.error(`Failed to create device-log bucket: ${dlErr.message}`);
+    } else {
+      const { error: dlUpdErr } = await this.client.storage.updateBucket(DEVICE_LOGS_BUCKET, {
+        public: false,
+        fileSizeLimit: DEVICE_LOGS_SIZE_LIMIT,
+        allowedMimeTypes: DEVICE_LOG_MIMES,
+      });
+      if (dlUpdErr) this.logger.warn(`Failed to update device-log bucket: ${dlUpdErr.message}`);
+      else this.logger.log(`Supabase Storage bucket "${DEVICE_LOGS_BUCKET}" ready (private)`);
     }
 
     // PUBLIC brand-logo bucket (task #223 — see the LOGO_BUCKET comment above
