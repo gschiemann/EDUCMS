@@ -112,7 +112,7 @@ The dashboard knew only the companion Manager's **version**. It could not tell w
   - `node apps/web/tools/check-i18n-parity.cjs`: OK.
   - `node apps/web/tools/check-inset-serialization.cjs`: clean.
 - `node scripts/check-rulebook.cjs`: PASS.
-- WebKit e2e and screenshots: see "Screenshots" below.
+- WebKit e2e: `E2E_PORT=3117 npx playwright test tests/e2e/companion-health.spec.ts --project=webkit`: 2 passed (desktop 1325×758 and phone 390×844; all six states asserted; no page errors). See "Screenshots" below.
 
 ## Screenshots
 
