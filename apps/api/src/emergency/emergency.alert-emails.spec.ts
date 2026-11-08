@@ -72,6 +72,18 @@ describe('emergency record copy — queued after the action, never in its way', 
     expect(calls[1]).toMatchObject({ event: 'CLEARED', overrideId: res.overrideId, isDrill: false });
   });
 
+  it('all four events are queued: drill start, drill clear, live trigger, live all-clear (none deduplicated away)', async () => {
+    const calls: any[] = [];
+    const { emergency } = build({ recordEmergency: (i: any) => calls.push(i) });
+    const drillTrigger = trigger('tenant', SCHOOL, 'lockdown');
+    drillTrigger.overridePayload.isDrill = true;
+    const drill: any = await emergency.triggerEmergency(drillTrigger, schoolAdmin);
+    await emergency.clearEmergency(drill.overrideId, { ...clear('tenant', SCHOOL), isDrill: true }, schoolAdmin);
+    const live: any = await emergency.triggerEmergency(trigger('tenant', SCHOOL, 'lockdown'), schoolAdmin);
+    await emergency.clearEmergency(live.overrideId, clear('tenant', SCHOOL), schoolAdmin);
+    expect(calls.map((c) => `${c.event}:${c.isDrill}`)).toEqual(['TRIGGERED:true', 'CLEARED:true', 'TRIGGERED:false', 'CLEARED:false']);
+  });
+
   it('group scope: the owning school, with the screen count', async () => {
     const calls: any[] = [];
     const { emergency } = build({ recordEmergency: (i: any) => calls.push(i) });
