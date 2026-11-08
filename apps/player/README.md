@@ -155,7 +155,7 @@ network the screen is using; Android joins it when it is in range.
 Recommended: **Headwind MDM**, **Hexnode** (paid), or **Android Enterprise Dedicated Devices** (free if you self-host the EMM). Push the APK silently to all enrolled devices; lock down to `com.educms.player` as the only allowed launcher (`setLockTaskPackages`).
 
 ### Manual kiosk lockdown (single-device install)
-1. Set the player as the default launcher: `Settings → Apps → Default apps → Home app → EduCMS Player`
+1. Set the player as the default launcher: `Settings → Apps → Default apps → Home app → VenueOS Player`
 2. Disable Notification Shade swipe (most OEMs have this in `Settings → Display → Kiosk mode`)
 3. Disable status bar pull-down: requires device-owner; use `dpm set-device-owner com.educms.player/.PlayerDeviceAdmin` (admin receiver not yet implemented — V2)
 

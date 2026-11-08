@@ -536,7 +536,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Player ${{ github.ref_name }}
           body: |
-            EduCMS Player kiosk APK.
+            VenueOS Player kiosk APK.
 
             Sideload onto any Android 7+ device or Nova Taurus controller.
             See `docs/PLAYER_APK_NOVA_TAURUS.md` for the ViPlex Express
@@ -558,7 +558,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Manager ${{ github.ref_name }}
           body: |
-            EduCMS Manager APK — companion to Player.
+            VenueOS Manager APK — companion to Player.
 
             ADB-provision on a freshly-reset kiosk:
               adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
@@ -628,7 +628,7 @@ jobs:
 
       - name: Build summary
         run: |
-          echo "### EduCMS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
+          echo "### VenueOS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download from the **Artifacts** section above (\`venueos-player-apk\`)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
