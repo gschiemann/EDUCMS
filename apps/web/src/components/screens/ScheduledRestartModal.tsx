@@ -22,7 +22,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Check, Info, Loader2, RotateCcw, X } from 'lucide-react';
+import { Check, ChevronDown, Info, Loader2, RotateCcw, X } from 'lucide-react';
 
 import { Segmented } from '@/components/ui/segmented';
 import { StatusPill, type StatusTone } from '@/components/ui/status-pill';
@@ -276,22 +276,25 @@ export function ScheduledRestartModal({
                       <label htmlFor="scheduled-restart-day" className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         {t('day')}
                       </label>
-                      <select
-                        id="scheduled-restart-day"
-                        value={day}
-                        disabled={readOnly || disabled}
-                        onChange={(e) => {
-                          setDay(Number(e.target.value));
-                          setSaved(null);
-                        }}
-                        className="block mt-1 w-full min-h-[44px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        {days.map((name, i) => (
-                          <option key={i} value={i}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative mt-1">
+                        <select
+                          id="scheduled-restart-day"
+                          value={day}
+                          disabled={readOnly || disabled}
+                          onChange={(e) => {
+                            setDay(Number(e.target.value));
+                            setSaved(null);
+                          }}
+                          className="block w-full h-[46px] pl-3 pr-9 border border-slate-200 rounded-lg bg-white text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 appearance-none disabled:text-slate-400"
+                        >
+                          {days.map((name, i) => (
+                            <option key={i} value={i}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
+                      </div>
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
@@ -351,16 +354,16 @@ export function ScheduledRestartModal({
                   {screens.map((s) => {
                     const last = describeRun(s.lastRun, tr, locale);
                     return (
-                      <li key={s.id} className="px-3 py-2.5 flex items-start justify-between gap-3" data-testid={`scheduled-restart-screen-${s.id}`}>
-                        <div className="min-w-0">
+                      <li key={s.id} className="px-3 py-2.5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 sm:gap-3" data-testid={`scheduled-restart-screen-${s.id}`}>
+                        <div className="min-w-0 flex-1">
                           <p className="text-[13px] font-semibold text-slate-800 truncate">{s.name}</p>
-                          <p className="text-[11px] text-slate-500 truncate">
+                          <p className="text-[11px] text-slate-500">
                             {s.canRestart ? t('canRestart') : t('cannotRestart')}
                             {s.hardwareClass ? ` · ${s.hardwareClass}` : ''}
                             {s.restartedRecently ? ` · ${t('restartedRecently')}` : ''}
                           </p>
                         </div>
-                        <StatusPill tone={last.tone} className="shrink-0 max-w-[55%] text-right">
+                        <StatusPill tone={last.tone} className="self-start">
                           {last.text}
                         </StatusPill>
                       </li>
