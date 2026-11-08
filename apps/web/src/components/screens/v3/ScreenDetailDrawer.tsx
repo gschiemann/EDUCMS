@@ -838,14 +838,14 @@ export function ScreenDetailDrawer({
                         <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
                           {deviceFacts.map((f) => (
                             <Fragment key={f.key}>
-                              <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{f.label}</dt>
+                              <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{text(f.label, f.labelMsg)}</dt>
                               <dd className="min-w-0" data-device-fact={f.key}>
                                 <p
                                   className={`text-[12px] font-semibold leading-snug break-words ${
                                     f.tone === 'warn' ? 'text-amber-800' : 'text-slate-700'
                                   }`}
                                 >
-                                  {f.value}
+                                  {text(f.value, f.valueMsg)}
                                 </p>
                                 {f.hint && (
                                   <p
@@ -853,7 +853,7 @@ export function ScreenDetailDrawer({
                                       f.tone === 'warn' ? 'text-amber-700' : 'text-slate-400'
                                     }`}
                                   >
-                                    {f.hint}
+                                    {text(f.hint, f.hintMsg)}
                                   </p>
                                 )}
                               </dd>
