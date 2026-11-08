@@ -24,7 +24,7 @@ VenueOS runs everyday signage, native life-safety alerts (lockdown, weather, eva
 
 **Stack:** NestJS 11 API on Node 22 (Railway, one replica, leader-leased workers), Next.js 16 / React 19 web on Vercel, a Kotlin Android player (`apps/player`, shipped APKs), a Chromium renderer service (`apps/renderer`, its own Railway service), Prisma 5 on Supabase Postgres, Redis for signed real-time fan-out, Sentry on API and web, Argon2 + JWT + HttpOnly cookies, TOTP MFA and WebAuthn passkeys, Stripe-hosted billing. **Layout:** `apps/{api,web,player,renderer,edge}`, `packages/{database,api-types,scoreboard-cts,signage-design}`; Turborepo + pnpm. `auth-core` and `ws-events` no longer exist — do not restore them.
 
-**Run:** `pnpm install` · `pnpm db:push` (local only) · `pnpm db:seed` · `pnpm dev`. Local checks: `node scripts/venueos.cjs verify` runs the CI-wired gates; `node scripts/venueos.cjs status` compares local HEAD, the deployed `/health` `commit` and CI.
+**Run:** `pnpm install` · `pnpm db:push` (local only) · `pnpm db:seed` · `pnpm dev`. Local checks: `node scripts/venueos.cjs verify` runs the CI-wired gates; `node scripts/venueos.cjs status` compares local HEAD, the deployed `/api/v1/health` `commit` and CI.
 
 ## 2. Schema and data
 
@@ -76,7 +76,7 @@ Test in WebKit before "done"; never `.remove()` a node React rendered; the playe
 ## 10. Gates, deploys, health, rollback
 
 - Required to merge today (ruleset, strict up-to-date, through a pull request): `pnpm lockfile drift`, `API + workspace packages build`, `Web typecheck + build`, `Docker build + boot smoke test`, `schema change ships a migration`, `Build, Lint & Test`, `chromium · Emergency path`, `webkit · Emergency path`, `Two-tenant × role isolation matrix`. Everything else (cross-browser, mobile perf, taurus safety, a11y, the supply-chain scans) runs and reports; a docs-only PR skips the gated jobs, which report as such. Railway and Vercel deploy on push to `master`. Local preflight (`pnpm preflight`, the pre-push hook) is not proof CI passes.
-- "Done" means the commit is on `master`, CI is green, and `/health` reports `commit` equal to the merge SHA — else say "unverified". `/health` is liveness and always 200; never put a database check in it. `/health/started` gates the Railway deploy; `/health/ready` is for monitoring; `/health/emergency-path` proves the signer chain before a drill.
+- "Done" means the commit is on `master`, CI is green, and `/api/v1/health` reports `commit` equal to the merge SHA — else say "unverified". Health lives under `/api/v1/health` (the API has no global prefix; the bare `/health` is the root controller's status-uptime-timestamp answer with no `commit`, and `/health/started` or `/health/ready` is a 404). `/api/v1/health` is liveness and always 200 — a database check may inform its body, never its status; `/api/v1/health/started` gates the Railway deploy (`healthcheckPath` in `railway.json`); `/api/v1/health/ready` is for monitoring (503 without the database); `/api/v1/health/emergency-path` proves the signer chain before a drill.
 - Rollback = revert the PR or redeploy the previous build; migrations are additive so the previous build still runs. The database backup is `.github/workflows/db-backup.yml` (nightly, encrypted); a restore has never been drilled — Phase 1. Never weaken the Railway restart policy, never remove the 7 s Redis cap.
 - Railway config-as-code stops being read on **2026-12-01**; the move to IaC is dated Phase 1 work.
 
