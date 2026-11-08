@@ -42,10 +42,11 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTranslations } from 'next-intl';
 import {
-  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, videoPlainLine, videoSampleIsCurrent, videoSampleIsNews, wordyAge,
+  compactAge, contentStatusLine, deriveDeviceFacts, type DeviceFact, deriveRecovery, msOf, videoPlainLine, videoSampleIsCurrent, videoSampleIsNews, wordyAge,
   type OpsRow, type VideoPlayback, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
+import { companionHealthLine } from './companionHealth';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
 // 2026-10-24 — the screen's time zone row: the effective zone, where it came
 // from, the device's own setting when it disagrees, and the override picker.
@@ -378,7 +379,25 @@ export function ScreenDetailDrawer({
   // Only the file playing NOW is measured on this screen; older samples are history.
   const currentVideoFiles = expected.videoFiles;
   const videoCurrent = videoSampleIsCurrent(video, currentVideoFiles);
-  const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
+  const baseDeviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
+  // 2026-11-08 — the companion line (companionHealth.ts), right under the
+  // version row. No report (every build before this one) = no row: the
+  // version-only "Player app" row stands alone, exactly as before.
+  const companion = useMemo(() => companionHealthLine(screen, now), [screen, now]);
+  const deviceFacts = useMemo<DeviceFact[]>(() => {
+    if (!companion) return baseDeviceFacts;
+    const row: DeviceFact = {
+      key: 'companion',
+      label: t('screens.drawer.companion.label'),
+      value: t(`screens.drawer.companion.${companion.key}`, companion.values ?? {}),
+      hint: companion.hint ? t(`screens.drawer.companion.${companion.hint.key}`, companion.hint.values ?? {}) : undefined,
+      tone: companion.tone,
+    };
+    const at = baseDeviceFacts.findIndex((f) => f.key === 'player');
+    const out = [...baseDeviceFacts];
+    out.splice(at >= 0 ? at + 1 : out.length, 0, row);
+    return out;
+  }, [baseDeviceFacts, companion, t]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
     return ev ? msOf(ev.createdAt) : null;
