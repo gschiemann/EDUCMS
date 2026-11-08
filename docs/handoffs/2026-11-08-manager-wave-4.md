@@ -48,3 +48,54 @@ Reasons 6, 7 and 11 are transient: the run row waits (`WAITING`, reason kept) an
 **Kill switch.** `SCHEDULED_REBOOTS_DISABLED=1` (lead flag): the worker does nothing, writes are refused (409 `SCHEDULED_REBOOTS_DISABLED`), the dashboard says restarts are paused. Unset = the feature is available, and still restarts nothing until an admin opts a group in. Failure direction: **closed** — any fact that cannot be read refuses the restart.
 
 **UI.** The group ⋮ menu on Screens gains "Scheduled restart…", opening a sheet in the house pattern of the on/off schedule sheet: off / nightly / weekly, day, time, and a per-screen list (class, whether it can restart, why not, last result). en/es/zh.
+
+## 3. What was built (report)
+
+Commits on `claude/scheduled-reboot-policy` (on top of `origin/fable/manager-unified-release` d92cea5c7; #270 still OPEN at the time of writing, so no rebase onto master): `918bf34df` design · `1e5066983` API + schema + env · `49ec0dbdd` web sheet + strings · `d26715b98` WebKit e2e + layout fix · plus this report.
+
+| File | Why |
+|---|---|
+| `packages/database/prisma/schema.prisma` | `ScreenRebootPolicy` (one per group, opt-in) and `ScreenRebootRun` (one per screen+slot, the claim); `ScreenGroup.rebootPolicy` relation (no DB change). |
+| `packages/database/prisma/migrations/20261108120000_screen_reboot_policies/migration.sql` | Two new empty tables, indexes, FK to `screen_groups` only (no FK to the hot `screens`); `IF NOT EXISTS` + `pg_constraint` guard + `lock_timeout`. |
+| `apps/api/src/scheduled-reboot/scheduled-reboot-policy.ts` | Pure rules: slot + jitter, every refusal, uptime/boot/panel/OTA facts, proof of return, env parsing. |
+| `apps/api/src/scheduled-reboot/scheduled-reboot.service.ts` | Leader-leased 5-min worker; tenant-scoped reads; dispatch through `runDisplayControl` (userId null); return proof; `SCHEDULED_REBOOT_NOT_BACK` audit. |
+| `apps/api/src/scheduled-reboot/scheduled-reboot.controller.ts` | `GET/PUT/DELETE /api/v1/scheduled-reboots/groups/:groupId`; tenant + screen-scope check; audit before/after; 409 under the kill switch. |
+| `apps/api/src/scheduled-reboot/scheduled-reboot.module.ts`, `apps/api/src/app.module.ts` | Registration (one import line, one module line). |
+| `apps/api/src/realtime/leader-lease.service.ts` | `LEASE.SCHEDULED_REBOOT` (one entry). |
+| `apps/api/src/config/env-schema.ts`, `docs/ENVIRONMENT.md`, `.env.example` | `SCHEDULED_REBOOTS_DISABLED` (kill switch, closed), `SCHEDULED_REBOOT_TENANT_CAP`, `SCHEDULED_REBOOT_RETURN_MINUTES`; hand-kept row + regenerated block. |
+| `apps/api/src/scheduled-reboot/*.spec.ts` | 53 tests: every blocked condition, slot/jitter/weekly/DST-free math, return proof, kill switch, leader, tenant isolation, audit, scope, validation. |
+| `apps/web/src/hooks/use-scheduled-restarts.ts` | Query/mutations (no polling, no focus refetch). |
+| `apps/web/src/components/screens/ScheduledRestartModal.tsx` | The sheet (shared `Segmented`, `TimeField`, `StatusPill`; house sheet pattern). |
+| `apps/web/src/components/screens/v3/ScreenOperationsV3.tsx`, `apps/web/src/app/[schoolId]/screens/page.tsx` | Group ⋮ → "Scheduled restart…" (optional prop, additive). |
+| `apps/web/src/i18n/messages/{en,es,zh}.json` | New top-level `scheduledRestart` namespace (no edits to existing keys). |
+| `apps/web/src/components/screens/__tests__/ScheduledRestartModal.test.tsx`, `apps/web/tests/e2e/scheduled-restart.spec.ts` | Web Jest (9) and WebKit e2e on the real route (2). |
+
+No Kotlin change: the device already executes `REBOOT` through `DisplayControlApi` when it can. Nothing touched in diagnostics, Manager health, the install tap or the alert watch; emergency code only read (`resolveEmergencyHold`).
+
+### Commands and results
+
+- `cd apps/api && npx jest src/scheduled-reboot` — 3 suites, 53 passed.
+- `cd apps/api && npx jest src/scheduled-reboot src/realtime/leader-lease src/config src/controller-prefix src/display src/app.controller` — 389 passed, 1 failed: `env-schema.spec.ts` completeness, for `MANAGER_SELF_UPDATE_LEGACY_LANE` and `USB_EXPORT_FOLDER_NAME` — **pre-existing on the base branch** (both read by files this wave did not touch; `node apps/api/tools/check-env-declared.cjs` reports the same 2 errors). The lead's #270 needs those two rows declared.
+- `cd apps/api && pnpm run build` — exit 0 (`dist/scheduled-reboot/*.js`).
+- `node apps/api/tools/check-tenant-isolation.cjs` — OK, 0 unscoped.
+- `node apps/api/tools/generate-env-docs.cjs --check` — ok for both files.
+- `node scripts/check-schema-has-migration.cjs` — OK. Migration applied **twice** on a scratch Postgres 16 (both exit 0, second all "already exists, skipping").
+- `cd apps/web && npx tsc --noEmit -p .` — 0 errors. `npx jest src/components/screens/__tests__/ScheduledRestartModal.test.tsx` — 9 passed; `npx jest src/components/screens/v3` — 367 passed.
+- `node apps/web/tools/check-i18n-parity.cjs` — OK (7371 keys each). `node apps/web/tools/check-mobile-perf.cjs` — OK.
+- `E2E_BASE=http://localhost:3417 SR_SHOTS=… npx playwright test -c playwright.sandbox.config.ts tests/e2e/scheduled-restart.spec.ts --project=webkit` — 2 passed (reachability from `/[schoolId]/screens` via the group ⋮ menu, Save sends `{cadence:'DAILY',dayOfWeek:null,time:'03:00',isActive:true}`, no sideways scroll at 390).
+- `node scripts/check-rulebook.cjs` — PASS.
+
+Screenshots (WebKit; `docs/research/` is gitignored, so they live on the lead's machine only): `docs/research/2026-11-08-manager-waves/wave-4/` — `screens-1325.png`, `group-menu-1325.png`, `sheet-weekly-1325.png`, `sheet-saved-1325.png`, `sheet-weekly-390.png`, `sheet-saved-390.png`.
+
+### A bug caught on the way
+
+`{ id: groupId, tenantId, ...scopedGroupWhere(req) }` would have let the scope's `{ id: { in } }` **replace** the requested id, so a screen-scoped person could write to whichever of their groups Prisma returned first. Fixed with `AND: [scopedGroupWhere(req)]` and pinned by a test. A grep for the same spread shape elsewhere in `apps/api/src` found none.
+
+### Not verified / open
+
+- **No screen on today's fleet can restart remotely** (every verdict is `reboot: 'none'`, by the no-device-owner rule), so the worker has never sent a real REBOOT and the restart → check-in → `BOOT_COUNT` proof is unit-tested only. It needs a platform-signed or manufacturer-preinstalled build on a bench screen to prove on glass.
+- Whether each class re-applies its OFF (scheduled sleep) after a boot inside the off window, so a restart at 03:00 does not leave a panel lit until 07:00. `PowerIntentPolicy` and the schedule re-arm on `BOOT_COMPLETED` suggest yes; not observed on hardware.
+- The `restarted-on-its-own` skip relies on `nativeRuntimeReport.elapsedRealtimeMs` being fresh (< 2 h). It is not proven that a t982 box in deep standby (Goodview owns power) or an EP6N reports it the morning after the wake reboot.
+- Phone: the Screens list on a phone has no group ⋮ for a group that **has** screens (only for an empty group), so on a phone neither "On/off schedule" nor "Scheduled restart" is reachable for a populated group. That is pre-existing layout, not changed here; the 390 screenshots open the sheet at desktop width and then narrow the window.
+- The emails from #202 were not changed and not exercised end to end against a scheduled run; the reasoning that they apply is in §1.
+- The worker sends nothing in `NODE_ENV=test` and has not run in a deployed environment.
