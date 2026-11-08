@@ -6,19 +6,19 @@
 
 Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.
 
-**Health endpoints** (all under `/api/v1`):
-- `GET /health` — liveness. Always 200 (even if DB/Redis degraded — the truth is in the body). Returns `{ status, db, redis, uptime, version, commit, timestamp }`. Monitoring uses it (`keep-warm.yml`, `node scripts/venueos.cjs status`); Railway's deploy healthcheck does NOT.
-- `GET /health/started` — the Railway deploy healthcheck (`healthcheckPath` in `railway.json`). A one-way latch: 503 until the DB has served a real query and Redis has settled (or a ceiling of about 45 s passes), 200 forever after — it can never fail a running pod.
-- `GET /health/ready` — readiness. 503 when DB unreachable. Use for monitoring, NOT Railway.
-- `GET /health/emergency-path` — verifies DB + WS signer chain before a drill.
+**Health endpoints** (the API has no global prefix, so write the paths in full — the bare `/health` is only the root controller's `{ status, uptime, timestamp }` with no `commit`, and `/health/started` or `/health/ready` is a 404):
+- `GET /api/v1/health` — liveness. Always 200 (even if DB/Redis degraded — the truth is in the body). Returns `{ status, db, redis, uptime, version, commit, timestamp }`. Monitoring uses it (`keep-warm.yml`, `node scripts/venueos.cjs status`); Railway's deploy healthcheck does NOT.
+- `GET /api/v1/health/started` — the Railway deploy healthcheck (`healthcheckPath` in `railway.json`). A one-way latch: 503 until the DB has served a real query and Redis has settled (or a ceiling of about 45 s passes), 200 forever after — it can never fail a running pod.
+- `GET /api/v1/health/ready` — readiness. 503 when DB unreachable. Use for monitoring, NOT Railway.
+- `GET /api/v1/health/emergency-path` — verifies DB + WS signer chain before a drill.
 
 **Verify a deploy succeeded:**
-1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"` **and a `commit` equal to the merge commit's SHA.** `/health` is 200 even when degraded, and the previous container keeps answering until the new one takes over, so the `commit` field is the proof of a deploy (`node scripts/venueos.cjs status` shows local, origin, DEPLOYED and CI in one view). A `commit` of `dev` or the previous SHA means it is not deployed.
+1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"` **and a `commit` equal to the merge commit's SHA.** `/api/v1/health` is 200 even when degraded, and the previous container keeps answering until the new one takes over, so the `commit` field is the proof of a deploy (`node scripts/venueos.cjs status` shows local, origin, DEPLOYED and CI in one view). A `commit` of `dev` or the previous SHA means it is not deployed.
 2. Railway dashboard: deployment shows "Healthy" (green) — it passed `/api/v1/health/started` (`healthcheckPath` in `railway.json`).
-3. There is no Vercel cron: `.github/workflows/keep-warm.yml` (GitHub Actions, every 5 minutes; per its header it replaced the Vercel cron, which the Hobby plan limits to daily) pings `/health` (the body must contain `"db":"ok"`), `/health/ready` and `/health/emergency-path` and fails if any does not answer. `apps/web/vercel.json` schedules no cron.
+3. There is no Vercel cron: `.github/workflows/keep-warm.yml` (GitHub Actions, every 5 minutes; per its header it replaced the Vercel cron, which the Hobby plan limits to daily) pings `/api/v1/health` (the body must contain `"db":"ok"`), `/api/v1/health/ready` and `/api/v1/health/emergency-path` and fails if any does not answer. `apps/web/vercel.json` schedules no cron.
 
 **If the demo breaks:**
-- API unreachable → Railway → Deployments → Restart latest. Auto-restart covers most blips (restart policy `ON_FAILURE`, up to 10 retries; the 300 s in `railway.json` is `healthcheckTimeout` — how long a new deploy gets to pass `/health/started` — not a restart window).
+- API unreachable → Railway → Deployments → Restart latest. Auto-restart covers most blips (restart policy `ON_FAILURE`, up to 10 retries; the 300 s in `railway.json` is `healthcheckTimeout` — how long a new deploy gets to pass `/api/v1/health/started` — not a restart window).
 - UI says "Can't reach the server" → check `NEXT_PUBLIC_API_URL` in Vercel env. If unset the frontend falls back to localhost — set it and redeploy web.
 - DB errors in Railway logs → Supabase pooler hiccup. Boot warm-up logs `Prisma pool warm (Nms)`; if consistently >2s, check `DATABASE_URL` / `DIRECT_URL` split.
 - Redis missing → API boots anyway (HTTP-polling realtime fallback). Emergency trigger still works.
