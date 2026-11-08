@@ -86,20 +86,22 @@ class PackageReplacedReceiver : BroadcastReceiver() {
             Log.w(TAG, "startWatchdogService failed: ${e.message}")
         }
 
-        // 3. Re-schedule both periodic workers with the new cadence.
+        // 3. Cancel the retired self-update lane the OLD build persisted, and
+        //    re-schedule the one periodic worker left (the Player bootstrap
+        //    lane). ONE RELEASE UNIT (2026-11-08): the Manager is carried and
+        //    installed by the Player — ManagerUpdatePolicy.
         try {
+            ManagerApp.cancelLegacySelfUpdate(context)
             ManagerApp.scheduleOtaWorker(context)
-            ManagerApp.scheduleManagerSelfUpdateWorker(context)
-            Log.i(TAG, "both periodic OTA workers re-scheduled post-upgrade")
+            Log.i(TAG, "legacy self-update cancelled; Player-OTA worker re-scheduled post-upgrade")
         } catch (e: Exception) {
             Log.w(TAG, "schedule re-enqueue failed: ${e.message}")
         }
 
-        // 4. Fire one-shot OTA checks so the dashboard sees the bump.
+        // 4. Fire the one-shot Player lane (a no-op once a Player is installed).
         try {
             ManagerApp.triggerImmediateOtaCheck(context)
-            ManagerApp.triggerImmediateManagerSelfUpdate(context)
-            Log.i(TAG, "one-shot OTA checks enqueued post-upgrade")
+            Log.i(TAG, "one-shot Player-OTA check enqueued post-upgrade")
         } catch (e: Exception) {
             Log.w(TAG, "triggerImmediate* failed: ${e.message}")
         }

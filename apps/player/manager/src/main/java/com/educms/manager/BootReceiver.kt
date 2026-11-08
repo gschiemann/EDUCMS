@@ -40,13 +40,12 @@ class BootReceiver : BroadcastReceiver() {
         // ~90s of network coming online (the worker's network
         // constraint waits for connectivity, which is correct).
         //
-        // Player OTA: handles Player updates per the existing flow.
-        // Manager self-update: handles Manager updates so a sideload
-        //   of v1.0.2 today is the LAST sideload — every future
-        //   manager-v* tag is picked up automatically.
+        // Player lane: bootstraps a Player onto a kiosk that has none.
+        // (The Manager's own self-update lane is RETIRED, 2026-11-08: the
+        // Manager ships inside the Player APK and the Player installs it —
+        // ManagerUpdatePolicy. ManagerApp cancels the old periodic job.)
         ManagerApp.triggerImmediateOtaCheck(context)
-        ManagerApp.triggerImmediateManagerSelfUpdate(context)
-        Log.i(TAG, "BootReceiver kicked Player-OTA + Manager-self-update workers")
+        Log.i(TAG, "BootReceiver kicked the Player-OTA (bootstrap) worker")
     }
 
     companion object {
