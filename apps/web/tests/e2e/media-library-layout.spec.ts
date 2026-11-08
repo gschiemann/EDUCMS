@@ -19,7 +19,7 @@ const USER = { id: 'user', tenantId: TENANT, role: 'SCHOOL_ADMIN', email: 'test@
 const PORT = process.env.E2E_PORT || '3000';
 const CORS = { 'Access-Control-Allow-Origin': `http://localhost:${PORT}`, 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'authorization,content-type,x-csrf-token,x-requested-with', 'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS' };
 const SHOTS = process.env.MEDIA_MOCKUP_SHOTS === '1';
-const OUT = path.resolve(__dirname, '../../../../docs/research/2026-11-02-media-redesign');
+const OUT = process.env.MEDIA_SHOTS_DIR || path.resolve(__dirname, '../../../../docs/research/2026-11-02-media-redesign');
 
 const PALETTES = [
   ['#0f766e', '#99f6e4'], ['#1e3a8a', '#93c5fd'], ['#9a3412', '#fdba74'], ['#581c87', '#d8b4fe'],
@@ -53,7 +53,13 @@ const FOLDERS = [
   { id: 'f3', name: 'Menus', parentId: null, updatedAt: '2026-10-20T10:00:00Z', _count: { assets: 6, children: 0 } },
 ];
 
-async function open(page: Page, opts: { mobile: boolean }) {
+const MANY = [
+  ...ASSETS,
+  ...Array.from({ length: 36 }, (_, i) => ({ ...ASSETS[i % 12], id: `more-${i}`, originalName: `Extra asset ${i}.png`, fileUrl: `https://files.example.test/img-${i % 12}.png` })),
+];
+
+async function open(page: Page, opts: { mobile: boolean; many?: boolean; size?: { width: number; height: number } }) {
+  const list = opts.many ? MANY : ASSETS;
   await page.addInitScript(user => {
     sessionStorage.setItem('edu_cms_token', 'e2e-token'); sessionStorage.setItem('edu_cms_user', JSON.stringify(user)); localStorage.setItem('edu_cms_eula_accepted_v1.0', '1');
   }, USER);
@@ -71,10 +77,10 @@ async function open(page: Page, opts: { mobile: boolean }) {
     if (p === '/assets/storage') return json(route, { usedBytes: 2_400_000_000, includedBytes: 50_000_000_000, screens: 10, percent: 5, warn: false });
     if (p === '/tenants' || p === '/tenants/accessible') return json(route, [{ id: TENANT, slug: TENANT, name: 'Demo School' }]);
     if (p === '/asset-folders' || p === '/assets/folders') return json(route, FOLDERS);
-    if (p === '/assets') return json(route, { assets: ASSETS, total: ASSETS.length });
+    if (p === '/assets') return json(route, { assets: list, total: list.length });
     return json(route, p.endsWith('s') ? [] : {});
   });
-  await page.setViewportSize(opts.mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+  await page.setViewportSize(opts.size ?? (opts.mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }));
   await page.goto(`/${TENANT}/assets`);
   await expect(page.getByRole('checkbox', { name: `Select ${NAMES[0]}` })).toBeAttached();
   // Let the on-screen thumbnails paint (lazy ones below the fold never load).
@@ -170,5 +176,26 @@ test.describe('Media Library layout (2026-11-02 redesign)', () => {
     for (const item of ['Move to folder', 'Download ZIP']) await expect(menu.getByRole('menuitem', { name: item })).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
     await shot(page, '11-v2-iphone-more-menu.png');
+  });
+
+  test('desktop 1325x758: the toolbar sticks while scrolled, Create playlist stays in view', async ({ page }) => {
+    await open(page, { mobile: false, many: true, size: { width: 1325, height: 758 } });
+    const main = page.locator('#main-content');
+    await main.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect.poll(() => main.evaluate((el) => el.scrollTop)).toBeGreaterThan(400);
+    const box = page.getByRole('checkbox', { name: 'Select Extra asset 20.png' });
+    await box.evaluate((el: HTMLElement) => el.click());
+    await expect(box).toBeChecked();
+    const bar = page.locator('[data-testid="asset-bulk-bar"][data-placement="toolbar"]');
+    const create = bar.getByRole('button', { name: 'Create playlist', exact: true });
+    await expect(create).toBeVisible();
+    await expect(create).toBeInViewport({ ratio: 1 });
+    const sticky = page.getByTestId('library-toolbar-sticky');
+    await expect(sticky).toHaveAttribute('data-stuck', 'true');
+    const top = await sticky.evaluate((el) => el.getBoundingClientRect().top - document.getElementById('main-content')!.getBoundingClientRect().top);
+    expect(Math.abs(top - 32)).toBeLessThan(2); // main's md:p-8 gutter; the stuck bar covers it
+    await shot(page, '12-sticky-desktop-scrolled-selected.png');
+    await main.evaluate((el) => el.scrollTo(0, 0));
+    await expect(sticky).not.toHaveAttribute('data-stuck', 'true');
   });
 });
