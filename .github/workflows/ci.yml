@@ -119,10 +119,15 @@ jobs:
             emit true "no changed files found, so nothing can be proven docs-only: the gated jobs run"
             exit 0
           fi
-          # The same set as the push trigger's paths-ignore above. Counted with
+          # The same set as the push trigger's paths-ignore above, with one
+          # exception: docs/ENVIRONMENT.md carries a block GENERATED from
+          # apps/api/src/config/env-schema.ts that the build job checks, so an
+          # edit to it is a code change here (a hand edit inside the generated
+          # block must fail the drift check, not skip it). Counted with
           # grep -c (not `grep -q`) so an early-closing pipe can never flip the answer.
           code_files=$(printf '%s\n' "$files" | grep -vcE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' || true)
-          if [ "${code_files:-0}" -gt 0 ]; then
+          generated_docs=$(printf '%s\n' "$files" | grep -cE '^docs/ENVIRONMENT\.md$' || true)
+          if [ "${code_files:-0}" -gt 0 ] || [ "${generated_docs:-0}" -gt 0 ]; then
             emit true "code changed: the gated jobs run"
           else
             emit false "docs-only: the gated jobs are skipped and report as such"
@@ -152,6 +157,20 @@ jobs:
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Environment declaration gate (Foundry mechanism 15)
+        # Every process.env read under apps/api/src has a row in
+        # apps/api/src/config/env-schema.ts (default, kill switch, failure
+        # direction), and the blocks that schema generates in docs/ENVIRONMENT.md
+        # and .env.example match it byte for byte. The 2026-10 configuration
+        # audit found 168+ names read and most *_DISABLED switches written down
+        # nowhere. env-schema.spec.ts enforces the same completeness inside
+        # Jest; this step makes it a named gate (`venueos verify` derives its
+        # gate list from `node .../check-*.cjs` lines in these workflows) and
+        # adds the drift check. A failure prints the exact regenerate command.
+        run: |
+          node apps/api/tools/check-env-declared.cjs
+          node apps/api/tools/generate-env-docs.cjs --check
 
       - name: AI model retirement gate (audit W0-03)
         # Fails if any AI model we ship is past its provider's announced
