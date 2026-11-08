@@ -42,7 +42,7 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTranslations } from 'next-intl';
 import {
-  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, videoSampleIsNews, wordyAge,
+  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, videoPlainLine, videoSampleIsCurrent, videoSampleIsNews, wordyAge,
   type OpsRow, type VideoPlayback, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
@@ -130,6 +130,7 @@ const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
  */
 function VideoSampleBlock({ video, tinted }: { video: VideoPlayback; tinted: boolean }) {
   const t = useTranslations();
+  const plain = videoPlainLine(video);
   const tone = tinted ? VIDEO_TONE[video.grade] : { wrap: 'border-slate-200 bg-slate-50', ink: 'text-slate-700' };
   return (
     <div
@@ -141,10 +142,14 @@ function VideoSampleBlock({ video, tinted }: { video: VideoPlayback; tinted: boo
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
         {t(video.grade === 'native' ? 'screens.drawer.nativePlayback' : 'screens.drawer.lastVideoSample')}
       </p>
-      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${tone.ink}`}>{video.headline}</p>
-      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
-        {video.name} — {video.detail}
+      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${tone.ink}`} data-testid="screen-video-plain">
+        {t(`screens.drawer.${plain.key}`, plain.values)}
       </p>
+      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">{video.name}</p>
+      {/* Raw counters (frame callbacks, loops, drops) live under "For support". */}
+      {tinted && (
+        <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug break-words">{video.detail}</p>
+      )}
       {tinted && video.grade === 'stuttering' && (
         <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('screens.drawer.videoSampleOpenMedia')}</p>
       )}
@@ -370,6 +375,9 @@ export function ScreenDetailDrawer({
 
   const online = screen.status === 'ONLINE';
   const videoNews = videoSampleIsNews(video, now);
+  // Only the file playing NOW is measured on this screen; older samples are history.
+  const currentVideoFiles = expected.videoFiles;
+  const videoCurrent = videoSampleIsCurrent(video, currentVideoFiles);
   const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
@@ -757,7 +765,7 @@ export function ScreenDetailDrawer({
                     count for the clip it last played. On the Overview only
                     while it is news — recent and visible (2026-10-22) —
                     otherwise under Technical details. */}
-                {videoNews && video && (
+                {videoNews && video && videoCurrent && (
                   <div className="mt-2">
                     <VideoSampleBlock video={video} tinted />
                   </div>
@@ -798,15 +806,28 @@ export function ScreenDetailDrawer({
                         })()}
                       </p>
                     )}
-                    <p className="text-[11px] font-semibold text-slate-400 leading-snug">
-                      {t('screens.drawer.reportedByPlayer')}
-                    </p>
-                    {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
-                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" resolution={screen.resolution} />
-                    <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
+                    {video && videoCurrent && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" current={currentVideoFiles} resolution={screen.resolution} />
+                    <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="main" />
                     {/* 2026-10-26 — what this screen last did with a USB drive (its own reports). */}
                     <ScreenUsbSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
+                    {/* For support (collapsed): raw counters, planned events
+                        and the one "we can't see the panel" note. */}
+                    <details className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-support-details">
+                      <summary className="cursor-pointer select-none text-[12px] font-bold text-slate-600">{t('screens.drawer.forSupport')}</summary>
+                      <div className="mt-3 space-y-3">
+                        {video && videoCurrent && (
+                          <p className="text-[10.5px] font-semibold text-slate-600 leading-snug break-words" data-testid="screen-support-video">
+                            {video.name} — {video.detail}
+                          </p>
+                        )}
+                        <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="support" />
+                        <p className="text-[10.5px] font-semibold text-slate-400 leading-snug" data-testid="screen-support-disclaimer">
+                          {t('screens.drawer.supportDisclaimer')}
+                        </p>
+                      </div>
+                    </details>
                     {/* Device — the facts the screen reported about itself
                         (2026-09-24, Greg: "give info about the screen itself right?
                         resolution, os version, etc"). Only rows with a value: a fact
