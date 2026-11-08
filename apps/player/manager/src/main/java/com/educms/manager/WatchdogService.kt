@@ -56,6 +56,14 @@ class WatchdogService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "watchdog tick threw: ${e.message}", e)
             }
+            // 2026-11-08 (wave 5) — the alert-watch watchdog rides the same tick,
+            // after the liveness check and isolated from it: a fault there can
+            // never cost this service its own tick. Add-only (its rules).
+            try {
+                com.educms.manager.alertwatch.AlertWatchWatchdog.tick(applicationContext)
+            } catch (e: Throwable) {
+                Log.w(TAG, "alert-watch watchdog tick threw: ${e.message}")
+            }
             handler.postDelayed(this, TICK_INTERVAL_MS)
         }
     }

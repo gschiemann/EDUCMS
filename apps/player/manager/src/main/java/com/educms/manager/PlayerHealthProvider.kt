@@ -135,11 +135,22 @@ class PlayerHealthProvider : ContentProvider() {
                 }
                 cursor
             }
+            // 2026-11-08 (wave 5, alert-watch watchdog) — two ADDITIVE paths.
+            // The Player's native alert watch stamps itself here after every
+            // pass; the Manager's watchdog verdict is read back by the Player
+            // for its signed heartbeat. Same permission gate as the heartbeat.
+            CODE_ALERT_WATCH -> context?.let { com.educms.manager.alertwatch.AlertWatchStore.stampCursor(it) }
+            CODE_ALERT_WATCH_WATCHDOG -> context?.let { com.educms.manager.alertwatch.AlertWatchStore.recordCursor(it) }
             else -> null
         }
     }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
+        if (matcher.match(uri) == CODE_ALERT_WATCH) {
+            val ctx = context ?: return null
+            val v = values ?: return null
+            return if (com.educms.manager.alertwatch.AlertWatchStore.writeStamp(ctx, v)) uri else null
+        }
         if (matcher.match(uri) != CODE_HEARTBEAT) return null
         val v = values ?: return null
         val ts = v.getAsLong(COL_TIMESTAMP) ?: System.currentTimeMillis()
@@ -181,6 +192,8 @@ class PlayerHealthProvider : ContentProvider() {
 
     override fun getType(uri: Uri): String? = when (matcher.match(uri)) {
         CODE_HEARTBEAT -> "vnd.android.cursor.item/vnd.com.educms.manager.heartbeat"
+        CODE_ALERT_WATCH -> "vnd.android.cursor.item/vnd.com.educms.manager.alert-watch"
+        CODE_ALERT_WATCH_WATCHDOG -> "vnd.android.cursor.item/vnd.com.educms.manager.alert-watch-watchdog"
         else -> null
     }
 
@@ -207,11 +220,20 @@ class PlayerHealthProvider : ContentProvider() {
         const val COL_FINGERPRINT = "device_fingerprint"
 
         private const val CODE_HEARTBEAT = 1
+        // 2026-11-08 (wave 5) — the native alert watch's stamp (Player writes) and
+        // the Manager's watchdog verdict (Player reads). Mirrored in the Player's
+        // `alertwatch/AlertWatchStamp.kt`; change both or neither.
+        const val PATH_ALERT_WATCH = "alert-watch"
+        const val PATH_ALERT_WATCH_WATCHDOG = "alert-watch-watchdog"
+        private const val CODE_ALERT_WATCH = 2
+        private const val CODE_ALERT_WATCH_WATCHDOG = 3
 
         val URI_HEARTBEAT: Uri = Uri.parse("content://$AUTHORITY/$PATH_HEARTBEAT")
 
         private val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(AUTHORITY, PATH_HEARTBEAT, CODE_HEARTBEAT)
+            addURI(AUTHORITY, PATH_ALERT_WATCH, CODE_ALERT_WATCH)
+            addURI(AUTHORITY, PATH_ALERT_WATCH_WATCHDOG, CODE_ALERT_WATCH_WATCHDOG)
         }
     }
 }
