@@ -78,3 +78,33 @@ export function nativeReportAsleep(
   if (!Number.isFinite(at) || nowMs - at > 10 * 60_000) return false;
   return (report as { interactive?: unknown }).interactive === false;
 }
+
+/**
+ * Why a screen reads "Sleeping" in a status chip — or null when it does not.
+ * The status label and the Sleep / Awake buttons share `observedState`, so the
+ * chip and the highlight can never disagree.
+ *
+ *   'schedule' — the screen's on/off schedule says off right now AND the screen
+ *                is dark (native report, or render proof not painting).
+ *   'device'   — the native report says the backlight is off / Android is not
+ *                interactive (a Sleep command, vendor standby).
+ *
+ * Render proof alone NEVER makes a screen "sleeping" outside a schedule's off
+ * window: a dark panel with no scheduled or reported reason is a possible
+ * fault ("No picture confirmed"), not rest.
+ */
+export type SleepingReason = 'schedule' | 'device';
+
+export function sleepingReason(i: {
+  panelState: PanelPowerState;
+  hardOff: boolean;
+  reportAsleep: boolean;
+  scheduleOff: boolean;
+}): SleepingReason | null {
+  const nativeSleep =
+    observedState({ panelState: 'unknown', hardOff: i.hardOff, reportAsleep: i.reportAsleep }) === 'sleep';
+  const dark = observedState(i) === 'sleep';
+  if (i.scheduleOff && dark) return 'schedule';
+  if (nativeSleep) return 'device';
+  return null;
+}

@@ -38,6 +38,7 @@ jest.mock('@/components/ui/AddressAutocomplete', () => ({
   ),
 }));
 jest.mock('@/hooks/use-api', () => ({
+  useAllDisplaySchedules: () => ({ data: [] }),
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
   useCreateScreenGroup: () => ({ mutate: createGroupMutate, mutateAsync: createGroupMutate, isPending: false }),
   useUploadFloorPlan: () => ({ mutateAsync: uploadFloorMutate, isPending: false }),
