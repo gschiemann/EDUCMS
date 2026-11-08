@@ -206,7 +206,7 @@ class HeartbeatService : Service() {
         val notif: Notification = NotificationCompat.Builder(this, PlayerApp.CHANNEL_HEARTBEAT)
             .setSmallIcon(android.R.drawable.presence_online)
             .setContentTitle("Player connected")
-            .setContentText("EduCMS Player ${BuildConfig.VERSION_NAME}")
+            .setContentText("VenueOS Player ${BuildConfig.VERSION_NAME}")
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(pi)

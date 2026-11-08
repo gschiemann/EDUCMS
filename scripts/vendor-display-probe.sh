@@ -193,7 +193,7 @@ say "7/9  USB / serial surface"
 dump usb                "ls -la /dev/ttyUSB* /dev/ttyS* /dev/ttyACM* 2>&1; echo '--- lsusb ---'; lsusb 2>&1; echo '--- usb dumpsys ---'; dumpsys usb 2>&1"
 
 # ── 8. our own apps' state ───────────────────────────────────────────────
-say "8/9  EduCMS Player / Manager state"
+say "8/9  VenueOS Player / Manager state"
 dump educms             "dumpsys package com.educms.player 2>&1; echo; dumpsys package com.educms.manager 2>&1"
 
 # ── 9. optional: pull vendor APKs for offline manifest analysis ─────────

@@ -217,7 +217,7 @@ async function main() {
   console.log(`  assets: ${manifestAssets.length} (${emergencyCount} emergency)`);
   console.log(`  size:   ${(totalBytes / (1024 * 1024)).toFixed(2)} MB`);
   console.log(`  sig:    ${sig.slice(0, 16)}…`);
-  console.log(`\nSafely eject the USB and walk it to a paired EduCMS Player.`);
+  console.log(`\nSafely eject the USB and walk it to a paired VenueOS Player.`);
   console.log(`The player will prompt for an admin PIN before applying.`);
 }
 

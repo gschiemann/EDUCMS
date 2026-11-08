@@ -5341,7 +5341,7 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.w("MainActivity", "Could not open install-sources settings", e)
                 // Fall through to manual instructions on the gate.
                 binding.managerGateStatus.text =
-                    "Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow"
+                    "Manual setup needed: Settings → Apps → VenueOS Player → Install unknown apps → Allow"
                 binding.managerGateHint.text = "Select Retry install (OK on the remote, or tap it) once permission is granted."
                 binding.managerGateRetry.visibility = View.VISIBLE
             }

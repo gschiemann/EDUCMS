@@ -319,7 +319,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 break
             }
         }
-        reportOtaError(context, "Install succeeded but Player did not relaunch; reboot or open EduCMS Player")
+        reportOtaError(context, "Install succeeded but Player did not relaunch; reboot or open VenueOS Player")
     }
 
     private fun statusName(status: Int): String = when (status) {

@@ -281,10 +281,10 @@ class ManagerApp : Application() {
                 as android.app.NotificationManager
             val channel = android.app.NotificationChannel(
                 PERMISSION_NOTIF_CHANNEL,
-                "EduCMS Updates",
+                "VenueOS Updates",
                 android.app.NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Tap to allow EduCMS to install Player updates."
+                description = "Tap to allow VenueOS to install Player updates."
             }
             nm.createNotificationChannel(channel)
 
@@ -301,10 +301,10 @@ class ManagerApp : Application() {
 
             val notification = androidx.core.app.NotificationCompat.Builder(ctx, PERMISSION_NOTIF_CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
-                .setContentTitle("EduCMS: enable updates")
+                .setContentTitle("VenueOS: enable updates")
                 .setContentText("Tap to allow Player updates without sideloading.")
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(
-                    "Tap to grant EduCMS Manager permission to install Player updates. " +
+                    "Tap to grant VenueOS Manager permission to install Player updates. " +
                     "One-time setup; future updates will install with a single tap on the Install dialog."
                 ))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
@@ -325,7 +325,7 @@ class ManagerApp : Application() {
         private const val PERIODIC_OTA_NAME = "edu-manager-ota-periodic"
         // v1.0.7 — proactive install-permission notification ids.
         // Channel matches OtaInstallReceiver's so both notifications
-        // are grouped under one "EduCMS Updates" category in Settings.
+        // are grouped under one "VenueOS Updates" category in Settings.
         private const val PERMISSION_NOTIF_CHANNEL = "edu_install_prompt"
         private const val PERMISSION_NOTIF_ID = 92482
 

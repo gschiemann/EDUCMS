@@ -77,7 +77,7 @@ import {
 // existed, a bucket outage, a digest disagreement, or the kill switch). See
 // apk-storage.ts for what deliberately does NOT change: the sha authority,
 // the rollout/cohort/hold gates, and the device-side verification.
-import { resolveApkDelivery, type ApkDelivery } from './apk-storage';
+import { apkAssetName, legacyApkAssetName, resolveApkDelivery, type ApkDelivery, type ApkKind as StorageApkKind } from './apk-storage';
 import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
 import { isFieldBenchScreen } from './fleet-push-policy';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
@@ -1882,9 +1882,43 @@ const VERSIONED_APK_CACHE_LIMIT = 5;
  * a token was present so ops can tell "missing GH_TOKEN" from a GitHub
  * outage in one glance.
  */
+/** User-Agent on every GitHub API call from the OTA lane (was `edu-cms-player-ota`). */
+const OTA_USER_AGENT = 'venueos-player-ota';
+
+/**
+ * The tagged-Release asset to serve for one (kind, versionName). Every
+ * release cut before the 2026-11-08 rebrand carries `edu-cms-<kind>-v….apk`
+ * and keeps that name forever; new releases carry `venueos-<kind>-v….apk`.
+ * Prefer the new exact name, then the legacy exact name, then any non-x86
+ * `.apk` (current releases attach exactly ONE universal APK) — so a renamed
+ * asset degrades to "still serveable" instead of a fleet-wide 404. The name
+ * only CHOOSES the asset; the bytes are still digest-checked downstream.
+ */
+export function pickReleaseApkAssetByName<T extends { name: string }>(
+  assets: T[],
+  kind: StorageApkKind,
+  versionName: string,
+): T | undefined {
+  const preferred = apkAssetName(kind, versionName);
+  const legacy = legacyApkAssetName(kind, versionName);
+  return (
+    assets.find((a) => a.name === preferred) ||
+    assets.find((a) => a.name === legacy) ||
+    assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86') &&
+      (kind === 'manager' ? isManagerAssetName(a.name) : !isManagerAssetName(a.name)))
+  );
+}
+
+/**
+ * CI workflow-artifact names, in query order: the new name first, then the
+ * pre-rebrand name every run before 2026-11-08 uploaded (field candidates
+ * up to and including 1.1.65-field.1, CI 42446385225, carry the old one).
+ */
+export const PLAYER_APK_ARTIFACT_NAMES = ['venueos-player-apk', 'edu-cms-player-apk'] as const;
+
 function githubApiHeaders(accept = 'application/vnd.github+json'): Record<string, string> {
   const headers: Record<string, string> = {
-    'User-Agent': 'edu-cms-player-ota',
+    'User-Agent': OTA_USER_AGENT,
     'Accept': accept,
   };
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -1913,7 +1947,6 @@ async function ensureApkInCache(kind: ApkKind, vc: number): Promise<Buffer | nul
   const patch = vc % 100;
   const versionName = `${major}.${minor}.${patch}`;
   const tag = `${kind}-v${versionName}`;
-  const expectedAssetName = `edu-cms-${kind}-v${versionName}.apk`;
 
   // 1) Resolve tag → release → asset id.
   type ReleaseAsset = { id: number; name: string; size: number; url: string };
@@ -1944,14 +1977,10 @@ async function ensureApkInCache(kind: ApkKind, vc: number): Promise<Buffer | nul
   } else {
     return null;
   }
-  // Exact CI naming first; fall back to any non-x86 .apk so a renamed
-  // asset degrades to "still serveable" instead of a fleet-wide 404
-  // (current releases attach exactly ONE universal APK). A Player lookup
-  // never falls back onto the Manager asset that now rides the same release.
-  const asset =
-    assets.find((a) => a.name === expectedAssetName) ||
-    assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86') &&
-      (kind === 'manager' ? isManagerAssetName(a.name) : !isManagerAssetName(a.name)));
+  // New exact name, then the legacy exact name, then any non-x86 .apk of the
+  // same kind: a Player lookup never falls back onto the Manager asset that
+  // now rides the same release (one release unit, 2026-11-08).
+  const asset = pickReleaseApkAssetByName(assets, kind, versionName);
   if (!asset) return null;
 
   // 2) Fetch asset bytes. The `url` field on the asset returns metadata
@@ -2052,16 +2081,22 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
   const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
   const now = Date.now();
   if (!artifactCache || now - artifactCache.ts > ARTIFACT_TTL_MS) {
-    const listResp = await fetch(
-      `https://api.github.com/repos/${repo}/actions/artifacts?name=edu-cms-player-apk&per_page=5`,
-      { headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'edu-cms-player-ota' } },
-    );
-    if (!listResp.ok) return false;
-    const list = await listResp.json() as { artifacts?: Array<{ id: number; expired: boolean; archive_download_url: string }> };
-    const usable = (list.artifacts || []).find((a) => !a.expired);
+    // Query the new artifact name first, then the pre-rebrand one, so this
+    // fallback keeps working across the rename in either direction.
+    let usable: { id: number; expired: boolean; archive_download_url: string } | undefined;
+    for (const artifactName of PLAYER_APK_ARTIFACT_NAMES) {
+      const listResp = await fetch(
+        `https://api.github.com/repos/${repo}/actions/artifacts?name=${artifactName}&per_page=5`,
+        { headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': OTA_USER_AGENT } },
+      );
+      if (!listResp.ok) continue;
+      const list = await listResp.json() as { artifacts?: Array<{ id: number; expired: boolean; archive_download_url: string }> };
+      usable = (list.artifacts || []).find((a) => !a.expired);
+      if (usable) break;
+    }
     if (!usable) return false;
     const dlResp = await fetch(usable.archive_download_url, {
-      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'edu-cms-player-ota' },
+      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': OTA_USER_AGENT },
     });
     if (!dlResp.ok) return false;
     const zipBuf = Buffer.from(await dlResp.arrayBuffer());
@@ -2078,7 +2113,7 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
   // Embeds the GitHub artifact id as the build number. (This is the
   // CI-artifact fallback path — the normal path is a tagged Release
   // whose filename already carries the version.)
-  const filename = `edu-cms-player-build${artifactCache.etag}.apk`;
+  const filename = `venueos-player-build${artifactCache.etag}.apk`;
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'public, max-age=600');
@@ -2162,7 +2197,8 @@ function pickApkAsset(
     // bricked the live pilot kiosk in a "stuck on CHECKING" loop. The
     // CI workflow (`find ... -name '*.apk' | head -1`) attaches a
     // SINGLE generically-named APK to each Release (e.g.
-    // `edu-cms-manager-v1.0.9.apk`) that has no ABI marker, so the
+    // `edu-cms-manager-v1.0.9.apk`, `venueos-manager-v…` after the
+    // 2026-11-08 rebrand) that has no ABI marker, so the
     // ABI-exact and universal probes both miss. Without this fallback
     // every ABI-aware caller got `needsUpdate=false` even though a
     // real release existed.
