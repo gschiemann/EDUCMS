@@ -28,7 +28,13 @@ const HOUR = 3_600_000;
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 const SCREEN_ID = 'drawer-l55';
-const PLAYLIST = { id: 'pl-halloween', name: 'Halloween - 1080×1920', items: [] };
+// The playlist plays the very file the player's last video sample measured: a
+// sample of a file the screen is NOT playing now is hidden by design.
+const PLAYLIST = {
+  id: 'pl-halloween', name: 'Halloween - 1080×1920',
+  items: [{ id: 'it-1', sequenceOrder: 0, durationMs: 10_000,
+    asset: { id: 'as-1', fileUrl: 'https://example.test/media/6bd9a41f-131e-4a96-a8e8-1b24f3ac2956.mp4', mimeType: 'video/mp4', originalName: 'Portrait promo 2026.mp4', fileHash: 'a'.repeat(64) } }],
+};
 
 function l55(): Record<string, unknown> {
   return {
@@ -156,7 +162,10 @@ test.describe('Screen drawer for an end user', () => {
       await expect(tech.getByTestId('screen-live-link')).toContainText('Live connection: down since 14h ago');
       const sample = tech.getByTestId('screen-video-playback');
       await expect(sample).toHaveAttribute('data-video-news', 'false');
-      await expect(sample).toContainText('5 of 1,032 frames dropped (0.5%)');
+      // Plain line in the sample; the raw counters wait under "For support".
+      await expect(sample).not.toContainText('frames dropped (');
+      await tech.getByTestId('screen-support-details').getByText('For support').click();
+      await expect(tech.getByTestId('screen-support-video')).toContainText('5 of 1,032 frames dropped (0.5%)');
       await expect(tech.getByTestId('screen-playback-files')).toBeVisible();
       await expect(tech.getByTestId('screen-device-card')).toBeVisible();
 

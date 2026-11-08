@@ -722,7 +722,7 @@ export function ScreenDisplayControls({
     }
   };
   // "Use the group's schedule": remove the screen's own rows.
-  const useGroupSchedule = async () => {
+  const applyGroupSchedule = async () => {
     const ok = await appConfirm({
       title: t('screens.display.scheduleUseGroup'),
       message: t('screens.display.scheduleUseGroupConfirm'),
@@ -773,7 +773,7 @@ export function ScreenDisplayControls({
             type="button"
             data-testid="schedule-use-group"
             disabled={readOnly || scheduleBusy}
-            onClick={() => void useGroupSchedule()}
+            onClick={() => void applyGroupSchedule()}
             className={`${linkBtn} px-0`}
           >
             {t('screens.display.scheduleUseGroup')}
