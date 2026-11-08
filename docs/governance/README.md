@@ -6,6 +6,7 @@
 | `OWNER-RULES.md` | The owner's binding rules, readable by every vendor | 32 |
 | `APP-PROFILE.md` | Mission, users, data, integrations, life-safety paths, approved exceptions | 6 |
 | `AUTONOMY-REGISTER.md` | Register A (agent authority) and Register B (product automations), standing approvals | 15, 33, 34 |
+| `IDENTITIES.md` | Who and what can act — human, machine and agent identities, what each may hold, the credential rules for models, and what is not yet mechanised. Checked in part by `.github/workflows/pr-provenance.yml` | 11, 16, 17, 53, 54 |
 | `FREEZE.md` | The current freeze (launch) — present means active | 34 |
 | `MECHANISMS.md` | Every normative article → the mechanism here, or GAP; the GAP count is the headline | preamble |
 | `FIRST-RESPONSE.md` | The retrospective first response for an application that predates the standard | 10 |
