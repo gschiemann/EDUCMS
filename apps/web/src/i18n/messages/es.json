@@ -3285,6 +3285,7 @@
         "storage": "{free} libres de {total}",
         "storageWriteFailed": "Falló una escritura de prueba en el almacenamiento",
         "clock": "Desfase de {sec} s respecto a VenueOS",
+        "clockMin": "Desfase de {min} min respecto a VenueOS",
         "certs": "Cadena de certificados válida, quedan {days} días",
         "certsError": "No se pudo abrir una conexión segura ({error})",
         "networkCaptive": "Una página de inicio de sesión (portal cautivo) bloquea internet",

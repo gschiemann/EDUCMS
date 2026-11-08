@@ -3285,6 +3285,7 @@
         "storage": "{free} free of {total}",
         "storageWriteFailed": "A test write to storage failed",
         "clock": "Off by {sec} s from VenueOS",
+        "clockMin": "Off by {min} min from VenueOS",
         "certs": "Valid certificate chain, {days} days left",
         "certsError": "Could not open a secure connection ({error})",
         "networkCaptive": "A sign-in page (captive portal) is blocking the internet",

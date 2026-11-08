@@ -3285,6 +3285,7 @@
         "storage": "可用 {free}，共 {total}",
         "storageWriteFailed": "存储测试写入失败",
         "clock": "与 VenueOS 相差 {sec} 秒",
+        "clockMin": "与 VenueOS 相差 {min} 分钟",
         "certs": "证书链有效，剩余 {days} 天",
         "certsError": "无法建立安全连接（{error}）",
         "networkCaptive": "登录页面（强制门户）正在阻止互联网访问",

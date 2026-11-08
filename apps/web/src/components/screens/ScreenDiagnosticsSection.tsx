@@ -66,7 +66,10 @@ export function checkDetail(c: DiagCheck, t: T): string | null {
       if (v.writeFailed) return t('detail.storageWriteFailed');
       return n('freeBytes') !== null ? t('detail.storage', { free: formatBytes(n('freeBytes')), total: formatBytes(n('totalBytes')) }) : null;
     case 'clock':
-      return n('skewSec') !== null ? t('detail.clock', { sec: Math.abs(n('skewSec')!) }) : null;
+      if (n('skewSec') === null) return null;
+      return Math.abs(n('skewSec')!) >= 120
+        ? t('detail.clockMin', { min: Math.round(Math.abs(n('skewSec')!) / 60) })
+        : t('detail.clock', { sec: Math.abs(n('skewSec')!) });
     case 'certs':
       if (s('error')) return t('detail.certsError', { error: s('error')! });
       return n('leafDaysLeft') !== null ? t('detail.certs', { days: n('leafDaysLeft')! }) : null;
