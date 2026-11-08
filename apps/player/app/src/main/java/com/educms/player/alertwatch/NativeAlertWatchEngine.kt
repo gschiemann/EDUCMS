@@ -121,6 +121,31 @@ class NativeAlertWatchEngine(private val ports: Ports) {
     /** For tests and the loop's own bookkeeping. */
     internal fun faceState(face: Int): FaceWatch = faces[face] ?: FaceWatch()
 
+    // ── what the last pass said about itself (2026-11-08, wave 5: the companion Manager's watchdog reads it) ──
+
+    /** How the watch stood after its last [pass]. READ ONLY: nothing outside this class decides from it. */
+    enum class WatchStatus {
+        /** Polling at least one manifest. */
+        WATCHING,
+
+        /** Idle by design: the panel is on and every face is attended, so the page owns alerts. */
+        IDLE,
+
+        /** It cannot watch: see [statusReason]. */
+        NOT_WATCHABLE,
+    }
+
+    var status: WatchStatus = WatchStatus.IDLE
+        private set
+
+    /** The refusal behind [WatchStatus.NOT_WATCHABLE]; null otherwise. Secret-free (the policy's own words). */
+    var statusReason: String? = null
+        private set
+
+    /** Manifests polled at the last pass; 0 unless [WatchStatus.WATCHING]. */
+    var watchedFaces: Int = 0
+        private set
+
     /**
      * One pass.
      *
@@ -184,6 +209,13 @@ class NativeAlertWatchEngine(private val ports: Ports) {
             unattended = unattended.isNotEmpty(),
         )
         if (refusal != null) {
+            // The status is a FACT about this pass, read later by the stamp; it
+            // decides nothing here. "The panel is on" is idle by design; every
+            // other refusal is a screen that cannot be watched.
+            val idleByDesign = interactive && unattended.isEmpty()
+            status = if (idleByDesign) WatchStatus.IDLE else WatchStatus.NOT_WATCHABLE
+            statusReason = if (idleByDesign) null else refusal
+            watchedFaces = 0
             lastUnattended = unattended.keys
             if (memories != null) {
                 memories = null
@@ -206,6 +238,9 @@ class NativeAlertWatchEngine(private val ports: Ports) {
             return null
         }
         val targets = if (interactive) watchable else plan?.targets.orEmpty()
+        status = WatchStatus.WATCHING
+        statusReason = null
+        watchedFaces = targets.size
 
         ports.cpuLock(true)
         refusalLogged = null
