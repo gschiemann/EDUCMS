@@ -8,6 +8,8 @@ Status: **MECHANIZED** — a tool enforces it *on the path that matters* (a requ
 
 Two facts shape everything below: only four build checks are required to merge (the risk-weighted gates — emergency path, tenant isolation, API tests, schema-has-migration — run but do not block), and 16 of the 22 workflows skip `docs/**` and `*.md`, so a governance-only change such as this one runs no CI at all. Both are Phase 1 items (#16, #18, #45).
 
+**Update 2026-11-08.** Both facts changed on 2026-11-02: the ruleset now requires nine checks to merge — the four builds plus `schema change ships a migration`, `Build, Lint & Test`, `chromium · Emergency path`, `webkit · Emergency path` and `Two-tenant × role isolation matrix` (`decisions/2026-10-31-required-checks-ruleset.md`) — and the gated workflows always report on pull requests, a docs-only PR included (PR #219). The rows below still read as of 2026-10-31: where one says "not required" of `emergency-path.yml`, `tenant-isolation.yml`, schema-has-migration or a step inside `ci.yml`'s Build, Lint & Test job, that is no longer so. Statuses are re-derived at the next mechanism review, not edited piecemeal here. The merge queue GitHub refused on this user-owned repository is recorded in the same decision.
+
 | # | Key | Article | Status | Mechanism(s) in VenueOS (verified paths) |
 |---|---|---|---|---|
 | 1 | mission | Mission | PROSE | `docs/ORIENTATION.md` (Project Mission; its Ambition line); `README.md` |
