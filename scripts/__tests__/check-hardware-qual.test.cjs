@@ -312,10 +312,12 @@ test('CLI accepts --tag', () => {
   const p = write(
     fixture({
       classes: TWO_CLASSES,
-      releases: [{ app: 'manager', version: '2.0.0', rows: { 'goodview-lcd-a9': CHECKS.map(() => 'PASS 2026-09-02 GS') } }],
+      releases: [{ app: 'player', version: '2.0.0', rows: { 'goodview-lcd-a9': CHECKS.map(() => 'PASS 2026-09-02 GS') } }],
     }),
   );
-  assert.equal(runCli(['--matrix', p, '--tag', 'manager-v2.0.0']).code, 0);
+  assert.equal(runCli(['--matrix', p, '--tag', 'player-v2.0.0']).code, 0);
+  // One release unit (2026-11-08): manager-v* tags are retired and refused.
+  assert.equal(runCli(['--matrix', p, '--tag', 'manager-v2.0.0']).code, 1);
   assert.equal(runCli(['--matrix', p, '--tag', 'nonsense']).code, 1);
 });
 
