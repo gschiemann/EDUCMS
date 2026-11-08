@@ -127,47 +127,55 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Player + Manager versionName must have a matching git tag
+      # ONE RELEASE UNIT (2026-11-08): both versions live in
+      # apps/player/versions.properties. The unit (Player APK) must have its
+      # player-v<unit> tag; the Manager it carries must have shipped in SOME
+      # unit (a player-v<manager.version> tag exists, or it equals the unit
+      # being released); manager-v* tags are retired and never required.
+      - name: One release unit — versions guard
+        run: node scripts/check-apk-versions.cjs
+      - name: unit.version must have a matching player-v tag
         run: |
           fail=0
-          for entry in "app:player" "manager:manager"; do
-            dir="${entry%%:*}"; prefix="${entry##*:}"
-            gradle="apps/player/$dir/build.gradle.kts"
-            vn=$(grep -oE 'versionName = "[^"]+"' "$gradle" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-            vc=$(grep -oE 'versionCode = [0-9]+'   "$gradle" | head -1 | sed -E 's/.*= //')
-            IFS=. read -r MA MI PA <<< "$vn"
-            want=$(( MA*10000 + MI*100 + PA ))
-            if [ "$vc" != "$want" ]; then
-              echo "::error file=$gradle::$dir versionCode=$vc but versionName=$vn implies $want — the OTA endpoint derives versionCode as major*10000+minor*100+patch, so they MUST agree."
-              fail=1
-            fi
-            tag="${prefix}-v${vn}"
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              echo "OK  $dir is v$vn and tag $tag exists"
-            else
-              echo "::error file=$gradle::$dir is at versionName=$vn but git tag '$tag' does NOT exist. CI only ships an OTA release on a $prefix-v* tag. Run:  git tag $tag && git push origin $tag"
-              fail=1
-            fi
+          versions="apps/player/versions.properties"
+          unit=$(sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' "$versions" | head -1)
+          manager=$(sed -nE 's/^[[:space:]]*manager\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' "$versions" | head -1)
+          tag="player-v${unit}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "OK  unit is v$unit and tag $tag exists"
+          else
+            echo "::error file=$versions::unit.version=$unit but git tag '$tag' does NOT exist. CI only ships an OTA release on a player-v* tag. Tag the MERGED commit:  git tag $tag && git push origin $tag"
+            fail=1
+          fi
+          if [ "$manager" = "$unit" ] || git rev-parse -q --verify "refs/tags/player-v${manager}" >/dev/null; then
+            echo "OK  manager.version=$manager shipped in a tagged unit"
+          else
+            echo "::error file=$versions::manager.version=$manager names a unit that was never tagged (no player-v$manager) — the companion's version must be the unit that last changed it"
+            fail=1
+          fi
 
-            # Hardening (the v1.0.66 incident): the checks above work
-            # FROM the gradle outward and cannot catch a tag cut on an
-            # un-bumped tree — player-v1.0.66 was tagged while the gradle
-            # still said 1.0.65, so the APK shipped mis-stamped and every
-            # kiosk looped on install. This check works FROM the tags:
-            # the newest $prefix-v* tag must point at a commit whose
-            # build.gradle.kts versionName equals the tag.
-            latest=$(git tag -l "${prefix}-v*" | sort -V | tail -1)
-            if [ -n "$latest" ]; then
-              tagver="${latest#${prefix}-v}"
-              tagvn=$(git show "$latest:$gradle" 2>/dev/null | grep -oE 'versionName = "[^"]+"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-              if [ "$tagvn" != "$tagver" ]; then
-                echo "::error file=$gradle::tag $latest points at a commit whose versionName is '$tagvn', not '$tagver' — a $prefix-v* tag was cut WITHOUT bumping the gradle. The APK ships mis-stamped and kiosks loop on install. Bump the gradle and re-tag (see release-apk.sh / feedback_player_release_tagging.md)."
-                fail=1
-              else
-                echo "OK  newest tag $latest matches its commit gradle ($tagvn)"
-              fi
+          # Hardening (the v1.0.66 incident): the checks above work FROM the
+          # file outward and cannot catch a tag cut on an un-bumped tree —
+          # player-v1.0.66 was tagged while the gradle still said 1.0.65, so
+          # the APK shipped mis-stamped and every kiosk looped on install.
+          # This check works FROM the tags: the newest player-v* tag must
+          # point at a commit whose unit.version equals the tag (older tags
+          # predate versions.properties and carried the version as a gradle
+          # literal — read that when the file is absent at the tag).
+          latest=$(git tag -l "player-v*" | sort -V | tail -1)
+          if [ -n "$latest" ]; then
+            tagver="${latest#player-v}"
+            tagvn=$(git show "$latest:$versions" 2>/dev/null | sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' | head -1)
+            if [ -z "$tagvn" ]; then
+              tagvn=$(git show "$latest:apps/player/app/build.gradle.kts" 2>/dev/null | grep -oE 'versionName = "[^"]+"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
             fi
-          done
+            if [ "$tagvn" != "$tagver" ]; then
+              echo "::error file=$versions::tag $latest points at a commit whose unit version is '$tagvn', not '$tagver' — a player-v* tag was cut WITHOUT bumping the version. The APK ships mis-stamped and kiosks loop on install. Bump and re-tag (see release-apk.sh / feedback_player_release_tagging.md)."
+              fail=1
+            else
+              echo "OK  newest tag $latest matches its commit version ($tagvn)"
+            fi
+          fi
           exit $fail
 
   lockfile-check:

@@ -313,7 +313,22 @@ function recordOverride(matrixText, { app, version, operator, reason, date }) {
 
 // ── version discovery ──────────────────────────────────────────────────────
 
+/**
+ * ONE RELEASE UNIT (2026-11-08): versions live in apps/player/versions.properties
+ * (`unit.version` for the Player — the release unit — and `manager.version` for
+ * the Manager APK it carries). The gradle files no longer hold a literal, so a
+ * literal found there is read only as a fallback for an old checkout.
+ */
+const VERSIONS_FILE = path.join(REPO_ROOT, 'apps', 'player', 'versions.properties');
+const VERSIONS_KEY = { player: 'unit.version', manager: 'manager.version' };
+
 function versionFromGradle(app) {
+  if (fs.existsSync(VERSIONS_FILE)) {
+    const key = VERSIONS_KEY[app];
+    const re = new RegExp(`^\\s*${key.replace('.', '\\.')}\\s*=\\s*(\\S+)\\s*$`, 'm');
+    const m = re.exec(fs.readFileSync(VERSIONS_FILE, 'utf8'));
+    if (m) return m[1];
+  }
   const file = GRADLE_FOR_APP[app];
   if (!file || !fs.existsSync(file)) return null;
   const m = /versionName\s*=\s*"([^"]+)"/.exec(fs.readFileSync(file, 'utf8'));
@@ -336,7 +351,17 @@ function parseArgs(argv) {
     else if (a === '--tag') {
       const t = argv[++i] || '';
       const m = /^(player|manager)-v(.+)$/.exec(t);
-      if (!m) throw new Error(`--tag must look like player-v1.2.3 or manager-v1.2.3 (got "${t}")`);
+      if (!m) throw new Error(`--tag must look like player-v1.2.3 (got "${t}")`);
+      if (m[1] === 'manager') {
+        // ONE RELEASE UNIT (2026-11-08): the Manager ships inside the Player APK
+        // and is qualified with it. A `manager-v*` tag is a retired release
+        // path — nothing may build or publish from it.
+        throw new Error(
+          `manager-v* tags are retired: the Manager is released inside the Player APK ` +
+            `(player-v<unit.version>, apps/player/versions.properties) and qualified by the ` +
+            `"## Release: player <version>" section. Tag the unit instead.`,
+        );
+      }
       out.app = m[1];
       out.version = m[2];
     } else if (a === '--help' || a === '-h') out.help = true;
