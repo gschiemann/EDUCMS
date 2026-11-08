@@ -26,6 +26,11 @@ import javax.crypto.spec.SecretKeySpec
  *   edu-cms-content/manifest.sig    HMAC-SHA256(manifest.json, tenant key), hex
  *   edu-cms-content/assets/<sha256>.<ext>
  *
+ * The folder is `edu-cms-content` today and becomes `venueos-content` once
+ * the API's `USB_EXPORT_FOLDER_NAME` is flipped (2026-11-08 rebrand); this
+ * reader accepts BOTH ([FOLDERS]), and every copy-name variant of either.
+ * The `schema` string is an internal format id under the HMAC — unchanged.
+ *
  * on the stick either as that FOLDER or as the downloaded .zip — the operator
  * never has to unzip. Nothing is copied until the signature, the tenant and
  * every path have been checked; every file is SHA-256 verified as it is
@@ -36,14 +41,20 @@ import javax.crypto.spec.SecretKeySpec
  * download by default, and because the zip holds ONE folder, macOS's Archive
  * Utility unpacks it as `edu-cms-content` — and the NEXT download as
  * `edu-cms-content 2` (checked with Archive Utility itself). So a package
- * folder is any folder named `edu-cms-content…` that holds manifest.json, or
+ * folder is any folder named `edu-cms-content…` or `venueos-content…` that
+ * holds manifest.json, or
  * any folder holding BOTH manifest.json and manifest.sig, at the top of the
  * drive or up to two folders down ([UsbPackageFinder]). The signature check
  * is what makes a folder a VenueOS package; its name never does.
  */
 object UsbPackage {
     const val SCHEMA = "edu-cms-usb-bundle/v1"
+    /** The pre-rebrand folder name — what every API export writes until `USB_EXPORT_FOLDER_NAME=venueos`. */
     const val FOLDER = "edu-cms-content"
+    /** The VenueOS folder name the API writes once the switch is flipped. */
+    const val FOLDER_VENUEOS = "venueos-content"
+    /** Every folder name a package may carry. Read path: accept all of them, forever. */
+    val FOLDERS = listOf(FOLDER_VENUEOS, FOLDER)
     const val MANIFEST = "manifest.json"
     const val SIGNATURE = "manifest.sig"
     const val CACHE_DIR = "usb-cache"
@@ -59,8 +70,14 @@ object UsbPackage {
 
     fun isKey(hex: String?): Boolean = hex != null && KEY_HEX.matches(hex)
 
-    /** `edu-cms-content`, `edu-cms-content 2`, `edu-cms-content (1)` — what a browser or a copy names it. */
-    fun isPackageFolderName(name: String): Boolean = name.lowercase().startsWith(FOLDER)
+    /**
+     * `edu-cms-content`, `edu-cms-content 2`, `edu-cms-content (1)` — what a
+     * browser or a copy names it — and the same for `venueos-content…`.
+     */
+    fun isPackageFolderName(name: String): Boolean = name.lowercase().let { n -> FOLDERS.any { n.startsWith(it) } }
+
+    /** Exactly one of the canonical names (no copy suffix) — the tie-breaker's favourite. */
+    fun isCanonicalFolderName(name: String): Boolean = name.lowercase() in FOLDERS
 
     /** Bundle versions are epoch-ms strings; compare as numbers when they are. */
     fun compareVersions(a: String, b: String): Int {
@@ -161,13 +178,13 @@ class ZipBundleSource private constructor(private val file: File, private val zi
     override fun close() { runCatching { zip.close() } }
 
     companion object {
-        /** Deepest `…/manifest.json` looked at inside a zip: `a/b/edu-cms-content/manifest.json`. */
+        /** Deepest `…/manifest.json` looked at inside a zip: `a/b/edu-cms-content/manifest.json` (or `venueos-content`). */
         private const val MAX_SLASHES = 3
         private const val MAX_ENTRIES = 20_000
 
         /**
          * The zip, when it holds a package: a `manifest.json` at most two
-         * folders down whose folder is an `edu-cms-content…` folder or has
+         * folders down whose folder is an `edu-cms-content…` / `venueos-content…` folder or has
          * `manifest.sig` beside it. The shallowest one wins.
          */
         fun of(file: File): ZipBundleSource? {
@@ -205,7 +222,7 @@ class ZipBundleSource private constructor(private val file: File, private val zi
                     val folder = prefix.trimEnd('/').substringAfterLast('/')
                     UsbPackage.isPackageFolderName(folder) || (prefix + UsbPackage.SIGNATURE) in signatures
                 }
-                .minWithOrNull(compareBy<String>({ it.count { c -> c == '/' } }, { if (it.trimEnd('/').substringAfterLast('/') == UsbPackage.FOLDER) 0 else 1 }, { it }))
+                .minWithOrNull(compareBy<String>({ it.count { c -> c == '/' } }, { if (UsbPackage.isCanonicalFolderName(it.trimEnd('/').substringAfterLast('/'))) 0 else 1 }, { it }))
         }
     }
 }
@@ -216,7 +233,7 @@ class ZipBundleSource private constructor(private val file: File, private val zi
  * listings per drive, and likely places are looked at first.
  *
  *   • a .zip anywhere from the top of the drive to two folders down;
- *   • a package FOLDER there: named `edu-cms-content…` with a manifest.json
+ *   • a package FOLDER there: named `edu-cms-content…` or `venueos-content…` with a manifest.json
  *     inside, or any folder with manifest.json AND manifest.sig inside
  *     (renamed by the operator, or a second Safari download);
  *   • the drive itself when the package's contents were copied to its top.
