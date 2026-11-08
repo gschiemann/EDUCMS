@@ -375,7 +375,7 @@ export class CustomerAlertEmailsService {
     // reason to stop looking: it is judged again every scan, so a screen that
     // does not come back is emailed once it is 60 minutes past its learned
     // return (2026-11-01). Every other open row still means "already handled".
-    const isPatternRow = (i: { state: string; reason: string | null }) =>
+    const isPatternRow = (i: { state: string; reason?: string | null }) =>
       i.state === 'SILENT' && (i.reason === 'daily-pattern' || (i.reason ?? '').startsWith('daily-pattern:'));
     const patternRows = new Map(incidents.filter((i) => i.open && i.kind === 'OFFLINE' && isPatternRow(i)).map((i) => [i.screenId, i]));
     const openOffline = new Map([...open('OFFLINE')].filter(([id]) => !patternRows.has(id)));
