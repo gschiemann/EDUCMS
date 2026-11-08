@@ -37,6 +37,16 @@ function screen(verdict: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+// The playback card needs a capability block (the real route always sends one).
+const PLAYBACK = {
+  screenId: SCREEN_ID, summary: 'unknown', declared: null, demotions: [],
+  capability: {
+    deviceClass: null, maxShortEdge: 2160, stuttersAtShortEdge: null, maxFps: null, maxUnitConcurrentVideos: null,
+    evidence: 'unknown', concurrencyEvidence: 'unknown', evidenceAt: null, classScreens: 0, stale: false,
+  },
+  files: [],
+};
+
 const REARM = { v: 1, verdict: 'rearm-sent', mode: 'on', ageMs: 60_000, stampAgeMs: 250_000, stampState: 'watching', faces: 1, ladder: { rung: 'rearm', ageMs: 60_000 }, n24h: 1 };
 
 async function openDrawer(page: Page, verdict: Record<string, unknown>) {
@@ -71,7 +81,7 @@ async function openDrawer(page: Page, verdict: Record<string, unknown>) {
     const body = path.endsWith('/device-inventory') ? { report: null, reportedAt: null }
       : screenEventsScreenId(path) ? emptyScreenEvents(screenEventsScreenId(path)!)
         : path.endsWith('/faces') ? { faces: [] }
-          : path.endsWith('/playback-capability') ? { screenId: SCREEN_ID, summary: 'unknown', declared: null, demotions: [], capability: null, files: [] }
+          : path.endsWith('/playback-capability') ? PLAYBACK
             : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
@@ -112,6 +122,7 @@ test.describe('Alert-watch watchdog verdict on the Device card', () => {
   test('a healthy watch is plain, observe mode says so, no block means no row', async ({ page }) => {
     await page.setViewportSize({ width: 1325, height: 758 });
     const drawer = await openDrawer(page, { v: 1, verdict: 'healthy', mode: 'observe', ageMs: 5_000, stampAgeMs: 12_000, stampState: 'watching', faces: 2, n24h: 0 });
+    await drawer.getByRole('tab', { name: 'Overview', exact: true }).click();
     const tech = drawer.getByTestId('screen-technical-details');
     await tech.getByText('Technical details').click();
     const row = tech.getByTestId('screen-device-card').locator('[data-device-fact="alertWatch"]');
