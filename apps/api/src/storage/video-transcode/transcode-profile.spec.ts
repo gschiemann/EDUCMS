@@ -476,9 +476,10 @@ describe('screenCompatibilityIssues — real ffprobe output', () => {
         expect(only({ fieldOrder })).toEqual([]);
     });
 
-    it('30 / 29.97 are fine, 30.5 still is, 31 is not', () => {
+    it('matches native admission: at most 30 fps', () => {
       expect(only({ fps: 29.97 })).toEqual([]);
-      expect(only({ fps: 30.4 })).toEqual([]);
+      expect(only({ fps: 30.303 })).toEqual(['frame-rate']);
+      expect(only({ fps: 30.4 })).toEqual(['frame-rate']);
       expect(only({ fps: 31 })).toEqual(['frame-rate']);
     });
 
@@ -631,6 +632,8 @@ describe('targetFps — the output frame rate', () => {
 
   it.each<[number, number]>([
     [60, 30],
+    [60.6, 30],
+    [61, 30],
     [59.94, 29.97],
     [50, 25],
     [48, 24],
@@ -642,14 +645,14 @@ describe('targetFps — the output frame rate', () => {
     },
   );
 
-  it.each<number>([30.6, 31, 35, 40, 45, 46, 72, 90, 100, 120, 240])(
+  it.each<number>([30.001, 30.303, 30.4, 30.6, 31, 35, 40, 45, 46, 72, 90, 100, 120, 240])(
     '%s fps goes to the 30 fps cap — NOT halved (the first cut turned 35 fps into 17.5 fps)',
     (fps) => {
       expect(at(fps)).toBe(30);
     },
   );
 
-  it.each<number | null>([30, 29.97, 25, 24, 23.976, 15, 30.4, null])(
+  it.each<number | null>([30, 29.97, 25, 24, 23.976, 15, null])(
     '%s fps is kept (null = leave it as it is)',
     (fps) => {
       expect(at(fps)).toBeNull();
@@ -1410,7 +1413,7 @@ describe('verifyTranscodeOutput — "smaller" is not enough, it must be the WHOL
       expect(verdict({ pixelAspect: 1 }).ok).toBe(true);
     });
 
-    it('more than 30 fps (the 30.5 slack covers a 30.0x timebase)', () => {
+    it('rejects output above the same 30 fps native ceiling', () => {
       expect(verdict({ fps: 60 })).toEqual({
         ok: false,
         reason: 'output-fps-60.00',
@@ -1419,7 +1422,8 @@ describe('verifyTranscodeOutput — "smaller" is not enough, it must be the WHOL
         ok: false,
         reason: 'output-fps-31.00',
       });
-      expect(verdict({ fps: 30.4 }).ok).toBe(true);
+      expect(verdict({ fps: 30.303 }).ok).toBe(false);
+      expect(verdict({ fps: 30.4 }).ok).toBe(false);
       expect(verdict({ fps: 29.97 }).ok).toBe(true);
       expect(verdict({ fps: null }).ok).toBe(true);
       // the 1080p copy and every plan share the cap
@@ -2342,7 +2346,7 @@ describe('real ffmpeg round trip', () => {
             audioSampleRate: 48000,
           });
         }
-        expect(outProbe.fps!).toBeLessThanOrEqual(30.5);
+        expect(outProbe.fps!).toBeLessThanOrEqual(30);
         if (c.fps) expect(outProbe.fps!).toBeCloseTo(c.fps, 1);
         expect(Math.abs(outProbe.durationS! - inProbe.durationS!)).toBeLessThan(
           0.3,
