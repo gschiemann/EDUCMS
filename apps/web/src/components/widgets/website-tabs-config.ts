@@ -381,7 +381,95 @@ export interface WebTabsHidePayload {
   wipe: boolean;
 }
 
-/** CSS-pixel rect × devicePixelRatio → the integer device rect the APK needs. */
+/**
+ * The panel's physical size as the APK put it on the player URL (`w`, `h`
+ * — `getRealDisplaySize()`, physical pixels). Null when absent or junk.
+ */
+export function physicalSizeFromQuery(search: string | null | undefined): { w: number; h: number } | null {
+  try {
+    const p = new URLSearchParams(search || '');
+    const w = parseInt(p.get('w') || '', 10);
+    const h = parseInt(p.get('h') || '', 10);
+    if (!(w > 0) || !(h > 0) || w > 16384 || h > 16384) return null;
+    return { w, h };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How many WINDOW pixels one CSS pixel of the player page covers — the factor
+ * the native site view's rect must be multiplied by.
+ *
+ * ⚠️ NOT `window.devicePixelRatio` (2026-11-07 field report: "it didn't fill
+ * the screen … the login was in the bottom corner"). The player pins its
+ * layout viewport to the panel's PHYSICAL size (layout.tsx sets the viewport
+ * meta to `width=<w>` from the APK's `w`/`h`, and the APK loads the page at
+ * `setInitialScale(100)`), so on a 2160×3840 Goodview one CSS px is one
+ * physical px — while the ROM still reports its density (3.0 on that panel)
+ * as the devicePixelRatio. Multiplying by it put the site view 3× too far
+ * down and right, clamped into a corner of the glass. The native video
+ * path already scales by "the WebView's size over the page's layout
+ * viewport (that ratio is the device pixel ratio, whatever the ROM reports)"
+ * (`FaceVideoPolicy.rect`); this is the same ratio, derived on the page side
+ * so the shipped APKs need no update.
+ *
+ * The URL size is trusted only when it is consistent with the viewport's
+ * shape (both axes agree within 10 %, either as given or swapped — the URL is
+ * built at page load, before a rotation may land). Anything else — no URL
+ * size, an LED canvas pin, a ratio outside 0.25–8 — falls back to the
+ * reported devicePixelRatio, which is what every build did before.
+ */
+export function cssToWindowRatio(
+  viewport: { w: number; h: number },
+  physical: { w: number; h: number } | null,
+  reportedDpr: number,
+): number {
+  const fallback = Number.isFinite(reportedDpr) && reportedDpr > 0 ? reportedDpr : 1;
+  if (!physical || !(viewport.w > 0) || !(viewport.h > 0)) return fallback;
+  const agree = (a: number, b: number) => Math.abs(a - b) / Math.max(a, b) <= 0.1;
+  const sane = (r: number) => Number.isFinite(r) && r >= 0.25 && r <= 8;
+  const rx = physical.w / viewport.w;
+  const ry = physical.h / viewport.h;
+  if (sane(rx) && agree(rx, ry)) return rx;
+  const sx = physical.h / viewport.w;
+  const sy = physical.w / viewport.h;
+  if (sane(sx) && agree(sx, sy)) return sx;
+  return fallback;
+}
+
+/**
+ * Sign out on an idle return / when the widget leaves the glass?
+ * The kiosk switch says so — unless a tab is set to "Sign in once", which the
+ * editor promises keeps that site signed in "even when Sign out after idle is
+ * on". Shipped APKs wipe cookies process-wide (Android's CookieManager has no
+ * per-site delete), so honouring that promise means not wiping at all while
+ * such a tab exists. Until 2026-11-07 the per-tab choice was saved and read
+ * by nothing: a dashboard behind a login was signed out at every idle return.
+ */
+export function signOutOnLeave(cfg: Pick<WebsiteTabsConfig, 'incognito' | 'tabs'>): boolean {
+  return cfg.incognito && !cfg.tabs.some((t) => t.signIn === 'once');
+}
+
+/** Where the active site renders on this surface. */
+export type SiteSurface = 'native' | 'frame' | 'needs-app' | 'app-update';
+
+/**
+ * The framing decision, in one place. Our app's native site view is a
+ * TOP-LEVEL WebView, so a site whose headers forbid framing
+ * (`X-Frame-Options`, CSP `frame-ancestors`) — and its sign-in, its cookies —
+ * work there exactly as in a browser tab. Without it, a site the panel's
+ * check found `blocked` is never put in a frame (the browser would refuse it
+ * and show an empty box): the screen says what it needs instead. Everything
+ * else — a frameable site, or one not checked yet — gets the sandboxed frame.
+ */
+export function siteSurfaceFor(args: { native: boolean; inApp: boolean; embed?: TabEmbed }): SiteSurface {
+  if (args.native) return 'native';
+  if (args.embed === 'blocked') return args.inApp ? 'app-update' : 'needs-app';
+  return 'frame';
+}
+
+/** CSS-pixel rect × the CSS→window ratio (see `cssToWindowRatio`) → the integer device rect the APK needs. */
 export function toNativeBounds(
   rect: { left: number; top: number; width: number; height: number },
   dpr: number,

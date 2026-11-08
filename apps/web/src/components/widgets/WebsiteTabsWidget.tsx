@@ -49,9 +49,13 @@ import { WidgetEmptyState } from './WidgetEmptyState';
 import {
   buildHidePayload,
   buildShowPayload,
+  cssToWindowRatio,
   fillCopy,
   idlePlanFor,
   normalizeWebsiteTabsConfig,
+  physicalSizeFromQuery,
+  signOutOnLeave,
+  siteSurfaceFor,
   tabInitials,
   toNativeBounds,
   viewerCopyFor,
@@ -104,6 +108,9 @@ function documentLang(): string {
 }
 
 let sessionSeq = 0;
+
+/** Re-measure points after mount / a tab change while the stage transform settles (ms). */
+const SETTLE_MS = [16, 120, 400, 1000, 2500];
 
 /** The whole tab bar in one place, so the tab and the Home button match. */
 function TabButton({
@@ -246,8 +253,18 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
     if (!el || typeof window === 'undefined') return null;
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) return null;
-    return toNativeBounds({ left: r.left, top: r.top, width: r.width, height: r.height }, window.devicePixelRatio || 1);
+    // CSS px → window px by the page's real ratio, not the ROM's reported
+    // devicePixelRatio (see cssToWindowRatio — the 2026-11-07 "corner" bug).
+    const ratio = cssToWindowRatio(
+      { w: window.innerWidth, h: window.innerHeight },
+      physicalSizeFromQuery(window.location.search),
+      window.devicePixelRatio || 1,
+    );
+    return toNativeBounds({ left: r.left, top: r.top, width: r.width, height: r.height }, ratio);
   }, []);
+
+  // "Sign in once" on any tab keeps sign-ins across idle returns (see signOutOnLeave).
+  const signOut = signOutOnLeave(cfg);
 
   const sendShow = useCallback(
     (opts?: { focus?: boolean; force?: boolean }) => {
@@ -261,7 +278,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         url: active.url,
         bounds,
         tabs,
-        incognito: cfg.incognito,
+        incognito: signOut,
         sessionKey: sessionKey.current,
         focus: opts?.focus === true,
         copy,
@@ -271,7 +288,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
       lastSentRef.current = json;
       nativeFire('webTabsShow', json);
     },
-    [native, active, tabs, cfg.incognito, copy, measureBounds],
+    [native, active, tabs, signOut, copy, measureBounds],
   );
 
   const sendHide = useCallback(
@@ -293,7 +310,15 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
     if (ro && el) ro.observe(el);
     const onResize = () => sendShow();
     window.addEventListener('resize', onResize);
+    // The template stage is scaled with a CSS transform that TemplateScaler
+    // sets AFTER this widget mounts (it starts at scale(0)). A transform is
+    // invisible to ResizeObserver and fires no resize, so the first
+    // measurement can be a zero box (no show at all) or a pre-scale one. A
+    // short, bounded settle burst re-measures; sendShow dedupes identical
+    // payloads, so a settled layout costs nothing. Not a poll: it ends.
+    const settle = SETTLE_MS.map((ms) => setTimeout(() => sendShow(), ms));
     return () => {
+      settle.forEach(clearTimeout);
       if (ro) ro.disconnect();
       window.removeEventListener('resize', onResize);
     };
@@ -311,10 +336,10 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   }, [native, sendHide, sendShow]);
   useEffect(() => {
     if (!native) return;
-    const wipeOnLeave = cfg.incognito;
+    const wipeOnLeave = signOut;
     return () => sendHide(wipeOnLeave);
-    // The unmount cleanup must capture the LAST incognito value.
-  }, [native, cfg.incognito, sendHide]);
+    // The unmount cleanup must capture the LAST sign-out value.
+  }, [native, signOut, sendHide]);
 
   // ── Idle: warn at T-warn, return to the first tab at T. ────────────────
   const plan = useMemo(() => (isLive ? idlePlanFor(cfg) : null), [isLive, cfg]);
@@ -357,7 +382,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
       setActiveId(homeId);
       if (native) {
         // Sign out first (when asked), then put the first site back up fresh.
-        sendHide(reason === 'idle' && cfg.incognito);
+        sendHide(reason === 'idle' && signOut);
         lastSentRef.current = '';
         // `sendShow` runs from the effect above once `active` updates; a
         // re-tap of Home while already on it needs an explicit force.
@@ -366,7 +391,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         setFrameKey((k) => k + 1);
       }
     },
-    [homeId, active, native, cfg.incognito, sendHide, sendShow],
+    [homeId, active, native, signOut, sendHide, sendShow],
   );
   const goHomeRef = useRef(goHome);
   goHomeRef.current = goHome;
@@ -661,6 +686,8 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   );
 
   const status = active ? STATUS_COPY[lk][active.embed ?? 'unknown'] : '';
+  // The framing decision (siteSurfaceFor): a site that forbids framing is never put in a frame.
+  const surface = isLive && active ? siteSurfaceFor({ native, inApp, embed: active.embed }) : null;
 
   const content = (
     <div
@@ -737,7 +764,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         </div>
       )}
 
-      {isLive && active && native && (
+      {surface === 'native' && (
         // The APK paints its WebView over this box; until it does, show
         // which site is coming.
         <div
@@ -761,7 +788,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         </div>
       )}
 
-      {isLive && active && !native && active.embed === 'blocked' && (
+      {active && (surface === 'needs-app' || surface === 'app-update') && (
         <div
           data-testid="website-tabs-blocked"
           role="note"
@@ -781,14 +808,14 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
             color: '#f8fafc',
           }}
         >
-          <div data-reason={inApp ? 'app-update' : 'needs-app'} style={{ fontSize: 'clamp(20px, 2.6vw, 44px)', fontWeight: 800, lineHeight: 1.15, maxWidth: '22em' }}>
-            {inApp ? copy.updateTitle : copy.blockedTitle}
+          <div data-reason={surface} style={{ fontSize: 'clamp(20px, 2.6vw, 44px)', fontWeight: 800, lineHeight: 1.15, maxWidth: '22em' }}>
+            {surface === 'app-update' ? copy.updateTitle : copy.blockedTitle}
           </div>
-          <div style={{ fontSize: 'clamp(14px, 1.4vw, 24px)', opacity: 0.75, marginTop: '1em', maxWidth: '32em' }}>{inApp ? copy.updateBody : copy.blockedBody}</div>
+          <div style={{ fontSize: 'clamp(14px, 1.4vw, 24px)', opacity: 0.75, marginTop: '1em', maxWidth: '32em' }}>{surface === 'app-update' ? copy.updateBody : copy.blockedBody}</div>
         </div>
       )}
 
-      {isLive && active && !native && active.embed !== 'blocked' && frameFailed[active.id] && (
+      {active && surface === 'frame' && frameFailed[active.id] && (
         <div
           data-testid="website-tabs-unreachable"
           role="note"
@@ -813,7 +840,7 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
         </div>
       )}
 
-      {isLive && active && !native && active.embed !== 'blocked' && !frameFailed[active.id] && (
+      {active && surface === 'frame' && !frameFailed[active.id] && (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- onError is the "can't reach" card's only signal
         <iframe
           key={`${active.id}-${frameKey}`}
