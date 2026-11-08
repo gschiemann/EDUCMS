@@ -398,6 +398,12 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         ManagerReportRelay.healthHeader()?.let { setRequestProperty(ManagerReportRelay.HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "manager health report unavailable: ${it.message}") }
+                    // 2026-11-08 — storage health (diagnostics.ScreenDiagnostics):
+                    // at most every 30 min; its own header, so it can cost nothing above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.diagnostics.ScreenDiagnostics.storageHeaderIfDue(applicationContext, prefs)
+                            ?.let { setRequestProperty("x-venueos-storage", it) }
+                    }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -455,6 +461,11 @@ class HeartbeatService : Service() {
         if (nativeAllowed) runCatching {
             DeviceSettings.accept(applicationContext, prefs, JSONObject(body))
         }.onFailure { PlayerLogger.e(TAG, "device settings failed", it) }
+        // 2026-11-08 — an open self-test / logs request (diagnostics.ScreenDiagnostics).
+        // Runs on its own thread; isolated like the two above.
+        if (nativeAllowed) runCatching {
+            com.educms.player.diagnostics.ScreenDiagnostics.accept(applicationContext, prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.e(TAG, "diagnostics request failed", it) }
         // ── How many sides the server says this display has ─────────────
         // Read BEFORE the forced-OTA early return below, and isolated from it:
         // a malformed OTA field must not stop a back side being hosted, and

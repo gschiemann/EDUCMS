@@ -55,6 +55,7 @@ import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
 import { ScreenUsbSection } from '../ScreenUsbSection';
+import { ScreenDiagnosticsSection } from '../ScreenDiagnosticsSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -1080,6 +1081,9 @@ export function ScreenDetailDrawer({
                 onOpenDisplaySchedule={onOpenDisplaySchedule}
                 showQuickActions={false}
               />
+
+              {/* Diagnostics (2026-11-08): storage health, self-test, recent logs. */}
+              <ScreenDiagnosticsSection screenId={screen.id} enabled={tab === 'actions'} canControl={canControl} />
 
               <section>
                 <SectionLabel hint="These interrupt the screen or remove it. Each asks first.">

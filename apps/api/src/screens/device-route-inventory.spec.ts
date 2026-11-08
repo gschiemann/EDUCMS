@@ -226,6 +226,20 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     why: 'V-6 (2026-10-11): writes an admin-inbox notification for the screen\'s tenant. Anonymous callers who knew a screen id used to drop arbitrary text there (a phishing lure); only the paired, proven screen itself may ask for help now, and its wording is stripped of links.',
   },
   {
+    file: 'screen-diagnostics/screen-diagnostics.service.ts',
+    fn: 'device',
+    routes: [
+      'POST /api/v1/screens/:id/diagnostics/:rid/native',
+      'POST /api/v1/screens/:id/diagnostics/:rid/page',
+      'POST /api/v1/screens/:id/diagnostics/:rid/upload-ticket',
+      'POST /api/v1/screens/:id/diagnostics/:rid/logs',
+      'POST /api/v1/screens/:id/storage-health',
+    ],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'Writes a self-test result, a log bundle into the tenant\'s private bucket, or the storage report the dashboard warns from — all attributed to the screen\'s live tenant. Only the paired, proven screen itself may answer; the upload additionally needs the request-scoped ticket.',
+  },
+  {
     file: 'player-logs/player-logs.controller.ts',
     fn: 'verifyDevice',
     routes: ['POST /api/v1/player-logs/:screenId'],

@@ -187,6 +187,19 @@
             android:permission="com.educms.manager.HEALTH_PERMISSION"
             android:grantUriPermissions="false" />
 
+        <!--
+          2026-11-08 — "Get recent logs": the Player cannot read this
+          package's logcat (another UID), so it calls this provider and the
+          Manager reads its own. Same signature-level permission as the
+          heartbeat provider; read-only (diagnostics/ManagerLogProvider.kt).
+        -->
+        <provider
+            android:name=".diagnostics.ManagerLogProvider"
+            android:authorities="com.educms.manager.diagnostics"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION"
+            android:grantUriPermissions="false" />
+
         <!-- Receiver that catches PackageInstaller.Session commit
              results during an OTA. STATUS_SUCCESS → mark version
              healthy. STATUS_FAILURE_* → log + escalate (Phase 2
