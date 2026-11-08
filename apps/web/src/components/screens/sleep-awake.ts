@@ -4,7 +4,10 @@
  *
  * Evidence, in the order it is trusted (the same evidence `panelPowerOffer`
  * reads — display-capabilities.ts):
- *   1. the native sleep report (`sleep.vb.off`, Android `interactive:false`)
+ *   1. the native sleep report (`sleep.vb.off`, Android `interactive:false`),
+ *      and the web player's own soft-blank report (`softBlankAt`, 2026-11-02 —
+ *      a soft BLANK keeps painting under a black overlay, so render proof
+ *      alone reads it as awake)
  *   2. render proof (`derivePanelPowerState`): painting → awake, not painting → sleeping
  *   3. the last command the API accepted — only while we wait for 1 and 2 to
  *      catch up, never as proof of the glass by itself
@@ -29,6 +32,8 @@ export interface SleepAwakeInput {
   hardOff: boolean;
   /** Native report says Android is not interactive (recent report only). */
   reportAsleep?: boolean;
+  /** The web player reports its soft BLANK overlay on the glass (fresh only — `softBlankFresh`). */
+  softBlank?: boolean;
   /** Last command the API accepted this session. */
   lastCommand: { target: SleepAwakeTarget; at: number } | null;
   /** A command currently on the wire. */
@@ -46,9 +51,9 @@ export interface SleepAwakeState {
 }
 
 export function observedState(
-  i: Pick<SleepAwakeInput, 'panelState' | 'hardOff' | 'reportAsleep'>,
+  i: Pick<SleepAwakeInput, 'panelState' | 'hardOff' | 'reportAsleep' | 'softBlank'>,
 ): SleepAwakeCurrent {
-  if (i.hardOff || i.reportAsleep) return 'sleep';
+  if (i.hardOff || i.reportAsleep || i.softBlank) return 'sleep';
   if (i.panelState === 'on') return 'awake';
   if (i.panelState === 'dark') return 'sleep';
   return 'unknown';
@@ -65,6 +70,22 @@ export function deriveSleepAwakeState(i: SleepAwakeInput): SleepAwakeState {
   if (observed === cmd.target) return { current: observed, pending: null, unconfirmed: null };
   if (age < CONFIRM_WINDOW_MS) return { current: observed, pending: cmd.target, unconfirmed: null };
   return { current: observed, pending: null, unconfirmed: cmd.target };
+}
+
+/** A soft-blank report older than this says nothing about now. */
+export const SOFT_BLANK_FRESH_MS = 10 * 60_000;
+
+/**
+ * The web player says its soft BLANK overlay is on the glass (2026-11-02).
+ * `softBlankAt` is re-stamped by every report while the overlay is up and
+ * cleared by the first report after it comes down (WAKE, POWER_ON, a schedule
+ * switch-on, a reload). A stamp older than 10 minutes means the screen stopped
+ * reporting — stale, so it says nothing. An emergency overlay is never one.
+ */
+export function softBlankFresh(softBlankAt: string | null | undefined, nowMs: number): boolean {
+  const at = softBlankAt ? Date.parse(softBlankAt) : NaN;
+  if (!Number.isFinite(at)) return false;
+  return nowMs - at <= SOFT_BLANK_FRESH_MS;
 }
 
 /** `interactive:false` from a native report no older than 10 minutes. */

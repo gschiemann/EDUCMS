@@ -34,7 +34,8 @@ import {
   nextTelemetryDelayMs,
   outcomeFromStatus,
   initialTelemetryDelayMs,
-  shouldPostEarly, loopReportRefused, loopReportDue, LOOP_REPORT_RETRY_MS } from '../telemetry';
+  shouldPostEarly, loopReportRefused, loopReportDue, LOOP_REPORT_RETRY_MS,
+  softBlankRefused, softBlankOnGlass } from '../telemetry';
 
 const NOW = 1_700_000_000_000;
 
@@ -680,5 +681,33 @@ describe('probeMediaCaps', () => {
     expect(await probeMediaCaps({ userAgent: 'x' })).toBeNull();
     expect(await probeMediaCaps(null)).toBeNull();
     expect(webviewMajorFrom('Safari/605')).toBeNull();
+  });
+});
+
+describe('softBlank report (2026-11-02)', () => {
+  const node = (attr: string | null, isConnected = true) => ({
+    isConnected,
+    getAttribute: (n: string) => (n === 'data-edu-soft-blank' ? attr : null),
+  });
+
+  it('is on the glass only while the blank node is in the DOM', () => {
+    expect(softBlankOnGlass(node('1'))).toBe(true);
+    expect(softBlankOnGlass(null)).toBe(false);
+    // The same node carries a soft DIM — not a blank.
+    expect(softBlankOnGlass(node(null))).toBe(false);
+    expect(softBlankOnGlass(node('1', false))).toBe(false);
+  });
+
+  it('rides the body as a boolean, and is omitted when not sent', () => {
+    expect(buildTelemetryBody({ softBlank: true }).softBlank).toBe(true);
+    expect(buildTelemetryBody({ softBlank: false }).softBlank).toBe(false);
+    expect(buildTelemetryBody({ softBlank: null })).not.toHaveProperty('softBlank');
+    expect(buildTelemetryBody({})).not.toHaveProperty('softBlank');
+  });
+
+  it('an older API refusing the key holds it back', () => {
+    expect(softBlankRefused(400, { softBlank: false })).toBe(true);
+    expect(softBlankRefused(400, {})).toBe(false);
+    expect(softBlankRefused(200, { softBlank: true })).toBe(false);
   });
 });

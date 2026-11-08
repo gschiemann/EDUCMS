@@ -139,6 +139,7 @@ import {
   CONFIRM_WINDOW_MS,
   deriveSleepAwakeState,
   nativeReportAsleep,
+  softBlankFresh,
   type SleepAwakeTarget,
 } from './sleep-awake';
 import { resolveQuickControls, resolveAppliedSchedule } from './quick-settings';
@@ -295,6 +296,12 @@ export interface DisplayControlScreen {
   /** The group this screen is in; its on/off schedule applies unless the screen has its own. */
   screenGroupId?: string | null;
   screenGroup?: { name?: string | null } | null;
+  /**
+   * The web player's soft-blank report (2026-11-02): server clock of the last
+   * report that said the black overlay is on the glass; null once one says it
+   * is gone. Rides every `GET /screens` row.
+   */
+  softBlankAt?: string | null;
 }
 
 export function ScreenDisplayControls({
@@ -401,6 +408,7 @@ export function ScreenDisplayControls({
     panelState,
     hardOff: nativeHardOff(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
     reportAsleep: nativeReportAsleep(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
+    softBlank: softBlankFresh(screen?.softBlankAt, nowMs),
     lastCommand,
     inFlight,
     now: nowMs,

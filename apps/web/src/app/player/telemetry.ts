@@ -274,6 +274,13 @@ export interface TelemetryBody {
   mediaCaps?: TelemetryMediaCaps;
   loop?: TelemetryLoopReport;
   update?: TelemetryUpdateReport;
+  /**
+   * The soft BLANK overlay is on the glass (2026-11-02) — true only while its
+   * node is in the DOM. Drives the dashboard's Sleep/Awake confirmation.
+   * ⚠️ Same rollout rule as `update`: a 400 that carried it holds it back for
+   * a window (`softBlankRefused`), so an older API never costs liveness.
+   */
+  softBlank?: boolean;
 }
 
 /**
@@ -499,6 +506,8 @@ export interface TelemetryBodyInput {
   cacheSource?: 'store' | 'worker' | null;
   /** The off-hours update this document came up from, once (2026-10-10). */
   update?: TelemetryUpdateReport | null;
+  /** Soft BLANK overlay present in the DOM; null/undefined = not sent. */
+  softBlank?: boolean | null;
 }
 
 /** What the page knows about its download (its `largeDownload` state) + the hold. */
@@ -579,6 +588,8 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
     if (u) body.update = u;
   }
 
+  if (typeof input.softBlank === 'boolean') body.softBlank = input.softBlank;
+
   return body;
 }
 
@@ -616,6 +627,23 @@ function updateReport(u: TelemetryUpdateReport): TelemetryUpdateReport | null {
  */
 export function updateReportRefused(status: number | null, sent: TelemetryBody): boolean {
   return status === 400 && !!sent.update;
+}
+
+/** An API from before `softBlank` 400'd a strict body that carried the key. */
+export function softBlankRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && typeof sent.softBlank === 'boolean';
+}
+
+/**
+ * Is the soft BLANK overlay ON THE GLASS? The node witness, not the state
+ * flag (the 2026-08-25 lesson: state flipped, no pixel changed). The same
+ * node also carries a soft DIM, which is not a blank, so the attribute is
+ * checked too. The overlay is never rendered while an emergency is on screen,
+ * so an alert can never read as sleep.
+ */
+export function softBlankOnGlass(node: { isConnected?: boolean; getAttribute(name: string): string | null } | null): boolean {
+  if (!node || node.isConnected === false) return false;
+  return node.getAttribute('data-edu-soft-blank') === '1';
 }
 
 /** The server's bounds on the loop-boundary numbers (`telemetry.schema.ts`). */

@@ -392,6 +392,10 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // surfaces, and it appears in no manifest branch — and MUST NOT, since a
     // manifest that varied per reporting device would kill 304s fleet-wide.
     'lastBundleId',
+    // softBlankAt (2026-11-02) — the soft BLANK overlay report, written by the
+    // telemetry post on the fleet's minute cadence. A fact about the glass,
+    // in no manifest branch; MUST stay here or every report busts the cache.
+    'softBlankAt',
     'lastSyncReport',
     'lastSyncReportAt',
     // Push-health stamp (2026-07-31) — written by the WS gateway on
