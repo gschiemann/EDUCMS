@@ -389,8 +389,9 @@ if [ "$DOWNLOAD_NEEDED" = 1 ]; then
   [ -n "$PTAG" ] && [ -n "$MTAG" ] || die "could not find player-v* / manager-v* releases"
   gh release download "$PTAG" --repo "$REPO" --pattern '*.apk' --dir "$TMP" || die "download of $PTAG failed"
   gh release download "$MTAG" --repo "$REPO" --pattern '*.apk' --dir "$TMP" || die "download of $MTAG failed"
-  [ -n "$PLAYER_APK" ]  || PLAYER_APK="$(find "$TMP" -name 'edu-cms-player-*.apk' | head -1)"
-  [ -n "$MANAGER_APK" ] || MANAGER_APK="$(find "$TMP" -name 'edu-cms-manager-*.apk' | head -1)"
+  # venueos-* since the 2026-11-08 rebrand; older releases keep edu-cms-*.
+  [ -n "$PLAYER_APK" ]  || PLAYER_APK="$(find "$TMP" \( -name 'venueos-player-*.apk' -o -name 'edu-cms-player-*.apk' \) | head -1)"
+  [ -n "$MANAGER_APK" ] || MANAGER_APK="$(find "$TMP" \( -name 'venueos-manager-*.apk' -o -name 'edu-cms-manager-*.apk' \) | head -1)"
   ok "Player  $PTAG"
   ok "Manager $MTAG"
 fi
