@@ -70,6 +70,53 @@ describe('deriveVersionCode (API semver → versionCode formula)', () => {
     const GRADLE_MANAGER_VERSION_NAME = '1.0.8';
     expect(deriveVersionCode(GRADLE_MANAGER_VERSION_NAME)).toBe(GRADLE_MANAGER_VERSION_CODE);
   });
+
+  /**
+   * ONE RELEASE UNIT (2026-11-08): the two APK versions are typed once, in
+   * apps/player/versions.properties, and the gradle files derive their
+   * versionCode by this same formula. This reads the real file: the Manager
+   * must sit above the last hand-typed 1.0.24 (10024) and never above the
+   * unit that carries it, and both must derive a versionCode > 0.
+   */
+  it('apps/player/versions.properties carries a well-formed unit + manager pair', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const file = path.resolve(__dirname, '../../../../apps/player/versions.properties');
+    const text = fs.readFileSync(file, 'utf8');
+    const read = (key: string) => {
+      const m = new RegExp(`^\\s*${key.replace('.', '\\.')}\\s*=\\s*(\\S+)\\s*$`, 'm').exec(text);
+      return m ? m[1] : '';
+    };
+    const unit = read('unit.version');
+    const manager = read('manager.version');
+    expect(unit).toMatch(/^\d+\.\d{1,2}\.\d{1,2}$/);
+    expect(manager).toMatch(/^\d+\.\d{1,2}\.\d{1,2}$/);
+    expect(deriveVersionCode(unit)).toBeGreaterThan(0);
+    expect(deriveVersionCode(manager)).toBeGreaterThan(10024);
+    expect(deriveVersionCode(manager)).toBeLessThanOrEqual(deriveVersionCode(unit));
+  });
+});
+
+describe('release asset naming (one release unit, 2026-11-08)', () => {
+  // The player-v* release now carries BOTH APKs. The Player resolver must
+  // never pick the companion's asset as the fleet's Player update, and the
+  // Manager resolver reads the companion's version off its asset name
+  // (it can lag the unit when the Manager did not change).
+  const { isManagerAssetName, managerVersionFromAssetName } = require('./player-ota.controller') as typeof import('./player-ota.controller');
+
+  it('recognises a Manager asset by name, whatever the file-name prefix', () => {
+    expect(isManagerAssetName('edu-cms-manager-v1.1.30.apk')).toBe(true);
+    expect(isManagerAssetName('venueos-manager-v1.1.30.apk')).toBe(true);
+    expect(isManagerAssetName('edu-cms-player-v1.1.30.apk')).toBe(false);
+    expect(isManagerAssetName('venueos-player-v1.1.30.apk')).toBe(false);
+    expect(isManagerAssetName('')).toBe(false);
+  });
+
+  it('reads the companion version off its asset name', () => {
+    expect(managerVersionFromAssetName('edu-cms-manager-v1.1.29.apk')).toBe('1.1.29');
+    expect(managerVersionFromAssetName('venueos-manager-v1.1.30.apk')).toBe('1.1.30');
+    expect(managerVersionFromAssetName('edu-cms-player-v1.1.30.apk')).toBeNull();
+  });
 });
 
 describe('WatchdogService rollback guard logic', () => {

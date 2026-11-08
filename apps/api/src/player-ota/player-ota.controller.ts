@@ -41,6 +41,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { autoUpdateEnabledFor, decideAutomaticOffer, isValidTimeZone, resolveAutoUpdateWindow, silentUpdateReadiness, type AutomaticOfferDecision } from './auto-update-policy';
 import { decidePushGate, holdSentence, type PushGate, type PushHold } from './push-tracking';
 import { noteManagerCheckRefused } from './manager-lane-noise';
+import { installViaPlayerAnswer, managerLaneMode } from './manager-update-lane';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -1422,10 +1423,18 @@ export class PlayerOtaController {
    * makes that promise possible. Once Manager v1.0.2 is sideloaded,
    * every subsequent Manager release auto-installs silently.
    *
-   * No flag-gating like /update-check uses for Player — Manager
-   * updates are always opt-in (the operator chose to install
-   * Manager) and shouldn't surprise anyone, since Manager is a
-   * background daemon and updates don't visibly disrupt screens.
+   * ── RETIRED BEHIND ONE SWITCH (2026-11-08, one release unit) ───────────
+   * "No flag-gating" was the defect: a `manager-v*` tag reached every panel
+   * within 30 minutes, outside every gate the Player's ladder applies. The
+   * Manager now ships INSIDE the Player APK and is installed by the Player
+   * (ManagerBootstrap) only when the bundled versionCode is newer, so it
+   * inherits the field window, the tracked push, the canary and the fleet
+   * rules per screen and per class. This route answers every Manager
+   * `{ uptoDate: true, installVia: 'player' }` — which 1.0.24's worker reads
+   * as "no `latest` → up to date" and exits before any fetch — unless
+   * `MANAGER_SELF_UPDATE_LEGACY_LANE=on` re-opens the old lane exactly as it
+   * was (manager-update-lane.ts). The version persist below stays: it is how
+   * a 1.0.24 that has not yet taken a unified Player keeps its chip honest.
    */
   @Post('manager-update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -1449,6 +1458,18 @@ export class PlayerOtaController {
         })
         .catch(() => { /* swallow */ });
     }
+
+    if (managerLaneMode() === 'player') {
+      this.logger.log(
+        `[mgr-ota] decision=uptoDate-install-via-player caller=${callerVn} vc=${callerVc} fp=${fpShort} ` +
+        `reason=self-update-lane-retired (the Player carries and installs the Manager)`,
+      );
+      return installViaPlayerAnswer();
+    }
+    this.logger.warn(
+      `[mgr-ota] LEGACY GitHub lane is ON (MANAGER_SELF_UPDATE_LEGACY_LANE=on) — a manager-v* release ` +
+      `reaches every Manager that asks, outside the Player's ladder. caller=${callerVn} fp=${fpShort}`,
+    );
 
     try {
       const info = await resolveLatestManagerReleaseInfo(callerAbi);
@@ -1895,21 +1916,42 @@ async function ensureApkInCache(kind: ApkKind, vc: number): Promise<Buffer | nul
   const expectedAssetName = `edu-cms-${kind}-v${versionName}.apk`;
 
   // 1) Resolve tag → release → asset id.
+  type ReleaseAsset = { id: number; name: string; size: number; url: string };
   const relResp = await fetch(
     `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
     { headers: githubApiHeaders() },
   );
-  if (!relResp.ok) return null;
-  const release = (await relResp.json()) as {
-    assets?: Array<{ id: number; name: string; size: number; url: string }>;
-  };
-  const assets = release.assets || [];
+  let assets: ReleaseAsset[] = [];
+  if (relResp.ok) {
+    const release = (await relResp.json()) as { assets?: ReleaseAsset[] };
+    assets = release.assets || [];
+  } else if (kind === 'manager') {
+    // ONE RELEASE UNIT (2026-11-08): a Manager above 1.0.24 has no manager-v*
+    // tag — it was published as an asset of the player-v* release that
+    // carries it. Find the release whose assets name this Manager version.
+    const listResp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+      headers: githubApiHeaders(),
+    });
+    if (!listResp.ok) return null;
+    const releases = (await listResp.json()) as Array<{ tag_name?: string; draft?: boolean; assets?: ReleaseAsset[] }>;
+    if (!Array.isArray(releases)) return null;
+    const carrier = releases.find(
+      (r) => !r.draft && String(r.tag_name || '').startsWith('player-v') &&
+        (r.assets || []).some((a) => isManagerAssetName(a.name) && managerVersionFromAssetName(a.name) === versionName),
+    );
+    if (!carrier) return null;
+    assets = (carrier.assets || []).filter((a) => isManagerAssetName(a.name));
+  } else {
+    return null;
+  }
   // Exact CI naming first; fall back to any non-x86 .apk so a renamed
   // asset degrades to "still serveable" instead of a fleet-wide 404
-  // (current releases attach exactly ONE universal APK).
+  // (current releases attach exactly ONE universal APK). A Player lookup
+  // never falls back onto the Manager asset that now rides the same release.
   const asset =
     assets.find((a) => a.name === expectedAssetName) ||
-    assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86'));
+    assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86') &&
+      (kind === 'manager' ? isManagerAssetName(a.name) : !isManagerAssetName(a.name)));
   if (!asset) return null;
 
   // 2) Fetch asset bytes. The `url` field on the asset returns metadata
@@ -2216,7 +2258,11 @@ export async function resolveLatestReleaseInfo(callerAbi?: string): Promise<Rele
   }
 
   // Re-run ABI-aware asset selection against the (possibly cached) asset list.
-  const { assets, tag } = releaseAssetsCache;
+  // ONE RELEASE UNIT (2026-11-08): the player-v* release now also carries the
+  // Manager APK. The Player resolver never sees it — a generic ".apk" fallback
+  // in pickApkAsset would otherwise hand a kiosk the companion as its Player.
+  const { assets: allAssets, tag } = releaseAssetsCache;
+  const assets = allAssets.filter((a) => !isManagerAssetName(a.name));
   const chosen = pickApkAsset(assets, callerAbi || '');
   const apkUrl = chosen?.browser_download_url ?? null;
 
@@ -2240,10 +2286,31 @@ export async function resolveLatestReleaseInfo(callerAbi?: string): Promise<Rele
   return info;
 }
 
-// Same pattern but for `manager-v*` tags. Called by the new
-// /manager-update-check endpoint that powers Manager's self-upgrade.
+/** A release asset that is the Manager APK (`…manager-v<x.y.z>.apk`, any file-name prefix). */
+export function isManagerAssetName(name: string): boolean {
+  return /manager-v\d+\.\d+\.\d+.*\.apk$/i.test(String(name || ''));
+}
+
+/** The Manager version a Manager asset name carries, or null. */
+export function managerVersionFromAssetName(name: string): string | null {
+  const m = /manager-v(\d+\.\d+\.\d+)/i.exec(String(name || ''));
+  return m ? m[1] : null;
+}
+
+// The newest published Manager. ONE RELEASE UNIT (2026-11-08): a Manager is
+// published INSIDE a `player-v*` release (the Manager APK is attached beside
+// the Player APK — same bytes the Player bundles), so the newest Manager is
+// the highest `…manager-v<x.y.z>.apk` asset across player-v* releases, and the
+// legacy `manager-v*` tags (≤ 1.0.24) are still read for the deployed fleet.
+// Read by /latest-version (the dashboard's "companion stale" grading),
+// /manager-apk/latest (the bootstrap's network fallback) and, only while
+// MANAGER_SELF_UPDATE_LEGACY_LANE=on, /manager-update-check.
+interface ManagerAssetsCache extends ReleaseAssetsCache {
+  /** The Manager version those assets carry (from the asset name, else the manager-v tag). */
+  versionName: string;
+}
 let managerReleaseInfoCache: { info: ReleaseInfo | null; fetchedAt: number } | null = null;
-let managerReleaseAssetsCache: ReleaseAssetsCache | null = null;
+let managerReleaseAssetsCache: ManagerAssetsCache | null = null;
 async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseInfo | null> {
   const now = Date.now();
   const abi = String(callerAbi || '').trim().toLowerCase();
@@ -2262,7 +2329,7 @@ async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseI
         `repo=${repo} — a 404 with authed=false means GH_TOKEN is missing on a PRIVATE repo`,
       );
       managerReleaseInfoCache = { info: null, fetchedAt: now };
-      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', versionName: '', fetchedAt: now };
       return null;
     }
     const allReleases = await resp.json() as Array<{
@@ -2274,41 +2341,45 @@ async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseI
     }>;
     if (!Array.isArray(allReleases)) {
       managerReleaseInfoCache = { info: null, fetchedAt: now };
-      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', versionName: '', fetchedAt: now };
       return null;
     }
+    const sortKeyOf = (versionStr: string) => {
+      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
+      return m ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10) : 0;
+    };
     const managerReleases = allReleases
-      .filter((r) => {
-        if (r.draft || r.prerelease) return false;
-        const tag = (r.tag_name || r.name || '').trim();
-        return tag.startsWith('manager-v');
-      })
+      .filter((r) => !(r.draft || r.prerelease))
       .map((r) => {
         const tag = (r.tag_name || r.name || '').trim();
-        const versionStr = tag.replace(/^manager-v/, '');
-        const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
-        const sortKey = m
-          ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
-          : 0;
-        return { release: r, sortKey };
+        if (tag.startsWith('manager-v')) {
+          // Legacy standalone Manager release (≤ 1.0.24).
+          const versionName = tag.replace(/^manager-v/, '');
+          return { tag, versionName, assets: r.assets || [], sortKey: sortKeyOf(versionName) };
+        }
+        if (tag.startsWith('player-v')) {
+          // A unit release: the Manager rides as its own asset, versioned by name.
+          const managerAssets = (r.assets || []).filter((a) => isManagerAssetName(a.name));
+          const versionName = managerAssets.map((a) => managerVersionFromAssetName(a.name) || '').find(Boolean) || '';
+          return { tag, versionName, assets: managerAssets, sortKey: sortKeyOf(versionName) };
+        }
+        return { tag, versionName: '', assets: [], sortKey: 0 };
       })
-      .filter((x) => x.sortKey > 0)
+      .filter((x) => x.sortKey > 0 && x.assets.length > 0)
       .sort((a, b) => b.sortKey - a.sortKey);
 
     if (managerReleases.length === 0) {
       managerReleaseInfoCache = { info: null, fetchedAt: now };
-      managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
+      managerReleaseAssetsCache = { assets: [], tag: '', versionName: '', fetchedAt: now };
       return null;
     }
-    const release = managerReleases[0].release;
-    const tag = (release.tag_name || release.name || '').trim();
-    managerReleaseAssetsCache = { assets: release.assets || [], tag, fetchedAt: now };
+    const newest = managerReleases[0];
+    managerReleaseAssetsCache = { assets: newest.assets, tag: newest.tag, versionName: newest.versionName, fetchedAt: now };
   }
 
-  const { assets, tag } = managerReleaseAssetsCache;
+  const { assets, versionName } = managerReleaseAssetsCache;
   const chosen = pickApkAsset(assets, abi);
   const apkUrl = chosen?.browser_download_url ?? null;
-  const versionName = tag.replace(/^manager-v/, '').replace(/^v/, '');
   const match = versionName.match(/^(\d+)\.(\d+)\.(\d+)/);
   const derivedVersionCode = match
     ? parseInt(match[1], 10) * 10000 + parseInt(match[2], 10) * 100 + parseInt(match[3], 10)

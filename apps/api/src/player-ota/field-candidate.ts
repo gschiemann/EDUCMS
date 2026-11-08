@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { deviceSecretKeyCandidatesFromEnv } from '../security/key-ring';
 import {
   FIELD_CANDIDATE_RELEASES,
+  type FieldCandidateManager,
   type FieldCandidateRelease,
 } from './field-candidate-releases';
 import { evaluateReleaseForFleet } from './release-policy';
@@ -141,6 +142,30 @@ export function isFieldCandidateTarget(
   return named && Number.isFinite(a.end) && a.end > now && a.end <= a.latestEnd;
 }
 
+/** The last hand-typed Manager (manager-v1.0.24): every unified Manager's versionCode is above it. */
+export const MANAGER_VERSION_CODE_FLOOR = 10024;
+
+/**
+ * Is the companion record inside a field candidate well-formed? Stable or
+ * field name, a versionCode derived from its core by the API's formula, above
+ * the 1.0.24 floor and never above the Player that carries it, a 64-hex digest
+ * and a bounded size.
+ */
+export function validManagerRecord(m: unknown, playerVersionCode: number): m is FieldCandidateManager {
+  if (!m || typeof m !== 'object') return false;
+  const r = m as Record<string, unknown>;
+  if (typeof r.versionName !== 'string' || !/^\d+\.\d{1,2}\.\d{1,2}(?:-field\.[1-9]\d*)?$/.test(r.versionName)) return false;
+  if (typeof r.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(r.sha256)) return false;
+  if (!Number.isSafeInteger(r.size) || (r.size as number) <= 0 || (r.size as number) > MAX_BYTES) return false;
+  if (!Number.isSafeInteger(r.versionCode)) return false;
+  const c = r.versionName.split('-')[0].split('.').map(Number);
+  const vc = r.versionCode as number;
+  if (vc !== c[0] * 10000 + c[1] * 100 + c[2]) return false;
+  if (vc <= MANAGER_VERSION_CODE_FLOOR) return false;
+  if (vc > playerVersionCode) return false;
+  return true;
+}
+
 export function configuredFieldRelease(
   env = process.env,
   registry = FIELD_CANDIDATE_RELEASES,
@@ -166,6 +191,10 @@ export function configuredFieldRelease(
     !Number.isSafeInteger(r.versionCode)
   )
     return null;
+  // ONE RELEASE UNIT (2026-11-08): a recorded companion must be well-formed
+  // too — a candidate whose Manager record is wrong is refused whole (fail
+  // closed), a candidate with no record is an old one (Manager 1.0.24).
+  if (r.manager !== undefined && !validManagerRecord(r.manager, r.versionCode)) return null;
   const verdict = evaluateReleaseForFleet({
     versionName: r.versionName,
     apkUrl: r.sourceUrl,

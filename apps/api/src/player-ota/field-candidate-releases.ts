@@ -1,13 +1,32 @@
 /** Immutable provenance records for explicitly enabled private field artifacts.
  * Populated only after signed CI artifact/hash/certificate verification. These
  * entries never participate in the stable GitHub release catalogue.
+ *
+ * ONE RELEASE UNIT (2026-11-08): a candidate is the Player APK AND the Manager
+ * APK it carries in its assets. From the first unified candidate on, every
+ * entry records BOTH — the Manager's version, versionCode, digest and size are
+ * read off the same CI run's `edu-cms-manager-apk` artifact (the bytes the
+ * Player bundles). The Manager's versionName is the unit's when the Manager
+ * changed in that line, else the older stable version it already runs; its
+ * versionCode must be above 10024 (the last hand-typed Manager) and never
+ * above the Player's. Entries registered before this date carry no `manager`
+ * block (the Manager inside them is 1.0.24); `configuredFieldRelease` refuses
+ * a malformed block, never a missing one.
  */
+export interface FieldCandidateManager {
+  versionName: string;
+  versionCode: number;
+  sha256: string;
+  size: number;
+}
 export interface FieldCandidateRelease {
   versionName: string;
   versionCode: number;
   sha256: string;
   size: number;
   sourceUrl: string;
+  /** The companion inside this Player APK. Absent on candidates registered before 2026-11-08 (Manager 1.0.24). */
+  manager?: FieldCandidateManager;
 }
 export const FIELD_CANDIDATE_RELEASES: Readonly<
   Record<string, FieldCandidateRelease>

@@ -170,6 +170,12 @@ export interface CandidateView {
   allowed: boolean;
   blockedReason: string | null;
   mirror: MirrorStatus;
+  /**
+   * The companion Manager inside this Player APK (one release unit,
+   * 2026-11-08): its version, code, digest and size as registered. null on
+   * candidates registered before — those carry Manager 1.0.24.
+   */
+  manager: { versionName: string; versionCode: number; sha256: string; size: number } | null;
 }
 
 export interface WindowView {
@@ -488,6 +494,9 @@ export class FieldBuildsService {
             allowed,
             blockedReason,
             mirror: await fieldMirrorStatus(r),
+            manager: r.manager
+              ? { versionName: r.manager.versionName, versionCode: r.manager.versionCode, sha256: r.manager.sha256, size: r.manager.size }
+              : null,
           };
         }),
       );
