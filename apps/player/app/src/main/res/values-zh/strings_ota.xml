@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_card_title">更新已就绪</string>
+    <string name="update_card_body">VenueOS Player %1$s 已可安装。\n请按遥控器上的“确定”（或点按“安装更新”）。出现 Android 安装对话框时，请选择“安装”（遥控器“确定”键或点按）。</string>
+    <string name="update_card_install">安装更新</string>
+    <string name="update_card_later">暂不</string>
+    <string name="companion_card_title">配套服务更新已就绪</string>
+    <string name="companion_card_body">VenueOS 配套服务还需再点按一次才能完成更新。\n请按遥控器上的“确定”（或点按“安装更新”）。出现 Android 安装对话框时，请选择“安装”（遥控器“确定”键或点按）。</string>
+</resources>

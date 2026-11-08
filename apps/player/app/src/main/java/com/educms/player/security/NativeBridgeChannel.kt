@@ -175,6 +175,10 @@ object NativeBridgeChannel {
         // KNOWN_METHODS until the fleet floor includes this APK) and the
         // drift-guard canary count.
         "openNetworkScreen",
+        // Manager wave 3 (#8): the dashboard's Clear-quarantine command. THREE-FILE
+        // ATOMIC CHANGE: this array, the dispatch arm below, the web's NATIVE_VOID_METHODS
+        // (kept OUT of KNOWN_METHODS until the fleet floor includes this APK) and the canary.
+        "clearUpdateQuarantine",
         // 2026-10-26 — the Back menu's "Import from USB": reads the USB drive
         // again and shows the USB card. Grants nothing, skips no verification;
         // the Activity refuses it over an alert. THREE-FILE ATOMIC CHANGE: this
@@ -652,6 +656,7 @@ object NativeBridgeChannel {
             "openSettingsForManager" -> { bridge.openSettingsForManager(bridge.channelNonce()); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
             "openNetworkScreen" -> { bridge.openNetworkScreen(); null }
+            "clearUpdateQuarantine" -> { bridge.clearUpdateQuarantine(bridge.channelNonce()); null }
             "importFromUsb" -> { bridge.importFromUsb(); null }
             // 2026-09-02 (P0-2). No arguments to validate on the first two —
             // their whole content is "this happened, now". The third carries

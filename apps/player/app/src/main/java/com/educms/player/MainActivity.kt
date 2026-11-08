@@ -2605,6 +2605,73 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    // --- Manager wave 3 (#12): the Install tap for a COMPANION upgrade ---
+    // See CompanionTapPolicy. Process-scoped, main-thread state.
+    private var companionCardsShown = 0
+    private var companionDeclinedAtElapsedMs = 0L
+    private var companionTapReportedVc = 0
+
+    private fun companionEmergencyHeld(): Boolean =
+        com.educms.player.ota.PendingInstallStore.emergencyHeldNow() ||
+            runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false)
+
+    private fun verifyCompanionPromptAppeared(raisedAtMs: Long) {
+        if (isFinishing || isDestroyed) return
+        val pending = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
+        val now = android.os.SystemClock.elapsedRealtime()
+        val facts = com.educms.player.ota.CompanionTapPolicy.Facts(
+            stagedForCompanion = pending != null && pending.selfOtaVersionCode == 0 &&
+                (pending.targetPackage == MANAGER_PKG || pending.targetPackage == "$MANAGER_PKG.debug"),
+            dialogAppeared = com.educms.player.ota.UpdatePromptPolicy.dialogAppeared(raisedAtMs, lastPausedAtElapsedMs),
+            foreground = isInForeground,
+            emergencyHeld = companionEmergencyHeld(),
+            standbyActive = runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false),
+            sinceDeclineMs = companionDeclinedAtElapsedMs.takeIf { it > 0L }?.let { now - it },
+            cardsShownThisProcess = companionCardsShown,
+        )
+        if (!com.educms.player.ota.CompanionTapPolicy.shouldShowCard(facts)) return
+        clearInstallPromptHold("the companion confirmation did not come up")
+        companionCardsShown += 1
+        com.educms.player.ota.UpdateReadyCard.show(
+            activity = this,
+            versionLabel = "",
+            forCompanion = true,
+            emergencyHeld = { companionEmergencyHeld() },
+            decorate = ::applyRemoteFocus,
+            onInstall = {
+                val again = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
+                if (again != null) raiseInstallPrompt(again, "companion-card-ok")
+                else ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            },
+            onLater = {
+                companionDeclinedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
+                reportCompanionNeedsTap("declined at the card")
+                releaseManagerUpgradeGate("a person chose Not now on the companion card")
+            },
+            onClosed = { runCatching { if (!nativeCardOwnsRemote()) webView.requestFocus() } },
+        )
+    }
+
+    /**
+     * Tell the dashboard a companion upgrade is waiting for a person - the same
+     * NEEDS_TAP the Player's own update reports. Once per target versionCode per
+     * process; never during an alert; off the main thread.
+     */
+    private fun reportCompanionNeedsTap(why: String) {
+        val bundledVc = managerGateTargetVc.takeIf { it > 0 } ?: managerUpgradeHoldAttemptedVc
+        val installed = readInstalledManagerVersionCode()
+        if (!com.educms.player.ota.CompanionTapPolicy.shouldReport(bundledVc, installed, companionEmergencyHeld())) return
+        if (companionTapReportedVc == bundledVc) return
+        companionTapReportedVc = bundledVc
+        PlayerLogger.i("MainActivity", "companion upgrade vc=$bundledVc waiting for an Install tap ($why) - reporting NEEDS_TAP")
+        val app = applicationContext
+        Thread {
+            com.educms.player.ota.OtaStateReporter.report(
+                app, "NEEDS_TAP", null, com.educms.player.ota.CompanionTapPolicy.reportMessage(null),
+            )
+        }.apply { isDaemon = true }.start()
+    }
+
     private fun raiseInstallPrompt(
         staged: com.educms.player.ota.StagedInstallPrompt,
         source: String,
@@ -2640,6 +2707,14 @@ class MainActivity : ComponentActivity() {
             if (staged.selfOtaVersionCode > 0) {
                 window.decorView.postDelayed(
                     { verifyOwnPromptAppeared(staged, raisedAt) },
+                    com.educms.player.ota.UpdatePromptPolicy.VERIFY_AFTER_MS,
+                )
+            }
+            else if (staged.targetPackage == MANAGER_PKG || staged.targetPackage == "$MANAGER_PKG.debug") {
+                // Manager wave 3 (#12): the same verification for a COMPANION
+                // upgrade's confirmation - if Android refused it, the card.
+                window.decorView.postDelayed(
+                    { verifyCompanionPromptAppeared(raisedAt) },
                     com.educms.player.ota.UpdatePromptPolicy.VERIFY_AFTER_MS,
                 )
             }
@@ -3261,6 +3336,7 @@ class MainActivity : ComponentActivity() {
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
                 onOpenNetworkScreen = { runOnUiThread { openNetworkScreen("back menu") } },
+                onClearUpdateQuarantine = { PlayerApp.clearManagerQuarantine(applicationContext) },
                 // 2026-10-26 — the Back menu's "Import from USB": read the drive now, on the card.
                 onImportFromUsb = { runOnUiThread { com.educms.player.usb.UsbAutoImport.importNow("back menu") } },
                 // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────
@@ -5173,6 +5249,7 @@ class MainActivity : ComponentActivity() {
     private fun releaseManagerUpgradeGate(reason: String) {
         if (!managerGateShown) return
         PlayerLogger.w("MainActivity", "companion-upgrade gate released — $reason")
+        if (managerGateReleasable) reportCompanionNeedsTap("gate released: $reason")
         managerGateReleasable = false
         managerGateTargetVc = 0
         hideManagerGate()

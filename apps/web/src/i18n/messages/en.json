@@ -2609,6 +2609,20 @@
     "apkUpdating": "Updating…",
     "apkRetryUpdate": "Retry update",
     "apkPushUpdate": "Push update",
+    "quarantine": {
+      "title": "Companion updates",
+      "hint": "For a screen whose companion service set an update aside.",
+      "body": "If this screen set an update aside after a failed start, this lets it be offered that update again.",
+      "noRollback": "This does not roll anything back. Without device owner, Android will not install an older version over the one running, so a screen only moves forward.",
+      "button": "Clear update quarantine",
+      "sending": "Sending",
+      "sent": "Command sent",
+      "sentNote": "Sent to the screen. It is acted on only while the screen is online and running Player 1.1.66 or newer; nothing here confirms it.",
+      "failed": "Couldn’t send the command: {error}",
+      "confirmTitle": "Clear the update quarantine on this screen?",
+      "confirmMessage": "The screen will be allowed to be offered an update it set aside. Nothing is rolled back or installed by this.",
+      "confirmButton": "Clear quarantine"
+    },
     "drawer": {
       "companion": {
         "label": "Companion",

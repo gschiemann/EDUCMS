@@ -56,6 +56,7 @@ import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
 import { ScreenUsbSection } from '../ScreenUsbSection';
 import { ScreenDiagnosticsSection } from '../ScreenDiagnosticsSection';
+import { UpdateQuarantineSection } from './UpdateQuarantineSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -945,6 +946,13 @@ export function ScreenDetailDrawer({
                   </div>
                 </section>
               )}
+
+              <UpdateQuarantineSection
+                screenId={screen.id}
+                managerVersion={screen.managerVersion}
+                canControl={canControl}
+                onSent={onChanged}
+              />
 
               <section>
                 <SectionLabel hint="Changes what this screen does, reversibly.">Configuration</SectionLabel>

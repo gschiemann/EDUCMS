@@ -99,7 +99,9 @@ class FaceBridgeIsolationTest {
             // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.53.
             // 37 -> 38 (2026-10-26): importFromUsb, the Back menu's "Import from USB" — the
             // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.55.
-            38, // Native media has face-bound closures, not face-selecting public methods.
+            // 38 -> 39 (2026-11-08): clearUpdateQuarantine, the dashboard's Clear quarantine -
+            // the same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.66.
+            39, // Native media has face-bound closures, not face-selecting public methods.
             names.size,
         )
         assertFalse("a face-specific bridge method appeared", names.any { it.startsWith("face") })

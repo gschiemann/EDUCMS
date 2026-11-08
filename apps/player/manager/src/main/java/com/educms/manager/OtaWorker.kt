@@ -55,7 +55,7 @@ class OtaWorker(
 ) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        Log.i(TAG, "Manager OTA worker starting (deviceOwner=${AdminReceiver.isDeviceOwner(applicationContext)})")
+        Log.i(TAG, "Manager OTA worker starting")
         try {
             val apiRoot = BuildConfig.API_ROOT
             val fp = deriveFingerprint()

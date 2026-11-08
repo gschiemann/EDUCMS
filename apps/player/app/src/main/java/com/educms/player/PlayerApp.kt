@@ -472,6 +472,19 @@ class PlayerApp : Application() {
          * Safe when Manager isn't installed — setPackage on a
          * non-existent package is a no-op delivery.
          */
+        /** Manager wave 3 (#8): ask the companion to clear its update quarantine (signature-protected). */
+        fun clearManagerQuarantine(ctx: Context) {
+            for (pkg in listOf("com.educms.manager", "com.educms.manager.debug")) {
+                try {
+                    val intent = Intent("com.educms.manager.CLEAR_QUARANTINE").setPackage(pkg)
+                    ctx.sendBroadcast(intent, "com.educms.manager.HEALTH_PERMISSION")
+                } catch (e: Exception) {
+                    PlayerLogger.i("PlayerApp", "Manager clear-quarantine broadcast to $pkg skipped: ${e.message}")
+                }
+            }
+            PlayerLogger.i("PlayerApp", "dashboard Clear quarantine relayed to the companion Manager")
+        }
+
         private fun triggerManagerOtaCheck(ctx: Context) {
             for (pkg in listOf("com.educms.manager", "com.educms.manager.debug")) {
                 try {

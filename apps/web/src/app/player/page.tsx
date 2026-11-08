@@ -10346,6 +10346,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             //   payload.scope === 'screen' + scopeId matches this screen
             // If we're NOT running inside the Android kiosk shell, the
             // bridge isn't present — plain browser players just log + no-op.
+            // Manager wave 3 (#8): the dashboard's Clear quarantine for ONE screen.
+            // Relayed to the companion Manager through the APK; a browser player or
+            // an APK older than 1.1.66 has no such method and simply ignores it.
+            if (msg.type === 'CLEAR_UPDATE_QUARANTINE') {
+              const pl = msg.payload || msg;
+              if (pl?.scope === 'screen' && screenId && pl?.scopeId === screenId && nativeHas('clearUpdateQuarantine')) {
+                console.log(`[Player] CLEAR_UPDATE_QUARANTINE received corrId=${pl?.corrId || '(none)'}`);
+                nativeFire('clearUpdateQuarantine');
+              }
+            }
             if (msg.type === 'CHECK_FOR_UPDATES') {
               const pl = msg.payload || msg;
               const scope = pl?.scope;

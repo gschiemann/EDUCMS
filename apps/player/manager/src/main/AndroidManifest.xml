@@ -3,15 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      Manager APK — DEVICE_OWNER-capable companion that watches Player
-      and silently installs OTA updates. See
-      scratch/manager-apk/01-architecture-decision.md for the
-      architectural rationale.
-
-      MUST be sideloaded once per kiosk, then provisioned as device
-      owner via:
-        adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
-      (Or, in Phase 3, via a QR-code-driven first-boot wizard.)
+      Manager APK — companion that watches Player, relaunches it when its
+      heartbeat stops, and bootstraps a Player onto an empty kiosk. It is
+      never a device owner or a device admin (owner rule, 2026-10-17): the
+      Player installs the bundled Manager and carries it.
     -->
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -25,14 +20,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- OTA install. Manager holds REQUEST_INSTALL_PACKAGES for the
-         normal OTA fallback; once provisioned as DEVICE_OWNER the
-         system grants INSTALL_PACKAGES (a signature-only permission)
-         silently and the install prompt is suppressed. -->
+         bootstrap install of a Player onto an empty kiosk; the system
+         Install dialog (one tap) is the path on Android 11 and below. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- UPDATE_PACKAGES_WITHOUT_USER_ACTION: re-added in v1.0.8 after
          being removed in v1.0.5. This declaration is required for
          PackageInstaller.SessionParams.setRequireUserAction(USER_ACTION_NOT_REQUIRED)
-         to take effect on API 31+ DEVICE_OWNER kiosks.
+         to take effect on API 31+ when the Manager is the installer of record.
          The v1.0.4 VerifyError crash on Android 11 was NOT caused by
          this permission declaration — it was caused by API-31 symbols
          (setRequireUserAction, USER_ACTION_NOT_REQUIRED) referenced
@@ -94,24 +88,6 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:launchMode="singleInstance" />
-
-        <!-- Device-admin receiver. Required for set-device-owner ADB
-             provisioning. The xml/device_admin.xml file declares the
-             policies we use (just FORCE_LOCK + WIPE_DATA placeholders;
-             we don't actually wipe — DEVICE_OWNER for installs is
-             granted by virtue of being device owner, not by these
-             policies). -->
-        <receiver
-            android:name=".AdminReceiver"
-            android:permission="android.permission.BIND_DEVICE_ADMIN"
-            android:exported="true">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-            </intent-filter>
-        </receiver>
 
         <!-- Boot receiver. Launches WatchdogService + ensures Player
              is running on every device boot. Quickboot variants
@@ -210,6 +186,17 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.educms.manager.OTA_INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Manager wave 3 (#8): dashboard "Clear quarantine", relayed by the Player. -->
+        <receiver
+            android:name=".ClearQuarantineReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION">
+            <intent-filter>
+                <action android:name="com.educms.manager.CLEAR_QUARANTINE" />
             </intent-filter>
         </receiver>
 

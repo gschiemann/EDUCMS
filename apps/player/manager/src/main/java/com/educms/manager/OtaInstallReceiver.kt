@@ -290,19 +290,22 @@ class OtaInstallReceiver : BroadcastReceiver() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 INSTALL_PROMPT_CHANNEL,
-                "VenueOS Updates",
+                ctx.getString(R.string.updates_notif_channel),
                 android.app.NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Tap to install Player updates pushed from the dashboard."
+                description = ctx.getString(R.string.install_notif_channel_description)
             }
             nm.createNotificationChannel(channel)
         }
 
-        val target = if (targetPackage.endsWith(".debug")) "Player (debug)" else "Player"
+        val target = ctx.getString(
+            if (targetPackage.endsWith(".debug")) R.string.install_notif_target_player_debug
+            else R.string.install_notif_target_player,
+        )
         val notification = androidx.core.app.NotificationCompat.Builder(ctx, INSTALL_PROMPT_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("VenueOS: install $target update")
-            .setContentText("Tap to confirm installation. The screen needs this to receive updates.")
+            .setContentTitle(ctx.getString(R.string.install_notif_title, target))
+            .setContentText(ctx.getString(R.string.install_notif_text))
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
             .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)
             .setAutoCancel(true)
