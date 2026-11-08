@@ -393,6 +393,14 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         com.educms.player.media.FaceVideoBox.presentingReport()?.let { setRequestProperty(NATIVE_PRESENTING_HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "native presenting report unavailable: ${it.message}") }
+                    // 2026-11-08 (Manager wave 5) — the companion Manager's latest verdict on the
+                    // native alert watch, read from its provider and carried under THIS device's
+                    // credential (the Manager posts nothing itself). Its own header, omitted when
+                    // there is none; it can never cost the reports above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.alertwatch.AlertWatchStamp.watchdogReportHeader(applicationContext)
+                            ?.let { setRequestProperty(com.educms.player.alertwatch.AlertWatchStamp.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "alert-watch watchdog report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must

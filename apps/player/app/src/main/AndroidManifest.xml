@@ -582,6 +582,25 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- 2026-11-08 (Manager wave 5) — the companion Manager's alert-watch
+             watchdog kicks the NATIVE ALERT WATCH through this receiver when
+             the watch has not stamped for minutes while the panel is dark.
+             Exported so another package can reach it; android:permission is
+             the signature-only HEALTH_PERMISSION the Manager defines, so only
+             a package signed with our key can. It can only START the watch
+             (and, on the second rung, the heartbeat service that hosts it):
+             never the Activity (turnScreenOn would light a dark panel), never
+             the hold. See alertwatch/AlertWatchKickReceiver.kt. -->
+        <receiver
+            android:name=".alertwatch.AlertWatchKickReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.educms.manager.HEALTH_PERMISSION">
+            <intent-filter>
+                <action android:name="com.educms.player.ALERT_WATCH_KICK" />
+            </intent-filter>
+        </receiver>
+
         <!-- Watchdog alarm receiver — fires every 15min to ensure
              HeartbeatService + the kiosk activity are alive even after
              OEM battery-saver kills. -->
