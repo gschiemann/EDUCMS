@@ -34,7 +34,7 @@ Acknowledged by VALUE: the device posts its result for the request id; the page 
 
 | File | Why |
 |---|---|
-| `packages/database/prisma/schema.prisma`, `migrations/20261108120000_screen_diagnostics/` | 3 nullable scalars on `screens` + 2 new tables; additive, idempotent, `lock_timeout` |
+| `packages/database/prisma/schema.prisma`, `migrations/20261108120100_screen_diagnostics/` | 3 nullable scalars on `screens` + 2 new tables; additive, idempotent, `lock_timeout` |
 | `apps/api/src/screen-diagnostics/diagnostics-policy.ts` | pure: roles, kinds, wire encoding, manifest spread, upload ticket, sanitisers, grader, read-time life cycle |
 | `…/diagnostics-redact.ts` | server-side log redaction (reuses `player-logs-redact`) |
 | `…/storage-health.ts` | parse/grade/record storage, bell notifier registry |

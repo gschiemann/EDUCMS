@@ -56,7 +56,7 @@ Commits on `claude/scheduled-reboot-policy` (on top of `origin/fable/manager-uni
 | File | Why |
 |---|---|
 | `packages/database/prisma/schema.prisma` | `ScreenRebootPolicy` (one per group, opt-in) and `ScreenRebootRun` (one per screen+slot, the claim); `ScreenGroup.rebootPolicy` relation (no DB change). |
-| `packages/database/prisma/migrations/20261108120000_screen_reboot_policies/migration.sql` | Two new empty tables, indexes, FK to `screen_groups` only (no FK to the hot `screens`); `IF NOT EXISTS` + `pg_constraint` guard + `lock_timeout`. |
+| `packages/database/prisma/migrations/20261108120200_screen_reboot_policies/migration.sql` | Two new empty tables, indexes, FK to `screen_groups` only (no FK to the hot `screens`); `IF NOT EXISTS` + `pg_constraint` guard + `lock_timeout`. |
 | `apps/api/src/scheduled-reboot/scheduled-reboot-policy.ts` | Pure rules: slot + jitter, every refusal, uptime/boot/panel/OTA facts, proof of return, env parsing. |
 | `apps/api/src/scheduled-reboot/scheduled-reboot.service.ts` | Leader-leased 5-min worker; tenant-scoped reads; dispatch through `runDisplayControl` (userId null); return proof; `SCHEDULED_REBOOT_NOT_BACK` audit. |
 | `apps/api/src/scheduled-reboot/scheduled-reboot.controller.ts` | `GET/PUT/DELETE /api/v1/scheduled-reboots/groups/:groupId`; tenant + screen-scope check; audit before/after; 409 under the kill switch. |
