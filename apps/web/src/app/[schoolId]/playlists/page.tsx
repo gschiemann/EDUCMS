@@ -44,7 +44,7 @@ import { appAlert, appConfirm } from '@/components/ui/app-dialog';
 import { PlaylistCreateWizard } from '@/components/playlists/PlaylistCreateWizard';
 import { PublishToLocationsModal } from '@/components/playlists/PublishToLocationsModal';
 import { useUsbExport, UsbExportToast } from '@/components/playlists/UsbExport';
-import { PlaylistLibraryV1 } from '@/components/playlists/v1/PlaylistLibraryV1';
+import { PlaylistGalleryV2 } from '@/components/playlists/v2/PlaylistGalleryV2';
 import type { TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
 import {
   buildPlaylistRow, describeRemoveManyOutcome, pauseEverywhereCopy, removePlaylistCopy, removePlaylistCopyFromServer,
@@ -58,7 +58,6 @@ export default function PlaylistsPage() {
   const schoolId = params?.schoolId || '';
   const currentUser = useUIStore((s) => s.user);
   const isViewer = currentUser?.role === 'RESTRICTED_VIEWER';
-  const isContributor = currentUser?.role === 'CONTRIBUTOR';
   const canFleetPublish = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DISTRICT_ADMIN';
   // USB has no on/off setting any more (2026-10-22): "Export to USB" always
   // works for anyone who can open the menu; the API signs the package itself.
@@ -203,23 +202,6 @@ export default function PlaylistsPage() {
     () => new Map<string, unknown>(playlists.map((p) => [p.id, p])),
     [playlists],
   );
-  const groupOfScreen = useMemo(
-    () => new Map(screens.map((s) => [s.id, s.screenGroupId ?? null])),
-    [screens],
-  );
-  const creatorOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.creatorSummary).filter((c): c is string => !!c))).sort(),
-    [rows],
-  );
-  const screenOptions = useMemo(
-    () => screens.map((s) => ({ id: s.id, name: s.name || s.id })).sort((a, b) => a.name.localeCompare(b.name)),
-    [screens],
-  );
-  const groupOptions = useMemo(
-    () => groups.map((g) => ({ id: g.id, name: g.name || g.id })).sort((a, b) => a.name.localeCompare(b.name)),
-    [groups],
-  );
-
   const openWorkspace = useCallback(
     (id: string, tab?: string) => router.push(`/${schoolId}/playlists/${id}${tab ? `?tab=${tab}` : ''}`),
     [router, schoolId],
@@ -410,10 +392,13 @@ export default function PlaylistsPage() {
 
   return (
     <>
-      <PlaylistLibraryV1
+      <PlaylistGalleryV2
         rows={rows}
         rawById={rawById}
         templateLookup={templateLookup}
+        schedules={schedules}
+        screens={screens}
+        groups={groups}
         loading={playlistsQuery.isLoading}
         error={playlistsQuery.isError}
         onRetry={() => {
@@ -429,19 +414,8 @@ export default function PlaylistsPage() {
         onRemove={handleRemove}
         onRemoveMany={handleRemoveMany}
         onPublishToLocations={isHQ ? (id: string) => { setPublishToLocationsId(id); setPublishToLocationsOpen(true); } : undefined}
-        onSubmitForReview={(id) => openWorkspace(id)}
         onSetActive={(row, next) => { void handleSetActive(row, next); }}
         isViewer={isViewer}
-        isContributor={isContributor}
-        isHQ={isHQ}
-        creatorOptions={creatorOptions}
-        screenOptions={screenOptions}
-        groupOptions={groupOptions}
-        groupOfScreen={groupOfScreen}
-        // The list never fires a per-row delivery request (§26). Until a
-        // batched summary carries delivery, every cell is the client-side
-        // rollup of each target screen's own reported state.
-        deliveryDerived
       />
 
       {/* §5 — the five-step wizard, unchanged, mounted on the v1 surface so
