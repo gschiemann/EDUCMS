@@ -305,8 +305,8 @@ describe('sentry redaction — safety of the filter itself', () => {
     expect(redactString('springfield-elementary-north-hallway-display-01-portrait')).toBe(
       'springfield-elementary-north-hallway-display-01-portrait',
     );
-    expect(redactString('https://cdn.educms.io/assets/lunch-menu-week-of-2026-09-01.png')).toBe(
-      'https://cdn.educms.io/assets/lunch-menu-week-of-2026-09-01.png',
+    expect(redactString('https://cdn.example.com/assets/lunch-menu-week-of-2026-09-01.png')).toBe(
+      'https://cdn.example.com/assets/lunch-menu-week-of-2026-09-01.png',
     );
     expect(stripUrlSecrets('see https://venue-os.app/docs for details')).toBe(
       'see https://venue-os.app/docs for details',

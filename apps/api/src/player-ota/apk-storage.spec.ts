@@ -41,8 +41,12 @@ import {
   apkAuthenticatedObjectUrl,
   apkBucketName,
   apkDownloadFilename,
+  apkAssetName,
   apkObjectPath,
+  apkObjectPathCandidates,
   apkSidecarPath,
+  legacyApkAssetName,
+  legacyApkObjectPath,
   apkStorageEnabled,
   parseSidecarSha,
   resolveApkDelivery,
@@ -56,10 +60,15 @@ const SERVICE_KEY = 'service-role-key';
 const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
 
-const OBJECT = `${SUPABASE}/storage/v1/object/apks/player/v10112/edu-cms-player-v1.1.12.apk`;
+const OBJECT = `${SUPABASE}/storage/v1/object/apks/player/v10112/venueos-player-v1.1.12.apk`;
 const SIDECAR = `${OBJECT}.sha256`;
-const SIGN = `${SUPABASE}/storage/v1/object/sign/apks/player/v10112/edu-cms-player-v1.1.12.apk`;
-const SIGNED_REL = '/object/sign/apks/player/v10112/edu-cms-player-v1.1.12.apk?token=jwt.tok.en';
+const SIGN = `${SUPABASE}/storage/v1/object/sign/apks/player/v10112/venueos-player-v1.1.12.apk`;
+const SIGNED_REL = '/object/sign/apks/player/v10112/venueos-player-v1.1.12.apk?token=jwt.tok.en';
+// Every object uploaded before the 2026-11-08 rebrand keeps this name forever.
+const LEGACY_OBJECT = `${SUPABASE}/storage/v1/object/apks/player/v10112/edu-cms-player-v1.1.12.apk`;
+const LEGACY_SIDECAR = `${LEGACY_OBJECT}.sha256`;
+const LEGACY_SIGN = `${SUPABASE}/storage/v1/object/sign/apks/player/v10112/edu-cms-player-v1.1.12.apk`;
+const LEGACY_SIGNED_REL = '/object/sign/apks/player/v10112/edu-cms-player-v1.1.12.apk?token=old.tok.en';
 
 function env(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
@@ -96,7 +105,7 @@ function fakeFetch(routes: Record<string, FakeRoute>) {
 function healthyRoutes(sha = SHA_A): Record<string, FakeRoute> {
   return {
     [OBJECT]: { status: 200 },
-    [SIDECAR]: { status: 200, body: `${sha}  edu-cms-player-v1.1.12.apk\n` },
+    [SIDECAR]: { status: 200, body: `${sha}  venueos-player-v1.1.12.apk\n` },
     [SIGN]: { status: 200, body: JSON.stringify({ signedURL: SIGNED_REL }) },
   };
 }
@@ -115,8 +124,21 @@ beforeEach(() => __resetApkDeliveryMemoForTests());
 
 describe('object layout — the contract shared with CI and the backfill script', () => {
   it('keys the object by versionCode and names it after the release asset', () => {
-    expect(apkObjectPath('player', 10112)).toBe('player/v10112/edu-cms-player-v1.1.12.apk');
-    expect(apkObjectPath('manager', 10024)).toBe('manager/v10024/edu-cms-manager-v1.0.24.apk');
+    expect(apkObjectPath('player', 10112)).toBe('player/v10112/venueos-player-v1.1.12.apk');
+    expect(apkObjectPath('manager', 10024)).toBe('manager/v10024/venueos-manager-v1.0.24.apk');
+  });
+
+  it('new uploads use the venueos name; the legacy edu-cms path is still known for reads', () => {
+    expect(apkAssetName('player', '1.1.66')).toBe('venueos-player-v1.1.66.apk');
+    expect(apkAssetName('manager', '1.0.24')).toBe('venueos-manager-v1.0.24.apk');
+    expect(legacyApkAssetName('player', '1.1.64')).toBe('edu-cms-player-v1.1.64.apk');
+    expect(legacyApkObjectPath('player', 10112)).toBe('player/v10112/edu-cms-player-v1.1.12.apk');
+    expect(legacyApkObjectPath('manager', 10024)).toBe('manager/v10024/edu-cms-manager-v1.0.24.apk');
+    // Read order: new first, legacy second.
+    expect(apkObjectPathCandidates('player', 10112)).toEqual([
+      'player/v10112/venueos-player-v1.1.12.apk',
+      'player/v10112/edu-cms-player-v1.1.12.apk',
+    ]);
   });
 
   it('puts the sha256 sidecar beside the APK, not in a parallel tree', () => {
@@ -272,6 +294,56 @@ describe('resolveApkDelivery — redirect when the object is present and verifie
   });
 });
 
+describe('resolveApkDelivery — objects uploaded under the pre-rebrand edu-cms name', () => {
+  function legacyRoutes(sha = SHA_A): Record<string, FakeRoute> {
+    return {
+      [LEGACY_OBJECT]: { status: 200 },
+      [LEGACY_SIDECAR]: { status: 200, body: `${sha}  edu-cms-player-v1.1.12.apk\n` },
+      [LEGACY_SIGN]: { status: 200, body: JSON.stringify({ signedURL: LEGACY_SIGNED_REL }) },
+    };
+  }
+
+  it('still redirects to an object stored only under the legacy name', async () => {
+    const { impl, calls } = fakeFetch(legacyRoutes());
+    const delivery = await resolve({ fetchImpl: impl });
+    expect(delivery.mode).toBe('redirect');
+    expect(delivery.url).toBe(`${SUPABASE}/storage/v1${LEGACY_SIGNED_REL}&download=venue-os-player-vc10112.apk`);
+    // new sidecar (404) → legacy sidecar → HEAD legacy object → sign legacy object
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      `GET ${SIDECAR}`,
+      `GET ${LEGACY_SIDECAR}`,
+      `HEAD ${LEGACY_OBJECT}`,
+      `POST ${LEGACY_SIGN}`,
+    ]);
+  });
+
+  it('prefers the new name when both exist and never touches the legacy one', async () => {
+    const { impl, calls } = fakeFetch({ ...legacyRoutes(SHA_B), ...healthyRoutes(SHA_A) });
+    const delivery = await resolve({ fetchImpl: impl });
+    expect(delivery.mode).toBe('redirect');
+    expect(delivery.url).toContain('venueos-player-v1.1.12.apk');
+    expect(calls.some((c) => c.url.includes('edu-cms-'))).toBe(false);
+  });
+
+  it('keeps the digest cross-check on the legacy object — a mismatch still proxies', async () => {
+    const { impl } = fakeFetch(legacyRoutes(SHA_B));
+    const delivery = await resolve({ fetchImpl: impl, expectedSha: async () => SHA_A });
+    expect(delivery.mode).toBe('proxy');
+    expect(delivery.reason).toBe('sha-mismatch');
+  });
+
+  it('signs the SAME path whose sidecar vouched — never a sidecar from one name and bytes from the other', async () => {
+    // Legacy sidecar present, legacy object missing, new object present without a sidecar.
+    const { impl, calls } = fakeFetch({
+      [OBJECT]: { status: 200 },
+      [LEGACY_SIDECAR]: { status: 200, body: SHA_A },
+    });
+    const delivery = await resolve({ fetchImpl: impl });
+    expect(delivery.reason).toBe('object-http-404');
+    expect(calls.find((c) => c.method === 'HEAD')?.url).toBe(LEGACY_OBJECT);
+  });
+});
+
 describe('resolveApkDelivery — proxy fallback, the fail-safe direction', () => {
   it('proxies when the release was never uploaded (no sidecar)', async () => {
     const { impl } = fakeFetch({});
@@ -401,7 +473,8 @@ describe('resolveApkDelivery — memoization (probe + sign once per 5-min window
     for (let i = 0; i < 4; i++) {
       expect((await resolve({ fetchImpl: impl })).mode).toBe('proxy');
     }
-    expect(calls).toHaveLength(1);
+    // One probe of each candidate name (venueos, then legacy edu-cms) — once.
+    expect(calls).toHaveLength(2);
   });
 
   it('re-probes after the window expires — a backfill takes effect within 5 minutes', async () => {

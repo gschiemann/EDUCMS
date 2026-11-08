@@ -8,7 +8,8 @@
  * WHY THIS EXISTS
  * ---------------
  * `.github/workflows/android-player-apk.yml` runs `assembleDebug`,
- * renames the output to `edu-cms-player-v<VERSION>.apk`, and attaches it
+ * renames the output to `venueos-player-v<VERSION>.apk` (`edu-cms-player-v…`
+ * before the 2026-11-08 rebrand), and attaches it
  * to a PUBLIC GitHub Release on a `player-v*` tag. `/api/v1/player/apk/
  * latest` resolves to that asset — so the debug build IS the production
  * artifact on every K-12 kiosk in the field. A debuggable APK lets

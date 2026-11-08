@@ -1,9 +1,10 @@
 name: Android Player APK
 
 # Builds the kiosk APK on a RELEASE TAG (player-v* / manager-v*) or on
-# demand. Uploads as a downloadable artifact named 'edu-cms-player-apk'
+# demand. Uploads as a downloadable artifact named 'venueos-player-apk'
 # so non-developers can grab a fresh build straight from the GitHub UI:
-# Actions → latest run → Artifacts → download.
+# Actions → latest run → Artifacts → download. (Runs before the 2026-11-08
+# rebrand uploaded it as 'edu-cms-player-apk'; the API queries both names.)
 #
 # Manual trigger via workflow_dispatch lets you build whenever without
 # pushing.
@@ -24,10 +25,10 @@ on:
   # `gh workflow run android-player-apk.yml --ref <branch>`.
   push:
     tags:
-      # Player release tag (existing) — produces edu-cms-player-v*.apk
+      # Player release tag (existing) — produces venueos-player-v*.apk (edu-cms-player-v*.apk before 2026-11-08)
       # release attachment.
       - 'player-v*'
-      # Manager release tag (Phase 1+) — produces edu-cms-manager-v*.apk
+      # Manager release tag (Phase 1+) — produces venueos-manager-v*.apk (edu-cms-manager-v*.apk before 2026-11-08)
       # release attachment via the parallel `softprops/action-gh-release`
       # step further down. Both APKs are built on every run regardless;
       # only the matching tag triggers the corresponding release attach.
@@ -429,7 +430,7 @@ jobs:
           else
             VERSION="${GITHUB_SHA:0:7}"
           fi
-          NEW_NAME="edu-cms-player-v${VERSION}.apk"
+          NEW_NAME="venueos-player-v${VERSION}.apk"
           NEW_PATH="apps/player/app/build/outputs/apk/${VARIANT}/${NEW_NAME}"
           mv "$APK" "$NEW_PATH"
           echo "apk=$NEW_PATH" >> $GITHUB_OUTPUT
@@ -439,7 +440,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: edu-cms-player-apk
+          name: venueos-player-apk
           path: ${{ steps.locate.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
@@ -475,7 +476,7 @@ jobs:
           else
             MVERSION="${GITHUB_SHA:0:7}"
           fi
-          MGR_NEW="edu-cms-manager-v${MVERSION}.apk"
+          MGR_NEW="venueos-manager-v${MVERSION}.apk"
           MGR_NEW_PATH="apps/player/manager/build/outputs/apk/${VARIANT}/${MGR_NEW}"
           mv "$MGR_APK" "$MGR_NEW_PATH"
           echo "apk=$MGR_NEW_PATH" >> $GITHUB_OUTPUT
@@ -485,7 +486,7 @@ jobs:
       - name: Upload Manager APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: edu-cms-manager-apk
+          name: venueos-manager-apk
           path: ${{ steps.locate-manager.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
@@ -535,7 +536,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Player ${{ github.ref_name }}
           body: |
-            EduCMS Player kiosk APK.
+            VenueOS Player kiosk APK.
 
             Sideload onto any Android 7+ device or Nova Taurus controller.
             See `docs/PLAYER_APK_NOVA_TAURUS.md` for the ViPlex Express
@@ -557,7 +558,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Manager ${{ github.ref_name }}
           body: |
-            EduCMS Manager APK — companion to Player.
+            VenueOS Manager APK — companion to Player.
 
             ADB-provision on a freshly-reset kiosk:
               adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
@@ -627,9 +628,9 @@ jobs:
 
       - name: Build summary
         run: |
-          echo "### EduCMS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
+          echo "### VenueOS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download from the **Artifacts** section above (\`edu-cms-player-apk\`)." >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section above (\`venueos-player-apk\`)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://venue-os.app/player}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

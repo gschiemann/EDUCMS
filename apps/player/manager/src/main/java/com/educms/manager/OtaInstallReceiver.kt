@@ -306,7 +306,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 INSTALL_PROMPT_CHANNEL,
-                "EduCMS Updates",
+                "VenueOS Updates",
                 android.app.NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = "Tap to install Player updates pushed from the dashboard."
@@ -317,7 +317,7 @@ class OtaInstallReceiver : BroadcastReceiver() {
         val target = if (targetPackage.endsWith(".debug")) "Player (debug)" else "Player"
         val notification = androidx.core.app.NotificationCompat.Builder(ctx, INSTALL_PROMPT_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("EduCMS: install $target update")
+            .setContentTitle("VenueOS: install $target update")
             .setContentText("Tap to confirm installation. The screen needs this to receive updates.")
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
             .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)

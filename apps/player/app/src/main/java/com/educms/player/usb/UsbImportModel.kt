@@ -21,7 +21,8 @@ package com.educms.player.usb
  *     which FUSE never does — so the screen never asked, never found the zip,
  *     and returned silently on every scan.
  *   • A second Safari download unpacks as `edu-cms-content 2`, a name the old
- *     finder did not accept.
+ *     finder did not accept. (Since the 2026-11-08 rebrand the same holds for
+ *     `venueos-content`, `venueos-content 2`, … — [UsbPackage.FOLDERS].)
  *
  * Now every state is a card a person can see and act on, and every state is
  * reported ([report]) so we can see it too.

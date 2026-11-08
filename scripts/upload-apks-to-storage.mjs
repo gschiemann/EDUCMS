@@ -49,10 +49,15 @@
  * THE PATH LAYOUT IS A CONTRACT
  * ============================================================
  *
- *   <bucket>/player/v10112/edu-cms-player-v1.1.12.apk
- *   <bucket>/player/v10112/edu-cms-player-v1.1.12.apk.sha256
+ *   <bucket>/player/v10112/venueos-player-v1.1.12.apk
+ *   <bucket>/player/v10112/venueos-player-v1.1.12.apk.sha256
  *
- * It MUST stay byte-identical to `apkObjectPath()` in
+ * 2026-11-08 VenueOS rebrand: new uploads use `venueos-<kind>-v…`. Objects
+ * uploaded before keep `edu-cms-<kind>-v…` forever; the API reads both
+ * (new first) and this script treats a version already present under the
+ * legacy name as published (same immutability check), never re-uploading it.
+ *
+ * It MUST stay byte-identical to `apkObjectPath()` / `legacyApkObjectPath()` in
  * apps/api/src/player-ota/apk-storage.ts. If the two drift, nothing errors:
  * every kiosk silently falls back to the byte proxy and the whole egress
  * win evaporates with no signal anywhere. apk-storage.spec.ts pins the
@@ -125,6 +130,11 @@ function versionCodeOf(versionName) {
 
 /** MUST match `apkObjectPath()` in apps/api/src/player-ota/apk-storage.ts. */
 function objectPath(kind, versionName) {
+  return `${kind}/v${versionCodeOf(versionName)}/venueos-${kind}-v${versionName}.apk`;
+}
+
+/** MUST match `legacyApkObjectPath()` — the pre-rebrand name. Read-only. */
+function legacyObjectPath(kind, versionName) {
   return `${kind}/v${versionCodeOf(versionName)}/edu-cms-${kind}-v${versionName}.apk`;
 }
 
@@ -236,7 +246,11 @@ async function publish(kind, versionName, bytes) {
   const digest = sha256(bytes);
   const label = `${kind} v${versionName} (vc${versionCodeOf(versionName)}, ${(bytes.length / 1048576).toFixed(2)} MB)`;
 
-  const recorded = await storedSha(path);
+  // A version published before the rebrand lives under the legacy name; the
+  // API reads it there. Same immutability check, and never a second copy.
+  const legacyPath = legacyObjectPath(kind, versionName);
+  const recordedAt = (await storedSha(path)) ? path : ((await storedSha(legacyPath)) ? legacyPath : null);
+  const recorded = recordedAt ? await storedSha(recordedAt) : null;
   if (recorded) {
     if (recorded !== digest) {
       die(
@@ -250,7 +264,7 @@ async function publish(kind, versionName, bytes) {
         + `  this version in the meantime (reason=sha-mismatch), which is by design.`,
       );
     }
-    info(`= ${label} already published, identical bytes — nothing to do.`);
+    info(`= ${label} already published${recordedAt === legacyPath ? ' (legacy edu-cms name)' : ''}, identical bytes — nothing to do.`);
     return 'skipped';
   }
 
@@ -286,9 +300,9 @@ async function publish(kind, versionName, bytes) {
 
 // ─── sources ───────────────────────────────────────────────────────────
 
-/** `edu-cms-player-v1.1.12.apk` -> { kind, versionName }. */
+/** `venueos-player-v1.1.12.apk` or the legacy `edu-cms-player-v1.1.12.apk` -> { kind, versionName }. */
 function parseArtifactName(name) {
-  const m = /^edu-cms-(player|manager)-v(\d+\.\d+\.\d+)\.apk$/.exec(basename(name));
+  const m = /^(?:venueos|edu-cms)-(player|manager)-v(\d+\.\d+\.\d+)\.apk$/.exec(basename(name));
   return m ? { kind: m[1], versionName: m[2] } : null;
 }
 
@@ -336,13 +350,15 @@ async function fromGithubReleases() {
     }
     for (const { release, versionName } of tagged) {
       const assets = release.assets || [];
-      const asset = assets.find((a) => a.name === `edu-cms-${kind}-v${versionName}.apk`)
+      const asset = assets.find((a) => a.name === `venueos-${kind}-v${versionName}.apk`)
+        || assets.find((a) => a.name === `edu-cms-${kind}-v${versionName}.apk`)
         || assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86'));
       if (!asset) {
         info(`! ${kind} v${versionName} has no APK asset — skipping.`);
         continue;
       }
-      if (DRY_RUN && await storedSha(objectPath(kind, versionName))) {
+      if (DRY_RUN && (await storedSha(objectPath(kind, versionName))
+        || await storedSha(legacyObjectPath(kind, versionName)))) {
         // Already published: no need to pull megabytes just to say "skip".
         out.push({ kind, versionName, bytes: Buffer.alloc(0), preChecked: true });
         continue;

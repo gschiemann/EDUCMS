@@ -389,8 +389,9 @@ if [ "$DOWNLOAD_NEEDED" = 1 ]; then
   [ -n "$PTAG" ] && [ -n "$MTAG" ] || die "could not find player-v* / manager-v* releases"
   gh release download "$PTAG" --repo "$REPO" --pattern '*.apk' --dir "$TMP" || die "download of $PTAG failed"
   gh release download "$MTAG" --repo "$REPO" --pattern '*.apk' --dir "$TMP" || die "download of $MTAG failed"
-  [ -n "$PLAYER_APK" ]  || PLAYER_APK="$(find "$TMP" -name 'edu-cms-player-*.apk' | head -1)"
-  [ -n "$MANAGER_APK" ] || MANAGER_APK="$(find "$TMP" -name 'edu-cms-manager-*.apk' | head -1)"
+  # venueos-* since the 2026-11-08 rebrand; older releases keep edu-cms-*.
+  [ -n "$PLAYER_APK" ]  || PLAYER_APK="$(find "$TMP" \( -name 'venueos-player-*.apk' -o -name 'edu-cms-player-*.apk' \) | head -1)"
+  [ -n "$MANAGER_APK" ] || MANAGER_APK="$(find "$TMP" \( -name 'venueos-manager-*.apk' -o -name 'edu-cms-manager-*.apk' \) | head -1)"
   ok "Player  $PTAG"
   ok "Manager $MTAG"
 fi
@@ -453,7 +454,7 @@ case "$APPOP_NOW" in
   *allow*) ok "WRITE_SETTINGS = allow" ;;
   *)       warn "WRITE_SETTINGS is '$APPOP_NOW' (set said: ${APPOP_OUT:-<no output>})"
            echo "      Some vendor images block appops over adb. Then the operator can"
-           echo "      grant it by hand on the panel: Settings → Apps → EduCMS Player"
+           echo "      grant it by hand on the panel: Settings → Apps → VenueOS Player"
            echo "      → 'Modify system settings' → allow. (That path needs no adb and"
            echo "      no ownership.) Failing both, brightness is software dim — safe,"
            echo "      and the dashboard says so." ;;
@@ -467,7 +468,7 @@ if sh_ 'dumpsys deviceidle whitelist' | grep -q "$PLR_PKG"; then
 else
   warn "could not confirm the doze whitelist entry."
   echo "      On-device on/off schedules may fire late by minutes on this unit."
-  echo "      Operator fallback, no adb needed: Settings → Apps → EduCMS Player →"
+  echo "      Operator fallback, no adb needed: Settings → Apps → VenueOS Player →"
   echo "      Battery → Unrestricted."
 fi
 
@@ -553,7 +554,7 @@ if [ "$AUTOSTART_HINT" != "none-matched" ] && [ -n "$AUTOSTART_HINT" ]; then
   echo "   no matter what our BootReceiver does. Candidates seen on this box:"
   printf '     %s\n' "$AUTOSTART_HINT"
   echo "   Open the vendor settings app, find auto-start / startup management,"
-  echo "   and enable EduCMS Player AND EduCMS Manager. Then power-cycle the"
+  echo "   and enable VenueOS Player AND VenueOS Manager. Then power-cycle the"
   echo "   panel and confirm the player comes back on its own."
   echo "   (UNVERIFIED on these units — see docs/FIELD-PROVISIONING.md §6a.)"
   echo ""

@@ -286,4 +286,85 @@ class UsbPackageFinderTest {
         }
         assertNull(UsbBundleSource.open(f))
     }
+
+    // ── 2026-11-08 rebrand: `venueos-content` beside `edu-cms-content` ──
+    //
+    // The API keeps writing `edu-cms-content` until USB_EXPORT_FOLDER_NAME is
+    // flipped to `venueos`; from then on sticks carry `venueos-content`. This
+    // reader accepts both, and every copy-name variant of each, forever.
+
+    @Test
+    fun `both folder names and their copy-name variants are package folder names`() {
+        assertEquals(listOf("venueos-content", "edu-cms-content"), UsbPackage.FOLDERS)
+        for (n in listOf("edu-cms-content", "edu-cms-content 2", "edu-cms-content (1)",
+                         "venueos-content", "venueos-content 2", "venueos-content (1)", "VenueOS-Content")) {
+            assertTrue(n, UsbPackage.isPackageFolderName(n))
+        }
+        assertFalse(UsbPackage.isPackageFolderName("venueos-usb-lobby"))
+        assertFalse(UsbPackage.isPackageFolderName("content"))
+        assertTrue(UsbPackage.isCanonicalFolderName("venueos-content"))
+        assertTrue(UsbPackage.isCanonicalFolderName("edu-cms-content"))
+        assertFalse(UsbPackage.isCanonicalFolderName("venueos-content 2"))
+    }
+
+    @Test
+    fun `the manifest schema id is unchanged by the rebrand — it is under the HMAC`() {
+        assertEquals("edu-cms-usb-bundle/v1", UsbPackage.SCHEMA)
+    }
+
+    @Test
+    fun `a venueos-content folder at the top of the drive is found and imports`() {
+        folder(stick, UsbPackage.FOLDER_VENUEOS, pkg(label = "New"))
+        assertEquals(listOf("venueos-content"), found())
+        assertEquals("New", (importBest() as UsbImporter.Outcome.Imported).label)
+    }
+
+    @Test
+    fun `a second Safari download of the new name, venueos-content 2, is still found`() {
+        folder(stick, "venueos-content 2", pkg(version = "3000"))
+        assertEquals(listOf("venueos-content 2"), found())
+        assertEquals("3000", (importBest() as UsbImporter.Outcome.Imported).bundleVersion)
+    }
+
+    @Test
+    fun `a venueos-content folder holding only a manifest is still a candidate by name, like the old name`() {
+        File(stick, "venueos-content/manifest.json").apply { parentFile!!.mkdirs() }.writeText("{}")
+        assertEquals(listOf("venueos-content"), found())
+        // ...but only a signed one may ever look like a package.
+        assertFalse(UsbPackageFinder.looksLikePackage(File(stick, "venueos-content")))
+    }
+
+    @Test
+    fun `a zip wrapping venueos-content (or a renamed copy of it) opens and imports`() {
+        val entries = pkg()
+        val plain = zip(File(stick, "VenueOS-USB-New.zip"), entries, wrap = "venueos-content/")
+        UsbBundleSource.open(plain)!!.use { assertTrue(importer().import(it, key, tenant) is UsbImporter.Outcome.Imported) }
+        val renamed = zip(File(stick, "renamed-new.zip"), entries, wrap = "venueos-content 2/")
+        assertNotNull(UsbBundleSource.open(renamed))
+        val nested = zip(File(stick, "nested-new.zip"), entries, wrap = "VenueOS-USB-GGP/venueos-content/")
+        // Same package as `plain`, already imported — so verify, not import (that would be AlreadyCurrent).
+        UsbBundleSource.open(nested)!!.use { assertTrue(importer().verify(it, key, tenant) is UsbImporter.Verdict.Ok) }
+    }
+
+    @Test
+    fun `a manifest-only zip folder named venueos-content is accepted by name, exactly as edu-cms-content is`() {
+        val f = File(stick, "unsigned-new.zip")
+        ZipOutputStream(FileOutputStream(f)).use { z ->
+            z.putNextEntry(ZipEntry("venueos-content/manifest.json"))
+            z.write("{}".toByteArray())
+            z.closeEntry()
+        }
+        // It opens as a source (the name makes it a candidate) — the signature check then refuses it.
+        UsbBundleSource.open(f)!!.use { src ->
+            assertFalse(importer().verify(src, key, tenant) is UsbImporter.Verdict.Ok)
+        }
+    }
+
+    @Test
+    fun `old and new sticks side by side — both are candidates and the newer package wins`() {
+        folder(stick, UsbPackage.FOLDER, pkg(version = "1000", label = "Old"))
+        folder(stick, UsbPackage.FOLDER_VENUEOS, pkg(version = "2000", label = "New"))
+        assertEquals(setOf("edu-cms-content", "venueos-content"), found().toSet())
+        assertEquals("New", (importBest() as UsbImporter.Outcome.Imported).label)
+    }
 }

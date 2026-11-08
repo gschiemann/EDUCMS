@@ -155,7 +155,7 @@ network the screen is using; Android joins it when it is in range.
 Recommended: **Headwind MDM**, **Hexnode** (paid), or **Android Enterprise Dedicated Devices** (free if you self-host the EMM). Push the APK silently to all enrolled devices; lock down to `com.educms.player` as the only allowed launcher (`setLockTaskPackages`).
 
 ### Manual kiosk lockdown (single-device install)
-1. Set the player as the default launcher: `Settings → Apps → Default apps → Home app → EduCMS Player`
+1. Set the player as the default launcher: `Settings → Apps → Default apps → Home app → VenueOS Player`
 2. Disable Notification Shade swipe (most OEMs have this in `Settings → Display → Kiosk mode`)
 3. Disable status bar pull-down: requires device-owner; use `dpm set-device-owner com.educms.player/.PlayerDeviceAdmin` (admin receiver not yet implemented — V2)
 
@@ -194,6 +194,13 @@ The bundler downloads each asset, computes SHA-256, lays out:
   assets/<sha256>.<ext>
   emergency/<sha256>.<ext>
 ```
+
+The folder is `edu-cms-content` today. After the 2026-11-08 VenueOS rebrand
+the player also finds `venueos-content` (and the `… 2` / `… (1)` copies a
+browser makes of either), and the dashboard export writes `venueos-content`
+once the API sets `USB_EXPORT_FOLDER_NAME=venueos` (`docs/ENVIRONMENT.md`).
+Players up to 1.1.65 find only `edu-cms-content`, so that switch stays unset
+until the fleet runs the new reader.
 
 ### 3. Operator walks the stick to the screen
 

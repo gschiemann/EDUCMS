@@ -641,7 +641,7 @@
     <issue
         id="SetTextI18n"
         message="String literal in `setText` can not be translated. Use Android resources instead."
-        errorLine1="                    &quot;Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow&quot;"
+        errorLine1="                    &quot;Manual setup needed: Settings → Apps → VenueOS Player → Install unknown apps → Allow&quot;"
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/educms/player/MainActivity.kt"

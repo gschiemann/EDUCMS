@@ -69,12 +69,12 @@ class PlayerApp : Application() {
 
         PlayerLogger.i(
             "PlayerApp",
-            "EduCMS Player ${BuildConfig.VERSION_NAME} booting " +
+            "VenueOS Player ${BuildConfig.VERSION_NAME} booting " +
             "(SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})",
         )
         Log.i(
             "PlayerApp",
-            "EduCMS Player ${BuildConfig.VERSION_NAME} starting (SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})",
+            "VenueOS Player ${BuildConfig.VERSION_NAME} starting (SDK ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL})",
         )
         ensureNotificationChannels()
         UsbCacheIndex.reload(this)
@@ -330,7 +330,7 @@ class PlayerApp : Application() {
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_HEARTBEAT, "Player heartbeat", NotificationManager.IMPORTANCE_MIN).apply {
-                    description = "Keeps the EduCMS player connected to the server."
+                    description = "Keeps the VenueOS player connected to the server."
                     setShowBadge(false)
                 },
             )

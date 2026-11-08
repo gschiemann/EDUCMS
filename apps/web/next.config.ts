@@ -295,7 +295,6 @@ function dashboardCspReportOnly(): string {
     'https://*.kick.com',
     // PDF + text/html asset previews are framed at the asset's own host.
     'https://*.supabase.co',
-    'https://cdn.educms.io',
     ...assetCdn,
   ].join(' ');
 
@@ -350,7 +349,6 @@ const nextConfig: NextConfig = {
   // Allow the API domain for images
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'cdn.educms.io' },
       { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
