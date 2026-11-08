@@ -762,7 +762,7 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
   });
   it('the group menu offers "Add screens…" for a group that already has screens, listing only outsiders', () => {
     renderPage();
-    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    fireEvent.click(rtl.getAllByRole('button', { name: 'More actions for RIOT Sacramento' })[0]);
     fireEvent.click(rtl.getByRole('button', { name: 'Add screens…' }));
     const dlg = rtl.getByRole('dialog', { name: 'Add screens to RIOT Sacramento' });
     expect(within(dlg).queryByRole('checkbox', { name: 'Add G43' })).not.toBeInTheDocument();   // already in Sacramento
@@ -779,7 +779,7 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
     // move the setting into playlist and not screen groups". A group holds
     // several playlists, so it can never be the thing that holds this switch.
     renderPage();
-    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    fireEvent.click(rtl.getAllByRole('button', { name: 'More actions for RIOT Sacramento' })[0]);
     expect(rtl.queryByRole('button', { name: 'Sync playback across the group' })).not.toBeInTheDocument();
     expect(rtl.queryByRole('button', { name: 'Turn off synced playback' })).not.toBeInTheDocument();
     expect(updateGroupMutate).not.toHaveBeenCalled();
@@ -792,7 +792,7 @@ describe('groups with no screens (ported from classic, 2026-09-14)', () => {
     // standing next to each other with a phone camera. What changed is the
     // gate — the server's derived verdict, not a flag stored on the group.
     renderPage({ groups: [{ ...SAC, syncActive: true }, HEN] });
-    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    fireEvent.click(rtl.getAllByRole('button', { name: 'More actions for RIOT Sacramento' })[0]);
     expect(rtl.getByRole('link', { name: /Calibrate sync/ }))
       .toHaveAttribute('href', '/riot/screens/sync-calibrate?groupId=sac');
   });
@@ -961,7 +961,7 @@ describe('write gates match the API’s @RequireRoles', () => {
 
     it('gates the group menu’s writes (PUT/DELETE /screen-groups/:id)', () => {
       renderPage({ canControl });
-      fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+      fireEvent.click(rtl.getAllByRole('button', { name: 'More actions for RIOT Sacramento' })[0]);
       check(rtl.getByRole('button', { name: 'Rename group' }));
       check(rtl.getByRole('button', { name: 'Set group address' }));
       check(rtl.getByRole('button', { name: 'Delete group' }));
@@ -1132,7 +1132,7 @@ describe('location details agree with the fleet map', () => {
   it('shows the saved group address and offers Edit group address', () => {
     renderPage({ groups: [{ ...SAC, address }, HEN] });
     expect(rtl.getAllByText(address).length).toBeGreaterThan(0);
-    fireEvent.click(rtl.getByRole('button', { name: 'More actions for RIOT Sacramento' }));
+    fireEvent.click(rtl.getAllByRole('button', { name: 'More actions for RIOT Sacramento' })[0]);
     expect(rtl.getByRole('button', { name: 'Edit group address' })).toBeEnabled();
     expect(rtl.queryByRole('button', { name: 'Set group address' })).not.toBeInTheDocument();
   });
@@ -1156,3 +1156,4 @@ describe('location details agree with the fleet map', () => {
     expect(within(dialog).getByText('From account location')).toBeInTheDocument();
   });
 });
+

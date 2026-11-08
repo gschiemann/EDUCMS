@@ -17,7 +17,7 @@ const apiFetch = jest.fn(async (path: string, init?: any) => {
 });
 jest.mock('@/lib/api-client', () => ({ apiFetch: (p: string, i?: any) => apiFetch(p, i) }));
 let confirmAnswer = true;
-const appConfirm = jest.fn(async () => confirmAnswer);
+const appConfirm = jest.fn(async (_o?: unknown) => confirmAnswer);
 jest.mock('@/components/ui/app-dialog', () => ({ appConfirm: (o: any) => appConfirm(o) }));
 
 import { UpdateQuarantineSection } from '../v3/UpdateQuarantineSection';

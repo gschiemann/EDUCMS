@@ -1277,6 +1277,26 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                             {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
                         </button>
+                        {/* 2026-11-08 — the group ⋮ on a phone for a group WITH screens too
+                            (before, only empty groups had one, so On/off schedule and
+                            Scheduled restart could not be reached on an iPhone). */}
+                        <div className="relative inline-block pr-1.5">
+                          <button
+                            type="button"
+                            ref={(el) => { groupKebabRefs.current[`m-${g.id}`] = el; }}
+                            aria-label={`More actions for ${g.name}`}
+                            aria-expanded={groupMenu === `m-${g.id}`}
+                            data-popover-trigger
+                            data-testid="mobile-group-kebab"
+                            onClick={(e) => { e.stopPropagation(); setGroupMenu(groupMenu === `m-${g.id}` ? null : `m-${g.id}`); }}
+                            className="w-11 h-11 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200/60"
+                          >
+                            <MoreVertical className="w-4 h-4" aria-hidden />
+                          </button>
+                          <AnchoredMenu anchorRef={{ current: groupKebabRefs.current[`m-${g.id}`] ?? null }} open={groupMenu === `m-${g.id}`} width={224} ariaLabel={`Actions for ${g.name}`}>
+                            {groupMenuItems(g)}
+                          </AnchoredMenu>
+                        </div>
                         </div>
                         {expanded && (
                           <ul>
