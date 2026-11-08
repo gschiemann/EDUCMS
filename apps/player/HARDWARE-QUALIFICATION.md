@@ -1,10 +1,19 @@
 # Player Hardware Qualification Matrix
 
-**Status of record.** A player/manager release is NOT production-ready until every
+**Status of record.** A player release is NOT production-ready until every
 **REQUIRED** hardware class below has a `PASS` (or a justified `NA`) for every check,
 with a date and initials. This file is machine-read by
 `scripts/check-hardware-qual.cjs`, which gates the release path in
 `.github/workflows/android-player-apk.yml` and `scripts/release-apk.sh`.
+
+**One release unit (2026-11-08).** A `## Release: player <x.y.z>` section qualifies the
+whole unit: the Player APK AND the Manager APK it carries in its assets
+(`apps/player/versions.properties` — `unit.version` and `manager.version`). The
+checklist's `cold-install`, `ota-push` and `boot-proof` runs exercise the companion on
+the same glass (the Player installs it when the bundled versionCode is newer, holding
+content while it does). There is no standalone Manager release any more: `manager-v*`
+tags are refused by the gate, and the `## Release: manager 1.0.24` section below is the
+last of its kind — kept as the record of what the deployed fleet runs.
 
 ## Why this file exists
 
