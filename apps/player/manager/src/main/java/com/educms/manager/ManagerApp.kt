@@ -65,23 +65,23 @@ class ManagerApp : Application() {
         // the permission is already granted.
         maybePromptForInstallPermission(this)
 
-        // Two periodic workers: Player OTA (existing) + Manager self-
-        // update (NEW in v1.0.2). Both run on independent schedules,
-        // both gracefully no-op when there's nothing to install.
-        scheduleOtaWorker(this)
-        scheduleManagerSelfUpdateWorker(this)
+        // ONE RELEASE UNIT (2026-11-08): the Manager no longer updates itself.
+        // It ships inside the Player APK and the Player installs it when the
+        // bundled versionCode is newer (ManagerUpdatePolicy). The periodic
+        // self-update job Manager ≤ 1.0.24 persisted in WorkManager survives
+        // the upgrade to this build, so it is CANCELLED here, on every boot —
+        // otherwise it would keep polling /manager-update-check every 30 min
+        // for the rest of the panel's life.
+        cancelLegacySelfUpdate(this)
 
-        // Bootstrap-fire BOTH workers on cold launch — covers two
-        // cases the periodic schedule alone misses:
-        //   1. Fresh install (Manager just sideloaded). The periodic
-        //      worker has its initial delay; we need an immediate
-        //      check so Player auto-installs without waiting.
-        //   2. Post-install warm boot (Manager just self-updated to a
-        //      new version). The new version's onCreate fires this,
-        //      which immediately probes for ANOTHER update — closes
-        //      the loop on multi-step upgrades within a single boot.
+        // The one periodic worker left: the Player lane, which only
+        // bootstraps a Player onto a kiosk that has none (OtaWorker).
+        scheduleOtaWorker(this)
+
+        // Bootstrap-fire the Player lane on cold launch — a fresh sideload of
+        // the Manager onto a kiosk with no Player should not wait out the
+        // periodic initial delay. A no-op once a Player is installed.
         triggerImmediateOtaCheck(this)
-        triggerImmediateManagerSelfUpdate(this)
 
         // v1.0.21 — pin Player as the HOME launcher. THE fix for the
         // OTA auto-relaunch problem (see pinPlayerAsHome). Idempotent;
@@ -410,60 +410,23 @@ class ManagerApp : Application() {
         }
 
         /**
-         * Schedule the Manager-self-update periodic worker.
-         *
-         * Operator (2026-04-28): "i dont want to side load any
-         * fucking thing after this next build". 30-min cadence
-         * matches the Player schedule so both stay current at
-         * roughly the same speed.
-         *
-         * REPLACE policy so future cadence changes propagate without
-         * needing to wait for the existing schedule to expire.
+         * ONE RELEASE UNIT (2026-11-08) — cancel the self-update lane Manager
+         * ≤ 1.0.24 persisted in WorkManager (`edu-manager-self-update-periodic`
+         * every 30 min, plus its one-shot). Idempotent; a name that is not
+         * enqueued is a no-op. The worker class stays as a landing pad so an
+         * already-scheduled tick that fires before this cancel does nothing
+         * (ManagerSelfUpdateWorker).
          */
-        fun scheduleManagerSelfUpdateWorker(ctx: Context) {
+        fun cancelLegacySelfUpdate(ctx: Context) {
             try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-                val req = PeriodicWorkRequestBuilder<ManagerSelfUpdateWorker>(30, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .setInitialDelay(120, TimeUnit.SECONDS)  // staggered 30s after Player OTA
-                    .build()
-                WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
-                    PERIODIC_MGR_SELF_NAME,
-                    ExistingPeriodicWorkPolicy.REPLACE,
-                    req,
-                )
-                Log.i(TAG, "Manager self-update worker scheduled (every 30min, network required)")
+                val wm = WorkManager.getInstance(ctx)
+                for (name in ManagerUpdatePolicy.LEGACY_SELF_UPDATE_WORK_NAMES) {
+                    wm.cancelUniqueWork(name)
+                }
+                Log.i(TAG, "legacy Manager self-update work cancelled (${ManagerUpdatePolicy.LEGACY_SELF_UPDATE_WORK_NAMES.joinToString()}) — the Player carries the Manager")
             } catch (e: Exception) {
-                Log.w(TAG, "scheduleManagerSelfUpdateWorker failed: ${e.message}", e)
+                Log.w(TAG, "cancelLegacySelfUpdate failed: ${e.message}", e)
             }
         }
-
-        /**
-         * One-shot Manager self-update fire — used on cold launch +
-         * boot + dashboard push. REPLACE policy so repeated triggers
-         * fold into a single in-flight check.
-         */
-        fun triggerImmediateManagerSelfUpdate(ctx: Context) {
-            try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-                val req = OneTimeWorkRequestBuilder<ManagerSelfUpdateWorker>()
-                    .setConstraints(constraints)
-                    .build()
-                WorkManager.getInstance(ctx).enqueueUniqueWork(
-                    "edu-manager-self-update-oneshot",
-                    ExistingWorkPolicy.REPLACE,
-                    req,
-                )
-                Log.i(TAG, "Manager self-update oneshot enqueued")
-            } catch (e: Exception) {
-                Log.w(TAG, "triggerImmediateManagerSelfUpdate failed: ${e.message}", e)
-            }
-        }
-
-        private const val PERIODIC_MGR_SELF_NAME = "edu-manager-self-update-periodic"
     }
 }

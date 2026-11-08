@@ -82,8 +82,34 @@ object CrashUploader {
         exec.shutdownNow()
     }
 
+    /**
+     * The PLAYER's fingerprint when the heartbeat provider has one (2026-11-08).
+     * The header above claimed Manager and Player derive the same ANDROID_ID;
+     * on Android 8+ the value is scoped per (signing key, PACKAGE, user), so
+     * the two packages differ and a Manager crash landed on a ghost row the
+     * dashboard never shows. The Player publishes its fingerprint into
+     * PlayerHealthProvider every 30 s (persisted to prefs); read it first and
+     * fall back to our own id only when the Player has never written one.
+     */
+    private fun deriveFingerprint(ctx: Context): String =
+        playerFingerprintFromHeartbeat(ctx) ?: ownFingerprint(ctx)
+
+    private fun playerFingerprintFromHeartbeat(ctx: Context): String? = try {
+        ctx.contentResolver.query(
+            android.net.Uri.parse("content://${com.educms.manager.PlayerHealthProvider.AUTHORITY}/heartbeat"),
+            null, null, null, null,
+        )?.use { c ->
+            if (!c.moveToFirst()) return null
+            val idx = c.getColumnIndex(com.educms.manager.PlayerHealthProvider.COL_FINGERPRINT)
+            if (idx < 0) return null
+            c.getString(idx)?.takeIf { it.isNotBlank() }
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
     @Suppress("DEPRECATION")
-    private fun deriveFingerprint(ctx: Context): String {
+    private fun ownFingerprint(ctx: Context): String {
         val androidId = try {
             android.provider.Settings.Secure.getString(
                 ctx.contentResolver,

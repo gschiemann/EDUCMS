@@ -19,7 +19,7 @@
     `apps/player/HARDWARE-QUALIFICATION.md` has PASS for cold install, pairing, reboot,
     offline recovery, content update, emergency drill, remote-only nav, OTA push and
     boot-proof. `scripts/check-hardware-qual.cjs` checks it before any assemble on a
-    release TAG (`player-v*` / `manager-v*`) and inside `scripts/release-apk.sh` — and
+    release TAG (`player-v*` — the unit; `manager-v*` tags are retired and refused) and inside `scripts/release-apk.sh` — and
     nowhere else: a field candidate (`workflow_dispatch` with `playerFieldCandidate`,
     delivered through `/super/field-builds`) skips the gate
     (`docs/governance/FIRST-RESPONSE.md`). Run
@@ -40,8 +40,23 @@
     (`deploy-reliability.yml`) reads red on the version-bump PR until that tag exists; it is
     not a required check, so it does not block the merge — tag the merged commit and re-run
     it (a tag cut seconds after the push raced the same gate on v1.1.7 AND v1.1.8).
-    `scripts/release-apk.sh` bumps the gradle and tags locally; the
-    `git push origin master <tag>` hint it prints predates this rule — do not follow it.
+    `scripts/release-apk.sh` bumps `apps/player/versions.properties` and tags locally; push
+    only the tag, after the merge.
+
+    **One release unit (2026-11-08).** The Player APK and the companion Manager APK are
+    one release: both versions live in `apps/player/versions.properties` (`unit.version`
+    for the Player — the tag and the matrix section — and `manager.version` for the
+    Manager, which moves only in a release that changes `apps/player/manager`; the gradle
+    files hold no literal, `scripts/check-apk-versions.cjs` refuses one), one CI run
+    builds both, the `player-v<unit>` release carries both APKs, and the Manager reaches a
+    screen only inside the Player APK: the Player installs the bundled companion when its
+    versionCode is newer than the installed one (`ManagerBootstrap`, `ManagerUpgradeMath`),
+    so the Manager rides the Player's ladder — field window, tracked push, canary, one
+    class, off-hours. The Manager never updates itself (`ManagerUpdatePolicy`;
+    `/manager-update-check` answers `installVia: 'player'` unless
+    `MANAGER_SELF_UPDATE_LEGACY_LANE=on`), and `manager-v*` tags are retired. A field
+    candidate `x.y.z-field.N` renames the Manager too only when it changed in that line;
+    the field-candidate registry records both digests.
 
 ## Rule 15 — every operator-facing surface must be remote-operable
 

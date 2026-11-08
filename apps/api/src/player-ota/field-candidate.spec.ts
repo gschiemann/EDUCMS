@@ -83,6 +83,38 @@ describe('private field admission and download capability', () => {
         }),
       ).toBeNull();
   });
+  it('records the companion inside the unit and refuses a malformed one (2026-11-08)', () => {
+    const manager = {
+      versionName: '1.1.25-field.1',
+      versionCode: 10125,
+      sha256: 'b'.repeat(64),
+      size: 2_000_000,
+    };
+    // A well-formed companion record rides along; an old entry has none.
+    expect(configuredFieldRelease(env, { [release.versionName]: { ...release, manager } })?.manager).toEqual(manager);
+    expect(configuredFieldRelease(env, { [release.versionName]: release })?.manager).toBeUndefined();
+    // The companion did not change in this line: an older stable version is fine.
+    expect(
+      configuredFieldRelease(env, {
+        [release.versionName]: { ...release, manager: { ...manager, versionName: '1.1.20', versionCode: 10120 } },
+      }),
+    ).not.toBeNull();
+    // Every malformed shape refuses the WHOLE candidate (fail closed).
+    for (const patch of [
+      { versionName: '1.0.24', versionCode: 10024 }, // the last hand-typed Manager — never again
+      { versionName: '1.1.26', versionCode: 10126 }, // above the Player that carries it
+      { versionCode: 10124 }, // code does not derive from the name
+      { sha256: 'bad' },
+      { size: 0 },
+      { size: 17 * 1024 * 1024 },
+      { versionName: 'nonsense' },
+    ])
+      expect(
+        configuredFieldRelease(env, {
+          [release.versionName]: { ...release, manager: { ...manager, ...patch } as typeof manager },
+        }),
+      ).toBeNull();
+  });
   it('retains the shared quarantine/floor/digest policy', () => {
     process.env.PLAYER_APK_QUARANTINE = release.versionName;
     try {

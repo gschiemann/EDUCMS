@@ -1,4 +1,5 @@
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -195,8 +196,21 @@ android {
         // TO RELEASE, once the checklist has been run on real hardware and
         // the PASS rows are recorded:  scripts/release-apk.sh player 1.1.18
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 10129
-        versionName = "1.1.29"
+        // ONE RELEASE UNIT (2026-11-08): the version is never typed here. It is
+        // `unit.version` in apps/player/versions.properties — the same file the
+        // Manager module, scripts/release-apk.sh, scripts/check-hardware-qual.cjs,
+        // scripts/check-apk-versions.cjs and the APK workflow read. versionCode is
+        // derived (major*10000 + minor*100 + patch), which is the API's formula.
+        val unitVersions = Properties().also { p: Properties ->
+            rootProject.file("versions.properties").inputStream().use { p.load(it) }
+        }
+        val unitVersion = (unitVersions.getProperty("unit.version") ?: "").trim()
+        val stableMatch = Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]?)\\.(0|[1-9][0-9]?)$").matchEntire(unitVersion)
+            ?: error("versions.properties unit.version must be x.y.z (got '$unitVersion')")
+        versionCode = stableMatch.groupValues[1].toInt() * 10000 +
+            stableMatch.groupValues[2].toInt() * 100 +
+            stableMatch.groupValues[3].toInt()
+        versionName = unitVersion
 
         // Manual field artifacts have their own higher install code and explicit prerelease name.
         // Default/tag builds retain the published literal version; never rebuild a stable version

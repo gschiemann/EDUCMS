@@ -4279,6 +4279,8 @@ export interface FieldBuildCandidate {
   allowed: boolean;
   blockedReason: string | null;
   mirror: { state: FieldBuildMirrorState; httpStatus?: number; checkedAt: string };
+  /** The companion Manager inside this Player APK (one release unit, 2026-11-08); null on older candidates (Manager 1.0.24). */
+  manager?: { versionName: string; versionCode: number; sha256: string; size: number } | null;
 }
 export interface FieldBuildWindow {
   id: string;
