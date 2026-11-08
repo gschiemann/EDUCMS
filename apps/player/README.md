@@ -195,6 +195,13 @@ The bundler downloads each asset, computes SHA-256, lays out:
   emergency/<sha256>.<ext>
 ```
 
+The folder is `edu-cms-content` today. After the 2026-11-08 VenueOS rebrand
+the player also finds `venueos-content` (and the `… 2` / `… (1)` copies a
+browser makes of either), and the dashboard export writes `venueos-content`
+once the API sets `USB_EXPORT_FOLDER_NAME=venueos` (`docs/ENVIRONMENT.md`).
+Players up to 1.1.65 find only `edu-cms-content`, so that switch stays unset
+until the fleet runs the new reader.
+
 ### 3. Operator walks the stick to the screen
 
 Plug into the Android player. The OS fires `USB_DEVICE_ATTACHED` → `UsbAttachReceiver` → `UsbIngestActivity`:
