@@ -508,7 +508,7 @@ const REACHABILITY_TILES: Array<{
   { id: 'stats-basic', widgetType: 'STATS', name: 'Stat Row', description: 'Three big numbers with labels — attendance, GPA, clubs, anything.', from: 'families', exportName: 'StatsWidget' },
   { id: 'schedule-grid-basic', widgetType: 'SCHEDULE_GRID', name: 'Schedule Grid', description: "The whole day's periods in one grid, with times.", from: 'families', exportName: 'ScheduleGridWidget' },
   { id: 'menu-item-basic', widgetType: 'MENU_ITEM', name: 'Menu Item', description: 'One featured dish with description and dietary tags.', from: 'families', exportName: 'MenuItemWidget' },
-  { id: 'streaming-basic', widgetType: 'STREAMING', name: 'Live Stream', description: 'A live channel or stream. Connect the provider in Settings, pick it here.', from: 'families', exportName: 'StreamingWidget' },
+  { id: 'streaming-basic', widgetType: 'STREAMING', name: 'Live Stream', description: 'A live stream, video link or camera. Paste the link in Properties and press Test.', from: 'families', exportName: 'StreamingWidget' },
   { id: 'playlist-basic', widgetType: 'PLAYLIST', name: 'Playlist', description: 'Play an existing playlist inside a zone. Assign it in Properties.', from: 'renderer', exportName: 'PlaylistWidget' },
   { id: 'wayfinding-map-basic', widgetType: 'WAYFINDING_MAP', name: 'Wayfinding Map', description: 'A floor map with pins. Upload the map and place pins in Properties.', from: 'renderer', exportName: 'WayfindingMapWidget' },
   { id: 'room-finder-basic', widgetType: 'ROOM_FINDER', name: 'Room Finder', description: 'Touch search for a room or a person. Needs touch mode.', from: 'renderer', exportName: 'RoomFinderWidget' },

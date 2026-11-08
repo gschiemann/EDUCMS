@@ -122,6 +122,8 @@ import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import {
   useDisplayControl,
   useDisplaySchedules,
+  useCreateDisplaySchedule,
+  useDeleteDisplaySchedule,
   DISPLAY_CONTROL_TIMEOUT_MS,
   type DisplayActionType,
 } from '@/hooks/use-api';
@@ -137,9 +139,10 @@ import {
   CONFIRM_WINDOW_MS,
   deriveSleepAwakeState,
   nativeReportAsleep,
+  softBlankFresh,
   type SleepAwakeTarget,
 } from './sleep-awake';
-import { resolveQuickControls, summarizeScheduleLine } from './quick-settings';
+import { resolveQuickControls, resolveAppliedSchedule } from './quick-settings';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
@@ -290,6 +293,15 @@ export interface DisplayControlScreen {
    */
   nativeRuntimeReport?: unknown;
   nativeRuntimeReportAt?: string | null;
+  /** The group this screen is in; its on/off schedule applies unless the screen has its own. */
+  screenGroupId?: string | null;
+  screenGroup?: { name?: string | null } | null;
+  /**
+   * The web player's soft-blank report (2026-11-02): server clock of the last
+   * report that said the black overlay is on the glass; null once one says it
+   * is gone. Rides every `GET /screens` row.
+   */
+  softBlankAt?: string | null;
 }
 
 export function ScreenDisplayControls({
@@ -396,6 +408,7 @@ export function ScreenDisplayControls({
     panelState,
     hardOff: nativeHardOff(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
     reportAsleep: nativeReportAsleep(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
+    softBlank: softBlankFresh(screen?.softBlankAt, nowMs),
     lastCommand,
     inFlight,
     now: nowMs,
@@ -655,32 +668,118 @@ export function ScreenDisplayControls({
     </div>
   );
 
-  // The on/off schedule as ONE line: "Off 6 PM – on 7 AM · Edit".
+  // The on/off schedule as ONE line: what actually applies — the screen's own
+  // schedule, else its group's (the API's manifest rule: screen wins).
   const scheduleQ = useDisplaySchedules(q.schedule ? { screenId: screen.id } : null);
-  const line = summarizeScheduleLine(scheduleQ.data, locale);
-  const scheduleText = scheduleQ.isLoading
-    ? t('screens.display.scheduleRow')
-    : line.kind === 'window'
+  const groupScheduleQ = useDisplaySchedules(
+    q.schedule && screen.screenGroupId ? { screenGroupId: screen.screenGroupId } : null,
+  );
+  const createSchedule = useCreateDisplaySchedule();
+  const deleteSchedule = useDeleteDisplaySchedule();
+  const ownRows = scheduleQ.data ?? [];
+  const groupRows = groupScheduleQ.data ?? [];
+  const applied = resolveAppliedSchedule(ownRows, groupRows, locale);
+  const line = applied.line;
+  const groupName = screen.screenGroup?.name ?? '';
+  const groupHasSchedule = groupRows.length > 0;
+  const base =
+    line.kind === 'window'
       ? line.more > 0
         ? t('screens.display.scheduleLineMore', { off: line.offAt, on: line.onAt, count: line.more })
         : t('screens.display.scheduleLineWindow', { off: line.offAt, on: line.onAt })
       : line.kind === 'paused'
         ? t('screens.display.scheduleLinePaused')
         : t('screens.display.scheduleLineNone');
+  const sourceNote =
+    applied.source === 'group'
+      ? groupName
+        ? t('screens.display.scheduleFromGroupNamed', { name: groupName })
+        : t('screens.display.scheduleFromGroup')
+      : applied.source === 'screen'
+        ? t('screens.display.scheduleOwn')
+        : null;
+  const scheduleText = scheduleQ.isLoading ? t('screens.display.scheduleRow') : base;
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  // "Override for this screen": copy the group's windows onto the screen (a
+  // screen-level row wins outright), then open the editor on them.
+  const overrideForScreen = async () => {
+    setScheduleBusy(true);
+    try {
+      for (const r of groupRows.filter((g) => g.isActive !== false)) {
+        await createSchedule.mutateAsync({
+          screenId: screen.id,
+          daysOfWeek: r.daysOfWeek,
+          onTime: r.onTime,
+          offTime: r.offTime,
+          timezone: r.timezone,
+        });
+      }
+      onOpenSchedule();
+    } catch {
+      setStatus({ ok: false, msg: t('screens.display.scheduleOverrideFailed') });
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  // "Use the group's schedule": remove the screen's own rows.
+  const useGroupSchedule = async () => {
+    const ok = await appConfirm({
+      title: t('screens.display.scheduleUseGroup'),
+      message: t('screens.display.scheduleUseGroupConfirm'),
+    });
+    if (!ok) return;
+    setScheduleBusy(true);
+    try {
+      for (const r of ownRows) await deleteSchedule.mutateAsync(r.id);
+    } catch {
+      setStatus({ ok: false, msg: t('screens.display.scheduleOverrideFailed') });
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const linkBtn =
+    'shrink-0 min-h-[40px] px-2 text-[13px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-md';
   const scheduleRow = q.schedule && (
-    <div
-      className="flex items-center gap-3 px-3.5 py-3 border-t border-slate-100 min-h-[48px]"
-      data-testid="schedule-line"
-    >
-      <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
-      <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-700">{scheduleText}</span>
-      <button
-        type="button"
-        onClick={onOpenSchedule}
-        className="shrink-0 min-h-[40px] px-2 text-[13px] font-bold text-indigo-600 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-md"
-      >
-        {line.kind === 'none' ? t('screens.display.scheduleSetUp') : t('screens.display.scheduleEdit')}
-      </button>
+    <div className="px-3.5 py-3 border-t border-slate-100 min-h-[48px]" data-testid="schedule-line">
+      <div className="flex items-center gap-3">
+        <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
+        <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-700">
+          {scheduleText}
+          {sourceNote && !scheduleQ.isLoading && (
+            <span className="block text-[11px] font-normal text-slate-500" data-testid="schedule-source">
+              {sourceNote}
+            </span>
+          )}
+        </span>
+        {applied.source === 'group' ? (
+          <button
+            type="button"
+            data-testid="schedule-override"
+            disabled={readOnly || scheduleBusy}
+            onClick={() => void overrideForScreen()}
+            className={linkBtn}
+          >
+            {t('screens.display.scheduleOverride')}
+          </button>
+        ) : (
+          <button type="button" onClick={onOpenSchedule} className={linkBtn}>
+            {line.kind === 'none' ? t('screens.display.scheduleSetUp') : t('screens.display.scheduleEdit')}
+          </button>
+        )}
+      </div>
+      {applied.source === 'screen' && groupHasSchedule && (
+        <div className="pl-7">
+          <button
+            type="button"
+            data-testid="schedule-use-group"
+            disabled={readOnly || scheduleBusy}
+            onClick={() => void useGroupSchedule()}
+            className={`${linkBtn} px-0`}
+          >
+            {t('screens.display.scheduleUseGroup')}
+          </button>
+        </div>
+      )}
     </div>
   );
 

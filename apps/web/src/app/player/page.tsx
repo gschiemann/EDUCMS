@@ -189,6 +189,8 @@ import {
   loopReportDue,
   mediaCapsRefused,
   updateReportRefused,
+  softBlankRefused,
+  softBlankOnGlass,
   videoExtrasRefused,
   LOOP_REPORT_RETRY_MS,
   initialTelemetryDelayMs,
@@ -377,7 +379,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyBannerRefused, displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -2942,6 +2944,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const tPlayerMenu = useTranslations('playerMenu');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPlaybackHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyPlaybackHeld, () => false);
+  // 2026-11-02: the app refused banner posture (its native video could not be
+  // proven correct under a banner) — the broadcast is shown as a full takeover.
+  const emergencyBannerRefused = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyBannerRefused, () => false);
   const [broadcastLayout, setBroadcastLayout] = useState<BroadcastLayout | null>(null);
   const onBannerLayoutChange = useCallback((next: BroadcastLayout | null) => {
     setBroadcastLayout(previous => previous?.width === next?.width && previous?.height === next?.height && previous?.bannerHeight === next?.bannerHeight ? previous : next);
@@ -8609,6 +8614,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const mediaCapsRef = useRef<TelemetryMediaCaps | null>(null);
   const mediaCapsSentRef = useRef(false);
   const mediaCapsBlockedUntilRef = useRef(0);
+  // Soft BLANK report (2026-11-02): held back for LOOP_REPORT_RETRY_MS after an
+  // older API refused a body that carried it — liveness never pays for it.
+  const softBlankBlockedUntilRef = useRef(0);
   useEffect(() => {
     if (typeof window === 'undefined' || isPreviewMode()) return;
     let live = true;
@@ -8717,6 +8725,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         cacheSource: cacheSourceAllowedRef.current && (nativeFirstFaceRef.current?.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL
           ? readinessSourceRef.current
           : null,
+        // Is the soft BLANK overlay on the glass (2026-11-02)? Read from the
+        // DOM node, never the state flag — the dashboard's Sleep/Awake pair
+        // confirms a soft Sleep from this.
+        softBlank: nowMs >= softBlankBlockedUntilRef.current ? softBlankOnGlass(softBlankNodeRef.current) : null,
       });
 
       let status: number | null = null;
@@ -8777,6 +8789,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (mediaCapsRefused(status, body)) {
         mediaCapsBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the decode-capability report — holding it back for 10 minutes');
+      }
+      if (softBlankRefused(status, body)) {
+        softBlankBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the soft-blank report — holding it back for 10 minutes');
       }
       if (updateReportRefused(status, body)) {
         updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
@@ -8895,6 +8911,30 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (timer) clearTimeout(timer);
     };
   }, [screenId]);
+
+  // ── Soft BLANK went on / off → report it now (2026-11-02) ──────────────
+  //
+  // The dashboard's Sleep/Awake pair waits CONFIRM_WINDOW_MS (30 s) for the
+  // screen to confirm a soft Sleep; the routine report is a minute away. So
+  // when the overlay node appears or disappears, the NEXT report goes now —
+  // through the same scheduler tick (no new timer, no new route, bounded by
+  // the same request timeout). The API lets exactly this report past its
+  // 30 s per-screen floor because the value changed; anything else waits.
+  // Runs after every commit: a boolean compare, nothing more. At most one
+  // kick per 2 s, so a flapping overlay cannot become a request storm — the
+  // routine report carries whatever it settles on.
+  const softBlankKickedRef = useRef(false);
+  const softBlankKickAtRef = useRef(0);
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    const onGlass = softBlankOnGlass(softBlankNodeRef.current);
+    if (onGlass === softBlankKickedRef.current) return;
+    const nowMs = Date.now();
+    if (nowMs - softBlankKickAtRef.current < 2_000) return;
+    softBlankKickedRef.current = onGlass;
+    softBlankKickAtRef.current = nowMs;
+    telemetryTickRef.current?.();
+  });
 
   // ── Content changed → bring the next report forward, don't add one ─────
   //
@@ -12781,6 +12821,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           onTenantEmergencyHint={onTenantEmergencyHint}
           onPolledActiveChange={onPolledEmergencyActiveChange}
           onBannerLayoutChange={onBannerLayoutChange}
+          fullPresentation={emergencyBannerRefused}
         />
       ) : null;
 
@@ -12805,6 +12846,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     polledTakeover: polledEmergencyTakeover,
     renderHold: emergencyRenderHold,
     playbackHeld: emergencyPlaybackHold,
+    bannerRefused: emergencyBannerRefused,
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
   });

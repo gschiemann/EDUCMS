@@ -1,63 +1,52 @@
 "use client";
 /**
- * StreamingWidget — multi-protocol live-stream renderer with ad overlay.
+ * StreamingWidget — live streams, video links, embeds and cameras on a zone.
  * ───────────────────────────────────────────────────────────────────────
  *
- * Sprint 8c (2026-05-03). Built so a gym / bar / restaurant operator can
- * point this at any of the providers in `packages/api-types/streaming.ts`
- * and get a fullscreen stream that plays alongside scheduled ads.
+ * Sprint 8c (2026-05-03) built it; the 2026-11-07 flagship audit
+ * (`docs/handoffs/2026-11-07-streaming-widget-audit.md`) rebuilt the playback
+ * and every state the glass can show.
  *
- * Playback modes (resolved per-channel):
- *   • hls    → <video> tag with hls.js polyfill for non-Safari browsers.
- *   • iframe → YouTube / Twitch / Vimeo embed via their iframe URL
- *     pattern. NO third-party SDKs loaded — the embed URL is enough.
- *   • dash   → NOT supported. We don't bundle a DASH player, so a .mpd
- *     URL surfaces an honest "use HLS instead" message rather than
- *     silently failing on a black box.
- *   • rtmp   → not browser-native; we surface a "needs server transcode"
- *     placeholder so operators see the limitation without crashing.
+ * Source kinds (one classifier, `streaming/stream-source.ts`, shared with the
+ * editor so the "will this work?" chip and the screen never disagree):
+ *   • hls          → `LiveVideoStream`: hls.js on MSE browsers (Android
+ *                     WebView, Taurus Chromium 83, Chrome, Firefox), native on
+ *                     Apple WebKit; reconnect + backoff; frame counter.
+ *   • progressive  → the same engine with a plain src (MP4/WebM), looped.
+ *   • youtube / vimeo / twitch / kick → official embed in a sandboxed iframe
+ *                     on the allowlist (INJ-006).
+ *   • mjpeg        → an <img> on the camera's multipart feed.
+ *   • snapshot     → an <img> refreshed on a timer, double-buffered.
+ *   • rtsp / rtmp / srt → never playable in a browser: an honest "needs a
+ *                     gateway" card, not a black box.
+ *   • dash         → not bundled: an honest card.
  *
- * Ad overlays:
- *   • Lower-third strip — bottom 18% of the widget, slides in/out.
- *   • Side rail — right 20% column, persistent.
- *   • Full-bleed — covers the stream for `durationMs`, then resumes.
- * Cadence is driven by `intervalMs` + `durationMs` from the AdSlot
- * config. Player picks the next ad by weight (round-robin within a
- * weight class, weight=1 default). Ads only show when the channel's
- * `allowAdOverlay` flag is true (some providers forbid).
+ * States on the glass (all calm, all localized, none a bare black box):
+ * connecting (poster + spinner) → playing (optional LIVE badge) → stalled /
+ * reconnecting (pill over the last frame) → offline (card over the poster
+ * with the next retry). `data-stream-state` / `data-stream-kind` on the root
+ * and `window.__eduStreams` carry the same facts for diagnostics.
  *
- * Inputs (config):
- *   {
- *     channelId: string,        // optional — fetches from /streaming/channels/:id
- *     playbackUrl: string,      // optional — direct override (custom HLS)
- *     playbackType: 'hls'|'dash'|'iframe'|...,
- *     embedUrl: string,         // for iframe playback
- *     allowAdOverlay: boolean,
- *     adSlots: Array<AdSlotConfig>, // pre-resolved by API
- *     muted: boolean,           // venue default; players usually mute by policy
- *     fitMode: 'cover'|'contain',
- *   }
+ * Emergency: a takeover alert returns a different tree from the player page,
+ * so this widget UNMOUNTS (decoder and network released) and remounts from
+ * the live edge on all-clear. A banner alert overlays it and leaves it
+ * running.
  *
- * Why this is a separate widget (not a variant of VIDEO):
- *   • VIDEO renders a single asset URL. Streaming has session-bound
- *     auth, signed-URL refresh, ad overlay, picker UX.
- *   • Streaming widget needs its own renderer-error fallback so a
- *     dropped stream doesn't blank the screen.
+ * Ad overlays (unchanged behaviour): lower-third / side-rail / full-bleed on
+ * the AdSlot cadence, only when `allowAdOverlay !== false` and live.
+ *
+ * Taurus: no `inset`, no flex `gap`, no backdrop-filter.
  */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { parseYoutubeUrl, parseVimeoUrl, youtubeEmbedSrc, vimeoEmbedSrc } from './streaming-url-parse';
-import { useEffect, useRef, useState } from 'react';
-// 2026-05-03 — capability layer integration. The widget reads the
-// detected device caps so it can:
-//   • Pick H.264 transcode over H.265 / AV1 on devices that don't
-//     decode the modern codec (server-side transcoding pipeline
-//     supplies the per-codec URLs in `playbackUrlVariants`).
-//   • Surface a friendly "this Android version is too old for HLS"
-//     message instead of a black box on Chromium < ~50.
-//   • Skip ad overlays that need backdrop-filter on devices that
-//     can't render it (avoids the "ad blob covers the entire
-//     screen with a solid black panel" failure mode).
+// Capability layer: best-codec pick for `playbackUrlVariants` and the
+// too-old-WebView notice.
 import { detectCapabilities, pickBestVideo } from '@/lib/capabilities';
 import { STREAMING_EMBED_HOSTS, isAllowedStreamingHost } from './streaming-hosts';
+import { detectStreamSource, reconnectDelayMs, type StreamKind } from './streaming/stream-source';
+import { LiveVideoStream, type StreamStatus } from './streaming/LiveVideoStream';
+import { sceneCss } from './scene-css';
 
 interface AdSlotCfg {
   id: string;
@@ -69,197 +58,359 @@ interface AdSlotCfg {
   weight?: number;
 }
 
-interface StreamingCfg {
+export interface StreamingCfg {
   channelTitle?: string;
   playbackUrl?: string;
-  /** Optional per-codec URL variants for capability-aware selection.
-   *  Set when the transcode pipeline produces multiple codecs from
-   *  a single source. The widget picks the BEST codec the current
-   *  device can decode (AV1 → H.265 → VP9 → H.264). Falls back to
-   *  `playbackUrl` when this isn't provided. */
+  /** Optional per-codec URL variants; the best one this device decodes wins. */
   playbackUrlVariants?: Array<{ url: string; codec: 'av1' | 'h265' | 'vp9' | 'h264' }>;
   embedUrl?: string;
   playbackType?: 'hls' | 'dash' | 'iframe' | 'rtmp' | 'rtsp';
   allowAdOverlay?: boolean;
   adSlots?: AdSlotCfg[];
   muted?: boolean;
+  /** 0..100, applied only when unmuted. */
+  volume?: number;
   fitMode?: 'cover' | 'contain';
-  /** Live mode controls autoplay + ad rotation timer. */
+  /** Shown while connecting and behind the offline card. */
+  posterUrl?: string;
+  /** LIVE badge on a live stream that is actually playing. Default on. */
+  showLiveBadge?: boolean;
+  /** Camera snapshot refresh, seconds. */
+  refreshSeconds?: number;
   isLive?: boolean;
 }
 
-export function StreamingWidget({ config, live }: { config?: StreamingCfg; live?: boolean }) {
+export function StreamingWidget({
+  config,
+  live,
+  onStatus,
+}: {
+  config?: StreamingCfg;
+  live?: boolean;
+  /** Editor test player: receives every phase change. */
+  onStatus?: (s: StreamStatus) => void;
+}) {
+  const t = useTranslations('streamingWidget');
   const c = config || {};
   const isLive = !!live;
-  const playbackType = c.playbackType || guessPlaybackType(c.playbackUrl, c.embedUrl);
-  const fit = c.fitMode || 'cover';
+  const fit = c.fitMode === 'contain' ? 'contain' : 'cover';
+  const muted = c.muted ?? true;
+  const volume = typeof c.volume === 'number' ? c.volume / 100 : undefined;
+  const [status, setStatus] = useState<StreamStatus | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const scale = useContainerFontSize(rootRef);
 
-  // 2026-05-03 — capability-aware codec selection. If the operator
-  // (or the transcode pipeline) supplied multiple codec variants,
-  // pick the best one the device can play. Otherwise fall through
-  // to the single playbackUrl. This is the load-bearing piece of
-  // Android-7-to-14 compatibility for video — older WebViews can't
-  // decode H.265 or AV1, but they all play H.264 fine.
   const resolvedPlaybackUrl = c.playbackUrlVariants && c.playbackUrlVariants.length > 0
     ? pickBestVideo(c.playbackUrlVariants) || c.playbackUrl || ''
     : c.playbackUrl || '';
 
-  // Surface a friendly fallback when the device's WebView is too old
-  // for HLS playback. Chromium <51 doesn't have native HLS or
-  // hls.js compatibility — operator should know to upgrade hardware
-  // rather than seeing a black box.
-  if (typeof window !== 'undefined' && playbackType === 'hls') {
+  // Same rule as before 2026-11-07: an embedUrl means the embed path.
+  const embed = c.playbackType === 'iframe' || !!c.embedUrl;
+  const sourceUrl = embed ? (c.embedUrl || resolvedPlaybackUrl) : resolvedPlaybackUrl;
+  const detected = useMemo(() => detectStreamSource(sourceUrl), [sourceUrl]);
+  // An explicit channel type wins over the sniffer (saved channels carry it).
+  let kind: StreamKind = detected.kind;
+  if (c.playbackType === 'hls' && (kind === 'unknown' || kind === 'progressive')) kind = 'hls';
+  if (c.playbackType === 'dash') kind = 'dash';
+  if (c.playbackType === 'rtmp') kind = 'rtmp';
+  if (c.playbackType === 'rtsp') kind = 'rtsp';
+  const isEmbedKind = embed || kind === 'youtube' || kind === 'vimeo' || kind === 'twitch' || kind === 'kick';
+
+  const handleStatus = (s: StreamStatus) => {
+    setStatus(s);
+    onStatus?.(s);
+  };
+
+  const shell = (children: React.ReactNode, state: string) => (
+    <div
+      ref={rootRef}
+      className="absolute top-0 right-0 bottom-0 left-0"
+      data-stream-kind={isEmbedKind ? 'embed' : kind}
+      data-stream-state={state}
+      style={{ overflow: 'hidden', background: '#000', fontSize: scale, lineHeight: 1.25 }}
+    >
+      {/* sceneCss: boosted above the flattened Tailwind preflight, which
+          otherwise zeroes every padding/margin here (scene-css.ts). */}
+      <style>{sceneCss(STREAM_CSS)}</style>
+      {children}
+    </div>
+  );
+
+  if (!sourceUrl) {
+    return shell(
+      <StreamStateCard icon="tv" title={c.channelTitle || t('noSource')} hint={t('noSourceHint')} poster={c.posterUrl} />,
+      'empty',
+    );
+  }
+
+  if (isEmbedKind) {
+    return shell(
+      <>
+        <IframeStream url={sourceUrl} muted={muted} live={isLive} />
+        {c.allowAdOverlay !== false && isLive && Array.isArray(c.adSlots) && c.adSlots.length > 0 && <AdOverlay slots={c.adSlots} />}
+      </>,
+      'embed',
+    );
+  }
+
+  if (kind === 'rtsp' || kind === 'rtmp' || kind === 'srt') {
+    const protocol = kind === 'srt' ? 'SRT / UDP' : kind.toUpperCase();
+    return shell(
+      <StreamStateCard icon="camera" title={t('gatewayTitle', { protocol })} hint={t('gatewayHint', { protocol })} poster={c.posterUrl} />,
+      'needs-gateway',
+    );
+  }
+  if (kind === 'dash') {
+    return shell(<StreamStateCard icon="alert" title={t('dashTitle')} hint={t('dashHint')} poster={c.posterUrl} />, 'unsupported');
+  }
+  if (detected.verdict === 'blocked') {
+    const r = detected.reason;
+    const [title, hint] = r === 'insecure'
+      ? [t('insecureTitle'), t('insecureHint')]
+      : r === 'private-host'
+        ? [t('privateTitle'), t('privateHint')]
+        : [t('notUrlTitle'), t('notUrlHint')];
+    return shell(<StreamStateCard icon="lock" title={title} hint={hint} poster={c.posterUrl} />, 'blocked');
+  }
+
+  if (kind === 'mjpeg' || kind === 'snapshot') {
+    return shell(
+      <CameraImageStream
+        url={sourceUrl}
+        snapshot={kind === 'snapshot'}
+        refreshSeconds={c.refreshSeconds}
+        fit={fit}
+        poster={c.posterUrl}
+        onStatus={handleStatus}
+      />,
+      status?.phase || 'connecting',
+    );
+  }
+
+  // HLS / progressive / unknown-extension (tried as HLS).
+  if (typeof window !== 'undefined') {
     const caps = detectCapabilities();
     if (caps.chromiumMajor > 0 && caps.chromiumMajor < 51) {
-      return (
-        <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
-          <div>
-            <div style={{ fontSize: '2em' }}>⚠️</div>
-            <div style={{ fontWeight: 700 }}>This screen's Android version is too old for HLS streaming.</div>
-            <div style={{ fontSize: '0.85em', marginTop: 4 }}>Detected Chromium {caps.chromiumMajor}. Need 51 or newer. Use a YouTube embed channel instead, or upgrade the device's WebView via Play Store.</div>
-          </div>
-        </div>
+      return shell(
+        <StreamStateCard icon="alert" title={t('unsupportedTitle')} hint={t('oldWebview', { version: `Chromium ${caps.chromiumMajor}` })} poster={c.posterUrl} />,
+        'unsupported',
       );
     }
   }
 
-  if (!c.playbackUrl && !c.embedUrl) {
-    return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#94a3b8', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
-        <div>
-          <div style={{ fontSize: '2em', marginBottom: 8 }}>📺</div>
-          <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{c.channelTitle || 'No channel selected'}</div>
-          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Add a live stream in Settings → Connections → Live video.</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (playbackType === 'rtmp' || playbackType === 'rtsp') {
-    return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
-        <div>
-          <div style={{ fontSize: '2em' }}>⚠️</div>
-          <div style={{ fontWeight: 700 }}>RTMP / RTSP requires a server-side transcode.</div>
-          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Configure a transcoder gateway URL in the channel config, or use HLS instead.</div>
-        </div>
-      </div>
-    );
-  }
-
-  // MPEG-DASH (.mpd) is NOT supported — we don't bundle a DASH player, so
-  // attempting playback would silently fail. Tell the operator honestly to
-  // use HLS instead rather than showing a black box that never plays.
-  if (playbackType === 'dash') {
-    return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center" style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}>
-        <div>
-          <div style={{ fontSize: '2em' }}>⚠️</div>
-          <div style={{ fontWeight: 700 }}>MPEG-DASH (.mpd) isn&apos;t supported.</div>
-          <div style={{ fontSize: '0.85em', marginTop: 4 }}>Use an HLS (.m3u8) URL instead — most providers offer both.</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute top-0 right-0 bottom-0 left-0" style={{ overflow: 'hidden', background: '#000' }}>
-      {playbackType === 'iframe' ? (
-        <IframeStream url={c.embedUrl || resolvedPlaybackUrl} muted={c.muted ?? true} live={isLive} />
-      ) : (
-        // Default to HLS — uses capability-resolved best-codec URL
-        <HlsStream url={resolvedPlaybackUrl} muted={c.muted ?? true} fit={fit} live={isLive} />
+  const phase = status?.phase || 'connecting';
+  const showLiveBadge = c.showLiveBadge !== false && phase === 'playing' && status?.isLive === true;
+  return shell(
+    <>
+      <LiveVideoStream url={sourceUrl} muted={muted} volume={volume} fit={fit} onStatus={handleStatus} />
+      {phase === 'connecting' && (
+        <StreamStateCard icon="spinner" title={t('connecting')} poster={c.posterUrl} subtle />
       )}
-
-      {/* Ad overlay layer — only when allowed by channel + slots present
-          + we're in live mode (preview mode skips so the editor canvas
-          isn't constantly flashing ads while the operator is laying
-          out the template). */}
+      {phase === 'offline' && (
+        <StreamStateCard
+          icon="offline"
+          title={t('offlineTitle')}
+          hint={t('offlineHint')}
+          poster={c.posterUrl}
+          retryAt={status?.nextRetryAt ?? null}
+        />
+      )}
+      {phase === 'unsupported' && (
+        <StreamStateCard icon="alert" title={t('unsupportedTitle')} hint={t('unsupportedHint')} poster={c.posterUrl} />
+      )}
+      {(phase === 'stalled' || phase === 'reconnecting') && (
+        <div className="vos-stream-dim" aria-hidden="true" />
+      )}
+      {showLiveBadge && <StatusPill tone="live" label={t('live')} />}
+      {(phase === 'stalled' || phase === 'reconnecting') && <StatusPill tone="warn" label={t('reconnecting')} />}
       {c.allowAdOverlay !== false && isLive && Array.isArray(c.adSlots) && c.adSlots.length > 0 && (
         <AdOverlay slots={c.adSlots} />
       )}
+    </>,
+    phase,
+  );
+}
+
+// ─── Container-relative type scale (no container-query units: Taurus) ─────
+function useContainerFontSize(ref: React.RefObject<HTMLDivElement | null>): number {
+  const [size, setSize] = useState(16);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      // A 16:9-equivalent width: a tall narrow zone scales by its height.
+      const basis = Math.min(w, h * 1.78);
+      const next = Math.max(10, Math.min(36, Math.round(basis / 34)));
+      setSize((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
+
+// ─── Shared styles (keyframes; long-hand positioning only) ────────────────
+const STREAM_CSS = `
+@keyframes vosStreamSpin { to { transform: rotate(360deg); } }
+@keyframes vosStreamPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes vosStreamFade { from { opacity: 0; } to { opacity: 1; } }
+.vos-stream-card { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: #e2e8f0; background: #0b1120; background-image: radial-gradient(120% 90% at 50% 30%, #1e293b 0%, #0b1120 68%); animation: vosStreamFade .35s ease-out both; font-family: inherit; }
+.vos-stream-card--subtle { background: rgba(2, 6, 23, 0.55); background-image: none; }
+.vos-stream-poster { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: .38; }
+.vos-stream-card--subtle .vos-stream-poster { opacity: 1; }
+.vos-stream-scrim { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(180deg, rgba(2,6,23,.35) 0%, rgba(2,6,23,.78) 100%); }
+.vos-stream-body { position: relative; max-width: 30em; padding: 1em 1.4em; display: flex; flex-direction: column; align-items: center; }
+.vos-stream-icon { width: 2.6em; height: 2.6em; margin: 0 0 .85em; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: center; color: #cbd5e1; }
+.vos-stream-icon svg { width: 1.25em; height: 1.25em; }
+.vos-stream-spinner { width: 2.2em; height: 2.2em; margin: 0 0 .85em; border-radius: 999px; border: .16em solid rgba(255,255,255,.16); border-top-color: #f8fafc; animation: vosStreamSpin .9s linear infinite; }
+.vos-stream-title { font-size: 1em; font-weight: 600; letter-spacing: -0.01em; color: #f8fafc; }
+.vos-stream-hint { margin-top: .4em; font-size: .72em; line-height: 1.45; color: #94a3b8; }
+.vos-stream-meta { margin-top: .9em; font-size: .6em; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
+.vos-stream-dim { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 6, 23, .35); pointer-events: none; }
+.vos-stream-pill { position: absolute; top: 4%; left: 3%; display: flex; align-items: center; padding: .3em .75em .3em .6em; border-radius: 999px; background: rgba(15, 23, 42, .78); border: 1px solid rgba(255,255,255,.14); color: #f8fafc; font-size: .58em; font-weight: 700; letter-spacing: .14em; line-height: 1; pointer-events: none; z-index: 5; box-shadow: 0 .4em 1.2em rgba(0,0,0,.25); }
+.vos-stream-pill-dot { width: .62em; height: .62em; border-radius: 999px; margin-right: .5em; background: #ef4444; box-shadow: 0 0 0 .22em rgba(239,68,68,.22); animation: vosStreamPulse 2s ease-in-out infinite; }
+.vos-stream-pill--warn .vos-stream-pill-dot { background: #f59e0b; box-shadow: 0 0 0 .22em rgba(245,158,11,.22); }
+`;
+
+type CardIcon = 'tv' | 'camera' | 'alert' | 'lock' | 'offline' | 'spinner';
+
+function CardGlyph({ icon }: { icon: Exclude<CardIcon, 'spinner'> }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...common}>
+      {icon === 'tv' && (<><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></>)}
+      {icon === 'camera' && (<><rect x="3" y="7" width="13" height="10" rx="2" /><path d="M16 11l5-3v8l-5-3" /></>)}
+      {icon === 'alert' && (<><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16h.01" /></>)}
+      {icon === 'lock' && (<><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>)}
+      {icon === 'offline' && (<><path d="M2 8.8a15 15 0 0 1 20 0M5 12.6a10 10 0 0 1 14 0M8.5 16.2a5 5 0 0 1 7 0" /><path d="M12 20h.01" /><path d="M3 3l18 18" /></>)}
+    </svg>
+  );
+}
+
+function StreamStateCard({
+  icon, title, hint, poster, retryAt, subtle,
+}: {
+  icon: CardIcon; title: string; hint?: string; poster?: string; retryAt?: number | null; subtle?: boolean;
+}) {
+  return (
+    <div className={`vos-stream-card${subtle ? ' vos-stream-card--subtle' : ''}`} role="status" data-stream-card={icon}>
+      {poster ? <img className="vos-stream-poster" src={poster} alt="" /> : null}
+      {poster && !subtle ? <div className="vos-stream-scrim" /> : null}
+      <div className="vos-stream-body">
+        {icon === 'spinner' ? <div className="vos-stream-spinner" /> : <div className="vos-stream-icon"><CardGlyph icon={icon} /></div>}
+        <div className="vos-stream-title">{title}</div>
+        {hint ? <div className="vos-stream-hint">{hint}</div> : null}
+        {retryAt ? <RetryCountdown at={retryAt} /> : null}
+      </div>
     </div>
   );
 }
 
-// ─── Playback type sniffer ─────────────────────────────────────────────
-function guessPlaybackType(playbackUrl?: string, embedUrl?: string): 'hls' | 'dash' | 'iframe' {
-  if (embedUrl) return 'iframe';
-  const url = playbackUrl || '';
-  if (/youtube\.com|youtu\.be|twitch\.tv|vimeo\.com|kick\.com/i.test(url)) return 'iframe';
-  if (/\.mpd(\?|$)/i.test(url)) return 'dash';
-  return 'hls'; // default
+function RetryCountdown({ at }: { at: number }) {
+  const t = useTranslations('streamingWidget');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [at]);
+  const seconds = Math.max(0, Math.ceil((at - now) / 1000));
+  return <div className="vos-stream-meta">{seconds > 0 ? t('retryIn', { seconds }) : t('retryNow')}</div>;
 }
 
-// ─── HLS player (hls.js polyfill for non-Safari) ──────────────────────
-function HlsStream({ url, muted, fit, live }: { url: string; muted: boolean; fit: 'cover' | 'contain'; live: boolean }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
+function StatusPill({ tone, label }: { tone: 'live' | 'warn'; label: string }) {
+  return (
+    <div className={`vos-stream-pill${tone === 'warn' ? ' vos-stream-pill--warn' : ''}`} data-stream-pill={tone}>
+      <span className="vos-stream-pill-dot" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+// ─── Camera feeds: MJPEG (multipart <img>) and refreshed snapshots ────────
+function CameraImageStream({
+  url, snapshot, refreshSeconds, fit, poster, onStatus,
+}: {
+  url: string; snapshot: boolean; refreshSeconds?: number; fit: 'cover' | 'contain'; poster?: string;
+  onStatus: (s: StreamStatus) => void;
+}) {
+  const t = useTranslations('streamingWidget');
+  const [src, setSrc] = useState<string | null>(snapshot ? null : url);
+  const [phase, setPhase] = useState<'connecting' | 'playing' | 'offline'>('connecting');
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const attemptRef = useRef(0);
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v || !url) return;
-    let hls: any = null;
-    let cancelled = false;
-    setErrMsg(null);
+    onStatusRef.current({
+      phase, isLive: true, engine: 'none', attempt: attemptRef.current, nextRetryAt: retryAt,
+      width: 0, height: 0, mutedByPolicy: false, lastError: phase === 'offline' ? 'image-error' : null,
+    });
+  }, [phase, retryAt]);
 
-    // Safari + iOS support HLS natively. Everything else needs hls.js.
-    const canPlayHlsNatively = v.canPlayType('application/vnd.apple.mpegurl') !== '';
-    if (canPlayHlsNatively) {
-      v.src = url;
-      if (live) v.play().catch(() => { /* autoplay blocked — operator must unmute / interact */ });
-    } else {
-      (async () => {
-        try {
-          const mod = await import('hls.js');
-          if (cancelled) return;
-          const Hls = (mod as any).default || mod;
-          if (!Hls.isSupported()) {
-            setErrMsg('Your browser does not support HLS playback.');
-            return;
-          }
-          hls = new Hls({
-            // Live tuning — keep latency low without burning bandwidth on
-            // a venue's wifi.
-            liveSyncDurationCount: 3,
-            liveMaxLatencyDurationCount: 6,
-            enableWorker: true,
-            lowLatencyMode: true,
-          });
-          hls.loadSource(url);
-          hls.attachMedia(v);
-          hls.on(Hls.Events.ERROR, (_e: unknown, data: any) => {
-            if (data?.fatal) {
-              setErrMsg(`Stream error: ${data?.details || 'unknown'}`);
-            }
-          });
-          if (live) v.play().catch(() => { /* autoplay blocked */ });
-        } catch (e) {
-          if (!cancelled) setErrMsg(`Could not load HLS player: ${(e as Error).message}`);
-        }
-      })();
-    }
-
-    return () => {
-      cancelled = true;
-      try { hls?.destroy?.(); } catch { /* ignore */ }
+  // Snapshot: preload off-screen, swap only a decoded frame (no flicker).
+  useEffect(() => {
+    if (!snapshot) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const every = Math.max(2, Math.min(3600, refreshSeconds || 10)) * 1000;
+    const load = () => {
+      const next = `${url}${url.includes('?') ? '&' : '?'}_vos=${Date.now()}`;
+      const img = new Image();
+      img.onload = () => {
+        if (disposed) return;
+        attemptRef.current = 0;
+        setRetryAt(null);
+        setSrc(next);
+        setPhase('playing');
+        timer = setTimeout(load, every);
+      };
+      img.onerror = () => {
+        if (disposed) return;
+        attemptRef.current += 1;
+        const delay = Math.max(every, reconnectDelayMs(attemptRef.current - 1));
+        setRetryAt(Date.now() + delay);
+        // Keep the last good frame; go offline only if we never had one.
+        setPhase((p) => (p === 'playing' && attemptRef.current < 3 ? 'playing' : 'offline'));
+        timer = setTimeout(load, delay);
+      };
+      img.src = next;
     };
-  }, [url, live]);
+    load();
+    return () => { disposed = true; if (timer) clearTimeout(timer); };
+  }, [url, snapshot, refreshSeconds]);
+
+  // MJPEG: retry the multipart feed with backoff after an error.
+  useEffect(() => {
+    if (snapshot || phase !== 'offline' || !retryAt) return;
+    const id = setTimeout(() => setSrc(`${url}${url.includes('?') ? '&' : '?'}_vos=${Date.now()}`), Math.max(0, retryAt - Date.now()));
+    return () => clearTimeout(id);
+  }, [snapshot, phase, retryAt, url]);
 
   return (
     <>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={muted}
-        controls={false}
-        style={{ width: '100%', height: '100%', objectFit: fit, background: '#000' }}
-      />
-      {errMsg && (
-        <div className="absolute top-2 left-2 px-2 py-1 rounded text-[11px] bg-rose-600 text-white pointer-events-none">
-          {errMsg}
-        </div>
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          style={{ width: '100%', height: '100%', objectFit: fit, display: 'block', background: '#000' }}
+          onLoad={snapshot ? undefined : () => { attemptRef.current = 0; setRetryAt(null); setPhase('playing'); }}
+          onError={snapshot ? undefined : () => {
+            attemptRef.current += 1;
+            setRetryAt(Date.now() + reconnectDelayMs(attemptRef.current - 1));
+            setPhase('offline');
+          }}
+        />
+      ) : null}
+      {phase === 'connecting' && <StreamStateCard icon="spinner" title={t('connecting')} poster={poster} subtle />}
+      {phase === 'offline' && (
+        <StreamStateCard icon="offline" title={t('offlineTitle')} hint={t('offlineHint')} poster={poster} retryAt={retryAt} />
       )}
     </>
   );
@@ -267,6 +418,7 @@ function HlsStream({ url, muted, fit, live }: { url: string; muted: boolean; fit
 
 // ─── Iframe player (YouTube / Twitch / Vimeo) ──────────────────────────
 function IframeStream({ url, muted, live }: { url: string; muted: boolean; live: boolean }) {
+  const t = useTranslations('streamingWidget');
   // Normalize each provider's URL into its embed form.
   const embedUrl = normalizeEmbedUrl(url, { muted, autoplay: live });
 
@@ -278,19 +430,11 @@ function IframeStream({ url, muted, live }: { url: string; muted: boolean; live:
   // page.
   if (!embedUrl) {
     return (
-      <div
-        className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
-        style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}
-      >
-        <div>
-          <div style={{ fontSize: '2em' }}>⚠️</div>
-          <div style={{ fontWeight: 700 }}>Unsupported streaming host.</div>
-          <div style={{ fontSize: '0.85em', marginTop: 4 }}>
-            Embeds are limited to {STREAMING_EMBED_HOSTS.join(', ')}. Use an HLS (.m3u8) URL for any
-            other provider.
-          </div>
-        </div>
-      </div>
+      <StreamStateCard
+        icon="alert"
+        title={t('unsupportedHostTitle')}
+        hint={t('unsupportedHostHint', { hosts: STREAMING_EMBED_HOSTS.join(', ') })}
+      />
     );
   }
 
@@ -415,11 +559,9 @@ function AdOverlay({ slots }: { slots: AdSlotCfg[] }) {
       }, slot.durationMs);
     };
 
+    // First impression after one interval — the stream shows first.
     const tickInterval = slots.reduce((min, s) => Math.min(min, s.intervalMs), 5 * 60_000);
     interval = setInterval(showNext, tickInterval);
-    // First impression after one interval — gives the operator time
-    // to see the actual stream first when they drop the widget on
-    // the canvas in live preview mode.
 
     return () => {
       cleared = true;
@@ -454,9 +596,11 @@ function AdOverlay({ slots }: { slots: AdSlotCfg[] }) {
       </div>
     );
   }
-  // lower-third (default)
+  // lower-third (default). Solid scrim, no backdrop-filter: it is flaky on
+  // Android WebView < 88 and costs a full-zone re-sample every frame over
+  // live video on low-end boxes.
   return (
-    <div className="absolute left-0 right-0 bottom-0 z-10" style={{ height: '18%', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+    <div className="absolute left-0 right-0 bottom-0 z-10" style={{ height: '18%', background: 'rgba(0,0,0,0.72)' }}>
       {inner}
     </div>
   );

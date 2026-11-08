@@ -37,6 +37,7 @@
 /** Native again at the next start; never a verdict on the file. */
 export const NATIVE_END_TRANSIENT: ReadonlySet<string> = new Set([
   'emergency-held',
+  'emergency-held-other-face',
   'activity-paused',
   'lifecycle-not-ready',
   'operator-ui',

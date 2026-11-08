@@ -22,6 +22,7 @@ import {
   bannerForSend, contrastReport, durationMinutesFor, resolveColorChoice,
   type BrandColors, type ColorChoice, type DurationPreset,
 } from '@/lib/broadcast-banner';
+import { ColorPickerField } from '@/components/ui/color-picker';
 import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { fetchEmergencyTargets } from '@/lib/emergency-api';
@@ -184,6 +185,13 @@ export default function BroadcastPage() {
   const takeover = severity === 'CRITICAL' || (withMedia && (mediaUrls.length > 0 || !!audioUrl));
   const SeverityIcon = SEVERITY_STYLE[severity].icon;
   const bannerHex = resolveColorChoice(colorChoice, brand);
+  // The shared builder picker hands back a hex, or a live brand variable for its brand swatches.
+  const pickBannerColor = (v: string) => {
+    const m = /^var\(--brand-(primary|accent)\)$/.exec(v.trim());
+    if (m) { setColorChoice({ kind: m[1] === 'primary' ? 'brand-primary' : 'brand-accent' }); return; }
+    setCustomHex(v);
+    setColorChoice({ kind: 'custom', hex: v });
+  };
   const contrast = contrastReport(bannerHex);
   const customInvalid = colorChoice.kind === 'custom' && !normalizeHex(colorChoice.hex);
   const isBannerSend = !takeover;
@@ -376,8 +384,9 @@ export default function BroadcastPage() {
             <p className="mt-1 text-xs text-slate-500">{t('composeHint')}</p>
           </div>
           <fieldset disabled={locked} className="min-w-0 space-y-6 p-5 sm:p-6">
-            <div className="rounded-2xl bg-slate-900 p-1">
+            <div>
               <EmergencyTargetBar
+                variant="light"
                 target={target}
                 disabled={locked}
                 onChoose={() => setTargetPickerOpen(true)}
@@ -429,52 +438,36 @@ export default function BroadcastPage() {
               </div>}
             </div>
 
-            {isBannerSend && <fieldset className="space-y-4 rounded-xl border border-slate-200 p-3.5" data-testid="banner-style">
+            {isBannerSend && <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3.5" data-testid="banner-style">
               <legend className="px-1 text-sm font-semibold text-slate-800">{t('bannerStyle')}</legend>
-              <div>
-                <p className="mb-2 text-xs font-semibold text-slate-700">{t('bannerColor')}</p>
-                <div className="flex flex-wrap" role="radiogroup" aria-label={t('bannerColor')}>
-                  {([
-                    { key: 'default', label: t('colorDefault'), hex: null as string | null, choice: { kind: 'default' } as ColorChoice },
-                    ...(brand.primary ? [{ key: 'brand-primary', label: t('colorBrandPrimary'), hex: brand.primary as string | null, choice: { kind: 'brand-primary' } as ColorChoice }] : []),
-                    ...(brand.accent ? [{ key: 'brand-accent', label: t('colorBrandAccent'), hex: brand.accent as string | null, choice: { kind: 'brand-accent' } as ColorChoice }] : []),
-                    ...BANNER_PRESET_COLORS.map((c) => ({ key: `preset-${c.id}`, label: t(`color_${c.id}`), hex: c.hex as string | null, choice: { kind: 'preset', id: c.id } as ColorChoice })),
-                    { key: 'custom', label: t('colorCustom'), hex: null as string | null, choice: { kind: 'custom', hex: customHex } as ColorChoice },
-                  ]).map((o) => {
-                    const selected = o.choice.kind === colorChoice.kind && (o.choice.kind !== 'preset' || (colorChoice.kind === 'preset' && colorChoice.id === o.choice.id));
-                    return <button key={o.key} type="button" role="radio" aria-checked={selected} data-testid={`banner-color-${o.key}`}
-                      onClick={() => setColorChoice(o.choice)}
-                      className={`mb-2 mr-2 inline-flex min-h-11 items-center rounded-lg border px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${selected ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
-                      <span aria-hidden className="mr-2 inline-block h-4 w-4 rounded-full border border-slate-300" style={{ background: o.hex ?? (o.key === 'default' ? SEVERITY_SWATCH[severity] : 'conic-gradient(#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7,#ef4444)') }} />
-                      {o.label}
-                    </button>;
-                  })}
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                <div className="flex items-end gap-2" data-testid="banner-color-picker">
+                  <div className="w-44">
+                    <ColorPickerField label={t('bannerColor')} value={bannerHex ?? SEVERITY_SWATCH[severity]} onChange={pickBannerColor} />
+                  </div>
+                  {colorChoice.kind !== 'default' && <button type="button" data-testid="banner-color-default" onClick={() => setColorChoice({ kind: 'default' })}
+                    className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">{t('colorDefault')}</button>}
                 </div>
-                {colorChoice.kind === 'custom' && <div className="mt-1">
-                  <label htmlFor="banner-custom-hex" className="mb-1 block text-xs font-semibold text-slate-700">{t('customHexLabel')}</label>
-                  <input id="banner-custom-hex" value={colorChoice.hex} maxLength={7} autoComplete="off" spellCheck={false}
-                    onChange={(e) => { setCustomHex(e.target.value); setColorChoice({ kind: 'custom', hex: e.target.value }); }}
-                    aria-invalid={customInvalid} placeholder="#1d4ed8" className={`${inputClass} w-36 font-mono`} />
-                  {customInvalid && <p role="status" className="mt-1 text-xs text-red-700">{t('customHexInvalid')}</p>}
-                </div>}
-                {contrast && <p data-testid="banner-contrast" role="status" className={`mt-1 text-xs leading-relaxed ${contrast.passesAA ? 'text-slate-500' : 'font-semibold text-amber-800'}`}>
-                  {contrast.passesAA ? t('contrastAuto') : t('contrastWarn', { ratio: contrast.ratio.toFixed(1) })}
-                </p>}
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold text-slate-700">{t('bannerText')}</p>
-                <div className="flex flex-wrap" role="radiogroup" aria-label={t('bannerText')}>
-                  {(['static', 'scroll'] as const).map((m) => <button key={m} type="button" role="radio" aria-checked={bannerMode === m} data-testid={`banner-mode-${m}`}
-                    onClick={() => setBannerMode(m)}
-                    className={`mb-2 mr-2 inline-flex min-h-11 items-center rounded-lg border px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${bannerMode === m ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{t(m === 'static' ? 'modeStatic' : 'modeScroll')}</button>)}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('bannerText')}</p>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('bannerText')}>
+                    {(['static', 'scroll'] as const).map((m) => <button key={m} type="button" role="radio" aria-checked={bannerMode === m} data-testid={`banner-mode-${m}`}
+                      title={t(m === 'static' ? 'modeStaticHint' : 'modeScrollHint')} onClick={() => setBannerMode(m)}
+                      className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerMode === m ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(m === 'static' ? 'modeStatic' : 'modeScroll')}</button>)}
+                  </div>
                 </div>
-                <p className="text-xs leading-relaxed text-slate-500">{t(bannerMode === 'static' ? 'modeStaticHint' : 'modeScrollHint')}</p>
-                {bannerMode === 'scroll' && <div className="mt-2 flex flex-wrap" role="radiogroup" aria-label={t('speed')}>
-                  {BANNER_SPEEDS.map((sp) => <button key={sp} type="button" role="radio" aria-checked={bannerSpeed === sp} data-testid={`banner-speed-${sp}`}
-                    onClick={() => setBannerSpeed(sp)}
-                    className={`mb-2 mr-2 inline-flex min-h-11 items-center rounded-lg border px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${bannerSpeed === sp ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{t(sp === 'slow' ? 'speedSlow' : sp === 'fast' ? 'speedFast' : 'speedNormal')}</button>)}
+                {bannerMode === 'scroll' && <div>
+                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('speed')}</p>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('speed')}>
+                    {BANNER_SPEEDS.map((sp) => <button key={sp} type="button" role="radio" aria-checked={bannerSpeed === sp} data-testid={`banner-speed-${sp}`}
+                      onClick={() => setBannerSpeed(sp)}
+                      className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerSpeed === sp ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(sp === 'slow' ? 'speedSlow' : sp === 'fast' ? 'speedFast' : 'speedNormal')}</button>)}
+                  </div>
                 </div>}
               </div>
+              {contrast && !contrast.passesAA && <p data-testid="banner-contrast" role="status" className="text-xs font-semibold leading-relaxed text-amber-800">
+                {t('contrastWarn', { ratio: contrast.ratio.toFixed(1) })}
+              </p>}
             </fieldset>}
             {!isBannerSend && severity === 'CRITICAL' && <p className="text-xs leading-relaxed text-slate-500">{t('criticalColorNote')}</p>}
 

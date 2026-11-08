@@ -93,11 +93,11 @@ function published409(reach?: Record<string, unknown>) {
 async function remove(name: string) {
   render(<PlaylistsPage />);
   // The row itself (the library also renders a compact layout for phones).
-  const row = screen.getAllByTestId('playlist-row').find((r) => r.textContent?.includes(name));
+  const row = screen.getAllByTestId('playlist-card-v2').find((r) => r.textContent?.includes(name));
   if (!row) throw new Error(`no row for ${name}`);
   fireEvent.click(within(row).getByRole('button', { name: `More actions for ${name}` }));
   await act(async () => {
-    fireEvent.click(within(screen.getByRole('menu', { name: `Actions for ${name}` })).getByRole('menuitem', { name: 'Remove playlist' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: `More actions for ${name}` })).getByRole('menuitem', { name: 'Delete playlist' }));
   });
 }
 
@@ -210,13 +210,13 @@ describe('removing a playlist — the in-use confirmation', () => {
 // ─────────────────────────────────────────────────────────────────────
 describe('removing SEVERAL playlists at once — through the real page', () => {
   function checkRow(name: string) {
-    const row = screen.getAllByTestId('playlist-row').find((r) => r.textContent?.includes(name));
+    const row = screen.getAllByTestId('playlist-card-v2').find((r) => r.textContent?.includes(name));
     if (!row) throw new Error(`no row for ${name}`);
     fireEvent.click(within(row).getByRole('checkbox', { name: `Select ${name}` }));
   }
   async function clickBulkRemove() {
     await act(async () => {
-      fireEvent.click(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove'));
+      fireEvent.click(within(screen.getByTestId('playlists-selection')).getByTestId('bulk-delete'));
     });
   }
 
@@ -224,7 +224,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     render(<PlaylistsPage />);
     checkRow('Member Promotions'); // published: it has a rule
     checkRow('Fall Fundraiser'); // not published
-    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
+    expect(within(screen.getByTestId('playlists-selection')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
     await clickBulkRemove();
 
     expect(appConfirm).toHaveBeenCalledTimes(1);
@@ -252,8 +252,8 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     await clickBulkRemove();
     await waitFor(() => expect(batchImpl).toHaveBeenCalledTimes(1));
     // The batch has NOT finished; the handler already has.
-    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).not.toBeDisabled();
-    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-remove')).toHaveTextContent('Remove 2');
+    expect(within(screen.getByTestId('playlists-selection')).getByTestId('bulk-delete')).not.toBeDisabled();
+    expect(within(screen.getByTestId('playlists-selection')).getByTestId('bulk-delete')).toHaveTextContent('Delete 2');
     expect(appAlert).not.toHaveBeenCalled();
     // …and when it does finish with a failure, the failure is still reported.
     await act(async () => {
@@ -270,7 +270,7 @@ describe('removing SEVERAL playlists at once — through the real page', () => {
     checkRow('Fall Fundraiser');
     await clickBulkRemove();
     expect(batchImpl).not.toHaveBeenCalled();
-    expect(within(screen.getByTestId('bulk-bar')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
+    expect(within(screen.getByTestId('playlists-selection')).getByTestId('bulk-count')).toHaveTextContent('2 selected');
   });
 
   it('when some could not be removed, says how many went and names each that did not', async () => {

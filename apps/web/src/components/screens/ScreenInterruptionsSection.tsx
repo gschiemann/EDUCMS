@@ -56,6 +56,7 @@ const STOP_REASON_KEYS: Record<string, string> = {
   'activity-paused': 'stopActivityPaused',
   'content-changed': 'stopContentChanged',
   'emergency-held': 'stopEmergencyHeld',
+  'emergency-held-other-face': 'stopEmergencyHeld',
   'output-stalled': 'stopOutputStalled',
   'process-ended': 'stopProcessEnded',
   'device-rebooted': 'stopDeviceRebooted',
@@ -123,6 +124,38 @@ export function interruptionCause(
   return key ? { key } : null;
 }
 
+/**
+ * Planned or expected — things a viewer would not notice or that someone asked
+ * for: updates, reloads asked for from the dashboard or by VenueOS, video
+ * engine starts/stops/swaps, file switches, alerts and drills. They never count
+ * toward the headline; the collapsed "For support" list shows them, plainly
+ * labelled. Real = blackouts, crashes, freezes, visible stutter.
+ */
+const PLANNED_KINDS = new Set([
+  'engine-start', 'engine-swap', 'rendition-swap',
+  'ota-download', 'ota-install', 'ota-installed', 'ota-needs-tap', 'ota-failed',
+  'emergency-start', 'emergency-clear',
+]);
+const PLANNED_CAUSES = new Set(['operator', 'server-displacement', 'bundle-apply', 'update-install']);
+
+export function isPlannedEvent(ev: Pick<LedgerEvent, 'kind' | 'cause' | 'drill' | 'interruption'>): boolean {
+  if (ev.drill || !ev.interruption) return true;
+  if (PLANNED_KINDS.has(ev.kind)) return true;
+  return PLANNED_CAUSES.has(ev.cause ?? '');
+}
+
+/** Events a viewer would notice — the only ones counted and listed up top. */
+export function realInterruptions<T extends Pick<LedgerEvent, 'kind' | 'cause' | 'drill' | 'interruption'>>(events: T[]): T[] {
+  return events.filter((e) => !isPlannedEvent(e));
+}
+
+/** Plain label for a planned row: updates read "Planned update", the rest keep their kind. */
+export function plannedLabelKey(ev: Pick<LedgerEvent, 'kind' | 'cause' | 'drill'>): string {
+  if (ev.kind.startsWith('ota-') && ev.kind !== 'ota-failed') return 'plannedUpdate';
+  if (ev.cause === 'bundle-apply' || ev.cause === 'update-install') return 'plannedUpdate';
+  return interruptionKindKey(ev);
+}
+
 const isEvent = (e: unknown): e is LedgerEvent => {
   if (!e || typeof e !== 'object') return false;
   const v = e as Record<string, unknown>;
@@ -164,15 +197,56 @@ function formatAt(iso: string, locale: string): string {
   }
 }
 
-function InterruptionsCard({ screenId }: { screenId: string }) {
+function EventRows({ events, planned }: { events: LedgerEvent[]; planned: boolean }) {
   const t = useTranslations('screens.interruptions');
   const locale = useLocale();
+  return (
+    <ul className="mt-2 flex flex-col gap-1.5" data-testid={planned ? 'screen-interruptions-planned-list' : 'screen-interruptions-list'}>
+      {events.map((ev) => {
+        const cause = interruptionCause(ev);
+        const updateLabel = planned && plannedLabelKey(ev) === 'plannedUpdate';
+        return (
+          <li key={ev.id} className="flex items-baseline gap-2 min-w-0" data-kind={ev.kind} data-counted={planned ? 'false' : 'true'}>
+            <span className="shrink-0 whitespace-nowrap min-w-[92px] text-[10.5px] font-semibold tabular-nums text-slate-400">
+              {formatAt(ev.at, locale)}
+            </span>
+            <span className="min-w-0">
+              <span className={`text-[11.5px] font-semibold leading-snug break-words ${planned ? 'text-slate-500' : 'text-slate-800'}`}>
+                {t(planned ? plannedLabelKey(ev) : interruptionKindKey(ev))}
+              </span>
+              {cause && !updateLabel && (
+                <span className="text-[10.5px] font-semibold text-slate-500 leading-snug break-words">
+                  {' — '}{t(cause.key, cause.values)}
+                </span>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function InterruptionsCard({ screenId, part }: { screenId: string; part: InterruptionsPart }) {
+  const t = useTranslations('screens.interruptions');
   const [hours, setHours] = useState<24 | 72>(24);
   const q = useScreenInterruptions(screenId, hours);
   const data = readInterruptions(q.data);
   // An answer this section cannot read is not "0": render nothing, never throw.
   if (q.data !== undefined && !data) return null;
 
+  if (part === 'support') {
+    const planned = data ? data.events.filter(isPlannedEvent) : [];
+    if (planned.length === 0) return null;
+    return (
+      <div data-testid="screen-interruptions-planned">
+        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t('plannedTitle', { hours })}</p>
+        <EventRows events={planned} planned />
+      </div>
+    );
+  }
+
+  const real = data ? realInterruptions(data.events) : [];
   return (
     <div className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-interruptions" data-hours={hours}>
       <div className="flex items-center justify-between gap-2">
@@ -202,66 +276,30 @@ function InterruptionsCard({ screenId }: { screenId: string }) {
       ) : (
         <>
           <p
-            className={`mt-2 text-[13px] font-bold leading-snug ${data.summary.interruptions > 0 ? 'text-amber-800' : 'text-slate-800'}`}
+            className={`mt-2 text-[13px] font-bold leading-snug ${real.length > 0 ? 'text-amber-800' : 'text-slate-800'}`}
             data-testid="screen-interruptions-count"
-            data-count={data.summary.interruptions}
+            data-count={real.length}
           >
-            {t('count', { count: data.summary.interruptions, hours })}
+            {t('count', { count: real.length, hours })}
           </p>
-          {data.summary.drills > 0 && (
-            <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug" data-testid="screen-interruptions-drills">
-              {t('drills', { count: data.summary.drills })}
-            </p>
-          )}
-          {data.events.length > 0 && (
-            <ul className="mt-2 flex flex-col gap-1.5" data-testid="screen-interruptions-list">
-              {data.events.map((ev) => {
-                const cause = interruptionCause(ev);
-                return (
-                  <li
-                    key={ev.id}
-                    className="flex items-baseline gap-2 min-w-0"
-                    data-kind={ev.kind}
-                    data-counted={ev.interruption ? 'true' : 'false'}
-                  >
-                    <span className="shrink-0 whitespace-nowrap min-w-[92px] text-[10.5px] font-semibold tabular-nums text-slate-400">
-                      {formatAt(ev.at, locale)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className={`text-[11.5px] font-semibold leading-snug break-words ${ev.interruption ? 'text-slate-800' : 'text-slate-500'}`}>
-                        {t(interruptionKindKey(ev))}
-                      </span>
-                      {cause && (
-                        <span className="text-[10.5px] font-semibold text-slate-500 leading-snug break-words">
-                          {' — '}{t(cause.key, cause.values)}
-                        </span>
-                      )}
-                      {!ev.interruption && (
-                        <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-px text-[9.5px] font-bold text-slate-500">
-                          {t('notCounted')}
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          {real.length > 0 && <EventRows events={real} planned={false} />}
           {data.truncated && (
             <p className="mt-1 text-[10.5px] font-semibold text-slate-400">{t('truncated', { count: data.events.length })}</p>
           )}
         </>
       )}
-      <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">{t('note')}</p>
     </div>
   );
 }
 
-export function ScreenInterruptionsSection({ screenId, enabled }: { screenId: string; enabled: boolean }) {
+/** `main` = the card with the count; `support` = planned/expected rows for the collapsed support list. */
+export type InterruptionsPart = 'main' | 'support';
+
+export function ScreenInterruptionsSection({ screenId, enabled, part = 'main' }: { screenId: string; enabled: boolean; part?: InterruptionsPart }) {
   if (!enabled) return null;
   return (
     <RoleGate allowedRoles={ADMIN_ROLES} fallback={null}>
-      <InterruptionsCard screenId={screenId} />
+      <InterruptionsCard screenId={screenId} part={part} />
     </RoleGate>
   );
 }

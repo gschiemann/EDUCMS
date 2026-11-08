@@ -215,6 +215,7 @@ import { appZoneInfo } from '@/components/apps/app-zone';
 import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
 import { GoToPageSelect, WhenTappedGoToPage } from './GoToPage';
 import { isInteractiveTemplate, isTapTargetZone, sortPages } from './pages';
+import { StreamingSourceField, StreamingVolumeField } from './StreamingSourceField';
 
 
 /* ── Date / time entry in this panel ──────────────────────────────────
@@ -2731,6 +2732,7 @@ function CtsLiveCard({
 // the converted list/schedule editors fire through to a config write.
 export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const tMusic = useTranslations('musicPlayer');
+  const tStream = useTranslations('streamingWidget.editor');
   const activeForecastTextArea = useBuilderStore(s => s.activeFieldName);
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
@@ -5890,6 +5892,30 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // editor case, the widget had no UI to pick a channel and operators
     // were stuck pasting raw HLS URLs into JSON.
     case 'STREAMING': {
+      // 2026-11-07 flagship audit — paste a link first (auto-detect, honest
+      // verdict, Test stream); a saved channel stays the alternative.
+      fields.push(<StreamingSourceField key="streamSource" cfg={cfg} setField={setField} />);
+      fields.push(
+        <AssetPickerField
+          key="posterUrl"
+          label={tStream('posterLabel')}
+          value={cfg.posterUrl || ''}
+          onChange={(v) => setField({ posterUrl: v || undefined })}
+          kind="image"
+        />,
+      );
+      fields.push(<p key="posterHint" className="-mt-1 text-[10px] text-slate-400">{tStream('posterHint')}</p>);
+      fields.push(<ToggleField key="muted" label={tStream('mutedLabel')} value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      if (cfg.muted === false) {
+        fields.push(<StreamingVolumeField key="volume" value={typeof cfg.volume === 'number' ? cfg.volume : 100} onChange={(v) => setField({ volume: v })} />);
+      }
+      fields.push(<SelectField key="fitMode" label={tStream('fitLabel')} value={cfg.fitMode || 'cover'} options={[['cover', tStream('fitCover')], ['contain', tStream('fitContain')]]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<ToggleField key="showLiveBadge" label={tStream('liveBadgeLabel')} value={cfg.showLiveBadge !== false} onChange={(v) => setField({ showLiveBadge: v })} />);
+      if (/snapshot|still\.jpg|image\.cgi|\.(jpe?g|png|webp)(\?|$)/i.test(String(cfg.playbackUrl || ''))) {
+        fields.push(<SelectField key="refreshSeconds" label={tStream('refreshLabel')} value={String(cfg.refreshSeconds || 10)} options={[['2', '2'], ['5', '5'], ['10', '10'], ['30', '30'], ['60', '60']]} onChange={(v) => setField({ refreshSeconds: Number(v) })} />);
+      }
+      fields.push(<ToggleField key="allowAdOverlay" label={tStream('adOverlayLabel')} value={cfg.allowAdOverlay !== false} onChange={(v) => setField({ allowAdOverlay: v })} />);
+      fields.push(<p key="savedChannel" className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tStream('savedChannelLabel')}</p>);
       fields.push(
         <StreamingChannelPickerField
           key="streamingChannelId"
@@ -5911,9 +5937,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           })}
         />,
       );
-      fields.push(<ToggleField key="muted" label="Muted (venue default)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
-      fields.push(<SelectField key="fitMode" label="Fit mode" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
-      fields.push(<ToggleField key="allowAdOverlay" label="Allow ad overlay" value={cfg.allowAdOverlay !== false} onChange={(v) => setField({ allowAdOverlay: v })} />);
       break;
     }
     // FITNESS_LIVE_TV uses its own catalog-driven config but ALSO accepts
