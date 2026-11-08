@@ -351,4 +351,17 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2766822,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41458604627',
   },
+  // Signed CI 42446385225, source master 9961ecbbf (release train #263): 1.1.64 +
+  // double-sided echo fix (#241), no banner relayout on a rotated display +
+  // honest banner paint receipt (#250), legacy-engine polyfills (#258), website
+  // tabs fill their zone on 4K (#259), storage-aware chunk downloads (#260).
+  // Production certificate e45adf50…3d1897 (v2), versionCode 10165. Private
+  // mirror NOT uploaded by the registering session. Hardware qualification pending.
+  '1.1.65-field.1': {
+    versionName: '1.1.65-field.1',
+    versionCode: 10165,
+    sha256: '3741512c51899fc5075779daa4878a67d28ef3ef0263b020ec69617ea4fa5390', // gitleaks:allow -- verified public APK integrity digest
+    size: 2776341,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42446385225',
+  },
 };
