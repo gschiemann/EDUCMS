@@ -1335,6 +1335,8 @@ model ScreenGroup {
   createdAt   DateTime   @default(now()) @map("created_at")
   schedules   Schedule[]
   displaySchedules DisplaySchedule[]
+  // 2026-11-08 — opt-in scheduled restart (apps/api/src/scheduled-reboot/).
+  rebootPolicy ScreenRebootPolicy?
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
   screens     Screen[]
 
@@ -3695,6 +3697,73 @@ model DisplayVendorRecipe {
 
   @@index([isActive, priority])
   @@map("display_vendor_recipes")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Scheduled restart policy (2026-11-08, manager deep-dive item #7)
+// ─────────────────────────────────────────────────────────────────────
+//
+// OPT-IN, per screen group. No row = today's behaviour: never a restart.
+// The server worker (apps/api/src/scheduled-reboot/) dispatches a REBOOT
+// through the SAME path as the dashboard's typed-confirm button
+// (runDisplayControl → DisplayService.applyAction), so the capability gate
+// and the SCREEN_DISPLAY_REBOOT audit row are identical. On today's fleet no
+// screen can reboot (no device owner, by the owner's rule), so every run is
+// recorded as skipped `cannot-restart` until a build that can reports so.
+// Kill switch: SCHEDULED_REBOOTS_DISABLED=1. Design + every refusal:
+// docs/handoffs/2026-11-08-manager-wave-4.md.
+model ScreenRebootPolicy {
+  id            String      @id @default(uuid())
+  tenantId      String      @map("tenant_id")
+  screenGroupId String      @unique @map("screen_group_id")
+  // 'DAILY' | 'WEEKLY'
+  cadence       String
+  // 0=Sun..6=Sat — WEEKLY only, null for DAILY.
+  dayOfWeek     Int?        @map("day_of_week")
+  // "HH:MM" local, in EACH screen's own zone; 22:00–04:59 only (off-hours).
+  time          String
+  isActive      Boolean     @default(true) @map("is_active")
+  updatedById   String?     @map("updated_by_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  screenGroup ScreenGroup @relation(fields: [screenGroupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("screen_reboot_policies")
+}
+
+// One row per (screen, slot): creating it is the claim, so no slot can ever
+// send twice. History — no FK to "screens" on purpose (a hot table; the
+// lock is not worth it, and a run outliving its screen is harmless history).
+//   status: WAITING → SKIPPED | SENT | REFUSED | UNDELIVERED;
+//           SENT → BACK | NO_RESTART | NOT_BACK → LATE
+model ScreenRebootRun {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  screenId      String    @map("screen_id")
+  policyId      String    @map("policy_id")
+  // The policy's local date for this slot in the screen's zone, "YYYY-MM-DD".
+  slotKey       String    @map("slot_key")
+  scheduledFor  DateTime  @map("scheduled_for")
+  status        String
+  reason        String?
+  // fleet-push-policy hardwareClassOf key, for one-class-at-a-time.
+  hardwareClass String?   @map("hardware_class")
+  dispatchedAt  DateTime? @map("dispatched_at")
+  actionId      String?   @map("action_id")
+  // Android BOOT_COUNT at dispatch and at the first check-in after it.
+  bootBefore    Int?      @map("boot_before")
+  bootAfter     Int?      @map("boot_after")
+  returnedAt    DateTime? @map("returned_at")
+  restartProven Boolean   @default(false) @map("restart_proven")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([screenId, slotKey])
+  @@index([tenantId, status])
+  @@index([policyId, createdAt])
+  @@map("screen_reboot_runs")
 }
 
 // Square delta-sync watermark, one row per connection. Square's

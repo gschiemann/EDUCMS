@@ -124,6 +124,7 @@ import { GpioModule } from './screens/gpio.module';
 // scheduled on-off windows that run ON DEVICE from the manifest, plus the
 // platform vendor-recipe catalog. See display/display.module.ts.
 import { DisplayModule } from './display/display.module';
+import { ScheduledRebootModule } from './scheduled-reboot/scheduled-reboot.module';
 import { DeviceSettingsModule } from './device-settings/device-settings.module';
 import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
 // 2026-10-18 — the interruption ledger (@Global ScreenEventsService + its
@@ -237,6 +238,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     DisplayModule,
+    // 2026-11-08 — opt-in scheduled restarts (kill switch SCHEDULED_REBOOTS_DISABLED).
+    ScheduledRebootModule,
     DeviceSettingsModule,
     // 2026-10-11 — select-all / select-group Resync, Send update, power,
     // automatic updates (screens/bulk/screens-bulk.controller.ts).
