@@ -225,7 +225,8 @@ export interface NativeSelfTest {
     ip: string | null;
     gateway: string | null;
   } | null;
-  webview: { versionName: string | null; major: number | null } | null;
+  /** `legacyLayer`: the APK's legacy-engine compatibility layer (#258, `LegacyEnginePolicy`) is installed on this unit. */
+  webview: { versionName: string | null; major: number | null; legacyLayer: boolean | null } | null;
   durationMs: number | null;
 }
 
@@ -261,7 +262,7 @@ export function sanitizeNativeSelfTest(raw: unknown): NativeSelfTest | null {
       ipKind: oneOf(nt.ipKind, ['private', 'public', 'cgnat', 'link-local', 'none'] as const),
       ip: masked(nt.ip), gateway: masked(nt.gateway),
     } : null,
-    webview: wv ? { versionName: code(wv.versionName), major: num(wv.major, 1000) } : null,
+    webview: wv ? { versionName: code(wv.versionName), major: num(wv.major, 1000), legacyLayer: bool(wv.legacyLayer) } : null,
     durationMs: num(r.durationMs, 600_000),
   };
 }
@@ -411,7 +412,7 @@ export function gradeSelfTest(input: {
   const major = p?.chromeMajor ?? n?.webview?.major ?? null;
   if (major === null) checks.push(c('webview', 'player', 'unknown'));
   else checks.push(c('webview', 'player', major < GRADE.ENGINE_OLD_MAJOR ? 'warn' : 'pass',
-    strip({ major, versionName: n?.webview?.versionName, legacyPolyfills: p?.legacyPolyfills })));
+    strip({ major, versionName: n?.webview?.versionName, legacyLayer: n?.webview?.legacyLayer, legacyPolyfills: p?.legacyPolyfills })));
 
   const hb = input.heartbeatAgeMs;
   checks.push(hb === null ? c('heartbeat', 'player', 'fail', { never: true })
