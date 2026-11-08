@@ -168,7 +168,7 @@ If a feature is on this list and we don't ship it, flag as a competitive gap wit
 
 ### 17. Operational + DX
 - Health endpoints (liveness, readiness, emergency-path)
-- CI gates (preflight, taurus-safety, cross-browser, a11y) — they report on PRs and pushes; only the four build checks block a merge (see Deploy Reliability)
+- CI gates — nine checks block a merge (the four builds, `schema change ships a migration`, `Build, Lint & Test`, both Emergency path browsers, the tenant isolation matrix; `docs/governance/decisions/2026-10-31-required-checks-ruleset.md`); taurus-safety, cross-browser, a11y, mobile-perf and the supply-chain scans report only (see Deploy Reliability)
 - Git hooks (pre-commit: lockfile drift and `inset: 0` in player/widget files; pre-push: `pnpm preflight` — no secret scan locally, gitleaks runs in CI)
 - Rollback procedure (revert the PR or redeploy the previous build; nightly `db-backup.yml` for data — see Backup & Rollback)
 - Multi-replica safety (in-memory caches → Redis when load-bearing)
