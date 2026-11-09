@@ -1,5 +1,9 @@
 # UptimeRobot Free Tier Monitoring Setup
 
+**Last verified against code:** 2026-11-09 (endpoint behaviour, below, checked against `apps/api/src/health/health.controller.ts`, `docs/DEPLOY.md` and `.github/workflows/keep-warm.yml`). UptimeRobot plan limits and carrier email-to-SMS gateways are vendor facts that this repository cannot prove: unverified. Whether the monitors are actually provisioned for the live hosts is also unverified (`docs/SLO_AND_ONCALL.md` marks it "operator-provisioned, confirm").
+
+Independent of UptimeRobot, `.github/workflows/keep-warm.yml` (GitHub Actions, every 5 minutes) already pings `/api/v1/health` (body must contain `"db":"ok"`), `/api/v1/health/ready` and `/api/v1/health/emergency-path` and fails if any does not answer.
+
 ## Why UptimeRobot
 
 UptimeRobot's free tier provides everything we need today: 50 monitors at 5-minute check intervals, HTTP(S) keyword matching, email and SMS alerts (via email-to-SMS gateways), and a free public status page. It won't scale infinitely, but it's zero cost, has no rate limits that affect us, and requires no infrastructure beyond a Slack webhook if we want team notifications. Later, we can migrate to a paid monitoring service if needed, but for now this covers uptime detection and incident alerting without vendor lock-in.
@@ -12,7 +16,7 @@ Configure these four monitors in UptimeRobot. Replace `<api-host>` and `<web-hos
 
 | Name | URL | Expected Response | Monitor Type | Alert Threshold | Purpose |
 |------|-----|-------------------|--------------|-----------------|---------|
-| API Liveness | `https://<api-host>/api/v1/health` | HTTP 200 | HTTP(S) | 2 failures in a row | Is the process running? |
+| API Liveness | `https://<api-host>/api/v1/health` | HTTP 200 (always 200 by design, even with DB or Redis degraded; use a Keyword monitor on `"db":"ok"` if you also want the database state) | HTTP(S) or Keyword | 2 failures in a row | Is the process running? |
 | API Readiness | `https://<api-host>/api/v1/health/ready` | HTTP 200, keyword: `"status":"ok"` | Keyword | 1 failure | Is the database reachable? |
 | Emergency Path | `https://<api-host>/api/v1/health/emergency-path` | HTTP 200, keyword: `"status":"ok"` | Keyword | 1 failure | **CRITICAL:** Is the emergency broadcast chain ready? |
 | Web App Home | `https://<web-host>/` | HTTP 200 | HTTP(S) | 2 failures in a row | Does the dashboard load? |
@@ -25,7 +29,7 @@ For **API Readiness** and **Emergency Path**, set the monitor type to **Keyword*
 - **Keyword to find:** `"status":"ok"`
 - **Search type:** Contains
 
-This catches partial-health scenarios. Both endpoints return HTTP 200 for some failure modes; keyword matching ensures we alert only if the specific health check passes. Do not use plain HTTP(S) type for these—use Keyword.
+Both endpoints answer HTTP 503 (not 200) when they fail, so plain HTTP(S) also detects an outage; the keyword adds a check on the body. Use Keyword for these two as the standard. Do not point a monitor at `/api/v1/health/started`: it is the Railway deploy gate (a latch that stays 200 once open), not a health signal.
 
 ---
 
@@ -77,7 +81,7 @@ Share this link with stakeholders. It updates every 60 seconds and requires no a
 
 ## What We're NOT Doing Yet (Deferred)
 
-- **Synthetic emergency drills:** No actual broadcast will be triggered during monitoring. A feature-flagged "drill mode" for the emergency path is planned for Sprint 5.
+- **Triggering broadcasts from monitoring:** No actual broadcast is triggered by these monitors. The synthetic emergency drill on bench screens now exists separately (`apps/api/src/emergency/drill/`; variables `EMERGENCY_DRILL_MODE`, default `shadow`, and the kill switch `EMERGENCY_DRILL_CRON_DISABLED` in `docs/ENVIRONMENT.md`; standing state in `docs/governance/AUTONOMY-REGISTER.md`).
 - **On-call paging:** PagerDuty and Opsgenie have free tiers, but they're overkill at this stage. Email + SMS suffices.
 - **Auto-incident creation:** Status-page auto-incidents from monitor failures—defer to when we have a formal incident management process.
 
@@ -98,20 +102,19 @@ Once you have a deployed API hostname and web host:
 
 ## Endpoint Reference
 
-For setup validation, confirm your health endpoints return this shape:
+Real shapes (from `HealthController`, global route prefix `api/v1`; write the paths in full: the bare `/health` is a different root controller without `commit`, see `docs/DEPLOY.md`). Every report also carries `ts`/`timestamp`, `uptime_s`/`uptime`, and `commit`/`version`.
 
 ```
-GET /api/v1/health
-→ 200 OK
-{"status":"ok"}
+GET /api/v1/health            -> always 200
+{"status":"ok"|"degraded","checks":{"db":"ok"|"degraded","redis":"ok"|"degraded"|"fallback"|"off"},"db":"ok","redis":"ok",...}
 
-GET /api/v1/health/ready
-→ 200 OK if DB is reachable, 503 otherwise
-{"status":"ok","db":"ok"}
+GET /api/v1/health/ready      -> 200 if the database answers within 1.5 s, else 503
+{"status":"ok","checks":{"db":"ok"},"db":"ok",...}
 
-GET /api/v1/health/emergency-path
-→ 200 OK if DB and WS signer reachable, 503 otherwise
-{"status":"ok","db":"ok","ws_signer":"ok"}
+GET /api/v1/health/emergency-path -> 200 unless the database check or the WS signer check fails (503)
+{"status":"ok","checks":{"db":"ok","redis":"ok"|"fallback"|"fail","ws_signer":"ok"},...}
 ```
 
-All endpoints return JSON and no actual broadcasts or state changes occur during health checks.
+Redis `fallback` (not connected) does not fail the emergency-path probe: HTTP polling covers realtime. `GET /api/v1/health/storage` is a fourth probe (a tiny real upload and read, single-flight and cached 30 s); it is not in the four-monitor set above.
+
+None of these endpoints broadcasts anything or changes state beyond the storage probe's test object.
