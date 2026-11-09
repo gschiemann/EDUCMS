@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 form-validation and upload-flow plan (DOMPurify, presigned S3 POST, TipTap). Storage is Supabase with a resumable direct-upload path, so the S3 flow described here is not what runs. It is history.
+> The living truth now is `apps/web/CLAUDE.md` and `docs/ORIENTATION.md`; upload limits are in `docs/ENVIRONMENT.md`.
+
 # Form Validation & Sanitization Spec
 
 Robust client-side validation paired with server-side parity is critical for system integrity and contributor safety.

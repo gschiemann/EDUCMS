@@ -9,11 +9,11 @@
 
 ## Completed Implementation Scope (Phase 2 - "More")
 * **Screen Groups**: Scaffolded `screens/page.tsx` mapping out critical device health metrics and offline warnings.
-* **Announcements**: Scaffolded `announcements/page.tsx` using `react-hook-form` and `zod` for validation parity. Crucially, it incorporates `DOMPurify` to instantly sanitize rich-text fields per `FORM_VALIDATION_SPEC.md` while preventing XSS in the simulated Device Preview.
+* **Announcements**: Scaffolded `announcements/page.tsx` using `react-hook-form` and `zod` for validation parity. Crucially, it incorporates `DOMPurify` to instantly sanitize rich-text fields per `docs/archive/FORM_VALIDATION_SPEC.md` (archived) while preventing XSS in the simulated Device Preview.
 * **Playlist Editor**: Implemented a Drag-and-Drop playlist timeline (`playlists/page.tsx`) utilizing `@dnd-kit/core` with `@dnd-kit/sortable` enforcing strict vertical axis array manipulation natively.
 
 ## Completed Implementation Scope (Phase 3 - "Next Phases")
-* **Assets Upload Flow**: Scaffolded `assets/page.tsx`. Implemented the `FORM_VALIDATION_SPEC.md` asset requirements directly via `zod` intersecting with a custom dropzone. Includes deterministic mock loading simulated via `setInterval` arrays representing progress states (`idle`, `uploading`, `success`, `error`).
+* **Assets Upload Flow**: Scaffolded `assets/page.tsx`. Implemented the archived `docs/archive/FORM_VALIDATION_SPEC.md` asset requirements directly via `zod` intersecting with a custom dropzone. Includes deterministic mock loading simulated via `setInterval` arrays representing progress states (`idle`, `uploading`, `success`, `error`).
 * **Settings & Role Gating Example**: Scaffolded `settings/page.tsx`, directly integrating the deeply-nested `<RoleGate>` to visually lock away content from untrusted scopes utilizing a fallback UI.
 * **Template Canvas Simulator**: Added `templates/page.tsx` mapping the multi-zone UI layout canvas concepts.
 

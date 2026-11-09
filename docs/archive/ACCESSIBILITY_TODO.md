@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** A Sprint 2/3 accessibility backlog log (April 2026) whose items were all marked fixed; it is a finished work log, not a live backlog. It is history.
+> The living truth now is `docs/ACCESSIBILITY.md` (the live a11y standard and CI audit; the a11y workflow under the CI workflows directory).
+
 # Accessibility Backlog
 
 All deferred warnings from Sprint 2 have now been resolved as part of the mobile

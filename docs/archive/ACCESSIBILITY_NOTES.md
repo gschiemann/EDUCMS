@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 accessibility principles for the dashboard. Its component claims are stale (it says overlays sit on shadcn/Radix primitives; the app depends on `@base-ui/react` and has its own `app-dialog.tsx` with a hand-written focus trap). It is history.
+> The living truth now is `docs/ACCESSIBILITY.md` (WCAG 2.2 AA targets, lint, axe and route-audit tooling) and `apps/web/CLAUDE.md`.
+
 # Accessibility (a11y) Notes
 
 SaaS products designed for broad school staff adoption must be immediately usable by individuals with varying abilities, vision, and technical comfort levels.
