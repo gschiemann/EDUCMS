@@ -8,6 +8,8 @@ import { FAILED_STATE, TAP_EXPIRED, holdFromOtaReport, isFailureState, pushWaits
 import { isManagerLaneNoise } from '../player-ota/manager-lane-noise';
 import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
+import { CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION, QUARANTINE_NO_ROLLBACK_NOTE, publishClearUpdateQuarantine } from './quarantine-command';
+import { companionTapVerdict, isCompanionTapReport } from '../player-ota/companion-tap-report';
 import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
@@ -27,6 +29,9 @@ import {
 } from './events/screen-events';
 import { DEVICE_SETTINGS_HEADER } from '@cms/api-types';
 import { deviceSettingsHeartbeat } from '../device-settings/device-settings.heartbeat';
+import { MANAGER_HEALTH_HEADER, isRelayedManagerReport, managerHealthChanged, managerReportRelayOff, parseManagerHealthHeader } from './manager-health';
+import { diagnosticsHeartbeat } from '../screen-diagnostics/diagnostics-heartbeat';
+import { manifestDiagnostics } from '../screen-diagnostics/diagnostics-policy';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1793,6 +1798,22 @@ export class ScreensController {
       ? await deviceSettingsHeartbeat(this.prisma, screen as any, req?.headers?.[DEVICE_SETTINGS_HEADER])
       : null;
     if (deviceSettings) Object.assign(data, deviceSettings.data);
+    // Companion Manager health (2026-11-08, manager-health.ts): read by the
+    // Player from the Manager's provider, carried on THIS signed request only.
+    // `MANAGER_REPORT_RELAY=off` ignores it and tells the Player to stop relaying.
+    const managerRelayOff = managerReportRelayOff();
+    const managerHealth = paired && credential.proved && !managerRelayOff
+      ? parseManagerHealthHeader(req?.headers?.[MANAGER_HEALTH_HEADER], new Date())
+      : null;
+    if (managerHealth) {
+      data.managerHealthReport = managerHealth;
+      data.managerHealthReportAt = new Date();
+    }
+    // Screen diagnostics (2026-11-08, screen-diagnostics/): storage report in,
+    // an open self-test / logs request out. Same credential gate; never throws.
+    const diagnostics = paired && credential.proved
+      ? await diagnosticsHeartbeat({ prisma: this.prisma }, screen as any, req?.headers)
+      : {};
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -1840,6 +1861,9 @@ export class ScreensController {
         // chip reflects reality.
         data.managerVersion = null;
         data.managerVersionAt = null;
+        // …and its health with it (2026-11-08): no companion, no companion health.
+        data.managerHealthReport = null;
+        data.managerHealthReportAt = null;
       }
     }
     // Diagnostic logging — used to fire on EVERY heartbeat (every 3s
@@ -1905,7 +1929,8 @@ export class ScreensController {
     const nativeChanged = !!nativeRuntime &&
       nativePowerStateChanged(screen.nativeRuntimeReport, nativeRuntime);
     const mustWrite = mayStampFirmware &&
-      (!!versionChanged || managerChanged || otaCleared || nativeChanged || !!deviceSettings?.mustWrite);
+      (!!versionChanged || managerChanged || otaCleared || nativeChanged || !!deviceSettings?.mustWrite ||
+        managerHealthChanged((screen as any).managerHealthReport, managerHealth));
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;
@@ -2053,6 +2078,10 @@ export class ScreensController {
       forceUpdatePending,
       forceUpdatePendingAt: forceAt ? new Date(forceAt).toISOString() : null,
       ...(deviceSettings?.reply ? { deviceSettings: deviceSettings.reply } : {}),
+      // 2026-11-08 — the MANAGER_REPORT_RELAY kill switch, told to the Player
+      // that relays (manager-health.ts). Only on a device-authenticated reply.
+      ...(paired && credential.proved ? { managerRelay: managerRelayOff ? 'off' : 'on' } : {}),
+      ...diagnostics,
       ...(nativeRuntime ? {
         nativeControl: {
           schema: 1,
@@ -2093,7 +2122,7 @@ export class ScreensController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async reportOtaState(
     @Param('deviceFingerprint') fingerprint: string,
-    @Body() body: { state?: string; progress?: number; message?: string },
+    @Body() body: { state?: string; progress?: number; message?: string; source?: string; relayedBy?: string },
     @Req() req?: ExpressReq,
   ) {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
@@ -2136,6 +2165,17 @@ export class ScreensController {
         deviceAuthenticated = false;
       }
     }
+
+    // ── 2026-11-08 — a Manager report (manager-health.ts) ───────────────
+    // From this build the Player relays the companion's reports with its own
+    // device token (`source: 'manager', relayedBy: 'player'`). Signed, but
+    // still the COMPANION speaking about an install it ran: the Manager-noise
+    // filters below apply to it as they do to an anonymous report, and it may
+    // never hold a push (that is the Player's own NEEDS_TAP rule). Manager
+    // 1.0.24's anonymous posts carry no `source` and are handled exactly as
+    // before — stored unauthenticated, under every existing filter.
+    const fromManager = String(body?.source ?? '').toLowerCase().trim() === 'manager';
+    const relayedManager = isRelayedManagerReport(body, deviceAuthenticated);
 
     const ALLOWED = new Set([
       'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED',
@@ -2194,6 +2234,24 @@ export class ScreensController {
       return { ok: true, ignored: 'manager-self-update-noise' };
     }
 
+    // ── Manager wave 3 (#12) — the companion upgrade waiting for a tap ──────
+    // Only the device's own signed report, and never over a pending Player push
+    // (companion-tap-report.ts). Stored in the ordinary status line, holds nothing.
+    if (isCompanionTapReport(state, message)) {
+      const verdict = companionTapVerdict({
+        deviceAuthenticated,
+        pushPending: !!(screen as any).forceApkUpdatePendingAt,
+      });
+      if (verdict !== 'store') return { ok: true, ignored: `companion-tap-${verdict}` };
+      // ten-ok: device OTA-state report keyed by the fingerprint resolved above;
+      // writes only this row's own OTA status columns.
+      await this.prisma.client.screen.update({
+        where: { id: screen.id },
+        data: { lastOtaState: 'NEEDS_TAP', lastOtaProgress: null, lastOtaMessage: message, lastOtaAt: new Date() } as any,
+      });
+      return { ok: true, stored: 'companion-tap' };
+    }
+
     // 2026-05-12 — also guard against state=INSTALLED being written
     // when the kiosk's reported playerVersionCode hasn't actually
     // increased. The kiosk reports versionCode every heartbeat; the
@@ -2219,7 +2277,7 @@ export class ScreensController {
     // UP_TO_DATE it reports around that refusal say nothing about the Player
     // — the UP_TO_DATE would read "Already on v1.1.23 ✓" on a screen that is
     // behind. Acknowledged, not stored (manager-lane-noise.ts).
-    if (!deviceAuthenticated && isManagerLaneNoise(fingerprint, state, message)) {
+    if ((!deviceAuthenticated || fromManager) && isManagerLaneNoise(fingerprint, state, message)) {
       return { ok: true, ignored: 'manager-lane-noise' };
     }
 
@@ -2231,7 +2289,7 @@ export class ScreensController {
     // Player's own (token-carrying) reports — a person pressing Update on the
     // panel — still are.
     if (
-      !deviceAuthenticated &&
+      (!deviceAuthenticated || fromManager) &&
       (state === 'CHECKING' || state === 'UP_TO_DATE') &&
       pushWaitsForTap({
         pendingAt: screen.forceApkUpdatePendingAt,
@@ -2276,7 +2334,7 @@ export class ScreensController {
     // 1.1.51 — a tap-expiry from the device moves a NEEDS_TAP hold to EXPIRED
     // (holdFromOtaReport); every other report still only holds an unheld push.
     const holdFromReport = holdFromOtaReport({
-      deviceAuthenticated,
+      deviceAuthenticated: deviceAuthenticated && !fromManager,
       pendingAt: push.forceApkUpdatePendingAt,
       currentHold: pushHeld ? push.forceApkUpdateHold : null,
       state,
@@ -2375,6 +2433,7 @@ export class ScreensController {
     console.log(
       `[ota-state] fp=${fingerprint.slice(0, 18)}… state=${state} ` +
       `progress=${progress ?? '-'} authed=${deviceAuthenticated} ` +
+      `source=${relayedManager ? 'manager-relayed' : fromManager ? 'manager' : '-'} ` +
       `message=${(message || '').slice(0, 80)}`,
     );
 
@@ -2426,6 +2485,12 @@ export class ScreensController {
     const stack = (body?.stack || '').slice(0, 8 * 1024) || null;
     const versionName = body?.versionName ? String(body.versionName).slice(0, 40) : null;
 
+    // 2026-11-08 — the verdict is computed BEFORE the write now and stored
+    // (`lastCrashAuthenticated`): a Manager crash relayed by the Player proves
+    // the credential; Manager 1.0.24's anonymous post does not. See the note
+    // below for why the route itself stays anonymous.
+    const authed = req ? (await this.heartbeatProvesDevice(req, screen.id)).proved : false;
+
     // ten-ok: device crash report, keyed by the fingerprint resolved above.
     // No caller tenant exists; the write only touches that row's own crash
     // telemetry columns.
@@ -2437,6 +2502,7 @@ export class ScreensController {
         lastCrashVersion: versionName,
         lastCrashMessage: message,
         lastCrashStack: stack,
+        lastCrashAuthenticated: authed,
       } as any,
     });
 
@@ -2459,8 +2525,6 @@ export class ScreensController {
     // in manifest-hot-cache.ts — and forgetting that entry is the documented
     // trap that silently recreates the 25 GB/mo Supabase egress bug. Not worth
     // it for a field with no consumer. Revisit if a crash panel is ever built.
-    const authed = req ? (await this.heartbeatProvesDevice(req, screen.id)).proved : false;
-
     // Loud Railway log — these are real crashes; we want them
     // visible in the operator's daily-glance scroll, not buried.
     //
@@ -3097,6 +3161,9 @@ export class ScreensController {
               lastCrashAt: s.lastCrashAt,
               lastCrashMessage: s.lastCrashMessage,
               lastCrashVersion: s.lastCrashVersion,
+              // 2026-11-08 — companion health (manager-health.ts) for the drawer.
+              managerHealth: (s as any).managerHealthReport ?? null,
+              managerHealthAt: (s as any).managerHealthReportAt ?? null,
               pendingRefreshAt: s.pendingRefreshAt,
               lastPushConnectedAt: s.lastPushConnectedAt,
               activeBoardGame: (() => {
@@ -5313,6 +5380,57 @@ export class ScreensController {
   }
 
   /**
+   * ─── ADMIN: clear the update quarantine on ONE screen (Manager wave 3, #8) ─
+   *
+   * Lets the companion Manager offer a build it set aside after a failed first
+   * boot again. Not a rollback - see quarantine-command.ts. Admin roles only;
+   * the screen must be in a tenant the caller may act in (same readable set as
+   * refresh-web), out-of-scope ids 404. The AuditLog row is written BEFORE the
+   * command leaves and is not best-effort: a privileged action with no row does
+   * not happen.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/clear-update-quarantine')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async clearUpdateQuarantine(@Request() req: any, @Param('id') id: string) {
+    const callerTenantId = req.user?.tenantId as string | undefined;
+    if (!callerTenantId) {
+      throw new HttpException(
+        { code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: { in: await this.readableTenantIds(callerTenantId) } },
+      select: { id: true, name: true, tenantId: true, managerVersion: true } as any,
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const corrId = `cq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION,
+        targetType: 'screen',
+        targetId: id,
+        tenantId: (screen as any).tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({
+          screenName: (screen as any).name,
+          managerVersion: (screen as any).managerVersion ?? null,
+          corrId,
+          rollback: false,
+        }),
+      },
+    });
+    const published = await publishClearUpdateQuarantine(
+      { signer: this.signer, redis: this.redisService },
+      { id, tenantId: (screen as any).tenantId, name: (screen as any).name },
+      { requestedBy: req.user.userId || req.user.id || null, corrId },
+    );
+    return { ok: true, screenId: id, corrId, published, rollback: false, note: QUARANTINE_NO_ROLLBACK_NOTE };
+  }
+
+  /**
    * ─── ADMIN: Revoke a screen's device credential ─────────────────────
    *
    * 2026-08-03 (DT-01). Until this endpoint existed there was NO
@@ -7010,6 +7128,9 @@ export class ScreensController {
             screen.pendingRefreshAt as Date | null,
             screen.pendingRefreshSource as string | null,
           ),
+          // Screen diagnostics (2026-11-08): the open self-test / logs request,
+          // absent (no key, ETag unchanged) when none is open.
+          ...manifestDiagnostics(screen as any),
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
@@ -7356,6 +7477,8 @@ export class ScreensController {
           (screen as any).pendingRefreshAt,
           (screen as any).pendingRefreshSource,
         ),
+        // Screen diagnostics (2026-11-08) — same contract as the scoreboard branch.
+        ...manifestDiagnostics(screen as any),
         // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
         // A screen waiting for an assignment must still power its panel
         // down overnight, so the display block rides this body too. It is
@@ -7707,6 +7830,8 @@ export class ScreensController {
         (screen as any).pendingRefreshAt,
         (screen as any).pendingRefreshSource,
       ),
+      // Screen diagnostics (2026-11-08) — the open request, absent when none.
+      ...manifestDiagnostics(screen as any),
       // ── Double-sided displays (2026-09-16) ─────────────────────────────
       // Emitted ONLY on a face's own manifest. Every ordinary screen's
       // payload — and therefore its ETag — stays byte-for-byte what it was

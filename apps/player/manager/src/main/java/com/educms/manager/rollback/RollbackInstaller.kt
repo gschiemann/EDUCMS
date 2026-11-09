@@ -47,6 +47,8 @@ object RollbackInstaller {
         // somehow fails, we still want OtaWorker to refuse to
         // re-download badVc on its next periodic tick.
         QuarantineList.add(ctx, badVc, reason)
+        // 2026-11-08 — Manager health: the dashboard learns a rollback fired.
+        com.educms.manager.health.ManagerHealth.noteRollback(ctx, badVc)
 
         if (previousVc <= 0) {
             Log.e(TAG, "rollback aborted — no previous version recorded (first-ever Manager install?)")

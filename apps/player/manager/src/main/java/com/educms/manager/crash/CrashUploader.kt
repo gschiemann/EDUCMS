@@ -58,6 +58,17 @@ object CrashUploader {
             put("stack", stack)
         }
 
+        // 2026-11-08 — signed reports: when the Player relays, the crash is
+        // queued for it (synchronous prefs commit) and it posts it with its
+        // device token. Otherwise the anonymous POST below, exactly as before.
+        if (com.educms.manager.health.ManagerReports.offerToPlayer(
+                ctx, com.educms.manager.health.ManagerReportOutbox.KIND_CRASH, body,
+            )
+        ) {
+            Log.i(TAG, "crash queued for the Player's signed relay")
+            return
+        }
+
         val apiRoot = BuildConfig.API_ROOT
         val fp = deriveFingerprint(ctx)
 

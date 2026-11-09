@@ -27,7 +27,7 @@ import androidx.annotation.RequiresApi
  *
  * Call site pattern (enforced in OtaInstaller.installApk):
  *
- *   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && AdminReceiver.isDeviceOwner(ctx)) {
+ *   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
  *       Api31SilentInstall.configure(params)
  *   }
  *

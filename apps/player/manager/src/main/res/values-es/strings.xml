@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VenueOS Manager</string>
+    <string name="watchdog_notif_channel">Vigilante de VenueOS</string>
+    <string name="watchdog_notif_title">VenueOS — manteniendo el Player activo</string>
+    <string name="watchdog_notif_text">Este servicio mantiene la pantalla en línea y aplica las actualizaciones.</string>
+
+    <string name="updates_notif_channel">Actualizaciones de VenueOS</string>
+    <string name="permission_notif_channel_description">Toque para permitir que VenueOS instale actualizaciones del Player.</string>
+    <string name="permission_notif_title">VenueOS: activar actualizaciones</string>
+    <string name="permission_notif_text">Toque para permitir las actualizaciones del Player sin instalación manual.</string>
+    <string name="permission_notif_big_text">Toque para otorgar a VenueOS Manager permiso para instalar actualizaciones del Player. Es una configuración única; las próximas actualizaciones se instalarán con un solo toque en el cuadro de instalación.</string>
+
+    <string name="install_notif_channel_description">Toque para instalar las actualizaciones del Player enviadas desde el panel.</string>
+    <string name="install_notif_target_player">Player</string>
+    <string name="install_notif_target_player_debug">Player (depuración)</string>
+    <string name="install_notif_title">VenueOS: instalar la actualización del %1$s</string>
+    <string name="install_notif_text">Toque para confirmar la instalación. La pantalla lo necesita para recibir actualizaciones.</string>
+</resources>

@@ -253,4 +253,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     testImplementation("junit:junit:4.13.2")
+    // TEST-ONLY (2026-11-08): android.jar's org.json is a throwing stub on the
+    // JVM; the real implementation lets the health-report and outbox contract
+    // tests run against the parser the device uses. Never reaches the APK.
+    testImplementation("org.json:json:20231013")
 }

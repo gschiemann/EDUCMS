@@ -124,6 +124,7 @@ import { GpioModule } from './screens/gpio.module';
 // scheduled on-off windows that run ON DEVICE from the manifest, plus the
 // platform vendor-recipe catalog. See display/display.module.ts.
 import { DisplayModule } from './display/display.module';
+import { ScheduledRebootModule } from './scheduled-reboot/scheduled-reboot.module';
 import { DeviceSettingsModule } from './device-settings/device-settings.module';
 import { ScreensBulkModule } from './screens/bulk/screens-bulk.module';
 // 2026-10-18 — the interruption ledger (@Global ScreenEventsService + its
@@ -146,6 +147,9 @@ import { ActivationFunnelModule } from './activation-funnel/activation-funnel.mo
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { FleetPulseSamplerCron } from './screens/fleet-pulse.cron';
+import { ScreenDiagnosticsController } from './screen-diagnostics/screen-diagnostics.controller';
+import { ScreenDiagnosticsService } from './screen-diagnostics/screen-diagnostics.service';
+import { ScreenDiagnosticsRetentionCron } from './screen-diagnostics/screen-diagnostics-retention.cron';
 import { FleetPulseController } from './screens/fleet-pulse.controller';
 import { ScreenAttentionController } from './notifications/screen-attention/screen-attention.controller';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -234,6 +238,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AnalyticsModule,
     GpioModule,
     DisplayModule,
+    // 2026-11-08 — opt-in scheduled restarts (kill switch SCHEDULED_REBOOTS_DISABLED).
+    ScheduledRebootModule,
     DeviceSettingsModule,
     // 2026-10-11 — select-all / select-group Resync, Send update, power,
     // automatic updates (screens/bulk/screens-bulk.controller.ts).
@@ -292,6 +298,10 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // 2026-10-24 — `GET /screens/attention` (the dashboard's Screens down card).
     // A literal path under /screens: registered ahead of ScreensController.
     ScreenAttentionController,
+    // 2026-11-08 — screen diagnostics (self-test, logs on demand, storage
+    // health). Literal segments after `:id`; registered here so it shares
+    // this module's single SupabaseStorageService and WebsocketSignerService.
+    ScreenDiagnosticsController,
     AppController,
     ScreensController,
     DevicesController,
@@ -341,6 +351,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // cause + signal design.
     ScreenWedgeDetectorCron,
     FleetPulseSamplerCron,
+    ScreenDiagnosticsService,
+    ScreenDiagnosticsRetentionCron,
     AssetSanitizerService,
     SupabaseStorageService,
     AssetArchivesService,
