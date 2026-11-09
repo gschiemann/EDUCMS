@@ -77,10 +77,41 @@ class LegacyEnginePolicyTest {
     @Test
     fun `the late proof line extends the on-glass line`() {
         assertEquals(
-            "PLAYER_LEGACY_POLYFILL installed webview=95 features=15 view=overlay mode=late",
-            LegacyEnginePolicy.lateInstalledLine(95, 15, "overlay"),
+            "PLAYER_LEGACY_POLYFILL installed webview=95 features=15 view=overlay mode=late first=loading",
+            LegacyEnginePolicy.lateInstalledLine(95, 15, "overlay", "loading"),
         )
-        assertTrue(LegacyEnginePolicy.LATE_PROBE_JS.contains("AbortSignal.prototype.throwIfAborted"))
+        assertEquals(
+            "PLAYER_LEGACY_POLYFILL late-after-parse view=overlay state=complete",
+            LegacyEnginePolicy.lateAfterParseLine("overlay", "complete"),
+        )
+        val probe = LegacyEnginePolicy.LATE_PROBE_JS
+        assertTrue(probe.contains("AbortSignal.prototype.throwIfAborted"))
+        assertTrue(probe.contains("document.readyState") && probe.contains("location.href"))
+    }
+
+    @Test
+    fun `the late probe answer is parsed strictly`() {
+        val ok = LegacyEnginePolicy.parseLateProbe("\"1|loading|https://bi.example.test/auth/login\"")!!
+        assertTrue(ok.present)
+        assertEquals("loading", ok.readyState)
+        assertEquals("https://bi.example.test/auth/login", ok.href)
+        val absent = LegacyEnginePolicy.parseLateProbe("\"0|complete|https://x.test/a|b\"")!!
+        assertFalse(absent.present)
+        assertEquals("https://x.test/a|b", absent.href)
+        assertEquals("unknown", LegacyEnginePolicy.parseLateProbe("\"1|weird|https://x.test/\"")!!.readyState)
+        for (bad in listOf(null, "", "null", "true", "\"\"", "\"2|loading|x\"", "\"1|loading\"", "1|loading|x")) {
+            assertNull("$bad", LegacyEnginePolicy.parseLateProbe(bad))
+        }
+    }
+
+    @Test
+    fun `same document ignores only the fragment`() {
+        assertTrue(LegacyEnginePolicy.sameDocument("https://x.test/a#b", "https://x.test/a"))
+        assertTrue(LegacyEnginePolicy.sameDocument("https://x.test/a", " https://x.test/a#c"))
+        assertFalse(LegacyEnginePolicy.sameDocument("https://x.test/a", "https://x.test/b"))
+        assertFalse(LegacyEnginePolicy.sameDocument("about:blank", "https://x.test/a"))
+        assertFalse(LegacyEnginePolicy.sameDocument(null, "https://x.test/a"))
+        assertFalse(LegacyEnginePolicy.sameDocument("https://x.test/a", null))
     }
 
     @Test
@@ -208,14 +239,20 @@ class LegacyEnginePolicyTest {
     }
 
     @Test
-    fun `the overlay client feeds every main-frame document to the late injector`() {
+    fun `the overlay client feeds every early moment of a main-frame document to the late injector`() {
         val main = code(read("src/main/java/com/educms/player/MainActivity.kt"))
         val overlay = block(main, "private fun configureUrlOverlay(", "\n    private fun showUrlOverlay(")
-        for (cb in listOf("override fun onPageStarted(", "override fun onPageCommitVisible(", "override fun onPageFinished(")) {
+        val expected = mapOf(
+            "override fun onPageStarted(" to "legacyLate?.onDocumentStarted(view, url)",
+            "override fun onLoadResource(" to "legacyLate?.onResource(view)",
+            "override fun onPageCommitVisible(" to "legacyLate?.onDocument(view, url)",
+            "override fun onPageFinished(" to "legacyLate?.onDocument(view, url)",
+        )
+        for ((cb, call) in expected) {
             val body = overlay.substringAfter(cb, "").substringBefore("override fun ")
             assertTrue("$cb missing in the overlay client", body.isNotEmpty())
-            assertTrue("$cb must call legacyLate?.inject(view, url)", body.contains("legacyLate?.inject(view, url)"))
+            assertTrue("$cb must call $call", body.contains(call))
         }
-        assertEquals(3, Regex("""legacyLate\?\.inject\(""").findAll(overlay).count())
+        assertEquals(4, Regex("""legacyLate\?\.on[A-Za-z]+\(""").findAll(overlay).count())
     }
 }

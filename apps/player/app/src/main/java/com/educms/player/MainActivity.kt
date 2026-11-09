@@ -3929,7 +3929,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
-                legacyLate?.inject(view, url)
+                legacyLate?.onDocumentStarted(view, url)
                 overlayLastStartedUrl = url
                 // Remember every origin the site view reaches, for the sign-out's
                 // per-origin storage wipe (WebTabsPolicy.wipeOriginsFor).
@@ -3937,15 +3937,22 @@ class MainActivity : ComponentActivity() {
                 super.onPageStarted(view, url, favicon)
             }
 
-            // Legacy-engine late path: the first moment the new document provably exists.
+            // Legacy-engine late path: the document's first file loads come before
+            // a `defer` bundle can run — the earliest shots this engine offers.
+            override fun onLoadResource(view: WebView?, url: String?) {
+                legacyLate?.onResource(view)
+                super.onLoadResource(view, url)
+            }
+
+            // Legacy-engine late path: the new document provably exists.
             override fun onPageCommitVisible(view: WebView?, url: String?) {
-                legacyLate?.inject(view, url)
+                legacyLate?.onDocument(view, url)
                 super.onPageCommitVisible(view, url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
-                legacyLate?.inject(view, url)
+                legacyLate?.onDocument(view, url)
                 super.onPageFinished(view, url)
                 if (view === urlOverlayView && !webTabsActive && urlOverlayRecoveryInFlight &&
                     !urlOverlayRecoveryFailed && url != null && url == overlayLastStartedUrl &&
