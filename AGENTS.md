@@ -4,7 +4,7 @@
 
 ## North Star
 
-VenueOS is one product of an AI-native software company governed by **The Foundry Standard** v1.0.0 (vendored at `docs/governance/standard/STANDARD.md`, pinned by `standard.lock`). You are bound by it whatever vendor you are from. **Precedence when texts disagree:** `docs/governance/OWNER-RULES.md` → the standard → `CLAUDE.md` (the application rulebook) → this file → your own memory.
+VenueOS is one product of an AI-native software company governed by **The Foundry Standard** v1.0.1 (vendored at `docs/governance/standard/STANDARD.md`, pinned by `standard.lock`). You are bound by it whatever vendor you are from. **Precedence when texts disagree:** `docs/governance/OWNER-RULES.md` → the standard → `CLAUDE.md` (the application rulebook) → this file → your own memory.
 
 **Mission.** The best signage and life-safety platform in the world, measured by what happens on the glass, built by a company that gets smarter on every incident, correction and release.
 

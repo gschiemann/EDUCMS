@@ -2,7 +2,7 @@
 
 ## Universal Application Standard for an AI-Native Software Company
 
-**Version** 1.0.0 · **Status** Governing · **Applies to** every software product we create, now and in the future · **Owner** Greg Schiemann · **Amended only by pull request** (see `AMENDMENTS.md`) — never silently.
+**Version** 1.0.1 · **Status** Governing · **Applies to** every software product we create, now and in the future · **Owner** Greg Schiemann · **Amended only by pull request** (see `AMENDMENTS.md`) — never silently.
 
 ---
 
@@ -266,9 +266,9 @@ Ceilings — the life-safety path is three different things and the register nam
 
 ### Article 34 — Trust is reversible
 
-Autonomy is a continuously measured privilege. When accuracy falls, rollbacks rise, a security event occurs, a model drifts, customer impact grows or confidence calibration deteriorates, the affected category drops a level and the register says why. Demotion is immediate; promotion is slow. **The first automatic rule:** every class of fleet or customer-facing action has an error budget derived from its objective; while that budget is burning, fleet-wide actions for that class drop to L1 and stay there until it recovers. A launch or incident freeze is the same rule applied by hand, in writing, with named exceptions and an expiry.
+Autonomy is a continuously measured privilege. When accuracy falls, rollbacks rise, a security event occurs, a model drifts, customer impact grows or confidence calibration deteriorates, the affected category drops a level and the register says why. Demotion is immediate; promotion is slow. **The first automatic rule:** every class of fleet or customer-facing action has an error budget derived from its objective; while that budget is burning, fleet-wide actions for that class drop to L1 and stay there until it recovers. A launch or incident hold is the same rule applied by hand, in writing, with named exceptions and an expiry.
 
-**Mechanism.** The register's demotion triggers (a rollback, a security event, a customer-impacting error, a wrong call, a burning error budget) applied at the weekly review at the latest, and at once when the Lead sees one; freezes, pre-approved batches and reviewer waivers recorded with an expiry (`AUTONOMY.md`). **Evidence.** Demotion entries with cause.
+**Mechanism.** The register's demotion triggers (a rollback, a security event, a customer-impacting error, a wrong call, a burning error budget) applied at the weekly review at the latest, and at once when the Lead sees one; holds, pre-approved batches and reviewer waivers recorded with an expiry (`AUTONOMY.md`). **Evidence.** Demotion entries with cause.
 
 ### Article 35 — Version everything important
 
@@ -393,9 +393,9 @@ Any capable model from any vendor may work on any application, and all are bound
 
 ### Article 54 — Breach and supplier compromise
 
-When a platform, vendor, build chain or supplier we depend on is compromised or leaks, we assume every secret it held is burned and every artifact it produced is suspect. The protocol: freeze deployments and fleet actions for the affected classes; establish the exposure window from evidence, not hope; rotate every affected secret **through a window** (new primary, previous still accepted) — never a straight swap, which strands every device still holding the old credential; verify from the system's own records that every consumer has re-registered before the window closes, and refuse to close it otherwise; collect forensics before and after; record the supplier's root cause; and measure the exposure window as a metric. The standard's own history: a hosting-platform environment leak was followed, one day later, by a rotation that closed too early and cut fourteen screens off — both investigations (Article 47) produced the window rule.
+When a platform, vendor, build chain or supplier we depend on is compromised or leaks, we assume every secret it held is burned and every artifact it produced is suspect. The protocol: hold deployments and fleet actions for the affected classes; establish the exposure window from evidence, not hope; rotate every affected secret **through a window** (new primary, previous still accepted) — never a straight swap, which strands every device still holding the old credential; verify from the system's own records that every consumer has re-registered before the window closes, and refuse to close it otherwise; collect forensics before and after; record the supplier's root cause; and measure the exposure window as a metric. The standard's own history: a hosting-platform environment leak was followed, one day later, by a rotation that closed too early and cut fourteen screens off — both investigations (Article 47) produced the window rule.
 
-**Mechanism.** A rotation runbook with windowed secrets and a finish step that refuses while any live consumer lacks a new-key credential; a deployment freeze switch; an incident record per event. **Evidence.** Rotation records with per-consumer proof of re-registration; the measured exposure window.
+**Mechanism.** A rotation runbook with windowed secrets and a finish step that refuses while any live consumer lacks a new-key credential; a deployment hold switch; an incident record per event. **Evidence.** Rotation records with per-consumer proof of re-registration; the measured exposure window.
 
 ---
 
