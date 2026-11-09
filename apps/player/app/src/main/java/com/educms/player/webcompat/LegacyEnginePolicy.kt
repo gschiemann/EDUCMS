@@ -82,15 +82,40 @@ object LegacyEnginePolicy {
     }
 
     /**
-     * Evaluated after the layer, once per injector until it answers `true`:
-     * proof the layer is present in the page (the field case's missing builtin).
+     * Evaluated after the layer: is it present in THIS document (the field
+     * case's missing builtin), how far had the document got, and which
+     * document is it. Answers `"1|loading|https://…"` / `"0|…"`.
      */
     const val LATE_PROBE_JS =
-        "(function(){try{return typeof AbortSignal==='function'&&typeof AbortSignal.prototype.throwIfAborted==='function'}catch(e){return false}})()"
+        "(function(){var p=0;try{p=(typeof AbortSignal==='function'&&typeof AbortSignal.prototype.throwIfAborted==='function')?1:0}catch(e){}" +
+            "var r='';try{r=String(document.readyState)}catch(e){}var h='';try{h=String(location.href)}catch(e){}return p+'|'+r+'|'+h})()"
+
+    data class LateProbe(val present: Boolean, val readyState: String, val href: String)
+
+    /** `evaluateJavascript` hands back a JSON string literal; anything else is no answer. */
+    fun parseLateProbe(raw: String?): LateProbe? {
+        val v = raw?.trim() ?: return null
+        if (v.length < 2 || !v.startsWith("\"") || !v.endsWith("\"")) return null
+        val body = try { org.json.JSONArray("[$v]").getString(0) } catch (t: Throwable) { return null }
+        val parts = body.split('|', limit = 3)
+        if (parts.size != 3 || (parts[0] != "0" && parts[0] != "1")) return null
+        val state = parts[1].takeIf { it == "loading" || it == "interactive" || it == "complete" } ?: "unknown"
+        return LateProbe(parts[0] == "1", state, parts[2])
+    }
+
+    /** Same document, ignoring the fragment (a hash change is not a new document). */
+    fun sameDocument(href: String?, expected: String?): Boolean {
+        if (href.isNullOrEmpty() || expected.isNullOrEmpty()) return false
+        return href.substringBefore('#') == expected.trim().substringBefore('#')
+    }
 
     /** The durable line once the late path is proven in a page. */
-    fun lateInstalledLine(major: Int, features: Int, view: String): String =
-        installedLine(major, features, view) + " mode=late"
+    fun lateInstalledLine(major: Int, features: Int, view: String, firstReadyState: String): String =
+        installedLine(major, features, view) + " mode=late first=" + firstReadyState
+
+    /** The layer reached a document only after parsing — too late for a builtin the page needs at boot. */
+    fun lateAfterParseLine(view: String, readyState: String): String =
+        "PLAYER_LEGACY_POLYFILL late-after-parse view=$view state=$readyState"
 
     /** Feature groups in the asset: one `feature('…'` call per line start. */
     fun featureCount(script: String): Int =
