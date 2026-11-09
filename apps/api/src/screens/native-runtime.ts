@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { nativeEmergencyProofSchema } from './emergency-proof';
+import { alertWatchWatchdogSchema } from './alert-watch-watchdog';
 
 /** Native heartbeat evidence is independent of web rendering and cache readiness. */
 export const NATIVE_RUNTIME_HEADER = 'x-venueos-native-runtime';
@@ -206,6 +207,11 @@ const runtimeSchema = z.object({
   // drops the whole report like any other malformed field.
   nativePresenting: nativePresentingSchema.optional(),
   emergencyProof: nativeEmergencyProofSchema.optional(),
+  // Manager wave 5 (2026-11-08): the companion Manager's verdict on the native
+  // alert watch, carried by the Player's heartbeat in its own header and stored
+  // here (telemetry only). `.catch(undefined)`: a malformed block drops on its
+  // own, never the power report it rides with.
+  alertWatchWatchdog: alertWatchWatchdogSchema.optional().catch(undefined),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;

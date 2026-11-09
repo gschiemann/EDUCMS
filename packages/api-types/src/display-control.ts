@@ -1788,6 +1788,15 @@ export interface DisplayManifestBlock {
    * the behaviour — there is no `true` that forces it.
    */
   vendorBacklight?: false;
+  /**
+   * Manager wave 5 (2026-11-08) — the lead's switch for the companion
+   * Manager's ALERT-WATCH WATCHDOG (`MANAGER_ALERT_WATCH_WATCHDOG` on the API:
+   * `on:<uuid|all>` / `observe:<uuid|all>`). PRESENT only for a screen it
+   * names; omitted for everyone else. The Player copies it into the stamp it
+   * writes for the Manager, which does nothing without it (unset = today).
+   * An older APK drops the key.
+   */
+  alertWatchWatchdog?: 'on' | 'observe';
   /** Server-tunable safety policy, so the floor can move without an APK. */
   brightness: {
     minSafePercent: number;
